@@ -98,6 +98,13 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
 })
 export class PromptModal implements OnInit {
   readonly editingPrompt = input<CharacterSystemPrompt | null>(null);
+  /**
+   * Seed a NEW prompt's form (v4's Import-Template flow, `useSystemPrompts.ts`
+   * `handleImport` — `{name: suggestedName, content, isDefault}`, then opening
+   * this same create modal for the user to review before saving). Ignored
+   * when `editingPrompt` is set.
+   */
+  readonly initialForm = input<PromptFormData | null>(null);
   readonly saving = input(false);
   readonly close = output<void>();
   readonly save = output<PromptFormData>();
@@ -125,6 +132,8 @@ export class PromptModal implements OnInit {
     const p = this.editingPrompt();
     if (p) {
       this.form.set({ name: p.name, content: p.content, isDefault: p.isDefault });
+    } else if (this.initialForm()) {
+      this.form.set(this.initialForm()!);
     }
   }
 

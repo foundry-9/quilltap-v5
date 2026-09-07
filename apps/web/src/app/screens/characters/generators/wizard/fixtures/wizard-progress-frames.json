@@ -1,0 +1,19 @@
+{
+  "note": "A hand-recorded frame sequence modeled on v4's `field_start`/`field_complete`/`field_error`/`done` SSE shapes (useAIWizard.ts:327-369) at the f699da6f6 pin. K2 (P4.9K2, the server lane emitting these over the wire) had not landed when this lane authored its parity spec, so this is NOT a copy of K2's committed corpus — it is this lane's own transcription of v4's event shapes, recorded here so the fold can be tested without a live server. A future round MAY swap this for K2's real corpus once it exists; the fold logic under test does not change.",
+  "frames": [
+    { "type": "field_start", "field": "identity" },
+    { "type": "field_complete", "field": "identity", "snippet": "A blacksmith who studies forbidden magic." },
+    { "type": "field_start", "field": "description" },
+    { "type": "field_error", "field": "description", "error": "The model refused to continue." },
+    { "type": "field_start", "field": "scenarios" },
+    { "type": "field_complete", "field": "scenarios", "snippet": "The Forge at Midnight" },
+    {
+      "type": "done",
+      "fullContent": {
+        "identity": "A blacksmith who studies forbidden magic.",
+        "scenarios": [{ "title": "The Forge at Midnight", "content": "Sparks fly in the dark." }]
+      },
+      "errors": { "description": "The model refused to continue." }
+    }
+  ]
+}

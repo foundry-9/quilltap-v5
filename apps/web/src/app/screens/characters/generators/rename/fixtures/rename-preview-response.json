@@ -1,0 +1,58 @@
+{
+  "note": "A recorded v4-shaped `RenamePreviewResponse` (§B.2), self-authored per v4's `RenameReplaceTab.tsx` shape — K1 (P4.9K1, the server lane) had not landed a real fixture-driven corpus when this lane authored its parity spec.",
+  "characterId": "char-1",
+  "characterName": "Snips",
+  "dryRun": true,
+  "replacements": [
+    {
+      "field": "identity",
+      "location": "Character Fields",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "…everyone calls her Snips because…"
+    },
+    {
+      "field": "fullDescription",
+      "location": "Physical Descriptions",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "A portrait titled 'Snips at the forge'"
+    },
+    {
+      "field": "content",
+      "location": "Memories",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "Remembered Snips fondly"
+    },
+    {
+      "field": "title",
+      "location": "Chat Titles",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "A Chat With Snips"
+    },
+    {
+      "field": "content",
+      "location": "Chat Messages",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "Hello, Snips!"
+    },
+    {
+      "field": "content",
+      "location": "Chat Messages",
+      "oldText": "Snips",
+      "newText": "Ace",
+      "context": "Goodbye, Snips."
+    }
+  ],
+  "summary": {
+    "characterFields": 1,
+    "physicalDescriptions": 1,
+    "memories": 1,
+    "chatTitles": 1,
+    "chatMessages": 2,
+    "total": 6
+  }
+}

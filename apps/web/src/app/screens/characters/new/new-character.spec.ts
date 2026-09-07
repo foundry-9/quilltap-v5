@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { EMPTY } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
@@ -17,6 +18,7 @@ function stubClient(
   onDispatch?: (req: { type: string; [k: string]: unknown }) => void,
 ): Partial<CoreClient> {
   return {
+    events$: EMPTY,
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       onDispatch?.(req);
       switch (req.type) {
@@ -26,6 +28,20 @@ function stubClient(
           };
         case 'characterCreate':
           return { character: { id: 'new-char-id' } };
+        case 'characterUpdate':
+          return { character: { id: 'new-char-id' } };
+        case 'characterWardrobeCreate':
+          return { item: { id: `item-${Math.random()}` } };
+        case 'characterScenarioCreate':
+          return {
+            scenario: {
+              id: `sc-${Math.random()}`,
+              title: req['title'],
+              content: req['content'],
+              createdAt: '2026-01-01T00:00:00Z',
+              updatedAt: '2026-01-01T00:00:00Z',
+            },
+          };
         default:
           return {};
       }
@@ -137,13 +153,13 @@ describe('NewCharacter', () => {
     }
   });
 
-  it('renders the v4-verbatim header and disabled AI Wizard affordance', async () => {
+  it('renders the v4-verbatim header with a live AI Wizard affordance (P4.9K3)', async () => {
     const fixture = await render(stubClient());
     expect(fixture.nativeElement.querySelector('h1').textContent).toContain('Create Character');
     const wizard = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
       (b as HTMLButtonElement).textContent?.includes('AI Wizard'),
     ) as HTMLButtonElement;
-    expect(wizard.disabled).toBe(true);
+    expect(wizard.disabled).toBe(false);
   });
 
   it('submitting dispatches characterCreate with the expected bag and navigates', async () => {
@@ -268,5 +284,99 @@ describe('NewCharacter (workspace-tab mode)', () => {
 
     expect(closed).toEqual(['tab-new']);
     expect(navigateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewCharacter — the AI Wizard + Import Template (P4.9K3)', () => {
+  it('opens the wizard and stages text fields immediately on Apply', async () => {
+    const fixture = await render(stubClient());
+
+    const wizardButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.includes('AI Wizard'),
+    ) as HTMLButtonElement;
+    wizardButton.click();
+    fixture.detectChanges();
+
+    const modal = fixture.debugElement.query((d) => d.name === 'qt-ai-wizard-modal');
+    expect(modal).not.toBeNull();
+    modal.componentInstance.apply.emit({ identity: 'A wandering minstrel.' });
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    const identityField = fixture.nativeElement.querySelector('[aria-label="Identity"]') as HTMLElement;
+    expect(identityField.textContent).toContain('A wandering minstrel.');
+  });
+
+  it('queues physicalDescription/wardrobe/scenarios/properties and applies them AFTER creation', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = await render(stubClient((req) => seen.push(req)));
+
+    const wizardButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.includes('AI Wizard'),
+    ) as HTMLButtonElement;
+    wizardButton.click();
+    fixture.detectChanges();
+
+    const modal = fixture.debugElement.query((d) => d.name === 'qt-ai-wizard-modal');
+    modal.componentInstance.apply.emit({
+      name: 'Ariadne',
+      physicalDescription: {
+        name: 'Ariadne',
+        headAndShouldersPrompt: 'h',
+        shortPrompt: 's',
+        mediumPrompt: 'm',
+        longPrompt: 'l',
+        completePrompt: 'c',
+        fullDescription: 'A tall librarian.',
+      },
+      scenarios: [{ title: 'The Athenaeum', content: 'Dust motes in the light.' }],
+      wardrobeItems: [{ title: 'Reading Robe', description: '', types: ['top'], isDefault: true }],
+      properties: { pronouns: { subject: 'she', object: 'her', possessive: 'her' }, aliases: ['Ari'] },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    // Nothing pending dispatches before creation — they're queued.
+    expect(seen.some((r) => r.type === 'characterWardrobeCreate')).toBe(false);
+    expect(seen.some((r) => r.type === 'characterScenarioCreate')).toBe(false);
+
+    const form = fixture.nativeElement.querySelector('form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    // v4's order: scenarios, physical description, properties, wardrobe.
+    const scenarioReq = seen.find((r) => r.type === 'characterScenarioCreate');
+    expect(scenarioReq).toMatchObject({ characterId: 'new-char-id', title: 'The Athenaeum' });
+
+    const pdReq = seen.find((r) => r.type === 'characterUpdate' && (r['character'] as Record<string, unknown>)?.['physicalDescription']);
+    expect(pdReq).toBeDefined();
+
+    const propsReq = seen.find(
+      (r) => r.type === 'characterUpdate' && (r['character'] as Record<string, unknown>)?.['pronouns'],
+    );
+    expect((propsReq?.['character'] as Record<string, unknown>)?.['aliases']).toEqual(['Ari']);
+
+    const wardrobeReq = seen.find((r) => r.type === 'characterWardrobeCreate');
+    expect(wardrobeReq).toMatchObject({
+      characterId: 'new-char-id',
+      item: { title: 'Reading Robe' },
+    });
+  });
+
+  it('Import Template opens a real modal with v4\'s empty-state copy (no promptTemplateList verb)', async () => {
+    const fixture = await render(stubClient());
+
+    const importButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
+    ) as HTMLButtonElement;
+    expect(importButton.disabled).toBe(false);
+    importButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('No templates available');
   });
 });

@@ -23,6 +23,16 @@ import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters
 import { CharacterChooseOutfitCard } from '../choose-outfit-card';
 import { WardrobeDialogService } from '../../../wardrobe/wardrobe-dialog.service';
 import { CharacterDeleteDialog, type DeleteChoice } from '../list/character-delete-dialog';
+import type { GeneratedCharacterData } from '../generators/edit-generators.api';
+import { CharacterRenameReplaceTab } from '../generators/rename/rename-replace-tab';
+import { AiWizardModal } from '../generators/wizard/ai-wizard-modal';
+import { saveGeneratedPhysicalDescription, saveGeneratedScenarios, saveGeneratedWardrobeItems } from '../generators/wizard/save-generated';
+import {
+  getGeneratedCharacterTextEntries,
+  mergeGeneratedAliases,
+  normalizeGeneratedScenarios,
+  type WizardCharacterData,
+} from '../generators/wizard/wizard-types';
 import { CharacterAppearanceTab } from './appearance-tab';
 import {
   buildCharacterUpdateBag,
@@ -40,6 +50,7 @@ const EDIT_TABS: Tab[] = [
   { id: 'system-prompts', label: 'System Prompts', icon: 'code' },
   { id: 'wardrobe', label: 'Wardrobe', icon: 'wardrobe' },
   { id: 'descriptions', label: 'Appearance', icon: 'file' },
+  { id: 'rename', label: 'Rename/Replace', icon: 'pencil' },
 ];
 
 /**
@@ -73,6 +84,8 @@ const EDIT_TABS: Tab[] = [
     CharacterDeleteDialog,
     CharacterChooseOutfitCard,
     CharacterLlmLogsSection,
+    CharacterRenameReplaceTab,
+    AiWizardModal,
   ],
   template: `
     <div class="character-edit qt-page-container text-foreground">
@@ -122,8 +135,8 @@ const EDIT_TABS: Tab[] = [
               <button
                 type="button"
                 class="qt-button-secondary flex items-center gap-2"
-                disabled
-                title="Use AI to generate character details (not yet available)"
+                title="Use AI to generate character details"
+                (click)="wizardOpen.set(true)"
               >
                 <qt-icon name="wand" class="w-4 h-4" />
                 AI Wizard
@@ -173,6 +186,13 @@ const EDIT_TABS: Tab[] = [
                 @case ('descriptions') {
                   <qt-character-appearance-tab [characterId]="characterId()!" />
                 }
+                @case ('rename') {
+                  <qt-character-rename-replace-tab
+                    [characterId]="characterId()!"
+                    [characterName]="character()?.name || ''"
+                    (renameComplete)="onRenameComplete()"
+                  />
+                }
               }
             </ng-template>
           </qt-entity-tabs>
@@ -202,14 +222,6 @@ const EDIT_TABS: Tab[] = [
         <div class="mt-6 flex gap-3">
           <button
             type="button"
-            class="qt-button-secondary"
-            disabled
-            title="Rename this character and replace all references (not yet available)"
-          >
-            Rename/Replace
-          </button>
-          <button
-            type="button"
             class="qt-button qt-button-destructive"
             (click)="deleteOpen.set(true)"
           >
@@ -218,6 +230,16 @@ const EDIT_TABS: Tab[] = [
         </div>
       }
     </div>
+
+    @if (wizardOpen()) {
+      <qt-ai-wizard-modal
+        [characterId]="characterId()!"
+        [characterName]="character()?.name || ''"
+        [currentData]="wizardCurrentData()"
+        (apply)="onWizardApply($event)"
+        (closeModal)="wizardOpen.set(false)"
+      />
+    }
 
     @if (avatarPickerOpen()) {
       <qt-avatar-picker-modal
@@ -293,6 +315,7 @@ export class CharacterEdit {
   protected readonly deleteOpen = signal(false);
   protected readonly saving = signal(false);
   protected readonly saveError = signal<string | null>(null);
+  protected readonly wizardOpen = signal(false);
 
   protected readonly dirty = computed(
     () => JSON.stringify(this.formData()) !== JSON.stringify(this.originalFormData()),
@@ -304,6 +327,24 @@ export class CharacterEdit {
   });
 
   protected readonly initial = computed(() => (this.character()?.name[0] ?? '?').toUpperCase());
+
+  /** v4 `CharacterEditView.tsx:375-378` — `buildWizardCurrentData(formData)` + `scenarios`. */
+  protected readonly wizardCurrentData = computed<WizardCharacterData>(() => {
+    const f = this.formData();
+    return {
+      title: f.title,
+      identity: f.identity,
+      description: f.description,
+      manifesto: f.manifesto,
+      personality: f.personality,
+      firstMessage: f.firstMessage,
+      exampleDialogues: f.exampleDialogues,
+      systemPrompt: f.systemPrompt,
+      pronouns: f.pronouns,
+      aliases: f.aliases,
+      scenarios: f.scenarios,
+    };
+  });
 
   constructor() {
     // Seed the form once from the loaded character (not on every background
@@ -406,6 +447,81 @@ export class CharacterEdit {
     const id = this.characterId();
     if (id) {
       void this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(id) });
+    }
+  }
+
+  protected onRenameComplete(): void {
+    const id = this.characterId();
+    if (id) {
+      void this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(id) });
+    }
+  }
+
+  /**
+   * v4 `CharacterEditView.tsx:95-158` `handleWizardApply` — text fields land in
+   * form state (remounting the markdown editors is a v5 non-issue: `qt-
+   * markdown-field` binds `[value]` reactively, no `remountKey` needed);
+   * physical description PATCHes immediately; pronouns/aliases stage into
+   * form state for the user to review before "Save Character"; wardrobe items
+   * and scenarios persist immediately (toasted), with new scenarios spliced
+   * into form state directly rather than refetching (a refetch would clobber
+   * the wizard-applied text fields before they're saved).
+   */
+  protected async onWizardApply(data: GeneratedCharacterData): Promise<void> {
+    const id = this.characterId();
+    if (!id) {
+      return;
+    }
+
+    const textEntries = getGeneratedCharacterTextEntries(data);
+    if (textEntries.length > 0) {
+      this.formData.update((f) => {
+        const next: Record<string, unknown> = { ...f };
+        for (const entry of textEntries) {
+          next[entry.field] = entry.value;
+        }
+        return next as unknown as CharacterFormData;
+      });
+    }
+
+    if (data.physicalDescription) {
+      await saveGeneratedPhysicalDescription(
+        this.core,
+        this.toasts,
+        id,
+        data.physicalDescription,
+        'Failed to save physical description',
+      );
+    }
+
+    if (data.properties) {
+      if (data.properties.pronouns && !this.formData().pronouns) {
+        this.formData.update((f) => ({ ...f, pronouns: data.properties!.pronouns }));
+      }
+      if (data.properties.aliases.length > 0) {
+        const existing = this.formData().aliases;
+        const merged = mergeGeneratedAliases(existing, data.properties.aliases);
+        if (merged !== existing) {
+          this.formData.update((f) => ({ ...f, aliases: merged }));
+        }
+      }
+    }
+
+    if (data.wardrobeItems && data.wardrobeItems.length > 0) {
+      const { saved, outfits } = await saveGeneratedWardrobeItems(this.core, id, data.wardrobeItems);
+      if (saved > 0) {
+        const outfitText = outfits > 0 ? ` (including ${outfits} outfit${outfits > 1 ? 's' : ''})` : '';
+        this.toasts.showSuccess(`${saved} wardrobe item${saved > 1 ? 's' : ''} created${outfitText}`);
+      }
+    }
+
+    const normalizedScenarios = normalizeGeneratedScenarios(data.scenarios);
+    if (normalizedScenarios.length > 0) {
+      const { saved, scenarios } = await saveGeneratedScenarios(this.core, id, normalizedScenarios);
+      if (saved > 0) {
+        this.toasts.showSuccess(`${saved} scenario${saved > 1 ? 's' : ''} created`);
+        this.formData.update((f) => ({ ...f, scenarios: [...f.scenarios, ...scenarios] }));
+      }
     }
   }
 }

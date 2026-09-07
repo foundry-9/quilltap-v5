@@ -1,0 +1,32 @@
+{
+  "FIELD_LABELS": {
+    "name": "Name",
+    "title": "Title",
+    "identity": "Identity",
+    "description": "Description",
+    "manifesto": "Manifesto",
+    "personality": "Personality",
+    "scenarios": "Scenarios",
+    "exampleDialogues": "Example Dialogues",
+    "firstMessage": "First Message",
+    "systemPrompt": "System Prompt",
+    "properties": "Properties (Pronouns & Aliases)",
+    "physicalDescription": "Physical Description",
+    "wardrobeItems": "Wardrobe"
+  },
+  "FIELD_DESCRIPTIONS": {
+    "name": "The character's name",
+    "title": "A short epithet or title (e.g., \"The Wanderer\")",
+    "identity": "What strangers know about the character on sight or by reputation — name, station, occupation, public reputation. The shallow first impression, and read only by others.",
+    "description": "How acquaintances perceive the character — behaviour, mannerisms, frequent verbal patterns. Not physical appearance (that lives in physical descriptions), and never the inner monologue.",
+    "manifesto": "The foundational tenets of this character — the basic truths that anchor everything else, delivered to the character alone. What this character is, at root.",
+    "personality": "What the character knows about themselves — the inner drivers of speech and behaviour. Other characters don’t see it unless the character shows them.",
+    "scenarios": "The setting and circumstances for conversations — the stage, never the actor. Generates 2-3 named scenarios with distinct settings.",
+    "exampleDialogues": "Example conversations that model the character’s voice, as {{char}}: / {{user}}: exchanges — each line exactly as that speaker would say it.",
+    "firstMessage": "The character’s opening message to start conversations, in their own voice.",
+    "systemPrompt": "Stage direction for the model playing the character — voice, pacing, boundaries, interaction style — addressed to the character directly.",
+    "properties": "Structured facts: pronouns and aliases (nicknames others use)",
+    "physicalDescription": "Descriptive phrases only — this text also drives image generation, so keep to what a lens would record, never a sentence addressed to anyone. The person only — clothing lives in the wardrobe.",
+    "wardrobeItems": "Clothing, accessories, hairstyles, and composite outfits (top, bottom, footwear, accessories, hair)"
+  }
+}

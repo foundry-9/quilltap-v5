@@ -5,21 +5,24 @@ import { CoreClient } from '../../../core/core-client';
 import type { CharacterSystemPrompt } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { characterKeys } from '../characters.api';
+import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
+import { CharacterPromptPreviewModal } from '../generators/prompts-editor/preview-modal';
 import { PromptModal, type PromptFormData } from './prompt-modal';
 
 /**
  * The System Prompts tab (v4
  * `components/characters/system-prompts-editor/index.tsx`): the prompt list
  * (name, default badge, preview, edit / set-default / delete) plus a
- * create/edit modal. "Import Template" is a named deferral (disabled, no
- * `promptTemplate*` contract yet). Preview-modal and per-row inline delete
- * confirmation collapse into a single delete button for this round; copy
- * carries over verbatim.
+ * create/edit modal, the Preview modal, and "Import Template" (P4.9K3 —
+ * joined, but its catalogue is always empty until a `promptTemplateList`
+ * verb lands; see `CharacterPromptImportModal`'s header). Per-row inline
+ * delete confirmation collapses into a single delete button for this round;
+ * copy carries over verbatim.
  */
 @Component({
   selector: 'qt-character-system-prompts-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, PromptModal],
+  imports: [Icon, PromptModal, CharacterPromptPreviewModal, CharacterPromptImportModal],
   template: `
     <div class="space-y-4">
       <div class="flex justify-between items-center">
@@ -31,12 +34,7 @@ import { PromptModal, type PromptFormData } from './prompt-modal';
           </p>
         </div>
         <div class="flex gap-2">
-          <button
-            type="button"
-            class="qt-button-secondary"
-            disabled
-            title="Import from a prompt template (not yet available)"
-          >
+          <button type="button" class="qt-button-secondary" (click)="importModalOpen.set(true)">
             Import Template
           </button>
           <button type="button" class="qt-button-primary" (click)="openCreate()">
@@ -78,6 +76,14 @@ import { PromptModal, type PromptFormData } from './prompt-modal';
                   <button
                     type="button"
                     class="qt-button-icon qt-button-ghost"
+                    title="Preview"
+                    (click)="previewPrompt.set(prompt)"
+                  >
+                    <qt-icon name="eye" class="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    class="qt-button-icon qt-button-ghost"
                     title="Edit"
                     (click)="openEdit(prompt)"
                   >
@@ -114,9 +120,26 @@ import { PromptModal, type PromptFormData } from './prompt-modal';
     @if (modalOpen()) {
       <qt-prompt-modal
         [editingPrompt]="editingPrompt()"
+        [initialForm]="importedForm()"
         [saving]="saving()"
         (close)="modalOpen.set(false)"
         (save)="onSave($event)"
+      />
+    }
+
+    @if (previewPrompt(); as prompt) {
+      <qt-character-prompt-preview-modal
+        [prompt]="prompt"
+        [characterName]="characterName()"
+        (close)="previewPrompt.set(null)"
+        (edit)="openEdit($event)"
+      />
+    }
+
+    @if (importModalOpen()) {
+      <qt-character-prompt-import-modal
+        (close)="importModalOpen.set(false)"
+        (importPrompt)="onImport($event)"
       />
     }
   `,
@@ -130,6 +153,10 @@ export class CharacterSystemPromptsTab {
 
   protected readonly modalOpen = signal(false);
   protected readonly editingPrompt = signal<CharacterSystemPrompt | null>(null);
+  protected readonly previewPrompt = signal<CharacterSystemPrompt | null>(null);
+  protected readonly importModalOpen = signal(false);
+  /** v4 `handleImport` (`useSystemPrompts.ts:134-142`) staged for the create modal. */
+  protected readonly importedForm = signal<PromptFormData | null>(null);
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -150,13 +177,28 @@ export class CharacterSystemPromptsTab {
 
   protected openCreate(): void {
     this.editingPrompt.set(null);
+    this.importedForm.set(null);
     this.error.set(null);
     this.modalOpen.set(true);
   }
 
   protected openEdit(prompt: CharacterSystemPrompt): void {
     this.editingPrompt.set(prompt);
+    this.importedForm.set(null);
     this.error.set(null);
+    this.modalOpen.set(true);
+  }
+
+  /** v4 `handleImport` (`useSystemPrompts.ts:134-142`) — stage the imported
+   *  content into the create modal, first prompt defaults to default. */
+  protected onImport(event: { content: string; suggestedName: string }): void {
+    this.editingPrompt.set(null);
+    this.importedForm.set({
+      name: event.suggestedName,
+      content: event.content,
+      isDefault: this.prompts().length === 0,
+    });
+    this.importModalOpen.set(false);
     this.modalOpen.set(true);
   }
 

@@ -74,13 +74,18 @@ function clickButtonWithText(fixture: ComponentFixture<unknown>, text: string): 
 }
 
 describe('CharacterSystemPromptsTab', () => {
-  it('shows the empty state and disables Import Template', async () => {
+  it('shows the empty state and opens the Import Template modal (P4.9K3)', async () => {
     const fixture = await render(stubClient([]));
     expect(fixture.nativeElement.textContent).toContain('No system prompts yet');
     const importButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
       (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
     ) as HTMLButtonElement;
-    expect(importButton.disabled).toBe(true);
+    expect(importButton.disabled).toBe(false);
+    importButton.click();
+    await settle(fixture);
+    // The modal's own empty-state copy (v4 `ImportModal.tsx:104-108`) — no
+    // `promptTemplateList` verb exists yet, so the catalogue is always empty.
+    expect(fixture.nativeElement.textContent).toContain('No templates available');
   });
 
   it('creating a prompt dispatches characterPromptCreate', async () => {

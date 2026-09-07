@@ -1,15 +1,25 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../../workspace/workspace-contract';
-import { CoreClient } from '../../../core/core-client';
+import { CoreClient, coreErrorMessage } from '../../../core/core-client';
 import type { CharacterConnectionProfile } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
 import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
 import { PromptFieldLabel } from '../../../ui/prompt-field-label';
+import { ToastService } from '../../../ui/toast.service';
 import { fetchConnectionProfiles } from '../characters.api';
+import type { GeneratedCharacterData } from '../generators/edit-generators.api';
+import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
+import { AiWizardModal } from '../generators/wizard/ai-wizard-modal';
+import {
+  saveGeneratedPhysicalDescription,
+  saveGeneratedScenarios,
+  saveGeneratedWardrobeItems,
+} from '../generators/wizard/save-generated';
+import { getGeneratedCharacterTextEntries, normalizeGeneratedScenarios } from '../generators/wizard/wizard-types';
 
 /** The CREATE page's form (v4 `NewCharacterView.tsx` `formData`). */
 interface NewCharacterFormData {
@@ -73,7 +83,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
 @Component({
   selector: 'qt-new-character',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, MarkdownField, PromptFieldLabel],
+  imports: [RouterLink, Icon, MarkdownField, PromptFieldLabel, AiWizardModal, CharacterPromptImportModal],
   template: `
     <div class="qt-page-container">
       <div class="mb-8">
@@ -89,8 +99,8 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           <button
             type="button"
             class="qt-button-secondary flex items-center gap-2"
-            disabled
             title="Use AI to generate character details"
+            (click)="wizardOpen.set(true)"
           >
             <qt-icon name="wand" class="w-4 h-4" />
             AI Wizard
@@ -202,8 +212,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
             <button
               type="button"
               class="qt-button-secondary text-xs px-2 py-1"
-              disabled
-              title="Import a system prompt from a template (not yet available)"
+              (click)="importModalOpen.set(true)"
             >
               Import Template
             </button>
@@ -274,16 +283,46 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
         </div>
       </form>
     </div>
+
+    @if (wizardOpen()) {
+      <qt-ai-wizard-modal
+        [characterName]="form().name"
+        [currentData]="wizardCurrentData()"
+        (apply)="onWizardApply($event)"
+        (closeModal)="wizardOpen.set(false)"
+      />
+    }
+
+    @if (importModalOpen()) {
+      <qt-character-prompt-import-modal
+        (close)="importModalOpen.set(false)"
+        (importPrompt)="onImportTemplate($event)"
+      />
+    }
   `,
 })
 export class NewCharacter {
   private readonly core = inject(CoreClient);
   private readonly router = inject(Router);
+  private readonly toasts = inject(ToastService);
   /** Workspace-tab seams (p4.9j2); null ⇒ routed mode. */
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
 
   protected readonly hints = PROMPT_FIELD_HINTS;
+  protected readonly wizardOpen = signal(false);
+  protected readonly importModalOpen = signal(false);
+
+  /**
+   * Wizard-generated content the character doesn't exist yet to receive — v4
+   * `NewCharacterView.tsx`'s four `useRef`s (`:42-48`), applied after
+   * `characterCreate` succeeds. Plain fields (not signals): nothing here is
+   * rendered, only carried across the async gap to `onSubmit`.
+   */
+  private pendingPhysicalDescription: GeneratedCharacterData['physicalDescription'] | null = null;
+  private pendingScenarios: Array<{ title: string; content: string }> | null = null;
+  private pendingWardrobeItems: GeneratedCharacterData['wardrobeItems'] | null = null;
+  private pendingProperties: GeneratedCharacterData['properties'] | null = null;
 
   /** Both seams present ⇒ hosted; back/cancel/create close the tab (v4 `useCloseSelfTab`). */
   protected canClose(): boolean {
@@ -314,6 +353,58 @@ export class NewCharacter {
     this.form.update((f) => ({ ...f, [key]: value }));
   }
 
+  /** v4 `buildWizardCurrentData(formData)` (`NewCharacterView.tsx` has no scenarios array yet). */
+  protected readonly wizardCurrentData = computed(() => {
+    const f = this.form();
+    return {
+      title: f.title,
+      identity: f.identity,
+      description: f.description,
+      manifesto: f.manifesto,
+      personality: f.personality,
+      firstMessage: f.firstMessage,
+      exampleDialogues: f.exampleDialogues,
+      systemPrompt: f.systemPrompt,
+    };
+  });
+
+  /**
+   * v4 `handleWizardApply` (`NewCharacterView.tsx:65-91`): text fields land in
+   * form state immediately; everything else the character doesn't exist yet
+   * to receive is queued for `onSubmit` to apply after creation.
+   */
+  protected onWizardApply(data: GeneratedCharacterData): void {
+    const textEntries = getGeneratedCharacterTextEntries(data);
+    if (textEntries.length > 0) {
+      this.form.update((f) => {
+        const next: Record<string, unknown> = { ...f };
+        for (const entry of textEntries) {
+          next[entry.field] = entry.value;
+        }
+        return next as unknown as NewCharacterFormData;
+      });
+    }
+    if (data.physicalDescription) {
+      this.pendingPhysicalDescription = data.physicalDescription;
+    }
+    const normalizedScenarios = normalizeGeneratedScenarios(data.scenarios);
+    if (normalizedScenarios.length > 0) {
+      this.pendingScenarios = normalizedScenarios;
+    }
+    if (data.wardrobeItems && data.wardrobeItems.length > 0) {
+      this.pendingWardrobeItems = data.wardrobeItems;
+    }
+    if (data.properties && (data.properties.pronouns || data.properties.aliases.length > 0)) {
+      this.pendingProperties = data.properties;
+    }
+  }
+
+  /** v4 `handleTemplateImport` (`NewCharacterView.tsx:111-115`). */
+  protected onImportTemplate(event: { content: string; suggestedName: string }): void {
+    this.setField('systemPrompt', event.content);
+    this.importModalOpen.set(false);
+  }
+
   protected async onSubmit(event: Event): Promise<void> {
     event.preventDefault();
     this.loading.set(true);
@@ -327,9 +418,63 @@ export class NewCharacter {
       if (!character?.id) {
         throw new Error('Failed to create character');
       }
+      const characterId = character.id;
+
+      // v4 `handleSubmit` (`NewCharacterView.tsx:144-192`) — apply everything
+      // the wizard queued, in v4's order: scenarios, physical description,
+      // properties, then wardrobe items.
+      if (this.pendingScenarios && this.pendingScenarios.length > 0) {
+        await saveGeneratedScenarios(this.core, characterId, this.pendingScenarios);
+        this.pendingScenarios = null;
+      }
+
+      if (this.pendingPhysicalDescription) {
+        await saveGeneratedPhysicalDescription(
+          this.core,
+          this.toasts,
+          characterId,
+          this.pendingPhysicalDescription,
+          'Character created, but physical description failed to save',
+        );
+        this.pendingPhysicalDescription = null;
+      }
+
+      if (this.pendingProperties) {
+        const propsBody: Record<string, unknown> = {};
+        if (this.pendingProperties.pronouns) propsBody['pronouns'] = this.pendingProperties.pronouns;
+        if (this.pendingProperties.aliases.length > 0) propsBody['aliases'] = this.pendingProperties.aliases;
+        if (Object.keys(propsBody).length > 0) {
+          try {
+            await this.core.dispatchData({
+              type: 'characterUpdate',
+              characterId,
+              character: propsBody,
+            });
+          } catch (propsErr) {
+            this.toasts.showError(
+              coreErrorMessage(propsErr, 'Character created, but pronouns/aliases failed to save'),
+            );
+          }
+        }
+        this.pendingProperties = null;
+      }
+
+      if (this.pendingWardrobeItems && this.pendingWardrobeItems.length > 0) {
+        const { saved, outfits } = await saveGeneratedWardrobeItems(
+          this.core,
+          characterId,
+          this.pendingWardrobeItems,
+        );
+        if (saved > 0) {
+          const outfitText = outfits > 0 ? ` (including ${outfits} outfit${outfits > 1 ? 's' : ''})` : '';
+          this.toasts.showSuccess(`${saved} wardrobe item${saved > 1 ? 's' : ''} created${outfitText}`);
+        }
+        this.pendingWardrobeItems = null;
+      }
+
       // Hosted ⇒ close the tab (v4 `useCloseSelfTab`), the opener refreshes;
       // routed ⇒ open the freshly created character.
-      if (!this.canClose()) this.router.navigate(['/characters', character.id]);
+      if (!this.canClose()) this.router.navigate(['/characters', characterId]);
       else this.closeSelf();
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'An error occurred');

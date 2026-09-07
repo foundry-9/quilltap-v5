@@ -447,6 +447,33 @@ because capture runs before the button's own handler. v4 needs no guard there
 anchor-wrapped card does. `interpretWorkspaceLinkClick` now passes through a
 click on a button the anchor contains — widening only, spec-pinned in both
 directions, mutation-proven.
+#### 2026-09-07 — feat(characters): the AI Wizard modal, Rename & Replace tab, and the system-prompts preview/import modals (P4.9K3)
+
+_Versions: SPA 0.5.658._
+
+The three v4 dialogs the m6 screen-parity survey marked "MISSING (partial)"
+land in the Angular SPA: the four-step AI Wizard (`components/characters/
+ai-wizard/**` at the `f699da6f6` pin) mounted from both New Character and
+character-edit, the Rename & Replace tab inside character-edit (preview →
+apply with v4's grouped counts table and confirmation), and the two
+remaining system-prompts-editor modals (Preview, joined live over the
+existing `{{char}}`/`{{user}}` highlighter; Import, joined to the editor but
+its catalogue is always empty — no `promptTemplateList` verb exists in v5
+yet, and this round's §B contract does not add one).
+
+`characterWizardStream` and `characterRename` are P4.9K2's and P4.9K1's
+verbs respectively; neither lands in this SPA-only lane, so every dispatch
+to them casts `as unknown as CoreRequest` (the `file-manager-transport.ts`
+precedent) and the two new gated e2e specs (`character-wizard-flow.spec.ts`,
+`character-rename-flow.spec.ts`) stay skipped behind named
+`P49K2_SERVER_LANDED`/`P49K1_SERVER_LANDED` constants until the unifier
+flips them. Everything reachable without those verbs is live today:
+physical-description/wardrobe/scenario/property persistence reuses existing
+verbs (`characterUpdate`, `characterWardrobeCreate`, `characterScenarioCreate`),
+proven end-to-end by a jsdom integration spec that drives the whole
+four-step flow over a fake `CoreClient`, plus new unit tests wired into
+`character-edit.spec.ts` and `new-character.spec.ts` for the two hosts' own
+apply/stage-until-creation flows.
 
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the

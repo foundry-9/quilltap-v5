@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { of } from 'rxjs';
+import { EMPTY, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
@@ -68,6 +68,7 @@ function stubClient(
   onDispatch?: (req: { type: string; [k: string]: unknown }) => void,
 ): Partial<CoreClient> {
   return {
+    events$: EMPTY,
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       onDispatch?.(req);
       switch (req.type) {
@@ -89,6 +90,23 @@ function stubClient(
           };
         case 'characterDelete':
           return { success: true, deletedChats: 0, deletedImages: 0, deletedMemories: 0 };
+        case 'connectionProfileList':
+          return { profiles: [{ id: 'p1', name: 'Default', provider: 'OPENAI', modelName: 'gpt-4', isDefault: true }] };
+        case 'characterRename':
+          return {
+            characterId: char.id,
+            characterName: char.name,
+            dryRun: req['dryRun'],
+            replacements: [],
+            summary: {
+              characterFields: 0,
+              physicalDescriptions: 0,
+              memories: 0,
+              chatTitles: 0,
+              chatMessages: 0,
+              total: 0,
+            },
+          };
         default:
           return {};
       }
@@ -476,5 +494,88 @@ describe('CharacterEdit (workspace-tab mode)', () => {
 
     expect(closed).toEqual(['tab-4']);
     expect(navigateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('CharacterEdit — the AI Wizard + Rename/Replace tab (P4.9K3)', () => {
+  it('opens the wizard from the header button and stages generated text fields on Apply', async () => {
+    const fixture = await render(stubClient(character()));
+
+    const wizardButton = findByText(fixture, 'button', 'AI Wizard') as HTMLButtonElement;
+    expect(wizardButton.disabled).toBe(false);
+    wizardButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('AI Wizard');
+    expect(fixture.nativeElement.querySelector('qt-ai-wizard-modal')).not.toBeNull();
+
+    // Drive `AiWizardModal.apply` directly (the wizard's own flow is proven
+    // end-to-end by `ai-wizard-modal.spec.ts`) — assert the HOST's reaction.
+    const modal = fixture.debugElement.query((d) => d.name === 'qt-ai-wizard-modal');
+    modal.componentInstance.apply.emit({ identity: 'Freshly generated identity.' });
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    const identityField = fixture.nativeElement.querySelector('[aria-label="Identity"]') as HTMLElement;
+    expect(identityField.textContent).toContain('Freshly generated identity.');
+  });
+
+  it('Rename/Replace is a real tab that dispatches characterRename on Preview', async () => {
+    // Tab switching in ROUTED mode round-trips through `router.navigate` +
+    // the ActivatedRoute's `queryParamMap` — the top-level `render()`'s
+    // STATIC `of(...)` stub never re-emits, so the active tab can never be
+    // observed to change there. Workspace-tab mode drives the active tab from
+    // local component state instead (`EntityTabs`'s `localTab` signal), which
+    // this test can actually observe — the `WorkspaceHandle` stub precedent
+    // a few lines below in this same file.
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    TestBed.configureTestingModule({
+      imports: [CharacterEdit],
+      providers: [
+        provideRouter([{ path: '**', component: CharacterEdit }]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: stubClient(character(), (req) => seen.push(req)) },
+        {
+          provide: WORKSPACE_HANDLE,
+          useValue: { openTab: vi.fn(), closeTab: vi.fn(), refreshTab: vi.fn() },
+        },
+        { provide: WORKSPACE_TAB_ID, useValue: 'tab-9' },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharacterEdit);
+    fixture.componentRef.setInput('characterId', 'char-1');
+    fixture.detectChanges();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const renameTabButton = findByText(fixture, 'button', 'Rename/Replace') as HTMLButtonElement;
+    expect(renameTabButton).not.toBeUndefined();
+    renameTabButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Rename Character');
+
+    const newNameInput = fixture.nativeElement.querySelector(
+      'input[placeholder="Enter new name"]',
+    ) as HTMLInputElement;
+    newNameInput.value = 'Reginald';
+    newNameInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const previewButton = findByText(fixture, 'button', 'Preview Changes') as HTMLButtonElement;
+    previewButton.click();
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const renameReq = seen.find((r) => r.type === 'characterRename');
+    expect(renameReq).toMatchObject({
+      characterId: 'char-1',
+      dryRun: true,
+      primaryRename: { oldValue: 'Bertie Wooster', newValue: 'Reginald', caseSensitive: false },
+    });
   });
 });

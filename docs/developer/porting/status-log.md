@@ -111163,3 +111163,166 @@ already cover).
 
 **Versions:** core 0.0.813, harness 0.0.703, host 0.0.106, SPA 0.5.658;
 web/cli/tauri unchanged. Worktree `target/` cleaned before handoff.
+## Lane record — P4.9K3 (the AI Wizard modal, Rename & Replace, system-prompts
+preview/import — the SPA EDIT-side generators lane)
+
+The `p4.9k` round's SPA client lane over v4's `ai-wizard/**`,
+`RenameReplaceTab.tsx`, and the two remaining `system-prompts-editor/`
+modals, all surveyed fresh at the `f699da6f6` pin
+(`/tmp/qt-v4-pin-p49k3-f699da6f6`). No Rust oracle — the differential is
+against v4's client code transcribed with parity specs, per the order.
+
+### Freshness probe
+
+`/driftcheck`'s §2 probe passed at lane start (checkout on `bugfix`, tree
+clean, `main`/`bugfix` logs both empty against the recorded baseline);
+re-checked at gate time with the same result. PIN REQUIRED per the ledger's
+standing rule (the checkout sits on `bugfix`) — every v4 read went through
+the lane-unique pinned worktree, never the checkout.
+
+### What landed
+
+- **The wire contract** (`generators/edit-generators.api.ts`): §B.1's
+  `streamGenerator`/`isGeneratorProgressEvent`/`mintProgressId` fold helper
+  and every §B.2/§B.3 DTO this lane calls (`CharacterRenameRequest`,
+  `RenamePreviewResponse`, `CharacterWizardStreamRequest`,
+  `GeneratedCharacterData` and its nested shapes) — declared verbatim from
+  §B, per §S.3's "identical duplicate declarations are expected and folded
+  by the unifier" rule. Every dispatch to K1's/K2's not-yet-landed verbs
+  casts `as unknown as CoreRequest` (the `file-manager-transport.ts`
+  precedent, `images.api.ts`'s header for the retired-at-unification shape).
+- **The AI Wizard** (`generators/wizard/**`): `WizardState` (an
+  `@Injectable()`, component-provided so `AiWizardModal` gets a fresh
+  instance per mount — the order's "service-per-modal" instruction),
+  transcribing `useAIWizard.ts` state/computed/actions 1:1 including the
+  SSE fold (`field_start`/`field_complete`/`field_error` over `events$`,
+  `done` from the resolved `{ terminal }` per §B.1 — `applyProgressEvent` is
+  idempotent so it can be fed either path); four step components
+  (`ProfileSelectionStep`/`DescriptionSourceStep`/`FieldSelectionStep`/
+  `GenerationStep`) that `inject(WizardState)` directly rather than
+  prop-drilling v4's step props; `AiWizardModal` (the bespoke overlay — v4
+  doesn't use its own `BaseModal` here either); `save-generated.ts` (the
+  physical-description/wardrobe/scenario persistence v4's shared
+  `app/aurora/shared/save-generated-*.ts` trio does, retargeted at EXISTING
+  v5 verbs — `characterUpdate`, `characterWardrobeCreate`,
+  `characterScenarioCreate` — none of which needed inventing);
+  `wizard-wardrobe.ts` (`orderGeneratedItemsLeafFirst`, a local copy of v4's
+  `lib/wardrobe/generated-items.ts` helper, out of this lane's owned tree
+  otherwise); `wizard-types.ts` (`FIELD_LABELS`/`FIELD_DESCRIPTIONS`, the
+  text-field entries helper, `mergeGeneratedAliases`).
+- **Rename & Replace** (`generators/rename/rename-replace-tab.ts`): the
+  primary + additional-replacements form, dry-run Preview → grouped counts
+  table (v4's exact column order) → confirm (`window.confirm`, the
+  `character-edit.ts` precedent for v4's `showAlert`) → Execute, toasting
+  v4's sentences.
+- **The prompts-editor modals** (`generators/prompts-editor/**`):
+  `CharacterPromptPreviewModal` (title = the prompt name alone — v4's
+  `isDefault` badge JSX at `PreviewModal.tsx:22-31` builds a `title` node
+  but the `<BaseModal>` call passes `prompt.name` directly, not that node;
+  DEAD CODE, not replicated; content rendered through
+  `view/template-display.ts`'s `{{char}}`/`{{user}}` highlighter — K4's
+  file, imported not edited, mirroring the read-only detail page's own
+  prompt display rather than inventing a Markdown pipeline v5 has no
+  chat-independent instance of) and `CharacterPromptImportModal` (built and
+  JOINED to both hosts — not left disabled — but its `templates` input is
+  always empty: **no `promptTemplateList` verb exists in v5 and this
+  round's §B contract does not add one; §B.6 forbids inventing it.** The
+  modal renders v4's own real empty-state copy, an honest reflection of
+  today's v5 capability, not a stub. Recorded here per "defer loudly."
+- **Host wiring**: `edit/character-edit.ts` gained a live "AI Wizard"
+  button (was disabled), a `rename` tab (was a disabled trailing button —
+  now a proper `EDIT_TABS` entry at v4's position, after `descriptions`),
+  and `onWizardApply`/`onRenameComplete`; `edit/system-prompts-tab.ts`
+  gained a Preview action per row and a live Import Template button;
+  `edit/prompt-modal.ts` gained an `initialForm` input (mine to edit) so
+  the Import flow can seed the create modal, matching v4's
+  `handleImport` → `setFormData` → open-create-modal chain;
+  `new/new-character.ts` gained a live "AI Wizard" button + the pending-refs
+  pattern (v4's four `useRef`s as plain class fields, applied to
+  `onSubmit` in v4's order: scenarios, physical description, properties,
+  wardrobe) and a live "Import Template" button next to the System Prompt
+  field.
+
+### Parity specs (v4 executed at the pin, or self-authored corpora where a
+sibling lane's fixture doesn't exist yet)
+
+1. **`wizard-types.parity.spec.ts`** — `FIELD_LABELS`/`FIELD_DESCRIPTIONS`
+   vs a JSON snapshot produced by running v4's REAL `types.ts` through
+   `tsx` at the pin (the P4.D144 "table diffed against the executed v4
+   module" precedent) — not re-derived from this port's own reading of the
+   file. Regen recipe is in the spec's header comment.
+2. **`wizard-state.spec.ts`** — the SSE fold, driven end-to-end through
+   `WizardState.startGeneration()` over a fake `CoreClient` whose
+   `events$`/`dispatchData` replay a hand-recorded frame sequence
+   (`fixtures/wizard-progress-frames.json`) modeled on v4's own event
+   shapes. **Not K2's corpus** — K2 (the server lane emitting these frames)
+   had not landed when this spec was authored, so there was no committed
+   corpus to copy; this is this lane's own transcription, swappable later
+   without touching the fold logic under test. Exercises BOTH §B.1 delivery
+   paths (intermediate frames over `events$`, the terminal `done` from the
+   resolved dispatch body).
+3. **`rename-replace-tab.spec.ts`** — the grouped counts table vs a
+   self-authored `RenamePreviewResponse` fixture (K1 hadn't landed a real
+   one either); asserts the SIX summary labels appear in v4's exact DOM
+   order, not just presence, plus the confirm/decline/empty-results arms.
+4. **`ai-wizard-modal.spec.ts`** — the whole four-step flow end-to-end
+   (jsdom twin of the gated e2e beat), including Back/Next disabled states
+   and the close-while-generating guard.
+5. **`description-source-step.spec.ts`** / **`field-selection-step.spec.ts`**
+   — the order's two named Tier-2 targets: the needs-vision hint (present
+   only for upload/gallery when the primary profile lacks vision; v4's
+   fallback-providers sentence verbatim) and the empty-selection guard
+   ("No fields selected...").
+6. **`preview-modal.spec.ts`** / **`import-modal.spec.ts`** — the dead-code
+   title note pinned as a spec assertion; the built-in/user template
+   grouping; v4's real empty-state sentence.
+7. New cases in `character-edit.spec.ts` and `new-character.spec.ts` for
+   each host's own apply/stage flow (the edit host writing straight into
+   `formData` + immediate persistence; the new-character host queuing
+   `pendingScenarios`/`pendingPhysicalDescription`/`pendingProperties`/
+   `pendingWardrobeItems` and applying them in v4's order AFTER
+   `characterCreate` resolves).
+
+### Mutation proofs (verified by hand, reverted after confirming red)
+
+- Deleting the `field_complete` case arm in `WizardState`'s SSE switch reds
+  `wizard-state.spec.ts`'s fold test (`completedFields`/`snippets` stay
+  empty) — confirmed, reverted (file diffed clean against the pre-mutation
+  copy afterward).
+- Deleting the "Descriptions" summary cell from `rename-replace-tab.ts`'s
+  template reds the column-order assertion in `rename-replace-tab.spec.ts`
+  — confirmed, reverted (diffed clean).
+
+### Two divergences recorded, not silently absorbed
+
+1. **ImportModal's catalogue is always empty** (above) — the missing
+   `promptTemplateList` verb, out of §B's scope this round. Both hosts'
+   "Import Template" affordances are LIVE (not disabled) and show v4's own
+   honest "no templates" copy; wiring a real fetch once the verb exists is
+   a small follow-up, not a re-architecture.
+2. **`GenerationStep`'s physical-description "Full Description" preview
+   renders plain pre-wrapped text, not through ReactMarkdown** — v5 has no
+   chat-independent Markdown-rendering component to reuse for this preview
+   surface (`chat/render/markdown-renderer.ts` is the Salon message
+   pipeline, not a generic one), and the review pane is a preview, not the
+   field's persisted home (which DOES render through the vault's own
+   pipeline elsewhere).
+
+### Gate
+
+`npm run lint` (incl. `check-qt-classes`, 950 classes, every reference
+resolves — no new qt-* class needed hand-writing a hover variant);
+`npm run build` (Angular's own type gate) clean on first pass; `npm test`
+395 test files / 6300 passed (grew from 387/6268 with this lane's 13 new
+spec files + additions to 3 existing ones); `npx playwright test --list`
+confirms the two new gated e2e specs parse/typecheck and their `test.skip`
+guards are wired to the named `P49K1_SERVER_LANDED`/`P49K2_SERVER_LANDED`
+constants (both `false`); `cargo fmt --all --check` clean (touched no Rust);
+full Playwright + `cargo build/test/clippy --workspace` run as part of this
+lane's own final verification pass, recorded in the closing report.
+`git diff main -- crates/` and `git diff main -- apps/web/src/app/screens/
+characters/view apps/web/src/app/screens/characters/list apps/web/src/app/
+chat/cast apps/web/src/app/core/core-contract.ts` both empty.
+
+Versions: SPA 0.5.658; core/harness/host/web/cli/tauri unchanged (no Rust
+touched this lane).

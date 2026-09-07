@@ -211,7 +211,9 @@ describe('the a6870c5a prompt-field migration', () => {
     expect(host?.querySelector('label')?.textContent).toBe('System Prompt (Optional)');
     const button = host?.querySelector('button') as HTMLButtonElement;
     expect(button.textContent?.trim()).toBe('Import Template');
-    expect(button.disabled).toBe(true);
+    // P4.9K3: joined to the ImportModal (`edit-generators.api.ts`'s header),
+    // no longer the named deferral.
+    expect(button.disabled).toBe(false);
   });
 
   it('the system-prompt modal labels Content, required, with the Markdown suffix', async () => {
