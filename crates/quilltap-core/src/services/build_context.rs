@@ -1428,6 +1428,12 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     let events: Vec<crate::core_whisper::WhisperEvent> = events_raw
         .iter()
         .map(|m| crate::core_whisper::WhisperEvent {
+            // P4.D168: read by `find_last_own_turn_ms` (the progressions
+            // cadence), not by the Core-whisper trigger.
+            created_at: m
+                .get("createdAt")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             event_type: m
                 .get("type")
                 .and_then(Value::as_str)

@@ -116,6 +116,38 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — feat(progressions): the prompt-side chokepoint and the cadence input it walks out of history
+
+_Versions: core 0.0.848, harness 0.0.738._
+
+`buildProgressionsSection` is the one place any prompt path reports a
+character's timed conditions, and nowhere else re-derives elapsed / remaining /
+percent. It lands here as `progressions::prompt_section`, wired into the
+module through the one line P4.D167's freeze permits.
+
+Under it, `core_whisper::find_last_own_turn_ms` — the cadence input, and the
+reason progressions need no stored "last reported at". It is the same
+definition of "their last turn" Aurora's Core whisper uses, sharing
+`is_visible_conversational_turn`, so a Staff whisper, a silent message, an
+empty tool-call-only turn and a whisper targeted away from this character all
+fail to count. A row whose `createdAt` will not parse is skipped rather than
+reported as a NaN the cadence would read as "never". `WhisperEvent` gains
+`created_at` and `build_context` carries it.
+
+The section is empty byte-for-byte when nothing reports, and that guarantee
+extends to the read: the events thunk is called only once a character is known
+to carry at least one progression, so a character carrying none costs the
+feature not a query and not a row. The three log lines carry v4's exact bags,
+including the `decisions` array, and are pinned through the capture layer.
+
+`core_whisper_equivalence` grows a second op over v4's real `findLastOwnTurnMs`
+— 39 shouldFire rows and 17 findLastOwnTurnMs rows from one pin-fresh oracle.
+Ten mutation proofs; two survived and are recorded rather than chased. One is
+that v4's own `force ?` ternary is redundant: `force` nulls `lastTurnMs` two
+lines above it, so the cadence branch takes rule 1 and returns the identical
+answer. The other is that this differential cannot see the `build_context`
+`createdAt` carry, which gets its pin when the tier-3 family is widened.
+
 #### 2026-09-08 — chore(help): re-vendor the seven help pages v4 moved at `0587d1e96` and `25f534c0b`
 
 _Versions: harness 0.0.737, host 0.0.115._

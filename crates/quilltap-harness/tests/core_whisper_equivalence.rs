@@ -13,7 +13,8 @@
 //!     cargo test -p quilltap-harness --test core_whisper_equivalence
 
 use quilltap_core::core_whisper::{
-    should_fire_core_whisper, CoreWhisperReason, ShouldFireCoreWhisperOptions, WhisperEvent,
+    find_last_own_turn_ms, should_fire_core_whisper, CoreWhisperReason,
+    ShouldFireCoreWhisperOptions, WhisperEvent,
 };
 use serde::Deserialize;
 
@@ -33,6 +34,12 @@ struct WireEvent {
     is_silent_message: Option<bool>,
     #[serde(rename = "targetParticipantIds", default)]
     target_participant_ids: Option<Vec<String>>,
+    /// P4.D168: read only by `find_last_own_turn_ms`. v4's walk reads it
+    /// defensively (`createdAt instanceof Date ? … : Date.parse(String(x))`);
+    /// on the wire it is always the ISO string, so a `Date`-typed row in the
+    /// oracle's own fixture serializes to exactly what this side sees.
+    #[serde(rename = "createdAt", default)]
+    created_at: Option<String>,
 }
 
 impl WireEvent {
@@ -46,6 +53,7 @@ impl WireEvent {
             system_kind: self.system_kind,
             is_silent_message: self.is_silent_message,
             target_participant_ids: self.target_participant_ids,
+            created_at: self.created_at,
         }
     }
 }
@@ -72,11 +80,27 @@ struct WireResult {
     reason: Option<String>,
 }
 
+/// The file drives TWO exports since P4.D168; `kind` is the discriminator and
+/// serde picks the arm. An untagged enum would swallow a shape error as "no
+/// variant matched", so the tag is explicit.
 #[derive(Deserialize)]
-struct Row {
-    id: String,
-    options: WireOptions,
-    out: WireResult,
+#[serde(tag = "kind")]
+enum Row {
+    #[serde(rename = "shouldFire")]
+    ShouldFire {
+        id: String,
+        options: WireOptions,
+        out: WireResult,
+    },
+    #[serde(rename = "findLastOwnTurnMs")]
+    FindLastOwnTurnMs {
+        id: String,
+        events: Vec<WireEvent>,
+        #[serde(rename = "respondingParticipantId")]
+        responding_participant_id: String,
+        /// v4's `number | null`.
+        out: Option<i64>,
+    },
 }
 
 fn reason_str(r: Option<CoreWhisperReason>) -> Option<&'static str> {
@@ -95,39 +119,65 @@ fn core_whisper_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
+    let mut last_turn_count = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line).unwrap();
-        let events: Vec<WhisperEvent> = row
-            .options
+        let row = match row {
+            Row::FindLastOwnTurnMs {
+                id,
+                events,
+                responding_participant_id,
+                out,
+            } => {
+                let events: Vec<WhisperEvent> =
+                    events.into_iter().map(WireEvent::into_event).collect();
+                let got = find_last_own_turn_ms(&events, &responding_participant_id);
+                assert_eq!(got, out, "'{id}' findLastOwnTurnMs");
+                last_turn_count += 1;
+                continue;
+            }
+            Row::ShouldFire { id, options, out } => (id, options, out),
+        };
+        let (row_id, row_options, row_out) = row;
+        let events: Vec<WhisperEvent> = row_options
             .events
             .into_iter()
             .map(WireEvent::into_event)
             .collect();
 
         // v4 defaults fireOnContextTransition to true when omitted.
-        let fire_on_context_transition = row.options.fire_on_context_transition.unwrap_or(true);
+        let fire_on_context_transition = row_options.fire_on_context_transition.unwrap_or(true);
 
         let got = should_fire_core_whisper(ShouldFireCoreWhisperOptions {
             events: &events,
-            responding_participant_id: &row.options.responding_participant_id,
-            is_continue: row.options.is_continue,
-            is_nudge: row.options.is_nudge,
-            interval: row.options.interval,
-            silence_threshold: row.options.silence_threshold,
+            responding_participant_id: &row_options.responding_participant_id,
+            is_continue: row_options.is_continue,
+            is_nudge: row_options.is_nudge,
+            interval: row_options.interval,
+            silence_threshold: row_options.silence_threshold,
             fire_on_context_transition,
         });
 
-        assert_eq!(got.fire, row.out.fire, "'{}' fire", row.id);
+        assert_eq!(got.fire, row_out.fire, "'{row_id}' fire");
         assert_eq!(
             reason_str(got.reason),
-            row.out.reason.as_deref(),
-            "'{}' reason",
-            row.id
+            row_out.reason.as_deref(),
+            "'{row_id}' reason"
         );
 
         count += 1;
     }
 
     assert!(count > 0, "oracle file looks empty: {count}");
-    eprintln!("OK: core-whisper matched oracle ({count} rows).");
+    // P4.D168's op. A floor, so an oracle regenerated from a case that lost the
+    // second export cannot pass quietly on the first export alone.
+    assert!(
+        last_turn_count >= 14,
+        "the findLastOwnTurnMs rows are missing — regenerate the oracle \
+         (got {last_turn_count})"
+    );
+    eprintln!(
+        "OK: core-whisper matched oracle ({count} shouldFire rows, \
+         {last_turn_count} findLastOwnTurnMs rows)."
+    );
 }

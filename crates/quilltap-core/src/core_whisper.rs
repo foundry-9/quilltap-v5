@@ -48,6 +48,12 @@ pub struct WhisperEvent {
     pub system_kind: Option<String>,
     pub is_silent_message: Option<bool>,
     pub target_participant_ids: Option<Vec<String>>,
+    /// The row's `createdAt`, read only by [`find_last_own_turn_ms`]. v4 types
+    /// it as an ISO string but reads it defensively (`createdAt instanceof Date
+    /// ? getTime() : Date.parse(String(x))`) because a row that reached the
+    /// walk unparsed can still carry a `Date`; on this side the wire is always
+    /// the string, so the `Date` arm has no counterpart.
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +112,51 @@ fn is_visible_conversational_turn(m: &WhisperEvent, responding_participant_id: &
         }
     }
     true
+}
+
+/// v4 `findLastOwnTurnMs` — the `createdAt` of the responding participant's own
+/// most recent VISIBLE assistant message, or `None` if they have never spoken
+/// here.
+///
+/// Cadence derived from history rather than stored: this is the one definition
+/// of "their last turn", shared by the Core whisper and by character
+/// progressions, so the two cadences can never disagree about when a character
+/// last opened their mouth. [`is_visible_conversational_turn`] does the
+/// filtering, so a Staff whisper, a silent message, an empty tool-call-only
+/// turn, and a whisper targeted away from this character all fail to count —
+/// none of them is this character speaking.
+///
+/// A row whose timestamp will not parse tells us nothing about when they spoke,
+/// so the walk CONTINUES past it rather than reporting a `NaN` the cadence
+/// would read as "never".
+pub fn find_last_own_turn_ms(
+    events: &[WhisperEvent],
+    responding_participant_id: &str,
+) -> Option<i64> {
+    for m in events.iter().rev() {
+        if m.event_type != "message" {
+            continue;
+        }
+        if m.role.as_deref() != Some("ASSISTANT") {
+            continue;
+        }
+        if m.participant_id.as_deref() != Some(responding_participant_id) {
+            continue;
+        }
+        if !is_visible_conversational_turn(m, responding_participant_id) {
+            continue;
+        }
+        // v4 `Date.parse(String(createdAt))`: an absent field stringifies to
+        // `"undefined"`, which is NaN either way.
+        if let Some(ms) = m
+            .created_at
+            .as_deref()
+            .and_then(crate::episodic::js_date_parse_ms)
+        {
+            return Some(ms);
+        }
+    }
+    None
 }
 
 /// Conservative v1 definition of a major context transition: the most recent

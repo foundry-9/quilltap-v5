@@ -16,6 +16,9 @@
 //! raw `serde_json::Map` rather than round-tripping [`schema::Progression`].
 
 pub mod engine;
+// === P4.D168 ===
+pub mod prompt_section;
+// === /P4.D168 ===
 pub mod schema;
 
 pub use engine::{
