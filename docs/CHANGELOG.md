@@ -649,6 +649,42 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — fix(spa): the AI-import chrome title, and the three K4 divergences dispositioned
+
+_Versions: SPA 0.5.678._
+
+**The fixed "Summon From Lore" title.** The order asked for it on the Salon
+mount alone, on the reading that Aurora's mount shows the wizard's own step
+titles standing alone. Measured at `2f4254b42` and refuted: v4 has no standalone
+mount — `SummonFromLoreModal.tsx:70-73` and `AuroraView.tsx:683-691` both wrap
+`AIImportWizard` in chrome carrying that same fixed title, and the step name is
+a section heading INSIDE the wizard, under the step indicator
+(`AIImportWizard.tsx:705-707`). So v5 needs no `[title]` input: the dialog
+carries the fixed title at both of its mounts and the step name moves to its
+`<h3>`.
+
+**The `imported` count line is DEAD CODE in v4.** `import-execute` answers
+`ImportResult`, whose `imported` is a per-entity-type counts OBJECT;
+`useAIImport.ts:351` stores it as `importedCount` typed `number`; the render
+gate `importedCount > 1` then coerces an object through `>`, which is `NaN`,
+which is never `> 1`. The line cannot render in v4 on any import. v5 was summing
+the counts and showing it — that divergence is closed in v4's direction, with
+the coercion pinned, and the upstream fix recorded as a v4-first filing
+candidate.
+
+**The stale-closure apply banner is a v4 BUG; v5 stays correct.**
+`CharacterOptimizerModal.tsx:105-113` reads `optimizer.error` from the closure
+that created the handler, which `setError` cannot update — so a FAILED apply
+shows "Refinements Commissioned", closes the modal 1.5 s later, and suppresses
+its own error pane. v5 reads a signal. Recorded as a v4-first filing candidate,
+pinned by a spec whose mutation reproduces v4's behaviour exactly.
+
+**The error-terminal phase was already faithful; the stream-end arm was not.**
+v4's `error` case leaves the phase alone, which v5 already did (now pinned).
+v4's `:233-238` — a stream that ends without a `done` frame stops the spinner
+and shows whatever suggestions landed — had no v5 counterpart: a resolution
+carrying no terminal hit the fold's `default` arm and the modal span forever.
+
 #### 2026-09-07 — refactor(spa): `runTemplateSave` onto the shared character-field-update helper
 
 _Versions: SPA 0.5.677._

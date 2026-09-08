@@ -157,11 +157,21 @@ describe('applyOptimizerEvent — terminal branches', () => {
   });
 
   it('error sets the message and clears loading, leaving other state untouched', () => {
-    const seeded: OptimizerFoldState = { ...OPTIMIZER_FOLD_INITIAL, loading: true, memoryCount: 7 };
+    const seeded: OptimizerFoldState = {
+      ...OPTIMIZER_FOLD_INITIAL,
+      loading: true,
+      memoryCount: 7,
+      phase: 'progress',
+    };
     const state = applyOptimizerEvent(seeded, { type: 'error', error: 'boom' }, 'apply');
     expect(state.error).toBe('boom');
     expect(state.loading).toBe(false);
     expect(state.memoryCount).toBe(7);
+    // P4.84: v4's `error` case (`useCharacterOptimizer.ts:220-226`) calls
+    // `setError` and `setLoading(false)` and NOTHING else — in particular no
+    // `setPhase`, so the modal stays on whatever pane it was showing and the
+    // message lands there. A terminal that also moved the phase would redden.
+    expect(state.phase).toBe('progress');
   });
 
   it('error with no `error` field falls back to v4s fixed sentence', () => {

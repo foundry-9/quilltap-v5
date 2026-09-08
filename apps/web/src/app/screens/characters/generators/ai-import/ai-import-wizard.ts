@@ -58,7 +58,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
         <div class="qt-dialog-header flex flex-shrink-0 items-center justify-between">
           <h2 class="qt-dialog-title flex items-center gap-2">
             <qt-icon name="sparkles" class="w-5 h-5 text-primary" />
-            {{ stepLabel() }}
+            {{ WIZARD_CHROME_TITLE }}
           </h2>
           <button
             type="button"
@@ -83,6 +83,12 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                 }
               </div>
             }
+          </div>
+
+          <!-- v4 AIImportWizard.tsx:705-707 — the step name is a SECTION
+               heading under the indicator, not the dialog title. -->
+          <div class="mb-2">
+            <h3 class="qt-section-title">{{ stepLabel() }}</h3>
           </div>
 
           @switch (state.currentStep()) {
@@ -294,8 +300,8 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                     <h3 class="qt-section-title qt-text-success mb-2">Import Successful!</h3>
                     <p class="qt-body">
                       <strong>{{ basics()?.name }}</strong> has been imported successfully.
-                      @if (importedCount() > 1) {
-                        ({{ importedCount() }} entities imported)
+                      @if (importedCountLine(); as line) {
+                        {{ line }}
                       }
                     </p>
                     @if ((state.importResult()?.warnings?.length ?? 0) > 0) {
@@ -514,6 +520,26 @@ export class AiImportWizard {
   /** v4 `onClose` — header close, Escape, backdrop, and the review step's "Done" button. */
   readonly closed = output<void>();
 
+  /**
+   * v4's chrome title, fixed at BOTH mounts. The order asked for it on the
+   * Salon mount alone, on the reading that Aurora's shows v4's own step titles
+   * standing alone — MEASURED at `2f4254b42` and refuted: v4 has no standalone
+   * mount. `AIImportWizard` is always wrapped, by `SummonFromLoreModal.tsx:70-73`
+   * on the Salon side and by `AuroraView.tsx:683-691` on the roster side, and
+   * both wrappers render this same fixed `<h3 class="qt-dialog-title">Summon
+   * From Lore</h3>` beside a Close control. The step name is a section heading
+   * INSIDE the wizard (`AIImportWizard.tsx:705-707`), under the step indicator.
+   *
+   * So v5 needs no `[title]` input: folding the wrapper into the dialog (the
+   * `p4.9k` K4 record's noted fidelity divergence) is right, and the title just
+   * has to be the fixed one at both of v5's mounts — `add-character-dialog.ts`
+   * and `characters-list.ts` — which is what putting it here achieves.
+   *
+   * v5's Close is the dialog chrome's icon button rather than v4's text button;
+   * that is v5's dialog convention throughout and is left as it stands.
+   */
+  protected readonly WIZARD_CHROME_TITLE = 'Summon From Lore';
+
   protected readonly stepLabel = computed(() => WIZARD_STEP_LABELS[this.state.currentStep() - 1]);
 
   // -------------------------------------------------------------------
@@ -683,16 +709,37 @@ export class AiImportWizard {
   }
 
   /**
-   * v4's `importResult.importedCount` is a single number
-   * (`useAIImport.ts:349-354`, `data.imported || 0`). The wire's
-   * `SystemImportExecuteResult.imported` is `Record<string, number>` (the
-   * counts-by-entity-type shape the real `systemImportExecute` verb
-   * returns) — summed here to the same "total entities imported" reading.
+   * v4's `(N entities imported)` line, and it is **DEAD CODE in v4** — measured
+   * at `2f4254b42`, not inferred.
+   *
+   * `useAIImport.ts:351` sets `importedCount: data.imported || 0` from the
+   * `import-execute` response, and types it `number`. But that route answers
+   * `NextResponse.json(result)` where `result` is `ImportResult`
+   * (`lib/import/quilltap-import/types.ts:169-181`) and its `imported` is a
+   * `QuilltapExportCounts` — an OBJECT of per-entity-type counts, not a number.
+   * So `data.imported || 0` yields the object, and v4's render gate
+   * (`AIImportWizard.tsx:480`, `importResult.importedCount > 1`) compares an
+   * object with `>`: ToPrimitive gives `"[object Object]"`, ToNumber gives
+   * `NaN`, and `NaN > 1` is `false`. Always. The line never renders in v4, on
+   * any import, and the `|| 0` fallback cannot render it either.
+   *
+   * v5's wire carries the same object (`SystemImportExecuteResult.imported` is
+   * `Record<string, number>`), so a faithful port reproduces the silence rather
+   * than the evidently-intended sum: this returns `null` for every import, and
+   * `importedCountLine.spec` pins it — including for a real multi-entity result,
+   * which is the case v5 used to render and v4 does not. A prior draft summed
+   * the counts and showed the line, which is the divergence this closes.
+   *
+   * **v4-first filing candidate** (recorded, P4.84): the fix upstream is one
+   * character class — read a total out of the counts object (or have the route
+   * answer a number) — and until v4 makes it, v5 must stay quiet.
    */
-  protected readonly importedCount = computed(() => {
+  protected readonly importedCountLine = computed<string | null>(() => {
     const imported = this.state.importResult()?.imported;
-    if (!imported) return 0;
-    return Object.values(imported).reduce((sum, n) => sum + n, 0);
+    if (!imported) return null;
+    // v4's comparand, reproduced exactly: the counts BAG, never a total.
+    const asV4Sees = imported as unknown as number;
+    return asV4Sees > 1 ? `(${String(asV4Sees)} entities imported)` : null;
   });
 
   protected async handleImport(): Promise<void> {

@@ -110,9 +110,29 @@ export class OptimizerState {
         beforeDate: filterOptions.beforeDate,
         outputMode,
       });
-      this.fold.update((s) =>
-        applyOptimizerEvent(s, terminal as unknown as Record<string, unknown>, this.outputMode),
-      );
+      this.fold.update((s) => {
+        // `terminal ?? {}`: a resolution that carries no terminal at all is
+        // v5's shape of v4's "stream ended without a `done` event", and an
+        // undefined event would throw out of the fold instead of taking that
+        // arm.
+        const next = applyOptimizerEvent(
+          s,
+          (terminal ?? {}) as unknown as Record<string, unknown>,
+          this.outputMode,
+        );
+        // v4 `useCharacterOptimizer.ts:233-238`: after the read loop ends, if
+        // no `done` (or `error`) frame ever arrived, stop the spinner anyway
+        // and show whatever suggestions did land. `applyOptimizerEvent` clears
+        // `loading` on both terminals, so a still-loading state here means
+        // neither was applied — which is exactly v4's condition. The phase is
+        // left alone when nothing arrived, as v4 leaves it.
+        if (!next.loading) return next;
+        return {
+          ...next,
+          loading: false,
+          phase: next.suggestions.length > 0 ? 'review' : next.phase,
+        };
+      });
     } catch (err) {
       this.fold.update((s) => ({
         ...s,

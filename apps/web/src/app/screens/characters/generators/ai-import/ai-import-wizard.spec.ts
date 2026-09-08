@@ -251,3 +251,105 @@ describe('AiImportWizard — smoke render', () => {
     expect(closed).toBe(true);
   });
 });
+
+// ===========================================================================
+// §4 — P4.84: the fixed chrome title, and v4's dead `(N entities imported)`
+// line. Both measured against v4 at `2f4254b42`.
+// ===========================================================================
+
+describe('AiImportWizard — the chrome title (v4 SummonFromLoreModal / AuroraView)', () => {
+  async function mount(): Promise<ComponentFixture<AiImportWizard>> {
+    const core = stubCore((req) =>
+      req.type === 'connectionProfileList' ? { profiles: [] } : new Error(`unexpected ${req.type}`),
+    );
+    TestBed.configureTestingModule({
+      imports: [AiImportWizard],
+      providers: [{ provide: CoreClient, useValue: core }],
+    });
+    const fixture = TestBed.createComponent(AiImportWizard);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('titles the dialog "Summon From Lore", not the current step', async () => {
+    // v4 never mounts `AIImportWizard` bare: both call sites wrap it in chrome
+    // carrying this fixed title (`SummonFromLoreModal.tsx:70-73` on the Salon
+    // side, `AuroraView.tsx:683-691` on the roster side). v5 folded the wrapper
+    // into the dialog, so the dialog must carry the title itself.
+    const fixture = await mount();
+    const title = fixture.nativeElement.querySelector('.qt-dialog-title') as HTMLElement;
+    expect(title.textContent?.trim()).toBe('Summon From Lore');
+  });
+
+  it('keeps the step name as a section heading under the indicator (v4 :705-707)', async () => {
+    const fixture = await mount();
+    const heading = fixture.nativeElement.querySelector('.qt-section-title') as HTMLElement;
+    expect(heading.textContent?.trim()).toBe('Source Material');
+
+    // And it tracks the step, where the dialog title does not.
+    innerState(fixture.componentInstance).state.nextStep();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(
+      (fixture.nativeElement.querySelector('.qt-section-title') as HTMLElement).textContent?.trim(),
+    ).toBe('Configuration');
+    expect(
+      (fixture.nativeElement.querySelector('.qt-dialog-title') as HTMLElement).textContent?.trim(),
+    ).toBe('Summon From Lore');
+  });
+});
+
+describe("AiImportWizard — v4's `(N entities imported)` line is dead code", () => {
+  /**
+   * MEASURED at `2f4254b42`, not inferred. `import-execute` answers
+   * `ImportResult`, whose `imported` is a `QuilltapExportCounts` OBJECT
+   * (`lib/import/quilltap-import/types.ts:169-181`); `useAIImport.ts:351` stores
+   * it as `importedCount` typed `number`; the render gate at
+   * `AIImportWizard.tsx:480` then compares that object with `>`, which coerces
+   * to `NaN`, which is never `> 1`. The line cannot render in v4 on ANY import.
+   *
+   * v5 used to sum the counts and show it. That is the divergence this pins
+   * shut: with a genuine multi-entity result the line stays absent, exactly as
+   * v4's does. It is a v4-first filing candidate, not a v5 behaviour to keep.
+   */
+  it('stays silent on a multi-entity import, as v4 does', async () => {
+    const core = stubCore((req) =>
+      req.type === 'connectionProfileList' ? { profiles: [] } : new Error(`unexpected ${req.type}`),
+    );
+    TestBed.configureTestingModule({
+      imports: [AiImportWizard],
+      providers: [{ provide: CoreClient, useValue: core }],
+    });
+    const fixture = TestBed.createComponent(AiImportWizard);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    // Four entities across three types — the shape v5 used to render as
+    // "(4 entities imported)".
+    const imported = { characters: 1, tags: 3 };
+    const line = (
+      fixture.componentInstance as unknown as {
+        importedCountLine(): string | null;
+      }
+    ).importedCountLine.bind(fixture.componentInstance);
+    (
+      innerState(fixture.componentInstance).state as unknown as {
+        importResultSig: { set(v: unknown): void };
+      }
+    ).importResultSig.set({
+      success: true,
+      imported,
+      warnings: [],
+      importedCharacterIds: ['c1'],
+    });
+    fixture.detectChanges();
+
+    expect(line()).toBeNull();
+    // The sum v5 used to show, spelled out so the case cannot go vacuous by
+    // the counts happening to be empty.
+    expect(Object.values(imported).reduce((a, b) => a + b, 0)).toBe(4);
+    // And v4's own arithmetic, checked rather than asserted.
+    expect(Number(imported as unknown as number)).toBeNaN();
+  });
+});
