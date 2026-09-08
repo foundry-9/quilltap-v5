@@ -24,41 +24,58 @@ probe verifies against._
   `4.10.0-dev.5`), adopted at the `2f4254b42` character-subprompts round
   unification (P4.D163 → P4.D164 ∥ P4.D165 ∥ P4.9K1-resumed ∥
   P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-08 (the second check that day — the first, that
-  morning, found v4 at rest; v4 then landed the character-progressions
-  feature within the hour).
-- **v4 `main` HEAD at check:** `4097626c6` (2026-09-08 09:25 -0500,
-  `4.10.0-dev.8`) — **THREE commits past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED, and still carrying
-  nothing unabsorbed: this morning's check proved its whole content delta
-  against `main` is textually the subprompts commit reversed. It is now
-  additionally behind by the three rows below. (⚠ zsh does not word-split, so
-  a `$PATHS` variable after `--` becomes ONE pathspec matching nothing and
-  both sides of that comparison come back EMPTY — spell the paths inline.
-  That false "identical" is indistinguishable from the real one.)
+- **Checked:** 2026-09-08, the THIRD check that day. The first (morning) found
+  v4 at rest; the second caught character progressions; this one catches bug
+  126 on top of it.
+- **v4 `main` HEAD at check:** `25f534c0b` (2026-09-08 11:29 -0500,
+  `4.10.0-dev.9`) — **FOUR commits past the baseline.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED, still carrying nothing
+  unabsorbed (the morning check proved its whole content delta against `main`
+  is textually the subprompts commit reversed; it is now additionally behind
+  by the four rows below). ⚠ zsh does not word-split, so a `$PATHS` variable
+  after `--` becomes ONE pathspec matching nothing and both sides of that
+  comparison come back EMPTY — spell the paths inline. That false "identical"
+  is indistinguishable from the real one.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree CLEAN.
-- **Verdict: DRIFT PENDING — 3 commits** (§3 rows `d307a4164`, `0587d1e96`,
-  `4097626c6`). One is a large PORT-NEW feature — **character progressions**,
-  ~6,700 insertions across 55 files, five phases squashed into one PR (#57).
-  The other two are its plan doc and a version bump. **No CONVERGENCE row:** `docs/developer/bugs.md` is untouched by all
-  three, and no both-directions pin is implicated.
-- **No schema move — no D23 re-dump.** Nothing under `lib/db/**` or
-  `generateDDL` changed; the one `DDL.md` hunk is prose describing a new
-  RESERVED KEY inside the character vault's `metadata.json`
-  (`progressions`), which is the document-store overlay's territory, not a
-  table. **And no prompt-cache move:** the feature asserts as a negative
-  guarantee that neither `IDENTITY_STACK_BUILDER_VERSION` nor
-  `PROMPT_CACHE_STRUCTURE_VERSION` is bumped (the report lives in the
-  uncached per-turn tail, never system block 1), so v5's committed golden
-  hashes stay valid — verified in the hunks, not taken from the prose.
-- **Vendored-artifact obligations this drift creates** (all four re-verified
-  clean at the morning check; two now MOVED):
+- **Verdict: DRIFT PENDING — 4 commits** (§3 rows `d307a4164`, `0587d1e96`,
+  `4097626c6`, `25f534c0b`). One large PORT-NEW feature (**character
+  progressions**, ~6,700 insertions / 55 files), one **PORT** bug fix on the
+  instance lock, and two NO-PORT? riders (the plan doc, a version bump).
+- **⚠ `25f534c0b` (bug 126) is a defect v5 MEASURABLY HAS, and it is
+  CRITICAL.** v4's bugs.md row records the v5 column as "Not yet assessed";
+  this check assessed it. `crates/quilltap-host/src/lock.rs` compares a
+  FRESHLY-READ `hostname()` at every arm v4 just fixed: `heartbeat_tick`
+  (`:527` — `content.hostname != host` → "taken over"), whose caller
+  `host.rs:1584` then `std::process::exit(1)`s or fires the lock-lost
+  teardown; `release_instance_lock` (`:543`, so a renamed process orphans its
+  own lock); the acquisition cascade (`:425` `same_host`, and the
+  container-only freshness window at `:454`, v4's fail-OPEN case); and
+  `classify_lock_status` (`:308`), which is what the CLI's
+  `db --lock-status` / `--lock-clean` answer from. **v5 has no hostname seam
+  at all** — `lock.rs:151` calls `gethostname` directly — so, exactly as in
+  v4, no test can flip the name and `heartbeat_rewrites_and_detects_loss`
+  (`:1021`) only ever mutates the PID. Any v5 host running on a macOS box
+  with `scutil --get HostName` unset can die ~60 s after launch, WAL
+  unmerged. This is not just a port row: it can bite a dogfood walk in
+  progress.
+- **No schema move and no prompt-cache move across the four rows.** Nothing
+  under `lib/db/**` or `generateDDL` changed, so no D23 re-dump: the
+  `progressions` key is a RESERVED KEY inside the character vault's
+  `metadata.json` (document-store-overlay territory, not a table), and the
+  progressions feature asserts as a negative guarantee that neither
+  `IDENTITY_STACK_BUILDER_VERSION` nor `PROMPT_CACHE_STRUCTURE_VERSION` is
+  bumped — verified in the hunks, so v5's committed golden hashes stay valid.
+- **No CONVERGENCE row.** Bug 126 was filed BY v4, from its own live Friday
+  instance under the Electron shell (a home page that stopped rendering),
+  not by this port — so no both-directions pin is implicated, and nothing
+  trips at the baseline move. `docs/developer/bugs.md` moved only to add it.
+- **Vendored-artifact obligations this drift creates:**
   - **`help/**` — v4 is at 122 files, v5's vendored tree at 121.**
-    `0587d1e96` adds `help/character-progressions.md` and edits five
-    (`character-editing`, `character-system-prompts`, `custom-tools`,
-    `pascals-workbench`, `shared-character-vaults`). `help_tree_equivalence`
-    goes RED against any oracle regenerated past the baseline, by design.
+    `0587d1e96` adds `help/character-progressions.md` and edits five;
+    `25f534c0b` edits a sixth (`database-protection.md`).
+    `help_tree_equivalence` goes RED against any oracle regenerated past the
+    baseline, by design.
   - **`public/schemas/qtap-custom-tool.schema.json` moved by 529 lines**, and
     v5's copy at `apps/web/public/schemas/qtap-custom-tool.schema.json` is
     still byte-identical to the BASELINE — see standing hazard (10): that one
@@ -67,11 +84,10 @@ probe verifies against._
     has no v5 counterpart yet.
   - Unmoved and still clean: the embedded `qtap-export.schema.json`, the
     21-file sample-prompt source directory, and v4's installed `zod` at
-    `4.5.4` (`package-lock.json` moved only its two version lines).
-- **Regen rule in force: PIN REQUIRED** (changed from NO PIN this morning) —
-  v4 `main` HEAD is past the baseline. Every oracle regen and fixture build
-  runs from a detached worktree pinned at `2f4254b42` per §5.1, until a round
-  moves the baseline.
+    `4.5.4` (both `package-lock.json` hunks are its two version lines).
+- **Regen rule in force: PIN REQUIRED** — v4 `main` HEAD is past the
+  baseline. Every oracle regen and fixture build runs from a detached
+  worktree pinned at `2f4254b42` per §5.1, until a round moves the baseline.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -138,11 +154,10 @@ probe verifies against._
   takes feature work. §4 step 2's two-branch rule stays load-bearing — measure
   `bugfix` by CONTENT, never its commit list, and remember a content diff can
   be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-08 morning, a standalone `/driftcheck`): CLEAR, no pin
-  required — v4 at rest at the baseline, §3 empty. It held for about four
-  hours. Before that (2026-09-07, the generator follow-ups round's unification
-  probe): CLEAR. Before that (2026-09-07, the pre-round `/driftcheck`): DRIFT
-  PENDING — 1 commit (`2f4254b42`), pin required._
+- _Superseded (2026-09-08 midday): DRIFT PENDING — 3 commits, the same posture
+  minus bug 126. Before that (2026-09-08 morning): CLEAR, no pin required —
+  v4 at rest at the baseline, §3 empty; it held about four hours. Before that
+  (2026-09-07, the generator follow-ups round's unification probe): CLEAR._
 
 ## §2 The freshness probe
 
@@ -184,6 +199,7 @@ when absorbed/ratified.
 | `d307a4164` | 2026-09-08 | docs: plan for character progressions (timed properties reported per turn) | NO-PORT? | Docs only — `docs/developer/features/character-progressions.md` (375 lines), the changelog, and one v4-side `.claude/` command doc. No shipped code. **Not a throwaway row: this file is the design of record for `0587d1e96`** and should be read at ordering time — it carries the phasing, the cadence grammar's rationale, and the "prompt path performs no writes" constraint. Mirror candidate for `docs/v4/` at the next baseline move. | UNPROCESSED |
 | `0587d1e96` | 2026-09-08 | Add character progressions — timed conditions reported per turn (#57) | PORT-NEW | **The feature, ~6,700 insertions / 55 files, five phases squashed into one PR.** New v4 modules `lib/progressions/{schema,engine,prompt-section}.ts` — pure, client-safe, injected clock — have NO v5 counterpart (tier-1 territory: `deriveProgression`, `formatSpan`, `shouldReportProgression`, `renderProgressionReport`, `flattenProgressions`, `inferIncrement`, and a fail-soft `parseProgressions` that drops one bad entry and keeps its siblings). Ported v5 surfaces it reaches: **`build_context`** (`lib/chat/context-manager.ts` — the section is wired after Suparna mail, before the turn-skip note, skipped in continue mode; last touched by P4.D95 / P4.D103 / P4.D163), **`core_whisper.rs`** (`findLastOwnTurnMs` joins `shouldFireCoreWhisper` in `core-whisper-trigger.ts`, and the two cadences now share ONE memoised `getMessages` per turn — a read-count change on a ported path), the **greeting builder** (`lib/chat/initialize.ts`) and **Carina** (both forced, cadence bypassed), the **whole Pascal family** (`custom_tool_types` / `custom_tools` / `placeholders` / `side_effects` / `tool_gate` / `tool_vocabulary` in `quilltap-core::pascal`, plus the SPA's `pascal/tool-draft.ts` twin — ported across P4.D35/P4.D36, the Workbench lanes P4.6BB/P4.D20, P4.D43, and the archived custom-tools-end-to-end round), the **tool subsystem** (`run-custom-tool.ts`, `run-custom-handler.ts`), the **character vault types** (`lib/schemas/character.types.ts` → the store-backed entity slice), **two REST edges** in `quilltap-web` (`/api/v1/custom-tools`, `/api/v1/chats/[id]/custom-tools`), and the **SPA** (a new `components/characters/progressions/` trio — editor modal, section, hook — plus the system-prompts-editor host and four `components/custom-tools/` panels + `CustomToolRunDialog`). Also a `help/**` re-vendor (121 → 122) and two `public/schemas/` files. **No table-schema change and no cache-version bump** (see §1). | UNPROCESSED |
 | `4097626c6` | 2026-09-08 | doc: Update version | NO-PORT? | `4.10.0-dev.5` → `4.10.0-dev.8` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines. No ported comparand (no `--version` assertion in Tier R); the two version fields still agree on `main`, so standing hazard (6) stays closed there. | UNPROCESSED |
+| `25f534c0b` | 2026-09-08 | fix: a hostname change no longer makes the app kill its own database (bug 126) | PORT | **v5 measurably HAS this, critically — see §1.** v4's fix, arm for arm: ownership becomes a snapshot written with the lock (**PID + `startedAt`**, compared by `isStillOurLock`), hostname demoted to a label refreshed each tick; acquisition stops claiming a lock merely because the recorded hostname differs, deciding liveness by **heartbeat freshness for every environment** rather than only for Docker (this closes a fail-OPEN case where two processes on one machine could both open the same DB); a renamed process releases its own lock instead of orphaning it; a lock taken by manual override starts a heartbeat; and the lock-loss teardown is registered **inward** by `client.ts` (v4's dynamic `require('./client')` did not resolve in the bundled standalone server — it threw and left the WAL unmerged). v5 surfaces: `quilltap-host/src/lock.rs` (`heartbeat_tick` `:527`, `release_instance_lock` `:543`, the acquire cascade `:425`/`:454`, `classify_lock_status` `:308`) and its caller `host.rs:1584`, all from the P4.D68 → P4.D75 lock work; the CLI's `db --lock-status` / `--lock-clean` (v4 `packages/quilltap/bin/quilltap.js`, 103 lines, gains a shared `assessLock` — **Tier R comparands move**). Porting notes the hunks make explicit: v4 **inverted two existing tests that had been asserting the buggy behavior**, and its suite mocked `os.hostname()` as a constant, which is why it never surfaced in test — v5 has no hostname seam at all, so the port needs one (or, following v4, no hostname comparison left to seam). Also a `help/database-protection.md` re-vendor. v4's own bugs.md guidance: "Carry the invariant, not the code: a hostname is a label, not an identity." | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

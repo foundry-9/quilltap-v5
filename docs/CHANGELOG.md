@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-08 — docs(drift): bug 126 joins the pending drift — a defect v5 measurably has, and it kills the server
+
+_Docs-only change._
+
+The third drift check of the day. v4 landed `25f534c0b`, its fix for bug 126: the
+instance lock's heartbeat re-read `os.hostname()` every 60 seconds and treated any
+change as another process seizing the database. On macOS with `scutil --get
+HostName` unset — the default — that value is not stable, so one Mac answers
+`MacBook-Pro.local` and `Mac` at different times and flips on Wi-Fi reconnect,
+sleep/wake, VPN and DHCP renewal. The heartbeat read that as a takeover, closed
+its connections and exited. Pending drift is now four commits.
+
+The row's classification is the important part. v4's bug catalogue records the v5
+column as "Not yet assessed"; this check assessed it, and **v5 has the defect in
+every arm v4 just fixed**. `quilltap-host/src/lock.rs` compares a freshly-read
+`hostname()` in `heartbeat_tick` — whose caller exits the process — in
+`release_instance_lock`, in the acquisition cascade including v4's fail-open
+case, and in `classify_lock_status`, which is what the CLI's lock commands
+answer from. v5 also has no hostname seam: it calls `gethostname` directly, so no
+test can flip the name, and its heartbeat test only ever mutates the PID — the
+same reason this never surfaced in v4's suite, where `os.hostname()` was mocked
+as a constant. A v5 host on an affected Mac can die about a minute after launch
+with the WAL unmerged, which makes this a hazard to a dogfood walk in progress,
+not only a porting row.
+
+Not a convergence: bug 126 was filed by v4 from its own live instance under the
+Electron shell, reported as a home page that stopped rendering, so no
+both-directions pin is implicated. The fix also moves Tier R comparands — v4's
+launcher gains a shared `assessLock` so `--lock-status` no longer calls a running
+app `STALE (different host)` and `--lock-clean` refuses to delete a lock still
+being refreshed — and owes a sixth `help/` re-vendor.
+
 #### 2026-09-08 — docs(drift): character progressions — three commits past the baseline, pins required again
 
 _Docs-only change._
