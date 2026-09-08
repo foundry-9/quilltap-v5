@@ -79,6 +79,16 @@ optional-chained; `allProfiles.find` is an array method). The sentence is kept
 as the `SELECT_FAILED_UNREACHABLE` constant for the record and NO v5 path can
 reach it; no throw was invented to reach it.
 
+**Measured: v4's per-call-site log-failure warn needs no port.** v4's
+`generateField` ends its fire-and-forget `logLLMCall` with a `.catch` warning
+`Failed to log character wizard LLM call`, because v4's `logLLMCall` REJECTS.
+v5's `log_llm_call` never propagates: its own `Err` arm already narrates the
+failure at `error` level — LOUDER than v4's `warn` — with the message, once,
+for every caller (`llm_logging.rs`'s comment names that as deliberate). So the
+shared `generate_field`'s `let _ =` drops nothing, and a second warn would
+double-log. The order's Tier-3 bullet offered "port it or record"; recorded, in
+the handler's module header and here.
+
 **Measured: v4 does not pass `generateField`'s tenth argument.**
 `PROFILE_PARAMETERS_NOT_PASSED` names the omission, and the differential's
 recorded request proves `profileParameters` arrives null on both sides.

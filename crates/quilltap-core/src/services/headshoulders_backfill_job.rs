@@ -60,6 +60,16 @@
 //! code in v4. [`SELECT_FAILED_UNREACHABLE`] keeps the sentence for the record;
 //! no v5 code path can reach it, and none is invented to.
 //!
+//! ## Measured: v4's per-call-site log-failure warn needs no port
+//!
+//! v4's `generateField` ends its fire-and-forget `logLLMCall` with a `.catch`
+//! that warns `Failed to log character wizard LLM call` — because v4's
+//! `logLLMCall` REJECTS. v5's [`crate::services::llm_logging::log_llm_call`]
+//! never propagates: its own `Err` arm already narrates the failure at `error`
+//! level (louder than v4's `warn`) with the error message, once, for every
+//! caller. So the shared `generate_field`'s `let _ =` drops nothing, and a
+//! second warn here would double-log. Recorded rather than ported.
+//!
 //! ## Model boundary (tier-3 seam)
 //!
 //! [`CompletionProvider`], through the wizard adapter. `now_ms` is injected

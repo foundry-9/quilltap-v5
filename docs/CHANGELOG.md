@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(jobs): record why v4's wizard log-failure warn needs no port
+
+_No crate versions bumped._
+
+P4.82's last Tier-3 item, dispositioned by measurement. v4's `generateField`
+ends its fire-and-forget `logLLMCall` with a `.catch` warning `Failed to log
+character wizard LLM call`, because v4's `logLLMCall` REJECTS. v5's
+`log_llm_call` never propagates: its own `Err` arm already narrates the same
+failure at `error` level — louder than v4's `warn` — with the message, once,
+for every caller. So the shared `generate_field`'s `let _ =` drops nothing, and
+a second warn would double-log a line v5 already emits one layer down. Recorded
+in the handler's module header, the lane record and the order's status header,
+rather than ported.
+
+Also marks the order LANE COMPLETE: every Tier-1 and Tier-2 deliverable landed,
+all three Tier-3 items dispositioned by measurement, nothing OPEN.
+
 #### 2026-09-07 — feat(host): wire the head-and-shoulders backfill handler and its boot scan
 
 _Versions: host 0.0.114._
