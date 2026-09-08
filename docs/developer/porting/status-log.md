@@ -115603,3 +115603,125 @@ and the head-and-shoulders recording (K2's merged at the reconcile); the
 drift ledger's §1 (the checked line + hazards 8/9; §3 stays empty, the
 baseline stays `2f4254b42`); `phase-4.md`'s UNIFIED section + the next
 candidates; CLAUDE.md's Status bullet; the round's memory note.
+
+## Dogfood pass — the generator follow-ups + prompt-templates round (2026-09-07/08)
+
+**RAN agent-driven on the Friday copy — 20 rows, 16 PASS, 2 BLOCKED-by-design,
+3 human-deferred; ZERO v5 defects and the round's whole 💸 queue discharged.**
+Walk doc:
+`dogfood-walks/2026-09-07-generator-followups-prompt-templates-pass.md`. The
+ledger's §2 probe **passed** at walk start — v4 HEAD **is** the baseline
+`2f4254b42`, §3 EMPTY — so no step could blame drift. Five server boots on the
+real 800 MB instance over ~2 hours: **zero panics, zero `ERROR`-level lines**.
+
+**The pre-walk measurement (ledger §5.5) shaped the whole pass and was itself
+corrected by the app.** v4 had set
+`instance_settings['headshoulders_backfill_enqueued_v1'] = 'true'` on this
+instance and had left a **real DEAD `CHARACTER_HEADSHOULDERS_BACKFILL` job**
+behind (`baef7a26-…`, character **Charlie**, 3/3 attempts,
+`lastError: "No response from model"`, 2026-06-13) — v4 could not finish it.
+`prompt_templates` held **27** built-ins in **three v4 seeding vintages**
+(2025-12-16's hyphenated `GPT-4O`/`GPT-5`/`MISTRAL_LARGE`, 2026-03-26's
+unhyphenated `GPT4O`/`GPT5`/`MISTRAL`, 2026-08-19's `MODERN` trio), with **all
+21 of v5's vendored names already present** and their **content diverging**
+(v4's `GEMINI Companion` 1,986 chars against v5's vendored 2,906).
+
+**P4.82 — the backfill, all four legs.** The **cross-app leg**: a boot on v4's
+flag scans nothing, logs nothing, writes nothing. The **positive leg**, with the
+flag deleted: `scanning total=45` → `enqueue complete scanned=45 enqueued=2
+skipped=43`, flag re-written at non-zero enqueues. ⭐ **That corrected my own
+§0.5 prediction of 0** — the seed test also reads `fullDescription`, which lives
+in `physical-description.md`, not the `physical-prompts.json` I had counted. The
+two enqueues then ran for real: **Devin** got a 191-char head-and-shoulders
+prompt written to his vault; **Tuman** (archived) was refused by the archive
+write guard with `Character 3f278ac7-… is archived: this character is archived;
+rehydrate it to continue` — byte-identical to v4's
+`characters.repository.ts:22-25`, and v4 would enqueue him too (`findAll()` is
+an unfiltered `find({})`, the handler has no archived check). Both wrote
+`CHARACTER_WIZARD` `llm_logs` rows on the cheap LLM, the handler's stated
+promise. ⭐ **The whole-merged-object rule was then proven on v4's own
+unfinished work**: Charlie's head-and-shoulders cleared through the Appearance
+tab, v4's dead job reset to PENDING, and v5 finished what v4 gave up on — 212
+chars written, `short`/`medium`/`long` surviving **md5-identical**
+(`90f96a1ea3` / `2870b70644` / `d68d5cb3c0`). A second reset then proved the
+idempotence gate: **4 ms**, zero handler sentences, `llm_logs` unmoved at 7,181,
+against A3b's 3,500 ms.
+
+**P4.83 — prompt templates, and the never-update rule proven by consequence.**
+The modal lists all **27** of v4's built-ins across the three vintages, with a
+separate "My Templates" group; the DB count stayed 27 and not one seed line
+fired. `GEMINI Companion` is still v4's 1,986 chars at its March `updatedAt`.
+⭐ **The negative was then proven non-vacuous**: deleting `MISTRAL Companion` at
+the SQL level made the next list emit **exactly one** `Sample prompt template
+seeded from plugin … prompt_id=default-system-prompts/MISTRAL_COMPANION` and
+insert **v5's vendored 2,372 chars** — so the same code path that writes 2,372
+chars into a fresh row left its 1,986-char sibling untouched one call earlier.
+`MODERN General` gave a **three-way byte agreement** (v4's row, v5's vendored
+entry, and the body persisted into Charlie's vault — all 3,547, md5
+`6ca2b46521e4`). Both hosts' open semantics reproduced (edit host → a pre-filled
+Create Prompt dialog; New-Character host → straight into the field), the
+built-in DELETE answers v4's `Cannot delete built-in templates` 403, and the
+wire's measured asymmetry holds: the READ list **omits** `userId` while the
+CREATE 201 **sends** `description`/`category`/`modelHint` as explicit `null`.
+
+**P4.84 — the review pane's three renders, on a real twelve-field generation
+(~18 cheap-LLM calls).** Six **"Written as: …"** example lines, one per hinted
+field; the tier panel as `<strong class="text-foreground">Short (138
+chars):</strong>` + `<p class="qt-text-secondary">` for Short/Medium/Long; and
+`Full Description:` rendered through the NEW CommonMark pipeline as real HTML
+(`<h2>Overview</h2><p>…`) inside `.prose`, where v5 used to show raw text.
+Scenarios render as `<strong>{title}</strong>` +
+`<p class="qt-text-secondary mt-0.5 whitespace-pre-wrap">` — v4's `:151-163`
+class list character for character. The "Summon From Lore" fixed title holds.
+**`runTemplateSave` passed with a counting discriminator**: the toast read v4's
+`Replaced character name with {{char}}` and the buttons re-rendered from a real
+refetch — `Charlie → {{char}} (3)` vanished while `{{char}} → Charlie` went
+**16 → 19**, exactly the three converted.
+
+**P4.85 — the smalls.** `[Chats v1] Impersonation stopped chat_id=… participant_id=… character_name=Vergil`
+in the console and as JSON in `combined.log`, with v4's exact three-field bag
+(`participants.ts:126`). All four route-level starting lines fired with v4's
+field bags, and both `llm_logs` `type` strings the lane measured after
+un-mocking `llm-logging.service` came back on real runs: **`EXTERNAL_PROMPT`**
+(197 s / 4,168 tokens / 9,308 chars) and **`CHARACTER_OPTIMIZER`**. ⭐ **A free
+confirmation rode along**: the E2 run passing `sourceFileIds: "not-an-array"`
+logged `sourceFileCount: **12**` — the JS `.length` of that 12-character string,
+precisely what v4 logs for a truthy non-array. The faithful arm proved itself in
+a log field nobody aimed at. **`?action=generate`'s code-point gate discriminated
+at zero spend**: `count:20` and an empty prompt each answer 400 `Validation
+error`, a bogus id **with** a bad count still answers **404** (the 404 beats the
+400), and **4000 astral code points = 8000 UTF-16 units passed the gate** and
+died downstream at `No API key configured` while **4001** answered `Validation
+error`. The retired `utf16_len` would have refused the 4000 case.
+
+**P4.86 — the real JSON-Schema engine in production.** A real LLM-assembled
+export validated against the vendored 89,769-byte schema:
+`step_start`/`step_complete` for `validation` with snippet **`Validation
+passed`**, and **`VALIDATION_UNAVAILABLE` nowhere** — not in the stream, the log,
+or the review pane. The live SSE edge carries all three of v4's headers
+(`text/event-stream`, `no-cache`, `keep-alive`) with 18 frames over 30,185 bytes,
+**every one** `data: {json}` + blank line, checked mechanically. The refusal arms
+are v4's exactly: `regenerateSteps: 1` → V8's own `request.regenerateSteps?.includes
+is not a function`; a non-JSON body → V8's `Unexpected token 'o', "not json at
+all" is not valid JSON`; a `null` body → `Cannot read properties of null (reading
+'profileId')`; and `sourceFileIds: "x"` **proceeds**, which is the fix.
+
+**Two arms are BLOCKED by the port's own design, both measured rather than
+assumed** (details in the walk doc's §4 and the findings doc's standing note):
+the AI-import **repair loop** cannot be reached from outside — `ExportedCharacter`
+is `additionalProperties: true` and the assembler normalizes before validation, so
+three deliberate corruptions through `existingResult` all validated clean — and the
+two **continue-mode toasts** are guarded by the same predicate that disables their
+own buttons (`.qt-composer-gutter-continue` reported `disabled: true` once the
+roster stopped qualifying). Both are covered by their differentials and specs.
+
+**One lookalike run to ground:** selecting **User (you type)** on a participant
+card clears the seat's connection profile *and* sets `controlledBy: 'user'` —
+v4's own `ParticipantCard.tsx:207-208`, not an impersonation write
+(`impersonatingParticipantIds` stayed `[]`, so the Bug-44 overlay invariant
+holds).
+
+**💸 still owed (human, all cost/judgment):** the Brahma Console budget on a
+genuinely deep query, memory deduplication + conversation-summary regeneration's
+first run, finding #101's NanoGPT prompt-caching cost question, and the
+re-measured 90 s/120 s compression row.

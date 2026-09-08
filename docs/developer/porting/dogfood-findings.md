@@ -599,6 +599,43 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### Dogfood pass — the generator follow-ups + prompt-templates round (2026-09-07/08): NO new findings
+
+**Zero numbered findings** — 16 PASS / 2 BLOCKED-by-design / 3 human-deferred
+over 20 rows, five server boots on the real instance, **zero panics and zero
+`ERROR`-level lines**. Walk doc:
+`dogfood-walks/2026-09-07-generator-followups-prompt-templates-pass.md`.
+
+**Three things worth carrying forward:**
+
+1. **The head-and-shoulders scan's seed test reads a field the vault JSON does
+   not hold.** Sizing that feature by counting blank `headAndShoulders` values
+   in `physical-prompts.json` gives the WRONG population: `hasSeed` also tests
+   `fullDescription`, which lives in `physical-description.md` and reaches the
+   scan through the overlay. My pre-walk measurement predicted 0 enqueues; the
+   real scan enqueued 2. Count through the overlay, not the file.
+2. **The AI-import repair loop (step 10) is not reachable from outside.**
+   `ExportedCharacter` is `additionalProperties: true`, and the assembler
+   normalizes before validation — a non-string `title` becomes `null`, a
+   non-object `physical_descriptions` becomes the default object. Three
+   deliberate corruptions injected through `existingResult` all validated
+   clean. Do not spend another pass trying; the arm is covered by
+   `ai_import_tier3`'s nine `Repair successful` rows against v4's real
+   `validateQtapExport`.
+3. **The two continue-mode toasts are guarded by the predicate that disables
+   their own buttons.** Measured, not inferred: once the roster stopped
+   qualifying, `.qt-composer-gutter-continue` reported `disabled: true`. They
+   fire only in the P4.D90 stale-roster race, which one browser cannot stage.
+   The unit specs are the coverage.
+
+**One lookalike run to ground — do not re-file it:** selecting **User (you
+type)** on a participant card clears that seat's connection profile *and* sets
+`controlledBy: 'user'`. That is v4's own handler
+(`components/chat/ParticipantCard.tsx:207-208` →
+`onConnectionProfileChange(id, null, 'user')`), not an impersonation write —
+`impersonatingParticipantIds` stayed `[]` throughout, so the Bug-44 overlay
+invariant holds.
+
 ### Dogfood pass — the `p4.9k` + `2f4254b42` rounds (2026-09-07): NO new findings
 
 The pass produced **zero numbered findings** — 22 PASS / 1 PARTIAL / 1 N/A

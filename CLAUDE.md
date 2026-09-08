@@ -3224,11 +3224,56 @@ records THERE. Update this summary only when a phase or round completes.
   families fresh zero SKIP; 537 test binaries / 3,018 / 0;
   clippy both feature sets; release build; ng 409 / 6,484; full Playwright
   300 passed / 0 failed / 0 skipped (7.6 m). Versions: core 0.0.846, harness 0.0.735, web 0.0.131, host
-  0.0.114, SPA 0.5.681. 💸 the dogfood queue gains the backfill's cross-app
-  leg + one real job, the template catalogue against v4's seeded rows, the
-  review pane on a real generation, the AI-import repair loop on a real
-  import. **The owed dogfood pass is the top next candidate.** Round record:
-  `status-log.md`.
+  0.0.114, SPA 0.5.681. 💸 **the round's whole queue was DISCHARGED by the
+  2026-09-07/08 pass** (below). Round record: `status-log.md`.
+- **The generator follow-ups + prompt-templates dogfood pass RAN
+  (2026-09-07/08, agent-driven, on the Friday copy) — 20 rows, 16 PASS, 2
+  BLOCKED-by-design, ZERO v5 defects, and the round's whole 💸 queue
+  discharged.** Walk doc:
+  `dogfood-walks/2026-09-07-generator-followups-prompt-templates-pass.md`;
+  record in `status-log.md`. The ledger's §2 probe passed at walk start (v4
+  HEAD **is** the baseline, §3 EMPTY), so no step could blame drift; five
+  boots on the real 800 MB instance, **zero panics and zero `ERROR` lines**.
+  **The pre-walk measurement bought the pass its two best proofs and then
+  corrected itself.** v4 had left a **real DEAD backfill job** here
+  (`baef7a26-…`, Charlie, 3/3 attempts, `No response from model`,
+  2026-06-13) — so after clearing that character's head-and-shoulders through
+  the Appearance tab, **v5 finished the work v4 gave up on**: 212 chars
+  written and `short`/`medium`/`long` surviving **md5-identical**, which is
+  the whole-merged-object rule proven on v4's own leftovers; a second reset
+  then took **4 ms** with zero handler sentences and `llm_logs` unmoved
+  (against 3,500 ms), which is the idempotence gate. The cross-app leg holds
+  (v4's flag → v5 scans, logs and writes nothing), and the positive leg
+  **refuted my own §0.5 prediction of 0 enqueues**: `scanned=45 enqueued=2
+  skipped=43`, because `hasSeed` also reads `fullDescription`, which lives
+  outside the `physical-prompts.json` I had counted. Both jobs then ran —
+  Devin populated, the archived Tuman refused with v4's byte-identical
+  sentence (v4 would enqueue him too). **Prompt templates gave the round's
+  cleanest cross-app result:** the modal lists all **27** of v4's built-ins
+  across **three seeding vintages**, the count never moved, and v4's `GEMINI
+  Companion` stayed at 1,986 chars against v5's vendored 2,906 — then
+  deleting one row proved that negative non-vacuous, emitting **exactly one**
+  seed line and inserting **v5's** 2,372 chars. `MODERN General` is a
+  **three-way byte agreement** (v4's row, v5's catalogue, Charlie's vault —
+  3,547, md5 `6ca2b46521e4`). Also live: the review pane's three renders on a
+  real twelve-field generation with v4's exact markup; `runTemplateSave`
+  proven by a counting discriminator (`{{char}} → Charlie` 16 → 19);
+  `[Chats v1] Impersonation stopped` with v4's three-field bag; all four
+  route-level starting lines plus the **`EXTERNAL_PROMPT`** and
+  **`CHARACTER_OPTIMIZER`** `llm_logs` types the lane measured; and the real
+  `jsonschema` engine answering **`Validation passed`** on a real export with
+  `VALIDATION_UNAVAILABLE` nowhere. ⭐ **`?action=generate`'s code-point gate
+  discriminated at zero spend** — 4000 astral code points (8000 UTF-16 units)
+  passed and died at `No API key configured` while 4001 answered `Validation
+  error`. ⭐ A free confirmation rode along: the truthy-non-array
+  `sourceFileIds: "not-an-array"` logged `sourceFileCount: 12` — the JS
+  `.length` of that string, exactly what v4 logs. **Two arms are BLOCKED by
+  the port's own design, both MEASURED not assumed:** the AI-import repair
+  loop (the assembler normalizes before validation — three injected
+  corruptions all validated clean) and the two continue-mode toasts (their
+  own buttons are disabled by the predicate the toasts guard). 💸 still owed
+  (human): the Brahma deep query, dedup/summaries, #101, and the re-measured
+  90 s/120 s compression row.
 - **Oracle baseline: `2f4254b42` (2026-09-07, v4 main — "feat: character
   subprompts", `4.10.0-dev.1`), adopted at the `2f4254b42`
   character-subprompts round unification (2026-09-07).**

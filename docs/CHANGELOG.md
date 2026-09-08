@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-08 — docs(dogfood): the generator follow-ups + prompt-templates pass — 20 rows, zero v5 defects, the round's whole live-proof queue discharged
+
+_Docs-only change._
+
+Agent-driven dogfood pass over a copy of the real Friday instance, covering the
+five orders unified on 2026-09-07. 16 PASS, 2 arms blocked by the port's own
+design, 3 deferred to the human for cost. Five server boots on the real 800 MB
+instance produced zero panics and zero `ERROR`-level lines.
+
+The pre-walk measurement found v4 had left a dead `CHARACTER_HEADSHOULDERS_BACKFILL`
+job on this instance from 2026-06-13, abandoned after three attempts. Clearing that
+character's head-and-shoulders prompt through the Appearance tab and resetting the
+job let v5's newly-landed handler finish it: 212 characters written, with the
+short/medium/long tiers surviving md5-identical — the whole-merged-object rule
+proven against v4's own leftovers. A second reset completed in 4 ms with no LLM
+call, proving the idempotence gate. The boot scan's cross-app leg holds (v4's flag
+suppresses the scan entirely), and its positive leg corrected the walk's own
+prediction: it enqueued 2, not 0, because the seed test also reads
+`fullDescription`, which lives outside `physical-prompts.json`.
+
+Prompt templates gave the cleanest cross-app result: the Import modal lists all 27
+of v4's built-ins across three seeding vintages, the row count never moved, and
+v4's 1,986-character `GEMINI Companion` stayed put against v5's vendored 2,906.
+Deleting one row then proved that negative non-vacuous — exactly one seed line
+fired and inserted v5's own text. `MODERN General` is byte-identical across v4's
+row, v5's vendored catalogue and the vault file the import wrote.
+
+Also proven live: the wizard review pane's three renders with v4's exact markup;
+`runTemplateSave` through the shared apply helper (verified by a counting
+discriminator); `[Chats v1] Impersonation stopped` with v4's three-field bag; all
+four route-level starting lines plus the `EXTERNAL_PROMPT` and `CHARACTER_OPTIMIZER`
+log types; the real `jsonschema` engine answering `Validation passed` on a real
+export; the SSE edge's three headers and framing; and `?action=generate`'s
+code-point length gate discriminated at zero spend (4000 astral code points pass,
+4001 refuse).
+
+Two arms were measured unreachable rather than assumed: the AI-import repair loop
+(the assembler normalizes before validation, so no injected corruption reaches the
+validator invalid) and the two continue-mode toasts (their own buttons are disabled
+by the predicate the toasts guard). Both stay covered by their differentials and
+unit specs.
+
+Walk doc: `docs/developer/porting/dogfood-walks/2026-09-07-generator-followups-prompt-templates-pass.md`.
+
 #### 2026-09-07 — unify: the generator follow-ups + prompt-templates round — P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86, all five CLOSED
 
 _Versions: quilltap-core 0.0.846, quilltap-harness 0.0.735, quilltap-web 0.0.131, quilltap-host 0.0.114, apps/web 0.5.681; cli/tauri unchanged._
