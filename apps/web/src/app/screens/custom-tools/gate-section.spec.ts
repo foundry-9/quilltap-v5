@@ -244,3 +244,83 @@ describe('GateSection (v4 GateSection.tsx)', () => {
     );
   });
 });
+
+/**
+ * The gate's second subject (v4 `0587d1e96`). Every string below is v4's, and
+ * the two `title` attributes are the ones an author actually reads on hover.
+ */
+describe('GateSection — the progress subject', () => {
+  const subjectSelect = (f: ComponentFixture<GateSection>) =>
+    el(f).querySelector<HTMLSelectElement>('select[aria-label="Gate subject"]')!;
+
+  it('offers metadata and progress, metadata first', async () => {
+    const fixture = await render(gatedDraft([chip()]));
+    const select = subjectSelect(fixture);
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['metadata', 'progress']);
+    expect(Array.from(select.options).map((o) => o.textContent?.trim())).toEqual([
+      'metadata',
+      'progress',
+    ]);
+    expect(select.title).toBe(
+      "Which sheet this test reads: the character's own metadata.json, or their derived progressions.",
+    );
+  });
+
+  it('shows the chip’s own subject as selected', async () => {
+    const fixture = await render(gatedDraft([chip({ subject: 'progress', key: 'cannon.complete' })]));
+    expect(subjectSelect(fixture).value).toBe('progress');
+  });
+
+  it('carries a subject change into the draft, leaving the key alone', async () => {
+    const fixture = await render(gatedDraft([chip()]));
+    let next: ToolDraft | undefined;
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => (next = d));
+
+    const select = subjectSelect(fixture);
+    select.value = 'progress';
+    select.dispatchEvent(new Event('change'));
+
+    expect(next?.gateConditions[0].subject).toBe('progress');
+    expect(next?.gateConditions[0].key).toBe('rank');
+  });
+
+  it('re-labels the key input for a progress chip', async () => {
+    const metadata = el(await render(gatedDraft([chip()]))).querySelector('input[type="text"]')!;
+    expect(metadata.getAttribute('aria-label')).toBe('Metadata key');
+    expect(metadata.getAttribute('placeholder')).toBe("key on the character's fact sheet");
+    expect(metadata.getAttribute('title')).toBe(
+      "The invoking character's fact sheet — a key the character lacks never matches.",
+    );
+
+    const progress = el(
+      await render(gatedDraft([chip({ subject: 'progress', key: 'cannon.complete' })])),
+    ).querySelector('input[type="text"]')!;
+    expect(progress.getAttribute('aria-label')).toBe('Progress key');
+    expect(progress.getAttribute('placeholder')).toBe('cannon.complete');
+    expect(progress.getAttribute('title')).toBe(
+      'A progression of the invoking character, keyed "<id>.<field>" — percent, complete, ' +
+        'remainingMs, state, started, elapsedMs, startTime, endTime, name, elapsed, remaining, ' +
+        'quantity. A progression they do not carry never matches.',
+    );
+  });
+
+  it('seeds a new chip on metadata — what a gate has always meant', async () => {
+    const fixture = await render(gatedDraft([]));
+    let next: ToolDraft | undefined;
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => (next = d));
+
+    Array.from(el(fixture).querySelectorAll<HTMLButtonElement>('button'))
+      .find((b) => b.textContent?.trim() === 'add condition')!
+      .click();
+
+    expect(next?.gateConditions).toHaveLength(1);
+    expect(next?.gateConditions[0].subject).toBe('metadata');
+  });
+
+  it('names both sheets in the card’s hint', async () => {
+    expect(text(await render(gatedDraft([chip()]))).replace(/\s+/g, ' ')).toContain(
+      'Tested before the deal, against the invoking character’s metadata.json or their timed ' +
+        'progressions — the only things known before a roll exists.',
+    );
+  });
+});

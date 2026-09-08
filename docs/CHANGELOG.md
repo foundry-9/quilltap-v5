@@ -526,6 +526,28 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(workbench): the `progress` subject, prefix, placeholders and the bench's derived list
+
+_Versions: SPA 0.5.685._
+
+P4.D170 unit 4. Ports v4 `0587d1e96`'s four `components/custom-tools/` hunks:
+the gate chip's leading subject select (with the per-subject placeholder,
+aria-label and title, and the card's reworded hint), the outcome subject's
+`Progress…` option + key input + widened type-unknowable and eligible-param
+rules, the `Progress field…` / `Now (epoch ms)` placeholder menu items with
+`insertProgressField`'s prompt, the `progress.` prefix button and its
+three-way title, and the Proving Bench's derived-progressions list on its own
+one-second clock, gated on the hand-typed sheet mode, feeding
+`evaluateToolGate`'s third argument.
+
+A new `workbench-progress.spec.ts` (18 cases) covers the three panels that had
+no per-panel coverage for these hunks; the gate chip's subject rides in
+`gate-section.spec.ts` beside the rest of that panel. Six mutation proofs: the
+bench passing two gate arguments, the empty derived sheet rendered anyway, the
+subject change carrying the metadata key across, the suggestion fallback
+ignoring tested keys, the gate chip keeping the metadata title, and the prefix
+buttons reordered.
+
 #### 2026-09-08 — feat(progressions): the Progressions card on the System Prompts tab
 
 _Versions: SPA 0.5.684._

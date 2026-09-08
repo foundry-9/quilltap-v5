@@ -53,6 +53,14 @@ const STATE_OPTIONS: Array<{ state: OutcomeState; label: string; badge: string }
   { state: 'info', label: 'info', badge: 'qt-badge qt-badge-info' },
 ];
 
+/**
+ * The progress key input's title (v4 `OutcomesSection.tsx` at `25f534c0b`). A
+ * constant because it carries `<id>` / `<field>` angle brackets and ends in a
+ * typographic apostrophe.
+ */
+const PROGRESS_KEY_TITLE =
+  'A progression of the invoking character, keyed "<id>.<field>" — percent, complete, remainingMs, state, started, elapsedMs, startTime, endTime, name, elapsed, remaining, quantity. A progression they do not carry simply doesn\u2019t match.';
+
 let conditionIdCounter = 0;
 let outcomeIdCounter = 0;
 
@@ -230,10 +238,15 @@ export class OperandField {
   private readonly containment = computed(() =>
     CONTAINMENT_COMPARATORS.has(this.condition().comparator),
   );
-  /** Metadata and the consult's answer both have an unknowable stored type. */
+  /**
+   * Metadata, a derived progress field and the consult's answer all have an
+   * unknowable stored type — whether this character carries `cannon` at all,
+   * let alone what `cannon.percent` holds, is a fact about a character the
+   * definition has never met (v4 `0587d1e96`).
+   */
   private readonly typeUnknowable = computed(() => {
     const kind = this.condition().subject.kind;
-    return kind === 'metadata' || kind === 'llm';
+    return kind === 'metadata' || kind === 'progress' || kind === 'llm';
   });
 
   // Containment needs no picker — the substring is always text. A `$state`
@@ -372,6 +385,13 @@ export class OperandField {
           </option>
         }
         <option value="metadata" [selected]="subjectValue() === 'metadata'">Metadata…</option>
+        <option
+          value="progress"
+          title="A derived field of one of the character's timed progressions"
+          [selected]="subjectValue() === 'progress'"
+        >
+          Progress…
+        </option>
         @if (draft().llmEnabled) {
           <option
             value="llm"
@@ -404,6 +424,20 @@ export class OperandField {
         />
       }
 
+      @if (progressKey() !== null) {
+        <input
+          type="text"
+          [value]="progressKey()"
+          (input)="onProgressKey(inputValue($event))"
+          placeholder="cannon.complete"
+          [disabled]="disabled()"
+          class="qt-input w-44 text-sm"
+          [class.qt-input-error]="progressKey()!.trim() === ''"
+          aria-label="Progress key"
+          [attr.title]="PROGRESS_KEY_TITLE"
+        />
+      }
+
       <!-- Same rule: the option list is @for-driven and its membership changes
            with the subject's type. -->
       <select
@@ -427,7 +461,7 @@ export class OperandField {
         (conditionChange)="conditionChange.emit($event)"
       />
 
-      @if (metadataKey() !== null && (ordering() || containment())) {
+      @if ((metadataKey() !== null || progressKey() !== null) && (ordering() || containment())) {
         <span class="text-xs qt-text-secondary" [title]="metadataHintTitle()">ⓘ</span>
       }
 
@@ -485,6 +519,13 @@ export class ConditionChip {
     return s.kind === 'metadata' ? s.key : null;
   });
 
+  protected readonly PROGRESS_KEY_TITLE = PROGRESS_KEY_TITLE;
+
+  readonly progressKey = computed(() => {
+    const s = this.condition().subject;
+    return s.kind === 'progress' ? s.key : null;
+  });
+
   readonly subjectType = computed(() =>
     subjectValueType(this.condition().subject, this.paramByName()),
   );
@@ -496,7 +537,11 @@ export class ConditionChip {
 
   readonly subjectKind = computed(() => this.condition().subject.kind);
 
-  /** The metadata ⓘ carries a different sentence for ordering and containment. */
+  /**
+   * The metadata / progress ⓘ carries a different sentence for ordering and
+   * containment. v4 shows the SAME one for both subjects — `0587d1e96` widened
+   * the guard, not the copy.
+   */
   protected metadataHintTitle(): string {
     return this.ordering()
       ? 'Matches only when the stored value is a number — anything else declines the row at run time, fail-soft, never an error.'
@@ -527,7 +572,7 @@ export class ConditionChip {
         if (!p.name) return false;
         // A substring must be text whatever the subject turns out to hold.
         if (containment) return p.type === 'string';
-        if (subject.kind === 'metadata' || subject.kind === 'llm') {
+        if (subject.kind === 'metadata' || subject.kind === 'progress' || subject.kind === 'llm') {
           // With the subject's type unknown, no reference can be ruled
           // incompatible — ordering still demands a number, though.
           return !ordering || p.type === 'number' || p.type === 'integer';
@@ -551,6 +596,10 @@ export class ConditionChip {
     this.conditionChange.emit({ ...this.condition(), subject: { kind: 'metadata', key } });
   }
 
+  protected onProgressKey(key: string): void {
+    this.conditionChange.emit({ ...this.condition(), subject: { kind: 'progress', key } });
+  }
+
   protected onSubjectChange(value: string): void {
     const condition = this.condition();
     const subject = condition.subject;
@@ -560,6 +609,8 @@ export class ConditionChip {
     else if (value === 'roll') nextSubject = { kind: 'roll' };
     else if (value === 'metadata') {
       nextSubject = { kind: 'metadata', key: subject.kind === 'metadata' ? subject.key : '' };
+    } else if (value === 'progress') {
+      nextSubject = { kind: 'progress', key: subject.kind === 'progress' ? subject.key : '' };
     } else if (value === 'llm') nextSubject = { kind: 'llm' };
     else if (value === 'llm-ok') nextSubject = { kind: 'llm-ok' };
     else nextSubject = { kind: 'param', name: value.slice('param:'.length) };
@@ -803,6 +854,22 @@ export class ConditionList {
               >
                 Metadata key…
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="block w-full text-left px-3 py-1 text-sm"
+                (click)="insertProgressField()"
+              >
+                Progress field…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="block w-full text-left px-3 py-1 text-sm"
+                (click)="insertNow()"
+              >
+                Now (epoch ms)
+              </button>
               @if (draft().llmEnabled) {
                 <button
                   type="button"
@@ -908,6 +975,28 @@ export class OutcomeMessageEditor {
     const key = window.prompt('Metadata key to render (any non-empty string):', suggestion);
     if (key && key.trim() !== '') this.insertAtCursor(`{{metadata.${key.trim()}}}`);
     else this.menuOpen.set(false);
+  }
+
+  protected insertProgressField(): void {
+    // Same suggestion rule as metadata: offer back a progress key this tool
+    // already tests, because that is the one the author demonstrably means.
+    const testedKeys = new Set<string>();
+    for (const o of this.draft().outcomes) {
+      for (const condition of o.conditions) {
+        if (condition.subject.kind === 'progress' && condition.subject.key.trim() !== '') {
+          testedKeys.add(condition.subject.key);
+        }
+      }
+    }
+    const suggestion = [...testedKeys][0] ?? 'cannon.percent';
+
+    const key = window.prompt('Progress field to render, as "<progression id>.<field>":', suggestion);
+    if (key && key.trim() !== '') this.insertAtCursor(`{{progress.${key.trim()}}}`);
+    else this.menuOpen.set(false);
+  }
+
+  protected insertNow(): void {
+    this.insertAtCursor('{{now}}');
   }
 }
 

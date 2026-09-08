@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import {
   CustomToolParamsForm,
@@ -16,6 +26,7 @@ import type {
 import { displayTitle, isStateRef } from '../../pascal/custom-tool-types';
 import { scanPlaceholders } from '../../pascal/placeholders';
 import { definitionFromDraft, gateFromConditions, type ToolDraft } from '../../pascal/tool-draft';
+import { flattenProgressions, type ProgressPrimitive } from '../../progressions/engine';
 import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
@@ -167,7 +178,8 @@ export function extractErrorMessage(err: unknown): string {
       <section class="qt-card p-3 space-y-2">
         <h3 class="qt-card-title text-sm">The fact sheet</h3>
         <p class="qt-hint">
-          Metadata tests read the invoking character&rsquo;s <code>metadata.json</code>. Lend the
+          Metadata tests read the invoking character&rsquo;s <code>metadata.json</code>, and
+          <code>progress</code> tests read the <code>progressions</code> key inside it. Lend the
           bench a sheet, or it rolls as nobody in particular.
         </p>
         <div
@@ -237,6 +249,21 @@ export function extractErrorMessage(err: unknown): string {
             No fact sheet supplied — metadata tests will all decline, exactly as for an unattributed
             manual roll.
           </p>
+        }
+
+        @if (derivedProgress(); as derived) {
+          <div class="space-y-1">
+            <p class="text-xs qt-text-secondary">
+              Progressions derived from this sheet, as of now — what a <code>progress</code> test or
+              <code>{{ PROGRESS_PLACEHOLDER }}</code> would read this second:
+            </p>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
+              @for (row of derived; track row.key) {
+                <dt class="qt-text-secondary">{{ row.key }}</dt>
+                <dd class="qt-text truncate">{{ row.value }}</dd>
+              }
+            </dl>
+          </div>
         }
 
         @if (draftGate()) {
@@ -465,6 +492,41 @@ export class ProvingBench {
 
   readonly characters = this._characters.asReadonly();
 
+  /**
+   * The clock the derived-progressions panel reads (v4's own comment):
+   *
+   * > Held in state and advanced by an interval rather than read during
+   * > render: `Date.now()` in a render body is impure […]. The interval runs
+   * > only while a hand-typed sheet is in play, so a bench with no
+   * > progressions on it costs nothing.
+   *
+   * v4 gates it in an effect keyed on `sheet.mode`; the same gate here is an
+   * Angular `effect` that starts and stops the timer as the mode flips, and
+   * `DestroyRef` clears whatever is running when the panel goes away.
+   */
+  private readonly benchNowMs = signal(Date.now());
+
+  /** The placeholder the derived panel names. A constant, not template text:
+   * Angular interpolates a literal `{{…}}` on sight. */
+  protected readonly PROGRESS_PLACEHOLDER = '{{progress.…}}';
+
+  constructor() {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+    };
+    effect(() => {
+      stop();
+      if (this.sheet().mode !== 'manual') return;
+      // The interval alone, with no priming call: the first tick lands within a
+      // second, and setting a signal straight from an effect body is the render
+      // loop nobody wants.
+      timer = setInterval(() => this.benchNowMs.set(Date.now()), 1000);
+    });
+    inject(DestroyRef).onDestroy(stop);
+  }
+
   protected readonly short = formatShort;
 
   readonly paramSpecs = computed(() => {
@@ -599,9 +661,41 @@ export class ProvingBench {
     const gate = this.draftGate();
     if (!gate) return null;
     if (this.sheet().mode === 'manual' && this.manualSheetError() === null) {
-      return evaluateToolGate(gate, this.benchMetadata() as Record<string, unknown>);
+      return evaluateToolGate(
+        gate,
+        this.benchMetadata() as Record<string, unknown>,
+        this.progressSheet(),
+      );
     }
     return this.rolls()[0]?.gate ?? null;
+  });
+
+  /**
+   * The progress sheet a hand-typed fact sheet derives to, at THIS instant —
+   * v4's own comment:
+   *
+   * > Shown read-only under the sheet so the author can see `cannon.percent`
+   * > before rolling, rather than working it out from two ISO timestamps in
+   * > their head. A character-backed sheet lives on the server, so the bench
+   * > declines to guess at it — the same line the gate verdict already draws.
+   */
+  private readonly progressSheet = computed<Record<string, ProgressPrimitive> | null>(() => {
+    const s = this.sheet();
+    if (s.mode !== 'manual') return null;
+    try {
+      const parsed: unknown = JSON.parse(s.text);
+      const flattened = flattenProgressions(parsed, this.benchNowMs());
+      return Object.keys(flattened).length > 0 ? flattened : null;
+    } catch {
+      return null;
+    }
+  });
+
+  /** The same sheet as `[{key, value}]`, for the read-only list. */
+  readonly derivedProgress = computed(() => {
+    const sheet = this.progressSheet();
+    if (!sheet) return null;
+    return Object.entries(sheet).map(([key, value]) => ({ key, value: String(value) }));
   });
 
   /** The hint that fires when a tool tests metadata but no sheet was lent. */

@@ -32,6 +32,15 @@ const EFFECTS_HINT_TAIL =
   ', never bare words. Expressions take + − × ÷, parentheses, and the same {{…}} references as a ' +
   'message.';
 
+/**
+ * v4's third prefix title (`SideEffectsSection.tsx` at `25f534c0b`). A constant
+ * rather than a literal attribute because it carries `<id>` / `<field>` angle
+ * brackets and a typographic apostrophe, and the two siblings above read better
+ * beside it than a wrapped literal would.
+ */
+const PROGRESS_PREFIX_TITLE =
+  'Adjust one of the rolling character\u2019s timed progressions — progress.<id>.<field>. An id nobody authored is created; write true to progress.<id>.remove to delete one.';
+
 let effectIdCounter = 0;
 
 const OUTCOME_STATES: readonly OutcomeState[] = ['success', 'partial', 'failure', 'info'] as const;
@@ -145,6 +154,15 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
                 >
                   metadata.
                 </button>
+                <button
+                  type="button"
+                  class="qt-button qt-button-ghost qt-button-sm font-mono"
+                  (click)="updateEffect(effect.id, { target: 'progress.' })"
+                  [disabled]="disabled()"
+                  [title]="PROGRESS_PREFIX_TITLE"
+                >
+                  progress.
+                </button>
               </span>
             }
           </div>
@@ -216,6 +234,7 @@ export class SideEffectsSection {
 
   protected readonly MAX_EFFECTS = MAX_EFFECTS;
   protected readonly MAX_EFFECT_TARGET_LENGTH = MAX_EFFECT_TARGET_LENGTH;
+  protected readonly PROGRESS_PREFIX_TITLE = PROGRESS_PREFIX_TITLE;
   protected readonly OUTCOME_STATES = OUTCOME_STATES;
   protected readonly EFFECT_VALUE_PLACEHOLDER = EFFECT_VALUE_PLACEHOLDER;
   protected readonly EFFECTS_HINT = EFFECTS_HINT;

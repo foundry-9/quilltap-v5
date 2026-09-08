@@ -117194,3 +117194,60 @@ change is the harness: v5 drives `characterGet`/`characterUpdate` through a
 
 Gate: 414 SPA spec files / 6,769 tests; `npm run build` clean;
 `check-qt-classes` 950 classes. SPA 0.5.684.
+
+### Unit 4 — the Workbench's `progress` affordances
+
+v4 `0587d1e96`'s four `components/custom-tools/` hunks, byte-for-byte:
+
+- **`gate-section.ts`** — the chip's leading `<select aria-label="Gate subject">`
+  with v4's title, the key input's per-subject placeholder / aria-label / title
+  (the progress one enumerating all twelve derived fields), the card's reworded
+  hint, and `subject: 'metadata'` on the add-condition seed. The select is
+  `[selected]`-per-option, never a value binding — this file's own standing
+  dogfood-#6 rule.
+- **`outcomes-section.ts`** — `Progress…` immediately after `Metadata…` with its
+  title, the progress key input, `typeUnknowable` and the eligible-param filter
+  widened, the subject-change branch (which starts the progress key EMPTY: a
+  metadata key is not a progress key), the ordering/containment ⓘ guard widened
+  with v4's copy UNCHANGED, `insertProgressField` + `insertNow`, and the two
+  menu items in v4's order.
+- **`proving-bench.ts`** — `benchNowMs` on a one-second interval gated on the
+  hand-typed sheet mode (v4 keys the effect on `sheet.mode`; the Angular twin is
+  an `effect` that starts and stops the timer, with `DestroyRef` clearing
+  whatever is running), `derivedProgress` via `flattenProgressions`, the
+  read-only `<dl>` with its caption, the reworded fact-sheet hint, and
+  `evaluateToolGate`'s THIRD argument.
+- **`side-effects-section.ts`** — the `progress.` prefix button and v4's
+  three-way title.
+
+Three Angular carries, all forced and all recorded in the files: the derived
+panel's `{{progress.…}}` caption and the progress key / prefix titles are TS
+constants (Angular interpolates a literal `{{…}}` and the titles carry `<id>` /
+`<field>` angle brackets), and a **backtick inside an inline template comment
+terminated the TS literal** on the first build — the
+`backtick-in-an-angular-inline-template-comment` note's exact failure, with the
+errors blaming a decimal literal and a missing `:` several lines away.
+
+NEW `workbench-progress.spec.ts` — 18 cases over the three panels with no
+per-panel coverage for these hunks (the gate chip's subject rides in
+`gate-section.spec.ts`, six more cases there). `window.prompt` is STUBBED
+everywhere it is opened: it answers `null` under jsdom exactly as it does in a
+browser pane, so a bare click would assert nothing.
+
+**Six mutation proofs, each reddening exactly its row:** the bench passing two
+arguments to `evaluateToolGate`; the derived sheet rendered even when empty; the
+subject change carrying the metadata key onto progress; `insertProgressField`'s
+suggestion ignoring already-tested keys; the gate chip keeping the metadata
+title on a progress chip; the three prefix buttons reordered. A seventh — the
+bench deriving a character-backed sheet — was written, ran GREEN, and is
+recorded rather than kept: `FactSheet`'s character branch carries no `text`, so
+the mode guard is structurally guaranteed and the mutation was
+behaviour-equivalent. The spec asserting `derivedProgress() === null` in that
+mode stays as documentation of the contract.
+
+Prettier note: `gate-section.ts`, `outcomes-section.ts`, `proving-bench.ts` and
+`gate-section.spec.ts` are NOT prettier-clean at `HEAD`, so no `--write` was run
+over them — the diffs are the port and nothing else. The new spec file is clean.
+
+Gate: 415 SPA spec files / 6,793 tests; `npm run build` clean;
+`check-qt-classes` 950 classes. SPA 0.5.685.

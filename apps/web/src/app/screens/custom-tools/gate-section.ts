@@ -69,16 +69,32 @@ let gateIdCounter = 0;
       class="flex items-center gap-1 flex-wrap rounded border px-2 py-1"
       [class.qt-input-error]="hasError()"
     >
+      <!--
+        The chip's leading subject, v4 0587d1e96. selected-per-option rather
+        than a value binding, for the reason the comparator select below spells
+        out. NB no backticks in a template comment - they end the literal.
+      -->
+      <select
+        (change)="onSubject(selectValue($event))"
+        [disabled]="disabled()"
+        class="qt-select qt-select-sm w-28 shrink-0"
+        aria-label="Gate subject"
+        title="Which sheet this test reads: the character's own metadata.json, or their derived progressions."
+      >
+        <option value="metadata" [selected]="condition().subject === 'metadata'">metadata</option>
+        <option value="progress" [selected]="condition().subject === 'progress'">progress</option>
+      </select>
+
       <input
         type="text"
         [value]="condition().key"
         (input)="onKey(inputValue($event))"
-        placeholder="key on the character's fact sheet"
+        [placeholder]="keyPlaceholder()"
         [disabled]="disabled()"
         class="qt-input w-44 text-sm"
         [class.qt-input-error]="condition().key.trim() === ''"
-        aria-label="Metadata key"
-        title="The invoking character's fact sheet — a key the character lacks never matches."
+        [attr.aria-label]="keyLabel()"
+        [attr.title]="keyTitle()"
       />
 
       <!--
@@ -209,6 +225,30 @@ export class GateChip {
     return (event.target as HTMLSelectElement).value;
   }
 
+  /** v4's per-subject placeholder, aria-label and title (`GateSection.tsx`). */
+  protected readonly isProgress = computed(() => this.condition().subject === 'progress');
+
+  protected readonly keyPlaceholder = computed(() =>
+    this.isProgress() ? 'cannon.complete' : "key on the character's fact sheet",
+  );
+
+  protected readonly keyLabel = computed(() =>
+    this.isProgress() ? 'Progress key' : 'Metadata key',
+  );
+
+  protected readonly keyTitle = computed(() =>
+    this.isProgress()
+      ? 'A progression of the invoking character, keyed "<id>.<field>" — percent, complete, remainingMs, state, started, elapsedMs, startTime, endTime, name, elapsed, remaining, quantity. A progression they do not carry never matches.'
+      : "The invoking character's fact sheet — a key the character lacks never matches.",
+  );
+
+  protected onSubject(raw: string): void {
+    this.conditionChange.emit({
+      ...this.condition(),
+      subject: raw as DraftGateCondition['subject'],
+    });
+  }
+
   protected onKey(key: string): void {
     this.conditionChange.emit({ ...this.condition(), key });
   }
@@ -258,7 +298,8 @@ export class GateChip {
           <h2 class="qt-card-title text-sm">Who may reach for it</h2>
           <p class="qt-hint">
             Tested before the deal, against the invoking character&rsquo;s
-            <code>metadata.json</code> — the only thing known before a roll exists.
+            <code>metadata.json</code> or their timed progressions — the only things known before a
+            roll exists.
           </p>
         </div>
         <div class="flex rounded overflow-hidden border" role="radiogroup" aria-label="Availability">
