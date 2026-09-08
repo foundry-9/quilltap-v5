@@ -15,12 +15,15 @@
  */
 
 import {
+  findLastOwnTurnMs,
   shouldFireCoreWhisper,
   type ShouldFireCoreWhisperOptions,
 } from '@/lib/chat/context/core-whisper-trigger';
 import type { ChatEvent, MessageEvent } from '@/lib/schemas/chat.types';
 
 interface Row {
+  /** P4.D168: this file now drives TWO exports; the Rust side keys on it. */
+  kind: 'shouldFire';
   id: string;
   options: {
     events: Array<Record<string, unknown>>;
@@ -733,6 +736,7 @@ const cases: Case[] = [
 for (const [id, opts] of cases) {
   const out = shouldFireCoreWhisper(opts as ShouldFireCoreWhisperOptions);
   rows.push({
+    kind: 'shouldFire',
     id,
     options: {
       events: opts.events as unknown as Array<Record<string, unknown>>,
@@ -747,4 +751,140 @@ for (const [id, opts] of cases) {
   });
 }
 
+
+// === P4.D168: findLastOwnTurnMs — the cadence input character progressions
+// share with the Core whisper. Same visibility filter, so a Staff whisper, a
+// silent message, an empty tool-call-only turn and a whisper targeted away all
+// fail to count; and a row whose `createdAt` will not parse is SKIPPED rather
+// than reported as a NaN the cadence would read as "never". ===
+
+interface LastTurnRow {
+  kind: 'findLastOwnTurnMs';
+  id: string;
+  events: Array<Record<string, unknown>>;
+  respondingParticipantId: string;
+  out: number | null;
+}
+
+const lastTurnRows: LastTurnRow[] = [];
+const iso = (ms: number) => new Date(ms).toISOString();
+
+const lastTurnCases: Array<[string, ChatEvent[], string]> = [
+  ['never-spoken-empty', [], P1],
+  ['never-spoken-only-others', [msg({ participantId: P2, createdAt: iso(5000) })], P1],
+  [
+    'plain-own-turn',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P2, createdAt: iso(2000) }),
+      msg({ participantId: P1, createdAt: iso(3000) }),
+    ],
+    P1,
+  ],
+  [
+    'staff-whisper-skipped-to-the-earlier-turn',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), systemSender: 'Aurora' }),
+    ],
+    P1,
+  ],
+  [
+    'targeted-away-whisper-skipped',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), targetParticipantIds: [P2] }),
+    ],
+    P1,
+  ],
+  [
+    'targeted-at-us-counts',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), targetParticipantIds: [P1, P2] }),
+    ],
+    P1,
+  ],
+  [
+    'empty-tool-call-only-turn-skipped',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), content: '' }),
+    ],
+    P1,
+  ],
+  [
+    'whitespace-only-turn-skipped',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), content: '   \n\t ' }),
+    ],
+    P1,
+  ],
+  [
+    'silent-message-skipped',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), isSilentMessage: true }),
+    ],
+    P1,
+  ],
+  [
+    'user-row-with-the-same-participant-id-not-counted',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: iso(4000), role: 'USER' }),
+    ],
+    P1,
+  ],
+  [
+    'unparseable-createdAt-skipped-to-the-earlier-row',
+    [
+      msg({ participantId: P1, createdAt: iso(1000) }),
+      msg({ participantId: P1, createdAt: 'sometime last Tuesday' as unknown as string }),
+    ],
+    P1,
+  ],
+  [
+    'every-row-unparseable-is-null',
+    [msg({ participantId: P1, createdAt: 'nope' as unknown as string })],
+    P1,
+  ],
+  [
+    'date-typed-createdAt',
+    [msg({ participantId: P1, createdAt: new Date(7000) as unknown as string })],
+    P1,
+  ],
+  [
+    'non-message-events-ignored',
+    [msg({ participantId: P1, createdAt: iso(1000) }), contextSummary(), systemEvent()],
+    P1,
+  ],
+  [
+    'core-whisper-message-is-a-staff-row',
+    [msg({ participantId: P1, createdAt: iso(1000) }), coreWhisperMsg(P1)],
+    P1,
+  ],
+  ['pre-epoch-createdAt', [msg({ participantId: P1, createdAt: iso(-5000) })], P1],
+  [
+    'only-a-staff-row-is-null',
+    [msg({ participantId: P1, createdAt: iso(4000), systemSender: 'Aurora' })],
+    P1,
+  ],
+];
+
+for (const [id, events, participantId] of lastTurnCases) {
+  lastTurnRows.push({
+    kind: 'findLastOwnTurnMs',
+    id,
+    // The WIRE shape, which is what the Rust side reads. A `Date`-typed
+    // `createdAt` serializes to the same ISO string, so v4's `instanceof Date`
+    // arm has no counterpart on this side — and the row proves they agree.
+    events: JSON.parse(JSON.stringify(events)) as Array<Record<string, unknown>>,
+    respondingParticipantId: participantId,
+    out: findLastOwnTurnMs(events, participantId),
+  });
+}
+
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');
+for (const r of lastTurnRows) process.stdout.write(JSON.stringify(r) + '\n');

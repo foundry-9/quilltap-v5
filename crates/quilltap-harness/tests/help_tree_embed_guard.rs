@@ -22,9 +22,11 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `2f4254b42`: 121 files — the P4.D163
-/// re-vendor added `help/character-subprompts.md`; 120 at `d883a5ee1`).
-const VENDORED_FILE_COUNT: usize = 121;
+/// The shipped tree at the vendored pin (v4 `25f534c0b`: 122 files — the
+/// P4.D168 re-vendor added `help/character-progressions.md` and re-took six
+/// edited files; 121 at `2f4254b42` after P4.D163's
+/// `help/character-subprompts.md`; 120 at `d883a5ee1`).
+const VENDORED_FILE_COUNT: usize = 122;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

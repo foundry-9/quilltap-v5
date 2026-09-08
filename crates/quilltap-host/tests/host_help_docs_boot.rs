@@ -4,15 +4,15 @@
 //! Three pins over a REAL fresh-provisioned instance:
 //!
 //!   1. **The boot ensure runs.** `Host::start` alone leaves `help_docs` at the
-//!      shipped tree's 121 rows with their section chunks — the
+//!      shipped tree's 122 rows with their section chunks — the
 //!      `ensure_help_docs_synced` call in `assemble` (v4's LAZY
 //!      `HelpSearch.loadFromDatabase()` path, run EAGERLY here). Removing that
 //!      call reads 0 (the lane record's mutation).
 //!   2. **A second boot writes nothing.** The `contentHash` short-circuit: every
-//!      row keeps its `updatedAt`, and the count stays 121.
+//!      row keeps its `updatedAt`, and the count stays 122.
 //!   3. **`EMBEDDING_REINDEX_ALL` re-syncs from the EMBEDDED table.** With the
 //!      table emptied by hand, one reindex-all job pumped through the host's
-//!      registry restores all 121 rows. Tests run with cwd = the crate dir,
+//!      registry restores all 122 rows. Tests run with cwd = the crate dir,
 //!      which has NO `help/` — so restoring the retired `current_dir()` walk in
 //!      the registration reads an empty tree and leaves 0 rows (the lane
 //!      record's second mutation).
@@ -79,10 +79,13 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     provision_fresh_instance(&data, PEPPER).expect("provision");
 
     let expected = embedded_help_count() as i64;
-    // 121 since the P4.D163 unit-0 re-vendor at v4 `2f4254b42` added
-    // `help/character-subprompts.md` (120 at `d883a5ee1`). The harness's
-    // `help_tree_embed_guard` pins the same count against the on-disk tree.
-    assert_eq!(expected, 121, "the vendored tree at v4 2f4254b42");
+    // 122 since the P4.D168 re-vendor at v4 `25f534c0b` added
+    // `help/character-progressions.md` (121 at `2f4254b42` after P4.D163's
+    // `help/character-subprompts.md`; 120 at `d883a5ee1`). The harness's
+    // `help_tree_embed_guard` pins the same count against the on-disk tree —
+    // this assert is the SECOND home of it, in another crate, which only a
+    // `--workspace` run reaches.
+    assert_eq!(expected, 122, "the vendored tree at v4 25f534c0b");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();

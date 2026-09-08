@@ -116,6 +116,34 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — chore(help): re-vendor the seven help pages v4 moved at `0587d1e96` and `25f534c0b`
+
+_Versions: harness 0.0.737, host 0.0.115._
+
+`help/**` has been a vendored v5 artifact since P4.9I2A: v4's tree is copied
+into the repo and embedded in the host binary, and `help_tree_equivalence`
+goes red the moment an oracle is regenerated past a v4 commit that touched it.
+Two did. `0587d1e96` (character progressions) adds
+`help/character-progressions.md` and edits five neighbours; `25f534c0b` (bug
+126) adds the hostname paragraphs to `help/database-protection.md`.
+
+All seven files are taken byte-for-byte from a worktree pinned at
+`25f534c0b`, and the whole tree is then diffed against that worktree to prove
+nothing else drifted. The count goes 121 → 122, and
+`help_tree_embed_guard`'s `VENDORED_FILE_COUNT` with it; the
+`help_tree_equivalence` header's stale "all 120 real files" prose is corrected
+while the file is open. All four help families were regenerated at the pin and
+re-run, with the changed bytes grepped in the fresh NDJSON:
+`character-progressions` and the bug-126 paragraph both present.
+
+The count itself turned out to be the expensive part. It was hard-coded in
+four places across three crates — the harness guard, `quilltap-host`'s boot
+test, and twice more in `quilltap-web`'s route test — each of them an
+integration test only `cargo test --workspace` reaches, so they surfaced one
+full gate run at a time. The `quilltap-web` site now derives the count from the
+embedded table; the two remaining literals are deliberate independent pins and
+cross-reference each other.
+
 #### 2026-09-08 — docs(progressions): record P4.D167's tip sha — the base the two stacked lanes branch from
 
 _Docs-only change._

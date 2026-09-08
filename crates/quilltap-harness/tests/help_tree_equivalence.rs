@@ -5,7 +5,7 @@
 //!
 //! One diff proves at once: the vendored `<repo>/help/` bytes, the front-matter
 //! parser, the H1/`title:` rule, the `url:` read, the content hash, the section
-//! chunker over all 120 real files, and the WALK ORDER (the `help_docs` rowid
+//! chunker over every vendored file, and the WALK ORDER (the `help_docs` rowid
 //! order — v4's `readdirSync` order on this machine, which the build script's
 //! mirrored walker must reproduce). A one-byte edit to ONE vendored file
 //! reddens it (the mutation the lane record names).

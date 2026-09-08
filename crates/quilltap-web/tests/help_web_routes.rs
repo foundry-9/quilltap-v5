@@ -18,7 +18,7 @@
 //!      `HelpChatSend` arm must answer its NAMED refusal — never a silent 200 —
 //!      AFTER v4's own prologue (a bad body still 400s, a salon chat still 404s).
 //!   5. **The boot ensure ran**: the served instance's `help_docs` grew from the
-//!      fixture's 17 rows to the embedded tree's 121, and the fixture's rows kept
+//!      fixture's 17 rows to the whole embedded tree, and the fixture's rows kept
 //!      their ids (content hashes agree).
 //!
 //! Run:
@@ -92,12 +92,21 @@ async fn help_web_edges() {
     use reqwest::Method;
     let (post, patch, delete) = (Method::POST, Method::PATCH, Method::DELETE);
 
-    // --- 5. the boot ensure: 17 fixture docs → the 121-file embedded tree ---
-    // (121 since the P4.D163 unit-0 re-vendor at v4 `2f4254b42`; 120 before.)
+    // --- 5. the boot ensure: 17 fixture docs → the embedded tree ---
+    // The count is read from the embedded table rather than transcribed. It was
+    // spelled `121` at THREE places in this file, again in `quilltap-host`'s
+    // boot test, and again in the harness guard — and P4.D168's re-vendor to
+    // 122 found them one full `--workspace` gate run at a time. Only
+    // `help_tree_embed_guard` should own a literal; everything else derives.
+    let expected_help_docs = quilltap_host::files_store::embedded_help_source_files().len();
     let (status, body) = get(&client, &addr, "/api/v1/help-docs").await;
     assert_eq!(status, 200);
     let docs = body["documents"].as_array().expect("documents");
-    assert_eq!(docs.len(), 121, "the boot ensure synced the embedded tree");
+    assert_eq!(
+        docs.len(),
+        expected_help_docs,
+        "the boot ensure synced the embedded tree"
+    );
     assert!(
         docs.iter()
             .any(|d| d["id"] == brahma_doc_id().as_str() && d["slug"] == "brahma-console"),
@@ -107,13 +116,13 @@ async fn help_web_edges() {
     let (_, bogus) = get(&client, &addr, "/api/v1/help-docs?action=bogus").await;
     assert_eq!(
         bogus["documents"].as_array().map(|a| a.len()),
-        Some(121),
+        Some(expected_help_docs),
         "unknown action → list"
     );
     let (_, empty) = get(&client, &addr, "/api/v1/help-docs?action=").await;
     assert_eq!(
         empty["documents"].as_array().map(|a| a.len()),
-        Some(121),
+        Some(expected_help_docs),
         "empty action → list"
     );
     let (status, body) = get(&client, &addr, "/api/v1/help-docs?action=chat-count").await;
