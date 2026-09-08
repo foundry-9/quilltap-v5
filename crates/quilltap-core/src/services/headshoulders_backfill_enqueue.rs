@@ -28,9 +28,14 @@
 //! `backfillCharacterVaults → migrateVaultPhysicalFiles → refreshVaultWardrobe
 //! → moveSharedWardrobeToGeneral`. v5 has no twin of that chain as a boot stage
 //! (those v4 migrations were absorbed elsewhere), so the v5 slot is the
-//! boot-repair thread `seed_built_ins`, after every repair in it — the same
-//! spawned, off-the-boot-path thread, which is what "must not block the loading
-//! screen" means here.
+//! boot-repair thread `seed_built_ins`, after every repair in it. ⚠ That
+//! thread is JOINED by `assemble`, so — a RECORDED MECHANISM DIVERGENCE (the
+//! §3 unification review) — the scan runs ON v5's boot path where v4's runs
+//! in a non-blocking `.then`. "Must not block the loading screen" in v4 is
+//! about the per-character LLM work, which both sides enqueue rather than run
+//! inline; the scan itself is one indexed read wherever v4's flag already
+//! sits, and a first-boot overlay `find_all` + N enqueues on a v5-only
+//! instance. Detaching it is a small follow-up (`host.rs`, the P4.82 block).
 //!
 //! ## The scan's whitespace rule DISAGREES with the handler's, deliberately
 //!

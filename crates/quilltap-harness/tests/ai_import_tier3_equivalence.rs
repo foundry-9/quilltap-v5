@@ -81,6 +81,8 @@
 //! the baseline — the sweep driver's job (`recipe_sweep.py --run
 //! ai_import_tier3_equivalence --v4 <pin>`), never a path baked in here.
 
+mod common;
+
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -287,7 +289,6 @@ struct ScriptedProvider {
     calls: Mutex<Vec<Value>>,
     /// Whether each recorded call answered non-empty content — v4 logs an
     /// `AI_IMPORT` row only AFTER its `if (!response?.content) throw` (P4.86).
-    contentful: Mutex<Vec<bool>>,
     case: String,
 }
 
@@ -314,12 +315,6 @@ impl CompletionProvider for ScriptedProvider {
             i
         };
         let scripted = self.script.get(index).cloned();
-        self.contentful
-            .lock()
-            .unwrap()
-            .push(scripted.as_ref().is_some_and(|(content, throws)| {
-                throws.is_none() && content.as_deref().is_some_and(|c| !c.is_empty())
-            }));
         let case = self.case.clone();
         let provider = provider.to_string();
         let base_url = base_url.map(str::to_string);
@@ -399,11 +394,19 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
+    // A fresh llm-logs partition per case (the §3 unification review of the
+    // generator follow-ups round): item 10's `llmLogCalls` compares the rows
+    // v5's OWN `log_llm_call` wrote against v4's recorded `logLLMCall`
+    // arguments — which is impossible with the `None` this family used to
+    // pass (the v5 leg was a harness-side derivation from the scripted
+    // provider, so it never observed the port). P4.85's shape.
+    let llm_logs = scratch.join("llmlogs.db");
+    common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
-            llm_logs: None,
+            llm_logs: Some(llm_logs),
         },
         &spec.test_pepper_base64,
     )
@@ -718,7 +721,6 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
             .collect(),
         next: Mutex::new(0),
         calls: Mutex::new(Vec::new()),
-        contentful: Mutex::new(Vec::new()),
         case: c.name.clone(),
     });
     let driver: Arc<dyn GeneratorsWizardDriver> = Arc::new(TestDriver {
@@ -782,18 +784,24 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
     };
     // v4 `callLLM`: one `logLLMCall({type: 'AI_IMPORT', provider, modelName})`
     // per call that RETURNED content, gated on a truthy userId + provider.
-    let llm_log_calls: Vec<Value> = calls
-        .iter()
-        .zip(completion.contentful.lock().unwrap().iter())
-        .filter(|(_, contentful)| **contentful)
-        .map(|(call, _)| {
-            json!({
-                "type": quilltap_core::generators::ai_import::LOG_TYPE_AI_IMPORT,
-                "provider": call["provider"],
-                "modelName": call["model"],
-            })
+    // The v5 leg is what `log_llm_call` actually WROTE to this case's fresh
+    // llm-logs partition, in insert order — never a derivation from the
+    // scripted provider (the §3 unification review's catch: a derived leg
+    // measured the harness's model of v4's gate, not the port's).
+    let llm_log_calls: Vec<Value> = db
+        .read_llm_logs(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT type, provider, modelName FROM llm_logs ORDER BY rowid")?;
+            let rows = stmt.query_map([], |r| {
+                Ok(json!({
+                    "type": r.get::<_, String>(0)?,
+                    "provider": r.get::<_, String>(1)?,
+                    "modelName": r.get::<_, String>(2)?,
+                }))
+            })?;
+            rows.collect::<Result<Vec<Value>, _>>().map_err(Into::into)
         })
-        .collect();
+        .expect("read the case's llm_logs rows");
 
     // The cross-family importability proof (the order's tier-2 item 8): the
     // assembled `result` is a body `systemImportExecute` accepts — feed the

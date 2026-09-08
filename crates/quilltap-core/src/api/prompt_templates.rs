@@ -469,6 +469,12 @@ pub async fn prompt_template_create(db: &Db, user_id: &str, body: &Value) -> Res
     };
     if let Err(e) = db
         .write(move |w| {
+            // v4's `_create` goes through `getCollection()` → `ensureCollection`
+            // (`base.repository.ts:100-114`, `:345`): a POST on an instance that
+            // has never had the table answers 201, not `no such table`. The §3
+            // unification review's catch — the read paths had the ensure, the
+            // create path did not.
+            prompt_templates::ensure_prompt_templates_table(w.main().connection())?;
             prompt_templates::PromptTemplatesRepository::new(w.main().connection())
                 .create(&create, &opts)
         })

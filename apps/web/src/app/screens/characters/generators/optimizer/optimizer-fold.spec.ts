@@ -5,6 +5,7 @@ import {
   DEFAULT_ERROR_MESSAGE,
   NO_SUGGESTIONS_MESSAGE,
   OPTIMIZER_FOLD_INITIAL,
+  settleStreamEnd,
   type OptimizerFoldState,
 } from './optimizer-fold';
 
@@ -199,5 +200,46 @@ describe('applyOptimizerEvent — terminal branches', () => {
     const seeded: OptimizerFoldState = { ...OPTIMIZER_FOLD_INITIAL, progressSubStep: subStep };
     const state = applyOptimizerEvent(seeded, { type: 'step_start', step: 'generating' }, 'apply');
     expect(state.progressSubStep).toBe(subStep);
+  });
+});
+
+describe('settleStreamEnd — v4 useCharacterOptimizer.ts:233-238, after EVERY stream end', () => {
+  const landed = {
+    id: 'sug-9',
+    field: 'identity',
+    currentValue: 'old',
+    suggestedValue: 'new',
+    reasoning: 'r',
+  } as unknown as OptimizerFoldState['suggestions'][number];
+
+  it('an `error` terminal AFTER suggestions landed still ends at review (the error pane sits beneath)', () => {
+    const afterError: OptimizerFoldState = {
+      ...OPTIMIZER_FOLD_INITIAL,
+      phase: 'progress',
+      loading: false,
+      error: 'the vault write failed',
+      suggestions: [landed],
+    };
+    const settled = settleStreamEnd(afterError);
+    expect(settled.phase).toBe('review');
+    expect(settled.error).toBe('the vault write failed');
+    expect(settled.loading).toBe(false);
+  });
+
+  it('a suggestions-file `done` that carried suggestions ends at review (v4’s shipped quirk, reproduced — a v4 filing candidate)', () => {
+    const afterDone: OptimizerFoldState = {
+      ...OPTIMIZER_FOLD_INITIAL,
+      phase: 'suggestions-file-written',
+      loading: false,
+      suggestions: [landed],
+    };
+    expect(settleStreamEnd(afterDone).phase).toBe('review');
+  });
+
+  it('with no suggestions the phase is left where the run put it, only the spinner stops', () => {
+    const stillLoading: OptimizerFoldState = { ...OPTIMIZER_FOLD_INITIAL, phase: 'progress', loading: true };
+    const settled = settleStreamEnd(stillLoading);
+    expect(settled.loading).toBe(false);
+    expect(settled.phase).toBe('progress');
   });
 });

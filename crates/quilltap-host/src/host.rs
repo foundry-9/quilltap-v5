@@ -1363,10 +1363,19 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // `backfillCharacterVaults` and the vault file migrations, so
                 // every character already has a vault to write the result back
                 // into. v5 has no twin of that chain as a boot stage, so it
-                // sits here — after every repair, on the same spawned thread
-                // that is already off the boot path (v4 enqueues rather than
-                // generating inline precisely so per-character LLM work cannot
-                // block the loading screen).
+                // sits here — after every repair, inside `seed_built_ins`'s
+                // write closure. ⚠ RECORDED MECHANISM DIVERGENCE (the §3
+                // unification review): `seed_built_ins` JOINS its thread, so
+                // this scan runs ON the boot path and `assemble` waits for it,
+                // where v4 chains it in a non-blocking `.then`. v4 enqueues
+                // rather than generating inline precisely so per-character
+                // LLM work cannot block the loading screen — that part holds
+                // (no model call happens here); the scan itself is one
+                // indexed read on every instance v4 has ever booted (its flag
+                // is already set) and a single overlay `find_all` + N enqueues
+                // on a v5-only instance's first boot. Detaching it is a small
+                // follow-up; the host boot test's second/third-boot asserts
+                // are deterministic BECAUSE of the join.
                 //
                 // It needs BOTH connections (the scan reads characters through
                 // the vault overlay), so it lives in this mount-aware block.
@@ -1375,20 +1384,14 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // already written on every instance v4 has booted since the
                 // feature shipped. A v5 boot there scans nothing and writes
                 // nothing, by design; see the module header.
-                let backfill =
+                // The scan narrates itself (v4's `scanning` / `enqueue
+                // complete` lines); `instrumentation.ts` logs nothing after
+                // the `await`, so neither does this site.
+                let _ =
                     quilltap_core::services::headshoulders_backfill_enqueue::enqueue_headshoulders_backfill(
                         main,
                         mount_index,
                     );
-                if !backfill.already_done {
-                    tracing::info!(
-                        target: "quilltap::boot",
-                        scanned = backfill.scanned,
-                        enqueued = backfill.enqueued,
-                        skipped = backfill.skipped,
-                        "Head-and-shoulders backfill scan complete",
-                    );
-                }
                 // === end P4.82 ===
             }
             Ok(())

@@ -21,28 +21,9 @@
  */
 
 import type { CoreClient } from '../../../../core/core-client';
-import type { CoreRequest } from '../../../../core/core-contract';
+import type { PromptTemplateListRequest, PromptTemplateRecord } from '../../../../core/core-contract';
 
-/** §B — v4 `GET /api/v1/prompt-templates` → `{ templates, count }`. */
-export interface PromptTemplateRecord {
-  id: string;
-  /** Absent on a built-in (the column is NULL). */
-  userId?: string | null;
-  name: string;
-  content: string;
-  description?: string | null;
-  isBuiltIn: boolean;
-  category?: string | null;
-  modelHint?: string | null;
-  tags: string[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** §B — the request. */
-export interface PromptTemplateListRequest {
-  type: 'promptTemplateList';
-}
+export type { PromptTemplateRecord, PromptTemplateListRequest } from '../../../../core/core-contract';
 
 /**
  * v4 `fetchTemplates` — `data.templates || []`.
@@ -56,9 +37,7 @@ export interface PromptTemplateListRequest {
  * The callers keep the rest of v4's contract: `templates` unchanged on failure.
  */
 export async function fetchPromptTemplates(core: CoreClient): Promise<PromptTemplateRecord[]> {
-  // `core-contract.ts` is frozen for this lane; §B's request type is declared
-  // above and the unifier folds it in (retiring this cast) at unification.
-  const request = { type: 'promptTemplateList' } as unknown as CoreRequest;
+  const request: PromptTemplateListRequest = { type: 'promptTemplateList' };
   const data = await core.dispatchData(request);
   return (data['templates'] as PromptTemplateRecord[]) ?? [];
 }

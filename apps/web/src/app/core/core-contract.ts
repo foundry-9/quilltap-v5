@@ -4450,6 +4450,62 @@ export interface RoleplayTemplateUpdateBag {
 export interface RoleplayTemplateListRequest {
   type: 'roleplayTemplateList';
 }
+// === P4.83: the prompt-templates verbs (v4 `app/api/v1/prompt-templates/**`),
+// folded from `prompts-editor/prompt-templates.api.ts` at the generator
+// follow-ups round's unification (name-for-name against `api/types.rs`). ===
+/**
+ * One listed template — v4 `GET /api/v1/prompt-templates` → `{ templates, count }`.
+ * The wire OMITS a null column rather than sending `null` (v4's SQLite backend
+ * hydrates SQL NULL to `undefined` before Zod's `.nullable().optional()`), so a
+ * built-in carries no `userId` key and a bare user template carries no
+ * `description` / `category` / `modelHint`; the CREATE 201 body DOES send
+ * `null` (measured by `prompt_templates_routes_equivalence`, P4.83).
+ */
+export interface PromptTemplateRecord {
+  id: string;
+  /** Absent on a built-in (the column is NULL). */
+  userId?: string | null;
+  name: string;
+  content: string;
+  description?: string | null;
+  isBuiltIn: boolean;
+  category?: string | null;
+  modelHint?: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+export interface PromptTemplateListRequest {
+  type: 'promptTemplateList';
+}
+/** v4 `POST /api/v1/prompt-templates` (`createTemplateSchema`) — an absent key is
+ *  omitted, a present `null` is carried (the `double_option` tri-state). */
+export interface PromptTemplateCreateRequest {
+  type: 'promptTemplateCreate';
+  name?: unknown;
+  content?: unknown;
+  description?: unknown;
+  category?: unknown;
+  modelHint?: unknown;
+}
+export interface PromptTemplateGetRequest {
+  type: 'promptTemplateGet';
+  id: string;
+}
+export interface PromptTemplateUpdateRequest {
+  type: 'promptTemplateUpdate';
+  id: string;
+  name?: unknown;
+  content?: unknown;
+  description?: unknown;
+  category?: unknown;
+  modelHint?: unknown;
+}
+export interface PromptTemplateDeleteRequest {
+  type: 'promptTemplateDelete';
+  id: string;
+}
+// === end P4.83 ===
 export interface RoleplayTemplateCreateRequest {
   type: 'roleplayTemplateCreate';
   template: RoleplayTemplateCreateBag;
@@ -4863,6 +4919,11 @@ export interface MountPointDeleteRequest {
  */
 export type ListingSurfaceRequest =
   | RoleplayTemplateListRequest
+  | PromptTemplateListRequest
+  | PromptTemplateCreateRequest
+  | PromptTemplateGetRequest
+  | PromptTemplateUpdateRequest
+  | PromptTemplateDeleteRequest
   | RoleplayTemplateCreateRequest
   | RoleplayTemplateGetRequest
   | RoleplayTemplateUpdateRequest

@@ -88,7 +88,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
           <!-- v4 AIImportWizard.tsx:705-707 — the step name is a SECTION
                heading under the indicator, not the dialog title. -->
           <div class="mb-2">
-            <h3 class="qt-section-title">{{ stepLabel() }}</h3>
+            <h3 class="qt-heading-2">{{ stepLabel() }}</h3>
           </div>
 
           @switch (state.currentStep()) {

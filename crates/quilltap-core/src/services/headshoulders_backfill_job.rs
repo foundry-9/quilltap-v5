@@ -228,10 +228,27 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
     // `:83-85`): a failing read is the job's failure to REPORT, and only a
     // failing selection would be worth skipping over — except that, as the
     // module header measures, v4's selection cannot fail.
+    // v4's `repos.chatSettings.findByUserId` is FALLBACK-mode `safeQuery(…,
+    // null)` (`chat-settings.repository.ts:38-45`): a failing read logs
+    // `Error finding chat settings by user ID` and yields `null`, so
+    // `buildCheapLLMConfig(undefined)` is the default config and the job
+    // PROCEEDS. Only the connections read below throws (base `findByFilter`).
+    // The §3 unification review caught this arm failing the job instead —
+    // the P4.48 `safeQuery` class.
     let uid = user_id.to_string();
-    let chat_settings = db
+    let chat_settings = match db
         .read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, &uid))
-        .map_err(|e| e.to_string())?;
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(
+                user_id = %user_id,
+                error = %e,
+                "Error finding chat settings by user ID"
+            );
+            None
+        }
+    };
     let uid = user_id.to_string();
     let all_profiles = db
         .read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))

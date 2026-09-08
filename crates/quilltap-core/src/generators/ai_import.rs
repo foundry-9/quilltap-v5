@@ -1082,7 +1082,10 @@ async fn call_llm<CMP: CompletionProvider>(
     // on both, so an empty `userId` or a profile with an empty `provider`
     // writes NO log row (P4.86 tier-2 item 10). The committed fixture's
     // profile always carries a provider, so the corpus cannot exercise the
-    // closed arm — RECORDED, and pinned by the unit test below instead.
+    // closed arm — RECORDED, UNMEASURED (the §3 unification review found the
+    // "unit test below" this comment used to cite never existed); the OPEN
+    // arm is measured by `ai_import_tier3_equivalence`'s `llmLogCalls`
+    // comparand, read from v5's own llm-logs partition.
     if c.user_id.is_empty() || c.provider.is_empty() {
         return Ok(js_trim(&response.content).to_string());
     }

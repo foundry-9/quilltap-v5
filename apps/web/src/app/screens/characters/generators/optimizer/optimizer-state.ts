@@ -18,7 +18,7 @@ import {
   mergeOptimizerApplyPlan,
   type AcceptedChange,
 } from './apply-plan-builder';
-import { applyOptimizerEvent, OPTIMIZER_FOLD_INITIAL, type OptimizerFoldState } from './optimizer-fold';
+import { applyOptimizerEvent, OPTIMIZER_FOLD_INITIAL, settleStreamEnd, type OptimizerFoldState } from './optimizer-fold';
 
 /**
  * Modal-scoped state (v4 `useCharacterOptimizer.ts`, transcribed as an
@@ -120,18 +120,10 @@ export class OptimizerState {
           (terminal ?? {}) as unknown as Record<string, unknown>,
           this.outputMode,
         );
-        // v4 `useCharacterOptimizer.ts:233-238`: after the read loop ends, if
-        // no `done` (or `error`) frame ever arrived, stop the spinner anyway
-        // and show whatever suggestions did land. `applyOptimizerEvent` clears
-        // `loading` on both terminals, so a still-loading state here means
-        // neither was applied — which is exactly v4's condition. The phase is
-        // left alone when nothing arrived, as v4 leaves it.
-        if (!next.loading) return next;
-        return {
-          ...next,
-          loading: false,
-          phase: next.suggestions.length > 0 ? 'review' : next.phase,
-        };
+        // v4 `useCharacterOptimizer.ts:233-238` runs after EVERY stream end —
+        // `done`, `error` or nothing — never gated on the terminal (see
+        // `settleStreamEnd`'s doc for the two shapes a `loading` gate hid).
+        return settleStreamEnd(next);
       });
     } catch (err) {
       this.fold.update((s) => ({

@@ -364,5 +364,8 @@ async fn the_optimizer_stream_is_v4s_recorded_bytes() {
 /// The wizard edge (`POST /api/v1/characters?action=ai-wizard-stream`).
 #[tokio::test]
 async fn the_wizard_stream_is_v4s_recorded_bytes() {
-    item9("QT_ORACLE_CHARACTER_WIZARD", GeneratorKind::Wizard, 3).await;
+    // The floor was 3 at the lane close; the §3 unification review raised it
+    // to the corpus's shape (28 streamed rows at `2f4254b42`) so a corpus that
+    // shrank to a handful of streams cannot leave this vacuous.
+    item9("QT_ORACLE_CHARACTER_WIZARD", GeneratorKind::Wizard, 20).await;
 }

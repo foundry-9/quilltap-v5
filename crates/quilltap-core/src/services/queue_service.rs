@@ -1503,8 +1503,22 @@ mod activity_snapshot_tests {
 /// implementation to serve that one caller, so the file's own idiom won and the
 /// deviation is recorded (`an-orders-prescribed-shape-may-fight-the-files-idiom`).
 ///
-/// A dedupe read that ERRORS warns and falls through to the enqueue (v4's
-/// try/catch: double work beats none).
+/// A dedupe read that ERRORS logs and falls through to the enqueue. v4's own
+/// `catch` (`queue-service.ts:635-640`, the `[HeadShouldersBackfill] Failed to
+/// check for existing jobs during enqueue` warn) is DEAD CODE: both reads are
+/// `safeQuery(…, [])` (`background-jobs.repository.ts:101-118`), which never
+/// throws — it logs `Error finding background jobs by user ID` itself and
+/// answers `[]`, so v4 dedupes against nothing and enqueues. v5 has no
+/// `safeQuery` layer, so the `Err` arm here renders THAT line (the sentence
+/// v4 can actually produce) and falls through the same way; the dead warn's
+/// sentence is kept as [`DEDUPE_LOOKUP_WARN_UNREACHABLE`] for the record
+/// (the §3 unification review; the `SELECT_FAILED_UNREACHABLE` precedent).
+/// v4's dead `catch` sentence (`queue-service.ts:636`) — unreachable in v4
+/// because `findByUserId` is fallback-mode `safeQuery`; recorded, never emitted.
+#[allow(dead_code)]
+pub const DEDUPE_LOOKUP_WARN_UNREACHABLE: &str =
+    "[HeadShouldersBackfill] Failed to check for existing jobs during enqueue";
+
 pub fn enqueue_character_headshoulders_backfill_blocking(
     main: &rusqlite::Connection,
     user_id: &str,
@@ -1542,11 +1556,12 @@ pub fn enqueue_character_headshoulders_backfill_blocking(
             }
         }
         Err(e) => {
-            tracing::warn!(
+            tracing::error!(
+                user_id = %user_id,
                 error = %e,
-                "[HeadShouldersBackfill] Failed to check for existing jobs during enqueue"
+                "Error finding background jobs by user ID"
             );
-            // Fall through and enqueue anyway.
+            // Fall through and enqueue anyway (v4 dedupes against `[]`).
         }
     }
 

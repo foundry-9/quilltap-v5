@@ -247,3 +247,38 @@ async fn a_bare_instance_gets_the_table_and_the_catalogue() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["count"], 21);
 }
+
+/// The same bare instance, but a v4-shaped client whose FIRST-ever prompt-
+/// templates op is a POST: v4's `_create` runs `ensureCollection` too
+/// (`base.repository.ts:100-114`), so the create answers 201 and the list that
+/// follows seeds the 21 built-ins beside it (22). Pre-fix v5 answered the create
+/// with `no such table` → 500 (the §3 unification review's catch).
+#[tokio::test]
+async fn a_bare_instance_creates_through_post_first() {
+    let base = common::materialize_bare_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let (status, body) = send(
+        &client,
+        &addr,
+        reqwest::Method::POST,
+        COLLECTION,
+        Some(r#"{"name":"First ever","content":"Made before any list."}"#),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["template"]["name"], "First ever");
+    assert_eq!(body["template"]["isBuiltIn"], false);
+
+    let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body["count"], 22,
+        "the user's template plus the 21 built-ins the first list seeds — {body}"
+    );
+}

@@ -243,6 +243,29 @@ describe('CharacterDetailsTab — template replace/restore toasts', () => {
     expect(toasts()).toEqual([{ type: 'success', message: 'No replacements needed' }]);
   });
 
+  it('an error with an EMPTY message takes the helper\'s fixed sentence (the one shape the old inline fan-out could not produce)', async () => {
+    // `applyCharacterFieldUpdates` guards `err.message ? err.message : default`
+    // (v4 `apply-character-field-updates.ts`); the retired inline copy pushed
+    // `err.message` bare, so an `Error('')` used to join as an empty string.
+    // Restoring the inline fan-out reddens THIS case and nothing else.
+    const fixture = render(
+      {
+        dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+          if (req.type === 'characterUpdate') {
+            throw new Error('');
+          }
+          return {};
+        }) as CoreClient['dispatchData'],
+      },
+      character({ identity: 'Bertie is a gentleman.' }),
+    );
+
+    replaceCharButton(fixture).click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([{ type: 'error', message: 'The character could not be updated.' }]);
+  });
+
   it('joins collected partial-failure messages into one error toast', async () => {
     const fixture = render(
       {
@@ -270,9 +293,10 @@ describe('CharacterDetailsTab — template replace/restore toasts', () => {
   it('routes both prompt and main updates through the shared helper, prompts FIRST', async () => {
     // The helper's order is v4's: prompt refinements, then prompt creations,
     // then the main PUT — the character PUT body strips `systemPrompts`, so
-    // they cannot ride it. Replacing the helper call with the old inline
-    // fan-out (which never dispatched `characterPromptUpdate` for this tab)
-    // reddens the `characterPromptUpdate` assertion.
+    // they cannot ride it. (The old inline fan-out dispatched the same two
+    // verbs in the same order — the §3 unification review found the lane's
+    // "never dispatched" claim false and this case unable to tell the two
+    // apart; the discriminating pin is the empty-message case below.)
     const seen: string[] = [];
     const fixture = render(
       {

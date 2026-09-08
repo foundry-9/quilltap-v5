@@ -158,3 +158,24 @@ export function applyOptimizerEvent(
       return state;
   }
 }
+
+/**
+ * v4 `useCharacterOptimizer.ts:233-238` — what runs after the read loop ENDS,
+ * unconditionally, whether the last frame was `done`, `error`, or nothing:
+ * `setLoading(false); if (suggestionsRef.current.length > 0) setPhase('review')`.
+ * Suggestions accumulate from `substep_complete` / `step_complete generating`
+ * BEFORE either terminal, so an `error` that follows landed suggestions still
+ * ends at `review` (the error pane renders beneath it), and — v4's shipped
+ * quirk, reproduced and RECORDED as a v4 filing candidate — a suggestions-file
+ * `done` that carried suggestions ends at `review` too, over the
+ * `suggestions-file-written` pane the `done` arm just chose. The §3
+ * unification review of the generator follow-ups round found the first draft
+ * gating this on `loading`, which hid both shapes.
+ */
+export function settleStreamEnd(state: OptimizerFoldState): OptimizerFoldState {
+  return {
+    ...state,
+    loading: false,
+    phase: state.suggestions.length > 0 ? 'review' : state.phase,
+  };
+}
