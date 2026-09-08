@@ -116,6 +116,24 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — docs(p4.85): the lane gate record
+
+_No crate versions bumped._
+
+The P4.85 lane's verification gate appended to `status-log.md`: fmt, both
+clippy feature sets, build and release clean; `cargo test --workspace` 529
+binaries / 2,991 passed / 0 failed / 1 ignored, exit 0, zero `SKIP:` lines,
+with every family the lane touched confirmed RUN by name; four neighbouring
+families regenerated fresh at the baseline and green; the sweep driver's
+self-test and the spelling guard clean.
+
+Also records the one gate incident and its diagnosis: a first full run
+ended 2,988/3 with all three failures in one binary at the same fixture
+`unwrap`, every one a SQLite `disk I/O error` (extended code 1034) with
+free space at 23 GB and three lanes building — the disk-exhaustion mode,
+not a port defect. Re-run by name with headroom restored: 3 passed, and
+the confirming full run is green.
+
 #### 2026-09-07 — test(harness): ground item 9 by re-decoding the oracle's own rawSse
 
 _Versions: core 0.0.838, harness 0.0.729._

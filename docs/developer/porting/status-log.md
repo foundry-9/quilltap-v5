@@ -114297,3 +114297,45 @@ python3 harness/tools/recipe_sweep.py --run image_generate_route_equivalence
 The new `generator_sse_wire` tests are not in a recipe (they read two families'
 NDJSONs from `QT_ORACLE_CHARACTER_OPTIMIZER` / `QT_ORACLE_CHARACTER_WIZARD`);
 their run line is in that file's module header.
+
+### The lane gate (2026-09-07)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` and the same with `--features quilltap-core/native-transport`
+both clean; `cargo build --workspace` and the release build both exit 0.
+
+`cargo test --workspace --no-fail-fast` with the lane's seven-variable env
+block (`QT_ORACLE_CHARACTER_OPTIMIZER`, `QT_ORACLE_CHARACTER_WIZARD`,
+`QT_ORACLE_EXTERNAL_PROMPT`, `QT_ORACLE_CHAT_DELETE`,
+`QT_ORACLE_IMGGEN_ROUTE`, `QT_FIXTURE_IMGGEN_MAIN`,
+`QT_FIXTURE_IMGGEN_MOUNT`): **529 test binaries / 2,991 passed / 0 failed /
+1 ignored — exit 0, ZERO `SKIP:` lines.** Every family this lane touched is
+confirmed RUN by name: `character_optimizer_matches_oracle`,
+`character_wizard_matches_oracle`, `external_prompt_matches_oracle`,
+`image_generate_route_matches_oracle`, `chat_delete_matches_oracle`, the
+three route-line pins, both `_stream_is_v4s_recorded_bytes` tests, both
+`generator_sse::tests::a_closed_channel_*` tests, the four
+`api::generators_detail::tests::*`, and
+`the_generator_actions_resolve_over_the_live_assembly`. Item 9's counts
+(hidden on a PASS — `tier-r-case-count-hidden-on-pass`) re-read with
+`--nocapture`: 28 wizard + 24 optimizer recorded streams matched byte for
+byte.
+
+Four neighbouring families that read the surfaces this lane changed were
+also regenerated fresh at the baseline and run green:
+`chat_delete_equivalence` (salon's stop-impersonate),
+`character_rename_equivalence` (the rename serialization arm),
+`image_profiles_routes_equivalence` and `image_profiles_tier2_equivalence`.
+`recipe_sweep.py --self-test`: 0 failures. `check_spelling.py`: clean.
+`git diff main -- apps/web/` EMPTY, as §R.6 requires.
+
+**One gate incident, run to ground and not a port defect.** The first
+full-workspace run ended 2,988/3 with all three failures in ONE binary
+(`quilltap-web --test files_write_routes`), all at the same fixture
+`unwrap` in `tests/common/mod.rs:74`, all
+`SqliteFailure(SystemIoFailure, extended 1034, "disk I/O error")` — the
+disk-exhaustion mode the carryout rules name, with free space at 23 GB and
+three lanes building at once. Re-run by name with headroom restored: 3
+passed. The confirming full run above (44 GB free) is green.
+
+**Versions:** core 0.0.838, harness 0.0.729, web 0.0.130.
