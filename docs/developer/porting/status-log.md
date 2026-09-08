@@ -115991,3 +115991,32 @@ there. No `--version` comparand exists in Tier R either way.
   in the CLI (`db_cmd.rs`), on raw JSON, and REMOVES the file so the next
   startup acquires fresh — the same shape as v4's own `--lock-override`, which
   `25f534c0b` also leaves alone. Recorded as a structural difference.
+
+### P4.D166 gate (2026-09-08, branch `claude/instance-lock-hostname-bug-e3c50f`)
+
+Drift-ledger §2 probe re-run immediately before the gate: PASS (v4 on `main`,
+tree clean, both logs empty).
+
+- `cargo fmt --all --check` — 0
+- `cargo clippy --workspace --all-targets -- -D warnings` — 0
+- the same with `--features quilltap-core/native-transport` — 0
+- `cargo build --workspace` — 0; `cargo build --release --workspace` — 0
+- `cargo test --workspace` with `QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d166-25f534c0b`
+  and `QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node` — **exit 0, 538 test
+  binaries / 3,026 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines.** Tier R
+  is positively confirmed to have RUN inside the gate by its per-binary
+  duration (`cli_differential` 393.98 s; a skip is 0.00 s), and by name with
+  `-- --nocapture`: **223 cases, 0 failures.**
+- `git diff main -- apps/web/ help/ crates/quilltap-core/` EMPTY.
+
+Versions: host 0.0.115, cli 0.0.19, web 0.0.132. `quilltap-harness` was NOT
+bumped — the lane touched no harness source (the lock's differential is Tier R
+plus the mirrored unit tests, exactly as the order's differential requirement
+states).
+
+**A near-miss worth recording** (`mutation-proof-revert-by-file-backup`): a
+`git checkout crates/quilltap-host/src/lock.rs` used to revert a mutation
+destroyed the whole uncommitted unit, not just the mutation. It was restored
+from the file backup and the two edits made after that backup were re-applied.
+The memory note already names this; the lesson is that it bites when the
+mutation is reverted in the SAME command as an unrelated cleanup.
