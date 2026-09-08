@@ -63,6 +63,10 @@ use quilltap_core::model::completion::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+// P4.85 item 10: `materialize_llm_logs` — an llm-logs partition beside the
+// fixture pair, so the runners' `logLLMCall` twin has somewhere to write.
+mod common;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -131,10 +135,14 @@ struct Corpus {
 
 #[derive(Deserialize)]
 struct OracleRow {
+    // (this row is NOT `rename_all = "camelCase"` — the new field says so itself)
     name: String,
     status: i64,
     body: Value,
     calls: Vec<Value>,
+    /// P4.85 item 10 — `{type: count}`, zeroes dropped.
+    #[serde(rename = "llmLogCounts")]
+    llm_log_counts: Value,
 }
 
 fn oracle_dir() -> PathBuf {
@@ -303,16 +311,53 @@ fn fresh_pair(tag: &str) -> (Db, PathBuf, String) {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
+    // A fresh llm-logs partition per case: item 10 compares what each runner's
+    // `log_llm_call` wrote against the oracle's own per-case delta, which is
+    // impossible with the `None` this family used to pass.
+    let llm_logs = scratch.join("llmlogs.db");
+    common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
-            llm_logs: None,
+            llm_logs: Some(llm_logs),
         },
         &spec.test_pepper_base64,
     )
     .expect("open fixture pair");
     (db, scratch, spec.user_id)
+}
+
+/// **P4.85 item 10 — the `llm_logs` rows this case wrote.**
+///
+/// The oracle dumps `SELECT type, COUNT(*) … GROUP BY type` off its scratch
+/// llm-logs partition as a per-case DELTA; v5 opens a FRESH one per case, so
+/// the totals ARE the delta. Zero counts are dropped on both sides, and v4
+/// creates the table lazily on its first write, so a case that logged nothing
+/// answers `{}` either way.
+fn llm_log_counts(db: &Db) -> Value {
+    db.read_llm_logs(|c| {
+        let present: i64 = c.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='llm_logs'",
+            [],
+            |r| r.get(0),
+        )?;
+        if present == 0 {
+            return Ok(json!({}));
+        }
+        let mut stmt =
+            c.prepare("SELECT type, COUNT(*) AS n FROM llm_logs GROUP BY type ORDER BY type")?;
+        let mut out = serde_json::Map::new();
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        for row in rows {
+            let (t, n) = row?;
+            if n != 0 {
+                out.insert(t, json!(n));
+            }
+        }
+        Ok(Value::Object(out))
+    })
+    .expect("read the llm-logs counts")
 }
 
 async fn apply_seed(db: &Db, seed: &Seed) {
@@ -512,15 +557,19 @@ async fn external_prompt_matches_oracle() {
         let (status, body) = to_status_body(response);
         let calls = provider.calls.lock().unwrap().clone();
         calls_total += calls.len();
+        let counts = llm_log_counts(&db);
         drop(driver);
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
 
-        let got =
-            normalize(json!({ "name": case.name, "status": status, "body": body, "calls": calls }));
-        let want = normalize(
-            json!({ "name": o.name, "status": o.status, "body": o.body, "calls": o.calls }),
-        );
+        let got = normalize(json!({
+            "name": case.name, "status": status, "body": body,
+            "calls": calls, "llmLogCounts": counts,
+        }));
+        let want = normalize(json!({
+            "name": o.name, "status": o.status, "body": o.body,
+            "calls": o.calls, "llmLogCounts": o.llm_log_counts,
+        }));
         if got != want {
             failed.push(format!("{}:\n{}", case.name, first_diff(&got, &want)));
         }

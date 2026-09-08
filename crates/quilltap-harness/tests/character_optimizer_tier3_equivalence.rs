@@ -74,6 +74,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
+// P4.85 item 10: `materialize_llm_logs` — an llm-logs partition beside the
+// fixture pair, so the runners' `logLLMCall` twin has somewhere to write.
+mod common;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -123,10 +127,15 @@ struct OracleRow {
     name: String,
     status: i64,
     body: Value,
+    /// P4.85 item 9 — the response body VERBATIM (`null` when v4 answered a
+    /// JSON refusal rather than a stream).
+    raw_sse: Option<String>,
     events: Vec<Value>,
     calls: Vec<Value>,
     suggestions_files: Vec<Value>,
     log_lines: Vec<Value>,
+    /// P4.85 item 10 — `{type: count}`, zeroes dropped.
+    llm_log_counts: Value,
 }
 
 fn oracle_dir() -> PathBuf {
@@ -331,11 +340,16 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
+    // A fresh llm-logs partition per case: item 10 compares what each runner's
+    // `log_llm_call` wrote against the oracle's own per-case delta, which is
+    // impossible with the `None` this family used to pass.
+    let llm_logs = scratch.join("llmlogs.db");
+    common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
-            llm_logs: None,
+            llm_logs: Some(llm_logs),
         },
         &spec.test_pepper_base64,
     )
@@ -344,6 +358,38 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, PathBuf) {
 }
 
 /// The oracle's `SUGGESTIONS_SQL` over the mount partition.
+/// **P4.85 item 10 — the `llm_logs` rows this case wrote.**
+///
+/// The oracle dumps `SELECT type, COUNT(*) … GROUP BY type` off its scratch
+/// llm-logs partition as a per-case DELTA; v5 opens a FRESH one per case, so
+/// the totals ARE the delta. Zero counts are dropped on both sides, and v4
+/// creates the table lazily on its first write, so a case that logged nothing
+/// answers `{}` either way.
+fn llm_log_counts(db: &Db) -> Value {
+    db.read_llm_logs(|c| {
+        let present: i64 = c.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='llm_logs'",
+            [],
+            |r| r.get(0),
+        )?;
+        if present == 0 {
+            return Ok(json!({}));
+        }
+        let mut stmt =
+            c.prepare("SELECT type, COUNT(*) AS n FROM llm_logs GROUP BY type ORDER BY type")?;
+        let mut out = serde_json::Map::new();
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        for row in rows {
+            let (t, n) = row?;
+            if n != 0 {
+                out.insert(t, json!(n));
+            }
+        }
+        Ok(Value::Object(out))
+    })
+    .expect("read the llm-logs counts")
+}
+
 fn suggestions_files(db: &Db, character_id: &str) -> Vec<Value> {
     let cid = character_id.to_string();
     let mount_id = db
@@ -560,6 +606,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
     };
 
     let files = suggestions_files(&db, &c.character_id);
+    let counts = llm_log_counts(&db);
     let log_lines: Vec<Value> = lines
         .iter()
         .filter(|l| l.contains("[CharacterOptimizer]"))
@@ -579,6 +626,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         "calls": calls,
         "suggestionsFiles": files,
         "logLines": log_lines,
+        "llmLogCounts": counts,
     })
 }
 
@@ -637,6 +685,7 @@ fn character_optimizer_matches_oracle() {
             "calls": want_row.calls,
             "suggestionsFiles": want_row.suggestions_files,
             "logLines": want_row.log_lines,
+            "llmLogCounts": want_row.llm_log_counts,
         });
         let (g, w) = (normalize(got), normalize(want));
         if g != w {

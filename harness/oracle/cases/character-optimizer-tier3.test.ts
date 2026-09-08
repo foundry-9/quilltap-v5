@@ -27,8 +27,16 @@
  *     the memory-weight decay, `Date.now()` durations).
  *   - `ensureProcessorRunning` no-op'd (no jobs on this path).
  *
- * `logLLMCall` stays REAL and writes to the scratch data dir's llm-logs DB —
- * not dumped (recorded). The four `[CharacterOptimizer]` log lines the port
+ * P4.85 item 9: each row also carries `rawSse` — the response body VERBATIM,
+ * beside the decoded `events`, so the K0 re-framer's framing is diffed rather
+ * than thrown away by the decode. Item 10: `llmLogCounts` is the per-case DELTA
+ * of `SELECT type, COUNT(*) … GROUP BY type` over the llm-logs DB, so the two
+ * `CHARACTER_OPTIMIZER` rows are a comparand rather than a recorded aside.
+ *
+ * `logLLMCall` is UN-MOCKED per case (jest.setup no-ops the whole module for
+ * every jest run) and writes to the scratch data dir's llm-logs DB —
+ * dumped as the per-case `llmLogCounts` delta above. The four
+ * `[CharacterOptimizer]` log lines the port
  * pins are captured by wrapping the logger.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
@@ -153,6 +161,15 @@ async function runCase(
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // P4.85 item 10 — UN-MOCK the logger. `jest.setup.ts:379` replaces the whole
+  // `llm-logging.service` module with no-op `jest.fn()`s for every jest run, so
+  // `logLLMCall` wrote NOTHING here and this file's header used to claim the
+  // opposite (measured: the scratch llm-logs partition had zero tables after a
+  // full run). With the real module in place the runner's rows land in that
+  // partition and `llmLogCounts` below is a comparand instead of a fiction.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service'),
+  );
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
@@ -274,6 +291,7 @@ async function runCase(
 
   await initializeDatabase();
   const repos = getRepositories();
+  const llmLogsBefore = await llmLogTotals();
 
   const loggerModule = (await import('@/lib/logger')) as { logger: Record<string, (...a: unknown[]) => unknown> };
   const spies: Array<{ mockRestore: () => void }> = [];
@@ -302,6 +320,7 @@ async function runCase(
     const status = response.status;
     const contentType = response.headers.get('content-type') ?? '';
     let body: unknown = null;
+    let rawSse: string | null = null;
     const events: unknown[] = [];
     if (contentType.startsWith('text/event-stream') && response.body) {
       const decoder = new TextDecoder();
@@ -314,6 +333,11 @@ async function runCase(
         if (value) buffered += decoder.decode(value, { stream: true });
       }
       buffered += decoder.decode();
+      // P4.85 item 9: the RAW stream, kept beside the decoded `events`. The
+      // decode below throws v4's framing away, and the framing is exactly what
+      // the K0 re-framer ports — `data: ${JSON.stringify(event)}\n\n` per
+      // event, no `event:` name, no `id:`, no keep-alive comments.
+      rawSse = buffered;
       for (const line of buffered.split('\n')) {
         const t = line.trim();
         if (t.startsWith('data:')) {
@@ -332,7 +356,8 @@ async function runCase(
     const midb = getRawMountIndexDatabase();
     const suggestionsFiles = mountId && midb ? midb.prepare(SUGGESTIONS_SQL).all(mountId) : [];
 
-    return { name: c.name, status, body, events, calls, suggestionsFiles, logLines };
+    const llmLogCounts = llmLogDelta(llmLogsBefore, await llmLogTotals());
+    return { name: c.name, status, body, rawSse, events, calls, suggestionsFiles, logLines, llmLogCounts };
   } finally {
     unfreezeClock();
     for (const spy of spies) spy.mockRestore();
@@ -340,6 +365,51 @@ async function runCase(
     closeMountIndexSQLiteClient();
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * P4.85 item 10 — the `llm_logs` rows the REAL `logLLMCall` wrote for this
+ * case.
+ *
+ * The oracle keeps `logLLMCall` REAL and points `QUILLTAP_DATA_DIR` at ONE
+ * scratch dir for the whole run, so the llm-logs partition ACCUMULATES across
+ * cases: the per-case answer is a DELTA, not a total. The settle is not
+ * optional — the optimizer `await`s its two `logLLMCall`s
+ * (`character-optimizer.service.ts:846` and `:993`), but the settle also
+ * covers the fire-and-forget writes any other layer makes on this path.
+ */
+async function llmLogTotals(): Promise<Record<string, number>> {
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const db = getRawLLMLogsDatabase();
+  if (!db) return {};
+  // v4 creates `llm_logs` LAZILY (`ensureCollection` on the first write), so a
+  // case that logged nothing has no table at all — not an empty one.
+  const present = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='llm_logs'")
+    .get();
+  if (!present) return {};
+  const rows = db
+    .prepare('SELECT type, COUNT(*) AS n FROM llm_logs GROUP BY type ORDER BY type')
+    .all() as Array<{ type: string; n: number }>;
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.type] = Number(r.n);
+  return out;
+}
+
+/** `after - before`, keeping only the types whose count actually moved. */
+function llmLogDelta(
+  before: Record<string, number>,
+  after: Record<string, number>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(after).sort()) {
+    const d = after[k] - (before[k] ?? 0);
+    if (d !== 0) out[k] = d;
+  }
+  return out;
 }
 
 async function main(): Promise<void> {

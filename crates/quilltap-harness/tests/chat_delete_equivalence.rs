@@ -946,7 +946,10 @@ fn stop_impersonate_log_line() {
             Some(&json!({ "participantId": P_IMP_CLIO })),
         ));
     });
-    assert!(!has(&lines, SENTENCE), "a 404 announces nothing: {lines:#?}");
+    assert!(
+        !has(&lines, SENTENCE),
+        "a 404 announces nothing: {lines:#?}"
+    );
 
     // A participant that is not on the chat: the 404 lands before the write too.
     let db = fresh_db(&spec, "log_stop_imp_noseat");

@@ -8,6 +8,17 @@
 //! the runner resolves, and the three headers. There is no v4 twin for the
 //! MECHANISM (v4's SSE is per-route; v5's rides the one Event channel), so this
 //! is pinned against v4's recorded framing rather than diffed against a runner.
+//!
+//! **P4.85 item 9** closes that gap for the two streaming edges: the tests at
+//! the end of this file read the optimizer and wizard tier-3 oracles, replay
+//! each recorded run's OWN frames through the re-framer, and compare the body
+//! to v4's `rawSse` byte for byte. The oracles used to decode the stream into
+//! `events` and throw the framing away.
+//!
+//! Run:
+//!   QT_ORACLE_CHARACTER_OPTIMIZER=/tmp/oracle-character-optimizer.ndjson \
+//!   QT_ORACLE_CHARACTER_WIZARD=/tmp/oracle-character-wizard.ndjson \
+//!     cargo test -p quilltap-web --test generator_sse_wire
 
 use axum::body::to_bytes;
 use axum::http::StatusCode;
@@ -242,4 +253,116 @@ async fn the_forwarded_bytes_are_the_inner_event_verbatim() {
         body_string(resp).await,
         "data: {\"zeta\":1,\"alpha\":2,\"type\":\"step\",\"nested\":{\"b\":1,\"a\":2}}\n\n"
     );
+}
+
+// ---------------------------------------------------------------------------
+// P4.85 item 9 — the re-framer's bytes against v4's RECORDED stream
+// ---------------------------------------------------------------------------
+
+/// One oracle row's `{name, rawSse, events}`. Every other field is the tier-3
+/// families' business.
+#[derive(serde::Deserialize)]
+struct SseRow {
+    name: String,
+    #[serde(rename = "rawSse")]
+    raw_sse: Option<String>,
+    events: Vec<Value>,
+}
+
+/// Replay one recorded run's frames through the re-framer and hand back the
+/// response body plus the three headers.
+///
+/// The dispatch yields after its first emit so the stream COMMITS on that frame
+/// and the rest ride the pump — v4's shape, and v5's production shape too (a
+/// real runner awaits its model calls, so it cannot resolve inside one poll).
+async fn replay(events: &[Value], kind: GeneratorKind) -> (AxumResponse, String) {
+    let (tx, _rx) = broadcast::channel::<Event>(8192);
+    let emitter = tx.clone();
+    let frames: Vec<Value> = events.to_vec();
+    let dispatch = async move {
+        let mut first = true;
+        for ev in frames {
+            emit(&emitter, "p1", kind, ev);
+            if std::mem::take(&mut first) {
+                tokio::task::yield_now().await;
+            }
+        }
+        Ok::<(), ()>(())
+    };
+    let resp = stream_generator(&tx, "p1".to_string(), dispatch, |r: Result<(), ()>| {
+        r.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, json!({"error": "no"})))
+    })
+    .await;
+    let headers = format!(
+        "{}|{}|{}",
+        header(&resp, "content-type"),
+        header(&resp, "cache-control"),
+        header(&resp, "connection")
+    );
+    (resp, headers)
+}
+
+/// The whole of item 9 for one family: every recorded case that v4 answered as
+/// a stream is replayed through the re-framer and its body compared to v4's
+/// `rawSse` BYTE FOR BYTE — no normalization at all, because the input events
+/// and the expected bytes come from the SAME oracle row, so anything v4 minted
+/// is identical on both sides. What is left over is the framing, which is the
+/// port: `data: <JSON>\n\n` per event, no `event:` name, no `id:`, no
+/// keep-alives, and v4's three headers.
+async fn item9(env: &str, kind: GeneratorKind, floor: usize) {
+    let Ok(path) = std::env::var(env) else {
+        eprintln!("SKIP: set {env} (see the tier-3 family's header).");
+        return;
+    };
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !text.trim().is_empty(),
+        "{path} is EMPTY — the regen truncated it before failing (ledger §5.1)"
+    );
+    let mut driven = 0usize;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let row: SseRow = serde_json::from_str(line).unwrap();
+        let Some(want) = row.raw_sse.as_deref() else {
+            // v4 answered a JSON refusal (the 404 / Zod arms), which the
+            // families already diff; there is no stream to compare.
+            continue;
+        };
+        let (resp, headers) = replay(&row.events, kind).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{}", row.name);
+        assert_eq!(
+            headers, "text/event-stream|no-cache|keep-alive",
+            "{} carried the wrong headers",
+            row.name
+        );
+        let got = body_string(resp).await;
+        assert_eq!(
+            got, want,
+            "{}: the re-framed bytes are not v4's recorded stream",
+            row.name
+        );
+        driven += 1;
+    }
+    assert!(
+        driven >= floor,
+        "{env} offered only {driven} streamed cases (floor {floor}) — a corpus \
+         that stopped streaming would make this vacuous"
+    );
+    eprintln!("item9[{env}]: {driven} recorded streams matched byte for byte");
+}
+
+/// The optimizer edge (`POST /api/v1/characters/{id}?action=optimize-stream`).
+#[tokio::test]
+async fn the_optimizer_stream_is_v4s_recorded_bytes() {
+    item9(
+        "QT_ORACLE_CHARACTER_OPTIMIZER",
+        GeneratorKind::Optimizer,
+        20,
+    )
+    .await;
+}
+
+/// The wizard edge (`POST /api/v1/characters?action=ai-wizard-stream`).
+#[tokio::test]
+async fn the_wizard_stream_is_v4s_recorded_bytes() {
+    item9("QT_ORACLE_CHARACTER_WIZARD", GeneratorKind::Wizard, 3).await;
 }

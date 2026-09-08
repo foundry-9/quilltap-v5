@@ -367,8 +367,7 @@ mod tests {
                     std::future::pending::<()>().await;
                     Ok::<(), ()>(())
                 };
-                let resp =
-                    stream_generator_from(rx, "p1".to_string(), dispatch, no_refusal).await;
+                let resp = stream_generator_from(rx, "p1".to_string(), dispatch, no_refusal).await;
                 // Draining the body drives the spawned pump to its Closed arm.
                 let bytes = to_bytes(resp.into_body(), 1 << 20).await.unwrap();
                 String::from_utf8(bytes.to_vec()).unwrap()

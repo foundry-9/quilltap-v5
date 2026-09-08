@@ -116,6 +116,46 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — test(harness): the generator SSE bytes and the `llm_logs` counts become comparands
+
+_Versions: harness 0.0.728, web 0.0.129._
+
+P4.85 item 6 — P4.9K1/K2's OPEN Tier-2 items 9 and 10, for the three
+non-import generator families.
+
+**Item 9 (the SSE bytes).** The optimizer and wizard oracles decoded the
+response stream into `events` and threw v4's framing away, so the K0
+re-framer — whose whole job is that framing — was compared by nothing. Both
+oracles now emit `rawSse`, the response body verbatim, beside `events`. Two
+new tests in `generator_sse_wire` replay each recorded run's OWN frames
+through `stream_generator` and compare the body to `rawSse` BYTE FOR BYTE,
+with no normalization at all: the events and the expected bytes come from
+the same oracle row, so anything v4 minted is identical on both sides and
+only the framing is under test. 24 optimizer streams and 28 wizard streams
+match, plus all three headers on both edges. Mutation-proven: `data: ` →
+`data:` reddens seven of the nine tests in that file. External prompt
+answers JSON, not SSE, so item 9 does not apply there — recorded.
+
+**Item 10 (the `llm_logs` counts).** The order's premise, and all three
+oracle case headers, said `logLLMCall` "stays REAL and writes to the scratch
+data dir's llm-logs DB". Measured: it does not. `jest.setup.ts:379` replaces
+the whole `llm-logging.service` module with no-op `jest.fn()`s for every
+jest run, and a full external-prompt run left that partition with **zero
+tables**. All three cases now `jest.doMock` the module back to
+`requireActual` per case (the file's own established idiom), and each row
+carries `llmLogCounts` — the per-case DELTA of `SELECT type, COUNT(*) …
+GROUP BY type`, since one scratch dir serves the whole run. v5's side opens
+a real llm-logs partition per case (it passed `llm_logs: None` before, so
+its own writes went nowhere) and compares its totals.
+
+v4's `type` strings, measured: `EXTERNAL_PROMPT`, `CHARACTER_OPTIMIZER`,
+`CHARACTER_WIZARD`. All three families are green — v5 writes the same rows —
+and all three are mutation-proven: disabling a `log_llm_call` reddens 6, 18
+and 2 cases respectively, the wizard's arithmetic discriminating 7 from 8
+(the vision call's own row).
+
+The oracle case headers' stale claim is corrected in place.
+
 #### 2026-09-07 — test(harness): the two `[Characters v1] … starting` route lines pinned
 
 _Versions: harness 0.0.727._

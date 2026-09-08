@@ -23,7 +23,12 @@
  *     same number v5's baked manifests carry).
  *   - `ensureProcessorRunning` no-op'd (no jobs on this path anyway).
  *
- * `logLLMCall` stays REAL and writes to the scratch data dir's llm-logs DB —
+ * P4.85 item 10: each row carries `llmLogCounts` — the per-case DELTA of
+ * `SELECT type, COUNT(*) … GROUP BY type` over that llm-logs DB, so the port's
+ * own `EXTERNAL_PROMPT` rows are a comparand rather than a recorded aside.
+ *
+ * `logLLMCall` is UN-MOCKED per case (jest.setup no-ops the whole module for
+ * every jest run) and writes to the scratch data dir's llm-logs DB —
  * not dumped (the committed pair has no llm-logs partition; recorded).
  *
  * Per case: the response (status + body) and the recorded canned calls.
@@ -128,6 +133,15 @@ async function runCase(
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // P4.85 item 10 — UN-MOCK the logger. `jest.setup.ts:379` replaces the whole
+  // `llm-logging.service` module with no-op `jest.fn()`s for every jest run, so
+  // `logLLMCall` wrote NOTHING here and this file's header used to claim the
+  // opposite (measured: the scratch llm-logs partition had zero tables after a
+  // full run). With the real module in place the runner's rows land in that
+  // partition and `llmLogCounts` below is a comparand instead of a fiction.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service'),
+  );
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store'),
   );
@@ -225,6 +239,7 @@ async function runCase(
 
   await initializeDatabase();
   const repos = getRepositories();
+  const llmLogsBefore = await llmLogTotals();
 
   try {
     for (const raw of c.seeds ?? []) {
@@ -245,12 +260,56 @@ async function runCase(
     })) as { status: number; json: () => Promise<unknown> };
     const status = response.status;
     const body = await response.json();
-    return { name: c.name, status, body, calls };
+    const llmLogCounts = llmLogDelta(llmLogsBefore, await llmLogTotals());
+    return { name: c.name, status, body, calls, llmLogCounts };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * P4.85 item 10 — the `llm_logs` rows each runner's REAL `logLLMCall` wrote.
+ *
+ * The oracle keeps `logLLMCall` REAL and points `QUILLTAP_DATA_DIR` at one
+ * scratch dir for the whole run, so the llm-logs partition ACCUMULATES across
+ * cases: the per-case answer is a DELTA, not a total. `logLLMCall` is
+ * fire-and-forget on this path (`external-prompt-generator.service.ts:184`
+ * chains no await), so the settle is not optional.
+ */
+async function llmLogTotals(): Promise<Record<string, number>> {
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const db = getRawLLMLogsDatabase();
+  if (!db) return {};
+  // v4 creates `llm_logs` LAZILY (`ensureCollection` on the first write), so a
+  // case that logged nothing has no table at all — not an empty one.
+  const present = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='llm_logs'")
+    .get();
+  if (!present) return {};
+  const rows = db
+    .prepare('SELECT type, COUNT(*) AS n FROM llm_logs GROUP BY type ORDER BY type')
+    .all() as Array<{ type: string; n: number }>;
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.type] = Number(r.n);
+  return out;
+}
+
+/** `after - before`, keeping only the types whose count actually moved. */
+function llmLogDelta(
+  before: Record<string, number>,
+  after: Record<string, number>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(after).sort()) {
+    const d = after[k] - (before[k] ?? 0);
+    if (d !== 0) out[k] = d;
+  }
+  return out;
 }
 
 async function main(): Promise<void> {
