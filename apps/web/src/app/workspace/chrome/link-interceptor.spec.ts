@@ -5,8 +5,16 @@
  * @vitest-environment jsdom
  */
 
-import { describe, expect, it } from 'vitest';
+import { Component, DebugElement, input } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { describe, expect, it, vi } from 'vitest';
 
+import { CoreClient } from '../../core/core-client';
+import type { CharacterListItem, EnrichedChatSummary } from '../../core/core-contract';
+import { CharacterCard } from '../../screens/characters/list/character-card';
+import { ChatCard } from '../../screens/salon/chat-card';
+import { ToastService } from '../../ui/toast.service';
 import { interpretWorkspaceLinkClick } from './link-interceptor';
 
 function anchor(attrs: Record<string, string>): HTMLAnchorElement {
@@ -143,5 +151,169 @@ describe('interpretWorkspaceLinkClick', () => {
     expect(interpretWorkspaceLinkClick(click(anchor({ href: '/chats' })))).toEqual({
       kind: 'salon-list',
     });
+  });
+});
+
+
+// ===========================================================================
+// The nested-button census (P4.84).
+//
+// `link-interceptor.ts:59-60` passes a click THROUGH when `target.closest(
+// 'button')` is inside the anchor. That rule is v5-only — v4's chat card is a
+// `<div>` whose own handler early-returns for `closest('button')`, so its
+// action controls never reach v4's interceptor as link clicks at all. v5 wraps
+// the whole card body in an `<a routerLink>`, which makes every action control
+// an anchor DESCENDANT, and the capture handler `stopImmediatePropagation()`s
+// before their own handlers can run.
+//
+// So the rule's safety rests on an unstated invariant: every clickable control
+// inside a card's anchor is a `<button>`. Nothing enforced it. This census
+// does: it renders each card and walks Angular's own `DebugElement.listeners`
+// — which report template event bindings, including those inside CHILD
+// components rendered in the anchor, where a source scan of the card's template
+// would see nothing — and refuses any `click`-bound element inside an `<a>`
+// that is not a button.
+//
+// Plant `<span (click)="…">` inside a card's anchor and this reddens.
+//
+// Measured card set (2026-09-07): the two cards whose anchor has clickable
+// descendants at all. `prospero/project-card.ts`, `home/recent-chat-item.ts`,
+// `home/home-character-card.ts` and `home/project-item.ts` were checked and
+// have NONE — their `<a>` elements carry no click-bound descendants — so they
+// are outside this census rather than silently omitted from it.
+// ===========================================================================
+
+/** Every element in the fixture that carries a template `(click)` binding. */
+function clickBound(fixture: ComponentFixture<unknown>): DebugElement[] {
+  const out: DebugElement[] = [];
+  const walk = (de: DebugElement): void => {
+    if (de.listeners.some((l) => l.name === 'click')) out.push(de);
+    for (const child of de.children) walk(child);
+  };
+  walk(fixture.debugElement);
+  return out;
+}
+
+/** Those of them that sit INSIDE an anchor — the interceptor's blast radius. */
+function insideAnchor(des: DebugElement[]): DebugElement[] {
+  return des.filter((de) => {
+    const el = de.nativeElement as HTMLElement | null;
+    return !!el?.parentElement?.closest?.('a');
+  });
+}
+
+function chatSummary(): EnrichedChatSummary {
+  return {
+    id: 'c1',
+    title: 'A conversation',
+    contextSummary: null,
+    createdAt: '2024-03-04T00:00:00.000Z',
+    updatedAt: '2026-08-30T00:00:00.000Z',
+    lastMessageAt: null,
+    participants: [],
+    tags: [],
+    project: { id: 'proj1', name: 'The Expedition' },
+    storyBackground: null,
+    conciergeState: 'monitored',
+    dangerCategories: [],
+    chatType: 'salon',
+    scriptoriumStatus: 'none',
+  } as unknown as EnrichedChatSummary;
+}
+
+function characterItem(): CharacterListItem {
+  return {
+    id: 'ch1',
+    name: 'Perpetua',
+    title: null,
+    description: null,
+    avatarUrl: null,
+    defaultImageId: null,
+    defaultImage: null,
+    isFavorite: false,
+    controlledBy: 'llm',
+    carinaEnabled: false,
+    archivedAt: null,
+    tags: [],
+    _count: { chats: 0 },
+  } as unknown as CharacterListItem;
+}
+
+describe('the interceptor’s nested-button rule — the card census', () => {
+  it('every click-bound element inside the chat card’s anchor is a <button>', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ChatCard],
+      providers: [
+        provideRouter([]),
+        { provide: CoreClient, useValue: { renderConversation: vi.fn() } },
+        { provide: ToastService, useValue: { showSuccess: vi.fn(), showError: vi.fn() } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ChatCard);
+    fixture.componentRef.setInput('chat', chatSummary());
+    fixture.componentRef.setInput('deletable', true);
+    fixture.componentRef.setInput('removable', true);
+    fixture.detectChanges();
+
+    // The premise the rule rests on: the card body really IS one big anchor.
+    const anchor = (fixture.nativeElement as HTMLElement).querySelector('a');
+    expect(anchor).toBeTruthy();
+
+    const inside = insideAnchor(clickBound(fixture));
+    // Not a vacuous pass: with both optional actions on, there are controls in
+    // there to judge (remove, copy-link, delete).
+    expect(inside.length).toBeGreaterThanOrEqual(3);
+    expect(
+      inside
+        .map((de) => (de.nativeElement as HTMLElement).tagName)
+        .filter((tag) => tag !== 'BUTTON'),
+    ).toEqual([]);
+  });
+
+  it('every click-bound element inside the character card’s anchors is a <button>', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [CharacterCard],
+      providers: [provideRouter([])],
+    });
+    const fixture = TestBed.createComponent(CharacterCard);
+    fixture.componentRef.setInput('character', characterItem());
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('a')).toBeTruthy();
+    expect(
+      insideAnchor(clickBound(fixture))
+        .map((de) => (de.nativeElement as HTMLElement).tagName)
+        .filter((tag) => tag !== 'BUTTON'),
+    ).toEqual([]);
+  });
+
+  it('the census SEES a planted non-button control (the guard’s own guard)', () => {
+    // Without this, a census that silently found nothing would look identical
+    // to a census that works.
+    @Component({
+      selector: 'qt-planted-card',
+      template: `
+        <a href="/salon/c1">
+          <span (click)="hit = hit + 1">a span nobody made a button</span>
+          <button type="button" (click)="hit = hit + 1">a proper one</button>
+        </a>
+      `,
+    })
+    class PlantedCard {
+      hit = 0;
+      readonly unusedInput = input<string>('');
+    }
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [PlantedCard] });
+    const fixture = TestBed.createComponent(PlantedCard);
+    fixture.detectChanges();
+
+    const offenders = insideAnchor(clickBound(fixture))
+      .map((de) => (de.nativeElement as HTMLElement).tagName)
+      .filter((tag) => tag !== 'BUTTON');
+    expect(offenders).toEqual(['SPAN']);
   });
 });

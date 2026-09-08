@@ -649,6 +649,30 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — test(spa): a census for the link interceptor's nested-button rule
+
+_Versions: SPA 0.5.679._
+
+`link-interceptor.ts:59-60` passes a click through when the clicked button is
+inside the anchor. The rule is v5-only — v4's chat card is a `<div>` whose own
+handler early-returns for `closest('button')`, so its action controls never
+reach v4's interceptor as link clicks — and its safety rests on an unstated
+invariant nothing enforced: every clickable control inside a card's anchor is a
+`<button>`. Without it the capture handler `stopImmediatePropagation()`s first
+and the control silently opens the chat instead of doing its job.
+
+The census renders each card and walks Angular's own `DebugElement.listeners`,
+so it sees template click bindings inside CHILD components rendered in the
+anchor too, where a scan of the card's own template would see nothing. A
+planted `<span (click)>` reddens it, and a third case plants exactly that in a
+throwaway component so a census that silently found nothing could not pass.
+
+Card set measured at the port: the chat card (three buttons — remove,
+copy-link, delete) and the character card. `project-card.ts`,
+`recent-chat-item.ts`, `home-character-card.ts` and `project-item.ts` have no
+click-bound anchor descendants at all, so they are recorded as outside the
+census rather than silently omitted.
+
 #### 2026-09-07 — fix(spa): the AI-import chrome title, and the three K4 divergences dispositioned
 
 _Versions: SPA 0.5.678._
