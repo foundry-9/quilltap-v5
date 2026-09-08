@@ -116020,3 +116020,205 @@ destroyed the whole uncommitted unit, not just the mutation. It was restored
 from the file backup and the two edits made after that backup were re-applied.
 The memory note already names this; the lesson is that it bites when the
 mutation is reverted in the SAME command as an unrelated cleanup.
+## P4.D167 — character progressions, the ENGINE (`quilltap_core::progressions`), 2026-09-08
+
+**The `25f534c0b` progressions + bug-126 drift catch-up round; the BASE of the
+two-branch stack (P4.D168 and P4.D169 branch from this lane's tip).** Absorbs
+the pure half of v4's `0587d1e96` — `lib/progressions/schema.ts` (231 lines)
+and `lib/progressions/engine.ts` (506) — and ratifies `d307a4164` (the design
+doc) as NO-PORT. Oracle baseline `2f4254b42`; every read and the one regen
+from the pinned worktree `/tmp/qt-v4-pin-p4d167-25f534c0b`, verified by the
+marker (`lib/progressions/engine.ts` and `help/character-progressions.md`
+exist only there). The ledger's §2 freshness probe passed at lane start and
+again before the regen batch: checkout on `main`, tree clean, both logs empty.
+
+### `d307a4164` — NO-PORT, ratified with evidence
+
+`git show --stat d307a4164` is three files: `docs/developer/features/
+character-progressions.md` (375 lines, new), the changelog, and one v4-side
+`.claude/` command doc. **No `lib/`, no `app/`, no `packages/`, no
+`plugins/`** — nothing shipped. The file itself is the design of record and
+was read end to end before the first line of Rust; its post-`0587d1e96`
+version is marked "Implemented". The `docs/v4/` mirror is a unifier wire.
+
+### What landed
+
+`crates/quilltap-core/src/progressions/{mod.rs,schema.rs,engine.rs}`, every
+public name exactly §C.2's, plus one addition each side of the contract that
+§C.2 named and Rust cannot spell as v4 does: `UNIT_MS` is BOTH a
+`[i64; 7]` const indexed by `TimeIncrement::ALL` and the `unit_ms(unit)`
+reader over it, and `Progression::to_value()` sits beside the `Serialize`
+impl so the Tier-2 key-order pin has the name the order gives it.
+
+`schema.rs` carries the record, the two grammars as hand-rolled byte scans
+(JS `$` without `m` is end-of-input and `\d`/`[a-z]` are ASCII — a scan says
+that with no engine-dialect question left open), `parse_iso_instant` over the
+existing `episodic::js_date_parse_ms` twin with `format_time`'s space→`T`
+rewrite in front of it, and `parse_progression`, which reproduces Zod 4.5.4's
+sentences and their order. `engine.rs` carries the derivation, the two span
+formatters, the seven-rule cadence ladder, the renderer and its eleven
+placeholders, the flattened sheet, and `infer_increment`.
+
+### Measured, not assumed — and one of them refutes the order
+
+1. **The `AM`/`PM` separator is U+0020, not U+202F.** §C.2 predicted "Node
+   ≥ 20 renders a U+202F NARROW NO-BREAK SPACE between the minutes and
+   `AM`/`PM`" and told the lane to measure it. Measured on Node 24.13.1 /
+   **ICU 78.2**: `Intl.DateTimeFormat('en-US', { dateStyle: 'medium',
+   timeStyle: 'short', timeZone: 'UTC' }).format(new Date(Date.parse(
+   '2026-09-08T14:02:10Z')))` → `Sep 8, 2026, 2:02 PM`, code points
+   `… 32 3a 30 32 **20** 50 4d`. **Plain space.** The prediction is REFUTED;
+   the corpus pins the bytes and the mutation that writes U+202F reddens
+   `renderProgressionReport/all-eleven-placeholders`.
+2. **Zod's unrecognized-key sentence has a plural form.** One key gives
+   `Unrecognized key: "stages"`; two or more give `Unrecognized keys:
+   "zeta", "alpha"` — one issue, keys joined by `, ` in the input object's
+   own order. The order's table named only the singular.
+3. **The issue ORDER** (a comparand, since P4.D168 logs the joined string):
+   field issues in **schema declaration order**, then the single `(root)`
+   unrecognized-key(s) issue, then the `superRefine`. A non-object entry
+   aborts with one issue and never reaches the refine. Measured across
+   `multi-bad`, `unknown-key-and-bad-order` and `bad-name-and-bad-order`.
+4. **A non-finite `quantity.total` is unreachable on BOTH sides, doubly so in
+   v5.** JSON has no `NaN`/`Infinity` literal, so neither `JSON.parse` nor
+   `serde_json` can produce one from a `metadata.json`; and where
+   `JSON.parse("1e400")` yields `Infinity`, **`serde_json` refuses the
+   document outright** (`number out of range at line 1 column 5` — probed, not
+   reasoned). v4's `.finite()` arm is reachable only from an in-memory JS
+   object. The check is ported anyway (free and faithful), its sentences are
+   in `schema.rs`'s measured table, and the corpus exercises the reachable
+   neighbours (`0`, `-1`, `null`, `"1"`). Recorded as a seam, not chased: it
+   is a property of every JSON read in v5, not something progressions
+   introduced.
+5. **`toFixed` needed the existing twin, and the corpus proves why.**
+   `crate::jsnum::to_fixed` already exists (the order asked the lane to grep
+   before porting one). `0.125.toFixed(2)` is `"0.13"` in V8 where Rust's
+   `format!("{:.2}")` gives `"0.12"` — the `tofixed-half-boundary-0125` row is
+   what makes that discriminating, and mutation M7 is what proves it.
+6. **The `finer === null` early return is defensive, not behavioural.** The
+   first attempt at the order's mutation 3 (drop the early return, let
+   `second`'s finer unit be anything) stayed GREEN — correctly: for `second`
+   the remainder is always under one unit, so the branch below floors to zero
+   and returns the same string. The mutation was a no-op, not a coverage gap.
+   Replaced with one that probes the table itself (`week`'s finer unit becomes
+   `hour`), which reddens `formatSpan/week-sub-unit`.
+
+### The UTC host-zone seam (recorded)
+
+v4's `formatInstant` `catch` falls back to the **host** zone for an absent or
+unresolvable timezone. v5 pins that fallback to **UTC** and the family's oracle
+runs under `TZ=UTC` — the same documented harness seam
+`context_feeders_leaves_equivalence` and `mail_carina_tools_equivalence`
+already keep for v4's system-TZ `toLocaleDateString`. Reading the build
+machine's zone settings inside a pure engine would make the port's output a
+function of the host; the corpus covers the fallback through two rows
+(`invalid-zone-falls-back`, `no-zone-host`) that agree with UTC on both sides.
+
+### The differential
+
+New tier-1 family `progressions_engine_equivalence` over the new committed
+corpus `harness/oracle/fixtures/progressions-engine.json` — **549 rows across
+seventeen ops**, both sides reading the same file:
+
+    deriveProgression 18 · defaultInProgressTemplate 6 · flattenProgressions 9
+    formatSpan 79 · formatSpanWhole 79 · inferIncrement 23 · isProgressionId 16
+    isReportFrequency 24 · isWritableProgressionField 21 · parseIsoInstant 40
+    parseProgressKey 19 · parseProgression 80 · parseProgressions 29
+    parseReportPeriodMs 19 · progressionPlaceholders 30
+    renderProgressionReport 30 · shouldReportProgression 27
+
+The family asserts `total == oracle.len()` (a corpus row the family forgot is
+a silent gap), `ops.len() == 17`, and per-op floors. Strings byte-exact;
+`startMs`/`endMs`/`nowMs`/`elapsedMs`/`remainingMs` and the sheet's epoch times
+exact; `percent`, `percentClamped`, `quantityCurrent` and the sheet's
+`.percent`/`.quantity` at 1e-12. Key SETS **and ORDER** are compared for the
+parsed record, the placeholder map and the flattened sheet.
+
+v4's own two suites (`__tests__/unit/lib/progressions/{schema,engine}.test.ts`,
+326 + 630 lines) were used as the coverage floor: every pure assertion in them
+is a corpus row, and the corpus reproduces their asserted strings exactly
+(`Cannon recharge: 2 minutes, 10 seconds elapsed, 7 minutes, 50 seconds
+remaining, 22% complete (0.2/1.0 MJ).`, `You are carrying a child. You are 20
+weeks along; due in 18 weeks, 4 days.`, `0.500/1.000 MJ`).
+
+**Two corpus-craft traps caught during construction, both worth the note.**
+The epoch constants were first hand-typed and put the whole cannon corpus
+**four days off** — every template row silently landed in the `complete` state,
+where `reportTemplate` is IGNORED, so the template rows measured nothing while
+staying green. The generator now computes them (`at(iso)`); the tell was a
+render reading `5755 minutes since it finished`. And v4's own test reaches rule
+2's NaN arm by casting a malformed `updatedAt` onto an ALREADY-PARSED
+progression (`{ ...p, updatedAt: 'sometime last Tuesday' } as Progression`) —
+the schema refuses one at the door — so the corpus carries an
+`updatedAtOverride` field that both sides apply after parsing.
+
+### Mutation proofs — eight run, each restored by file copy
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | the 32 ceiling checked AFTER the schema parse | `parseProgressions/ceiling-beats-the-schema.issues` |
+| M2 | `Math.ceil` for `whole` in `format_span` | `formatSpan/minute-sub-unit.result` |
+| M3′ | `week`'s finer unit is `hour`, not `day` | `formatSpan/week-sub-unit.result` |
+| M4 | rule 3 (`transition`) moved after rule 4 (`silenced`) | `shouldReportProgression/rule3-active-to-complete.report` |
+| M5 | the period bucket computed as `now − last >= period` | `shouldReportProgression/rule7-hour-bucket-crossed.report` |
+| M6 | U+202F where U+0020 belongs | `renderProgressionReport/all-eleven-placeholders.result` |
+| M7 | `to_fixed` replaced by `format!("{:.n}")` | `renderProgressionReport/tofixed-half-boundary-0125` |
+| M8 | `percent` clamped in the flattened sheet | `flattenProgressions/before-boundary.sheet` |
+| M9 | `parse_iso_instant` drops the space→`T` rewrite | `parseIsoInstant/space-separator` |
+
+(The order's mutation 3 as written was a no-op — see "Measured" §6 — and M9
+replaces it in spirit while adding the space-form probe.)
+
+### Deferred loudly
+
+Nothing. The order's Tier-3 items are other lanes' by construction: the
+JSON-Schema mirror `public/schemas/qtap-progression.schema.json` and its
+agreement test are P4.D170's, and this module exports nothing for it; the
+prompt text and the one logging reader are P4.D168's, and the engine takes an
+`on_issue` sink rather than logging.
+
+### Ownership
+
+`git diff main -- apps/web/ help/ crates/quilltap-core/src/pascal
+crates/quilltap-core/src/services crates/quilltap-web crates/quilltap-host` is
+EMPTY. The only shared-file edit is `crates/quilltap-core/src/lib.rs`, one
+`pub mod progressions;` inside a `// === P4.D167 ===` fence.
+
+### The verification gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D
+warnings` in BOTH feature sets; `cargo build --workspace`; `cargo test
+--workspace` with `QT_ORACLE_PROGRESSIONS_ENGINE` set — **538 test binaries /
+3,028 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0** — and the
+family confirmed RUN by name with `-- --nocapture` printing its per-op counts
+and the 549-row total. The family
+was regenerated through `harness/tools/recipe_sweep.py --v4
+/tmp/qt-v4-pin-p4d167-25f534c0b --run progressions_engine_equivalence` — the
+sanctioned path — and the pin's negative proof is structural rather than a
+grep: `lib/progressions/engine.ts` does not exist at `2f4254b42`, so an
+unpinned regen cannot import and cannot silently produce baseline bytes.
+
+### Regen recipe
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=$HOME/source/quilltap-v5           # or the lane worktree
+cd ~/source/quilltap-server            # the sweep driver rewrites this to the pin
+TZ=UTC $N/node --import tsx $V5W/harness/oracle/cases/progressions-engine.ts \
+  > /tmp/oracle-progressions-engine.ndjson
+QT_ORACLE_PROGRESSIONS_ENGINE=/tmp/oracle-progressions-engine.ndjson \
+  cargo test -p quilltap-harness --test progressions_engine_equivalence
+```
+
+`TZ=UTC` is load-bearing (the host-zone fallback). The corpus itself is
+committed and is NOT regenerated: it was written by a generator kept at
+`/tmp/qt-gen/build_corpus.py` during the lane and its mechanical parts (the
+40-entry ceiling set, the seven-unit × nine-magnitude `formatSpan` sweep, the
+`at(iso)` epoch computation) are reproduced in the corpus's own shape — a
+future widening edits the JSON directly or re-derives from the same recipe.
+
+### Fixtures
+
+DELIVERS `harness/oracle/fixtures/progressions-engine.json` (new, read by this
+family only). CONSUMES nothing; touches no committed DB pair, so **no other
+oracle is invalidated**.

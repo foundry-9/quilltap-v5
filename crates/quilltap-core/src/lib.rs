@@ -220,6 +220,9 @@ pub mod post_office;
 pub mod pricing;
 pub mod pronoun_gender;
 pub mod provider_manifest;
+// === P4.D167 ===
+pub mod progressions;
+// === /P4.D167 ===
 pub mod realtime;
 pub mod recall_history;
 pub mod recall_tags;

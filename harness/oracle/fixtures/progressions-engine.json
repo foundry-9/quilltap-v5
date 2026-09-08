@@ -1,0 +1,4909 @@
+{
+  "parseIsoInstant": [
+    {
+      "label": "z-form",
+      "value": "2026-08-01T00:00:00Z"
+    },
+    {
+      "label": "offset-with-colon",
+      "value": "2026-08-01T00:00:00-05:00"
+    },
+    {
+      "label": "offset-without-colon",
+      "value": "2026-08-01T00:00:00-0500"
+    },
+    {
+      "label": "offset-plus-0530",
+      "value": "2026-08-01T00:00:00+0530"
+    },
+    {
+      "label": "offset-plus-05-30",
+      "value": "2026-08-01T00:00:00+05:30"
+    },
+    {
+      "label": "offset-minus-0000",
+      "value": "2026-08-01T00:00:00-00:00"
+    },
+    {
+      "label": "fraction-3",
+      "value": "2026-08-01T00:00:00.123Z"
+    },
+    {
+      "label": "fraction-1",
+      "value": "2026-08-01T00:00:00.5Z"
+    },
+    {
+      "label": "fraction-9",
+      "value": "2026-08-01T00:00:00.123456789Z"
+    },
+    {
+      "label": "fraction-10-refused",
+      "value": "2026-08-01T00:00:00.1234567890Z"
+    },
+    {
+      "label": "minute-precision",
+      "value": "2026-08-01T00:00Z"
+    },
+    {
+      "label": "space-separator",
+      "value": "2026-09-08 14:02:10Z"
+    },
+    {
+      "label": "space-separator-offset",
+      "value": "2026-09-08 14:02:10+02:00"
+    },
+    {
+      "label": "lowercase-t-and-z",
+      "value": "2026-08-01t00:00:00z"
+    },
+    {
+      "label": "no-zone-refused",
+      "value": "2026-08-01T00:00:00"
+    },
+    {
+      "label": "bare-date-refused",
+      "value": "2026-08-01"
+    },
+    {
+      "label": "bare-year-refused",
+      "value": "2026"
+    },
+    {
+      "label": "prose-refused",
+      "value": "next Tuesday"
+    },
+    {
+      "label": "empty-refused",
+      "value": ""
+    },
+    {
+      "label": "month-13-refused",
+      "value": "2026-13-45T00:00:00Z"
+    },
+    {
+      "label": "february-31-rolls",
+      "value": "2026-02-31T00:00:00Z"
+    },
+    {
+      "label": "february-30-rolls",
+      "value": "2026-02-30T00:00:00Z"
+    },
+    {
+      "label": "day-00-refused",
+      "value": "2026-08-00T00:00:00Z"
+    },
+    {
+      "label": "month-00-refused",
+      "value": "2026-00-01T00:00:00Z"
+    },
+    {
+      "label": "hour-24",
+      "value": "2026-08-01T24:00:00Z"
+    },
+    {
+      "label": "hour-25-refused",
+      "value": "2026-08-01T25:00:00Z"
+    },
+    {
+      "label": "minute-60-refused",
+      "value": "2026-08-01T00:60:00Z"
+    },
+    {
+      "label": "second-60-refused",
+      "value": "2026-08-01T00:00:60Z"
+    },
+    {
+      "label": "nbsp-padded",
+      "value": "  2026-08-01T00:00:00Z  "
+    },
+    {
+      "label": "tab-newline-padded",
+      "value": "\t\n2026-08-01T00:00:00Z\r\n"
+    },
+    {
+      "label": "feff-padded",
+      "value": "﻿2026-08-01T00:00:00Z﻿"
+    },
+    {
+      "label": "inner-space-refused",
+      "value": "2026-08-01T00:00:00 Z"
+    },
+    {
+      "label": "leap-second-day",
+      "value": "2016-12-31T23:59:60Z"
+    },
+    {
+      "label": "epoch",
+      "value": "1970-01-01T00:00:00Z"
+    },
+    {
+      "label": "pre-epoch",
+      "value": "1969-12-31T23:59:59Z"
+    },
+    {
+      "label": "non-string-null",
+      "value": null
+    },
+    {
+      "label": "non-string-number",
+      "value": 42
+    },
+    {
+      "label": "non-string-bool",
+      "value": true
+    },
+    {
+      "label": "non-string-object",
+      "value": {}
+    },
+    {
+      "label": "non-string-array",
+      "value": []
+    }
+  ],
+  "parseProgression": [
+    {
+      "label": "minimal-defaults",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "fully-furnished",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "You are carrying a child.",
+        "percentageReport": false,
+        "reportFrequency": "1h",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        },
+        "reportTemplate": "{{description}} You are {{elapsedWhole}} along; due in {{remaining}}.",
+        "onComplete": "once",
+        "updatedAt": "2026-09-08T14:02:10Z"
+      }
+    },
+    {
+      "label": "quantity-precision-default",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "description-empty-string",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": ""
+      }
+    },
+    {
+      "label": "unknown-key",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "stages": []
+      }
+    },
+    {
+      "label": "unknown-keys-two",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "zeta": 1,
+        "alpha": 2
+      }
+    },
+    {
+      "label": "unknown-key-and-bad-order",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "extra": 1
+      }
+    },
+    {
+      "label": "bad-name-and-bad-order",
+      "entry": {
+        "name": "",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-wrong-type",
+      "entry": {
+        "name": 42,
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-empty",
+      "entry": {
+        "name": "",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-80",
+      "entry": {
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-81",
+      "entry": {
+        "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-80-astral",
+      "entry": {
+        "name": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "name-81-astral",
+      "entry": {
+        "name": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "description-500",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "label": "description-501",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "label": "description-500-astral",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘"
+      }
+    },
+    {
+      "label": "description-501-astral",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘"
+      }
+    },
+    {
+      "label": "description-null",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": null
+      }
+    },
+    {
+      "label": "missing-name",
+      "entry": {
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "missing-startTime",
+      "entry": {
+        "name": "Cannon recharge",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "missing-endTime",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "missing-timeIncrement",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z"
+      }
+    },
+    {
+      "label": "missing-all",
+      "entry": {}
+    },
+    {
+      "label": "timeIncrement-bad-enum",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "fortnight"
+      }
+    },
+    {
+      "label": "timeIncrement-number",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": 3
+      }
+    },
+    {
+      "label": "onComplete-bad-enum",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "onComplete": "delete"
+      }
+    },
+    {
+      "label": "onComplete-number",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "onComplete": 3
+      }
+    },
+    {
+      "label": "reportFrequency-0h",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "0h"
+      }
+    },
+    {
+      "label": "reportFrequency-01h",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "01h"
+      }
+    },
+    {
+      "label": "reportFrequency-1y",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1y"
+      }
+    },
+    {
+      "label": "reportFrequency-TURN",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "TURN"
+      }
+    },
+    {
+      "label": "reportFrequency-100000s",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "100000s"
+      }
+    },
+    {
+      "label": "reportFrequency-99999w",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "99999w"
+      }
+    },
+    {
+      "label": "reportFrequency-90m",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "90m"
+      }
+    },
+    {
+      "label": "reportFrequency-number",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": 3
+      }
+    },
+    {
+      "label": "reportFrequency-empty",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": ""
+      }
+    },
+    {
+      "label": "endTime-equals-startTime",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "endTime-before-startTime",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T13:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "startTime-bad-iso",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-08-01",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "startTime-non-string",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": 42,
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "startTime-unparseable-with-earlier-end",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "nope",
+        "endTime": "2020-01-01T00:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "quantity-total-zero",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 0,
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "quantity-total-negative",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": -1,
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "quantity-total-string",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": "1",
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "quantity-total-null",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": null,
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "quantity-total-missing",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-empty",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": ""
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-16",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "xxxxxxxxxxxxxxxx"
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-17",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "xxxxxxxxxxxxxxxxx"
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-16-astral",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘"
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-17-astral",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘𝔘"
+        }
+      }
+    },
+    {
+      "label": "quantity-unit-missing",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-0",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 0
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-6",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 6
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-7",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 7
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-negative",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": -1
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-fractional",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 1.5
+        }
+      }
+    },
+    {
+      "label": "quantity-precision-7-fractional",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 7.5
+        }
+      }
+    },
+    {
+      "label": "quantity-unknown-key",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "extra": 1
+        }
+      }
+    },
+    {
+      "label": "quantity-unknown-keys-two",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "zeta": 1,
+          "alpha": 2
+        }
+      }
+    },
+    {
+      "label": "quantity-not-object",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": "x"
+      }
+    },
+    {
+      "label": "quantity-null",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": null
+      }
+    },
+    {
+      "label": "quantity-array",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": []
+      }
+    },
+    {
+      "label": "quantity-many-issues",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 0,
+          "unit": "",
+          "precision": 9,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "label": "percentageReport-wrong-type",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "percentageReport": "yes"
+      }
+    },
+    {
+      "label": "percentageReport-false",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "percentageReport": false
+      }
+    },
+    {
+      "label": "reportTemplate-empty",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": ""
+      }
+    },
+    {
+      "label": "reportTemplate-1",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "x"
+      }
+    },
+    {
+      "label": "reportTemplate-500",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "label": "reportTemplate-501",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "label": "reportTemplate-1-astral",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "𝔘"
+      }
+    },
+    {
+      "label": "updatedAt-junk",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "updatedAt": "sometime last Tuesday"
+      }
+    },
+    {
+      "label": "updatedAt-null",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "updatedAt": null
+      }
+    },
+    {
+      "label": "multi-bad",
+      "entry": {
+        "name": "",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "fortnight",
+        "stages": []
+      }
+    },
+    {
+      "label": "entry-null",
+      "entry": null
+    },
+    {
+      "label": "entry-string",
+      "entry": "a string"
+    },
+    {
+      "label": "entry-array",
+      "entry": []
+    },
+    {
+      "label": "entry-number",
+      "entry": 42
+    },
+    {
+      "label": "entry-bool",
+      "entry": true
+    }
+  ],
+  "parseProgressions": [
+    {
+      "label": "reads-the-reserved-key",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "absent-key",
+      "metadata": {
+        "faction": "Ordo Aurum"
+      }
+    },
+    {
+      "label": "metadata-null",
+      "metadata": null
+    },
+    {
+      "label": "metadata-array",
+      "metadata": []
+    },
+    {
+      "label": "metadata-string",
+      "metadata": "text"
+    },
+    {
+      "label": "metadata-number",
+      "metadata": 42
+    },
+    {
+      "label": "metadata-bool",
+      "metadata": true
+    },
+    {
+      "label": "metadata-empty-object",
+      "metadata": {}
+    },
+    {
+      "label": "key-holds-array",
+      "metadata": {
+        "progressions": []
+      }
+    },
+    {
+      "label": "key-holds-null",
+      "metadata": {
+        "progressions": null
+      }
+    },
+    {
+      "label": "key-holds-string",
+      "metadata": {
+        "progressions": "none"
+      }
+    },
+    {
+      "label": "key-holds-number",
+      "metadata": {
+        "progressions": 0
+      }
+    },
+    {
+      "label": "key-holds-empty-object",
+      "metadata": {
+        "progressions": {}
+      }
+    },
+    {
+      "label": "drops-one-keeps-rest",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "broken": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T13:00:00Z",
+            "timeIncrement": "minute"
+          },
+          "kiln": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-uppercase",
+      "metadata": {
+        "progressions": {
+          "Cannon Recharge": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-leading-digit",
+      "metadata": {
+        "progressions": {
+          "2cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-leading-underscore",
+      "metadata": {
+        "progressions": {
+          "_cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-dot",
+      "metadata": {
+        "progressions": {
+          "a.b": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-empty",
+      "metadata": {
+        "progressions": {
+          "": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "bad-id-65",
+      "metadata": {
+        "progressions": {
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "good-id-64",
+      "metadata": {
+        "progressions": {
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "good-id-one-letter",
+      "metadata": {
+        "progressions": {
+          "c": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "good-id-mixed",
+      "metadata": {
+        "progressions": {
+          "main_gun-2": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "entry-null-body",
+      "metadata": {
+        "progressions": {
+          "cannon": null
+        }
+      }
+    },
+    {
+      "label": "entry-string-body",
+      "metadata": {
+        "progressions": {
+          "cannon": "a string"
+        }
+      }
+    },
+    {
+      "label": "survivor-order",
+      "metadata": {
+        "progressions": {
+          "zeta": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "alpha": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "mid": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T13:00:00Z",
+            "timeIncrement": "minute"
+          },
+          "beta": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "forty-entries-trimmed",
+      "metadata": {
+        "progressions": {
+          "p00": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p01": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p02": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p03": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p04": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p05": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p06": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p07": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p08": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p09": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p10": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p11": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p12": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p13": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p14": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p15": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p16": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p17": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p18": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p19": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p20": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p21": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p22": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p23": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p24": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p25": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p26": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p27": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p28": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p29": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p30": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p31": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p32": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p33": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p34": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p35": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p36": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p37": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p38": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p39": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "thirty-three-valid",
+      "metadata": {
+        "progressions": {
+          "p00": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p01": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p02": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p03": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p04": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p05": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p06": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p07": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p08": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p09": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p10": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p11": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p12": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p13": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p14": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p15": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p16": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p17": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p18": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p19": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p20": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p21": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p22": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p23": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p24": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p25": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p26": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p27": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p28": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p29": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p30": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p31": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p32": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    },
+    {
+      "label": "ceiling-beats-the-schema",
+      "metadata": {
+        "progressions": {
+          "p00": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p01": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p02": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p03": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p04": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p05": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p06": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p07": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p08": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p09": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p10": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p11": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p12": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p13": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p14": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p15": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p16": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p17": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p18": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p19": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p20": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p21": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p22": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p23": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p24": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p25": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p26": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p27": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p28": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p29": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p30": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p31": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "p32": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T13:00:00Z",
+            "timeIncrement": "minute"
+          },
+          "p33": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
+    }
+  ],
+  "formatSpan": [
+    {
+      "label": "second-zero",
+      "ms": 0,
+      "unit": "second"
+    },
+    {
+      "label": "second-sub-unit",
+      "ms": 500,
+      "unit": "second"
+    },
+    {
+      "label": "second-exactly-1",
+      "ms": 1000,
+      "unit": "second"
+    },
+    {
+      "label": "second-exactly-2",
+      "ms": 2000,
+      "unit": "second"
+    },
+    {
+      "label": "second-one-and-a-bit",
+      "ms": 1333,
+      "unit": "second"
+    },
+    {
+      "label": "second-negative",
+      "ms": -3000,
+      "unit": "second"
+    },
+    {
+      "label": "second-nan",
+      "ms": "NaN",
+      "unit": "second"
+    },
+    {
+      "label": "second-infinity",
+      "ms": "Infinity",
+      "unit": "second"
+    },
+    {
+      "label": "second-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "second"
+    },
+    {
+      "label": "minute-zero",
+      "ms": 0,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-sub-unit",
+      "ms": 30000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-exactly-1",
+      "ms": 60000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-exactly-2",
+      "ms": 120000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-one-and-a-bit",
+      "ms": 80000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-negative",
+      "ms": -180000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-nan",
+      "ms": "NaN",
+      "unit": "minute"
+    },
+    {
+      "label": "minute-infinity",
+      "ms": "Infinity",
+      "unit": "minute"
+    },
+    {
+      "label": "minute-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "minute"
+    },
+    {
+      "label": "hour-zero",
+      "ms": 0,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-sub-unit",
+      "ms": 1800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-exactly-1",
+      "ms": 3600000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-exactly-2",
+      "ms": 7200000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-one-and-a-bit",
+      "ms": 4800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-negative",
+      "ms": -10800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-nan",
+      "ms": "NaN",
+      "unit": "hour"
+    },
+    {
+      "label": "hour-infinity",
+      "ms": "Infinity",
+      "unit": "hour"
+    },
+    {
+      "label": "hour-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "hour"
+    },
+    {
+      "label": "day-zero",
+      "ms": 0,
+      "unit": "day"
+    },
+    {
+      "label": "day-sub-unit",
+      "ms": 43200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-exactly-1",
+      "ms": 86400000,
+      "unit": "day"
+    },
+    {
+      "label": "day-exactly-2",
+      "ms": 172800000,
+      "unit": "day"
+    },
+    {
+      "label": "day-one-and-a-bit",
+      "ms": 115200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-negative",
+      "ms": -259200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-nan",
+      "ms": "NaN",
+      "unit": "day"
+    },
+    {
+      "label": "day-infinity",
+      "ms": "Infinity",
+      "unit": "day"
+    },
+    {
+      "label": "day-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "day"
+    },
+    {
+      "label": "week-zero",
+      "ms": 0,
+      "unit": "week"
+    },
+    {
+      "label": "week-sub-unit",
+      "ms": 302400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-exactly-1",
+      "ms": 604800000,
+      "unit": "week"
+    },
+    {
+      "label": "week-exactly-2",
+      "ms": 1209600000,
+      "unit": "week"
+    },
+    {
+      "label": "week-one-and-a-bit",
+      "ms": 806400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-negative",
+      "ms": -1814400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-nan",
+      "ms": "NaN",
+      "unit": "week"
+    },
+    {
+      "label": "week-infinity",
+      "ms": "Infinity",
+      "unit": "week"
+    },
+    {
+      "label": "week-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "week"
+    },
+    {
+      "label": "month-zero",
+      "ms": 0,
+      "unit": "month"
+    },
+    {
+      "label": "month-sub-unit",
+      "ms": 1314873000,
+      "unit": "month"
+    },
+    {
+      "label": "month-exactly-1",
+      "ms": 2629746000,
+      "unit": "month"
+    },
+    {
+      "label": "month-exactly-2",
+      "ms": 5259492000,
+      "unit": "month"
+    },
+    {
+      "label": "month-one-and-a-bit",
+      "ms": 3506328000,
+      "unit": "month"
+    },
+    {
+      "label": "month-negative",
+      "ms": -7889238000,
+      "unit": "month"
+    },
+    {
+      "label": "month-nan",
+      "ms": "NaN",
+      "unit": "month"
+    },
+    {
+      "label": "month-infinity",
+      "ms": "Infinity",
+      "unit": "month"
+    },
+    {
+      "label": "month-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "month"
+    },
+    {
+      "label": "year-zero",
+      "ms": 0,
+      "unit": "year"
+    },
+    {
+      "label": "year-sub-unit",
+      "ms": 15778476000,
+      "unit": "year"
+    },
+    {
+      "label": "year-exactly-1",
+      "ms": 31556952000,
+      "unit": "year"
+    },
+    {
+      "label": "year-exactly-2",
+      "ms": 63113904000,
+      "unit": "year"
+    },
+    {
+      "label": "year-one-and-a-bit",
+      "ms": 42075936000,
+      "unit": "year"
+    },
+    {
+      "label": "year-negative",
+      "ms": -94670856000,
+      "unit": "year"
+    },
+    {
+      "label": "year-nan",
+      "ms": "NaN",
+      "unit": "year"
+    },
+    {
+      "label": "year-infinity",
+      "ms": "Infinity",
+      "unit": "year"
+    },
+    {
+      "label": "year-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "year"
+    },
+    {
+      "label": "spec-cannon",
+      "ms": 130000,
+      "unit": "minute"
+    },
+    {
+      "label": "spec-pregnancy",
+      "ms": 12355200000,
+      "unit": "week"
+    },
+    {
+      "label": "exact-multiple-hour",
+      "ms": 10800000,
+      "unit": "hour"
+    },
+    {
+      "label": "one-day",
+      "ms": 86400000,
+      "unit": "day"
+    },
+    {
+      "label": "finer-only-minute",
+      "ms": 12000,
+      "unit": "minute"
+    },
+    {
+      "label": "finer-only-day",
+      "ms": 18000000,
+      "unit": "day"
+    },
+    {
+      "label": "singular-both",
+      "ms": 61000,
+      "unit": "minute"
+    },
+    {
+      "label": "sub-second",
+      "ms": 999,
+      "unit": "second"
+    },
+    {
+      "label": "one-and-a-half-seconds",
+      "ms": 1500,
+      "unit": "second"
+    },
+    {
+      "label": "year-plus-month",
+      "ms": 34186698000,
+      "unit": "year"
+    },
+    {
+      "label": "month-plus-2-days",
+      "ms": 2802546000,
+      "unit": "month"
+    },
+    {
+      "label": "thirty-days-in-months",
+      "ms": 2592000000,
+      "unit": "month"
+    },
+    {
+      "label": "366-days-in-years",
+      "ms": 31622400000,
+      "unit": "year"
+    },
+    {
+      "label": "week-sub-day",
+      "ms": 21600000,
+      "unit": "week"
+    },
+    {
+      "label": "hour-sub-minute",
+      "ms": 30000,
+      "unit": "hour"
+    },
+    {
+      "label": "fractional-ms",
+      "ms": 1500.5,
+      "unit": "second"
+    }
+  ],
+  "formatSpanWhole": [
+    {
+      "label": "second-zero",
+      "ms": 0,
+      "unit": "second"
+    },
+    {
+      "label": "second-sub-unit",
+      "ms": 500,
+      "unit": "second"
+    },
+    {
+      "label": "second-exactly-1",
+      "ms": 1000,
+      "unit": "second"
+    },
+    {
+      "label": "second-exactly-2",
+      "ms": 2000,
+      "unit": "second"
+    },
+    {
+      "label": "second-one-and-a-bit",
+      "ms": 1333,
+      "unit": "second"
+    },
+    {
+      "label": "second-negative",
+      "ms": -3000,
+      "unit": "second"
+    },
+    {
+      "label": "second-nan",
+      "ms": "NaN",
+      "unit": "second"
+    },
+    {
+      "label": "second-infinity",
+      "ms": "Infinity",
+      "unit": "second"
+    },
+    {
+      "label": "second-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "second"
+    },
+    {
+      "label": "minute-zero",
+      "ms": 0,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-sub-unit",
+      "ms": 30000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-exactly-1",
+      "ms": 60000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-exactly-2",
+      "ms": 120000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-one-and-a-bit",
+      "ms": 80000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-negative",
+      "ms": -180000,
+      "unit": "minute"
+    },
+    {
+      "label": "minute-nan",
+      "ms": "NaN",
+      "unit": "minute"
+    },
+    {
+      "label": "minute-infinity",
+      "ms": "Infinity",
+      "unit": "minute"
+    },
+    {
+      "label": "minute-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "minute"
+    },
+    {
+      "label": "hour-zero",
+      "ms": 0,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-sub-unit",
+      "ms": 1800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-exactly-1",
+      "ms": 3600000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-exactly-2",
+      "ms": 7200000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-one-and-a-bit",
+      "ms": 4800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-negative",
+      "ms": -10800000,
+      "unit": "hour"
+    },
+    {
+      "label": "hour-nan",
+      "ms": "NaN",
+      "unit": "hour"
+    },
+    {
+      "label": "hour-infinity",
+      "ms": "Infinity",
+      "unit": "hour"
+    },
+    {
+      "label": "hour-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "hour"
+    },
+    {
+      "label": "day-zero",
+      "ms": 0,
+      "unit": "day"
+    },
+    {
+      "label": "day-sub-unit",
+      "ms": 43200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-exactly-1",
+      "ms": 86400000,
+      "unit": "day"
+    },
+    {
+      "label": "day-exactly-2",
+      "ms": 172800000,
+      "unit": "day"
+    },
+    {
+      "label": "day-one-and-a-bit",
+      "ms": 115200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-negative",
+      "ms": -259200000,
+      "unit": "day"
+    },
+    {
+      "label": "day-nan",
+      "ms": "NaN",
+      "unit": "day"
+    },
+    {
+      "label": "day-infinity",
+      "ms": "Infinity",
+      "unit": "day"
+    },
+    {
+      "label": "day-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "day"
+    },
+    {
+      "label": "week-zero",
+      "ms": 0,
+      "unit": "week"
+    },
+    {
+      "label": "week-sub-unit",
+      "ms": 302400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-exactly-1",
+      "ms": 604800000,
+      "unit": "week"
+    },
+    {
+      "label": "week-exactly-2",
+      "ms": 1209600000,
+      "unit": "week"
+    },
+    {
+      "label": "week-one-and-a-bit",
+      "ms": 806400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-negative",
+      "ms": -1814400000,
+      "unit": "week"
+    },
+    {
+      "label": "week-nan",
+      "ms": "NaN",
+      "unit": "week"
+    },
+    {
+      "label": "week-infinity",
+      "ms": "Infinity",
+      "unit": "week"
+    },
+    {
+      "label": "week-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "week"
+    },
+    {
+      "label": "month-zero",
+      "ms": 0,
+      "unit": "month"
+    },
+    {
+      "label": "month-sub-unit",
+      "ms": 1314873000,
+      "unit": "month"
+    },
+    {
+      "label": "month-exactly-1",
+      "ms": 2629746000,
+      "unit": "month"
+    },
+    {
+      "label": "month-exactly-2",
+      "ms": 5259492000,
+      "unit": "month"
+    },
+    {
+      "label": "month-one-and-a-bit",
+      "ms": 3506328000,
+      "unit": "month"
+    },
+    {
+      "label": "month-negative",
+      "ms": -7889238000,
+      "unit": "month"
+    },
+    {
+      "label": "month-nan",
+      "ms": "NaN",
+      "unit": "month"
+    },
+    {
+      "label": "month-infinity",
+      "ms": "Infinity",
+      "unit": "month"
+    },
+    {
+      "label": "month-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "month"
+    },
+    {
+      "label": "year-zero",
+      "ms": 0,
+      "unit": "year"
+    },
+    {
+      "label": "year-sub-unit",
+      "ms": 15778476000,
+      "unit": "year"
+    },
+    {
+      "label": "year-exactly-1",
+      "ms": 31556952000,
+      "unit": "year"
+    },
+    {
+      "label": "year-exactly-2",
+      "ms": 63113904000,
+      "unit": "year"
+    },
+    {
+      "label": "year-one-and-a-bit",
+      "ms": 42075936000,
+      "unit": "year"
+    },
+    {
+      "label": "year-negative",
+      "ms": -94670856000,
+      "unit": "year"
+    },
+    {
+      "label": "year-nan",
+      "ms": "NaN",
+      "unit": "year"
+    },
+    {
+      "label": "year-infinity",
+      "ms": "Infinity",
+      "unit": "year"
+    },
+    {
+      "label": "year-neg-infinity",
+      "ms": "-Infinity",
+      "unit": "year"
+    },
+    {
+      "label": "spec-cannon",
+      "ms": 130000,
+      "unit": "minute"
+    },
+    {
+      "label": "spec-pregnancy",
+      "ms": 12355200000,
+      "unit": "week"
+    },
+    {
+      "label": "exact-multiple-hour",
+      "ms": 10800000,
+      "unit": "hour"
+    },
+    {
+      "label": "one-day",
+      "ms": 86400000,
+      "unit": "day"
+    },
+    {
+      "label": "finer-only-minute",
+      "ms": 12000,
+      "unit": "minute"
+    },
+    {
+      "label": "finer-only-day",
+      "ms": 18000000,
+      "unit": "day"
+    },
+    {
+      "label": "singular-both",
+      "ms": 61000,
+      "unit": "minute"
+    },
+    {
+      "label": "sub-second",
+      "ms": 999,
+      "unit": "second"
+    },
+    {
+      "label": "one-and-a-half-seconds",
+      "ms": 1500,
+      "unit": "second"
+    },
+    {
+      "label": "year-plus-month",
+      "ms": 34186698000,
+      "unit": "year"
+    },
+    {
+      "label": "month-plus-2-days",
+      "ms": 2802546000,
+      "unit": "month"
+    },
+    {
+      "label": "thirty-days-in-months",
+      "ms": 2592000000,
+      "unit": "month"
+    },
+    {
+      "label": "366-days-in-years",
+      "ms": 31622400000,
+      "unit": "year"
+    },
+    {
+      "label": "week-sub-day",
+      "ms": 21600000,
+      "unit": "week"
+    },
+    {
+      "label": "hour-sub-minute",
+      "ms": 30000,
+      "unit": "hour"
+    },
+    {
+      "label": "fractional-ms",
+      "ms": 1500.5,
+      "unit": "second"
+    }
+  ],
+  "deriveProgression": [
+    {
+      "label": "before-start",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788875880000
+    },
+    {
+      "label": "at-start",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876000000
+    },
+    {
+      "label": "mid-span",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876130000
+    },
+    {
+      "label": "at-end",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876600000
+    },
+    {
+      "label": "after-end",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876780000
+    },
+    {
+      "label": "well-over",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788877200000
+    },
+    {
+      "label": "well-under",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788875400000
+    },
+    {
+      "label": "one-ms-before-start",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788875999999
+    },
+    {
+      "label": "one-ms-before-end",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876599999
+    },
+    {
+      "label": "overdue-negative-remaining",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876900000
+    },
+    {
+      "label": "with-quantity-mid",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788876180000
+    },
+    {
+      "label": "with-quantity-over",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788877800000
+    },
+    {
+      "label": "with-quantity-under",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788875940000
+    },
+    {
+      "label": "pregnancy-complete",
+      "id": "pregnancy",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week"
+      },
+      "nowMs": 1809388800000
+    },
+    {
+      "label": "pregnancy-mid",
+      "id": "pregnancy",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week"
+      },
+      "nowMs": 1797897600000
+    },
+    {
+      "label": "one-ms-span",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00.001Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876000000
+    },
+    {
+      "label": "second-increment",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "second"
+      },
+      "nowMs": 1788876090000
+    },
+    {
+      "label": "year-increment",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2036-09-08T14:00:00Z",
+        "timeIncrement": "year"
+      },
+      "nowMs": 1883546856000
+    }
+  ],
+  "shouldReportProgression": [
+    {
+      "label": "rule1-null-last-turn",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788876060000,
+      "lastTurnMs": null,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule2-updated-newer",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h",
+        "updatedAt": "2026-09-08T14:05:00Z"
+      },
+      "nowMs": 1788876360000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule2-updated-older",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h",
+        "updatedAt": "2026-09-08T14:01:00Z"
+      },
+      "nowMs": 1788876360000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule2-updated-equal",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h",
+        "updatedAt": "2026-09-08T14:04:00Z"
+      },
+      "nowMs": 1788876360000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule2-updated-malformed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788876360000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": "sometime last Tuesday"
+    },
+    {
+      "label": "rule2-updated-empty-string",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788876360000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": ""
+    },
+    {
+      "label": "rule3-pending-to-active",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788876001000,
+      "lastTurnMs": 1788875999000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule3-active-to-complete",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h",
+        "onComplete": "once"
+      },
+      "nowMs": 1788876660000,
+      "lastTurnMs": 1788876540000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule4-once-silenced",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "onComplete": "once"
+      },
+      "nowMs": 1788876720000,
+      "lastTurnMs": 1788876660000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule4-keep-reports",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "onComplete": "keep"
+      },
+      "nowMs": 1788876720000,
+      "lastTurnMs": 1788876660000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule5-turn",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788876060000,
+      "lastTurnMs": 1788876059000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-same-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1788876100000,
+      "lastTurnMs": 1788876090000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-ticked",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1788876130000,
+      "lastTurnMs": 1788876110000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-week-same",
+      "id": "cannon",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1796126400000,
+      "lastTurnMs": 1796125200000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-week-ticked",
+      "id": "cannon",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1796731200000,
+      "lastTurnMs": 1796125200000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-second-same",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "second",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1788876001900,
+      "lastTurnMs": 1788876001500,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-second",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "second",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1788876001500,
+      "lastTurnMs": 1788876000900,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule6-increment-second-ticked",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "second",
+        "reportFrequency": "increment"
+      },
+      "nowMs": 1788876002100,
+      "lastTurnMs": 1788876001500,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-same-hour-bucket",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-09T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788879540000,
+      "lastTurnMs": 1788876240000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-hour-bucket-crossed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-09T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788879660000,
+      "lastTurnMs": 1788879540000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-55-minutes-inside",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-09T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1h"
+      },
+      "nowMs": 1788879480000,
+      "lastTurnMs": 1788876180000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-30s-inside",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "30s"
+      },
+      "nowMs": 1788876029000,
+      "lastTurnMs": 1788876001000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-30s-crossed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "30s"
+      },
+      "nowMs": 1788876030000,
+      "lastTurnMs": 1788876029000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-3d",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-12-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "3d"
+      },
+      "nowMs": 1789135200000,
+      "lastTurnMs": 1788962400000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-99999w",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-12-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "99999w"
+      },
+      "nowMs": 1789135200000,
+      "lastTurnMs": 1788962400000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "rule7-1w-crossed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-12-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportFrequency": "1w"
+      },
+      "nowMs": 1789567200000,
+      "lastTurnMs": 1788962400000,
+      "updatedAtOverride": null
+    },
+    {
+      "label": "pending-turn",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      },
+      "nowMs": 1788875820000,
+      "lastTurnMs": 1788875760000,
+      "updatedAtOverride": null
+    }
+  ],
+  "parseReportPeriodMs": [
+    {
+      "label": "30s",
+      "value": "30s"
+    },
+    {
+      "label": "5m",
+      "value": "5m"
+    },
+    {
+      "label": "1h",
+      "value": "1h"
+    },
+    {
+      "label": "2d",
+      "value": "2d"
+    },
+    {
+      "label": "3w",
+      "value": "3w"
+    },
+    {
+      "label": "1s",
+      "value": "1s"
+    },
+    {
+      "label": "99999w",
+      "value": "99999w"
+    },
+    {
+      "label": "turn",
+      "value": "turn"
+    },
+    {
+      "label": "increment",
+      "value": "increment"
+    },
+    {
+      "label": "empty",
+      "value": ""
+    },
+    {
+      "label": "0h",
+      "value": "0h"
+    },
+    {
+      "label": "hourly",
+      "value": "hourly"
+    },
+    {
+      "label": "01h",
+      "value": "01h"
+    },
+    {
+      "label": "h",
+      "value": "h"
+    },
+    {
+      "label": "5",
+      "value": "5"
+    },
+    {
+      "label": "1y",
+      "value": "1y"
+    },
+    {
+      "label": "1M",
+      "value": "1M"
+    },
+    {
+      "label": "100000s",
+      "value": "100000s"
+    },
+    {
+      "label": "12",
+      "value": "12"
+    }
+  ],
+  "renderProgressionReport": [
+    {
+      "label": "spec-cannon-line",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788876130000,
+      "timezone": null
+    },
+    {
+      "label": "no-percentage",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "percentageReport": false
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "description-prefixed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "The gun is charging.",
+        "percentageReport": false
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "description-and-quantity",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "The gun is charging.",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "pregnancy-custom-template",
+      "id": "pregnancy",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week",
+        "description": "You are carrying a child.",
+        "reportTemplate": "{{description}} You are {{elapsedWhole}} along; due in {{remaining}}."
+      },
+      "nowMs": 1797897600000,
+      "timezone": null
+    },
+    {
+      "label": "unknown-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{name}} at {{trimester}}."
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "empty-description-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{description}}]"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "empty-quantity-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{quantity}}]"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "pending-ignores-template",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "never seen"
+      },
+      "nowMs": 1788875910000,
+      "timezone": null
+    },
+    {
+      "label": "complete-ignores-template",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "never seen"
+      },
+      "nowMs": 1788876780000,
+      "timezone": null
+    },
+    {
+      "label": "quantity-precision-3",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 3
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "quantity-precision-0",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 3,
+          "unit": "MJ",
+          "precision": 0
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 2.675,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary-1005",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.005,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary-0125",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 0.125,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876480000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-precision-6",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 6
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "all-eleven-placeholders",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "D",
+        "quantity": {
+          "total": 4,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "n={{name}} d={{description}} e={{elapsed}} ew={{elapsedWhole}} r={{remaining}} rw={{remainingWhole}} p={{percent}} q={{quantity}} s={{start}} x={{end}} i={{increment}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "inner-spaces-trimmed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{  name  }}][{{ percent }}]"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "empty-placeholder-verbatim",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{}}][{{ }}]"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "nested-braces",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{{name}}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "unclosed-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{name"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "chicago-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "America/Chicago"
+    },
+    {
+      "label": "tokyo-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "Asia/Tokyo"
+    },
+    {
+      "label": "utc-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "week-date-only",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-11-08T14:00:00Z",
+        "timeIncrement": "week",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788962400000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "month-date-only",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2027-11-08T14:00:00Z",
+        "timeIncrement": "month",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788962400000,
+      "timezone": "Asia/Tokyo"
+    },
+    {
+      "label": "invalid-zone-falls-back",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "Mars/Olympus_Mons"
+    },
+    {
+      "label": "no-zone-host",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "midnight-january",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2027-01-01T00:00:00Z",
+        "endTime": "2027-01-01T01:00:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1798763400000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "noon-and-single-digit-hour",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T09:07:00Z",
+        "endTime": "2026-09-08T12:00:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788872400000,
+      "timezone": "UTC"
+    }
+  ],
+  "progressionPlaceholders": [
+    {
+      "label": "spec-cannon-line",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788876130000,
+      "timezone": null
+    },
+    {
+      "label": "no-percentage",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "percentageReport": false
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "description-prefixed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "The gun is charging.",
+        "percentageReport": false
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "description-and-quantity",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "The gun is charging.",
+        "quantity": {
+          "total": 1.0,
+          "unit": "MJ",
+          "precision": 1
+        }
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "pregnancy-custom-template",
+      "id": "pregnancy",
+      "entry": {
+        "name": "Pregnancy",
+        "startTime": "2026-08-01T00:00:00Z",
+        "endTime": "2027-05-01T00:00:00Z",
+        "timeIncrement": "week",
+        "description": "You are carrying a child.",
+        "reportTemplate": "{{description}} You are {{elapsedWhole}} along; due in {{remaining}}."
+      },
+      "nowMs": 1797897600000,
+      "timezone": null
+    },
+    {
+      "label": "unknown-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{name}} at {{trimester}}."
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "empty-description-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{description}}]"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "empty-quantity-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{quantity}}]"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "pending-ignores-template",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "never seen"
+      },
+      "nowMs": 1788875910000,
+      "timezone": null
+    },
+    {
+      "label": "complete-ignores-template",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "never seen"
+      },
+      "nowMs": 1788876780000,
+      "timezone": null
+    },
+    {
+      "label": "quantity-precision-3",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 3
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "quantity-precision-0",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 3,
+          "unit": "MJ",
+          "precision": 0
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 2.675,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary-1005",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1.005,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-half-boundary-0125",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 0.125,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876480000,
+      "timezone": null
+    },
+    {
+      "label": "tofixed-precision-6",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 6
+        },
+        "reportTemplate": "{{quantity}}"
+      },
+      "nowMs": 1788876060000,
+      "timezone": null
+    },
+    {
+      "label": "all-eleven-placeholders",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "D",
+        "quantity": {
+          "total": 4,
+          "unit": "MJ",
+          "precision": 2
+        },
+        "reportTemplate": "n={{name}} d={{description}} e={{elapsed}} ew={{elapsedWhole}} r={{remaining}} rw={{remainingWhole}} p={{percent}} q={{quantity}} s={{start}} x={{end}} i={{increment}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "inner-spaces-trimmed",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{  name  }}][{{ percent }}]"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "empty-placeholder-verbatim",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "[{{}}][{{ }}]"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "nested-braces",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{{name}}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "unclosed-placeholder",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{name"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "chicago-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "America/Chicago"
+    },
+    {
+      "label": "tokyo-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "Asia/Tokyo"
+    },
+    {
+      "label": "utc-minute",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "week-date-only",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-11-08T14:00:00Z",
+        "timeIncrement": "week",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788962400000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "month-date-only",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2027-11-08T14:00:00Z",
+        "timeIncrement": "month",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788962400000,
+      "timezone": "Asia/Tokyo"
+    },
+    {
+      "label": "invalid-zone-falls-back",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": "Mars/Olympus_Mons"
+    },
+    {
+      "label": "no-zone-host",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788876300000,
+      "timezone": null
+    },
+    {
+      "label": "midnight-january",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2027-01-01T00:00:00Z",
+        "endTime": "2027-01-01T01:00:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1798763400000,
+      "timezone": "UTC"
+    },
+    {
+      "label": "noon-and-single-digit-hour",
+      "id": "cannon",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T09:07:00Z",
+        "endTime": "2026-09-08T12:00:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": "{{start}}|{{end}}"
+      },
+      "nowMs": 1788872400000,
+      "timezone": "UTC"
+    }
+  ],
+  "defaultInProgressTemplate": [
+    {
+      "label": "no-percentage",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "percentageReport": false
+      }
+    },
+    {
+      "label": "default",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "with-quantity",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ"
+        }
+      }
+    },
+    {
+      "label": "with-description",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "The gun is charging."
+      }
+    },
+    {
+      "label": "empty-description",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": ""
+      }
+    },
+    {
+      "label": "everything",
+      "entry": {
+        "name": "Cannon recharge",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:10:00Z",
+        "timeIncrement": "minute",
+        "description": "D",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ"
+        }
+      }
+    }
+  ],
+  "flattenProgressions": [
+    {
+      "label": "keys-and-order",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788876180000
+    },
+    {
+      "label": "epoch-ms-times",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788876000000
+    },
+    {
+      "label": "before-boundary",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788875999999
+    },
+    {
+      "label": "during",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788876060000
+    },
+    {
+      "label": "after-boundary",
+      "metadata": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788876660000
+    },
+    {
+      "label": "no-quantity-key",
+      "metadata": {
+        "progressions": {
+          "p": {
+            "name": "P",
+            "startTime": "2026-01-01T00:00:00Z",
+            "endTime": "2026-01-02T00:00:00Z",
+            "timeIncrement": "hour"
+          }
+        }
+      },
+      "nowMs": 1767247200000
+    },
+    {
+      "label": "empty-sheet",
+      "metadata": {
+        "faction": "Ordo Aurum"
+      },
+      "nowMs": 1788876000000
+    },
+    {
+      "label": "two-plus-a-malformed",
+      "metadata": {
+        "progressions": {
+          "zeta": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 2.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          },
+          "alpha": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T14:10:00Z",
+            "timeIncrement": "minute"
+          },
+          "bad": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T14:00:00Z",
+            "endTime": "2026-09-08T13:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "nowMs": 1788876180000
+    },
+    {
+      "label": "metadata-null",
+      "metadata": null,
+      "nowMs": 1788876000000
+    }
+  ],
+  "inferIncrement": [
+    {
+      "label": "30-seconds",
+      "spanMs": 30000
+    },
+    {
+      "label": "10-minutes",
+      "spanMs": 600000
+    },
+    {
+      "label": "6-hours",
+      "spanMs": 21600000
+    },
+    {
+      "label": "5-days",
+      "spanMs": 432000000
+    },
+    {
+      "label": "4-weeks",
+      "spanMs": 2419200000
+    },
+    {
+      "label": "9-months",
+      "spanMs": 23667714000
+    },
+    {
+      "label": "5-years",
+      "spanMs": 157784760000
+    },
+    {
+      "label": "zero",
+      "spanMs": 0
+    },
+    {
+      "label": "one-ms",
+      "spanMs": 1
+    },
+    {
+      "label": "2min-minus-1",
+      "spanMs": 119999
+    },
+    {
+      "label": "2min",
+      "spanMs": 120000
+    },
+    {
+      "label": "2h-minus-1",
+      "spanMs": 7199999
+    },
+    {
+      "label": "2h",
+      "spanMs": 7200000
+    },
+    {
+      "label": "2d-minus-1",
+      "spanMs": 172799999
+    },
+    {
+      "label": "2d",
+      "spanMs": 172800000
+    },
+    {
+      "label": "2w-minus-1",
+      "spanMs": 1209599999
+    },
+    {
+      "label": "2w",
+      "spanMs": 1209600000
+    },
+    {
+      "label": "8w-minus-1",
+      "spanMs": 4838399999
+    },
+    {
+      "label": "8w",
+      "spanMs": 4838400000
+    },
+    {
+      "label": "2y-minus-1",
+      "spanMs": 63113903999
+    },
+    {
+      "label": "2y",
+      "spanMs": 63113904000
+    },
+    {
+      "label": "negative-10-minutes",
+      "spanMs": -600000
+    },
+    {
+      "label": "negative-5-years",
+      "spanMs": -157784760000
+    }
+  ],
+  "parseProgressKey": [
+    {
+      "label": "cannon.complete",
+      "key": "cannon.complete"
+    },
+    {
+      "label": "cannon.percent",
+      "key": "cannon.percent"
+    },
+    {
+      "label": "c.a",
+      "key": "c.a"
+    },
+    {
+      "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.x",
+      "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.x"
+    },
+    {
+      "label": "main_gun-2.state",
+      "key": "main_gun-2.state"
+    },
+    {
+      "label": "cannon",
+      "key": "cannon"
+    },
+    {
+      "label": "empty",
+      "key": ""
+    },
+    {
+      "label": ".complete",
+      "key": ".complete"
+    },
+    {
+      "label": "cannon.",
+      "key": "cannon."
+    },
+    {
+      "label": "Cannon.complete",
+      "key": "Cannon.complete"
+    },
+    {
+      "label": "2cannon.x",
+      "key": "2cannon.x"
+    },
+    {
+      "label": "_cannon.x",
+      "key": "_cannon.x"
+    },
+    {
+      "label": "a.b.c",
+      "key": "a.b.c"
+    },
+    {
+      "label": "cannon.quantity.total",
+      "key": "cannon.quantity.total"
+    },
+    {
+      "label": "cannon.complete2",
+      "key": "cannon.complete2"
+    },
+    {
+      "label": "cannon.a-b",
+      "key": "cannon.a-b"
+    },
+    {
+      "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.x",
+      "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.x"
+    },
+    {
+      "label": "main gun.x",
+      "key": "main gun.x"
+    },
+    {
+      "label": "cannon.Complete",
+      "key": "cannon.Complete"
+    }
+  ],
+  "isWritableProgressionField": [
+    {
+      "label": "name",
+      "field": "name"
+    },
+    {
+      "label": "description",
+      "field": "description"
+    },
+    {
+      "label": "startTime",
+      "field": "startTime"
+    },
+    {
+      "label": "endTime",
+      "field": "endTime"
+    },
+    {
+      "label": "timeIncrement",
+      "field": "timeIncrement"
+    },
+    {
+      "label": "percentageReport",
+      "field": "percentageReport"
+    },
+    {
+      "label": "reportFrequency",
+      "field": "reportFrequency"
+    },
+    {
+      "label": "onComplete",
+      "field": "onComplete"
+    },
+    {
+      "label": "reportTemplate",
+      "field": "reportTemplate"
+    },
+    {
+      "label": "quantity.total",
+      "field": "quantity.total"
+    },
+    {
+      "label": "quantity.unit",
+      "field": "quantity.unit"
+    },
+    {
+      "label": "quantity.precision",
+      "field": "quantity.precision"
+    },
+    {
+      "label": "remove",
+      "field": "remove"
+    },
+    {
+      "label": "updatedAt",
+      "field": "updatedAt"
+    },
+    {
+      "label": "percent",
+      "field": "percent"
+    },
+    {
+      "label": "complete",
+      "field": "complete"
+    },
+    {
+      "label": "elapsed",
+      "field": "elapsed"
+    },
+    {
+      "label": "quantity",
+      "field": "quantity"
+    },
+    {
+      "label": "id",
+      "field": "id"
+    },
+    {
+      "label": "empty",
+      "field": ""
+    },
+    {
+      "label": "Name",
+      "field": "Name"
+    }
+  ],
+  "isProgressionId": [
+    {
+      "label": "cannon",
+      "id": "cannon"
+    },
+    {
+      "label": "c",
+      "id": "c"
+    },
+    {
+      "label": "main_gun-2",
+      "id": "main_gun-2"
+    },
+    {
+      "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "label": "Cannon",
+      "id": "Cannon"
+    },
+    {
+      "label": "2cannon",
+      "id": "2cannon"
+    },
+    {
+      "label": "_cannon",
+      "id": "_cannon"
+    },
+    {
+      "label": "main gun",
+      "id": "main gun"
+    },
+    {
+      "label": "a.b",
+      "id": "a.b"
+    },
+    {
+      "label": "empty",
+      "id": ""
+    },
+    {
+      "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "label": "cannoén",
+      "id": "cannoén"
+    },
+    {
+      "label": "cannon\n",
+      "id": "cannon\n"
+    },
+    {
+      "label": "\ncannon",
+      "id": "\ncannon"
+    },
+    {
+      "label": "-cannon",
+      "id": "-cannon"
+    },
+    {
+      "label": "cannon-",
+      "id": "cannon-"
+    }
+  ],
+  "isReportFrequency": [
+    {
+      "label": "turn",
+      "value": "turn"
+    },
+    {
+      "label": "increment",
+      "value": "increment"
+    },
+    {
+      "label": "30s",
+      "value": "30s"
+    },
+    {
+      "label": "5m",
+      "value": "5m"
+    },
+    {
+      "label": "1h",
+      "value": "1h"
+    },
+    {
+      "label": "2d",
+      "value": "2d"
+    },
+    {
+      "label": "3w",
+      "value": "3w"
+    },
+    {
+      "label": "99999w",
+      "value": "99999w"
+    },
+    {
+      "label": "1s",
+      "value": "1s"
+    },
+    {
+      "label": "0h",
+      "value": "0h"
+    },
+    {
+      "label": "01h",
+      "value": "01h"
+    },
+    {
+      "label": "h",
+      "value": "h"
+    },
+    {
+      "label": "5",
+      "value": "5"
+    },
+    {
+      "label": "empty",
+      "value": ""
+    },
+    {
+      "label": "1M",
+      "value": "1M"
+    },
+    {
+      "label": "1y",
+      "value": "1y"
+    },
+    {
+      "label": "every hour",
+      "value": "every hour"
+    },
+    {
+      "label": "0 * * * *",
+      "value": "0 * * * *"
+    },
+    {
+      "label": "100000s",
+      "value": "100000s"
+    },
+    {
+      "label": "turn\n",
+      "value": "turn\n"
+    },
+    {
+      "label": "TURN",
+      "value": "TURN"
+    },
+    {
+      "label": "9w9",
+      "value": "9w9"
+    },
+    {
+      "label": "12345d",
+      "value": "12345d"
+    },
+    {
+      "label": "123456d",
+      "value": "123456d"
+    }
+  ]
+}

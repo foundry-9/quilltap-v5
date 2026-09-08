@@ -116,6 +116,43 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — feat(progressions): the character-progressions engine — `quilltap_core::progressions`, tier-1 exact against v4's real module
+
+_Versions: core 0.0.847, harness 0.0.736._
+
+Ports the pure half of v4's character-progressions feature (`0587d1e96`,
+read at `25f534c0b`): a **progression** is a named, bounded span of time a
+character carries — a pregnancy due in May, a cannon that recharges in ten
+minutes — stored under one reserved `progressions` key in the character
+vault's `metadata.json`. No table, no column, no schema re-dump, and no
+prompt-cache version bump: the reports are a per-turn trailing section, which
+is P4.D168's lane.
+
+The new `crates/quilltap-core/src/progressions/` holds two files. `schema.rs`
+is the record and its fail-soft reader: the id and cadence grammars, the seven
+time increments, `parse_iso_instant` (v4's regex, stricter than `new Date`,
+over the existing V8-faithful `Date.parse` twin), and `parse_progression`,
+which reproduces Zod 4.5.4's issue sentences **and their order** — the field
+checks in declaration order, then the single `(root)` unrecognized-key issue,
+then the cross-field refine — because those sentences are a comparand, not a
+diagnostic: P4.D168 logs them and P4.D169 warns them. `engine.rs` derives one
+progression's state against an injected clock, formats spans as whole units
+plus one finer unit, decides on v4's seven-rule cadence ladder whether this
+turn mentions it, renders the line the character reads, and flattens the lot
+into the primitive sheet Pascal's comparators read.
+
+Proven by a new tier-1 family, `progressions_engine_equivalence`, over a
+committed 549-row corpus both sides read: v4's real `lib/progressions/*`
+answers it through `harness/oracle/cases/progressions-engine.ts`, and the Rust
+family recomputes every row and compares field for field — strings byte-exact,
+the integer-valued JS numbers exact, `percent` and `quantityCurrent` at 1e-12.
+Three facts were measured rather than assumed, and one of them contradicts the
+plan: `Intl.DateTimeFormat`'s `en-US` medium/short rendering puts a plain
+**U+0020** before `AM`/`PM` on Node 24.13.1 / ICU 78.2, not the narrow
+no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
+more than one; and a non-finite `quantity.total` is unreachable through the
+JSON door on both sides — `serde_json` refuses `1e400` outright where
+`JSON.parse` yields `Infinity`.
 
 #### 2026-09-08 — docs(setupphase): the `25f534c0b` progressions + bug-126 drift catch-up round — five work orders, the ledger's four rows ORDERED
 
