@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(host): wire the head-and-shoulders backfill handler and its boot scan
+
+_Versions: host 0.0.114._
+
+Registers `CHARACTER_HEADSHOULDERS_BACKFILL` in the production spine (a
+`HeadShouldersBackfillJobHandler` wrapper that builds the core handler per job
+so `now_ms` is the wall clock at job time — the `TitleUpdateJobHandler`
+precedent), and calls the one-time backfill scan from the boot-repair thread's
+mount-aware block, after every repair in it. v4 chains the scan LAST in
+`instrumentation.ts`'s vault-backfill `.then`; v5 has no twin of that chain as
+a boot stage, and the boot-repair thread is already off the boot path, which is
+what v4's "must not block the loading screen" means here.
+
+New `host_headshoulders_backfill.rs` carries the two wiring pins the
+differentials structurally cannot: a seeded PENDING job that runs through a
+real `ProductionSpineFactory` to COMPLETED, and a boot over the committed pair
+that enqueues one job per eligible character and writes the flag — then a
+second boot that adds nothing, and a pristine copy whose flag v4 already wrote
+that is left completely alone. The registration test deliberately picks the arm
+that touches no provider (a character whose user owns no connection profile),
+so nothing goes near a network.
+
+Three mutations, each reddening exactly its own test and leaving the sibling
+green: the registry row removed; the scan call removed; and the scan writing
+its flag while enqueuing nothing, which proves the row COUNT discriminates and
+not just the flag.
+
 #### 2026-09-07 — feat(jobs): the CHARACTER_HEADSHOULDERS_BACKFILL handler + the boot-time scan, both differentiated
 
 _Versions: core 0.0.835, harness 0.0.725._

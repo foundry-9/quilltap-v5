@@ -197,6 +197,41 @@ because the lane's gate is `cargo test --workspace` rather than `-p`. The
 census now records SIX queue-service sites for v4's three, naming both
 in-transaction mints (the blocking render enqueue and this one).
 
+### Unit 3 — the host wiring, and the two pins the differentials cannot carry
+
+`HeadShouldersBackfillJobHandler { wire }` in `spine.rs` (a wrapper building the
+core handler per job so `now_ms` is the wall clock at job time — the
+`TitleUpdateJobHandler` precedent) with its `job_handlers` row at the END of the
+vec, and the scan called from `seed_built_ins`'s mount-aware block, after every
+repair in it. Both fenced `// === P4.82 ===`.
+
+Neither differential can see whether the host ever CALLS the code they prove —
+that is dogfood finding #40's exact shape (`LLM_LOG_CLEANUP` sat in
+`KNOWN_JOB_TYPES` with a live enqueue path and no registration for rounds). So
+`crates/quilltap-host/tests/host_headshoulders_backfill.rs` boots a real `Host`
+over a COPY of the committed pair and pins both halves:
+
+* the registration — a seeded PENDING job runs through a real
+  `ProductionSpineFactory` to COMPLETED. It deliberately names
+  `Profileless Perpetua`, whose user owns no connection profile, so the handler
+  resolves the character through the real vault overlay, reads the profiles,
+  finds none, warns and returns: a completing job with ZERO outbound work. The
+  scan is disarmed for that test (flag pre-set) so the seeded job is the only
+  one in flight;
+* the scan — a first boot enqueues one job per eligible character (8 rows for
+  the fixture's 7 eligible + 1 seeded) and writes the flag; a second boot on the
+  same instance adds nothing; and a pristine copy whose flag v4 already wrote is
+  left completely alone. No spine is wired for that test, so the enqueued jobs
+  meet the runner's loud fallback and fail harmlessly without touching a
+  provider — the comparand is the ROWS, which are never deleted.
+
+Three mutations, each reddening exactly ONE test and leaving the sibling green:
+the registry row removed (registration test only); the scan call removed (boot
+test only); and — added because the second mutation was caught by the flag WAIT
+rather than by an assertion — the scan writing its flag while enqueuing nothing,
+which reddens the row-count assert at `1 != 8`.
+
+
 ## Lane record — P4.D156 (the client/CLI drift: bug 120's `instances default --json`, the About sentences, the cheap-LLM `qt-checkbox`, and the collapse's three client corrections)
 
 Ordered against round baseline **`d883a5ee1`** (§B); the lane's four target

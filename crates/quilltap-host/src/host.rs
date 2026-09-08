@@ -1356,6 +1356,40 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                         "Error ensuring general state.json, continuing startup",
                     ),
                 }
+                // === P4.82 ===
+                // v4's one-time head-and-shoulders backfill scan
+                // (`lib/startup/enqueue-headshoulders-backfill.ts`), chained
+                // LAST in `instrumentation.ts`'s vault-backfill `.then` behind
+                // `backfillCharacterVaults` and the vault file migrations, so
+                // every character already has a vault to write the result back
+                // into. v5 has no twin of that chain as a boot stage, so it
+                // sits here — after every repair, on the same spawned thread
+                // that is already off the boot path (v4 enqueues rather than
+                // generating inline precisely so per-character LLM work cannot
+                // block the loading screen).
+                //
+                // It needs BOTH connections (the scan reads characters through
+                // the vault overlay), so it lives in this mount-aware block.
+                // ⚠ Its once-only guard is `instance_settings
+                // ['headshoulders_backfill_enqueued_v1']` — v4's OWN row,
+                // already written on every instance v4 has booted since the
+                // feature shipped. A v5 boot there scans nothing and writes
+                // nothing, by design; see the module header.
+                let backfill =
+                    quilltap_core::services::headshoulders_backfill_enqueue::enqueue_headshoulders_backfill(
+                        main,
+                        mount_index,
+                    );
+                if !backfill.already_done {
+                    tracing::info!(
+                        target: "quilltap::boot",
+                        scanned = backfill.scanned,
+                        enqueued = backfill.enqueued,
+                        skipped = backfill.skipped,
+                        "Head-and-shoulders backfill scan complete",
+                    );
+                }
+                // === end P4.82 ===
             }
             Ok(())
         })

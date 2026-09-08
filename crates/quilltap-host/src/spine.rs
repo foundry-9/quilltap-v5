@@ -170,6 +170,9 @@ use quilltap_core::services::orchestrator::{
 };
 use quilltap_core::services::pricing_fetcher::{PricingContext, PricingFetch, PricingFetcher};
 use quilltap_core::services::story_background_job::StoryBackgroundGenerationHandler;
+// === P4.82 ===
+use quilltap_core::services::headshoulders_backfill_job::CharacterHeadShouldersBackfillHandler;
+// === end P4.82 ===
 use quilltap_core::services::title_update_job::TitleUpdateHandler;
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
@@ -3036,6 +3039,28 @@ impl JobHandler for AvatarJobHandler {
     }
 }
 
+// === P4.82 ===
+/// `CHARACTER_HEADSHOULDERS_BACKFILL` — the wizard-backed portrait-prompt
+/// backfill. Same wrapper shape as `TitleUpdateJobHandler`: the core handler
+/// pins `now_ms` at construction, and production wants the wall clock at job
+/// time, so one is built per job.
+pub struct HeadShouldersBackfillJobHandler {
+    pub wire: WireConfig,
+}
+
+impl JobHandler for HeadShouldersBackfillJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let inner = CharacterHeadShouldersBackfillHandler {
+                completion: self.wire.completion(db),
+                now_ms: now_unix_ms(),
+            };
+            inner.handle(db, job).await
+        })
+    }
+}
+// === end P4.82 ===
+
 /// `STORY_BACKGROUND_GENERATION` — same shape as the avatar wrapper, plus the
 /// scene-task executor.
 pub struct StoryBackgroundJobHandler {
@@ -3477,6 +3502,12 @@ impl SpineFactory for ProductionSpineFactory {
                 }),
             ),
             // === end P4.24 ===
+            // === P4.82 ===
+            (
+                "CHARACTER_HEADSHOULDERS_BACKFILL".to_string(),
+                Box::new(HeadShouldersBackfillJobHandler { wire: wire.clone() }),
+            ),
+            // === end P4.82 ===
         ];
 
         // The provider wire-actions driver (the P4.6 unification wire): the
