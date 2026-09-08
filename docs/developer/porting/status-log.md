@@ -117406,3 +117406,39 @@ survived all three writes.
 Gate: full Playwright **303 passed / 0 failed / 2 skipped** (the suite grew
 300 → 305; the two skips are `P4D168_SERVER_LANDED` and
 `P4D169_SERVER_LANDED`, both `false` on this branch). SPA 0.5.688.
+
+### The lane's verification gate (P4.D170, 2026-09-08)
+
+Run on the lane branch after the last unit's commit, in the order the order's
+§Verification gate names them:
+
+| step | result |
+| --- | --- |
+| `npm run lint` (incl. `check-qt-classes`) | clean; 950 `qt-*` classes, every guarded reference resolving |
+| `npm test` (full, no sharding) | **416 spec files / 6,816 tests / 0 failed** |
+| `npm run build` | clean (the only real type gate) |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --release` | clean |
+| `cargo test --workspace` (`QT_V4_ROOT` = the pin) | **538 test binaries / 3,020 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines** |
+| `public_schemas_vendor_guard` inside that run | both tests RAN and passed (confirmed by name, not inferred from the total) |
+| the two new e2e specs by FILE | 3 live beats green, 2 skipped by their named constants |
+| full Playwright | **303 passed / 0 failed / 2 skipped** (the suite grew 300 → 305; the two skips ARE the two gate constants) |
+
+`git diff main -- crates/ help/ harness/` shows exactly two entries: the NEW
+`public_schemas_vendor_guard.rs` and the `quilltap-harness` version bump —
+nothing else, as §R.5 requires.
+
+The vendor guard was also run standalone against BOTH the live checkout and the
+pin, and mutation-proven: a one-character edit to the vendored progression
+schema reddens the byte-equality arm with its named-file message while the
+self-consistency arm stays green.
+
+⚠ **A gate-log trap worth the next lane's attention:** `/tmp/claude-503/` is the
+UID-wide scratch directory shared by every Claude session, not a per-session one.
+Reading `clippy2.log` there mid-run returned a file dated three days earlier from
+a DIFFERENT worktree — a green clippy result for someone else's code, for a run
+that had not started. Harmless here (the real run overwrote it and the recorded
+result is the real one), but the shape is the `tmp-fixture-clobber-by-a-sibling-
+lane` trap in log form. Use the session scratchpad, or check the mtime.
