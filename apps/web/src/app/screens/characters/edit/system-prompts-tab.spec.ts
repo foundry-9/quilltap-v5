@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
 import { coreStreamStub } from '../../../core/core-client.testing';
@@ -37,6 +37,9 @@ function stubClient(
       }
       if (req.type === 'characterSubpromptList') {
         return { subprompts: [] };
+      }
+      if (req.type === 'promptTemplateList') {
+        return { templates: TEMPLATES, count: TEMPLATES.length };
       }
       return {};
     }) as CoreClient['dispatchData'],
@@ -81,19 +84,95 @@ function clickButtonWithText(fixture: ComponentFixture<unknown>, text: string): 
   fixture.detectChanges();
 }
 
+/** The wire shape P4.83's verb answers: a built-in (no `userId` key at all —
+ *  the column is NULL and v4's wire OMITS it) beside a user template. */
+const TEMPLATES = [
+  {
+    id: 'bt-1',
+    name: 'MODERN General',
+    content: '# A general prompt',
+    description: 'GENERAL prompt optimized for MODERN models',
+    isBuiltIn: true,
+    category: 'GENERAL',
+    modelHint: 'MODERN',
+    tags: [],
+    createdAt: '2020-01-01T00:00:00.000Z',
+    updatedAt: '2020-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'ut-1',
+    userId: 'u1',
+    name: 'My Own Prompt',
+    content: 'Mine.',
+    isBuiltIn: false,
+    tags: [],
+    createdAt: '2020-01-01T00:00:00.000Z',
+    updatedAt: '2020-01-01T00:00:00.000Z',
+  },
+];
+
+function clickImport(fixture: ComponentFixture<CharacterSystemPromptsTab>): void {
+  const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+    (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
+  ) as HTMLButtonElement;
+  expect(button.disabled).toBe(false);
+  button.click();
+  fixture.detectChanges();
+}
+
 describe('CharacterSystemPromptsTab', () => {
-  it('shows the empty state and opens the Import Template modal (P4.9K3)', async () => {
+  it('shows the empty state and opens the Import Template modal with the seeded catalogue (P4.83)', async () => {
     const fixture = await render(stubClient([]));
     expect(fixture.nativeElement.textContent).toContain('No system prompts yet');
-    const importButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
-      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
-    ) as HTMLButtonElement;
-    expect(importButton.disabled).toBe(false);
-    importButton.click();
+    clickImport(fixture);
     await settle(fixture);
-    // The modal's own empty-state copy (v4 `ImportModal.tsx:104-108`) — no
-    // `promptTemplateList` verb exists yet, so the catalogue is always empty.
-    expect(fixture.nativeElement.textContent).toContain('No templates available');
+    // The `p4.9k`-era "always empty" divergence is CLOSED: the catalogue the
+    // `promptTemplateList` verb answers is what renders.
+    expect(fixture.nativeElement.textContent).not.toContain('No templates available');
+    expect(fixture.nativeElement.textContent).toContain('Sample Prompts');
+    expect(fixture.nativeElement.textContent).toContain('MODERN General');
+    expect(fixture.nativeElement.textContent).toContain('My Own Prompt');
+  });
+
+  it('opening the Import Template modal ALWAYS refetches (v4 `openImportModal`)', async () => {
+    const seen: string[] = [];
+    const fixture = await render(stubClient([], (req) => seen.push(req.type)));
+
+    clickImport(fixture);
+    await settle(fixture);
+    expect(seen.filter((t) => t === 'promptTemplateList')).toHaveLength(1);
+
+    // Close and reopen: the editor host refetches every time — deliberately
+    // NOT the new-character host's fetch-only-when-empty guard.
+    fixture.componentInstance['importModalOpen'].set(false);
+    await settle(fixture);
+    clickImport(fixture);
+    await settle(fixture);
+    expect(seen.filter((t) => t === 'promptTemplateList')).toHaveLength(2);
+  });
+
+  it('a failed template fetch leaves the catalogue untouched and logs (v4 `fetchTemplates`)', async () => {
+    const failing: Partial<CoreClient> = {
+      ...coreStreamStub(),
+      dispatchData: (async (req: { type: string }) => {
+        if (req.type === 'characterPromptList') return { prompts: [] };
+        if (req.type === 'characterSubpromptList') return { subprompts: [] };
+        if (req.type === 'promptTemplateList') throw new Error('boom');
+        return {};
+      }) as CoreClient['dispatchData'],
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const fixture = await render(failing);
+      clickImport(fixture);
+      await settle(fixture);
+      // v4 leaves `templates` as it was, so the modal shows its own empty copy.
+      expect(fixture.nativeElement.textContent).toContain('No templates available');
+      expect(fixture.nativeElement.textContent).not.toContain('Loading templates...');
+      expect(errors).toHaveBeenCalledWith('Error fetching templates', { error: 'boom' });
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('creating a prompt dispatches characterPromptCreate', async () => {

@@ -13,6 +13,10 @@ import { ToastService } from '../../../ui/toast.service';
 import { fetchConnectionProfiles } from '../characters.api';
 import type { GeneratedCharacterData } from '../generators/edit-generators.api';
 import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
+import {
+  fetchPromptTemplates,
+  type PromptTemplateRecord,
+} from '../generators/prompts-editor/prompt-templates.api';
 import { AiWizardModal } from '../generators/wizard/ai-wizard-modal';
 import {
   saveGeneratedPhysicalDescription,
@@ -67,8 +71,9 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
  * manifesto / personality — DISTINCT), a SINGULAR scenario field (the array
  * editor is an edit-only affordance), first message, example dialogues,
  * legacy system prompt, avatar URL, and a default connection profile picker.
- * The AI Wizard and "Import Template" are named deferrals (disabled, v4
- * microcopy). The eight markdown fields (identity / description / manifesto /
+ * "Import Template" opens FIRST and fetches only when the catalogue is still
+ * empty (v4 `NewCharacterView.tsx:93-108`) — deliberately NOT the editor
+ * host's always-refetch (P4.83). The eight markdown fields (identity / description / manifesto /
  * personality / scenario / first message / example dialogues / system prompt)
  * use the shared `qt-markdown-field` (v4's `MarkdownLexicalEditor`); each keeps
  * the same `setField` string contract. Copy + `qt-*` classes carry over
@@ -212,7 +217,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
             <button
               type="button"
               class="qt-button-secondary text-xs px-2 py-1"
-              (click)="importModalOpen.set(true)"
+              (click)="openTemplateImport()"
             >
               Import Template
             </button>
@@ -295,6 +300,8 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
 
     @if (importModalOpen()) {
       <qt-character-prompt-import-modal
+        [templates]="templates()"
+        [loading]="loadingTemplates()"
         (close)="importModalOpen.set(false)"
         (importPrompt)="onImportTemplate($event)"
       />
@@ -312,6 +319,9 @@ export class NewCharacter {
   protected readonly hints = PROMPT_FIELD_HINTS;
   protected readonly wizardOpen = signal(false);
   protected readonly importModalOpen = signal(false);
+  /** v4 `templates` / `loadingTemplates` (`NewCharacterView.tsx:93-108`). */
+  protected readonly templates = signal<PromptTemplateRecord[]>([]);
+  protected readonly loadingTemplates = signal(false);
 
   /**
    * Wizard-generated content the character doesn't exist yet to receive — v4
@@ -396,6 +406,31 @@ export class NewCharacter {
     }
     if (data.properties && (data.properties.pronouns || data.properties.aliases.length > 0)) {
       this.pendingProperties = data.properties;
+    }
+  }
+
+  /**
+   * v4 `openTemplateImport` (`NewCharacterView.tsx:93-108`): open FIRST, then
+   * fetch ONLY when the catalogue is still empty — so a second open costs
+   * nothing. The editor host's `openImportModal` always refetches instead; the
+   * two semantics are v4's own and the parity specs pin each.
+   */
+  protected openTemplateImport(): void {
+    this.importModalOpen.set(true);
+    if (this.templates().length === 0) {
+      void this.loadTemplates();
+    }
+  }
+
+  /** v4's inline `fetchTemplates` — `templates` is UNCHANGED on a failure. */
+  private async loadTemplates(): Promise<void> {
+    this.loadingTemplates.set(true);
+    try {
+      this.templates.set(await fetchPromptTemplates(this.core));
+    } catch (err) {
+      console.error('Error fetching templates', err instanceof Error ? err.message : String(err));
+    } finally {
+      this.loadingTemplates.set(false);
     }
   }
 

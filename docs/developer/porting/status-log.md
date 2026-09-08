@@ -411,6 +411,38 @@ no counterpart; the differential compares only the two families this port owns
 (the seed line and `[Prompt Templates v1] …`), and the oracle filters
 identically.
 
+### The SPA half + the e2e walk
+
+`prompts-editor/prompt-templates.api.ts` (NEW) carries §B's DTO and
+`fetchPromptTemplates`, through the dispatch verb rather than v4's bare
+`fetch`. Both hosts fetch on open with v4's two DIFFERENT semantics, and the
+parity specs pin each one by COUNTING dispatches across a close-and-reopen:
+the editor's `openImportModal` fires the fetch and opens, ALWAYS refetching
+(2 opens → 2 calls); the new-character host opens FIRST and fetches only while
+its list is empty (2 opens → 1 call). A failed fetch leaves `templates`
+untouched and logs, as v4 does — with one recorded MECHANISM divergence: v4
+distinguishes a non-2xx (silent, list untouched) from a thrown request (logged,
+list untouched), and the dispatch transport folds them, so v5 logs on both. The
+list route makes that unreachable in practice — v4's `findAllForUser` swallows
+a DB failure to `[]` and still answers 200.
+
+Three SPA mutations, each reddening exactly its spec: the editor host given the
+new host's empty-only guard; the new host given the editor's always-refetch;
+and the client dropping the answered catalogue (which reddens the four
+render/import specs but NOT the two dispatch-count ones — the scoping is the
+point).
+
+`e2e/prompt-templates-flow.spec.ts` walks both hosts against the real server.
+**Its first live run is what found the missing-table gap above**, and its
+second found a locator trap worth the note: `qt-prompt-modal` is an Angular
+custom element with no CSS rule of its own, so it is `display: inline` and
+everything it renders is a FIXED overlay — the host's own box is empty and
+Playwright reads it as hidden. Harmless to the operator (the overlay is what
+they see, and v4 has no such element at all), but it makes the host a bad
+locator; the beat asserts on the modal's CONTENT instead. That is the third
+sighting of the inline-host family (findings #97 `qt-tab-view`, #107
+`qt-markdown-field`, and the Almanack walk's `qt-entity-tabs`).
+
 ### The differential — `prompt_templates_routes_equivalence` (31 cases)
 
 Drives v4's REAL route handlers through the REAL `createContextHandler`

@@ -6,6 +6,10 @@ import type { CharacterSystemPrompt } from '../../../core/core-contract';
 import { Icon } from '../../../ui/icon';
 import { characterKeys } from '../characters.api';
 import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
+import {
+  fetchPromptTemplates,
+  type PromptTemplateRecord,
+} from '../generators/prompts-editor/prompt-templates.api';
 import { CharacterPromptPreviewModal } from '../generators/prompts-editor/preview-modal';
 import { PromptModal, type PromptFormData } from './prompt-modal';
 import { SubpromptsSection } from '../../../subprompts/subprompts-section';
@@ -14,9 +18,9 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
  * The System Prompts tab (v4
  * `components/characters/system-prompts-editor/index.tsx`): the prompt list
  * (name, default badge, preview, edit / set-default / delete) plus a
- * create/edit modal, the Preview modal, "Import Template" (P4.9K3 —
- * joined, but its catalogue is always empty until a `promptTemplateList`
- * verb lands; see `CharacterPromptImportModal`'s header), and — under the
+ * create/edit modal, the Preview modal, "Import Template" (P4.9K3, filled
+ * in by P4.83 — `openImportModal` ALWAYS refetches the catalogue, v4
+ * `useSystemPrompts.ts:265-268`), and — under the
  * prompt list, before the modals, exactly where v4 mounts it
  * (`index.tsx:86-88`) — the Subprompts section (P4.D165, v4 `2f4254b42`).
  * Per-row inline
@@ -44,7 +48,7 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
           </p>
         </div>
         <div class="flex gap-2">
-          <button type="button" class="qt-button-secondary" (click)="importModalOpen.set(true)">
+          <button type="button" class="qt-button-secondary" (click)="openImportModal()">
             Import Template
           </button>
           <button type="button" class="qt-button-primary" (click)="openCreate()">
@@ -156,6 +160,8 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
 
     @if (importModalOpen()) {
       <qt-character-prompt-import-modal
+        [templates]="templates()"
+        [loading]="loadingTemplates()"
         (close)="importModalOpen.set(false)"
         (importPrompt)="onImport($event)"
       />
@@ -173,6 +179,9 @@ export class CharacterSystemPromptsTab {
   protected readonly editingPrompt = signal<CharacterSystemPrompt | null>(null);
   protected readonly previewPrompt = signal<CharacterSystemPrompt | null>(null);
   protected readonly importModalOpen = signal(false);
+  /** v4 `templates` / `loadingTemplates` (`useSystemPrompts.ts:84-107`). */
+  protected readonly templates = signal<PromptTemplateRecord[]>([]);
+  protected readonly loadingTemplates = signal(false);
   /** v4 `handleImport` (`useSystemPrompts.ts:134-142`) staged for the create modal. */
   protected readonly importedForm = signal<PromptFormData | null>(null);
   protected readonly saving = signal(false);
@@ -191,6 +200,31 @@ export class CharacterSystemPromptsTab {
 
   protected prompts(): CharacterSystemPrompt[] {
     return this.promptsQuery.data() ?? [];
+  }
+
+  /**
+   * v4 `openImportModal` (`useSystemPrompts.ts:265-268`): fire the fetch and
+   * open, in that order — and ALWAYS refetch, unlike the new-character host,
+   * which fetches only when its list is still empty. The two semantics are
+   * v4's and they differ; the parity specs pin each one.
+   */
+  protected openImportModal(): void {
+    void this.loadTemplates();
+    this.importModalOpen.set(true);
+  }
+
+  /** v4 `fetchTemplates` — `templates` is left UNCHANGED on a failure. */
+  private async loadTemplates(): Promise<void> {
+    this.loadingTemplates.set(true);
+    try {
+      this.templates.set(await fetchPromptTemplates(this.core));
+    } catch (err) {
+      console.error('Error fetching templates', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      this.loadingTemplates.set(false);
+    }
   }
 
   protected openCreate(): void {

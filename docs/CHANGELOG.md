@@ -552,6 +552,39 @@ pure Rust, no network and no C (`ahash`, `allocator-api2`,
 
 No source consumes it yet — the module and its differentials arrive in the
 next commits.
+#### 2026-09-07 — feat(prompt-templates): the Import-from-Template catalogue on both character hosts
+
+_Versions: SPA 0.5.674._
+
+Fills the Import-from-Template modal on the character EDIT host and the
+NEW-character host from `promptTemplateList`, closing the `p4.9k` round's
+recorded "the catalogue is always empty" divergence on the client side
+(P4.83 tier 1 item 4).
+
+New `prompts-editor/prompt-templates.api.ts` carries §B's DTO and
+`fetchPromptTemplates`. Both hosts fetch on open with v4's two DIFFERENT
+semantics, which the parity specs pin separately: the editor's
+`openImportModal` fires the fetch and opens, ALWAYS refetching
+(`useSystemPrompts.ts:265-268`); the new-character host opens FIRST and
+fetches only while its list is empty (`NewCharacterView.tsx:93-108`). A
+failure leaves `templates` untouched and logs, as v4 does.
+
+The DTO says `description?: string | null` rather than the work order's §B
+`string | null`, because v4's wire OMITS a null column rather than sending
+`null` — v4's own client never normalizes either, reading the fields
+truthily, for which absent and null render identically.
+
+The new `e2e/prompt-templates-flow.spec.ts` walks both hosts against the
+real server: the editor opens the modal, the Sample Prompts section lists
+the seeded built-ins with their category/modelHint badges, clicking
+`MODERN General` fills the create-prompt modal with the template's name and
+content; then the new-character host lists the same catalogue and importing
+lands the content in the System Prompt field.
+
+⚠ The listed name is `MODERN General`, not `MODERN_GENERAL`: the seeded row
+carries the system-prompt registry's DISPLAY name, and the filename survives
+only inside the seed log's `promptId`.
+
 #### 2026-09-07 — feat(prompt-templates): the server surface — the lazy Sample-Prompts seeding v5 never had, the five verbs, and v4's REST edges
 
 _Versions: core 0.0.835, harness 0.0.725, web 0.0.128._

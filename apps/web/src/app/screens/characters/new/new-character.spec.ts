@@ -22,6 +22,8 @@ function stubClient(
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       onDispatch?.(req);
       switch (req.type) {
+        case 'promptTemplateList':
+          return { templates: TEMPLATES, count: TEMPLATES.length };
         case 'connectionProfileList':
           return {
             profiles: [{ id: 'p1', name: 'GPT-4', provider: 'OPENAI', modelName: 'gpt-4' }],
@@ -82,6 +84,38 @@ function setInput(fixture: ComponentFixture<NewCharacter>, id: string, value: st
 function setMarkdownField(fixture: ComponentFixture<NewCharacter>, index: number, value: string): void {
   const editors = fixture.debugElement.queryAll(By.directive(RichEditor));
   (editors[index].componentInstance as RichEditor).setMarkdown(value);
+  fixture.detectChanges();
+}
+
+/** The wire shape P4.83's verb answers (a built-in carries no `userId` key). */
+const TEMPLATES = [
+  {
+    id: 'bt-1',
+    name: 'MODERN General',
+    content: '# A general prompt',
+    description: 'GENERAL prompt optimized for MODERN models',
+    isBuiltIn: true,
+    category: 'GENERAL',
+    modelHint: 'MODERN',
+    tags: [],
+    createdAt: '2020-01-01T00:00:00.000Z',
+    updatedAt: '2020-01-01T00:00:00.000Z',
+  },
+];
+
+async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+function clickImport(fixture: ComponentFixture<NewCharacter>): void {
+  const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+    (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
+  ) as HTMLButtonElement;
+  expect(button.disabled).toBe(false);
+  button.click();
   fixture.detectChanges();
 }
 
@@ -373,16 +407,47 @@ describe('NewCharacter — the AI Wizard + Import Template (P4.9K3)', () => {
     expect([...indices].sort((a, b) => a - b)).toEqual(indices);
   });
 
-  it('Import Template opens a real modal with v4\'s empty-state copy (no promptTemplateList verb)', async () => {
+  it('Import Template opens the modal and fills it from promptTemplateList (P4.83)', async () => {
     const fixture = await render(stubClient());
 
-    const importButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
-      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Import Template',
-    ) as HTMLButtonElement;
-    expect(importButton.disabled).toBe(false);
-    importButton.click();
-    fixture.detectChanges();
+    clickImport(fixture);
+    await settle(fixture);
 
-    expect(fixture.nativeElement.textContent).toContain('No templates available');
+    expect(fixture.nativeElement.textContent).not.toContain('No templates available');
+    expect(fixture.nativeElement.textContent).toContain('Sample Prompts');
+    expect(fixture.nativeElement.textContent).toContain('MODERN General');
+  });
+
+  it('Import Template fetches ONLY while the catalogue is empty (v4 `openTemplateImport`)', async () => {
+    const seen: string[] = [];
+    const fixture = await render(stubClient((req) => seen.push(req.type)));
+
+    clickImport(fixture);
+    await settle(fixture);
+    expect(seen.filter((t) => t === 'promptTemplateList')).toHaveLength(1);
+
+    // Close and reopen: this host does NOT refetch — the editor host does, and
+    // that difference is v4's own (`NewCharacterView.tsx:93-108` vs
+    // `useSystemPrompts.ts:265-268`).
+    fixture.componentInstance['importModalOpen'].set(false);
+    await settle(fixture);
+    clickImport(fixture);
+    await settle(fixture);
+    expect(seen.filter((t) => t === 'promptTemplateList')).toHaveLength(1);
+  });
+
+  it('importing a template writes its content into the system prompt field', async () => {
+    const fixture = await render(stubClient());
+    clickImport(fixture);
+    await settle(fixture);
+
+    const row = Array.from(fixture.nativeElement.querySelectorAll('button')).find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('MODERN General'),
+    ) as HTMLButtonElement;
+    row.click();
+    await settle(fixture);
+
+    expect(fixture.componentInstance['form']().systemPrompt).toBe('# A general prompt');
+    expect(fixture.nativeElement.textContent).not.toContain('Sample Prompts');
   });
 });

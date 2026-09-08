@@ -2,15 +2,23 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 
 import { Modal } from '../../../../ui/modal';
 
-/** v4 `system-prompts-editor/types.ts` `PromptTemplate`. */
+/**
+ * v4 `system-prompts-editor/types.ts` `PromptTemplate`.
+ *
+ * The three nullable fields are `?:` rather than v4's bare `| null` because the
+ * wire OMITS a null column rather than sending `null` (see
+ * `prompt-templates.api.ts`'s header). v4's own type is optimistic about this
+ * and its template reads them truthily, for which absent and null are the same;
+ * v5 states the truth in the type and renders identically.
+ */
 export interface PromptTemplate {
   id: string;
   name: string;
   content: string;
-  description: string | null;
+  description?: string | null;
   isBuiltIn: boolean;
-  category: string | null;
-  modelHint: string | null;
+  category?: string | null;
+  modelHint?: string | null;
 }
 
 /**
@@ -18,15 +26,15 @@ export interface PromptTemplate {
  * prompts-editor/ImportModal.tsx` (113 lines): built-in "Sample Prompts" and
  * the user's own templates, either imported by clicking its row.
  *
- * ⚠ v4 sources `templates` from `GET /api/v1/prompt-templates`, a verb v5 has
- * no equivalent of — it rides no server family in this round's §B contract
- * (P4.9K1 ships the character trio, P4.9K2 the wizard pair; neither owns a
- * templates listing) and `core-contract.ts`/`characters.api.ts` are frozen
- * for this lane, so this lane cannot invent one (§B.6). The modal is
- * genuinely joined to the editor (both hosts open it; it renders v4's own
- * "No templates available" copy `:104-108`) rather than left as a disabled
- * button, but `templates` is always empty until a future round adds the
- * listing verb — recorded loud, not silent, in the lane's status-log entry.
+ * `templates` comes from `GET /api/v1/prompt-templates` — the
+ * `promptTemplateList` verb, landed in P4.83 along with the lazy seeding of
+ * v4's 21 built-in "Sample Prompts" (`prompt-templates.api.ts`). Both hosts
+ * fetch on open, with v4's two DIFFERENT semantics: the editor ALWAYS refetches
+ * (`useSystemPrompts.ts:265-268`), the new-character host opens first and
+ * fetches only when the list is still empty (`NewCharacterView.tsx:93-108`).
+ * The `p4.9k`-era "the catalogue is always empty" divergence this header used
+ * to record is CLOSED; v4's own "No templates available" copy (`:104-108`) now
+ * shows only when there genuinely are none.
  */
 @Component({
   selector: 'qt-character-prompt-import-modal',
