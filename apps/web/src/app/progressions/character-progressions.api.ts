@@ -5,7 +5,7 @@ import { CoreClient } from '../core/core-client';
 import type { CharacterDetail } from '../core/core-contract';
 import { characterKeys, fetchCharacter } from '../screens/characters/characters.api';
 import { parseProgressions } from './engine';
-import { PROGRESSIONS_METADATA_KEY, type Progression, type Progressions } from './schema';
+import { PROGRESSIONS_METADATA_KEY, type Progressions } from './schema';
 
 /**
  * The Aurora progressions editor's data layer (v4

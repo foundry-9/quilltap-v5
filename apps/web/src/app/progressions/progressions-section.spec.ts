@@ -151,6 +151,33 @@ describe('idFromName', () => {
   });
 });
 
+describe('ProgressionsSection — the header', () => {
+  it('carries v4’s heading and its whole explanatory paragraph, with the character named', async () => {
+    const fixture = await render(stub({}));
+    expect(text(fixture)).toContain('Progressions');
+    const paragraph = el(fixture)
+      .querySelector('p.qt-text-small')!
+      .textContent!.replace(/\s+/g, ' ')
+      .trim();
+    // v4's bytes, extracted from `ProgressionsSection.tsx` at `25f534c0b` and
+    // resolved the way React resolves them (`&rsquo;` → ’, the code element's
+    // tags dropped, the character's name interpolated).
+    expect(paragraph).toBe(
+      'Spans of time Iris Volney is carrying — a gestation, a recharging weapon, a fermentation. ' +
+        'Each turn, Quilltap works out how far along it is and tells them so, without the model ' +
+        'having to do arithmetic or remember that time has passed. They live in the vault’s ' +
+        'metadata.json, where a custom tool can read them and adjust them; the model itself never ' +
+        'sets one.',
+    );
+  });
+
+  it('uses the typographic apostrophe in “the vault’s”, never an ASCII one', async () => {
+    const paragraph = el(await render(stub({}))).querySelector('p.qt-text-small')!.textContent!;
+    expect(paragraph).toContain('the vault’s');
+    expect(paragraph).not.toContain("vault's");
+  });
+});
+
 describe('ProgressionsSection — the list', () => {
   it('lists an entry with its id, its state and the line the character reads', async () => {
     const fixture = await render(stub({ faction: 'Ordo Aurum', progressions: { cannon: CANNON } }));
@@ -165,6 +192,41 @@ describe('ProgressionsSection — the list', () => {
   it('offers the empty state to a character carrying nothing', async () => {
     const fixture = await render(stub({ faction: 'Ordo Aurum' }));
     expect(text(fixture)).toMatch(/Nothing in progress/);
+  });
+
+  /**
+   * A RECORDED DIVERGENCE, filed upstream. v4 writes
+   * `<code>{invalidIds.join('</code>, <code>')}</code>` — a JSX EXPRESSION, so
+   * React escapes it: measured at `25f534c0b` with `react-dom/server`, two bad
+   * ids render the visible text `broken</code>, <code>other`. v5 renders them
+   * as separate `<code>` elements joined by a comma, which is plainly what the
+   * line means. Identical for ONE id, which is the common case and the only one
+   * v4's own suite covers.
+   */
+  it('lists several unparseable ids as separate code elements, not as escaped markup', async () => {
+    const fixture = await render(
+      stub({
+        progressions: {
+          'Cannon Recharge': CANNON,
+          'Fuse Timer': CANNON,
+        },
+      }),
+    );
+    expect(text(fixture)).toMatch(/2 entries in/);
+    expect(text(fixture)).toMatch(/are being skipped/);
+    expect(text(fixture)).toMatch(/mend them/);
+    // The tell: v4's rendering would put this literal text on the screen.
+    expect(text(fixture)).not.toContain('</code>');
+    const codes = Array.from(el(fixture).querySelectorAll('code')).map((c) => c.textContent);
+    expect(codes).toContain('Cannon Recharge');
+    expect(codes).toContain('Fuse Timer');
+  });
+
+  it('uses v4’s singular wording for exactly one', async () => {
+    const fixture = await render(stub({ progressions: { 'Cannon Recharge': CANNON } }));
+    expect(text(fixture)).toMatch(/One entry in/);
+    expect(text(fixture)).toMatch(/is being skipped/);
+    expect(text(fixture)).toMatch(/mend it/);
   });
 
   it('says so when an entry in the vault could not be read', async () => {

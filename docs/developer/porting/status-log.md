@@ -117316,3 +117316,93 @@ Gate: 416 SPA spec files / 6,814 tests; the guard green against both the live
 checkout and the pin; `cargo fmt --all --check` clean; `cargo clippy -p
 quilltap-harness --all-targets -- -D warnings` clean. SPA 0.5.687, harness
 0.0.736.
+
+### Unit 7 — the e2e beats, and the m6 rows
+
+NEW `apps/web/e2e/character-progressions-flow.spec.ts` and
+`workbench-progress-flow.spec.ts`. No existing spec was touched.
+
+**Live from day one, and why.** The card's whole write path —
+`characterUpdate` carrying `metadata` whole — has been on main since the
+store-backed-entity slice, so beats (a) and (b) of the card walk wait on
+nothing. The Workbench's beat (a) is live for a different reason: the gate
+subject, the derived-progressions list and the placeholder menu are ALL
+client-side, which is precisely why `progressions/engine.ts` and
+`pascal/tool-gate.ts` are client-safe modules. The two gates are the two things
+that genuinely need a sibling lane, on the §C.6 NAMED constants:
+
+| constant | file:line at authoring | what it waits for |
+| --- | --- | --- |
+| `P4D168_SERVER_LANDED` | `character-progressions-flow.spec.ts:38` (used `:253`) | the prompt path's `Time-bound conditions you are carrying` block |
+| `P4D169_SERVER_LANDED` | `workbench-progress-flow.spec.ts:35` (used `:185`) | the server ACCEPTING a `progress` gate through the schema |
+
+Named constants, never capability probes: a probe cannot tell a
+DEFINED-but-refusing verb from one that answers, and would silently activate a
+beat into a guaranteed failure.
+
+**The vault is the truth.** Every claim about what was saved is read back
+through `characterGet`, never off the screen — and the walk restores Bram's
+`metadata` to whatever it held at the top, because `metadata` is REPLACED whole
+by every write and the instance is shared with every other spec. The greeting
+beat seeds through the VERB rather than SQL: `metadata.json` is a store-overlay
+file, and a SQL plant leaves every hash beside it stale.
+
+`window.prompt` is stubbed in the Workbench beat: it answers `null` headless
+exactly as `window.confirm` does, so a bare click on `Progress field…` would
+insert nothing and the assertion would be measuring the stub's absence.
+
+**A RECORDED DIVERGENCE, found by reading v4's markup and settled by
+MEASUREMENT.** v4's unparseable-ids line is
+`<code>{invalidIds.join('</code>, <code>')}</code>` — a JSX EXPRESSION, so React
+escapes it. Rendered through `react-dom/server` at the pin, two bad ids produce
+the visible text `broken</code>, <code>other`; one id is byte-identical to v5's.
+v5 renders separate `<code>` elements joined by a comma, which is plainly what
+the line means, and two specs pin both the plural rendering and v4's
+singular/plural wording. **A v4-side filing candidate** — v4's own suite asserts
+only `/could not be read/`, so nothing there sees it.
+
+**Tier-3 deferrals, both discharged by measurement rather than banked:**
+
+- The `datetime-local` browser-zone question: NO divergence to record.
+  `toLocalInput` / `fromLocalInput` are v4's functions verbatim, and the input
+  is a plain DOM `<input type="datetime-local">` with a `[value]` binding — no
+  Angular form control is involved, so there is nothing that could behave
+  differently.
+- The realtime key: the topic map's `characters/<id>` arm already invalidates
+  `characterKeys.detail(id)` (`core/realtime-topic-map.ts:90-98`), which IS the
+  card's query key. Nothing invented.
+
+Tier 2: three `m6-screen-parity.md` rows (the section, the modal, the Workbench
+affordances), each carrying v4's file and v5's and the divergences above.
+
+**The beats' first live runs caught three gesture defects, all spec-side.** In
+order of what they teach:
+
+1. **Both files read `/api/dispatch` before anything unlocked the instance.** A
+   dispatch against a locked server answers no `data` at all, which surfaced as
+   `the fixture should carry a character named Bram` — pointing at the fixture
+   rather than at the lock. Inside the full suite `aa-foundation.spec.ts` has
+   already unlocked, so this would have passed there and failed for anyone who
+   ran the file alone. Both files now unlock through the browser first, and the
+   Workbench's `customToolsLibrary` probe moved OUT of `beforeAll` into the
+   beats for the same reason: probed before an unlock, it reads "the server
+   does not have this feature" when the truth is "the server is locked".
+2. **The Workbench beat used the salon-shaped waiter on `/custom-tools`.**
+   `maybeUnlock` waited on the Chats heading, which does not exist on the screen
+   the beat had just opened. It now uses `workbench-gate-flow`'s screen-agnostic
+   `qt-shell` waiter, verbatim.
+3. **`getByPlaceholder('cannon')` matched TWO inputs** — Playwright's placeholder
+   match is substring AND case-insensitive, so `Cannon recharge` (the Name
+   field) matched too. Three call sites now pass `{ exact: true }`.
+
+Live results: `character-progressions-flow` (a) and (b) GREEN, (c) skipped by
+its constant; `workbench-progress-flow` (a) GREEN, (b) skipped by its constant.
+Beat (a) of the card walk is the one that matters: it drives the whole
+add/edit/delete cycle through the UI and reads `metadata.progressions` back
+through `characterGet` after each write, including the assertion that the
+reserved key is GONE rather than emptied and that every other metadata key
+survived all three writes.
+
+Gate: full Playwright **303 passed / 0 failed / 2 skipped** (the suite grew
+300 → 305; the two skips are `P4D168_SERVER_LANDED` and
+`P4D169_SERVER_LANDED`, both `false` on this branch). SPA 0.5.688.

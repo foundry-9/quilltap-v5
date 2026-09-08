@@ -526,6 +526,35 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — test(e2e): the progressions card walk, and the Workbench's progress affordances
+
+_Versions: SPA 0.5.688._
+
+P4.D170 unit 7 (+ Tier 2). Two NEW Playwright specs.
+`character-progressions-flow.spec.ts` runs LIVE from day one — the card saves
+through the ordinary `characterUpdate` carrying `metadata`, which has been on
+main since the store-backed-entity slice. It adds, edits and deletes a
+progression through the UI and reads `metadata.progressions` back through
+`characterGet` after every write, because a card that renders the right row
+while writing the wrong bytes is exactly the failure the save-payload specs
+exist for. Its beat (c), the greeting's progressions block, is gated
+`P4D168_SERVER_LANDED`.
+
+`workbench-progress-flow.spec.ts` beat (a) is also LIVE — the gate subject, the
+derived list and the placeholder menu are all client-side, which is the whole
+reason those modules are client-safe — and stubs `window.prompt`, which answers
+`null` headless. Beat (b), saving a `progress` gate into a store and reading it
+back, is gated `P4D169_SERVER_LANDED`.
+
+A RECORDED DIVERGENCE found on the way and MEASURED with `react-dom/server` at
+the pin: v4's unparseable-ids line writes
+`<code>{invalidIds.join('</code>, <code>')}</code>`, a JSX expression React
+escapes, so two bad ids put the literal text `broken</code>, <code>other` on
+the screen. v5 renders separate `<code>` elements. Identical for one id — the
+common case and the only one v4's own suite covers — and a v4-side filing.
+
+Also: the three `m6-screen-parity.md` rows for the new surfaces.
+
 #### 2026-09-08 — feat(schemas): re-vendor the custom-tool schema, vendor the progression schema, guard both
 
 _Versions: SPA 0.5.687, harness 0.0.736._

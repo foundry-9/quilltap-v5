@@ -91,6 +91,17 @@ interface Row {
         </p>
       }
 
+      <!--
+        The unparseable-ids line. v5 renders the ids as SEPARATE code elements
+        joined by a comma; v4 writes invalidIds.join with a literal closing and
+        opening code tag inside one element, which React escapes - MEASURED at
+        25f534c0b with react-dom/server: two bad ids render the visible text
+        broken&lt;/code&gt;, &lt;code&gt;other. A RECORDED DIVERGENCE, filed
+        upstream. It is invisible for one id (the overwhelmingly common case,
+        and the only one v4's own suite covers), and v5 will not show a user
+        literal markup to be faithful to a typo. NB no backticks in a template
+        comment - they end the literal.
+      -->
       @if (invalidIds().length > 0) {
         <p class="qt-text-small qt-text-destructive">
           {{ invalidCountPhrase() }} this character&rsquo;s <code>metadata.json</code> could not be
