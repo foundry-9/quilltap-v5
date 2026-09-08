@@ -361,6 +361,19 @@ async fn the_optimizer_stream_is_v4s_recorded_bytes() {
     .await;
 }
 
+/// The AI-import edge (`POST /api/v1/system/tools?action=ai-import-stream`) —
+/// P4.86's one named deferral, landed at the generator follow-ups round's
+/// unification: the lane proved the FRAMING half against v4's `rawSse` inside
+/// its own family but owned no `quilltap-web` file for the three headers.
+/// The same re-framer serves all three generator edges, so the same replay
+/// proves this one's bytes AND its `text/event-stream` / `no-cache` /
+/// `keep-alive` headers (v4 `system/tools/route.ts:1223-1252`). The oracle
+/// streams 37 of its 39 rows at `2f4254b42`.
+#[tokio::test]
+async fn the_ai_import_stream_is_v4s_recorded_bytes() {
+    item9("QT_ORACLE_AI_IMPORT", GeneratorKind::AiImport, 30).await;
+}
+
 /// The wizard edge (`POST /api/v1/characters?action=ai-wizard-stream`).
 #[tokio::test]
 async fn the_wizard_stream_is_v4s_recorded_bytes() {

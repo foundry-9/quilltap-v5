@@ -284,7 +284,7 @@ describe('AiImportWizard — the chrome title (v4 SummonFromLoreModal / AuroraVi
 
   it('keeps the step name as a section heading under the indicator (v4 :705-707)', async () => {
     const fixture = await mount();
-    const heading = fixture.nativeElement.querySelector('.qt-section-title') as HTMLElement;
+    const heading = fixture.nativeElement.querySelector('.qt-heading-2') as HTMLElement;
     expect(heading.textContent?.trim()).toBe('Source Material');
 
     // And it tracks the step, where the dialog title does not.
@@ -292,7 +292,7 @@ describe('AiImportWizard — the chrome title (v4 SummonFromLoreModal / AuroraVi
     fixture.detectChanges();
     await settle(fixture);
     expect(
-      (fixture.nativeElement.querySelector('.qt-section-title') as HTMLElement).textContent?.trim(),
+      (fixture.nativeElement.querySelector('.qt-heading-2') as HTMLElement).textContent?.trim(),
     ).toBe('Configuration');
     expect(
       (fixture.nativeElement.querySelector('.qt-dialog-title') as HTMLElement).textContent?.trim(),
