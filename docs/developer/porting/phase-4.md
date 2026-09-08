@@ -6520,6 +6520,114 @@ in the help tree); `cargo test --workspace` **529 test binaries / 2,980 passed /
 
 PB1 stays parked by the standing rule.
 
+## The generator follow-ups + prompt-templates round (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86) — UNIFIED 2026-09-07
+
+**UNIFIED on main (2026-09-07) — ALL FIVE ORDERS CLOSED (P4.86 whole, its
+one deferral closed at the wire); the oracle baseline STAYS `2f4254b42` and
+the drift ledger's §3 stays EMPTY** (the probe passed at every step — v4 did
+not move). The first non-drift round since the follow-ups round 2, and with
+it **P4.9K1 and P4.9K2 close WHOLE**: their Tier-2 items 9/10 landed across
+all four generator families and K2's Tier-3 head-and-shoulders recording
+became P4.82. Five lanes, 28 commits, reconciled by cherry-pick with the
+version recount honest (core 834 → 846, harness 724 → 735, web 127 → 131,
+host 113 → 114, SPA 673 → 681 — the identical first bumps auto-merged
+silently, as the playbook says they do).
+
+Landed: **P4.82** the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + the
+dedupe-on-enqueue queue helper + the `instance_settings`-gated boot scan (v4's
+eleven arms; ONE cheap-LLM `generateField` through the wizard's shared
+implementation; the COMPLETE merged `physicalDescription` through the vault
+overlay; the tier-3 family over v4's REAL handler + the tier-2 family over
+v4's REAL enqueuer over the NEW committed `headshoulders-{main,mount}.db`;
+both host wiring pins; Tier 3 dispositioned by measurement — v4's
+`Failed to select cheap LLM` catch is DEAD CODE) ∥ **P4.83** prompt templates
+whole (the vendored 21-prompt catalogue + generator + guard; the lazy seeding
+at v4's site, insert-if-absent, never update; the five verbs + v4's REST
+edges; the 31-case routes family; both SPA hosts with v4's two open
+semantics; the live beat — **which found v4's lazy `ensureCollection` on its
+first run**: an instance nobody has opened the modal on has NO
+`prompt_templates` table; the `d123658d`-round ratification of `9c01fa99`
+CORRECTED — v5 never had the registry) ∥ **P4.84** the SPA follow-ups (the
+review pane's three renders on a bare CommonMark pipeline — the K3 "no
+chat-independent renderer" premise refuted twice over; the continue-mode
+toasts; `runTemplateSave` on the shared helper; the fixed "Summon From Lore"
+title at the dialog; the three K4 divergences run to ground — two of them v4
+BUGS (the `imported` count compares an OBJECT `> 1`; the apply banner reads a
+stale closure), one ported; the nested-button census) ∥ **P4.85** the Rust
+follow-ups (the impersonation-stopped line; the re-framer's `Closed` arms
+loud; the impossible-parse path on one typed 500; the "starting" lines
+pinned; `image_profiles.rs` on the Zod code-point helpers; K1/K2 items 9/10
+for three families — with the order premise REFUTED: `jest.setup.ts:379`
+no-ops `llm-logging.service` for every jest run, so `logLLMCall` had never
+been writing in ANY oracle; `requireActual`-ed back per case) ∥ **P4.86** the
+AI-import validation engine (`jsonschema` 0.55 under the human's written
+ruling; the vendored schema + embed guard; steps 9–10 frame-for-frame;
+`VALIDATION_UNAVAILABLE` and its pins DELETED; the 46-row tier-1 validator
+family; the truthy-non-array arms REPRODUCED — v5 measurably had the
+string-`sourceFileIds` 400; item 10's first run caught a `Map::remove`
+swap-remove reordering `stepResults`).
+
+**The §3 review (four parallel readers, verdict owned at the wire): NO
+blocking findings; six should-fixes fixed on the unify branch** — the ones
+that would have shipped: P4.83's CREATE path lacked the table ensure its
+read paths had (a v4-shaped client's first-ever POST 500'd; fixed + a
+bare-instance wire arm); P4.84's optimizer stream-end arm was gated on
+`loading` where v4's runs after every stream end (`settleStreamEnd`, three
+pins; v4's file-mode-with-suggestions quirk reproduced and recorded as a
+filing candidate); P4.86's `llmLogCalls` v5 leg was a harness derivation that
+never observed the port (now a real llm-logs partition per case, P4.85's
+shape) plus a comment citing a test that did not exist; P4.82's
+`chat_settings` read failed the job where v4's `safeQuery` swallows it, its
+dedupe arm rendered a sentence v4 cannot produce, and its boot scan runs
+INSIDE the joined boot-repair thread — ON the boot path — while three
+comments claimed otherwise (corrected, recorded, the invented host line
+dropped); a heading class and a vacuous mutation claim. Wires: P4.86's
+header deferral closed (`the_ai_import_stream_is_v4s_recorded_bytes`); the
+§B fold; the ledger's hazards 8/9 (two vendored artifacts with guards).
+
+Gate: fmt + clippy both feature sets clean; release build; the 11-family
+sweep 11/11 fresh from the live checkout, zero SKIP, changed bytes grepped;
+`cargo test --workspace` **537 test binaries / 3,018 / 0
+/ 1 ignored, zero `SKIP:` lines, exit 0**; ng lint
+clean, `npm test` 409 files / 6,484, build clean; full Playwright
+**300 passed / 0 failed / 0 skipped (7.6 m)** — the suite grew 297 → 300 with the prompt-templates beat and the wizard review-pane beats, zero skips. Versions: core 0.0.846, harness 0.0.735, web 0.0.131,
+host 0.0.114, SPA 0.5.681; cli/tauri unchanged. Round record:
+`status-log.md` → "Round record — the generator follow-ups + prompt-templates
+round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-07):
+
+1. **The owed dogfood pass** on the Friday copy — the round's whole surface:
+   the backfill's cross-app leg (v4 has already set
+   `headshoulders_backfill_enqueued_v1` on Friday — a v5 boot must scan
+   nothing and write nothing; then plant the flag away and measure the scan
+   over the real library, and let ONE job run 💸), the Import-from-Template
+   catalogue on both hosts against v4's own seeded rows (the display names,
+   the never-update rule on a modernized prompt), the wizard review pane's
+   tier panel + "Written as:" line on a real generation 💸, the AI-import
+   validation + repair steps on a real import 💸 (the repair prompt's bytes
+   against v4's when the engines' error texts differ), the continue-mode
+   toasts through a stale roster, the impersonation-stopped line in a real
+   `combined.log`; plus the standing human-only items (the Brahma deep
+   query, dedup/summaries, #101).
+2. **The follow-ups this round recorded:** detach the backfill scan from the
+   joined boot-repair thread (the recorded mechanism divergence); the two
+   AI-import format-divergence corpus rows (a `date-time` with a space
+   separator, a `urn:uuid:` id — each a recorded-divergence arm, since
+   `valid` is exact today); the `isQtapUri` case-sensitivity lead; the
+   malformed-body 500-vs-400 class on the prompt-templates and subprompts
+   edges; `generators_wizard_routes.rs`'s live-edge header assertion;
+   `utf16_prefix`'s sixth private copy; the `isPaused` continue guard's
+   pause-refetch ordering; v4 filing candidates — the optimizer's
+   file-mode `review` override and the two K4 client bugs.
+3. The census's honest totality + the present-but-null lead; the
+   `CaptureLayer` consolidation; the sweep driver's SHELL_START class; the
+   stray `#OLD` version-comment lines (a bump-tool decision for the human);
+   P4.81 item 7 (measured, unreproducible).
+
+PB1 stays parked by the standing rule.
+
 ## The generator follow-ups + prompt-templates round (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86-conditional) — ORDERED 2026-09-07
 
 **Baseline `2f4254b42`; v4 `main` HEAD AT the baseline, v4 `bugfix` tip

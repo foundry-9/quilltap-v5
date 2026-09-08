@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — unify: the generator follow-ups + prompt-templates round — P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86, all five CLOSED
+
+_Versions: quilltap-core 0.0.846, quilltap-harness 0.0.735, quilltap-web 0.0.131, quilltap-host 0.0.114, apps/web 0.5.681; cli/tauri unchanged._
+
+The first non-drift round since the follow-ups round 2, unified on main with
+the oracle baseline staying `2f4254b42` (the ledger's probe passed at every
+step). Five lanes, 28 commits, reconciled by cherry-pick with the version
+recount honest. Landed: the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler +
+its boot-time scan (P4.82 — the last named-refusal job type; the tier-3 family
+over v4's real handler, the tier-2 family over v4's real enqueuer, a new
+committed fixture pair, both host wiring pins); prompt templates whole (P4.83
+— the vendored 21-prompt catalogue with its guard, the lazy seeding at v4's
+site, five verbs + v4's REST edges, both SPA hosts, a live beat that found v4's
+lazy `ensureCollection`); the SPA follow-ups (P4.84 — the wizard review pane's
+three renders on a bare CommonMark pipeline, the continue-mode toasts,
+`runTemplateSave` on the shared helper, the fixed chrome title, the three K4
+divergences dispositioned, the nested-button census); the Rust follow-ups
+(P4.85 — the impersonation-stopped line, the loud `Closed` arms, one typed 500
+for the impossible-parse path, the "starting" lines pinned, the code-point
+Zod rule, and K1/K2's items 9/10 for three families with the oracles'
+`logLLMCall` no-op premise refuted and fixed); and the AI-import validation
+engine (P4.86 — `jsonschema` 0.55 under the human's ruling, the vendored
+schema + guard, v4's steps 9–10, `VALIDATION_UNAVAILABLE` deleted, the 46-row
+validator family, the truthy-non-array arms reproduced). With this round
+P4.9K1 and P4.9K2 close whole.
+
+The §3 review (four parallel readers) found no blocking finding; six
+should-fixes landed on the unify branch: the prompt-templates CREATE path
+lacked the table ensure its reads had (a first-ever POST 500'd; fixed + a
+bare-instance wire arm), the optimizer's stream-end arm was gated on
+`loading` where v4's is unconditional (`settleStreamEnd`, three pins), the
+AI-import `llmLogCalls` v5 leg was a harness derivation (now a real llm-logs
+partition per case) with a comment citing a nonexistent test, the backfill's
+`chat_settings` read failed the job where v4 swallows it, its dedupe arm
+rendered a sentence v4 cannot produce, its boot scan runs on the boot path
+while three comments said otherwise (corrected, recorded), a heading class and
+a vacuous mutation claim. Wires: P4.86's header deferral closed
+(`the_ai_import_stream_is_v4s_recorded_bytes`), the §B DTOs folded into
+`core-contract.ts`, the ledger's two new re-vendor hazards.
+
+Gate: fmt + clippy both feature sets clean; release build; the 11-family sweep
+11/11 fresh, zero SKIP, changed bytes grepped; `cargo test --workspace`
+537 binaries / 3,018 passed / 0 failed / 1
+ignored, zero SKIP lines; ng lint clean, `npm test` 409 files / 6,484,
+build clean; full Playwright 300 passed / 0 failed / 0 skipped (7.6 m).
+
 #### 2026-09-07 — docs(jobs): record why v4's wizard log-failure warn needs no port
 
 _No crate versions bumped._

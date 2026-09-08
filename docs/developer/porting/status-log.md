@@ -115387,3 +115387,219 @@ reading someone else's first call. It is green in isolation and green on every
 other full run in this lane (four of them), and no file this lane touched goes
 near it. Recorded as the standing vitest global-pollution class rather than
 claimed clean or claimed broken.
+
+## Round record — the generator follow-ups + prompt-templates round unification (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86), 2026-09-07
+
+**UNIFIED on main (2026-09-07) — ALL FIVE ORDERS CLOSED; the oracle baseline
+STAYS `2f4254b42`; the drift ledger's §3 stays EMPTY** (the §2 probe passed
+at planning, at every lane start, at the reconcile and at the docs step — v4
+did not move during the round). The first non-drift round since the
+follow-ups round 2: every item was a "recorded, not fixed" row from the
+`p4.9k` and `2f4254b42` round records or an OPEN order remainder, and every
+one of them is now closed, including P4.9K1/P4.9K2's Tier-2 items 9/10 and
+K2's Tier-3 head-and-shoulders recording, so **the two K orders are CLOSED
+WHOLE** as of this round. Five lanes, 28 commits, reconciled by cherry-pick.
+
+### §1 Survey
+
+Five lane worktrees, all clean, all branched from `f3bf405f` (the P4.86
+authorization commit): P4.82 (3 commits), P4.83 (2), P4.84 (8), P4.85 (9),
+P4.86 (6). Every status header claimed LANE COMPLETE / CLOSED; each was
+verified against its order's tier list by reading the code (§3). File
+footprints: ONE source overlap across all five lanes —
+`crates/quilltap-core/src/services/mod.rs`, both by fence, as the Ownership
+table designed. Four out-of-ownership touches, all the class the orders
+predicted: P4.82's `realtime_publish_sites_guard.rs` (the census moved with
+the new in-transaction enqueue site — "a new verb moves the census"), P4.83's
+`api/mod.rs` (the one `pub mod` line the §R.5 list omitted — flagged by the
+lane) and `dispatch_wrong_type_census.rs` (426 → 429, the verb-add class),
+P4.85's `chat_delete_equivalence.rs` (the capture pin for the impersonation
+line, as its order pointed) and `image_generate_route_equivalence.rs` (the
+family covering `?action=generate`, as its order named).
+
+### §2 Reconcile
+
+`unify/generator-follow-ups` from `main`; cherry-picks in dependency order
+P4.82 → P4.85 → P4.86 → P4.83 → P4.84 with `merge=union` on the two
+append-only docs (a temporary `.git/info/attributes`). Conflicts: the P4.86
+dependency commit (`Cargo.toml` — audited FIRST as non-version: the
+`jsonschema` line applied cleanly OUTSIDE the hunk, the hunk itself was
+version-only; `Cargo.lock` taken from the lane so the crate's 22-crate tree
+survived, then resynced by the workspace build), the expected version-only
+conflicts on every later pick (a resolver that REFUSES any hunk containing a
+non-version line — it stopped twice, correctly: the `services/mod.rs` fence
+collision, resolved by keeping BOTH blocks, and the P4.9K2 order header,
+where P4.85 and P4.86 each rewrote the same paragraph closing their half of
+items 9/10 — merged by hand so the header carries both halves). **The
+silent-auto-merge trap fired exactly as the playbook says:** the identical
+first bumps of core (834 → 835 in three lanes), harness and the SPA
+auto-merged with no conflict, leaving core at 838, harness at 729 and the SPA
+at 680 after the picks; recounted as base + total bumps in a commit of its
+own: core 834 + 12 → **0.0.846**, harness 724 + 11 → **0.0.735**, web 127 +
+4 → **0.0.131**, host 113 + 1 → **0.0.114**, SPA 673 + 8 → **0.5.681**.
+
+### §3 Review
+
+Four parallel readers (P4.82; P4.83; P4.84; P4.85 + P4.86) over the whole
+combined diff against v4 at the baseline, plus the unifier's own reads of the
+contract fold, the fenced unions, the cross-lane 500-sentence choice and the
+wire sites. **Every lane's differentials drive v4's REAL code** (verified
+import-by-import: the real handler / enqueuer / route handlers / repository /
+registry / plugin module / `validateQtapExport`; mocks only at the seams the
+Rust side injects). **NO blocking findings in any lane.** Should-fixes, all
+fixed on the unify branch in ONE commit (`9b171b62`) before the gate — the
+ones that would have shipped a divergence named first:
+
+- **P4.83 — `POST /api/v1/prompt-templates` on a table-less instance.** v4's
+  `_create` goes through `getCollection()` → `ensureCollection`
+  (`base.repository.ts:100-114`, `:345`), so a POST on an instance that has
+  never had the table answers 201; v5's create wrote straight through the
+  repo → `no such table` → 500 `Internal server error`. The lane had found
+  exactly this class on the GET (its first live run) and ensured the table
+  on every READ path; the CREATE path was the one it missed. Fixed
+  (`ensure_prompt_templates_table` inside the create write closure), pinned
+  by a new bare-instance wire arm that POSTs before any list (201, then the
+  list seeds 21 beside it → 22).
+- **P4.84 — the optimizer's stream-end arm gated on `loading`.** v4's
+  `useCharacterOptimizer.ts:233-238` runs after EVERY stream end
+  (`setLoading(false); if (suggestions.length > 0) setPhase('review')`),
+  including after `error` and `done`; the lane keyed it on `next.loading`
+  and called that "exactly v4's condition". Two shapes were hidden: an
+  `error` AFTER suggestions landed (real path — suggestions-file mode emits
+  `step_complete generating` with suggestions and THEN the vault write can
+  throw) ends at `review` in v4 and stayed at `progress` in v5; and a
+  suggestions-file `done` that carried suggestions ends at `review` in v4,
+  over the file-written pane the `done` arm just chose (v4's shipped quirk —
+  reproduced, RECORDED as a v4 filing candidate). Fixed as the exported
+  pure `settleStreamEnd` in `optimizer-fold.ts` (v4's unconditional arm),
+  called from the state; three fold-spec pins.
+- **P4.86 — item 10's v5 `llmLogCalls` leg never observed the port.** The
+  family built v5's expected list from `calls.zip(completion.contentful)` —
+  a flag the SCRIPTED PROVIDER pushed — so the compare was v4's real
+  recorder against the harness's model of v4's gate; `log_llm_call` and the
+  gate at `ai_import.rs:1082` were not on the comparand path, and the lane
+  record's "4 cases DIFFER" mutation could only have been a harness-side
+  filter edit. The excuse ("§R.7 freezes the pair, no llm-logs partition")
+  did not hold: `common::materialize_llm_logs` existed on main and P4.85
+  used it for exactly this. Fixed to P4.85's shape — a fresh llm-logs
+  partition per case, the v5 leg read from its rows in insert order; the
+  scripted provider's `contentful` field deleted. A source comment cited "the
+  unit test below" for the closed gate arm — no such test exists; corrected
+  to UNMEASURED, recorded.
+- **P4.82 — a `chat_settings` read failure FAILED the job.** v4's
+  `repos.chatSettings.findByUserId` is fallback-mode `safeQuery(…, null)`
+  (`chat-settings.repository.ts:38-45`): a failing read logs `Error finding
+  chat settings by user ID` and the job proceeds on the default config;
+  only the connections read throws (v4's `:83-85` comment is about THAT
+  read). Matched (the P4.48 class). Same lane: the dedupe-lookup `Err` arm
+  emitted `[HeadShouldersBackfill] Failed to check for existing jobs during
+  enqueue` — a sentence v4 cannot produce, because both dedupe reads are
+  `safeQuery(…, [])` and never throw; the arm now renders `safeQuery`'s own
+  `Error finding background jobs by user ID` and falls through the same way,
+  the dead v4 sentence kept as `DEDUPE_LOOKUP_WARN_UNREACHABLE` (the
+  `SELECT_FAILED_UNREACHABLE` precedent). And **the boot scan is ON the
+  boot path**: `seed_built_ins` spawns and JOINS its thread, so `assemble`
+  waits for the whole scan, where v4 chains it in a non-blocking `.then`;
+  three comments (host block, enqueuer header, lane record) claimed the
+  opposite. Comments corrected, the mechanism divergence RECORDED (bounded:
+  one indexed read wherever v4's flag already sits), the v5-invented `scan
+  complete` host line dropped (v4 logs nothing after the `await`), and
+  detaching the scan named as a small follow-up (the host boot test's
+  second/third-boot determinism currently rests on the join).
+- **P4.84 — smaller:** the AI-import step heading took `qt-section-title`
+  where v4 `AIImportWizard.tsx:707` is `qt-heading-2` (taken; the file's
+  other `qt-section-title` headings are a pre-existing convention, recorded);
+  the lane record's "the old inline fan-out never dispatched
+  `characterPromptUpdate`" was FALSE (the removed code dispatched the same
+  two verbs in the same order) and its mutation proof therefore vacuous —
+  replaced by the one discriminating pin (an `Error('')` takes the helper's
+  fixed sentence, which the inline copy pushed bare).
+- **P4.85 — nothing to fix in the lane's code**; at the wire the wizard
+  item-9 floor was raised 3 → 20 (28 streamed rows at the baseline; a corpus
+  that shrank to a handful of streams would have left it vacuous).
+
+**Verified correct, worth naming:** P4.83's three premise corrections all
+hold against v4's code (the registry's `displayName` = `${modelHint}
+${Category-cased}`; the SQLite backend hydrates NULL → `undefined` before
+Zod's `.nullable().optional()`, so the READ wire omits the key while the
+CREATE 201 sends `null`; the `*_PT_ROUTES` suffix collides with nothing);
+P4.85's premise refutation holds (`jest.setup.ts:378-393` no-ops the whole
+`llm-logging.service` for every jest run — the three old "stays REAL" headers
+were false); P4.86's engine config is v4's ajv (`iter_errors` ≙ `allErrors`,
+crate default ≙ `strict:false`, `should_validate_formats(true)` ≙
+`validateFormats`+`addFormats`; the schema asserts exactly `uuid` ×1 and
+`date-time` ×1, all 158 `$ref`s local; `default-features = false` drops only
+the resolvers) and the vendored schema is byte-identical to v4's; both Rust
+lanes' impossible-parse arms are ONE shape (`ErrorKind::Internal`, `Internal
+server error`, 500 via `dispatch.rs:33`); P4.84's two v4-bug dispositions are
+correct (`importedCount` is a `QuilltapExportCounts` OBJECT in v4 so `> 1` is
+`NaN > 1` → never; the apply banner reads `optimizer.error` from a stale
+render closure).
+
+**Recorded, not fixed (for the next order):** the AI-import corpus does not
+grade two format divergences (ajv-formats' `date-time` accepts a space
+separator, its `uuid` a `urn:uuid:` prefix; the crate accepts neither; v4's
+exporter emits neither); `find_built_in` has no production caller yet (the
+`.qtap` exporter is its named entry); a malformed JSON body on the
+prompt-templates edges folds to `{}` → Zod 400 where v4's `req.json()` throws
+500 (the `subprompts_routes.rs` precedent, a pre-existing class); the
+`isQtapUri` case-sensitivity lead in `chat/render/qtap-linkify.ts`; the
+`isPaused` continue guard (measured, pinned, not ported); the wizard item-9
+floor's sibling `generators_wizard_routes.rs` asserting only `content-type`
+on the live wizard edge; the latent >64-frame deadlock in
+`stream_generator`'s resolved-before-any-frame branch (production-
+unreachable); the five `is_none_or` ownership gates; P4.82's `utf16_prefix`
+being the sixth private copy (consolidation candidate); the `llmLogTotals()`
+300 ms settle in the P4.85 oracles (a possible regen intermittent on a loaded
+machine, not a port issue).
+
+### §4 Wires
+
+- **P4.86's one deferral closed:** `generator_sse_wire::the_ai_import_stream_
+  is_v4s_recorded_bytes` replays each recorded AI-import run's own events
+  through the re-framer and byte-compares the body to the row's `rawSse` with
+  all three headers asserted (floor 30 of the 37 streamed rows) — the same
+  `item9` the optimizer and wizard edges use.
+- **The §B fold:** `PromptTemplateRecord` + the five `promptTemplate*`
+  request interfaces into `core-contract.ts` (name-for-name against the
+  `api/types.rs` variants), the wire file's `as unknown as CoreRequest` cast
+  retired, the record's measured `?: T | null` shape kept as a recorded §B
+  deviation.
+- **The drift ledger's §1 hazard list** gains (8) the vendored sample-prompt
+  catalogue and (9) the vendored qtap export schema — each a re-vendor
+  obligation with a guard that goes RED against the checkout by design.
+- The version recount (§2) as its own commit.
+
+### §5 Gate
+
+- `cargo fmt --all --check` clean; clippy clean on BOTH feature sets (plain
+  and `--features quilltap-core/native-transport`); release build clean —
+  run twice, before and after the §3 fixes, clean both times.
+- The eleven affected families regenerated FRESH from the live checkout
+  (probe passed) through `recipe_sweep.py --run-all --families …`: **11/11
+  ok**, zero SKIP; changed bytes grepped before believing any green
+  (`rawSse` on 24/28/37 streamed rows of the optimizer/wizard/AI-import
+  NDJSONs, `llmLogCounts`/`llmLogCalls` on every row of the four generator
+  families, `MODERN General` ×36 in the prompt-templates routes NDJSON,
+  `Validation passed` ×36 + `Repair successful` ×9 in the AI-import NDJSON,
+  `Populated head-and-shoulders` ×7 + `enqueue complete` ×2 in the backfill
+  pair).
+- `cargo test --workspace` with the round's 15-variable env block: **537
+  test binaries / 3,018 passed / 0 failed / 1
+  ignored, zero `SKIP:` lines, exit 0** (the round's sixteen affected binaries confirmed RUN by name inside it, incl. `generator_sse_wire` 10 passed with the new AI-import arm and `prompt_templates_web_routes` 3 passed with the POST-first arm).
+- SPA: `npm run lint` clean (incl. `check-qt-classes`); `npm test` **409 spec
+  files / 6,484 passed** (the first re-run after the review fixes went
+  6,483/1 on the wizard spec's `.qt-section-title` locator, which the
+  heading-class fix had pointed at the NEXT heading — locator moved to
+  v4's class, re-run green); `npm run build` clean.
+- Full Playwright against the fresh release build: **300 passed / 0 failed / 0 skipped (7.6 m)** — the suite grew 297 → 300 with the prompt-templates beat and the wizard review-pane beats, zero skips.
+
+### §6 Docs + baseline
+
+CHANGELOG unification entry; this record; the five order status headers
+(P4.82/P4.83/P4.85/P4.86 CLOSED, P4.84 CLOSED — all "nothing OPEN"); the
+P4.9K1 and P4.9K2 headers already carry the lanes' closures of items 9/10
+and the head-and-shoulders recording (K2's merged at the reconcile); the
+drift ledger's §1 (the checked line + hazards 8/9; §3 stays empty, the
+baseline stays `2f4254b42`); `phase-4.md`'s UNIFIED section + the next
+candidates; CLAUDE.md's Status bullet; the round's memory note.

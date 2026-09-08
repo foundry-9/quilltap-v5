@@ -24,9 +24,10 @@ probe verifies against._
   `4.10.0-dev.1`), adopted at the `2f4254b42` character-subprompts round
   unification (P4.D163 → P4.D164 ∥ P4.D165 ∥ P4.9K1-resumed ∥
   P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-07, the `2f4254b42` round's unification probe (run at
-  planning, at every lane start, at the reconcile and again at the docs
-  step — v4 did NOT move during the round).
+- **Checked:** 2026-09-07, the generator follow-ups + prompt-templates round's
+  unification probe (run at planning, at every lane start, at the reconcile
+  and again at the docs step — v4 did NOT move during the round; the
+  `2f4254b42` round's unification probe before it, the same day).
 - **v4 `main` HEAD at check:** `2f4254b42` — AT the baseline. **Zero drift.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
   branch", `4.9.3-bugfix.0`) — UNMOVED. Its `main..bugfix` CONTENT diff over
@@ -78,7 +79,19 @@ probe verifies against._
   generator runners (`character_optimizer_tier3`, `character_wizard_tier3`,
   `ai_import_tier3`, `external_prompt_tier3`) drive v4's REAL runners with a
   canned `createLLMProvider`** — a v4 change to the provider factory's
-  signature breaks their oracles at LINK time, not at diff time.
+  signature breaks their oracles at LINK time, not at diff time; (8) **the
+  sample-prompt catalogue is a VENDORED v5 ARTIFACT since P4.83**
+  (`crates/quilltap-core/src/services/builtin_prompt_templates.json`, the 21
+  `.md` files under `plugins/dist/qtap-plugin-default-system-prompts/prompts/`
+  at `2f4254b42`) — any v4 commit touching that directory is a re-vendor
+  obligation, and `builtin_prompt_templates_guard` goes RED against the
+  checkout the moment one lands, by design; the `d123658d`-round
+  ratification of `9c01fa99` as "consumed from the instance at runtime" was
+  wrong for prompts (v5 never had the registry); (9) **`public/schemas/
+  qtap-export.schema.json` is a VENDORED v5 ARTIFACT since P4.86**
+  (`crates/quilltap-core/src/generators/qtap-export.schema.json`, 89,769
+  bytes at `2f4254b42`) — a v4 commit touching it is a re-vendor obligation
+  and `qtap_schema_embed_guard` goes RED against the checkout, by design.
 - **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
   `bugfix` fork; the fork → fix → `release: X` squash → merge-back cycle has
   run twice. `bugfix` is currently idle at its branch-start commit while main

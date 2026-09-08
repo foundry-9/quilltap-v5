@@ -3198,6 +3198,37 @@ records THERE. Update this summary only when a phase or round completes.
   orphaned `conversation_chunks` row (v4 left four). Six instrument notes
   banked. **Still owed (human):** the Brahma deep-query budget,
   dedup/summaries, and #101.
+- **The generator follow-ups + prompt-templates round (P4.82 ∥ P4.83 ∥
+  P4.84 ∥ P4.85 ∥ P4.86): UNIFIED on main (2026-09-07) — ALL FIVE CLOSED;
+  the baseline STAYS `2f4254b42`, the ledger's §3 stays EMPTY, and P4.9K1 /
+  P4.9K2 close WHOLE with it.** The first non-drift round since the
+  follow-ups round 2: the `CHARACTER_HEADSHOULDERS_BACKFILL` handler + boot
+  scan (the last named-refusal job type — v4's `Failed to select cheap LLM`
+  catch proven DEAD; the scan's `instance_settings` flag is SHARED with v4,
+  so a v5 boot on Friday scans nothing) ∥ prompt templates whole (the
+  vendored 21-prompt catalogue + guard — v5 NEVER had the seeding; the
+  `d123658d`-round `9c01fa99` ratification premise corrected; the live beat
+  found v4's lazy `ensureCollection`) ∥ the SPA follow-ups (the review
+  pane's renders on a bare CommonMark pipeline; two K4 rows are v4 BUGS —
+  the `imported` count compares an object `> 1`, the apply banner reads a
+  stale closure) ∥ the Rust follow-ups + K1/K2's items 9/10 for three
+  families (**the oracles' "`logLLMCall` stays REAL" premise was FALSE for
+  every jest run** — `jest.setup.ts:379` no-ops the module) ∥ the AI-import
+  validation engine (`jsonschema` 0.55 under the human's written ruling;
+  `VALIDATION_UNAVAILABLE` DELETED; the truthy-non-array arms reproduced).
+  **The §3 review: NO blocking findings; six should-fixes fixed at
+  unification** — headline: the prompt-templates CREATE path lacked the
+  table ensure its reads had (a first-ever POST 500'd), the optimizer's
+  stream-end arm was gated on `loading` where v4's is unconditional, and
+  P4.86's `llmLogCalls` v5 leg never observed the port. Gate: 11/11
+  families fresh zero SKIP; 537 test binaries / 3,018 / 0;
+  clippy both feature sets; release build; ng 409 / 6,484; full Playwright
+  300 passed / 0 failed / 0 skipped (7.6 m). Versions: core 0.0.846, harness 0.0.735, web 0.0.131, host
+  0.0.114, SPA 0.5.681. 💸 the dogfood queue gains the backfill's cross-app
+  leg + one real job, the template catalogue against v4's seeded rows, the
+  review pane on a real generation, the AI-import repair loop on a real
+  import. **The owed dogfood pass is the top next candidate.** Round record:
+  `status-log.md`.
 - **Oracle baseline: `2f4254b42` (2026-09-07, v4 main — "feat: character
   subprompts", `4.10.0-dev.1`), adopted at the `2f4254b42`
   character-subprompts round unification (2026-09-07).**
