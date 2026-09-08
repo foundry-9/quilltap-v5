@@ -114709,3 +114709,86 @@ silently assumed.
 Family after this unit: **39 cases, 188 model calls, 553 frames, 18
 validations passed, 12 repair attempts (3 successful), 2 refusals, 12 fatal
 runs, 37 streamed rows, 182 `AI_IMPORT` log calls.**
+
+## P4.86 — lane close (2026-09-07, branch `claude/qtap-schema-conditional-180d78`)
+
+**Every Tier-1 and Tier-3 item landed; Tier 2 landed except ONE named
+deferral.** The drift-ledger §2 probe passed at lane start and before every
+regen batch (v4 `main` AT `2f4254b42`, tree clean, both ranges empty), so
+every oracle in this lane was regenerated from the LIVE checkout through
+`harness/tools/recipe_sweep.py --run <family>` per §R.3.
+
+### Commits
+
+| commit | unit |
+| --- | --- |
+| `build(core): add the jsonschema engine` | the dependency, ALONE, with the human's ruling quoted |
+| `feat(core): the .qtap export schema validator` | the vendored schema + `generators::qtap_schema` + `qtap_schema_validate_equivalence` + `qtap_schema_embed_guard` |
+| `feat(core): the AI-import validation + repair steps` | steps 9 and 10; `VALIDATION_UNAVAILABLE` DELETED |
+| `fix(core): the AI-import truthy-non-array body arms, and three smalls` | tier-2 items 6, 7, 8, 9 |
+| `test(harness): the AI-import family's raw SSE bytes and logLLMCall calls` | tier-2 item 10 + the swap-remove defect it caught |
+| `docs(P4.86): the lane's two refusal-arm no-counterparts, and the order headers` | tier 3 + the headers |
+
+### The one deferral (loud)
+
+The three response HEADERS on `POST /api/v1/system/tools?action=ai-import-
+stream`. They are produced by `quilltap-web::generator_sse::stream_generator`,
+and the file that would assert them
+(`crates/quilltap-web/tests/generator_sse_wire.rs`) belongs to **P4.85** under
+this round's Ownership table — which gives P4.86 no `quilltap-web` file and no
+`quilltap-web` version bump (§R.8). The FRAMING half is proven here against
+v4's real bytes; only the three headers remain. Shape in "P4.86 tier-2 item
+10" above.
+
+Also for the unifier: tier-2 item 8 used v4's middleware sentence
+(`Internal server error`) measured directly — the same one this file's
+existing driver-error arm already answers — because P4.85 had not closed when
+this lane landed it.
+
+### Gate
+
+* `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets (default and
+  `--features quilltap-core/native-transport`); `cargo build --workspace` and
+  the RELEASE build both clean.
+* `cargo test --workspace` with `QT_ORACLE_QTAP_SCHEMA`,
+  `QT_ORACLE_AI_IMPORT`, `QT_ORACLE_AI_IMPORT_ASSEMBLY` and `QT_V4_ROOT`:
+  **531 test binaries / 2,993 passed / 0 failed / 1 ignored, ZERO `SKIP:`
+  lines, exit 0.** +2 binaries and +13 tests, exactly this lane's delta (the
+  two new harness test files; 5 `qtap_schema` + 5 `generators_wizard` unit
+  tests, 1 validate differential, 2 embed-guard tests). The two differentials
+  are confirmed RUN by duration inside that run —
+  `ai_import_tier3_equivalence` 1.29 s, `qtap_schema_validate_equivalence`
+  0.48 s — not merely silent.
+* All three affected families re-run BY NAME through the sweep driver against
+  oracles regenerated at the baseline: `qtap_schema_validate_equivalence`,
+  `ai_import_tier3_equivalence`, `ai_import_assembly_equivalence` — 3/3 ok,
+  zero SKIP. The NDJSONs were grepped for the discriminating bytes before the
+  green was believed: 18 × `Validation passed`, 3 × `Repair successful`,
+  1 × `No repairable sections identified`, 3 × `sourceFileIds is not
+  iterable`, 1 × `regenerateSteps?.includes is not a function`, 14 valid rows
+  in the schema oracle.
+* `cargo tree -p quilltap-core -i jsonschema`: `jsonschema v0.55.0 └──
+  quilltap-core` — one direct edge, no other consumer. Transitive footprint 22
+  crates, all pure Rust, no network stack (`resolve-http`/`idna` are OFF).
+* `git diff main -- apps/web/` EMPTY, as the order requires; the diff touches
+  only this lane's owned files plus the two append-only docs.
+
+### Fixture / oracle notes for the unifier
+
+* **`harness/oracle/fixtures/ai-import-tier3.json`** grew 24 → 39 cases (seven
+  validation/repair, eight truthy-arm) and its oracle case gained `rawSse`,
+  `llmLogCalls` and a `logLLMCall` recorder mock. **Regenerating it is
+  mandatory** for anyone re-running `ai_import_tier3_equivalence`.
+* **`harness/oracle/fixtures/qtap-schema-validate.json`** and
+  `harness/oracle/cases/qtap-schema-validate.test.ts` are NEW. The oracle
+  reads the committed `system-data-{main,mount,llmlogs}.db` family (read-only,
+  through the driver's fixture shield) and writes nothing.
+* **`character-generators-{main,mount}.db` was NOT regenerated** (§R.7).
+* **`V4_APP_VERSION` in `ai_import_tier3_equivalence` moved
+  `4.10.0-dev.0` → `4.10.0-dev.5`.** v4 bumps its ROOT `package.json` on every
+  commit and `ai-import.service.ts` stamps it into the manifest, so **that
+  constant moves with every regen of this family** — by design, and NOT a port
+  regression. It was already stale before this lane touched it.
+* The unifier regenerates all four generator tier-3 families once after
+  P4.85's edits (the P4.D119 rule); this lane's is `ai_import_tier3`.

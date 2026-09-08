@@ -979,6 +979,20 @@ pub fn restamp_structural_fields(data: &mut Value, now: &str) -> i64 {
 // manifest stamps (v4 `packageJson.version`; v5 stamps its own — the
 // differential normalizes the value and pins each side's, recorded).
 //
+// ## Refusal arms with no v5 counterpart (P4.86 tier 3 — recorded, not ported)
+//
+// * v4 `ai-import.service.ts:825-831` bootstraps its plugin system before
+//   creating the provider and THROWS `Plugin system initialization failed`
+//   when `initializePlugins()` answers `{success: false}`. v5 has no plugin
+//   system at all — providers are native, resolved through the manifest
+//   registry — so there is nothing to initialize and nothing to fail. A
+//   NO-COUNTERPART, recorded here with v4's line rather than invented.
+// * v5's own `pdf-parse not available, using native fallback extraction`
+//   warn (`generators::file_content::extract_pdf_content`) is v5-ONLY and
+//   deliberately KEPT: it names a real v5 refusal (there is no `pdf-parse`
+//   in the tree, so the native fallback extractor always runs), which v4
+//   only reaches when its optional dependency is absent.
+//
 // ## The `validation` / `repair` steps (P4.86)
 //
 // v4 validates the assembled export against `public/schemas/qtap-export.

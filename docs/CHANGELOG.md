@@ -348,6 +348,19 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — docs(P4.86): the lane's two refusal-arm no-counterparts, and the order headers
+
+_Versions: core 0.0.840._
+
+Records P4.86's Tier-3 items in the AI-import runner's module doc: v4's
+`Plugin system initialization failed` throw has no v5 counterpart (v5 has no
+plugin system — providers are native), and v5's own `pdf-parse not available`
+warn is v5-only and deliberately kept because it names a real v5 refusal.
+
+Updates P4.86's status header (closed except the one named `quilltap-web`
+deferral) and P4.9K2's (its Tier-2 items 9/10 closed for the AI-import family
+bar the three response headers; its two recorded truthiness arms fixed).
+
 #### 2026-09-07 — test(harness): the AI-import family's raw SSE bytes and `logLLMCall` calls, and the swap-remove they caught (P4.86 tier-2 item 10)
 
 _Versions: core 0.0.839, harness 0.0.728._
