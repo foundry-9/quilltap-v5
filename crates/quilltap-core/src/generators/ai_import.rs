@@ -100,7 +100,14 @@ pub const LOG_TYPE_AI_IMPORT: &str = "AI_IMPORT";
 #[serde(rename_all = "camelCase")]
 pub struct AiImportRequest {
     pub profile_id: String,
-    pub source_file_ids: Vec<String>,
+    /// The RAW `body.sourceFileIds || []` value (P4.86). v4 never coerces it:
+    /// `request.sourceFileIds.length` decides the route's emptiness 400, the
+    /// `starting` log bag reports that same `.length`, and the runner's
+    /// `for (const fileId of request.sourceFileIds)` iterates it. A STRING
+    /// therefore passes the gate on its UTF-16 length and is then iterated by
+    /// CODE POINT, each one used as a file id; anything else truthy and
+    /// non-iterable throws `sourceFileIds is not iterable`.
+    pub source_file_ids: Value,
     pub source_text: String,
     /// The RAW value after `?? true` — v4 logs it and stamps it into the
     /// export manifest as sent (`0`, `1`, `"yes"`…); truthiness decides.
@@ -109,8 +116,12 @@ pub struct AiImportRequest {
     pub include_chats: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub existing_result: Option<Value>,
+    /// The RAW `body.regenerateSteps || undefined` value (P4.86). `shouldRunStep`
+    /// calls `.includes(step)` on it, so an ARRAY is a strict-equality
+    /// membership test, a STRING is a SUBSTRING test, and anything else throws
+    /// `request.regenerateSteps?.includes is not a function`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub regenerate_steps: Option<Vec<String>>,
+    pub regenerate_steps: Option<Value>,
 }
 
 // ============================================================================
@@ -310,20 +321,67 @@ Return ONLY a JSON object with the same section keys ({}), containing the correc
 /// regenerateSteps". `existing_result` is the request's bag (a `Value` — the
 /// `step in request.existingResult` test is key PRESENCE, so a step present
 /// with `null` still counts as done).
+///
+/// `Err` is v4's thrown `TypeError` — `request.regenerateSteps?.includes` is
+/// only a function on an array or a string (P4.86; measured on V8, the
+/// message names the optional-chain expression verbatim).
 pub fn should_run_step(
     step: &str,
     existing_result: Option<&Value>,
-    regenerate_steps: Option<&[String]>,
-) -> bool {
-    if regenerate_steps.is_some_and(|steps| steps.iter().any(|s| s == step)) {
-        return true;
+    regenerate_steps: Option<&Value>,
+) -> Result<bool, String> {
+    // `request.regenerateSteps?.includes(step)` — the optional chain short-
+    // circuits on `undefined`/`null`, so only a PRESENT value is called on.
+    if let Some(steps) = regenerate_steps.filter(|v| !v.is_null()) {
+        match steps {
+            // `Array.prototype.includes` — strict equality, so only a string
+            // element can match a step name.
+            Value::Array(a) => {
+                if a.iter().any(|s| s.as_str() == Some(step)) {
+                    return Ok(true);
+                }
+            }
+            // `String.prototype.includes` — a SUBSTRING test.
+            Value::String(s) => {
+                if s.contains(step) {
+                    return Ok(true);
+                }
+            }
+            _ => {
+                return Err("request.regenerateSteps?.includes is not a function".to_string());
+            }
+        }
     }
     if let Some(existing) = existing_result.filter(|v| js_truthy(Some(v))) {
         if existing.as_object().is_some_and(|o| o.contains_key(step)) {
-            return false;
+            return Ok(false);
         }
     }
-    true
+    Ok(true)
+}
+
+/// JS `x.length` for the values `body.sourceFileIds` can hold: an array's
+/// element count, a string's UTF-16 length, else `undefined` (`None`) — which
+/// is what makes v4's `sourceFileIds.length === 0` gate FALSE for a number or
+/// an object, and drops `sourceFileCount` from the `starting` log bag.
+pub fn js_length_of(v: &Value) -> Option<usize> {
+    match v {
+        Value::Array(a) => Some(a.len()),
+        Value::String(s) => Some(utf16_len(s)),
+        _ => None,
+    }
+}
+
+/// v4's `for (const fileId of request.sourceFileIds)`: an array yields its
+/// elements, a string yields its CODE POINTS (not UTF-16 units — `for…of`
+/// walks a string by code point), anything else throws the V8 `TypeError`
+/// whose message names the identifier being iterated.
+fn iterate_source_file_ids(v: &Value) -> Result<Vec<String>, String> {
+    match v {
+        Value::Array(a) => Ok(a.iter().map(to_js_string).collect()),
+        Value::String(s) => Ok(s.chars().map(|c| c.to_string()).collect()),
+        _ => Err("sourceFileIds is not iterable".to_string()),
+    }
 }
 
 /// The first `n` UTF-16 units of `s` (JS `s.substring(0, n)`).
@@ -1066,13 +1124,15 @@ async fn call_llm<CMP: CompletionProvider>(
 fn build_source_context(
     db: &Db,
     backend: &dyn StorageBackend,
-    source_file_ids: &[String],
+    source_file_ids: &Value,
     source_text: &str,
     user_id: &str,
     analysis: Option<&Value>,
 ) -> Result<String, String> {
     let mut parts: Vec<String> = Vec::new();
-    for file_id in source_file_ids {
+    // The `for…of` header runs BEFORE the body, so a non-iterable value throws
+    // here with nothing logged (P4.86).
+    for file_id in &iterate_source_file_ids(source_file_ids)? {
         let fid = file_id.clone();
         let file = db
             .read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid))
@@ -1148,14 +1208,19 @@ pub async fn run_ai_import_streaming<CMP: CompletionProvider>(
     let mut starting = json!({
         "userId": user_id,
         "profileId": request.profile_id,
-        "sourceFileCount": request.source_file_ids.len(),
         "hasSourceText": !js_trim(&request.source_text).is_empty(),
         "includeMemories": request.include_memories,
         "includeChats": request.include_chats,
         "hasExistingResult": request.existing_result.is_some(),
     });
+    // `sourceFileCount: request.sourceFileIds.length` — `undefined` for a
+    // value with no `.length`, and the logger's JSON DROPS an undefined member
+    // (P4.86). Inserted before `regenerateSteps` to keep v4's key order.
+    if let Some(n) = js_length_of(&request.source_file_ids) {
+        starting["sourceFileCount"] = json!(n);
+    }
     if let Some(steps) = &request.regenerate_steps {
-        starting["regenerateSteps"] = json!(steps);
+        starting["regenerateSteps"] = steps.clone();
     }
     tracing::info!(
         target: AI_IMPORT_LOG_TARGET,
@@ -1218,7 +1283,6 @@ async fn run_step<CMP: CompletionProvider>(
     instruction: &str,
     temperature: f64,
     max_tokens: i64,
-    fallback_message: &str,
     log_level_error: bool,
     log_message: &str,
     parse: &StepParser<'_>,
@@ -1233,10 +1297,12 @@ async fn run_step<CMP: CompletionProvider>(
             on_progress(json!({"type": "step_complete", "step": step, "snippet": snippet}));
         }
         Err(msg) => {
-            // `error instanceof Error ? error.message : '<fallback>'` — every
-            // failure here is an Error, so the fallback never renders; kept
-            // for the record.
-            let _ = fallback_message;
+            // v4's `error instanceof Error ? error.message : '<fallback>'`.
+            // Every failure reaching here IS an Error — `callLLM` throws
+            // `Error`s and so does `parseLLMJson` — so v4's per-step fallback
+            // string ('Analysis failed', 'Character basics failed', …) is
+            // DEAD on every one of the nine call sites. It used to be threaded
+            // through as an unused parameter; recorded here instead (P4.86).
             errors.insert(step.to_string(), Value::String(msg.clone()));
             on_progress(json!({"type": "step_error", "step": step, "error": msg}));
             if log_level_error {
@@ -1439,7 +1505,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
         should_run_step(
             step,
             request.existing_result.as_ref(),
-            request.regenerate_steps.as_deref(),
+            request.regenerate_steps.as_ref(),
         )
     };
 
@@ -1458,7 +1524,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
         );
     }
 
-    if utf16_len(&source_context) > SOURCE_ANALYSIS_THRESHOLD && should_run("analyzing") {
+    if utf16_len(&source_context) > SOURCE_ANALYSIS_THRESHOLD && should_run("analyzing")? {
         let instruction = get_analyzing_prompt(utf16_len(&source_context));
         run_step(
             &c,
@@ -1470,7 +1536,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.3,
             2000,
-            "Analysis failed",
             false,
             "[AIImport] Analysis step failed (non-fatal)",
             &|raw, results| {
@@ -1504,7 +1569,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     };
 
     // Step 1: Character Basics (REQUIRED)
-    if should_run("character_basics") {
+    if should_run("character_basics")? {
         let instruction = character_basics_prompt();
         run_step(
             &c,
@@ -1516,7 +1581,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.7,
             2000,
-            "Character basics failed",
             true,
             "[AIImport] Character basics step failed",
             &|raw, results| {
@@ -1548,7 +1612,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     let char_context = format!("{enriched_context}\n\nCharacter name: {char_name_text}");
 
     // Step 2: First Message & Example Dialogues
-    if should_run("first_message") {
+    if should_run("first_message")? {
         run_step(
             &c,
             on_progress,
@@ -1559,7 +1623,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             FIRST_MESSAGE_PROMPT,
             0.8,
             1500,
-            "First message failed",
             false,
             "[AIImport] First message step failed (non-fatal)",
             &|raw, results| {
@@ -1581,7 +1644,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 3: System Prompts
-    if should_run("system_prompts") {
+    if should_run("system_prompts")? {
         let instruction = system_prompts_prompt();
         run_step(
             &c,
@@ -1593,7 +1656,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.7,
             1500,
-            "System prompts failed",
             false,
             "[AIImport] System prompts step failed (non-fatal)",
             &|raw, results| {
@@ -1609,7 +1671,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 4: Physical Descriptions
-    if should_run("physical_descriptions") {
+    if should_run("physical_descriptions")? {
         let instruction = physical_descriptions_prompt();
         run_step(
             &c,
@@ -1621,7 +1683,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.7,
             2000,
-            "Physical descriptions failed",
             false,
             "[AIImport] Physical descriptions step failed (non-fatal)",
             &|raw, results| {
@@ -1642,7 +1703,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 4b: Wardrobe Items
-    if should_run("wardrobe_items") {
+    if should_run("wardrobe_items")? {
         let instruction = wardrobe_items_prompt();
         run_step(
             &c,
@@ -1654,7 +1715,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.7,
             3000,
-            "Wardrobe items failed",
             false,
             "[AIImport] Wardrobe items step failed (non-fatal)",
             &|raw, results| {
@@ -1674,7 +1734,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 5: Properties (pronouns + aliases; step keeps its historical name)
-    if should_run("pronouns") {
+    if should_run("pronouns")? {
         let instruction = properties_extraction_prompt();
         run_step(
             &c,
@@ -1686,7 +1746,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             &instruction,
             0.3,
             300,
-            "Properties extraction failed",
             false,
             "[AIImport] Properties step failed (non-fatal)",
             &|raw, results| {
@@ -1737,7 +1796,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 6: Memories (if requested)
-    if js_truthy(Some(&request.include_memories)) && should_run("memories") {
+    if js_truthy(Some(&request.include_memories)) && should_run("memories")? {
         run_step(
             &c,
             on_progress,
@@ -1748,7 +1807,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             MEMORIES_PROMPT,
             0.7,
             3000,
-            "Memories failed",
             false,
             "[AIImport] Memories step failed (non-fatal)",
             &|raw, results| {
@@ -1764,7 +1822,7 @@ async fn run_import_inner<CMP: CompletionProvider>(
     }
 
     // Step 7: Example Chats (if requested)
-    if js_truthy(Some(&request.include_chats)) && should_run("chats") {
+    if js_truthy(Some(&request.include_chats)) && should_run("chats")? {
         run_step(
             &c,
             on_progress,
@@ -1775,7 +1833,6 @@ async fn run_import_inner<CMP: CompletionProvider>(
             CHATS_PROMPT,
             0.8,
             4000,
-            "Chat generation failed",
             false,
             "[AIImport] Chats step failed (non-fatal)",
             &|raw, results| {

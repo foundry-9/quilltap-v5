@@ -348,6 +348,47 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — fix(core): the AI-import truthy-non-array body arms, and three smalls in `generators_wizard` (P4.86 tier 2)
+
+_Versions: core 0.0.838, harness 0.0.727._
+
+`sourceFileIds` and `regenerateSteps` are now carried RAW through
+`AiImportRequest`, because v4 never coerces them and their JS semantics are
+observable end to end.
+
+`sourceFileIds`: v4's `body.sourceFileIds || []` keeps a truthy non-array, and
+`request.sourceFileIds.length` then decides the route's emptiness 400 and the
+`sourceFileCount` the starting log line reports, while
+`for (const fileId of request.sourceFileIds)` iterates it. A STRING therefore
+passes the 400 gate on its UTF-16 length and is iterated by CODE POINT, each
+one used as a file id (v5 previously replaced it with an empty list, which
+400s where v4 runs); a number or an object has no `.length` at all, so
+`undefined === 0` is false, the gate passes, and the runner throws
+`sourceFileIds is not iterable` into the `_fatal` done frame. `sourceFileCount`
+is dropped from both log bags when the length is `undefined`, as v4's logger
+drops an undefined member.
+
+`regenerateSteps`: `shouldRunStep` calls `.includes(step)` on the raw value, so
+an array is a strict-equality membership test, a STRING is a SUBSTRING test
+(a sentence containing a step name forces that step to re-run), and anything
+else throws `request.regenerateSteps?.includes is not a function`.
+`should_run_step` therefore returns a `Result`, and its nine call sites keep
+v4's `&&` short-circuit so the throw lands where v4's does.
+
+Eight new corpus cases pin all of it, including an astral-character file-id
+string whose UTF-16 length (4) and code-point count (3) deliberately disagree,
+and a matching/non-matching substring pair.
+
+Three smalls in `api/generators_wizard.rs`: the ten `.expect("no issues")`
+panics and the `unwrap_or(Value::Null)` fallback now take v4's generic
+`Internal server error` 500 with an `error` line naming the cause; the dead
+`fallback_message` parameter threaded through `run_step`'s nine call sites is
+removed (v4's per-step fallback string is unreachable — every failure there is
+an `Error`); and the two `[Characters v1] AI Wizard starting` lines plus
+`[System Tools v1] AI Import stream starting` render v4's `logger.info(msg,
+bag)` JSON, capture-pinned, so `fieldsToGenerate` is the array v4 logs and an
+undefined `sourceFileCount` can actually be absent.
+
 #### 2026-09-07 — feat(core): the AI-import validation + repair steps, retiring `VALIDATION_UNAVAILABLE` (P4.86 unit 3)
 
 _Versions: core 0.0.837, harness 0.0.726._

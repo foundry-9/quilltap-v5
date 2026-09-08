@@ -290,9 +290,13 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
 /// v4 `wizardRequestSchema.parse(body)` over the raw body. `Err` is the
 /// middleware's `details` array (every issue, in schema key order). A body
 /// that is not an object answers the root-level `invalid_type`.
-pub fn parse_wizard_body(body: &Value) -> Result<WizardRequest, Vec<Value>> {
+pub fn parse_wizard_body(body: &Value) -> Result<WizardRequest, WizardBodyError> {
     let Some(obj) = body.as_object() else {
-        return Err(vec![invalid_type("object", &[], Some(body))]);
+        return Err(WizardBodyError::Invalid(vec![invalid_type(
+            "object",
+            &[],
+            Some(body),
+        )]));
     };
     let mut issues: Vec<Value> = Vec::new();
     let path = |key: &str| vec![Value::String(key.to_string())];
@@ -348,39 +352,88 @@ pub fn parse_wizard_body(body: &Value) -> Result<WizardRequest, Vec<Value>> {
         check_optional_uuid(obj.get("characterId"), &path("characterId"), &mut issues);
 
     if !issues.is_empty() {
-        return Err(issues);
+        return Err(WizardBodyError::Invalid(issues));
     }
-    Ok(WizardRequest {
-        primary_profile_id: primary_profile_id.expect("no issues"),
-        vision_profile_id: vision_profile_id.expect("no issues"),
-        source_type: source_type.expect("no issues"),
-        image_id: image_id.expect("no issues"),
-        document_id: document_id.expect("no issues"),
-        character_name: character_name.expect("no issues"),
-        existing_data: existing_data.expect("no issues"),
-        background: background.expect("no issues"),
-        fields_to_generate: fields_to_generate.expect("no issues"),
-        character_id: character_id.expect("no issues"),
-    })
+    // Every checker that answers `None` pushes an issue, so the guard above
+    // means all ten are `Some` here. A `None` surviving it would be a v5 BUG,
+    // not a client error — and v4 has no counterpart at all (Zod's `.parse`
+    // either throws a `ZodError` or hands back the value). It used to be ten
+    // `.expect("no issues")` panics; it is now the same generic 500 v4's
+    // middleware answers for an unhandled throw (P4.86 tier-2 item 8).
+    let request = (|| {
+        Some(WizardRequest {
+            primary_profile_id: primary_profile_id?,
+            vision_profile_id: vision_profile_id?,
+            source_type: source_type?,
+            image_id: image_id?,
+            document_id: document_id?,
+            character_name: character_name?,
+            existing_data: existing_data?,
+            background: background?,
+            fields_to_generate: fields_to_generate?,
+            character_id: character_id?,
+        })
+    })();
+    request.ok_or(WizardBodyError::Internal(
+        "a wizard body field was missing with no validation issue recorded",
+    ))
 }
 
+/// v4 `handlers/post.ts:524` / `:542` — the same four-key bag under two
+/// sentences. Rendered as v4's `logger.info(msg, bag)` JSON so
+/// `fieldsToGenerate` is the ARRAY v4 logs, not a Rust `Debug` rendering
+/// (P4.86 tier-2 item 9; pinned by `wizard_starting_line_matches_v4`).
 fn log_wizard_starting(user_id: &str, request: &WizardRequest, streaming: bool) {
+    let context = json!({
+        "userId": user_id,
+        "characterName": request.character_name,
+        "fieldsToGenerate": request.fields_to_generate,
+        "sourceType": request.source_type,
+    });
     if streaming {
         tracing::info!(
-            user_id = %user_id,
-            character_name = %request.character_name,
-            fields_to_generate = ?request.fields_to_generate,
-            source_type = %request.source_type,
+            target: GENERATORS_WIZARD_LOG_TARGET,
+            context = %context,
             "[Characters v1] AI Wizard starting (streaming)"
         );
     } else {
         tracing::info!(
-            user_id = %user_id,
-            character_name = %request.character_name,
-            fields_to_generate = ?request.fields_to_generate,
-            source_type = %request.source_type,
+            target: GENERATORS_WIZARD_LOG_TARGET,
+            context = %context,
             "[Characters v1] AI Wizard starting"
         );
+    }
+}
+
+/// The tracing target the two route-level `[Characters v1]` /
+/// `[System Tools v1]` generator lines are emitted under (P4.86).
+pub const GENERATORS_WIZARD_LOG_TARGET: &str = "quilltap::generators_wizard";
+
+/// v4's middleware sentence for an unhandled throw (`Internal server error`).
+const INTERNAL_SERVER_ERROR: &str = "Internal server error";
+
+/// Why `parse_wizard_body` refused (P4.86 tier-2 item 8).
+pub enum WizardBodyError {
+    /// v4's `ZodError` issues — a 400 carrying the `details` array.
+    Invalid(Vec<Value>),
+    /// A v5 invariant violation with no v4 counterpart: the generic 500, and
+    /// an `error` line naming it. Never reachable from a client body.
+    Internal(&'static str),
+}
+
+impl WizardBodyError {
+    fn into_response(self) -> Response {
+        match self {
+            WizardBodyError::Invalid(issues) => Response::validation_error(Value::Array(issues)),
+            WizardBodyError::Internal(why) => {
+                tracing::error!(
+                    target: GENERATORS_WIZARD_LOG_TARGET,
+                    reason = %why,
+                    "[Characters v1] AI Wizard body could not be built"
+                );
+                Response::error(ErrorKind::Internal, INTERNAL_SERVER_ERROR)
+            }
+        }
     }
 }
 
@@ -400,7 +453,7 @@ pub async fn character_wizard(
 ) -> Response {
     let request = match parse_wizard_body(body) {
         Ok(r) => r,
-        Err(issues) => return Response::validation_error(Value::Array(issues)),
+        Err(e) => return e.into_response(),
     };
     log_wizard_starting(user_id, &request, false);
     let Some(driver) = driver else {
@@ -413,12 +466,26 @@ pub async fn character_wizard(
         })
         .await
     {
-        Ok(result) => Response::Character(serde_json::to_value(result).unwrap_or(Value::Null)),
+        // `serde_json::to_value` on a `WizardResult` can only fail on a shape
+        // this type cannot hold (a non-string map key, a non-finite float).
+        // It used to fall back to `null` — a 200 carrying nothing; it now
+        // takes v4's generic 500 (P4.86 tier-2 item 8).
+        Ok(result) => match serde_json::to_value(result) {
+            Ok(v) => Response::Character(v),
+            Err(e) => {
+                tracing::error!(
+                    target: GENERATORS_WIZARD_LOG_TARGET,
+                    error = %e,
+                    "[Characters v1] AI Wizard result could not be serialized"
+                );
+                Response::error(ErrorKind::Internal, INTERNAL_SERVER_ERROR)
+            }
+        },
         Err(error) => {
             // v4's middleware catch: the error is logged, the client gets the
             // generic sentence.
             tracing::error!(error = %error, "[Characters v1] AI Wizard failed");
-            Response::error(ErrorKind::Internal, "Internal server error")
+            Response::error(ErrorKind::Internal, INTERNAL_SERVER_ERROR)
         }
     }
 }
@@ -439,7 +506,7 @@ pub async fn character_wizard_stream(
 ) -> Response {
     let request = match parse_wizard_body(body) {
         Ok(r) => r,
-        Err(issues) => return Response::validation_error(Value::Array(issues)),
+        Err(e) => return e.into_response(),
     };
     log_wizard_starting(user_id, &request, true);
     let Some(driver) = driver else {
@@ -483,17 +550,15 @@ pub fn parse_ai_import_body(body: &Value) -> Result<AiImportRequest, Response> {
             "Missing required field: profileId",
         ));
     }
-    // `sourceFileIds: body.sourceFileIds || []`
-    let source_file_ids: Vec<Value> = match get("sourceFileIds") {
-        Some(v) if crate::api::system_qtap::js_truthy(Some(v)) => match v.as_array() {
-            Some(a) => a.clone(),
-            // A truthy non-array: `.length` is `undefined` → the emptiness
-            // check below reads `undefined === 0` (false) and the runner's
-            // `for…of` then throws — carried as an empty list with the
-            // source-text gate deciding, recorded.
-            None => Vec::new(),
-        },
-        _ => Vec::new(),
+    // `sourceFileIds: body.sourceFileIds || []` — the RAW value, never
+    // narrowed (P4.86). A truthy non-array keeps its own `.length`: a STRING
+    // passes the emptiness gate below on its UTF-16 length and is then
+    // iterated by CODE POINT as file ids; a number or an object has no
+    // `.length` at all, so `undefined === 0` is FALSE, the gate passes, and
+    // the runner's `for…of` throws `sourceFileIds is not iterable`.
+    let source_file_ids: Value = match get("sourceFileIds") {
+        Some(v) if crate::api::system_qtap::js_truthy(Some(v)) => v.clone(),
+        _ => Value::Array(Vec::new()),
     };
     // `sourceText: body.sourceText || ''`
     let source_text = match get("sourceText") {
@@ -516,16 +581,17 @@ pub fn parse_ai_import_body(body: &Value) -> Result<AiImportRequest, Response> {
     let existing_result = get("existingResult")
         .filter(|v| crate::api::system_qtap::js_truthy(Some(v)))
         .cloned();
-    // `regenerateSteps: body.regenerateSteps || undefined`
-    let regenerate_steps: Option<Vec<String>> = get("regenerateSteps")
+    // `regenerateSteps: body.regenerateSteps || undefined` — the RAW value.
+    // v4 never narrows it to an array: `shouldRunStep` calls `.includes(step)`
+    // on whatever it is, so a STRING is a substring test and anything else
+    // throws (P4.86; `generators::ai_import::should_run_step`).
+    let regenerate_steps: Option<Value> = get("regenerateSteps")
         .filter(|v| crate::api::system_qtap::js_truthy(Some(v)))
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .map(crate::pascal::js_value::to_js_string)
-                .collect()
-        });
-    if source_file_ids.is_empty() && crate::jsstr::js_trim(&source_text).is_empty() {
+        .cloned();
+    // `request.sourceFileIds.length === 0` — a strict comparison against a
+    // possibly-`undefined` length, so ONLY a real zero closes this gate.
+    let empty_file_ids = crate::generators::ai_import::js_length_of(&source_file_ids) == Some(0);
+    if empty_file_ids && crate::jsstr::js_trim(&source_text).is_empty() {
         return Err(Response::error(
             ErrorKind::BadRequest,
             "Must provide at least one source file or source text",
@@ -533,10 +599,7 @@ pub fn parse_ai_import_body(body: &Value) -> Result<AiImportRequest, Response> {
     }
     Ok(AiImportRequest {
         profile_id: crate::pascal::js_value::to_js_string(profile_id.unwrap()),
-        source_file_ids: source_file_ids
-            .iter()
-            .map(crate::pascal::js_value::to_js_string)
-            .collect(),
+        source_file_ids,
         source_text,
         include_memories,
         include_chats,
@@ -559,13 +622,28 @@ pub async fn ai_import_stream(
         Ok(r) => r,
         Err(r) => return r,
     };
+    // v4's `logger.info(msg, bag)` (`route.ts:1214`), in v4's key order. The
+    // bag shape (rather than named tracing fields) is load-bearing: v4's
+    // `sourceFileCount` is `request.sourceFileIds.length`, which is
+    // `undefined` for a value with no `.length` — and the logger's JSON DROPS
+    // an undefined member (P4.86).
+    let mut starting = serde_json::Map::new();
+    starting.insert("userId".into(), json!(user_id));
+    starting.insert("profileId".into(), json!(request.profile_id));
+    if let Some(n) = crate::generators::ai_import::js_length_of(&request.source_file_ids) {
+        starting.insert("sourceFileCount".into(), json!(n));
+    }
+    starting.insert(
+        "hasSourceText".into(),
+        json!(!crate::jsstr::js_trim(&request.source_text).is_empty()),
+    );
+    starting.insert("includeMemories".into(), request.include_memories.clone());
+    starting.insert("includeChats".into(), request.include_chats.clone());
+    // Bound outside the macro: `tracing`'s expansion shadows `Value`.
+    let starting = Value::Object(starting);
     tracing::info!(
-        user_id = %user_id,
-        profile_id = %request.profile_id,
-        source_file_count = request.source_file_ids.len(),
-        has_source_text = !crate::jsstr::js_trim(&request.source_text).is_empty(),
-        include_memories = %request.include_memories,
-        include_chats = %request.include_chats,
+        target: GENERATORS_WIZARD_LOG_TARGET,
+        context = %starting,
         "[System Tools v1] AI Import stream starting"
     );
     let Some(driver) = driver else {
@@ -594,4 +672,173 @@ pub async fn ai_import_stream(
             .await;
     }
     Response::Character(json!({ "terminal": terminal }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::captured_with;
+
+    fn ai_import_body(extra: Value) -> Value {
+        let mut body = json!({ "profileId": "c0000002-0000-4000-8000-000000000001" });
+        for (k, v) in extra.as_object().unwrap() {
+            body[k] = v.clone();
+        }
+        body
+    }
+
+    /// P4.86 tier-2 item 9 — v4 `handlers/post.ts:524` / `:542`. Both
+    /// sentences, v4's four keys in v4's order, `fieldsToGenerate` as the
+    /// ARRAY v4 logs.
+    #[test]
+    fn wizard_starting_line_matches_v4() {
+        let request = WizardRequest {
+            primary_profile_id: "c0000002-0000-4000-8000-000000000001".into(),
+            vision_profile_id: None,
+            source_type: "text".into(),
+            image_id: None,
+            document_id: None,
+            character_name: "Mira Lanternwright".into(),
+            existing_data: None,
+            background: "A harbor at dusk.".into(),
+            fields_to_generate: vec!["identity".into(), "personality".into()],
+            character_id: None,
+        };
+        for (streaming, sentence) in [
+            (false, "[Characters v1] AI Wizard starting"),
+            (true, "[Characters v1] AI Wizard starting (streaming)"),
+        ] {
+            let ((), lines) = captured_with(|| log_wizard_starting("u-1", &request, streaming));
+            let line = lines
+                .iter()
+                .find(|l| l.contains(sentence))
+                .unwrap_or_else(|| panic!("no {sentence:?} line in {lines:?}"));
+            assert!(line.starts_with("INFO"), "{line}");
+            assert!(
+                line.contains(&format!("target={GENERATORS_WIZARD_LOG_TARGET}"))
+                    || line.contains(GENERATORS_WIZARD_LOG_TARGET),
+                "{line}"
+            );
+            assert!(
+                line.contains(
+                    r#"context={"userId":"u-1","characterName":"Mira Lanternwright","fieldsToGenerate":["identity","personality"],"sourceType":"text"}"#
+                ),
+                "{line}"
+            );
+            // The two sentences are distinct — the non-streaming one must not
+            // carry the `(streaming)` suffix.
+            assert_eq!(
+                line.contains("(streaming)"),
+                streaming,
+                "the two sentences must not collapse: {line}"
+            );
+        }
+    }
+
+    /// P4.86 tier 2: `sourceFileCount: request.sourceFileIds.length` is
+    /// `undefined` for a value with no `.length`, and v4's logger DROPS an
+    /// undefined member.
+    #[test]
+    fn ai_import_starting_line_drops_an_undefined_source_file_count() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let events = tokio::sync::broadcast::channel(16).0;
+        let cases: [(Value, Option<&str>); 4] = [
+            (json!({"sourceFileIds": ["f-1", "f-2"]}), Some("2")),
+            (json!({"sourceFileIds": "abc"}), Some("3")),
+            (json!({"sourceFileIds": 5, "sourceText": "Mira."}), None),
+            (
+                json!({"sourceFileIds": {"a": 1}, "sourceText": "Mira."}),
+                None,
+            ),
+        ];
+        for (extra, want) in cases {
+            let body = ai_import_body(extra);
+            let (_r, lines) = captured_with(|| {
+                rt.block_on(ai_import_stream(None, &events, "u-1", None, &body, 0))
+            });
+            let line = lines
+                .iter()
+                .find(|l| l.contains("[System Tools v1] AI Import stream starting"))
+                .unwrap_or_else(|| panic!("no starting line in {lines:?}"));
+            match want {
+                Some(n) => assert!(
+                    line.contains(&format!(r#""sourceFileCount":{n}"#)),
+                    "{line}"
+                ),
+                None => assert!(
+                    !line.contains("sourceFileCount"),
+                    "an undefined `.length` must DROP the key: {line}"
+                ),
+            }
+            // v4's key order, `sourceFileCount` between `profileId` and
+            // `hasSourceText` wherever it renders at all.
+            assert!(
+                line.contains(r#"context={"userId":"u-1","profileId":"#),
+                "{line}"
+            );
+        }
+    }
+
+    /// P4.86 tier-2 item 6: the route's `sourceFileIds.length === 0` gate is a
+    /// STRICT comparison against a possibly-`undefined` length.
+    #[test]
+    fn the_empty_source_gate_only_closes_on_a_real_zero() {
+        // No files, no text → the 400.
+        let refused = parse_ai_import_body(&ai_import_body(json!({"sourceFileIds": []})));
+        assert!(refused.is_err());
+        // A string's `.length` is 3 → the gate passes with no source text.
+        let ok = parse_ai_import_body(&ai_import_body(json!({"sourceFileIds": "abc"})));
+        assert_eq!(ok.unwrap().source_file_ids, json!("abc"));
+        // A number has NO `.length` → `undefined === 0` is false → passes.
+        let ok = parse_ai_import_body(&ai_import_body(json!({"sourceFileIds": 5})));
+        assert_eq!(ok.unwrap().source_file_ids, json!(5));
+        // Falsy → `[]` → the gate closes.
+        let refused = parse_ai_import_body(&ai_import_body(json!({"sourceFileIds": 0})));
+        assert!(refused.is_err());
+    }
+
+    /// P4.86 tier-2 item 6: `regenerateSteps` is carried RAW.
+    #[test]
+    fn regenerate_steps_is_carried_raw() {
+        let r = parse_ai_import_body(&ai_import_body(
+            json!({"sourceText": "Mira.", "regenerateSteps": "identitydescription"}),
+        ))
+        .unwrap();
+        assert_eq!(r.regenerate_steps, Some(json!("identitydescription")));
+        let r = parse_ai_import_body(&ai_import_body(
+            json!({"sourceText": "Mira.", "regenerateSteps": []}),
+        ))
+        .unwrap();
+        // `[] || undefined` — an empty array is TRUTHY, so it is kept.
+        assert_eq!(r.regenerate_steps, Some(json!([])));
+        let r = parse_ai_import_body(&ai_import_body(
+            json!({"sourceText": "Mira.", "regenerateSteps": null}),
+        ))
+        .unwrap();
+        assert_eq!(r.regenerate_steps, None);
+    }
+
+    /// P4.86 tier-2 item 8: the invariant violation answers v4's generic 500,
+    /// never a panic, and names itself in an `error` line.
+    #[test]
+    fn a_body_that_cannot_be_built_answers_the_generic_500() {
+        let ((), lines) = captured_with(|| {
+            let r = WizardBodyError::Internal("a wizard body field was missing").into_response();
+            match r {
+                Response::Error(e) => {
+                    assert!(matches!(e.kind, ErrorKind::Internal));
+                    assert_eq!(e.message, INTERNAL_SERVER_ERROR);
+                }
+                other => panic!("unexpected response {other:?}"),
+            }
+        });
+        assert!(
+            lines.iter().any(|l| l.starts_with("ERROR")
+                && l.contains("[Characters v1] AI Wizard body could not be built")),
+            "{lines:?}"
+        );
+    }
 }

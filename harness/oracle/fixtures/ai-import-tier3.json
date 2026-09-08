@@ -523,6 +523,162 @@
         "{}",
         "{\"memories\": null}"
       ]
+    },
+    {
+      "name": "source_file_ids_string_iterates_code_points",
+      "$comment": "P4.86 tier 2: a TRUTHY NON-ARRAY sourceFileIds. `body.sourceFileIds || []` keeps the string; its `.length` (UTF-16 units, so FOUR for `a<emoji>b`) passes the route's emptiness gate and is what `sourceFileCount` reports; the runner's `for (const fileId of request.sourceFileIds)` then iterates its CODE POINTS \u2014 THREE ids, the astral character whole. The two counts deliberately disagree, so a port iterating UTF-16 units reddens. With no source text the context is empty and the run is fatal.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": "a\ud83d\ude00b"
+      },
+      "calls": []
+    },
+    {
+      "name": "source_file_ids_string_with_source_text",
+      "$comment": "P4.86 tier 2: the same string iteration, but the source text carries the run \u2014 two `Source file not found` warns and then the full chain.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": "ab",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
+    },
+    {
+      "name": "source_file_ids_number_is_not_iterable",
+      "$comment": "P4.86 tier 2: a truthy non-array, non-string sourceFileIds. `.length` is `undefined`, so `undefined === 0` is false and the route's gate passes; the runner's `for\u2026of` then throws a V8 TypeError caught by the outer try.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": 5,
+        "sourceText": "Mira."
+      },
+      "calls": []
+    },
+    {
+      "name": "source_file_ids_object_is_not_iterable",
+      "$comment": "P4.86 tier 2: as above, with an object.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": {
+          "a": 1
+        },
+        "sourceText": "Mira."
+      },
+      "calls": []
+    },
+    {
+      "name": "regenerate_steps_string_matches_a_step",
+      "$comment": "P4.86 tier 2: a TRUTHY NON-ARRAY regenerateSteps. v4 keeps the raw value (`body.regenerateSteps || undefined`) and `shouldRunStep` calls `.includes(step)` on it \u2014 on a STRING that is a SUBSTRING test, so a sentence CONTAINING a step name forces that step to re-run even though `existingResult` already carries it. `pronouns` re-runs here; every other cached step stays skipped. `includeMemories: false` keeps the assembled export clean so the arm measures only the substring rule.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira.",
+        "includeMemories": false,
+        "existingResult": {
+          "analyzing": "{\"characterName\": \"Mira\"}",
+          "character_basics": {
+            "name": "Mira Lanternwright",
+            "title": "The Harbor Keeper",
+            "identity": "Mira keeps the lanterns of Saltmere.",
+            "description": "She hums while she works.",
+            "manifesto": "You keep the lanterns lit.",
+            "personality": "You fear deep water.",
+            "scenario": "The harbor at dusk."
+          },
+          "first_message": {
+            "firstMessage": "*She looks up.* Evening.",
+            "exampleDialogues": "{{char}}: Hm.\n{{user}}: Hi."
+          },
+          "system_prompts": null,
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "aliases": [
+            "Keeper"
+          ]
+        },
+        "regenerateSteps": "please regenerate the pronouns"
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
+    },
+    {
+      "name": "regenerate_steps_string_matches_nothing",
+      "$comment": "P4.86 tier 2: the same substring rule with a string containing NO step name \u2014 nothing is forced, so every cached step stays skipped. The pair discriminates a port that treated a string as `never matches`.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira.",
+        "includeMemories": false,
+        "existingResult": {
+          "analyzing": "{\"characterName\": \"Mira\"}",
+          "character_basics": {
+            "name": "Mira Lanternwright",
+            "title": "The Harbor Keeper",
+            "identity": "Mira keeps the lanterns of Saltmere.",
+            "description": "She hums while she works.",
+            "manifesto": "You keep the lanterns lit.",
+            "personality": "You fear deep water.",
+            "scenario": "The harbor at dusk."
+          },
+          "first_message": {
+            "firstMessage": "*She looks up.* Evening.",
+            "exampleDialogues": "{{char}}: Hm.\n{{user}}: Hi."
+          },
+          "system_prompts": null,
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "aliases": [
+            "Keeper"
+          ]
+        },
+        "regenerateSteps": "identitydescription"
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
+    },
+    {
+      "name": "regenerate_steps_number_throws",
+      "$comment": "P4.86 tier 2: a truthy non-array, non-string regenerateSteps \u2014 `.includes` is not a function, a V8 TypeError caught by the outer try.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira.",
+        "regenerateSteps": 5
+      },
+      "calls": []
+    },
+    {
+      "name": "source_file_ids_number_passes_the_empty_gate",
+      "$comment": "P4.86 tier 2: the route's `request.sourceFileIds.length === 0` gate with a truthy non-array, non-string value and NO source text \u2014 `.length` is `undefined`, `undefined === 0` is false, so the 400 does NOT fire and the run reaches the runner's `for\u2026of` throw.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceFileIds": 5
+      },
+      "calls": []
     }
   ]
 }

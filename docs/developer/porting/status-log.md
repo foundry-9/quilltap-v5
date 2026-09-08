@@ -114548,3 +114548,86 @@ for a port regression.
 | `MAX_REPAIR_ATTEMPTS = 1` | 5 cases DIFFER |
 | the replacement gate is `is_some()` instead of JS truthy | 1 case DIFFERS (`validation_repair_reply_omits_section`'s `null` arm) |
 | `errors.validation` uses the revalidation's count | the `V5_VALIDATION_COUNTS` table reddens |
+
+## P4.86 tier 2 — the truthy-non-array body arms + three `generators_wizard` smalls (2026-09-07)
+
+### Item 6 — `sourceFileIds` / `regenerateSteps` carried RAW (measured, then reproduced)
+
+The order left the ruling open (reproduce vs pin both directions) pending a
+measurement. **Measured on v4 at the baseline over six new corpus rows; every
+arm is deterministic, so all of it is REPRODUCED.**
+
+| body | v4 |
+| --- | --- |
+| `sourceFileIds: "a😀b"`, no source text | `sourceFileCount: 4` (UTF-16 `.length`) in the starting bag, then THREE `Source file not found or unauthorized` warns — `for…of` walks a string by CODE POINT, so the astral character is one id — then the fatal `No source material provided…` |
+| `sourceFileIds: "ab"` + source text | two warns, then the full chain |
+| `sourceFileIds: 5` (or `{a:1}`) | `sourceFileCount` ABSENT from the bag (`.length` is `undefined`, and the logger's JSON drops an undefined member), then `sourceFileIds is not iterable` into `done.error` + `errors._fatal` |
+| `sourceFileIds: 5`, NO source text | the route's `length === 0` gate does NOT close (`undefined === 0` is false) — the 400 never fires and the run reaches the throw |
+| `regenerateSteps: "please regenerate the pronouns"` | `.includes('pronouns')` is a SUBSTRING test → the cached `pronouns` step re-runs |
+| `regenerateSteps: "identitydescription"` | nothing matches → every cached step stays skipped |
+| `regenerateSteps: 5` | `request.regenerateSteps?.includes is not a function` into `_fatal` (V8's message names the optional-chain expression verbatim) |
+
+**v5 measurably HAD a divergence here**: `parse_ai_import_body` replaced a
+truthy non-array with `Vec::new()`, so `{profileId, sourceFileIds: "abc"}`
+answered a 400 where v4 runs and reports a fatal. Fixed by carrying the raw
+`Value`, with `js_length_of` (array len / string UTF-16 len / `None`) for the
+gate and the log bags, and `iterate_source_file_ids` (array elements / string
+code points / the V8 `TypeError`) for the `for…of`. `should_run_step` now
+returns `Result<bool, String>` and its nine call sites keep v4's `&&`
+short-circuit, so `regenerateSteps: 5` throws exactly where v4's does — before
+`step_start character_basics`, with `stepResults: {}`.
+
+### Items 7-9 — three smalls in `api/generators_wizard.rs`
+
+* **The dead `fallback_message`** threaded through `run_step`'s nine call sites
+  is gone. v4's `error instanceof Error ? error.message : '<fallback>'` can
+  never take the fallback branch there — `callLLM` and `parseLLMJson` both
+  throw `Error`s — so all nine of v4's strings (`Analysis failed`, `Character
+  basics failed`, …) are dead. Recorded in a comment instead of carried as an
+  unused parameter. The same is true of the repair loop's `'Repair failed'`.
+* **The ten `.expect("no issues")` panics + the `unwrap_or(Value::Null)`.**
+  `parse_wizard_body` now returns a `WizardBodyError` with two arms:
+  `Invalid(issues)` (v4's Zod 400 with `details`) and `Internal(&'static str)`
+  — a v5 invariant violation with no v4 counterpart, answering v4's middleware
+  sentence `Internal server error` with an `error` line naming it, never a
+  panic. The serialization fallback that used to answer a 200 carrying `null`
+  takes the same 500. (The order asked for "the SAME typed 500 arm P4.85
+  chooses"; P4.85 had not closed, so this uses v4's middleware sentence
+  measured directly — the same one this file's existing driver-error arm
+  already answers. The unifier reconciles if P4.85 chose differently.)
+* **The three route-level log lines** (`[Characters v1] AI Wizard starting`,
+  its `(streaming)` twin, and `[System Tools v1] AI Import stream starting`)
+  render v4's `logger.info(msg, bag)` JSON under a new
+  `GENERATORS_WIZARD_LOG_TARGET` instead of named tracing fields. That is
+  load-bearing for the import line — only a bag can DROP an undefined
+  `sourceFileCount` — and for the wizard lines it makes `fieldsToGenerate` the
+  ARRAY v4 logs rather than a Rust `Debug` rendering. Capture-pinned by
+  `wizard_starting_line_matches_v4` (both sentences, v4's four keys in v4's
+  order, and an assert that the two sentences do not collapse) and
+  `ai_import_starting_line_drops_an_undefined_source_file_count` (four
+  shapes).
+
+### Mutation proofs (each reddened, then reverted)
+
+| mutation | effect |
+| --- | --- |
+| a string `regenerateSteps` never matches (array equality only) | 1 case DIFFERS (`regenerate_steps_string_matches_a_step`) |
+| a truthy non-array `sourceFileIds` is carried as an empty list (the pre-fix shape) | reddens |
+| a string `sourceFileIds` is iterated by UTF-16 unit | 1 case DIFFERS (the astral row: 3 warns become 4, two of them lone surrogates) |
+| a non-iterable `sourceFileIds` is treated as empty | reddens |
+| `sourceFileCount` is always reported (`unwrap_or(0)`) | 3 cases DIFFER |
+
+Plus five unit tests in `api::generators_wizard::tests`.
+
+### A v4/JS finding banked on the way
+
+An early draft of the substring case let a wardrobe-shaped reply land on the
+memories step, so `Math.max(0, Math.min(1, undefined))` produced **`NaN`** —
+which `JSON.stringify` renders as `null`, but which **ajv validates as a
+number**, so v4 reported no error for it while v5 (whose `serde_json::Value`
+cannot hold `NaN` and had already stored `null`) reported
+`/data/memories/0/importance`. `serde_json` has no `NaN`, so this is
+unclosable in principle; the case was re-shaped to avoid it rather than
+recorded as a divergence, and it is noted here as the one place the two number
+models genuinely part company. Any future corpus row whose assembled export
+can carry a `NaN` will hit it.
