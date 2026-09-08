@@ -12,6 +12,49 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-08 — docs(drift): character progressions — three commits past the baseline, pins required again
+
+_Docs-only change._
+
+The second drift check of the day. This morning's found v4 at rest; within the
+hour it landed **character progressions**, a large new feature — timed spans on
+a character (a pregnancy, a recharging cannon, a fermentation) reported to the
+model each turn on the span's own cadence. Three commits: the plan doc
+(`d307a4164`, NO-PORT? but the design of record, worth reading at ordering
+time), the feature itself (`0587d1e96`, PORT-NEW — roughly 6,700 insertions
+across 55 files, five phases squashed into one PR), and a version bump to
+`4.10.0-dev.8` (`4097626c6`, NO-PORT?). No convergence row: v4's bug catalogue
+is untouched by all three.
+
+The regen rule flips back to **PIN REQUIRED** — every oracle regen and fixture
+build runs from a detached worktree pinned at `2f4254b42` until a round moves
+the baseline.
+
+Two things the classification checked in the hunks rather than taking from the
+commit prose, because both would have changed the shape of a catch-up round.
+There is no table-schema change and so no D23 re-dump: the one `DDL.md` hunk is
+prose about a new reserved `progressions` key inside the character vault's
+`metadata.json`, which is the document-store overlay's territory. And neither
+`IDENTITY_STACK_BUILDER_VERSION` nor `PROMPT_CACHE_STRUCTURE_VERSION` moves —
+the report lives in the uncached per-turn tail, never system block 1 — so v5's
+committed golden prompt hashes stay valid.
+
+New v4 modules `lib/progressions/{schema,engine,prompt-section}.ts` have no v5
+counterpart at all. Ported surfaces the feature reaches: `build_context`,
+`core_whisper` (the two history-derived cadences now share one memoised message
+read per turn), the greeting builder, Carina, the whole Pascal custom-tools
+family server-side and in the SPA, the tool subsystem, the character vault
+types, two REST edges, and a new character-editor section.
+
+The check also recorded a new standing hazard. `public/schemas/qtap-custom-tool.schema.json`
+is a fifth vendored artifact — the SPA serves its own copy, and the Workbench
+writes that path into every tool draft — but it is the only vendored copy with
+no guard: no Rust test, no spec, only string assertions on the URL. v4's moved
+by 529 lines and v5's still matches the baseline, so a re-vendor is owed and
+nothing will go red if a lane forgets it. A guard belongs alongside the
+re-vendor, and the new `qtap-progression.schema.json` should be vendored under
+the same rule.
+
 #### 2026-09-08 — docs(drift): the standalone drift check — v4 still at the baseline, §3 empty, no pin required
 
 _Docs-only change._

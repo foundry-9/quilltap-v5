@@ -23,46 +23,55 @@ probe verifies against._
   optional instructions from the vault" (v4 main, 2026-09-07 07:43 -0500,
   `4.10.0-dev.5`), adopted at the `2f4254b42` character-subprompts round
   unification (P4.D163 → P4.D164 ∥ P4.D165 ∥ P4.9K1-resumed ∥
-  P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees. (The
-  version was recorded as `4.10.0-dev.1` here through the last two checks;
-  `git show 2f4254b42:package.json` reads **`4.10.0-dev.5`** — corrected
-  2026-09-08, no other field moved.)
-- **Checked:** 2026-09-08, a standalone `/driftcheck` (the generator
-  follow-ups + prompt-templates round's unification probe on 2026-09-07
-  before it, and its dogfood pass the same night).
-- **v4 `main` HEAD at check:** `2f4254b42` — AT the baseline. **Zero drift.**
-  Local `main` == `origin/main` (no fetch performed; the checkout is the
-  human's active working repo, so its local tips are the authority).
-- **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch", root `4.9.3-bugfix.0`) — UNMOVED, and this check proved its
-  emptiness TOTALLY rather than by reading a stat: `git diff bugfix main --
-  lib/ app/ packages/ plugins/ help/ jest.config.ts __mocks__/` is
-  **textually identical** (1,930 lines, `index` lines aside) to
-  `git show 2f4254b42 --format='' -- <the same paths>`. The whole
-  main↔bugfix content delta IS the subprompts commit; `bugfix` is simply
-  BEHIND main by it. **Nothing unabsorbed on `bugfix`.** (⚠ zsh does not
-  word-split, so a `$PATHS` variable after `--` becomes ONE pathspec matching
-  nothing and both diffs come back EMPTY — spell the paths inline. That false
-  "identical" is indistinguishable from the real one.)
+  P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-08 (the second check that day — the first, that
+  morning, found v4 at rest; v4 then landed the character-progressions
+  feature within the hour).
+- **v4 `main` HEAD at check:** `4097626c6` (2026-09-08 09:25 -0500,
+  `4.10.0-dev.8`) — **THREE commits past the baseline.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED, and still carrying
+  nothing unabsorbed: this morning's check proved its whole content delta
+  against `main` is textually the subprompts commit reversed. It is now
+  additionally behind by the three rows below. (⚠ zsh does not word-split, so
+  a `$PATHS` variable after `--` becomes ONE pathspec matching nothing and
+  both sides of that comparison come back EMPTY — spell the paths inline.
+  That false "identical" is indistinguishable from the real one.)
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree CLEAN.
-- **Verdict: CLEAR — no drift.** §3 stays EMPTY: nothing new to classify, and
-  no row carried forward (the last check's `2f4254b42` PORT-NEW row and the
-  standing `15573c3a1` bug-119 row were both absorbed at the 2026-09-07
-  unification).
-- **All four vendored-artifact hazards re-verified byte-identical at this
-  check** (they can only move when v4 does, but they are cheap and they are
-  what silently reddens a gate): `help/` 121 files `diff -rq` clean against
-  `~/source/quilltap-server/help`; `crates/quilltap-core/src/generators/
-  qtap-export.schema.json` `cmp`-identical to `public/schemas/
-  qtap-export.schema.json`; the sample-prompt catalogue's source directory
-  still 21 `.md` files; and v4's **installed** `zod` still `4.5.4`, matching
-  `RECORDED_ZOD_VERSION` (the one hazard that can fire without a v4 commit,
-  since the oracles resolve the LIVE dependency tree).
-- **Regen rule in force: NO PIN REQUIRED** — v4 `main` HEAD is the baseline
-  and the checkout is on `main` and clean. Unchanged from the last check.
-  Re-run the §2 probe before every regen batch; the moment it fails, build a
-  detached worktree per §5.1.
+- **Verdict: DRIFT PENDING — 3 commits** (§3 rows `d307a4164`, `0587d1e96`,
+  `4097626c6`). One is a large PORT-NEW feature — **character progressions**,
+  ~6,700 insertions across 55 files, five phases squashed into one PR (#57).
+  The other two are its plan doc and a version bump. **No CONVERGENCE row:** `docs/developer/bugs.md` is untouched by all
+  three, and no both-directions pin is implicated.
+- **No schema move — no D23 re-dump.** Nothing under `lib/db/**` or
+  `generateDDL` changed; the one `DDL.md` hunk is prose describing a new
+  RESERVED KEY inside the character vault's `metadata.json`
+  (`progressions`), which is the document-store overlay's territory, not a
+  table. **And no prompt-cache move:** the feature asserts as a negative
+  guarantee that neither `IDENTITY_STACK_BUILDER_VERSION` nor
+  `PROMPT_CACHE_STRUCTURE_VERSION` is bumped (the report lives in the
+  uncached per-turn tail, never system block 1), so v5's committed golden
+  hashes stay valid — verified in the hunks, not taken from the prose.
+- **Vendored-artifact obligations this drift creates** (all four re-verified
+  clean at the morning check; two now MOVED):
+  - **`help/**` — v4 is at 122 files, v5's vendored tree at 121.**
+    `0587d1e96` adds `help/character-progressions.md` and edits five
+    (`character-editing`, `character-system-prompts`, `custom-tools`,
+    `pascals-workbench`, `shared-character-vaults`). `help_tree_equivalence`
+    goes RED against any oracle regenerated past the baseline, by design.
+  - **`public/schemas/qtap-custom-tool.schema.json` moved by 529 lines**, and
+    v5's copy at `apps/web/public/schemas/qtap-custom-tool.schema.json` is
+    still byte-identical to the BASELINE — see standing hazard (10): that one
+    is UNGUARDED, so nothing goes red if a lane forgets it.
+  - **`public/schemas/qtap-progression.schema.json` is NEW** (97 lines) and
+    has no v5 counterpart yet.
+  - Unmoved and still clean: the embedded `qtap-export.schema.json`, the
+    21-file sample-prompt source directory, and v4's installed `zod` at
+    `4.5.4` (`package-lock.json` moved only its two version lines).
+- **Regen rule in force: PIN REQUIRED** (changed from NO PIN this morning) —
+  v4 `main` HEAD is past the baseline. Every oracle regen and fixture build
+  runs from a detached worktree pinned at `2f4254b42` per §5.1, until a round
+  moves the baseline.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -111,17 +120,29 @@ probe verifies against._
   qtap-export.schema.json` is a VENDORED v5 ARTIFACT since P4.86**
   (`crates/quilltap-core/src/generators/qtap-export.schema.json`, 89,769
   bytes at `2f4254b42`) — a v4 commit touching it is a re-vendor obligation
-  and `qtap_schema_embed_guard` goes RED against the checkout, by design.
+  and `qtap_schema_embed_guard` goes RED against the checkout, by design;
+  (10) ⚠ **`public/schemas/qtap-custom-tool.schema.json` is a FIFTH vendored
+  artifact and the only UNGUARDED one** (recorded 2026-09-08). v5 serves its
+  own copy at `apps/web/public/schemas/qtap-custom-tool.schema.json` — the
+  `$schema` value the Workbench writes into every tool draft
+  (`apps/web/src/app/pascal/tool-draft.ts`) — but nothing compares it to
+  v4's: no Rust guard, no spec, only string assertions on the URL path. It is
+  byte-identical to `2f4254b42` today and `0587d1e96` moved v4's by 529
+  lines, so a re-vendor is owed and **NOTHING will go red if the lane forgets
+  it.** Whoever ports character progressions should land a guard in the
+  `qtap_schema_embed_guard` idiom alongside the re-vendor, and vendor the new
+  `qtap-progression.schema.json` under the same rule.
 - **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
   `bugfix` fork; the fork → fix → `release: X` squash → merge-back cycle has
   run twice. `bugfix` is currently idle at its branch-start commit while main
   takes feature work. §4 step 2's two-branch rule stays load-bearing — measure
   `bugfix` by CONTENT, never its commit list, and remember a content diff can
   be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-07, the generator follow-ups round's unification
-  probe): CLEAR, no pin required — the same posture this check re-confirms.
-  Before that (2026-09-07, the pre-round `/driftcheck`): DRIFT PENDING — 1
-  commit (`2f4254b42`), pin required because HEAD was past the baseline._
+- _Superseded (2026-09-08 morning, a standalone `/driftcheck`): CLEAR, no pin
+  required — v4 at rest at the baseline, §3 empty. It held for about four
+  hours. Before that (2026-09-07, the generator follow-ups round's unification
+  probe): CLEAR. Before that (2026-09-07, the pre-round `/driftcheck`): DRIFT
+  PENDING — 1 commit (`2f4254b42`), pin required._
 
 ## §2 The freshness probe
 
@@ -160,8 +181,9 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-
-_(Empty — every row absorbed at the `2f4254b42` round unification, 2026-09-07; see §6.)_
+| `d307a4164` | 2026-09-08 | docs: plan for character progressions (timed properties reported per turn) | NO-PORT? | Docs only — `docs/developer/features/character-progressions.md` (375 lines), the changelog, and one v4-side `.claude/` command doc. No shipped code. **Not a throwaway row: this file is the design of record for `0587d1e96`** and should be read at ordering time — it carries the phasing, the cadence grammar's rationale, and the "prompt path performs no writes" constraint. Mirror candidate for `docs/v4/` at the next baseline move. | UNPROCESSED |
+| `0587d1e96` | 2026-09-08 | Add character progressions — timed conditions reported per turn (#57) | PORT-NEW | **The feature, ~6,700 insertions / 55 files, five phases squashed into one PR.** New v4 modules `lib/progressions/{schema,engine,prompt-section}.ts` — pure, client-safe, injected clock — have NO v5 counterpart (tier-1 territory: `deriveProgression`, `formatSpan`, `shouldReportProgression`, `renderProgressionReport`, `flattenProgressions`, `inferIncrement`, and a fail-soft `parseProgressions` that drops one bad entry and keeps its siblings). Ported v5 surfaces it reaches: **`build_context`** (`lib/chat/context-manager.ts` — the section is wired after Suparna mail, before the turn-skip note, skipped in continue mode; last touched by P4.D95 / P4.D103 / P4.D163), **`core_whisper.rs`** (`findLastOwnTurnMs` joins `shouldFireCoreWhisper` in `core-whisper-trigger.ts`, and the two cadences now share ONE memoised `getMessages` per turn — a read-count change on a ported path), the **greeting builder** (`lib/chat/initialize.ts`) and **Carina** (both forced, cadence bypassed), the **whole Pascal family** (`custom_tool_types` / `custom_tools` / `placeholders` / `side_effects` / `tool_gate` / `tool_vocabulary` in `quilltap-core::pascal`, plus the SPA's `pascal/tool-draft.ts` twin — ported across P4.D35/P4.D36, the Workbench lanes P4.6BB/P4.D20, P4.D43, and the archived custom-tools-end-to-end round), the **tool subsystem** (`run-custom-tool.ts`, `run-custom-handler.ts`), the **character vault types** (`lib/schemas/character.types.ts` → the store-backed entity slice), **two REST edges** in `quilltap-web` (`/api/v1/custom-tools`, `/api/v1/chats/[id]/custom-tools`), and the **SPA** (a new `components/characters/progressions/` trio — editor modal, section, hook — plus the system-prompts-editor host and four `components/custom-tools/` panels + `CustomToolRunDialog`). Also a `help/**` re-vendor (121 → 122) and two `public/schemas/` files. **No table-schema change and no cache-version bump** (see §1). | UNPROCESSED |
+| `4097626c6` | 2026-09-08 | doc: Update version | NO-PORT? | `4.10.0-dev.5` → `4.10.0-dev.8` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines. No ported comparand (no `--version` assertion in Tier R); the two version fields still agree on `main`, so standing hazard (6) stays closed there. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
