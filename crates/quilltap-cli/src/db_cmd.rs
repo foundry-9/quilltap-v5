@@ -484,11 +484,39 @@ fn heartbeat_age_ms(lock: &Map<String, Value>) -> f64 {
     }
 }
 
-/// v4 `lock-helpers.js`'s `VM_ENVIRONMENTS` set, which `1560bd43b` narrowed to
-/// the single `docker` entry when the managed Lima/WSL2 modes were retired. A
-/// lock still carrying a retired value takes the plain different-host arm.
-fn is_vm_environment(lock: &Map<String, Value>) -> bool {
-    lock_str(lock, "environment") == "docker"
+/// v4 `assessLock(lock, hostname)` — the one shared decision `--lock-status`
+/// and `--lock-clean` both read (v4 `25f534c0b`, bug 126).
+///
+/// A hostname that differs from ours does NOT mean a different machine: macOS
+/// derives `gethostname()` dynamically when `scutil --get HostName` is unset,
+/// so one Mac reports e.g. "MacBook-Pro.local" and "Mac" at different times.
+/// So `alive` checks PID liveness **regardless of the recorded name** (it was
+/// `sameHost && isPidAlive(...)` before), and the fallback is heartbeat
+/// freshness for any environment rather than only for containers.
+///
+/// v4's returned object also carries `live = (alive && isNode) ||
+/// heartbeatFresh`; measured at the port, NEITHER verb destructures it, so it
+/// has no v5 counterpart (a field nothing reads is a `dead_code` warning here).
+struct LockAssessment {
+    same_host: bool,
+    alive: bool,
+    is_node: bool,
+    heartbeat_age_ms: f64,
+    heartbeat_fresh: bool,
+}
+
+fn assess_lock(lock: &Map<String, Value>, hostname: &str) -> LockAssessment {
+    const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
+    let pid = lock_num(lock, "pid");
+    let alive = pid.is_finite() && is_pid_alive(pid as u32);
+    let heartbeat_age_ms = heartbeat_age_ms(lock);
+    LockAssessment {
+        same_host: lock_str(lock, "hostname") == hostname,
+        alive,
+        is_node: alive && verify_pid_is_quilltap(pid as u32),
+        heartbeat_age_ms,
+        heartbeat_fresh: heartbeat_age_ms < FRESH_MS,
+    }
 }
 
 fn push_history(lock: &mut Map<String, Value>, event: &str, detail: String) {
@@ -548,35 +576,37 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
             return;
         };
         let pid = lock_num(&lock, "pid");
-        let same_host = lock_str(&lock, "hostname") == hostname;
-        let alive = same_host && pid.is_finite() && is_pid_alive(pid as u32);
-        let is_node = alive && verify_pid_is_quilltap(pid as u32);
+        let LockAssessment {
+            same_host,
+            alive,
+            is_node,
+            heartbeat_age_ms: age_ms,
+            heartbeat_fresh,
+        } = assess_lock(&lock, &hostname);
 
+        // v4's branch ORDER: a confirmed process, then ANY fresh heartbeat,
+        // then the reused-PID suspicion, then the two stale arms. The
+        // container-only window and the bare `STALE (different host)` arm are
+        // gone (bug 126); note the reset code now precedes the parenthesis on
+        // the heartbeat arm, where it used to follow the whole phrase.
         let status = if alive && is_node {
             "\x1b[32mACTIVE\x1b[0m (process confirmed running)".to_string()
+        } else if heartbeat_fresh {
+            let age_str = format!("{}s", (age_ms / 1000.0).round() as i64);
+            format!(
+                "\x1b[32mACTIVE\x1b[0m ({}, heartbeat {} ago)",
+                non_empty_or(lock_str(&lock, "environment"), "unknown"),
+                age_str
+            )
         } else if alive && !is_node {
             "\x1b[33mSUSPECT\x1b[0m (PID alive but does not look like Quilltap — possible PID reuse)"
                 .to_string()
         } else if !same_host {
-            let is_vm = is_vm_environment(&lock);
-            let age_ms = heartbeat_age_ms(&lock);
-            const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
-            if is_vm && age_ms < FRESH_MS {
-                let age_str = format!("{}s", (age_ms / 1000.0).round() as i64);
-                format!(
-                    "\x1b[32mACTIVE ({}, heartbeat {} ago)\x1b[0m",
-                    lock_str(&lock, "environment"),
-                    age_str
-                )
-            } else if is_vm {
-                format!(
-                    "\x1b[33mSTALE ({}, no recent heartbeat)\x1b[0m — will be auto-claimed on next startup",
-                    lock_str(&lock, "environment")
-                )
-            } else {
-                "\x1b[33mSTALE (different host)\x1b[0m — will be auto-claimed on next startup"
-                    .to_string()
-            }
+            format!(
+                "\x1b[33mSTALE ({} on {}, no recent heartbeat)\x1b[0m — will be auto-claimed on next startup",
+                non_empty_or(lock_str(&lock, "environment"), "unknown"),
+                lock_str(&lock, "hostname")
+            )
         } else {
             "\x1b[31mSTALE (process dead)\x1b[0m — will be auto-claimed on next startup".to_string()
         };
@@ -591,9 +621,9 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
             "  Hostname:     {}{}",
             lock_str(&lock, "hostname"),
             if same_host {
-                " (this host)"
+                " (this host)".to_string()
             } else {
-                " (different host)"
+                format!(" (recorded name differs from ours: {hostname})")
             }
         ));
         out::log(&format!(
@@ -675,49 +705,44 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
             return;
         };
         let pid = lock_num(&lock, "pid");
-        let same_host = lock_str(&lock, "hostname") == hostname;
-        let alive = same_host && pid.is_finite() && is_pid_alive(pid as u32);
+        let LockAssessment {
+            same_host,
+            alive,
+            is_node,
+            heartbeat_age_ms: age_ms,
+            heartbeat_fresh,
+        } = assess_lock(&lock, &hostname);
 
-        if alive {
-            let is_node = verify_pid_is_quilltap(pid as u32);
-            if is_node {
-                out::log(&format!(
-                    "Lock is held by a live Quilltap process (PID {}). Cannot clean.",
-                    crate::nodefmt::js_num_string(pid)
-                ));
-                out::log("Stop the running instance first, or use --lock-override to force.");
-                out::exit(1);
-            } else {
-                out::log(&format!(
-                    "Lock references PID {} which is alive but does NOT look like a Quilltap process.",
-                    crate::nodefmt::js_num_string(pid)
-                ));
-                out::log("This is likely a stale lock with a reused PID. Removing.");
-            }
+        // v4's branch order, matching `--lock-status` above. The NEW second arm
+        // refuses to delete a lock that is still being refreshed whatever its
+        // recorded name says; the old `Lock is held by a live <env> instance`
+        // and `Lock was held by a different host` arms are gone (bug 126).
+        if alive && is_node {
+            out::log(&format!(
+                "Lock is held by a live Quilltap process (PID {}). Cannot clean.",
+                crate::nodefmt::js_num_string(pid)
+            ));
+            out::log("Stop the running instance first, or use --lock-override to force.");
+            out::exit(1);
+        } else if heartbeat_fresh {
+            out::log(&format!(
+                "Lock is still being refreshed (heartbeat {}s ago) — its holder is alive. Cannot clean.",
+                (age_ms / 1000.0).round() as i64
+            ));
+            out::log("Stop the running instance first, or use --lock-override to force.");
+            out::exit(1);
+        } else if alive && !is_node {
+            out::log(&format!(
+                "Lock references PID {} which is alive but does NOT look like a Quilltap process.",
+                crate::nodefmt::js_num_string(pid)
+            ));
+            out::log("This is likely a stale lock with a reused PID. Removing.");
         } else if !same_host {
-            let is_vm = is_vm_environment(&lock);
-            let age_ms = heartbeat_age_ms(&lock);
-            const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
-            if is_vm && age_ms < FRESH_MS {
-                out::log(&format!(
-                    "Lock is held by a live {} instance (heartbeat {}s ago). Cannot clean.",
-                    lock_str(&lock, "environment"),
-                    (age_ms / 1000.0).round() as i64
-                ));
-                out::log("Stop the other instance first, or use --lock-override to force.");
-                out::exit(1);
-            } else if is_vm {
-                out::log(&format!(
-                    "Lock was held by {} ({}) with no recent heartbeat. Removing stale lock.",
-                    lock_str(&lock, "environment"),
-                    lock_str(&lock, "hostname")
-                ));
-            } else {
-                out::log(&format!(
-                    "Lock was held by a different host ({}). Removing stale lock.",
-                    lock_str(&lock, "hostname")
-                ));
-            }
+            out::log(&format!(
+                "Lock was held by {} on {} with no recent heartbeat. Removing stale lock.",
+                non_empty_or(lock_str(&lock, "environment"), "unknown"),
+                lock_str(&lock, "hostname")
+            ));
         } else {
             out::log(&format!(
                 "Lock was held by PID {} which is no longer running. Removing stale lock.",

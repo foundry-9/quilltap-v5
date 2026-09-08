@@ -50,6 +50,35 @@ Vendored obligations: `help/**` is now 123 files against v5's 122; the export
 schema as above; the two SPA-served schemas P4.D170 just guarded are unmoved.
 `zod` stays at 4.5.4. Regen rule: PIN REQUIRED at `25f534c0b`, which is both
 the round's catch-up target and the baseline once this unification lands.
+#### 2026-09-08 — fix(cli): `db --lock-status` / `--lock-clean` share one `assess_lock` (bug 126)
+
+_Versions: cli 0.0.19, web 0.0.132._
+
+Ports v4 `25f534c0b`'s CLI half. Both verbs now read one `assess_lock`
+helper whose `alive` checks PID liveness regardless of the recorded hostname,
+and whose fallback is heartbeat freshness for any environment rather than only
+for containers. `--lock-status` no longer reports a running app as
+`STALE (different host)`: a fresh heartbeat reads `ACTIVE (<env>, heartbeat Ns
+ago)` and a stale foreign lock names both the environment and the recorded
+host. `--lock-clean` refuses to delete a lock that is still being refreshed.
+The `Hostname:` detail line reads `(recorded name differs from ours: <ours>)`.
+`--lock-override` is unchanged, still same-host gated, exactly as v4 leaves it.
+
+Tier R moves 216 → 223 cases against v4's real launcher at the `25f534c0b`
+pin, 0 failures. Ten rows were red before the port, across eight case names.
+Every foreign-hostname case now plants a PID this test just watched exit:
+post-fix both sides probe a foreign lock's PID, so a hard-coded 4242 would be
+alive on some hosts and dead on others and the comparand would flip run to
+run. The `suspect` cases' heartbeat was aged past the window, because the
+fresh-heartbeat arm now precedes the reused-PID suspicion; the 60-second shape
+became two new cases that prove the new branch order.
+
+Also adds a web wire test: a foreign-hostname lock with a fresh heartbeat
+refuses the boot and v4's new sentence reaches `GET /health`. It lands on the
+503 surface rather than the 409 one, because the classifier behind that choice
+mirrors v4's launcher `getLockStatus`, which `25f534c0b` did not touch — a
+measured asymmetry recorded in the test's own module doc.
+
 #### 2026-09-08 — fix(lock): a hostname change no longer makes the host kill its own database (bug 126)
 
 _Versions: host 0.0.115._

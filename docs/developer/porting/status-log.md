@@ -115893,3 +115893,101 @@ be used here (it records the message only, not the fields, and
 process-global registry once for the lock test module — no global default
 exists anywhere else in `quilltap-host` — after which the per-test
 thread-local default still takes precedence. Stressed 8/8 green.
+
+### Unit 4 — the CLI's shared `assess_lock`, and Tier R
+
+v4's `assessLock(lock, hostname)` ported as `LockAssessment` + `assess_lock`,
+read by both `--lock-status` and `--lock-clean`. `alive` is `isPidAlive(pid)`
+UNGATED by hostname; `is_node` probes only when alive; the freshness fallback
+is any environment. v4's branch order — confirmed process → ANY fresh
+heartbeat → reused-PID suspicion → the two stale arms — is carried exactly,
+including the reset code moving BEFORE the parenthesis on the heartbeat arm
+and the `(recorded name differs from ours: <ours>)` detail suffix.
+`--lock-override` is UNCHANGED (still `same_host && is_pid_alive`), as v4
+leaves it. `is_vm_environment` was deleted: `25f534c0b` removed both of its
+readers from `quilltap.js`, and the launcher's own `VM_ENVIRONMENTS` is
+mirrored in `lock.rs::classify_lock_content` via `environment.is_container()`,
+not here.
+
+**Tier R red-first, at the `25f534c0b` pin, BEFORE the CLI edit: 216 cases,
+10 failures across 8 case names** —
+
+| case | v4 at the pin | v5 before the edit |
+| --- | --- | --- |
+| `lock status suspect` | `ACTIVE (local, heartbeat 60s ago)` | `SUSPECT (PID alive but…)` |
+| `lock clean suspect removes` (stdout + exit 1 vs 0) | refuses, still being refreshed | removes |
+| `lock status docker fresh` | reset code BEFORE the parenthesis | after the whole phrase |
+| `lock clean docker fresh refuses` | `Lock is still being refreshed…` / `Stop the running instance first,…` | `Lock is held by a live docker instance…` / `Stop the other instance first,…` |
+| `lock status docker stale` | `STALE (docker on elsewhere-host, …)` + the new Hostname suffix | `STALE (docker, …)` + `(different host)` |
+| `lock status retired lima env` | `ACTIVE (lima, heartbeat 60s ago)` | `STALE (different host)` |
+| `lock clean retired lima env` (stdout + exit 1 vs 0) | refuses | removes |
+| `lock status foreign local` | `ACTIVE (local, heartbeat 60s ago)` | `STALE (different host)` |
+
+**Tier R after: 223 cases, 0 failures** (`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d166-25f534c0b`,
+`QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node`). Seven cases added:
+
+- `lock status suspect but fresh heartbeat` / `lock clean suspect but fresh
+  heartbeat refuses` — the SAME live non-Quilltap PID inside the window, which
+  is what proves the moved branch order. The pre-existing `suspect_pre` was
+  aged from 60 s to 10 min, because a SUSPECT lock is only reachable with a
+  stale heartbeat now.
+- `lock clean foreign fresh local refuses` — the NEW clean arm.
+- `lock status foreign stale local` / `lock clean foreign stale local` — the
+  rewritten different-host arms, which now name the environment AND the host.
+- `lock status renamed host live pid` / `lock clean renamed host live pid` — a
+  LIVE node process whose recorded hostname is not ours: the bug-126 shape
+  itself. Its own 10-minute sleeper, because the shared `sleeper_node` is a
+  60 s timer and a PID dying between the two sides would flip the comparand.
+
+⚠ **The 4242 trap the order named is real and was closed.** Post-fix BOTH
+sides call `isPidAlive` on a foreign lock's PID, so the hard-coded `4242` in
+every foreign case would be alive on some hosts and dead on others. All four
+foreign pre-hooks now plant `dead_pid()` (the PID of a child this test just
+watched exit).
+
+**Tier R mutation (`alive` re-gated on `same_host` in `assess_lock`):
+223 cases, 2 failures — `lock status renamed host live pid` and `lock clean
+renamed host live pid`, and nothing else.** Exactly the rows the order
+predicted it would redden.
+
+### Tier 2 item 8 — the boot-status wire, and a measured asymmetry
+
+`crates/quilltap-web/tests/lock_conflict_boot_status.rs` plants a fresh
+`elsewhere-host` `local` lock and asserts v4's new sentence reaches
+`GET /health`, and that the holder's record is left untouched.
+
+**Measured: it lands on the 503 `unhealthy` surface, not the 409
+`lock-conflict` one.** `boot_startup_status` picks between them with
+`classify_lock_status` — v5's mirror of the launcher's `getLockStatus`, which
+`25f534c0b` did NOT touch and which still calls a fresh foreign `local` lock
+stale. v4 fixed its server module and left its launcher module alone, so the
+two disagree in v4 as well; matching each of them where it stands is the
+faithful outcome. This is NOT a regression: before the fix there was no
+refusal here at all — the boot succeeded and clobbered the live holder's lock.
+**Re-deciding which HTTP code this case deserves is a v5-composition question
+and wants its own small order** (it would need either a third classifier or a
+typed `LockError` carried through `EngineAssembler::pre_open`, whose signature
+is `Result<(), String>`). Nothing in `apps/web` pins the old reason bytes (its
+specs stub `'held'`), so no P4.D170 wire is owed.
+
+### `4097626c6` — NO-PORT ratified
+
+Four files, no ported comparand: `README.md` (the version badge), `package.json`
+and `packages/quilltap/package.json` (`4.10.0-dev.8` → `4.10.0-dev.9`), and
+`package-lock.json`'s two matching version lines. Standing hazard (6) re-checked
+at the pin: the app's `package.json` and `packages/quilltap/package.json` AGREE
+on `main` (both `4.10.0-dev.9`), so the CLI-package version lag is still closed
+there. No `--version` comparand exists in Tier R either way.
+
+### Tier 3 — the order's deferrals, both confirmed by measurement
+
+- **No hostname seam** was landed, as the order directs: v4 landed none, and
+  the comparison is simply gone from every ownership test. Considered and
+  declined; a future test wanting to flip `hostname()` mid-process is a new
+  small order.
+- **The server-side `override_instance_lock` + its heartbeat start** has no v5
+  counterpart to port. v4's `overrideInstanceLock` re-writes the file as the
+  RUNNING SERVER'S and therefore needs a heartbeat; v5 implements override only
+  in the CLI (`db_cmd.rs`), on raw JSON, and REMOVES the file so the next
+  startup acquires fresh — the same shape as v4's own `--lock-override`, which
+  `25f534c0b` also leaves alone. Recorded as a structural difference.

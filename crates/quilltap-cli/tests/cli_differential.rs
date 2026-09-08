@@ -2138,7 +2138,21 @@ fn cli_differential() {
         .spawn()
         .expect("spawn sleep");
     let sleep_pid = sleeper_plain.id();
+    // ⚠ v4 `25f534c0b` moved the fresh-heartbeat arm AHEAD of the reused-PID
+    // suspicion, so a SUSPECT lock is only reachable with a STALE heartbeat
+    // now (10 min here, past the 5-minute window). The 60-second shape below
+    // is what proves the new branch order.
     let suspect_pre = {
+        let host = host.clone();
+        move |live: &Path| {
+            std::fs::write(
+                live.join("instA/data/quilltap.lock"),
+                lock_json(sleep_pid, &host, "local", &iso_minus_secs(600), vec![]),
+            )
+            .unwrap();
+        }
+    };
+    let suspect_fresh_pre = {
         let host = host.clone();
         move |live: &Path| {
             std::fs::write(
@@ -2173,13 +2187,40 @@ fn cli_differential() {
         },
     );
 
+    // The moved branch order (bug 126): the SAME live non-Quilltap PID, with a
+    // heartbeat inside the window, is ACTIVE rather than SUSPECT, and the
+    // clean is refused rather than removing the file.
+    ctx.case_with(
+        "lock status suspect but fresh heartbeat",
+        &d(&["--lock-status"]),
+        CaseOpts {
+            pre: Some(Box::new(suspect_fresh_pre.clone())),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+    ctx.case_with(
+        "lock clean suspect but fresh heartbeat refuses",
+        &d(&["--lock-clean"]),
+        CaseOpts {
+            pre: Some(Box::new(suspect_fresh_pre.clone())),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+
     // Different-host docker lock — fresh heartbeat (seconds display is the one
     // documented normalization) and stale.
-    let docker_fresh_pre = |live: &Path| {
+    // ⚠ Post-`25f534c0b` BOTH sides call `isPidAlive` on a foreign-hostname
+    // lock's PID (that is the fix: a name is not a machine). A hard-coded
+    // 4242 is therefore a live process on some hosts and dead on others, and
+    // the comparand would flip run to run — so every foreign case plants a
+    // PID this test just watched exit.
+    let docker_fresh_pre = move |live: &Path| {
         std::fs::write(
             live.join("instA/data/quilltap.lock"),
             lock_json(
-                4242,
+                dead,
                 "elsewhere-host",
                 "docker",
                 &iso_minus_secs(60),
@@ -2206,11 +2247,11 @@ fn cli_differential() {
             ..Default::default()
         },
     );
-    let docker_stale_pre = |live: &Path| {
+    let docker_stale_pre = move |live: &Path| {
         std::fs::write(
             live.join("instA/data/quilltap.lock"),
             lock_json(
-                4242,
+                dead,
                 "elsewhere-host",
                 "docker",
                 "2020-01-01T00:00:00.000Z",
@@ -2231,10 +2272,10 @@ fn cli_differential() {
     // `VM_ENVIRONMENTS`). Fresh heartbeat, different host: `docker` would read
     // ACTIVE and refuse the clean; `lima` no longer can, so both verbs take the
     // plain different-host arm. This is the deletion's CLI proof.
-    let lima_fresh_pre = |live: &Path| {
+    let lima_fresh_pre = move |live: &Path| {
         std::fs::write(
             live.join("instA/data/quilltap.lock"),
-            lock_json(4242, "elsewhere-host", "lima", &iso_minus_secs(60), vec![]),
+            lock_json(dead, "elsewhere-host", "lima", &iso_minus_secs(60), vec![]),
         )
         .unwrap();
     };
@@ -2243,6 +2284,7 @@ fn cli_differential() {
         &d(&["--lock-status"]),
         CaseOpts {
             pre: Some(Box::new(lima_fresh_pre)),
+            normalize_heartbeat: true,
             ..Default::default()
         },
     );
@@ -2251,13 +2293,17 @@ fn cli_differential() {
         &d(&["--lock-clean"]),
         CaseOpts {
             pre: Some(Box::new(lima_fresh_pre)),
+            normalize_heartbeat: true,
             ..Default::default()
         },
     );
-    let foreign_local_pre = |live: &Path| {
+    // The bug-126 shape itself: a `local` lock whose recorded name is not ours
+    // and whose heartbeat is fresh. Pre-fix this read `STALE (different host)`
+    // and cleaned without complaint; now it is ACTIVE and the clean refuses.
+    let foreign_local_pre = move |live: &Path| {
         std::fs::write(
             live.join("instA/data/quilltap.lock"),
-            lock_json(4242, "elsewhere-host", "local", &iso_minus_secs(60), vec![]),
+            lock_json(dead, "elsewhere-host", "local", &iso_minus_secs(60), vec![]),
         )
         .unwrap();
     };
@@ -2266,9 +2312,96 @@ fn cli_differential() {
         &d(&["--lock-status"]),
         CaseOpts {
             pre: Some(Box::new(foreign_local_pre)),
+            normalize_heartbeat: true,
             ..Default::default()
         },
     );
+    ctx.case_with(
+        "lock clean foreign fresh local refuses",
+        &d(&["--lock-clean"]),
+        CaseOpts {
+            pre: Some(Box::new(foreign_local_pre)),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+    // The same lock gone stale takes the rewritten different-host arms, which
+    // now name the environment AND the recorded host.
+    let foreign_local_stale_pre = move |live: &Path| {
+        std::fs::write(
+            live.join("instA/data/quilltap.lock"),
+            lock_json(
+                dead,
+                "elsewhere-host",
+                "local",
+                "2020-01-01T00:00:00.000Z",
+                vec![],
+            ),
+        )
+        .unwrap();
+    };
+    ctx.case_with(
+        "lock status foreign stale local",
+        &d(&["--lock-status"]),
+        CaseOpts {
+            pre: Some(Box::new(foreign_local_stale_pre)),
+            ..Default::default()
+        },
+    );
+    ctx.case_with(
+        "lock clean foreign stale local",
+        &d(&["--lock-clean"]),
+        CaseOpts {
+            pre: Some(Box::new(foreign_local_stale_pre)),
+            ..Default::default()
+        },
+    );
+    // A LIVE Quilltap process whose recorded hostname no longer matches ours —
+    // the machine was renamed under the running app. `alive` is ungated now,
+    // so this is ACTIVE (process confirmed running) and the clean is refused;
+    // it also pins the rewritten `Hostname:` detail suffix.
+    // Its own 10-minute sleeper: the shared `sleeper_node` is a 60 s timer, and
+    // a PID that dies BETWEEN the two sides would flip this comparand.
+    let mut sleeper_renamed = Command::new(&ctx.node)
+        .args(["-e", "setTimeout(() => {}, 600000)"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn renamed-host node sleeper");
+    let renamed_pid = sleeper_renamed.id();
+    let renamed_live_pre = move |live: &Path| {
+        std::fs::write(
+            live.join("instA/data/quilltap.lock"),
+            lock_json(
+                renamed_pid,
+                "elsewhere-host",
+                "local",
+                &iso_minus_secs(60),
+                vec![],
+            ),
+        )
+        .unwrap();
+    };
+    ctx.case_with(
+        "lock status renamed host live pid",
+        &d(&["--lock-status"]),
+        CaseOpts {
+            pre: Some(Box::new(renamed_live_pre)),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+    ctx.case_with(
+        "lock clean renamed host live pid",
+        &d(&["--lock-clean"]),
+        CaseOpts {
+            pre: Some(Box::new(renamed_live_pre)),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+    let _ = sleeper_renamed.kill();
+    let _ = sleeper_renamed.wait();
     // --write claims a stale (dead-PID) lock, runs, and releases it.
     {
         let opts = CaseOpts {
