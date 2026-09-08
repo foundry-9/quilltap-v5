@@ -50,6 +50,43 @@ Vendored obligations: `help/**` is now 123 files against v5's 122; the export
 schema as above; the two SPA-served schemas P4.D170 just guarded are unmoved.
 `zod` stays at 4.5.4. Regen rule: PIN REQUIRED at `25f534c0b`, which is both
 the round's catch-up target and the baseline once this unification lands.
+#### 2026-09-08 — fix(lock): a hostname change no longer makes the host kill its own database (bug 126)
+
+_Versions: host 0.0.115._
+
+Ports v4 `25f534c0b`'s server half. The instance lock's heartbeat re-read the
+OS hostname every tick and treated any change as another process seizing the
+database; on macOS that value is not stable (with `scutil --get HostName`
+unset the system derives it dynamically, so one Mac answers
+"MacBook-Pro.local" and "Mac" at different times, flipping on Wi-Fi reconnect,
+sleep/wake, VPN and DHCP renewal). v5 measurably had the defect at six sites.
+
+Ownership is now a snapshot taken when this process writes the lock — PID plus
+the acquisition timestamp — recorded at every write site (fresh create,
+re-entrant acquire, stale claim, the heartbeat rewrite) and cleared on release.
+`is_still_our_lock` compares against that snapshot, never against a
+freshly-read hostname, so a genuine takeover is still caught immediately while
+a rename is not. The tick refreshes the recorded label on each write, and a
+renamed process releases its own lock instead of orphaning it.
+
+Acquisition no longer claims a foreign-hostname lock outright. A differing name
+cannot distinguish another machine from this one after a rename, so the
+decision is heartbeat freshness for every environment rather than only for
+Docker — closing a fail-open case where two processes on one machine could both
+open the same database. The refusal and stale-claim sentences are v4's new
+bytes, pinned against frozen ages (the `wait <N>s` term is server-only and
+cannot reach the CLI).
+
+The lock-loss teardown is registered inward, as v4's `client.ts` registers its
+handler: the heartbeat loop's default arm used to `std::process::exit(1)`
+without running the assembly's ordered teardown at all, orphaning the terminal
+manager and its PTY children. Two measured differences from v4 are recorded
+rather than ported — v5 has no SIGTERM/SIGINT handler to share, and v5's
+databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
+
+The CLI write-lock and both status classifiers keep their hostname comparisons:
+v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
+matching it is the faithful outcome.
 
 #### 2026-09-08 — docs(setupphase): the `25f534c0b` progressions + bug-126 drift catch-up round — five work orders, the ledger's four rows ORDERED
 

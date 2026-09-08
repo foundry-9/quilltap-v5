@@ -202,6 +202,17 @@ fn make_instance(base: &Path, danger_mode: &str) {
 
 /// A base config with every cadence pushed out of the way; tests pull in the
 /// loop under test.
+/// Rewrite the lock file with a mutated record — the only way to pose bug
+/// 126's shapes from outside the process (v5 has no hostname seam, and v4
+/// landed none either: the comparison is simply gone).
+fn rewrite_lock(lock_path: &Path, content: &lock::LockFileContent) {
+    std::fs::write(
+        lock_path,
+        format!("{}\n", serde_json::to_string_pretty(content).unwrap()),
+    )
+    .unwrap();
+}
+
 fn quiet_config(base: &Path) -> HostConfig {
     let mut config = HostConfig::new(base);
     config.instances_path = Some(base.join("instances.json"));
@@ -307,9 +318,57 @@ async fn lock_lifecycle_and_loss_handler() {
     )
     .await;
 
-    // Simulate a takeover: the file vanishes → the handler fires (no exit).
+    // Bug 126 (v4 `25f534c0b`): the OS renames the machine under us. Same PID,
+    // same startedAt, a different recorded label — NOT a takeover. The loop
+    // keeps beating and the loss handler must never fire.
+    {
+        let mut renamed = lock::read_lock_file(&lock_path).unwrap();
+        let stamp = renamed.last_heartbeat.clone();
+        renamed.hostname = "Mac".to_string();
+        rewrite_lock(&lock_path, &renamed);
+        wait_until(
+            || {
+                lock::read_lock_file(&lock_path)
+                    .map(|c| c.last_heartbeat > stamp)
+                    .unwrap_or(false)
+            },
+            "heartbeat after a hostname change",
+        )
+        .await;
+        assert_eq!(
+            lost.load(Ordering::SeqCst),
+            0,
+            "a hostname change is not a lock loss"
+        );
+        assert_eq!(
+            lock::read_lock_file(&lock_path).unwrap().hostname,
+            lock::hostname(),
+            "the tick refreshed the recorded label"
+        );
+        assert!(
+            host.terminal_manager().is_some(),
+            "the assembly is still up after a mere rename"
+        );
+    }
+
+    // A GENUINE takeover: another process's PID and acquisition timestamp.
+    // The ordered teardown runs (v4's inward-registered handler — the terminal
+    // manager goes with it) and only then does the loss handler fire.
+    {
+        let mut taken = lock::read_lock_file(&lock_path).unwrap();
+        taken.pid = 99_999;
+        taken.started_at = "2020-01-01T00:00:00.000Z".to_string();
+        rewrite_lock(&lock_path, &taken);
+        wait_until(|| lost.load(Ordering::SeqCst) > 0, "lock-loss handler").await;
+        assert!(
+            host.terminal_manager().is_none(),
+            "the ordered teardown ran before the loss handler"
+        );
+        // The teardown left the other process's record strictly alone.
+        let after = lock::read_lock_file(&lock_path).expect("someone else's lock survives");
+        assert_eq!(after.pid, 99_999);
+    }
     std::fs::remove_file(&lock_path).unwrap();
-    wait_until(|| lost.load(Ordering::SeqCst) > 0, "lock-loss handler").await;
 
     // A fresh boot cycle: Lock dispatch releases cleanly (no file left) and
     // Unlock is impossible here (env pepper) — so just verify release via a

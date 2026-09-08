@@ -393,7 +393,25 @@ struct HostAssembler {
     rt: tokio::runtime::Handle,
 }
 
-struct HostShutdown {
+/// One assembly's ordered teardown, shared by two callers: the engine's own
+/// `EngineShutdown` (Lock / passphrase change / drop) and the heartbeat
+/// loop's lock-loss arm.
+///
+/// **v4 `25f534c0b` (bug 126), the audited half.** v4's heartbeat used to
+/// reach its database close through a dynamic `require('./client')`, which did
+/// not survive bundling into the standalone server: it threw and the process
+/// exited with the WAL unmerged. The fix registers the SAME ordered teardown
+/// SIGTERM and SIGINT use, inward, and runs it before exiting. v5's `None`
+/// arm used to `std::process::exit(1)` straight out of the heartbeat loop,
+/// reaching neither this teardown nor anything else — so the PTY children and
+/// the terminal manager were simply orphaned. It now runs this first.
+///
+/// Two measured differences from v4, both recorded in the P4.D166 lane record
+/// rather than ported: v5 has no SIGTERM/SIGINT handler at all (there is no
+/// other ordered shutdown to share), and v5's databases open
+/// `journal_mode = TRUNCATE`, never WAL (`db/mod.rs`), with no `close` or
+/// checkpoint to run — v4's specific damage has no v5 counterpart.
+struct AssemblyTeardown {
     stop: watch::Sender<bool>,
     /// Clears the host's terminal-manager slot for this assembly.
     terminal_slot: Arc<Mutex<Option<Arc<TerminalManager>>>>,
@@ -406,14 +424,24 @@ struct HostShutdown {
     _wake_target: Arc<WakeFn>,
 }
 
-impl EngineShutdown for HostShutdown {
-    fn shutdown(&self) {
+impl AssemblyTeardown {
+    fn run(&self) {
         let _ = self.stop.send(true);
         // Drop this assembly's terminal manager (live PTYs keep their reader
         // threads until the shells exit; new spawns need a fresh unlock).
         self.terminal_slot.lock().unwrap().take();
         // Idempotent: a second shutdown finds no file (or not ours) and no-ops.
+        // On the lock-loss path this is the ownership test doing its job —
+        // a record another process now owns is left strictly alone.
         lock::release_instance_lock(&self.lock_path);
+    }
+}
+
+struct HostShutdown(Arc<AssemblyTeardown>);
+
+impl EngineShutdown for HostShutdown {
+    fn shutdown(&self) {
+        self.0.run();
     }
 }
 
@@ -728,12 +756,24 @@ impl EngineAssembler for HostAssembler {
             self.autonomous_tick_ms,
         ));
 
-        // The lock heartbeat (v4: 60 s). Losing the lock stops the drivers,
-        // then runs the configured handler (default: exit 1, the faithful v4
-        // shutdown — see `HostConfig::on_lock_lost`).
+        // The one ordered teardown for this assembly, registered inward into
+        // the heartbeat loop exactly as v4's `client.ts` registers its
+        // `handleShutdown` (bug 126) and handed to the engine as its
+        // `EngineShutdown` below.
+        let teardown = Arc::new(AssemblyTeardown {
+            stop: stop_tx,
+            terminal_slot: self.terminal_slot.clone(),
+            lock_path: lock_path.clone(),
+            _wake_target: wake_target,
+        });
+
+        // The lock heartbeat (v4: 60 s). Losing the lock runs the ordered
+        // teardown (drivers stopped, PTYs dropped, our lock released iff it is
+        // still ours), then the configured handler — default: exit 1, the
+        // faithful v4 shutdown (see `HostConfig::on_lock_lost`).
         self.rt.spawn(heartbeat_loop(
             lock_path.clone(),
-            stop_tx.clone(),
+            teardown.clone(),
             stop_rx.clone(),
             self.heartbeat_ms,
             self.on_lock_lost.clone(),
@@ -784,12 +824,7 @@ impl EngineAssembler for HostAssembler {
                     Arc::new(SystemClock),
                 ),
             )),
-            shutdown: Box::new(HostShutdown {
-                stop: stop_tx,
-                terminal_slot: self.terminal_slot.clone(),
-                lock_path,
-                _wake_target: wake_target,
-            }),
+            shutdown: Box::new(HostShutdown(teardown)),
             chat_send,
             chat_create,
             swipe_generate,
@@ -1565,14 +1600,18 @@ async fn sleep_or_stop(stop: &mut watch::Receiver<bool>, ms: u64) -> bool {
 }
 
 /// The instance-lock heartbeat (v4's 60 s `setInterval` body): verify
-/// ownership + rewrite `lastHeartbeat`. On LOSS (file vanished / foreign
-/// content) the drivers stop first (the stop flag), then the configured
-/// handler runs — default `std::process::exit(1)`, the faithful v4 shutdown.
-/// Our own shutdown's release flips the stop flag BEFORE unlinking, so the
-/// post-tick stop check keeps a release from reading as a loss.
+/// ownership + rewrite `lastHeartbeat`. On LOSS (file vanished, or a record
+/// that is no longer the one we wrote) the assembly's ordered teardown runs —
+/// v4's inward-registered `handleShutdown` (bug 126) — and then the configured
+/// handler; default `std::process::exit(1)`, the faithful v4 shutdown. Our own
+/// shutdown's release flips the stop flag BEFORE unlinking, so the post-tick
+/// stop check keeps a release from reading as a loss.
+///
+/// A mere OS hostname change is NOT a loss: ownership is
+/// `lock::is_still_our_lock` (PID + `startedAt`), never the recorded label.
 async fn heartbeat_loop(
     lock_path: PathBuf,
-    stop_tx: watch::Sender<bool>,
+    teardown: Arc<AssemblyTeardown>,
     mut stop: watch::Receiver<bool>,
     interval_ms: u64,
     on_lock_lost: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -1585,7 +1624,7 @@ async fn heartbeat_loop(
             if *stop.borrow() {
                 break; // our own release, not a takeover
             }
-            let _ = stop_tx.send(true);
+            teardown.run();
             match &on_lock_lost {
                 Some(handler) => handler(),
                 None => std::process::exit(1),

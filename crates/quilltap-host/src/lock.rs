@@ -9,13 +9,21 @@
 //! v4's design decisions, all carried over:
 //! - **PID-in-file, not `flock()`** — network mounts and bind mounts do not
 //!   reliably propagate POSIX file locks.
-//! - **Hostname disambiguates PIDs** across container boundaries; a
-//!   different-host lock is judged by heartbeat freshness (< 5 min → live).
+//! - **Hostname is a human-readable label only. It is NOT proof of machine
+//!   identity** (v4 `25f534c0b`, bug 126): macOS derives `gethostname()`
+//!   dynamically when `scutil --get HostName` is unset, so one Mac reports
+//!   "MacBook-Pro.local" and "Mac" at different times, flipping on Wi-Fi
+//!   reconnect, sleep/wake, VPN and DHCP renewal. Ownership is decided by the
+//!   snapshot taken when we wrote the lock (PID + `startedAt` —
+//!   [`is_still_our_lock`]); liveness of a foreign lock is decided by
+//!   heartbeat freshness, for EVERY environment.
 //! - **Atomic create** (`O_CREAT | O_EXCL`) for the no-lock fast path; EEXIST
 //!   re-reads and falls through to the stale logic.
-//! - The **heartbeat** rewrites `lastHeartbeat` every 60 s; losing ownership
-//!   (file vanished / foreign content) is fatal — the host stops its drivers
-//!   and, by default, exits the process (v4 closes the DB and `process.exit(1)`s).
+//! - The **heartbeat** rewrites `lastHeartbeat` (and refreshes the recorded
+//!   hostname label) every 60 s; losing ownership (file vanished / a record
+//!   that is no longer the one we wrote) is fatal — the host stops its
+//!   drivers and, by default, exits the process (v4 closes the DB and
+//!   `process.exit(1)`s).
 //!
 //! The file format is v4's `JSON.stringify(content, null, 2) + '\n'` (field
 //! order preserved by struct declaration order) so a v5 lock is readable by
@@ -191,6 +199,77 @@ pub fn is_pid_alive(pid: u32) -> bool {
     }
 }
 
+// ============================================================================
+// Ownership snapshots (v4 `LockOwnership` / `isStillOurLock`, bug 126)
+// ============================================================================
+
+/// Identity of the lock record this process wrote, captured at write time.
+///
+/// The heartbeat and both releases compare the file against this snapshot
+/// rather than against freshly-read process/OS values, so an OS-level
+/// hostname change cannot make a process mistake its own lock for someone
+/// else's (v4 `25f534c0b`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LockOwnership {
+    pub pid: u32,
+    pub hostname: String,
+    pub started_at: String,
+}
+
+/// v4 keeps ONE snapshot in `globalThis.__quilltapInstanceLockOwner`, because
+/// a Next.js server process holds exactly one instance lock. A v5 host can
+/// hold several at once (one per assembled instance) and its unit tests run
+/// in parallel inside a single process on distinct paths, so the snapshot is
+/// keyed BY LOCK PATH — the same process-global shape, made correct for the
+/// several-locks case. (Deviation recorded in the P4.D166 lane record.)
+static LOCK_OWNERS: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<PathBuf, LockOwnership>>,
+> = std::sync::OnceLock::new();
+
+fn lock_owners() -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, LockOwnership>> {
+    LOCK_OWNERS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// v4 `getLockOwner`.
+fn get_lock_owner(lock_path: &Path) -> Option<LockOwnership> {
+    lock_owners().lock().unwrap().get(lock_path).cloned()
+}
+
+/// v4 `rememberLockOwner(content)` — called at every write of THIS process
+/// into the file (fresh create, re-entrant, stale claim, the heartbeat
+/// rewrite, and the CLI write-lock's own claims).
+fn remember_lock_owner(lock_path: &Path, content: &LockFileContent) {
+    lock_owners().lock().unwrap().insert(
+        lock_path.to_path_buf(),
+        LockOwnership {
+            pid: content.pid,
+            hostname: content.hostname.clone(),
+            started_at: content.started_at.clone(),
+        },
+    );
+}
+
+/// v4 `forgetLockOwner` — called on release.
+fn forget_lock_owner(lock_path: &Path) {
+    lock_owners().lock().unwrap().remove(lock_path);
+}
+
+/// v4 `isStillOurLock(content)`: is the on-disk record still the one this
+/// process wrote?
+///
+/// Compares PID and the acquisition timestamp, both of which any process
+/// taking the lock overwrites with its own values. Deliberately does NOT
+/// compare hostname: the OS name is not stable over a process's lifetime (see
+/// the module header), and a hostname change is not evidence of takeover.
+/// Without a snapshot (a lock adopted across a restart of this module's
+/// state) PID is all we have — v4's HMR arm.
+pub fn is_still_our_lock(lock_path: &Path, content: &LockFileContent) -> bool {
+    match get_lock_owner(lock_path) {
+        None => content.pid == std::process::id(),
+        Some(owner) => content.pid == owner.pid && content.started_at == owner.started_at,
+    }
+}
+
 /// This process's lock identity (pid / hostname / title / argv0).
 fn our_identity() -> (u32, String, String, String) {
     let argv0 = std::env::args().next().unwrap_or_default();
@@ -350,6 +429,71 @@ fn env_label(env: &EnvironmentType) -> &'static str {
     }
 }
 
+/// JS `Math.round`: half UP toward +∞ (`Math.round(-2.5) === -2`), which is
+/// `floor(x + 0.5)` — not Rust's `f64::round`, which is half AWAY from zero.
+/// Reachable with a negative age whenever a clock skews the heartbeat into the
+/// future, which is exactly when the two disagree.
+fn js_round(x: f64) -> f64 {
+    (x + 0.5).floor()
+}
+
+/// `${n}` for a JS number: the age terms below are `Infinity` when the record
+/// carries no `lastHeartbeat` at all, and V8 prints that word.
+fn js_num(x: f64) -> String {
+    quilltap_core::jsnum::to_fixed(x, 0)
+}
+
+/// `Date.now() - new Date(lastHeartbeat).getTime()`, with v4's
+/// `lastHeartbeat ? … : Infinity` guard and V8's `NaN` for an unparseable
+/// stamp. Kept in `f64` so both non-finite values survive into the messages.
+fn heartbeat_age_ms(existing: &LockFileContent, now_ms: i64) -> f64 {
+    if existing.last_heartbeat.is_empty() {
+        return f64::INFINITY;
+    }
+    match iso_to_ms(&existing.last_heartbeat) {
+        Some(hb) => (now_ms - hb) as f64,
+        None => f64::NAN,
+    }
+}
+
+/// v4's foreign-host refusal sentence (bug 126). Split out from the cascade so
+/// the `wait <N>s` term — which is server-only and so invisible to Tier R —
+/// can be pinned byte-for-byte against a frozen age.
+fn foreign_fresh_conflict_message(
+    existing: &LockFileContent,
+    heartbeat_age_ms: f64,
+    our_host: &str,
+) -> String {
+    format!(
+        "Another Quilltap instance ({}, PID {} on {}) is already using this database \
+         (last heartbeat {}s ago). If no other instance is running, this machine's hostname \
+         may have changed since the lock was taken (now: {}); wait {}s for the lock to go \
+         stale, or use the lock override to force access.",
+        env_label(&existing.environment),
+        existing.pid,
+        existing.hostname,
+        js_num(js_round(heartbeat_age_ms / 1000.0)),
+        our_host,
+        js_num(((HEARTBEAT_FRESH_MS as f64 - heartbeat_age_ms) / 1000.0).ceil()),
+    )
+}
+
+/// v4's foreign-host stale-claim reason (bug 126), the twin of the sentence
+/// above. Pinned the same way.
+fn foreign_stale_claim_reason(existing: &LockFileContent, heartbeat_age_ms: f64) -> String {
+    format!(
+        "Lock from {} ({}) has no recent heartbeat (last: {}, age: {}s)",
+        existing.hostname,
+        existing.environment.as_str(),
+        if existing.last_heartbeat.is_empty() {
+            "never"
+        } else {
+            existing.last_heartbeat.as_str()
+        },
+        js_num(js_round(heartbeat_age_ms / 1000.0)),
+    )
+}
+
 /// v4 `claimStaleLock`: preserve history, log `stale-detected` + reason,
 /// overwrite the identity, log `stale-claimed`.
 fn claim_stale_lock(
@@ -374,7 +518,9 @@ fn claim_stale_lock(
         Some(format!("Claimed by PID {pid}")),
     );
 
-    write_lock_file(lock_path, &content)
+    write_lock_file(lock_path, &content)?;
+    remember_lock_owner(lock_path, &content);
+    Ok(())
 }
 
 /// v4 `acquireInstanceLock`. Ok = this process owns the lock; the caller runs
@@ -404,6 +550,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
             Ok(mut f) => {
                 f.write_all(format!("{json}\n").as_bytes())
                     .map_err(|e| LockError::Io(format!("write lock: {e}")))?;
+                remember_lock_owner(lock_path, &content);
                 return Ok(());
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -439,6 +586,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
         updated.process_title = title;
         updated.process_argv0 = argv0;
         write_lock_file(lock_path, &updated)?;
+        remember_lock_owner(lock_path, &updated);
         return Ok(());
     }
 
@@ -451,26 +599,23 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
         );
     }
 
-    // Different hostname — a container sharing the data dir via a bind mount.
-    // PID liveness can't cross PID namespaces; judge by heartbeat freshness.
+    // Different hostname. This does NOT establish that the lock belongs to a
+    // different machine: it is equally likely to be this same machine under a
+    // changed OS hostname (see the module header), in which case a live sibling
+    // process holds the lock and claiming it would corrupt the database — the
+    // exact outcome this module exists to prevent.
+    //
+    // Since we cannot tell the two cases apart by name, and cannot check PID
+    // liveness across a PID namespace, decide on the heartbeat alone — for
+    // EVERY environment, not only containers (v4 `25f534c0b`, bug 126):
+    // - Recent heartbeat (< HEARTBEAT_FRESH_MS) → someone live holds it, refuse
+    // - Stale or missing heartbeat → holder is gone, claim it
     if !same_host {
-        let is_container = existing.environment.is_container();
         let now_ms = iso_to_ms(&now_iso()).unwrap_or(0);
-        let heartbeat_age_ms = iso_to_ms(&existing.last_heartbeat)
-            .map(|hb| now_ms - hb)
-            .unwrap_or(i64::MAX);
+        let age_ms = heartbeat_age_ms(&existing, now_ms);
 
-        if is_container && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
-            // Post-`1560bd43b` the label is the ONE containerized value v4 still
-            // knows; the three-way cascade went with `lima`/`wsl2`.
-            let message = format!(
-                "Another Quilltap instance (Docker container, PID {} on {}) is already using \
-                 this database (last heartbeat {}s ago). Stop the other instance or use the \
-                 lock override to force access.",
-                existing.pid,
-                existing.hostname,
-                (heartbeat_age_ms as f64 / 1000.0).round() as i64
-            );
+        if age_ms < HEARTBEAT_FRESH_MS as f64 {
+            let message = foreign_fresh_conflict_message(&existing, age_ms, &our_host);
             return Err(LockError::Conflict(Box::new(InstanceLockError {
                 message,
                 lock_info: existing,
@@ -478,24 +623,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
             })));
         }
 
-        let stale_reason = if is_container {
-            format!(
-                "{} lock from {} has no recent heartbeat (last: {}, age: {}s)",
-                existing.environment.as_str(),
-                existing.hostname,
-                if existing.last_heartbeat.is_empty() {
-                    "never"
-                } else {
-                    existing.last_heartbeat.as_str()
-                },
-                (heartbeat_age_ms as f64 / 1000.0).round() as i64
-            )
-        } else {
-            format!(
-                "Different hostname (lock: {}, current: {})",
-                existing.hostname, our_host
-            )
-        };
+        let stale_reason = foreign_stale_claim_reason(&existing, age_ms);
         return claim_stale_lock(lock_path, existing, stale_reason);
     }
 
@@ -516,31 +644,76 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
 
 /// One heartbeat tick (the body of v4's 60 s `setInterval`): verify ownership
 /// and rewrite `lastHeartbeat`. Returns `false` when the lock is LOST (file
-/// vanished or foreign content) — the caller must treat that as fatal (stop
-/// the drivers; v4 closes the DB and exits). Write errors are swallowed
-/// (v4 debug-logs and keeps the interval running) and report `true`.
+/// vanished, or the record is no longer the one we wrote) — the caller must
+/// treat that as fatal (stop the drivers; v4 closes the DB and exits). Write
+/// errors are swallowed (v4 debug-logs and keeps the interval running) and
+/// report `true`.
+///
+/// Bug 126: ownership is [`is_still_our_lock`], never a hostname comparison.
+/// The recorded hostname is REFRESHED on each write so the file keeps a
+/// useful label even when the OS name has since changed.
 pub fn heartbeat_tick(lock_path: &Path) -> bool {
     let Some(mut content) = read_lock_file(lock_path) else {
+        tracing::error!(
+            lockPath = %lock_path.display(),
+            "Instance lock file disappeared — another process may claim the database. Shutting down."
+        );
         return false; // file disappeared — another process may claim the DB
     };
-    let (pid, host, _, _) = our_identity();
-    if content.pid != pid || content.hostname != host {
+    if !is_still_our_lock(lock_path, &content) {
+        // Hostname is logged for diagnostics but is NOT part of the test.
+        let (pid, host, _, _) = our_identity();
+        tracing::error!(
+            lockPath = %lock_path.display(),
+            lockPid = content.pid,
+            lockHostname = %content.hostname,
+            lockStartedAt = %content.started_at,
+            lockEnvironment = %content.environment.as_str(),
+            ourPid = pid,
+            ourHostname = %host,
+            ourStartedAt = %get_lock_owner(lock_path)
+                .map(|o| o.started_at)
+                .unwrap_or_default(),
+            "Instance lock lost — another process has taken over the database. Shutting down."
+        );
         return false; // taken over
     }
     content.last_heartbeat = now_iso();
+    content.hostname = hostname();
     let _ = write_lock_file(lock_path, &content);
+    remember_lock_owner(lock_path, &content);
+    tracing::debug!(
+        lockPath = %lock_path.display(),
+        lastHeartbeat = %content.last_heartbeat,
+        "Lock heartbeat updated"
+    );
     true
 }
 
 /// v4 `releaseInstanceLock`: write a final `released` history entry, then
 /// unlink. Owned-by-someone-else / missing / IO errors are all swallowed —
 /// never throws (safe in shutdown handlers).
+///
+/// Bug 126: ownership is [`is_still_our_lock`]. A process whose OS hostname
+/// changed under it used to ORPHAN its own lock here.
 pub fn release_instance_lock(lock_path: &Path) {
     let Some(existing) = read_lock_file(lock_path) else {
         return;
     };
     let (pid, host, _, _) = our_identity();
-    if existing.pid != pid || existing.hostname != host {
+    if !is_still_our_lock(lock_path, &existing) {
+        tracing::warn!(
+            lockPath = %lock_path.display(),
+            lockPid = existing.pid,
+            lockHostname = %existing.hostname,
+            lockStartedAt = %existing.started_at,
+            ourPid = pid,
+            ourHostname = %host,
+            ourStartedAt = %get_lock_owner(lock_path)
+                .map(|o| o.started_at)
+                .unwrap_or_default(),
+            "Lock file not owned by this process, skipping release"
+        );
         return; // not ours — skip
     }
     let mut updated = existing;
@@ -551,6 +724,7 @@ pub fn release_instance_lock(lock_path: &Path) {
     );
     let _ = write_lock_file(lock_path, &updated);
     let _ = std::fs::remove_file(lock_path);
+    forget_lock_owner(lock_path);
 }
 
 /// The lock path for an instance base dir (v4 `getInstanceLockPath()` =
@@ -842,6 +1016,23 @@ mod tests {
         instance_lock_path(&dir)
     }
 
+    /// `test_support::captured` installs a THREAD-scoped subscriber, and
+    /// `tracing` caches each callsite's `Interest` **globally** on first use:
+    /// a sibling test that reaches `heartbeat_tick`'s `debug!`/`error!` lines
+    /// first, with no subscriber armed on ITS thread, can retire those
+    /// callsites for the whole binary (the `global_capture` module doc names
+    /// this exact race; it flaked 2 runs in 5 here before this arming). No
+    /// global default exists anywhere else in `quilltap-host`, so arming an
+    /// empty registry once is enough to keep every callsite interesting —
+    /// the per-test thread-local default still takes precedence over it.
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+        });
+        quilltap_core::test_support::captured(f)
+    }
+
     fn uuid_suffix() -> String {
         // Nanos alone can tie across parallel test threads; a process-local
         // counter disambiguates.
@@ -972,8 +1163,33 @@ mod tests {
 
         match acquire_instance_lock(&path) {
             Err(LockError::Conflict(e)) => {
-                assert!(e.message.contains("Docker container"));
-                assert!(e.message.contains("some-other-host"));
+                // v4 `25f534c0b` rewrote this sentence: the old one ended
+                // "Stop the other instance or use the lock override to force
+                // access."; the new one names the rename hypothesis and the
+                // wait.
+                assert!(
+                    e.message.starts_with(
+                        "Another Quilltap instance (Docker container, PID 4242 on \
+                         some-other-host) is already using this database (last heartbeat "
+                    ),
+                    "{}",
+                    e.message
+                );
+                assert!(
+                    e.message.contains(
+                        "If no other instance is running, this machine's hostname may have \
+                         changed since the lock was taken (now: "
+                    ),
+                    "{}",
+                    e.message
+                );
+                assert!(
+                    e.message.ends_with(
+                        "for the lock to go stale, or use the lock override to force access."
+                    ),
+                    "{}",
+                    e.message
+                );
             }
             other => panic!("expected conflict, got {other:?}"),
         }
@@ -995,27 +1211,130 @@ mod tests {
         release_instance_lock(&path);
     }
 
+    /// v4 `25f534c0b`'s inversion of `should claim lock for non-VM different
+    /// hostname` → **`should refuse a different hostname with a fresh
+    /// heartbeat, whatever the environment`** (bug 126). A differing name
+    /// cannot tell another machine from this one after a rename, so a fresh
+    /// heartbeat wins over the name in EVERY environment. The old code claimed
+    /// any non-docker foreign-hostname lock outright — the fail-open case
+    /// where two processes on one machine could both open the database.
     #[test]
-    fn foreign_host_non_vm_is_stale_regardless_of_heartbeat() {
-        let path = temp_lock_path();
-        // A LOCAL lock from a different hostname is stale even with a fresh
-        // heartbeat (v4: only container environments get the freshness test).
-        let mut content = build_lock_content();
-        content.pid = 4242;
-        content.hostname = "laptop-elsewhere".to_string();
-        content.environment = EnvironmentType::Local;
-        content.last_heartbeat = now_iso();
-        write_lock_file(&path, &content).unwrap();
+    fn foreign_host_fresh_heartbeat_refuses_in_every_environment() {
+        for env in [
+            EnvironmentType::Local,
+            EnvironmentType::Electron,
+            EnvironmentType::Docker,
+        ] {
+            let path = temp_lock_path();
+            let mut content = build_lock_content();
+            content.pid = 4242;
+            content.hostname = "laptop-elsewhere".to_string();
+            content.environment = env.clone();
+            content.last_heartbeat = now_iso();
+            write_lock_file(&path, &content).unwrap();
 
-        acquire_instance_lock(&path).unwrap();
-        let claimed = read_lock_file(&path).unwrap();
-        assert_eq!(claimed.pid, std::process::id());
-        assert!(claimed.history[0]
-            .detail
-            .as_deref()
-            .unwrap()
-            .starts_with("Different hostname"));
-        release_instance_lock(&path);
+            match acquire_instance_lock(&path) {
+                Err(LockError::Conflict(e)) => {
+                    assert!(
+                        e.message.contains("laptop-elsewhere"),
+                        "{env:?}: {}",
+                        e.message
+                    );
+                    assert!(
+                        e.message.contains("hostname may have changed"),
+                        "{env:?}: {}",
+                        e.message
+                    );
+                }
+                other => panic!("{env:?}: expected conflict, got {other:?}"),
+            }
+            // Nothing was written: the holder's record stands.
+            assert_eq!(read_lock_file(&path).unwrap().pid, 4242);
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    /// v4's twin, **`should claim a different hostname with a stale heartbeat,
+    /// whatever the environment`** — the freshness window is no longer gated
+    /// on containers, so a stale LOCAL foreign lock is still claimable.
+    #[test]
+    fn foreign_host_stale_heartbeat_is_claimed_in_every_environment() {
+        for env in [
+            EnvironmentType::Local,
+            EnvironmentType::Electron,
+            EnvironmentType::Docker,
+        ] {
+            let path = temp_lock_path();
+            let mut content = build_lock_content();
+            content.pid = 4242;
+            content.hostname = "laptop-elsewhere".to_string();
+            content.environment = env.clone();
+            content.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
+            write_lock_file(&path, &content).unwrap();
+
+            acquire_instance_lock(&path).unwrap();
+            let claimed = read_lock_file(&path).unwrap();
+            assert_eq!(claimed.pid, std::process::id());
+            let detail = claimed.history[0].detail.as_deref().unwrap();
+            assert!(
+                detail.starts_with(&format!(
+                    "Lock from laptop-elsewhere ({}) has no recent heartbeat \
+                     (last: 2020-01-01T00:00:00.000Z, age: ",
+                    env.as_str()
+                )),
+                "{env:?}: {detail}"
+            );
+            release_instance_lock(&path);
+        }
+    }
+
+    /// v4's refusal sentence, byte-for-byte, over a FROZEN heartbeat age (the
+    /// `wait <N>s` term is server-only — it never reaches the CLI, so Tier R
+    /// cannot pin it).
+    #[test]
+    fn foreign_fresh_conflict_message_is_v4s_bytes() {
+        let mut existing = build_lock_content();
+        existing.pid = 4242;
+        existing.hostname = "elsewhere-host".to_string();
+        existing.environment = EnvironmentType::Local;
+        assert_eq!(
+            // 61_600 ms: round(61.6) = 62 for the age, and the wait term is
+            // ceil(238.4) = 239 where a Math.round would give 238 — the one
+            // frozen age that tells the two apart.
+            foreign_fresh_conflict_message(&existing, 61_600.0, "Mac"),
+            "Another Quilltap instance (local server, PID 4242 on elsewhere-host) is already \
+             using this database (last heartbeat 62s ago). If no other instance is running, \
+             this machine's hostname may have changed since the lock was taken (now: Mac); \
+             wait 239s for the lock to go stale, or use the lock override to force access."
+        );
+        existing.environment = EnvironmentType::Docker;
+        assert!(foreign_fresh_conflict_message(&existing, 0.0, "Mac")
+            .starts_with("Another Quilltap instance (Docker container, PID 4242 on "));
+        assert!(foreign_fresh_conflict_message(&existing, 0.0, "Mac").contains("wait 300s for"));
+        existing.environment = EnvironmentType::Electron;
+        assert!(foreign_fresh_conflict_message(&existing, 1.0, "Mac")
+            .starts_with("Another Quilltap instance (Electron app, PID 4242 on "));
+    }
+
+    /// v4's stale-claim reason, byte-for-byte, including the `'never'` arm an
+    /// empty `lastHeartbeat` takes (`Infinity` rendered as V8 renders it).
+    #[test]
+    fn foreign_stale_claim_reason_is_v4s_bytes() {
+        let mut existing = build_lock_content();
+        existing.hostname = "elsewhere-host".to_string();
+        existing.environment = EnvironmentType::Docker;
+        existing.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
+        assert_eq!(
+            foreign_stale_claim_reason(&existing, 601_400.0),
+            "Lock from elsewhere-host (docker) has no recent heartbeat \
+             (last: 2020-01-01T00:00:00.000Z, age: 601s)"
+        );
+        existing.last_heartbeat = String::new();
+        assert_eq!(
+            foreign_stale_claim_reason(&existing, f64::INFINITY),
+            "Lock from elsewhere-host (docker) has no recent heartbeat \
+             (last: never, age: Infinitys)"
+        );
     }
 
     #[test]
@@ -1037,6 +1356,154 @@ mod tests {
         // File vanished → loss.
         std::fs::remove_file(&path).unwrap();
         assert!(!heartbeat_tick(&path));
+    }
+
+    /// Bug 126 (v4 `25f534c0b`, its `should not shut down when only the OS
+    /// hostname has changed`). `os.hostname()` is not stable over a process's
+    /// lifetime — macOS derives it dynamically when `scutil --get HostName` is
+    /// unset — so a recorded name that no longer matches ours is NOT evidence
+    /// of a takeover. The tick keeps the lock, refreshes the label, and
+    /// advances `lastHeartbeat`.
+    #[test]
+    fn heartbeat_survives_a_hostname_change_and_refreshes_the_label() {
+        let path = temp_lock_path();
+        acquire_instance_lock(&path).unwrap();
+        let ours = read_lock_file(&path).unwrap();
+
+        // The OS renamed the machine under us: same PID, same startedAt, a
+        // different recorded name (and a heartbeat old enough to see move).
+        let mut renamed = ours.clone();
+        renamed.hostname = "Mac".to_string();
+        renamed.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
+        write_lock_file(&path, &renamed).unwrap();
+
+        assert!(
+            heartbeat_tick(&path),
+            "a renamed host is a label change, not a takeover"
+        );
+        let after = read_lock_file(&path).unwrap();
+        assert_eq!(
+            after.hostname,
+            hostname(),
+            "the tick refreshes the recorded label"
+        );
+        assert!(
+            after.last_heartbeat > renamed.last_heartbeat,
+            "the tick advanced lastHeartbeat"
+        );
+        assert_eq!(after.pid, ours.pid);
+        assert_eq!(after.started_at, ours.started_at);
+
+        // And the renamed process still releases its OWN lock (v4's
+        // `should still release when only the hostname has changed`).
+        let mut renamed_again = read_lock_file(&path).unwrap();
+        renamed_again.hostname = "MacBook-Pro.local".to_string();
+        write_lock_file(&path, &renamed_again).unwrap();
+        release_instance_lock(&path);
+        assert!(!path.exists(), "a renamed process releases its own lock");
+    }
+
+    /// The other half of bug 126's ownership test: `startedAt` is a comparand,
+    /// so a record carrying our PID but someone else's acquisition timestamp
+    /// (the PID-reuse shape) IS a takeover. v4 `isStillOurLock`.
+    #[test]
+    fn heartbeat_reports_loss_when_only_started_at_moved() {
+        let path = temp_lock_path();
+        acquire_instance_lock(&path).unwrap();
+        let mut taken = read_lock_file(&path).unwrap();
+        taken.started_at = "2030-01-01T00:00:00.000Z".to_string();
+        write_lock_file(&path, &taken).unwrap();
+        assert!(
+            !heartbeat_tick(&path),
+            "a different startedAt under our PID is a genuine takeover"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// v4's renamed `should skip release when the lock record is another
+    /// process's` — keyed on PID + `startedAt`, no longer on hostname.
+    #[test]
+    fn release_skips_another_processes_record() {
+        let path = temp_lock_path();
+        acquire_instance_lock(&path).unwrap();
+        let mut theirs = read_lock_file(&path).unwrap();
+        theirs.pid = 99_999;
+        theirs.started_at = "2020-01-01T00:00:00.000Z".to_string();
+        write_lock_file(&path, &theirs).unwrap();
+
+        let lines = captured(|| release_instance_lock(&path));
+        assert!(path.exists(), "someone else's record is left alone");
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Lock file not owned by this process, skipping release"))
+            .unwrap_or_else(|| panic!("no skip warning in {lines:?}"));
+        assert!(warn.starts_with("WARN quilltap_host::lock"), "{warn}");
+        assert!(warn.contains("lockPid=99999"), "{warn}");
+        assert!(
+            warn.contains("lockStartedAt=2020-01-01T00:00:00.000Z"),
+            "{warn}"
+        );
+        assert!(
+            warn.contains(&format!("ourPid={}", std::process::id())),
+            "{warn}"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// v4's two heartbeat-loss `error` sentences and their bags (the interval
+    /// body's two early returns), plus the per-tick `debug` line.
+    #[test]
+    fn heartbeat_loss_logs_v4s_sentences() {
+        let path = temp_lock_path();
+        acquire_instance_lock(&path).unwrap();
+
+        let lines = captured(|| {
+            assert!(heartbeat_tick(&path));
+        });
+        assert!(
+            lines.iter().any(|l| l.contains("Lock heartbeat updated")),
+            "{lines:?}"
+        );
+
+        let mut taken = read_lock_file(&path).unwrap();
+        taken.pid = 99_999;
+        taken.started_at = "2020-01-01T00:00:00.000Z".to_string();
+        taken.environment = EnvironmentType::Docker;
+        taken.hostname = "elsewhere-host".to_string();
+        write_lock_file(&path, &taken).unwrap();
+        let lines = captured(|| {
+            assert!(!heartbeat_tick(&path));
+        });
+        let lost = lines
+            .iter()
+            .find(|l| {
+                l.contains(
+                    "Instance lock lost — another process has taken over the database. Shutting down.",
+                )
+            })
+            .unwrap_or_else(|| panic!("no takeover error in {lines:?}"));
+        assert!(lost.starts_with("ERROR quilltap_host::lock"), "{lost}");
+        for field in [
+            "lockPid=99999",
+            "lockHostname=elsewhere-host",
+            "lockStartedAt=2020-01-01T00:00:00.000Z",
+            "lockEnvironment=docker",
+            "ourHostname=",
+            "ourStartedAt=",
+        ] {
+            assert!(lost.contains(field), "{field} missing from {lost}");
+        }
+
+        std::fs::remove_file(&path).unwrap();
+        let lines = captured(|| {
+            assert!(!heartbeat_tick(&path));
+        });
+        assert!(
+            lines.iter().any(|l| l.contains(
+                "Instance lock file disappeared — another process may claim the database. Shutting down."
+            )),
+            "{lines:?}"
+        );
     }
 
     #[test]

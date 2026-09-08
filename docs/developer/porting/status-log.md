@@ -115725,3 +115725,171 @@ holds).
 genuinely deep query, memory deduplication + conversation-summary regeneration's
 first run, finding #101's NanoGPT prompt-caching cost question, and the
 re-measured 90 s/120 s compression row.
+
+## Lane record — P4.D166 (bug 126: the instance lock's ownership snapshot, the heartbeat-freshness cascade for every environment, the renamed-process release, the CLI's shared `assess_lock`) — v4 `25f534c0b`
+
+Ordered against baseline **`2f4254b42`**, absorbing the drift row
+**`25f534c0b`** ("fix: a hostname change no longer makes the app kill its own
+database (bug 126)", 2026-09-08, `4.10.0-dev.9`) and ratifying **`4097626c6`**.
+**Drift-ledger §2 freshness probe at lane start:** PASS — v4 checkout on
+`main`, tree clean, `git log 25f534c0b..main` EMPTY, `git log
+1a2b2164c..bugfix` EMPTY. Regen rule **PIN REQUIRED**; the lane's pin is
+`/tmp/qt-v4-pin-p4d166-25f534c0b`, verified by marker
+(`lib/progressions/engine.ts` present; `isStillOurLock` appears three times in
+`lib/database/backends/sqlite/instance-lock.ts`). The lane never wrote the
+ledger.
+
+### The measurement that moved the order: `lock-helpers.js` is UNTOUCHED
+
+The order's Tier-1 item 3 ("`classify_lock_content` + the probed classifier +
+the write lock — same rule") is **REFUTED by the hunks.** `25f534c0b` touches
+thirteen files and `packages/quilltap/lib/lock-helpers.js` is not one of them:
+v4's `getLockStatus` still gates its freshness window on
+`VM_ENVIRONMENTS = new Set(['docker'])` and still decides same-host liveness
+behind `lock.hostname === os.hostname()`, and `releaseWriteLock` and the
+launcher's own write-lock heartbeat still compare hostname outright. Changing
+v5's counterparts would have been a fresh divergence — and would have moved the
+Tier R `db write refused on live lock` / `db write claims stale lock`
+comparands away from v4's real launcher. They are therefore UNCHANGED, and
+`a_retired_lima_lock_parses_and_is_not_a_container` needed no re-pin: its
+`Stale { "held by elsewhere-host but no recent heartbeat" }` on a one-second-old
+`lima` heartbeat is still exactly what v4 answers.
+
+**The six-site disposition table** (the ⚠ sites the order's planning survey
+named, each against its real v4 counterpart):
+
+| v5 site | v4 counterpart | Moved by `25f534c0b`? | Rule now applied |
+| --- | --- | --- | --- |
+| `heartbeat_tick` (`lock.rs`) | `startLockHeartbeat`'s interval body (`instance-lock.ts`) | **YES** | `is_still_our_lock` (PID + `startedAt`); the label is refreshed on each write |
+| `release_instance_lock` | `releaseInstanceLock` | **YES** | `is_still_our_lock`, + v4's widened skip-warning bag |
+| the acquire cascade's `!same_host` arm | `acquireInstanceLock` | **YES** | heartbeat freshness for EVERY environment; v4's two new sentences |
+| `release_write_lock` | launcher `releaseWriteLock` | **no** | KEEPS `pid == ours && hostname == ours` — v4 does |
+| `classify_lock_content` | launcher `getLockStatus` | **no** | KEEPS `same_host` + the `docker`-only freshness window — v4 does |
+| `classify_lock_status_probed` | launcher `getLockStatus` | **no** | KEEPS the same-host probe gate — v4 does |
+
+`same_host` survives in the acquire cascade too: v4 keeps it for the
+re-entrant, dead-PID-claim and live-PID-conflict arms, so the ONLY acquire
+change is the foreign arm (`pid_alive` is still `same_host && is_pid_alive(…)`
+there, exactly as v4 leaves it).
+
+### Unit 1 — the ownership snapshot, the tick, the release (RED first)
+
+v4's `LockOwnership { pid, hostname, startedAt }` + `rememberLockOwner` /
+`forgetLockOwner` / `isStillOurLock`, recorded at every site this process
+writes itself into the file (fresh create, re-entrant acquire, `claim_stale_lock`,
+the heartbeat rewrite) and cleared on release. `heartbeat_tick` and
+`release_instance_lock` compare through it; **no hostname comparison remains in
+any ownership test**, and the tick refreshes `hostname` on each write so the
+file keeps a useful label.
+
+**Recorded deviation (`an-orders-prescribed-shape-may-fight-the-files-idiom`).**
+The order preferred THREADING the snapshot and allowed a `globalThis`-shaped
+process-global as the fallback. Neither shape as written is correct here: v4
+keeps ONE snapshot because a Next.js server holds exactly one instance lock,
+while a v5 host can hold several at once (one per assembled instance) and
+`lock.rs`'s own unit tests run in parallel inside a single process on distinct
+paths — a single global would make them steal each other's ownership. The
+snapshot is therefore a process-global **keyed by lock path**
+(`static LOCK_OWNERS: OnceLock<Mutex<HashMap<PathBuf, LockOwnership>>>`): v4's
+shape, made correct for the several-locks case. Threading was declined because
+`acquire_instance_lock` is reached through `EngineAssembler::pre_open`, whose
+signature returns `Result<(), String>` and is re-entrant per PID.
+
+v4's log lines landed with it — the two loss `error` sentences with their full
+bags, the per-tick `debug`, and the release `warn` with `lockStartedAt` /
+`ourStartedAt` — pinned by capture-layer tests.
+
+**RED-first proof, run against the pre-edit tree before any source change**
+(`cargo test -p quilltap-host --lib lock::`, 13 passed / 4 failed):
+
+- `heartbeat_survives_a_hostname_change_and_refreshes_the_label` — *"a renamed
+  host is a label change, not a takeover"*
+- `heartbeat_reports_loss_when_only_started_at_moved` — *"a different startedAt
+  under our PID is a genuine takeover"*
+- `release_skips_another_processes_record` — *"no skip warning in []"*
+- `heartbeat_loss_logs_v4s_sentences` — *"[]"* (nothing logged at all)
+
+### Unit 2 — the acquire cascade
+
+The container-only freshness window and the `Different hostname (lock: …,
+current: …)` fail-open claim are DELETED. `!same_host` now decides on the
+heartbeat alone, for every environment: fresh → `LockError::Conflict` with v4's
+new sentence; stale or missing → `claim_stale_lock` with v4's new reason. Both
+sentences are built by small pure functions (`foreign_fresh_conflict_message`,
+`foreign_stale_claim_reason`) so their bytes can be pinned against a FROZEN
+heartbeat age — the `wait <N>s` term is server-only and can never reach Tier R.
+`js_round` (`floor(x + 0.5)`, JS's half-up, not Rust's half-away-from-zero) and
+`jsnum::to_fixed(_, 0)` carry V8's rendering, so the `'never'` arm's
+`age: Infinitys` is byte-faithful.
+
+v4's inverted test became two: `foreign_host_fresh_heartbeat_refuses_in_every_environment`
+and `foreign_host_stale_heartbeat_is_claimed_in_every_environment`, each
+looping `local` / `electron` / `docker` as v4's do.
+
+### Unit 3 — the lock-loss teardown (the order's item-4 audit)
+
+**Audit finding: v5's default arm did NOT reach any ordered teardown.**
+`heartbeat_loop`'s `None` branch sent the stop flag and then
+`std::process::exit(1)` — it never reached `HostShutdown::shutdown`, so the
+assembly's terminal manager and its live PTY children were simply orphaned.
+`HostShutdown` is now a thin wrapper over a shared `AssemblyTeardown`, and the
+heartbeat loop holds an `Arc` of the same value and runs it on loss before the
+handler or the exit — v4's inward registration (`client.ts` handing
+`handleShutdown` to `registerInstanceLockShutdownHandler`).
+
+Two measured differences are RECORDED, not ported:
+
+1. **v5 has no SIGTERM/SIGINT handler at all.** `quilltap-web/src/main.rs` runs
+   `serve` to completion and installs no signal handler, so v4's "the same
+   ordered shutdown as SIGTERM and SIGINT" has no v5 counterpart to share —
+   `AssemblyTeardown` is the only ordered teardown there is.
+2. **v5 has no WAL to leave unmerged.** The writable open is
+   `journal_mode = TRUNCATE` (`db/mod.rs`), never WAL, and `Db` exposes no
+   `close` or checkpoint; each committed transaction is already durable. v4's
+   specific damage ("the WAL was left unmerged") therefore has no v5 analogue —
+   what the fix actually recovers here is the PTY/driver teardown.
+
+The teardown's `release_instance_lock` is now the ownership test doing its job
+on this path: a record another process owns is left strictly alone (asserted).
+
+### Unit 3's Tier-2 arms (`host_cadence::lock_lifecycle_and_loss_handler`)
+
+The test provoked loss by FILE REMOVAL only. It now carries, before that:
+
+- a **flap** arm — rewrite the file's `hostname`, wait for `lastHeartbeat` to
+  advance, assert the loss handler did NOT fire, the label was refreshed, and
+  the assembly is still up;
+- a **genuine takeover** arm — rewrite `pid` + `startedAt`, assert the handler
+  fired, that `Host::terminal_manager()` has gone `None` (the ordered teardown
+  ran), and that the other process's record survives untouched.
+
+### Mutation proofs (unit tests, each reddening exactly one test)
+
+| Mutation | Reddens |
+| --- | --- |
+| re-add `|| content.hostname != hostname()` to the tick's ownership test | `heartbeat_survives_a_hostname_change_and_refreshes_the_label` |
+| drop `content.hostname = hostname()` from the tick's write | `heartbeat_survives_a_hostname_change_and_refreshes_the_label` (the refresh assert) |
+| `is_still_our_lock` compares PID only | `heartbeat_reports_loss_when_only_started_at_moved` |
+| restore the `is_container &&` gate on the acquire freshness window | `foreign_host_fresh_heartbeat_refuses_in_every_environment` (the `local` row) |
+| `Math.ceil` → `Math.round` on the wait term | `foreign_fresh_conflict_message_is_v4s_bytes` |
+| the loss arm sends the stop flag instead of running the teardown | `host_cadence::lock_lifecycle_and_loss_handler` |
+| re-add the hostname comparison (host level) | `host_cadence::lock_lifecycle_and_loss_handler` |
+
+The `Math.ceil` mutation **survived its first run** — the frozen age was
+61 500 ms, where `ceil(238.5)` and `round(238.5)` are both 239. Re-frozen at
+61 600 ms (`ceil(238.4) = 239`, `round = 238`), which is the one age that tells
+them apart; the mutation then reddened exactly that test.
+
+### A trap worth recording
+
+`heartbeat_loss_logs_v4s_sentences` flaked 2 runs in 5 before it was armed.
+`test_support::captured` installs a THREAD-scoped subscriber, and `tracing`
+caches each callsite's `Interest` globally on first use — a sibling test
+reaching `heartbeat_tick`'s `debug!`/`error!` lines first, with no subscriber on
+ITS thread, retires those callsites for the whole binary. This is the race
+`test_support::global_capture`'s module doc names, and `global_capture` cannot
+be used here (it records the message only, not the fields, and
+`crates/quilltap-core/**` is another lane's). The local fix arms an EMPTY
+process-global registry once for the lock test module — no global default
+exists anywhere else in `quilltap-host` — after which the per-test
+thread-local default still takes precedence. Stressed 8/8 green.

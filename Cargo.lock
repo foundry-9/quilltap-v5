@@ -4014,7 +4014,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.114"
+version = "0.0.115"
 dependencies = [
  "base64 0.22.1",
  "image",
