@@ -21,33 +21,48 @@ probe verifies against._
 
 - **Oracle baseline: `2f4254b42`** — "feat: character subprompts — per-chat
   optional instructions from the vault" (v4 main, 2026-09-07 07:43 -0500,
-  `4.10.0-dev.1`), adopted at the `2f4254b42` character-subprompts round
+  `4.10.0-dev.5`), adopted at the `2f4254b42` character-subprompts round
   unification (P4.D163 → P4.D164 ∥ P4.D165 ∥ P4.9K1-resumed ∥
-  P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-07, the generator follow-ups + prompt-templates round's
-  unification probe (run at planning, at every lane start, at the reconcile
-  and again at the docs step — v4 did NOT move during the round; the
-  `2f4254b42` round's unification probe before it, the same day).
+  P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees. (The
+  version was recorded as `4.10.0-dev.1` here through the last two checks;
+  `git show 2f4254b42:package.json` reads **`4.10.0-dev.5`** — corrected
+  2026-09-08, no other field moved.)
+- **Checked:** 2026-09-08, a standalone `/driftcheck` (the generator
+  follow-ups + prompt-templates round's unification probe on 2026-09-07
+  before it, and its dogfood pass the same night).
 - **v4 `main` HEAD at check:** `2f4254b42` — AT the baseline. **Zero drift.**
+  Local `main` == `origin/main` (no fetch performed; the checkout is the
+  human's active working repo, so its local tips are the authority).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch", `4.9.3-bugfix.0`) — UNMOVED. Its `main..bugfix` CONTENT diff over
-  `lib/ app/ packages/ plugins/ help/ jest.config.ts __mocks__/` is non-empty
-  only because `bugfix` is BEHIND main by `2f4254b42` (every hunk that commit
-  in reverse) plus `packages/quilltap/package.json` at `4.9.2-bugfix.1`.
-  **Nothing unabsorbed on `bugfix`.**
-- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2").
+  branch", root `4.9.3-bugfix.0`) — UNMOVED, and this check proved its
+  emptiness TOTALLY rather than by reading a stat: `git diff bugfix main --
+  lib/ app/ packages/ plugins/ help/ jest.config.ts __mocks__/` is
+  **textually identical** (1,930 lines, `index` lines aside) to
+  `git show 2f4254b42 --format='' -- <the same paths>`. The whole
+  main↔bugfix content delta IS the subprompts commit; `bugfix` is simply
+  BEHIND main by it. **Nothing unabsorbed on `bugfix`.** (⚠ zsh does not
+  word-split, so a `$PATHS` variable after `--` becomes ONE pathspec matching
+  nothing and both diffs come back EMPTY — spell the paths inline. That false
+  "identical" is indistinguishable from the real one.)
+- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree CLEAN.
-- **Verdict: CLEAR — no drift.** The one row the last check carried
-  (`2f4254b42`, PORT-NEW) is ABSORBED by this round; the standing `15573c3a1`
-  (bug 119) row is ABSORBED too — its runner half landed in P4.9K1-resumed
-  (`run_sub_step` / `run_sub_step_core` containment + both log lines,
-  capture-pinned). §3 is EMPTY.
-- **`help/**` is byte-identical to `2f4254b42:help/` again** (121 files —
-  the P4.D163 re-vendor; `help_tree_equivalence` and `help_tree_embed_guard`
-  green at the pin). The hazard that fired at the last check is discharged.
+- **Verdict: CLEAR — no drift.** §3 stays EMPTY: nothing new to classify, and
+  no row carried forward (the last check's `2f4254b42` PORT-NEW row and the
+  standing `15573c3a1` bug-119 row were both absorbed at the 2026-09-07
+  unification).
+- **All four vendored-artifact hazards re-verified byte-identical at this
+  check** (they can only move when v4 does, but they are cheap and they are
+  what silently reddens a gate): `help/` 121 files `diff -rq` clean against
+  `~/source/quilltap-server/help`; `crates/quilltap-core/src/generators/
+  qtap-export.schema.json` `cmp`-identical to `public/schemas/
+  qtap-export.schema.json`; the sample-prompt catalogue's source directory
+  still 21 `.md` files; and v4's **installed** `zod` still `4.5.4`, matching
+  `RECORDED_ZOD_VERSION` (the one hazard that can fire without a v4 commit,
+  since the oracles resolve the LIVE dependency tree).
 - **Regen rule in force: NO PIN REQUIRED** — v4 `main` HEAD is the baseline
-  and the checkout is on `main` and clean. Re-run the §2 probe before every
-  regen batch; the moment it fails, build a detached worktree per §5.1.
+  and the checkout is on `main` and clean. Unchanged from the last check.
+  Re-run the §2 probe before every regen batch; the moment it fails, build a
+  detached worktree per §5.1.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -73,9 +88,14 @@ probe verifies against._
   `image-generation`, `image-generate-route`, `settings-routes`); the mock is
   never reached by the four proven at the last round's pin (those oracles mock
   `streamMessage` above the plugin layer); the `tsx`/`node` recorders are
-  unaffected; (6) `packages/quilltap/package.json` reads `4.9.2-bugfix.1` on
-  `bugfix` and `4.10.0-dev.1` on `main` against the app's own version — a
-  v4-side nit, no `--version` comparand, Tier R unaffected; (7) **the
+  unaffected; (6) **the CLI-package version nit is CLOSED
+  on `main`** — `2f4254b42` itself carried the fix (its
+  `packages/quilltap/package.json` hunk is `4.9.2-bugfix.1` →
+  `4.10.0-dev.5`), so at the baseline that file and the app's `package.json`
+  agree; the lag survives only on `bugfix`, which predates the fix
+  (`4.9.2-bugfix.1` against a root `4.9.3-bugfix.0`). Still no `--version`
+  comparand, Tier R unaffected; re-watch it after the next merge-back, which
+  is where it came from; (7) **the
   generator runners (`character_optimizer_tier3`, `character_wizard_tier3`,
   `ai_import_tier3`, `external_prompt_tier3`) drive v4's REAL runners with a
   canned `createLLMProvider`** — a v4 change to the provider factory's
@@ -98,7 +118,9 @@ probe verifies against._
   takes feature work. §4 step 2's two-branch rule stays load-bearing — measure
   `bugfix` by CONTENT, never its commit list, and remember a content diff can
   be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-07, the pre-round `/driftcheck`): DRIFT PENDING — 1
+- _Superseded (2026-09-07, the generator follow-ups round's unification
+  probe): CLEAR, no pin required — the same posture this check re-confirms.
+  Before that (2026-09-07, the pre-round `/driftcheck`): DRIFT PENDING — 1
   commit (`2f4254b42`), pin required because HEAD was past the baseline._
 
 ## §2 The freshness probe

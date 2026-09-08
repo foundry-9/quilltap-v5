@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-08 — docs(drift): the standalone drift check — v4 still at the baseline, §3 empty, no pin required
+
+_Docs-only change._
+
+A `/driftcheck` run with nothing to record: v4 `main` HEAD is `2f4254b42`, the
+oracle baseline itself, the checkout sits on `main` with a clean tree, and both
+`bugfix` (`1a2b2164c`) and `release` (`8fbf2afe0`) are unmoved. The drift table
+stays empty and the regen rule stays NO PIN REQUIRED. This is the second
+consecutive check to find v4 at rest.
+
+`bugfix`'s emptiness was proven totally rather than inferred from a stat: its
+whole content delta against `main` over the ported paths is textually identical
+to the subprompts commit itself, so `bugfix` is behind `main` by exactly that
+commit and carries nothing unabsorbed. The ledger records the zsh trap that
+nearly made the comparison vacuous — an unquoted `$PATHS` after `--` is one
+pathspec matching nothing, and two empty diffs compare "identical".
+
+Two corrections to §1, both v4-side readings rather than port facts. The
+baseline's app version is `4.10.0-dev.5`, not the `4.10.0-dev.1` recorded here
+through the last two checks. And standing hazard (6) — the CLI package's version
+lagging the app's — is closed on `main`: `2f4254b42` carried that fix in its own
+hunks (`4.9.2-bugfix.1` → `4.10.0-dev.5`). The lag survives only on `bugfix`,
+which predates it, and is worth re-watching after the next merge-back, since that
+is where it came from.
+
+All four vendored-artifact hazards were re-verified at this check even though
+they can only move when v4 does: the 121-file `help/` tree diffs clean, the
+embedded `qtap-export.schema.json` compares byte-identical to v4's
+`public/schemas/` copy, the sample-prompt source directory still holds 21 files,
+and v4's installed `zod` is still `4.5.4` — the one hazard that can fire without
+a v4 commit at all, since the oracles resolve the live dependency tree.
+
 #### 2026-09-08 — docs(dogfood): the generator follow-ups + prompt-templates pass — 20 rows, zero v5 defects, the round's whole live-proof queue discharged
 
 _Docs-only change._
