@@ -116,6 +116,30 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — test(web): the generator edges' response headers, served and absent
+
+_Versions: web 0.0.130._
+
+P4.85 Tier-2 items 7 and 8.
+
+Item 7: the live `optimize-stream` edge asserted two of v4's three SSE
+headers (`post.ts:137-141` sets `Content-Type`, `Cache-Control` AND
+`Connection`); `connection: keep-alive` is now asserted too. Item 9's new
+byte-equality tests already assert all three on both edges at the re-framer.
+
+Item 8: a header census over the three JSON arms (`rename`,
+`refresh-archive`, `generate-external-prompt`). v4 answers all three through
+`NextResponse.json`, which was MEASURED against v4's own `next/server` to
+set exactly one header — `content-type: application/json`, no charset
+parameter — so the census asserts that content type and the ABSENCE of the
+SSE trio's other two, in the arm-by-arm shape that would catch a leak in
+either direction. Every other assertion in that file reads the body, so
+nothing else could. Proven non-vacuous by adding `content-length` to the
+absent list: it fails, naming the real header map.
+
+The `generate-external-prompt` row uses the Zod refusal, so the census
+costs no model call.
+
 #### 2026-09-07 — test(harness): the generator SSE bytes and the `llm_logs` counts become comparands
 
 _Versions: harness 0.0.728, web 0.0.129._

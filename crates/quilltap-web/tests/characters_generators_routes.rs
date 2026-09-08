@@ -261,6 +261,16 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
             .unwrap(),
         "no-cache"
     );
+    // P4.85 Tier-2 item 7: v4 sets THREE headers on this response
+    // (`post.ts:137-141`); this edge used to assert two of them.
+    assert_eq!(
+        resp.headers()
+            .get("connection")
+            .unwrap_or(&reqwest::header::HeaderValue::from_static(""))
+            .to_str()
+            .unwrap(),
+        "keep-alive"
+    );
     let text = resp.text().await.unwrap();
     let frames = parse_frames(&text);
     assert_eq!(frames.first(), Some(&json!({"type": "start"})), "{text}");
@@ -287,4 +297,42 @@ async fn the_generator_actions_resolve_over_the_live_assembly() {
             .contains("GeneratorsDetailDriver"),
         "the host driver is not wired: {last}"
     );
+
+    // 10. **P4.85 Tier-2 item 8 — the JSON arms' header census.** v4 answers
+    //     all three of these through `NextResponse.json`, which sets exactly
+    //     ONE header: `content-type: application/json` — measured against v4's
+    //     own `next/server` (no charset parameter, no `cache-control`, no
+    //     `connection`). The SSE trio must not leak onto a JSON arm, in either
+    //     direction, and only a census can say so: every assertion above reads
+    //     the BODY.
+    for (label, req) in [
+        (
+            "rename",
+            client
+                .post(url(MIRA, "rename"))
+                .json(&json!({"primaryRename": {"oldValue": "Mira", "newValue": "Mora"}})),
+        ),
+        ("refresh-archive", client.post(url(MIRA, "refresh-archive"))),
+        (
+            "generate-external-prompt (the Zod refusal — no spend)",
+            client
+                .post(url(MIRA, "generate-external-prompt"))
+                .json(&json!({"maxTokens": "no"})),
+        ),
+    ] {
+        let resp = req.send().await.unwrap();
+        let ct = resp
+            .headers()
+            .get("content-type")
+            .map(|v| v.to_str().unwrap().to_string())
+            .unwrap_or_default();
+        assert_eq!(ct, "application/json", "{label}: v4's `NextResponse.json`");
+        for absent in ["cache-control", "connection"] {
+            assert!(
+                resp.headers().get(absent).is_none(),
+                "{label}: the SSE header `{absent}` leaked onto a JSON arm ({:?})",
+                resp.headers()
+            );
+        }
+    }
 }
