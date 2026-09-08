@@ -526,6 +526,29 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(schemas): re-vendor the custom-tool schema, vendor the progression schema, guard both
+
+_Versions: SPA 0.5.687, harness 0.0.736._
+
+P4.D170 unit 6. `apps/web/public/schemas/qtap-custom-tool.schema.json` is
+re-vendored at v4 `25f534c0b` (529 lines: the `progress` gate and `when`
+subjects, the third effect-target family, `{{now}}`) and
+`qtap-progression.schema.json` is vendored NEW. Both now have a guard —
+`crates/quilltap-harness/tests/public_schemas_vendor_guard.rs`, in the
+`qtap_schema_embed_guard` idiom: byte-equality against the v4 checkout (skipped
+without one) plus a self-consistency half (each parses, carries its expected
+`$schema`/`$id`, uses only local `$ref`s, and matches a pinned byte size) that
+always runs.
+
+The drift ledger's standing hazard (10) recorded the custom-tool schema as the
+only UNGUARDED vendored artifact, which is how it sat 529 lines behind v4
+through this whole drift with nothing going red. It is guarded now.
+
+v4's mirror-agreement suite rides as `schema-mirror.spec.ts` — the same corpus
+through Ajv over the served file and through this port's `safeParseProgressions`,
+so three implementations agree rather than two, with the one JSON-Schema
+divergence (`endTime > startTime`) asserted explicitly rather than tolerated.
+
 #### 2026-09-08 — feat(chat): the run popup names the progressions a tool consults or adjusts
 
 _Versions: SPA 0.5.686._

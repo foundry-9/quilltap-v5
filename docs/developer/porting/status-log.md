@@ -117277,3 +117277,42 @@ string. The spec now compares the WHOLE sentence with two ids, exactly as its
 mutation reddens.
 
 Gate: 415 SPA spec files / 6,798 tests; `npm run build` clean. SPA 0.5.686.
+
+### Unit 6 — the two `public/schemas/` files and their first guard
+
+`qtap-custom-tool.schema.json` re-vendored at `25f534c0b` (v4 moved it 529
+lines) and `qtap-progression.schema.json` vendored NEW, both byte-copied from
+the lane's pin.
+
+NEW `crates/quilltap-harness/tests/public_schemas_vendor_guard.rs` — the ONLY
+file this lane puts under `crates/`, and `git diff main -- crates/ help/
+harness/` shows nothing else but the harness version bump. Shaped after
+`qtap_schema_embed_guard.rs`, differing where it must: these two are files the
+SPA SERVES rather than strings a crate embeds, so the guard reads them off
+disk via `CARGO_MANIFEST_DIR`. Byte-equality against `QT_V4_ROOT` skips without
+a checkout (the harness convention); the self-consistency half — each parses,
+carries its expected `$schema` and `$id` (`quilltap.ai`, not `quilltap.app` —
+measured, the embedded export schema uses the other host), holds only local
+`$ref`s, and matches a pinned byte size (39,471 / 5,963) — always runs.
+
+Proven both ways: green against the live checkout AND against the pin, then a
+one-character edit to the vendored progression schema (`maxProperties` 32 → 31)
+reddens the byte-equality arm with the named-file message while the
+self-consistency arm stays green, which is the split the guard exists for.
+
+The drift ledger's standing hazard (10) is discharged: the custom-tool schema
+was the fifth vendored artifact and the only unguarded one, which is exactly
+how it sat 529 lines behind through this drift with nothing going red.
+
+`schema-mirror.spec.ts` is v4's third `schema.test.ts` suite, transcribed — the
+same 15-specimen corpus through Ajv over the file the SPA actually serves and
+through this port's `safeParseProgressions`, so THREE implementations agree
+(v4's Zod at the recording, this port, the published mirror) rather than two.
+v4's one accepted divergence — JSON Schema draft 2020-12 cannot compare two
+sibling properties, so `endTime > startTime` is invisible to it — is asserted
+explicitly rather than tolerated.
+
+Gate: 416 SPA spec files / 6,814 tests; the guard green against both the live
+checkout and the pin; `cargo fmt --all --check` clean; `cargo clippy -p
+quilltap-harness --all-targets -- -D warnings` clean. SPA 0.5.687, harness
+0.0.736.
