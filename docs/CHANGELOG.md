@@ -116,6 +116,16 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — docs(progressions): record P4.D167's tip sha — the base the two stacked lanes branch from
+
+_Docs-only change._
+
+The engine lane is complete. P4.D168 (the prompt path) and P4.D169 (the Pascal
+family) branch from `1512edac`, not from `main`, and from that commit the
+public surface of `crates/quilltap-core/src/progressions/` is frozen: a needed
+change there is a stop-and-flag landed on P4.D167's own branch, after which
+both stacks rebase.
+
 #### 2026-09-08 — feat(progressions): the character-progressions engine — `quilltap_core::progressions`, tier-1 exact against v4's real module
 
 _Versions: core 0.0.847, harness 0.0.736._

@@ -116022,6 +116022,13 @@ The memory note already names this; the lesson is that it bites when the
 mutation is reverted in the SAME command as an unrelated cleanup.
 ## P4.D167 — character progressions, the ENGINE (`quilltap_core::progressions`), 2026-09-08
 
+**⛔ The stacked lanes branch from THIS LANE'S BRANCH, never from `main`:**
+`git worktree add <path> -b claude/p4-d16N-… claude/p4-d167-progressions-porting-6daa42`.
+The branch name always resolves to the final commit; the CODE tip is
+`1512edacfeaaa3bba7dcb8bc08776372a904ecbe` (`1512edac`) with one docs-only
+commit after it. From that sha `progressions/{mod,schema,engine}.rs` is
+FROZEN.
+
 **The `25f534c0b` progressions + bug-126 drift catch-up round; the BASE of the
 two-branch stack (P4.D168 and P4.D169 branch from this lane's tip).** Absorbs
 the pure half of v4's `0587d1e96` — `lib/progressions/schema.ts` (231 lines)
