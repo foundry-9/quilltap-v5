@@ -115356,10 +115356,29 @@ one — a case naming an id absent from the roster was added).
 
 ### Verification gate
 
-`npm run lint` (incl. `check-qt-classes`, 950 classes, every reference
-resolving), `npm test` and `npm run build` after every unit and again at the
-end; the three generator e2e specs by name against release binaries. Numbers
-in the final report.
+`npm run lint` (incl. `check-qt-classes` — self-test 5/5, 950 qt-* classes
+defined, every guarded reference resolving), `npm test` **409 spec files /
+6,476 tests / 0 failed**, `npm run build` clean — run after every unit and
+again at the end. `cargo fmt --all --check` clean, and `git diff main --
+crates/ Cargo.toml Cargo.lock` **EMPTY** (the order's gate item 4). The three
+generator e2e specs by name against release binaries built in this worktree
+(`quilltap-web` + `quilltap`, `CARGO_INCREMENTAL=0`), one Playwright at a time:
+`ai-import-flow` 1/1, `character-optimizer-flow` 1/1, `character-wizard-flow`
+**3/3** including the new review-pane beat.
+
+**The e2e run's own catch — a standing red this lane did not cause.** The
+first live run failed the wizard spec's EXISTING New Character beat:
+`getByText('Select AI Model')` is a strict-mode violation, because the string
+is both the modal's step title (`ai-wizard-modal.ts:14`) and the step's own
+heading (`profile-selection-step.ts:49`) — v4 renders both too, so the locator
+has been wrong since the beat was activated at the `2f4254b42` round, and
+`git diff main` shows this lane touched neither file. Repaired to
+`getByRole('heading', …)`, matching the neighbouring assertion. The NEW beat
+needed the same treatment for a reason this lane DID create: the New Character
+form behind the modal carries `qt-prompt-field-label` headers, each of which
+now renders its own `qt-prompt-field-example`, so a bare
+`qt-prompt-field-example p` matched seven nodes; every assertion in that beat
+is now scoped to `qt-wizard-generation-step`.
 
 **One intermittent observed and recorded:** on one `npm test` run,
 `generate-image-page.spec.ts > fetches the file-id source and saves under the
