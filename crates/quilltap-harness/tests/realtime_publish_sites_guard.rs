@@ -35,12 +35,14 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
     (
         "crates/quilltap-core/src/services/queue_service.rs",
         "publish_realtime(RealtimeTopic::Jobs, None);",
-        5,
-        "v4 has THREE queue-service publishes; v5 has five sites for them, \
+        6,
+        "v4 has THREE queue-service publishes; v5 has six sites for them, \
          because v4's one `enqueueJob` is `enqueue_job` + \
-         `enqueue_job_with_priority` + the blocking render enqueue's \
-         in-transaction mint here. Plus the memory-extraction batch and the \
-         if-it-took cancel.",
+         `enqueue_job_with_priority` + TWO in-transaction mints that bypass \
+         it (the blocking render enqueue, and P4.82's blocking \
+         head-and-shoulders backfill enqueue, which the boot-repair write \
+         closure calls while it already holds the writer). Plus the \
+         memory-extraction batch and the if-it-took cancel.",
     ),
     (
         "crates/quilltap-core/src/services/job_runner.rs",

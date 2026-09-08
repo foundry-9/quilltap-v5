@@ -1079,3 +1079,48 @@ pub async fn run_character_wizard_streaming<CMP: CompletionProvider>(
         }
     }
 }
+
+// === P4.82 ===
+/// v4's `generateField` as an EXPORT for the
+/// `CHARACTER_HEADSHOULDERS_BACKFILL` job handler (v4
+/// `lib/background-jobs/handlers/character-headshoulders-backfill.ts` imports
+/// it from this very module).
+///
+/// This is a call-shape adapter, NOT a second implementation: it assembles the
+/// private [`WizardCallCtx`] from v4's ten `generateField` arguments and
+/// delegates to the one [`generate_field`] the wizard's own five generators
+/// use, so the temperature, the `No response from model` refusal, the
+/// `CHARACTER_WIZARD` log row and the trailing trim can never diverge between
+/// the two callers. The wizard's own path is untouched — its families are the
+/// proof.
+///
+/// `profile_parameters` is `Option<Value>` because v4's tenth argument is
+/// optional and the backfill handler does NOT pass it (so the wire carries no
+/// profile parameters on that path).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn generate_field_for_caller<CMP: CompletionProvider>(
+    db: &Db,
+    completion: &CMP,
+    provider: &str,
+    base_url: Option<&str>,
+    model_name: &str,
+    context_prompt: &str,
+    field_prompt: &str,
+    max_tokens: i64,
+    user_id: &str,
+    character_id: Option<&str>,
+    profile_parameters: Option<Value>,
+) -> Result<String, String> {
+    let call = WizardCallCtx {
+        db,
+        completion,
+        provider: provider.to_string(),
+        base_url: base_url.map(str::to_string),
+        model_name: model_name.to_string(),
+        profile_parameters,
+        user_id,
+        character_id,
+    };
+    generate_field(&call, context_prompt, field_prompt, max_tokens).await
+}
+// === end P4.82 ===

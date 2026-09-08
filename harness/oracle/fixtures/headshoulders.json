@@ -1,0 +1,321 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "frozenNowMs": 1773576000000,
+  "missingCharacterId": "b3000082-0000-4000-8000-0000000000ff",
+  "users": [
+    {
+      "id": "e0000082-0000-4000-8000-000000000001",
+      "username": "friday",
+      "name": "Friday"
+    },
+    {
+      "id": "e0000082-0000-4000-8000-000000000002",
+      "username": "localop",
+      "name": "Local Op"
+    },
+    {
+      "id": "e0000082-0000-4000-8000-000000000003",
+      "username": "keyless",
+      "name": "Keyless"
+    },
+    {
+      "id": "e0000082-0000-4000-8000-000000000004",
+      "username": "profileless",
+      "name": "Profileless"
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "a0000082-0000-4000-8000-000000000001",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "label": "cheap-key",
+      "provider": "OPENAI",
+      "key_value": "sk-synthetic-cheap-key",
+      "isActive": true,
+      "lastUsed": null
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "c0000082-0000-4000-8000-000000000001",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "name": "Primary Mock",
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "primary-model",
+      "baseUrl": "http://127.0.0.1:1/v1",
+      "apiKeyId": null,
+      "isDefault": true
+    },
+    {
+      "id": "c0000082-0000-4000-8000-000000000002",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "name": "Cheap Mock",
+      "provider": "OPENAI",
+      "modelName": "cheap-model",
+      "baseUrl": null,
+      "apiKeyId": "a0000082-0000-4000-8000-000000000001",
+      "isDefault": false
+    },
+    {
+      "id": "c0000082-0000-4000-8000-000000000003",
+      "userId": "e0000082-0000-4000-8000-000000000002",
+      "name": "Local Ollama",
+      "provider": "OLLAMA",
+      "modelName": "llama-mock",
+      "baseUrl": "http://127.0.0.1:11434",
+      "apiKeyId": null,
+      "isDefault": true
+    },
+    {
+      "id": "c0000082-0000-4000-8000-000000000004",
+      "userId": "e0000082-0000-4000-8000-000000000003",
+      "name": "Keyless Remote",
+      "provider": "OPENAI",
+      "modelName": "keyless-model",
+      "baseUrl": null,
+      "apiKeyId": null,
+      "isDefault": true
+    }
+  ],
+  "chatSettings": [
+    {
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false,
+        "userDefinedProfileId": null,
+        "defaultCheapProfileId": "c0000082-0000-4000-8000-000000000002"
+      }
+    }
+  ],
+  "characters": [
+    {
+      "id": "b3000082-0000-4000-8000-000000000001",
+      "name": "Vaultless Vera",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "dropVault": true,
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "a seed that the vault can never hold"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000002",
+      "name": "Fallthrough Fenwick",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "fullDescription": "a prose-only appearance paragraph, the LAST arm of the seed fall-through"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000003",
+      "name": "Portrait Prudence",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "headAndShouldersPrompt": "narrow face, copper braid, high oilcloth collar",
+        "mediumPrompt": "tall woman with a copper braid and ink-stained cuffs"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000004",
+      "name": "Whitespace Winifred",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "headAndShouldersPrompt": "   \n\t ",
+        "mediumPrompt": "small woman with cropped silver hair and a brass monocle"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000005",
+      "name": "Seedless Silas",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000006",
+      "name": "Blankseed Bartholomew",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "  \n  "
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000007",
+      "name": "Eligible Esme",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "shortPrompt": "young woman, dark hair, goggles",
+        "mediumPrompt": "young woman with wind-tangled dark hair, sharp grey eyes, a soot smudge on one cheek",
+        "longPrompt": "a longer tier that must survive the merge",
+        "completePrompt": "the complete tier that must survive the merge",
+        "fullDescription": "the full prose description that must survive the merge"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000008",
+      "name": "Pending Persimmon",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "shortPrompt": "wiry man, close-cropped hair"
+      },
+      "pendingBackfillJobId": "70000082-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "b3000082-0000-4000-8000-000000000009",
+      "name": "Local Lucinda",
+      "userId": "e0000082-0000-4000-8000-000000000002",
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "broad-shouldered woman with a weathered face and a leather cap"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-00000000000a",
+      "name": "Keyless Kester",
+      "userId": "e0000082-0000-4000-8000-000000000003",
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "gaunt man with a shaved head and a brass ear-cuff"
+      }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-00000000000b",
+      "name": "Profileless Perpetua",
+      "userId": "e0000082-0000-4000-8000-000000000004",
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "stout woman with a grey bun and half-moon spectacles"
+      }
+    }
+  ],
+  "handlerCases": [
+    {
+      "name": "not_found",
+      "character": "missing",
+      "user": 1
+    },
+    {
+      "name": "no_pd",
+      "character": 1,
+      "user": 1
+    },
+    {
+      "name": "prompt_present",
+      "character": 3,
+      "user": 1
+    },
+    {
+      "name": "prompt_whitespace",
+      "character": 4,
+      "user": 1,
+      "reply": {
+        "text": "oval face, cropped silver hair, brass monocle on a chain, plain grey collar"
+      }
+    },
+    {
+      "name": "no_seed",
+      "character": 5,
+      "user": 1
+    },
+    {
+      "name": "seed_whitespace",
+      "character": 6,
+      "user": 1
+    },
+    {
+      "name": "seed_fallthrough_full_description",
+      "character": 2,
+      "user": 1,
+      "reply": {
+        "text": "square jaw, weathered olive skin, deep-set hazel eyes, canvas collar"
+      }
+    },
+    {
+      "name": "seed_short_prompt",
+      "character": 8,
+      "user": 1,
+      "reply": {
+        "text": "lean face, close-cropped dark hair, wary brown eyes, frayed wool collar"
+      }
+    },
+    {
+      "name": "no_profiles",
+      "character": 11,
+      "user": 4
+    },
+    {
+      "name": "no_api_key",
+      "character": 10,
+      "user": 3
+    },
+    {
+      "name": "local_selection",
+      "character": 9,
+      "user": 2,
+      "reply": {
+        "text": "broad face, wind-burnt cheeks, pale blue eyes, worn leather cap brim"
+      }
+    },
+    {
+      "name": "provider_throws",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "throws": "canned provider failure"
+      }
+    },
+    {
+      "name": "provider_empty_content",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "text": ""
+      }
+    },
+    {
+      "name": "answer_all_whitespace",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "text": "   \n\t  "
+      }
+    },
+    {
+      "name": "astral_even_boundary",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "repeat": "A",
+        "count": 496,
+        "suffix": "😀😀😀"
+      }
+    },
+    {
+      "name": "astral_split_pair",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "repeat": "A",
+        "count": 499,
+        "suffix": "😀😀"
+      }
+    },
+    {
+      "name": "happy_path",
+      "character": 7,
+      "user": 1,
+      "reply": {
+        "text": "heart-shaped face, warm olive skin, sharp grey eyes, wind-tangled dark hair to the jaw, a soot smudge on one cheek, high buttoned collar of oiled canvas"
+      }
+    }
+  ]
+}

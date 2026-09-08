@@ -1483,3 +1483,99 @@ mod activity_snapshot_tests {
         );
     }
 }
+
+// === P4.82 ===
+/// v4 `enqueueCharacterHeadShouldersBackfill` (`queue-service.ts:604-651`) —
+/// enqueue a `CHARACTER_HEADSHOULDERS_BACKFILL` job for one character, deduping
+/// against every in-flight (`PENDING` ∪ `PROCESSING`) job of that type for the
+/// same `(userId, characterId)`. Background priority (`-1`); generation is
+/// idempotent, so callers may raise `max_attempts` — the startup scan asks for
+/// 3 so a cold job child retries instead of burning its one shot.
+///
+/// Returns `(jobId, isNew)`.
+///
+/// **Blocking, over `&Connection`, on purpose** — the
+/// `enqueue_conversation_render_blocking` precedent. v4's ONLY caller is the
+/// startup scan ([`crate::services::headshoulders_backfill_enqueue`]),
+/// which in v5 runs inside the boot-repair write closure; an `async`
+/// `Db::write` form would deadlock against the writer that closure already
+/// holds. The order's prescribed `async` shape would have needed a second
+/// implementation to serve that one caller, so the file's own idiom won and the
+/// deviation is recorded (`an-orders-prescribed-shape-may-fight-the-files-idiom`).
+///
+/// A dedupe read that ERRORS warns and falls through to the enqueue (v4's
+/// try/catch: double work beats none).
+pub fn enqueue_character_headshoulders_backfill_blocking(
+    main: &rusqlite::Connection,
+    user_id: &str,
+    character_id: &str,
+    max_attempts: f64,
+) -> Result<(String, bool), DbError> {
+    let repo = crate::db::background_jobs::BackgroundJobsRepository::new(main);
+    // v4 reads PENDING and PROCESSING separately and concatenates, in that
+    // order — reproduced rather than collapsed into one `IN (…)`, because the
+    // helper returns the FIRST match and each read is independently capped at
+    // 100 newest-first.
+    let in_flight = repo
+        .find_by_user_id(user_id, Some("PENDING"))
+        .and_then(|mut pending| {
+            let processing = repo.find_by_user_id(user_id, Some("PROCESSING"))?;
+            pending.extend(processing);
+            Ok(pending)
+        });
+    match in_flight {
+        Ok(jobs) => {
+            let existing = jobs.iter().find(|j| {
+                j.job_type == "CHARACTER_HEADSHOULDERS_BACKFILL"
+                    && serde_json::from_str::<Value>(&j.payload)
+                        .ok()
+                        .and_then(|p| {
+                            p.get("characterId")
+                                .and_then(Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .as_deref()
+                        == Some(character_id)
+            });
+            if let Some(existing) = existing {
+                return Ok((existing.id.clone(), false));
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "[HeadShouldersBackfill] Failed to check for existing jobs during enqueue"
+            );
+            // Fall through and enqueue anyway.
+        }
+    }
+
+    let now = now_iso();
+    let id = uuid::Uuid::new_v4().to_string();
+    let create = BjCreate {
+        user_id: user_id.to_string(),
+        job_type: "CHARACTER_HEADSHOULDERS_BACKFILL".to_string(),
+        status: Some("PENDING".to_string()),
+        payload: serde_json::json!({ "characterId": character_id }),
+        priority: -1.0,
+        attempts: 0.0,
+        max_attempts,
+        last_error: None,
+        scheduled_at: now.clone(),
+        started_at: None,
+        completed_at: None,
+    };
+    let opts = CreateOptions {
+        id: id.clone(),
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    repo.create(&create, &opts)?;
+    // A fourth v5 site for v4's one `enqueueJob` publish: this enqueue mints its
+    // row inside the caller's transaction rather than going through
+    // `enqueue_job`, so it would otherwise be an enqueue no client hears about.
+    publish_realtime(RealtimeTopic::Jobs, None);
+    ensure_processor_running();
+    Ok((id, true))
+}
+// === end P4.82 ===

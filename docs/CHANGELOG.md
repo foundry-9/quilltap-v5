@@ -12,6 +12,67 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(jobs): the CHARACTER_HEADSHOULDERS_BACKFILL handler + the boot-time scan, both differentiated
+
+_Versions: core 0.0.835, harness 0.0.725._
+
+Ports v4's `handleCharacterHeadShouldersBackfill`
+(`lib/background-jobs/handlers/character-headshoulders-backfill.ts`) — the last
+job type still answered by the runner's "recognized but not yet available" loud
+fallback. The handler generates the `headAndShouldersPrompt` physical-description
+tier for one character that lacks one, through the wizard's own `generateField`
+(exposed by a fenced call-shape adapter over the single private implementation,
+so the wizard's path is untouched), and writes the COMPLETE merged
+`physicalDescription` back through the vault overlay — a partial write would null
+the other five tiers, because the vault's renderer re-renders every key.
+
+Delivers the committed `headshoulders-{main,mount}.db` fixture pair and its
+builder: four users, one per cheap-LLM resolution arm, and eleven characters, one
+per classification arm. The measurement the order asked for is recorded — the
+existing `character-generators` pair carries two characters and one user, so it
+can reach none of these arms.
+
+New family `headshoulders_backfill_tier3_equivalence`, 17 cases over v4's REAL
+handler with the provider canned and the request RECORDED: the prompts are
+comparands (`buildContextPrompt`'s seed placement, the head-and-shoulders field
+prompt, and the ABSENT tenth `generateField` argument), as are the read-back
+`physicalDescription`, the rendered `physical-prompts.json` bytes, the
+`CHARACTER_WIZARD` `llm_logs` row and all six log lines.
+
+Three things measured rather than assumed: v4's `Failed to select cheap LLM`
+catch is DEAD CODE (neither `cheap-llm.ts` nor `cheap-llm-user-selection.ts`
+contains a `throw`), so the sentence is kept as a constant and no v5 path can
+reach it; a vault-linked character always reads back a `physicalDescription`
+OBJECT, so the `!pd` arm is reachable only for a vault-less character; and
+`substring(0, 500)` splitting a surrogate pair leaves v4 holding a LONE HIGH
+SURROGATE that a Rust `String` cannot — pinned as a both-directions divergence
+over lossless UTF-16 unit arrays, with the sibling even-boundary case a plain
+equality.
+
+Also ports the queue helper `enqueueCharacterHeadShouldersBackfill` (the
+PENDING ∪ PROCESSING dedupe, the warn-and-fall-through on a failed lookup,
+priority `-1`) and the one-time startup scan `enqueueHeadShouldersBackfill`,
+with a second family `headshoulders_backfill_enqueue_equivalence` over v4's
+REAL scan: a fresh run (11 scanned / 7 enqueued / 4 skipped), the same instance
+run twice, and the flag PRE-SET — the cross-app case that matters most, since
+`instance_settings['headshoulders_backfill_enqueued_v1']` is v4's own row and
+v4 has already written it on every instance it has booted since the feature
+shipped. The helper is the `enqueue_conversation_render_blocking` shape rather
+than the order's prescribed `async` one: the scan's only caller runs inside the
+boot-repair write closure, so an `async` `Db::write` would deadlock against the
+writer it already holds.
+
+The scan's `characterDocumentMountPointId` gate is recorded as a mutation that
+SURVIVES BY DESIGN — a vault-less character's `physicalDescription` reads back
+omitted, so the next gate skips it anyway, and v4 can produce no shape that
+tells them apart. Every other gate reddens: priority, the dedupe read,
+`markRun`, the untrimmed `hasSeed`, and `maxAttempts: 3`.
+
+The gate's own catch: the guard `every_realtime_publish_site_is_present` went
+red on the new in-transaction enqueue's `publish_realtime` — the census now
+records six queue-service sites for v4's three, naming both in-transaction
+mints.
+
 #### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
 
 _Docs-only change._

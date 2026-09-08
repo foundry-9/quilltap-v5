@@ -215,3 +215,11 @@ pub mod markdown_transcript;
 // === P4.9I2A: the help/HelpChat server family ===
 pub mod help_chat;
 // === end P4.9I2A ===
+// === P4.82 ===
+/// The `CHARACTER_HEADSHOULDERS_BACKFILL` job handler and the one-time
+/// boot-time scan that enqueues it (v4
+/// `lib/background-jobs/handlers/character-headshoulders-backfill.ts` +
+/// `lib/startup/enqueue-headshoulders-backfill.ts`).
+pub mod headshoulders_backfill_enqueue;
+pub mod headshoulders_backfill_job;
+// === end P4.82 ===
