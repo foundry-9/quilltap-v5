@@ -6628,6 +6628,99 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) — ORDERED 2026-09-08
+
+**Baseline `2f4254b42`; v4 `main` HEAD `25f534c0b` (FOUR past — the
+progressions plan doc, the character-progressions feature, a version bump,
+and the bug-126 lock fix), v4 `bugfix` tip `1a2b2164c` unmoved; the
+checkout on `main` and clean; regen rule PIN REQUIRED (every regen from a
+lane-unique detached worktree at `25f534c0b`, neutrality regens at
+`2f4254b42`; a lane that finds the §2 probe failing STOPs).** The standing
+rule holds: drift debt clears before new scope, so the round IS the
+catch-up. Round name in the work orders: "the `25f534c0b` progressions +
+bug-126 drift catch-up round". The round-wide §C wire contract, the §R
+meeting points and the Ownership table are spliced byte-identically into
+every order (md5-verified at planning).
+
+- **P4.D166 — bug 126, the instance lock** (`work-orders/p4.d166-bug126-
+  instance-lock-hostname.md`): v5 MEASURABLY has the defect at six
+  hostname-comparison sites, incl. the heartbeat tick whose caller exits
+  the process — a v5 host on a macOS box with `scutil --get HostName` unset
+  can die ~60 s after launch. The port: ownership as a PID + `startedAt`
+  snapshot compared by `is_still_our_lock` (hostname a label, refreshed
+  each tick), the acquire cascade deciding a foreign-hostname lock by
+  heartbeat freshness for EVERY environment (closing v5's own fail-OPEN
+  claim), the renamed-process release, the loss-teardown audit, the CLI's
+  shared `assess_lock` with v4's post-fix sentences (Tier R red-first —
+  the `foreign local` / `retired lima` comparands move; the foreign cases
+  switch to `dead_pid()`), the `4097626c6` NO-PORT ratification.
+  Independent; **LIVE-CRITICAL — lands first if any lane finishes early.**
+- **P4.D167 — the progressions engine** (`work-orders/p4.d167-
+  progressions-engine.md`): `quilltap_core::progressions::{schema,engine}`
+  — the reserved-key record with Zod 4.5.4's measured issue sentences, the
+  fail-soft reader, `deriveProgression` / the seven cadence rules /
+  `formatSpan` / the renderer (the en-US `dateStyle: medium` +
+  U+202F trap named) / `flattenProgressions` / `inferIncrement` /
+  `parseProgressKey` — tier-1 exact over a NEW committed corpus that v4's
+  REAL `lib/progressions/*` answers at the pin; the `d307a4164` NO-PORT
+  ratification. **The BASE of the stack: small, finishes first, frozen at
+  its tip.**
+- **P4.D168 — the prompt path** (`work-orders/p4.d168-progressions-prompt-
+  path.md`, stacked on P4.D167): `prompt_section.rs` (the chokepoint with
+  v4's three log lines), `core_whisper::find_last_own_turn_ms`,
+  `ContextCharacter.metadata` threaded from the hydrated character (v5's
+  struct carries none today), the `build_context` trailing section after
+  Suparṇā's mail / before the turn-skip note with ONE memoised event read
+  shared with the Core trigger (a read-count change on a ported path,
+  pinned by a counting seam), skipped in continue mode, the `else if`
+  union; the FORCED greeting and Carina reports; the negative guarantee
+  (no cache-version move, both goldens unmoved); the build-context
+  tier-3 corpus widened RED-FIRST to SEE the feature; **all seven `help/`
+  files re-vendored at `25f534c0b`** (incl. bug 126's
+  `database-protection.md` — one lane, one sha).
+- **P4.D169 — the Pascal family** (`work-orders/p4.d169-progressions-
+  pascal-server.md`, stacked on P4.D167, parallel with P4.D168): the
+  `progress` read subject (placeholders, `when.progress`, the gate's
+  second sheet with `metadata` now optional), `{{now}}`, the
+  `progress.<id>.<field>` effect target with the applier's fold / create /
+  normalise / validate / rollback / `updatedAt` stamp, the vocabulary's
+  three new keys (the whole-object family goes red-first by design), ONE
+  `now_ms` per run at all four entrances, the preview's `progress` key, the
+  preamble sentence — and a NEW `pascal_side_effects_equivalence` family
+  (v5 has never had one for the applier), landed first over the existing
+  arms.
+- **P4.D170 — the SPA** (`work-orders/p4.d170-progressions-spa.md`, from
+  `main`, bound only by §C): the client-safe engine + schema twins with
+  v4's suites as parity specs, the Progressions card + editor modal + RMW
+  save hook through the EXISTING whole-metadata character PUT (no new
+  verb), the Workbench's `progress` subject/target/placeholder affordances
+  + the bench's derived list, the run popup's progression lines, the
+  `tool-draft.ts` twin, both `public/schemas/` files re-vendored with a
+  NEW harness guard (the ledger's standing hazard 10 — the one UNGUARDED
+  vendored artifact — closed), two new spec files with the editor beats
+  LIVE and the server-dependent beats gated on `P4D168_SERVER_LANDED` /
+  `P4D169_SERVER_LANDED`.
+
+**Deliberately left out:** every phase-4 candidate that is not drift (the
+census's honest totality, the present-but-null lead, the `CaptureLayer`
+consolidation, the sweep driver's SHELL_START class, the `#OLD` version
+comments, the standing human-only 💸 items — the Brahma deep query,
+dedup/summaries, #101, the re-measured compression row); a hostname SEAM
+(v4 landed none — the comparison is gone, and the bug-126 shape is
+reproduced by rewriting the lock file); a server-side `override_instance_
+lock` (v5's CLI deletes the file; recorded as structural); story-clock
+mapping (v4 deferred it).
+
+Recommended arrangement: P4.D166 and P4.D167 start together (two
+worktrees); when P4.D167's gate is green and its tip sha is recorded,
+P4.D168 and P4.D169 start in parallel from that tip (two more worktrees);
+P4.D170 starts with the first pair. Five worktrees, `CARGO_INCREMENTAL=0`,
+one Playwright at a time (P4.D170 only). Unify in the order D166, D167,
+D168, D169, D170; the unifier flips the two gate constants, runs the §C
+name-for-name diff, mirrors the design doc into `docs/v4/`, moves the
+baseline to `25f534c0b`, and records the P4.D170 guard as closing hazard
+10.
+
 ## The generator follow-ups + prompt-templates round (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86-conditional) — ORDERED 2026-09-07
 
 **Baseline `2f4254b42`; v4 `main` HEAD AT the baseline, v4 `bugfix` tip

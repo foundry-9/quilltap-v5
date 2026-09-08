@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-08 — docs(setupphase): the `25f534c0b` progressions + bug-126 drift catch-up round — five work orders, the ledger's four rows ORDERED
+
+_Docs-only change._
+
+Plans the next round from the drift ledger: the four commits v4 landed past
+the `2f4254b42` baseline become five work orders under
+`docs/developer/porting/work-orders/`. P4.D166 ports v4's bug-126 fix to the
+instance lock — v5 compares a freshly read hostname at six sites, including
+the heartbeat tick whose caller exits the process, so a host on a macOS box
+with no fixed hostname can die a minute after launch; the port makes
+ownership a PID + `startedAt` snapshot, decides a foreign lock by heartbeat
+freshness for every environment, and moves the CLI's `--lock-status` /
+`--lock-clean` onto one `assess_lock`. P4.D167 lands the pure character-
+progressions engine as `quilltap_core::progressions`, tier-1 exact against
+v4's real module over a new committed corpus; P4.D168 and P4.D169 stack on
+its tip and land the prompt path (the trailing report after Suparṇā's mail,
+the forced greeting and Carina reports, one memoised event read, and all
+seven `help/` files re-vendored) and the Pascal family (the `progress`
+read/gate/template/effect family, `{{now}}`, the applier's fold and rollback,
+the vocabulary's three new keys, plus a side-effects differential family v5
+never had). P4.D170 is the SPA: the Progressions card and editor saving
+through the existing whole-metadata character PUT, the Workbench and run-
+popup affordances, the client-safe twins, and both `public/schemas/` files
+re-vendored behind a new guard that closes the ledger's one unguarded
+vendored artifact.
+
+The drift ledger's four §3 rows are marked ORDERED; `phase-4.md` gains the
+round's ORDERED section. Regen rule unchanged: pin required at `25f534c0b`.
+
 #### 2026-09-08 — docs(drift): bug 126 joins the pending drift — a defect v5 measurably has, and it kills the server
 
 _Docs-only change._
