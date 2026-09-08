@@ -11,17 +11,32 @@
 //! source context and the step prompts as bytes), and the `[AIImport]` log
 //! lines.
 //!
-//! ## The validation pin — a RECORDED DIVERGENCE, both directions
+//! ## The validation / repair steps (P4.86)
 //!
-//! v4 validates the assembled export through ajv and answers
-//! `step_complete validation` (`Validation passed`) for every well-formed
-//! export; v5 carries no JSON-Schema engine and answers a NAMED
-//! `step_error validation` with `errors.validation` set (the runner's module
-//! header). The comparison therefore (a) asserts v4's `[step_start,
-//! step_complete{Validation passed}]` pair and v5's `[step_start,
-//! step_error{VALIDATION_UNAVAILABLE}]` pair explicitly on every successful
-//! run, then (b) strips both pairs and v5's `errors.validation` before the
-//! byte diff. When an engine lands, (a) trips and the pin retires.
+//! Both are ported, so the frames, the five `[AIImport]` log lines and the
+//! whole repair loop compare as PLAIN EQUALITIES. P4.9K2's
+//! `VALIDATION_UNAVAILABLE` pins are retired. What survives is the engine
+//! divergence underneath, and it is carried rather than hidden:
+//!
+//! * ajv reports one extra root error (`/: must match "then" schema`) per
+//!   failed `allOf[i].then` branch, which the `jsonschema` crate does not.
+//!   So every ERROR COUNT differs by that much. The counts reach five places
+//!   — the `step_error validation` frame, `errors.validation`, and the
+//!   `errorCount` / `remainingErrors` bags of three log lines — and each is
+//!   rewritten to `<n>` for the byte diff while BOTH sides' raw values are
+//!   collected and asserted against the committed
+//!   [`V4_VALIDATION_COUNTS`] / [`V5_VALIDATION_COUNTS`] tables. A count
+//!   moving on either side reddens.
+//! * the error STRINGS themselves (the two log bags' `slice(0, 5)` and the
+//!   repair prompt's `errors.join('\n')`) differ in wording as well, so they
+//!   are canonicalized to the sorted SET of instance PATHS with ajv's wrapper
+//!   struck — the comparand `qtap_schema_validate_equivalence` proves equal
+//!   row by row. The rest of the repair prompt (v4's template, the
+//!   `JSON.stringify(sectionsToRepair, null, 2)` block, the section-key list)
+//!   is compared as BYTES.
+//!
+//! Both sides must reach (or skip) the validation step together — the
+//! `2f4254b42` §3 review's assert, kept.
 //!
 //! `appVersion`: v4 stamps its `package.json` version, v5 the engine's; both
 //! are asserted and then normalized.
@@ -58,7 +73,7 @@ use quilltap_core::api::generators_wizard::{
 };
 use quilltap_core::api::types::{ErrorKind, Event, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::generators::ai_import::{run_ai_import_streaming, VALIDATION_UNAVAILABLE};
+use quilltap_core::generators::ai_import::run_ai_import_streaming;
 use quilltap_core::generators::wizard::{OnProgress, WizardResult};
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionError, CompletionParams, CompletionProvider,
@@ -73,7 +88,75 @@ use tokio::sync::broadcast;
 /// The version stamp this harness hands the runner (the engine passes its own
 /// in production); v4's oracle stamps the pin's `package.json` version.
 const V5_APP_VERSION: &str = "0.0.0-harness";
-const V4_APP_VERSION: &str = "4.10.0-dev.0";
+/// v4's ROOT `package.json` version, which its `ai-import.service.ts` stamps
+/// into the manifest. v4 bumps it on EVERY commit, so this constant moves with
+/// every regen — that is by design: the assert proves the stamp reached the
+/// manifest on both sides before the value is normalized away.
+const V4_APP_VERSION: &str = "4.10.0-dev.5";
+
+/// Every engine-dependent count v4 (ajv) puts on the wire, in encounter order.
+/// See the module header: the entries that differ from [`V5_VALIDATION_COUNTS`]
+/// differ by ajv's `if/then` root wrapper, and by nothing else.
+const V4_VALIDATION_COUNTS: &[&str] = &[
+    "validation_repair_succeeds/frame = 3",
+    "validation_repair_succeeds/warnErrorCount = 3",
+    "validation_repair_fails_then_succeeds/frame = 3",
+    "validation_repair_fails_then_succeeds/warnErrorCount = 3",
+    "validation_repair_fails_then_succeeds/remaining#1 = 11",
+    "validation_repair_fails_twice/frame = 3",
+    "validation_repair_fails_twice/errorsValidation = 3",
+    "validation_repair_fails_twice/warnErrorCount = 3",
+    "validation_repair_fails_twice/remaining#1 = 11",
+    "validation_repair_fails_twice/remaining#2 = 11",
+    "validation_repair_fails_twice/couldNotRepairCount = 3",
+    "validation_no_repairable_sections/frame = 1",
+    "validation_no_repairable_sections/errorsValidation = 1",
+    "validation_no_repairable_sections/warnErrorCount = 1",
+    "validation_no_repairable_sections/couldNotRepairCount = 1",
+    "validation_repair_call_throws/frame = 3",
+    "validation_repair_call_throws/errorsValidation = 3",
+    "validation_repair_call_throws/warnErrorCount = 3",
+    "validation_repair_call_throws/couldNotRepairCount = 3",
+    "validation_repair_reply_unparseable/frame = 3",
+    "validation_repair_reply_unparseable/warnErrorCount = 3",
+    "validation_repair_reply_omits_section/frame = 3",
+    "validation_repair_reply_omits_section/errorsValidation = 3",
+    "validation_repair_reply_omits_section/warnErrorCount = 3",
+    "validation_repair_reply_omits_section/remaining#1 = 3",
+    "validation_repair_reply_omits_section/remaining#2 = 3",
+    "validation_repair_reply_omits_section/couldNotRepairCount = 3",
+];
+
+/// The same slots as v5 (the `jsonschema` crate) reports them.
+const V5_VALIDATION_COUNTS: &[&str] = &[
+    "validation_repair_succeeds/frame = 2",
+    "validation_repair_succeeds/warnErrorCount = 2",
+    "validation_repair_fails_then_succeeds/frame = 2",
+    "validation_repair_fails_then_succeeds/warnErrorCount = 2",
+    "validation_repair_fails_then_succeeds/remaining#1 = 10",
+    "validation_repair_fails_twice/frame = 2",
+    "validation_repair_fails_twice/errorsValidation = 2",
+    "validation_repair_fails_twice/warnErrorCount = 2",
+    "validation_repair_fails_twice/remaining#1 = 10",
+    "validation_repair_fails_twice/remaining#2 = 10",
+    "validation_repair_fails_twice/couldNotRepairCount = 2",
+    "validation_no_repairable_sections/frame = 1",
+    "validation_no_repairable_sections/errorsValidation = 1",
+    "validation_no_repairable_sections/warnErrorCount = 1",
+    "validation_no_repairable_sections/couldNotRepairCount = 1",
+    "validation_repair_call_throws/frame = 2",
+    "validation_repair_call_throws/errorsValidation = 2",
+    "validation_repair_call_throws/warnErrorCount = 2",
+    "validation_repair_call_throws/couldNotRepairCount = 2",
+    "validation_repair_reply_unparseable/frame = 2",
+    "validation_repair_reply_unparseable/warnErrorCount = 2",
+    "validation_repair_reply_omits_section/frame = 2",
+    "validation_repair_reply_omits_section/errorsValidation = 2",
+    "validation_repair_reply_omits_section/warnErrorCount = 2",
+    "validation_repair_reply_omits_section/remaining#1 = 2",
+    "validation_repair_reply_omits_section/remaining#2 = 2",
+    "validation_repair_reply_omits_section/couldNotRepairCount = 2",
+];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -375,83 +458,156 @@ fn remap_minted(serialized: &str) -> String {
     .into_owned()
 }
 
-/// The validation pin (module header): assert each side's own pair, then
-/// strip it — and v5's `errors.validation` — so the rest diffs as bytes.
-fn strip_validation(events: &mut Vec<Value>, side: &str) -> bool {
-    let idx = events
+/// ajv's root wrapper for a failed `allOf[i].then` branch (the whole measured
+/// engine divergence — `qtap_schema_validate_equivalence` grades it).
+const AJV_THEN_WRAPPER: &str = "must match \"then\" schema";
+
+/// Whether the run reached step 9 at all (the `2f4254b42` §3 assert: a v5 that
+/// stopped emitting the pair must not compare equal to a v4 that emitted it).
+fn reached_validation(events: &[Value]) -> bool {
+    events
         .iter()
-        .position(|e| e["type"] == json!("step_start") && e["step"] == json!("validation"));
-    let Some(i) = idx else {
-        return false;
-    };
-    let outcome = events.get(i + 1).cloned().unwrap_or(Value::Null);
-    match side {
-        "v4" => assert_eq!(
-            outcome,
-            json!({"type": "step_complete", "step": "validation", "snippet": "Validation passed"}),
-            "v4's validation outcome moved — the pin retires when v5 gains an engine"
-        ),
-        _ => assert_eq!(
-            outcome,
-            json!({"type": "step_error", "step": "validation", "error": VALIDATION_UNAVAILABLE}),
-            "v5's validation refusal moved"
-        ),
+        .any(|e| e["type"] == json!("step_start") && e["step"] == json!("validation"))
+}
+
+/// An error list (`errors.slice(0, 5)`, or the repair prompt's
+/// `errors.join('\n')`) canonicalized to the comparand the two engines agree
+/// on: ajv's `if/then` wrapper struck, each remaining error reduced to its
+/// instance PATH, sorted and deduplicated.
+fn canon_error_paths(errors: &[String]) -> Vec<String> {
+    let mut paths: Vec<String> = errors
+        .iter()
+        .filter_map(|e| match e.split_once(": ") {
+            Some((path, message)) if message != AJV_THEN_WRAPPER => Some(path.to_string()),
+            Some(_) => None,
+            None => Some(e.clone()),
+        })
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn canon_error_paths_value(v: &Value) -> Value {
+    let list: Vec<String> = v
+        .as_array()
+        .map(|a| a.iter().map(to_plain_string).collect())
+        .unwrap_or_default();
+    json!(canon_error_paths(&list))
+}
+
+fn to_plain_string(v: &Value) -> String {
+    v.as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| v.to_string())
+}
+
+/// The repair prompt's error block canonicalized in place; everything else in
+/// v4's template (the `JSON.stringify(sectionsToRepair, null, 2)` block and
+/// the section-key list) is left as BYTES.
+fn canon_repair_prompt(text: &str) -> Option<String> {
+    const HEAD: &str = "Validation errors:\n";
+    const TAIL: &str = "\n\nCurrent data (sections with errors only):";
+    if !text.contains("The following .qtap export data has validation errors.") {
+        return None;
     }
-    events.drain(i..=i + 1);
-    if side == "v5" {
+    let head_at = text.find(HEAD)? + HEAD.len();
+    let tail_at = text[head_at..].find(TAIL)? + head_at;
+    let block: Vec<String> = text[head_at..tail_at]
+        .split('\n')
+        .map(str::to_string)
+        .collect();
+    let canon = canon_error_paths(&block).join("\n");
+    Some(format!("{}{canon}{}", &text[..head_at], &text[tail_at..]))
+}
+
+/// One observed count, as `<case>/<slot> = <n>` — collected per side and
+/// asserted against the committed tables (the module header).
+fn count_row(case: &str, slot: &str, n: u64) -> String {
+    format!("{case}/{slot} = {n}")
+}
+
+/// Rewrite every place an engine-dependent COUNT or error-string list reaches
+/// the wire, collecting the raw values as it goes.
+fn canon_validation_counts(v: &mut Value, case: &str, counts: &mut Vec<String>) {
+    let frame_re = Regex::new(r"^(\d+) validation error\(s\)$").unwrap();
+    let sentence_re =
+        Regex::new(r"^Validation has (\d+) error\(s\) that could not be auto-repaired$").unwrap();
+
+    if let Some(events) = v.get_mut("events").and_then(Value::as_array_mut) {
+        for e in events.iter_mut() {
+            if e["type"] == json!("step_error") && e["step"] == json!("validation") {
+                let text = to_plain_string(&e["error"]);
+                if let Some(c) = frame_re.captures(&text) {
+                    counts.push(count_row(case, "frame", c[1].parse().unwrap()));
+                    e["error"] = json!("<n> validation error(s)");
+                }
+            }
+        }
         if let Some(done) = events.last_mut() {
-            if let Some(errors) = done.get_mut("errors").and_then(Value::as_object_mut) {
-                let removed = errors.remove("validation");
-                assert!(removed.is_some(), "v5's done carried no errors.validation");
-                if errors.is_empty() {
-                    done.as_object_mut().unwrap().remove("errors");
+            if let Some(text) = done.pointer("/errors/validation").map(to_plain_string) {
+                if let Some(c) = sentence_re.captures(&text) {
+                    counts.push(count_row(case, "errorsValidation", c[1].parse().unwrap()));
+                    done["errors"]["validation"] =
+                        json!("Validation has <n> error(s) that could not be auto-repaired");
                 }
             }
         }
     }
-    true
+
+    if let Some(lines) = v.get_mut("logLines").and_then(Value::as_array_mut) {
+        let mut attempt = 0usize;
+        for l in lines.iter_mut() {
+            let message = to_plain_string(&l["message"]);
+            match message.as_str() {
+                "[AIImport] Validation failed, attempting repair" => {
+                    let n = l["context"]["errorCount"].as_u64().expect("errorCount");
+                    counts.push(count_row(case, "warnErrorCount", n));
+                    l["context"]["errorCount"] = json!("<n>");
+                    l["context"]["errors"] = canon_error_paths_value(&l["context"]["errors"]);
+                }
+                "[AIImport] No repairable sections identified from error paths" => {
+                    l["context"]["errors"] = canon_error_paths_value(&l["context"]["errors"]);
+                }
+                "[AIImport] Repair attempt failed" => {
+                    attempt += 1;
+                    let n = l["context"]["remainingErrors"]
+                        .as_u64()
+                        .expect("remainingErrors");
+                    counts.push(count_row(case, &format!("remaining#{attempt}"), n));
+                    l["context"]["remainingErrors"] = json!("<n>");
+                }
+                "[AIImport] Could not fully repair validation errors" => {
+                    let n = l["context"]["errorCount"].as_u64().expect("errorCount");
+                    counts.push(count_row(case, "couldNotRepairCount", n));
+                    l["context"]["errorCount"] = json!("<n>");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some(calls) = v.get_mut("calls").and_then(Value::as_array_mut) {
+        for call in calls.iter_mut() {
+            let Some(messages) = call.get_mut("messages").and_then(Value::as_array_mut) else {
+                continue;
+            };
+            for m in messages.iter_mut() {
+                let text = to_plain_string(&m["content"]);
+                if let Some(canon) = canon_repair_prompt(&text) {
+                    m["content"] = json!(canon);
+                }
+            }
+        }
+    }
 }
 
-/// The refusal's own log line (v5-only, beside the frame pair): present
-/// exactly once on every run that reached validation, never otherwise; then
-/// stripped so the remaining lines diff as bytes.
-fn strip_validation_log_line(log_lines: &mut Vec<Value>, side: &str, reached_validation: bool) {
-    let is_refusal = |l: &Value| {
-        l["message"]
-            .as_str()
-            .is_some_and(|m| m.contains("Validation unavailable"))
-    };
-    let count = log_lines.iter().filter(|l| is_refusal(l)).count();
-    match side {
-        "v4" => assert_eq!(count, 0, "v4 has no validation-unavailable line"),
-        _ => assert_eq!(
-            count,
-            usize::from(reached_validation),
-            "v5's validation-unavailable line must accompany the frame pair exactly once"
-        ),
-    }
-    log_lines.retain(|l| !is_refusal(l));
-    // …and the refusal's `errors.validation` entry is one of the
-    // `stepsWithErrors` v5's completion line counts (v4's validation passes
-    // and adds none) — discounted here, beside the frame-side strip.
-    if side == "v5" && reached_validation {
-        let complete = log_lines
-            .iter_mut()
-            .find(|l| l["message"] == json!("[AIImport] AI character import complete"))
-            .expect("v5's completion line accompanies every validated run");
-        let n = complete["context"]["stepsWithErrors"]
-            .as_u64()
-            .expect("stepsWithErrors is a count");
-        assert!(n >= 1, "v5's stepsWithErrors must count errors.validation");
-        complete["context"]["stepsWithErrors"] = json!(n - 1);
-    }
-}
-
-fn normalize(mut v: Value, side: &str) -> (String, bool) {
+fn normalize(mut v: Value, side: &str, case: &str, counts: &mut Vec<String>) -> (String, bool) {
     canon_numbers(&mut v);
-    let mut reached_validation = false;
+    canon_validation_counts(&mut v, case, counts);
+    let mut reached = false;
     if let Some(events) = v.get_mut("events").and_then(Value::as_array_mut) {
-        reached_validation = strip_validation(events, side);
+        reached = reached_validation(events);
         if let Some(done) = events.last_mut() {
             if let Some(app) = done.pointer_mut("/result/manifest/appVersion") {
                 let want = if side == "v4" {
@@ -464,11 +620,8 @@ fn normalize(mut v: Value, side: &str) -> (String, bool) {
             }
         }
     }
-    if let Some(log_lines) = v.get_mut("logLines").and_then(Value::as_array_mut) {
-        strip_validation_log_line(log_lines, side, reached_validation);
-    }
     let serialized = serde_json::to_string_pretty(&sorted(&v)).unwrap();
-    (remap_minted(&serialized), reached_validation)
+    (remap_minted(&serialized), reached)
 }
 
 fn first_diff(got: &str, want: &str) -> String {
@@ -633,8 +786,10 @@ fn ai_import_matches_oracle() {
     );
 
     let mut failed: Vec<String> = Vec::new();
+    let (mut v4_counts, mut v5_counts): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
     let (mut model_calls, mut frames, mut validated, mut refusals, mut fatal) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut repair_attempts, mut repair_successes) = (0usize, 0usize);
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
         let got = run_case(&spec, &corpus, c);
@@ -657,6 +812,16 @@ fn ai_import_matches_oracle() {
         {
             fatal += 1;
         }
+        repair_attempts += want_row
+            .events
+            .iter()
+            .filter(|e| e["type"] == json!("step_start") && e["step"] == json!("repair"))
+            .count();
+        repair_successes += want_row
+            .events
+            .iter()
+            .filter(|e| e["type"] == json!("step_complete") && e["step"] == json!("repair"))
+            .count();
         let want = json!({
             "name": want_row.name,
             "status": want_row.status,
@@ -665,11 +830,13 @@ fn ai_import_matches_oracle() {
             "calls": want_row.calls,
             "logLines": want_row.log_lines,
         });
-        let ((g, g_reached), (w, w_reached)) = (normalize(got, "v5"), normalize(want, "v4"));
-        // The validation pin must see the refusal DISAPPEAR too: both sides
-        // reach (or skip) the validation step together, per case (the §3
-        // review's catch at the `2f4254b42` unification — a v5 that stopped
-        // emitting its pair used to compare EQUAL after the strip).
+        let ((g, g_reached), (w, w_reached)) = (
+            normalize(got, "v5", &c.name, &mut v5_counts),
+            normalize(want, "v4", &c.name, &mut v4_counts),
+        );
+        // Both sides reach (or skip) the validation step together, per case
+        // (the §3 review's catch at the `2f4254b42` unification — a v5 that
+        // stopped emitting its frames used to compare EQUAL after the strip).
         assert_eq!(
             g_reached, w_reached,
             "case {}: reached validation on one side only (v5={g_reached}, v4={w_reached})",
@@ -689,7 +856,15 @@ fn ai_import_matches_oracle() {
     );
     assert!(
         validated >= 12,
-        "the validation pin was exercised only {validated} times"
+        "only {validated} runs reached `step_complete validation`"
+    );
+    assert!(
+        repair_attempts >= 12,
+        "the repair loop was entered only {repair_attempts} times"
+    );
+    assert!(
+        repair_successes >= 3,
+        "only {repair_successes} runs reached `Repair successful`"
     );
     assert!(
         refusals >= 2,
@@ -697,13 +872,30 @@ fn ai_import_matches_oracle() {
     );
     assert!(fatal >= 4, "the oracle recorded only {fatal} fatal runs");
     eprintln!(
-        "ai_import_tier3_equivalence: {} cases, {model_calls} model calls, {frames} frames, {validated} validation pins, {refusals} refusals, {fatal} fatal runs",
+        "ai_import_tier3_equivalence: {} cases, {model_calls} model calls, {frames} frames, \
+         {validated} validations passed, {repair_attempts} repair attempts \
+         ({repair_successes} successful), {refusals} refusals, {fatal} fatal runs",
         corpus.cases.len()
     );
+    // The RECORDED engine-count divergence, printed on every run.
+    eprintln!("  validation counts — v4 (ajv) vs v5 (jsonschema):");
+    for (a, b) in v4_counts.iter().zip(v5_counts.iter()) {
+        let mark = if a == b { " " } else { "≠" };
+        eprintln!("   {mark} v4 {a:<58} v5 {b}");
+    }
     assert!(
         failed.is_empty(),
         "{} case(s) DIFFER:\n{}",
         failed.len(),
         failed.join("\n")
+    );
+
+    assert_eq!(
+        v4_counts, V4_VALIDATION_COUNTS,
+        "v4's validation counts moved — regenerate, re-measure, and update the table"
+    );
+    assert_eq!(
+        v5_counts, V5_VALIDATION_COUNTS,
+        "v5's validation counts moved — the engine or the port changed"
     );
 }

@@ -59,6 +59,7 @@ use crate::generators::generated_properties::{
 };
 use crate::generators::llm_json::parse_llm_json;
 use crate::generators::optimizer::llm_json_failure_message;
+use crate::generators::qtap_schema::validate_qtap_export;
 use crate::jsstr::js_trim;
 use crate::model::completion::{CompletionMessage, CompletionParams, CompletionProvider};
 use crate::pascal::js_value::{to_js_string, to_number};
@@ -920,22 +921,28 @@ pub fn restamp_structural_fields(data: &mut Value, now: &str) -> i64 {
 // manifest stamps (v4 `packageJson.version`; v5 stamps its own — the
 // differential normalizes the value and pins each side's, recorded).
 //
-// ## ⚠ The `validation` / `repair` steps — a NAMED REFUSAL (recorded divergence)
+// ## The `validation` / `repair` steps (P4.86)
 //
 // v4 validates the assembled export against `public/schemas/qtap-export.
 // schema.json` through ajv (`lib/validation/qtap-schema-validator.ts`) and,
-// on failure, asks the model to repair the failing sections up to twice. v5
-// carries NO JSON-Schema engine and adding one is a dependency add — a
-// STOP-and-flag under the lane's rules — so the step lands as v4's
-// `step_start validation` followed by a `step_error validation` carrying
-// [`VALIDATION_UNAVAILABLE`], `errors.validation` set to the same sentence,
-// and NO repair pass; the export is still re-stamped and returned. Where v4
-// answers `step_complete validation` (`Validation passed`) for a well-formed
-// export, v5 answers the refusal; the differential pins BOTH directions and
-// retires the pin when an engine lands.
-
-/// The named refusal the `validation` step answers in this build.
-pub const VALIDATION_UNAVAILABLE: &str = "Schema validation is not available in this build: no JSON-Schema engine is linked, so the assembled export is returned unvalidated (and unrepaired)";
+// on failure, asks the model to repair the failing sections up to
+// `MAX_REPAIR_ATTEMPTS` times. Both steps are ported:
+// `crate::generators::qtap_schema` carries the engine (the `jsonschema` crate
+// over the vendored schema, configured as v4's ajv is) and the runner below
+// carries the frames, the five log lines and the repair loop. P4.9K2's
+// `VALIDATION_UNAVAILABLE` refusal and its both-directions differential pins
+// are RETIRED.
+//
+// One divergence rides in from the engine and is deliberately carried, not
+// hidden: two JSON-Schema implementations agree on the VERDICT and on the
+// failing instance paths but not on how many errors they emit for them (ajv
+// adds a root `must match "then" schema` per failed `if/then` branch, and
+// duplicates errors across branches). That count reaches the wire twice — the
+// `step_error validation` frame's `N validation error(s)` and the
+// `errors.validation` sentence — and the repair prompt embeds the error
+// STRINGS, whose wording differs too. `qtap_schema_validate_equivalence`
+// measures the engine diff row by row; `ai_import_tier3_equivalence` compares
+// the frames as plain equalities and records the count divergence.
 
 /// The tracing target every `[AIImport]` line is emitted under.
 pub const AI_IMPORT_LOG_TARGET: &str = "quilltap::ai_import";
@@ -1245,6 +1252,119 @@ async fn run_step<CMP: CompletionProvider>(
                     "{log_message}"
                 );
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Steps 9-10 — validation + repair (P4.86)
+// ---------------------------------------------------------------------------
+
+/// v4's `validationResult.errors.slice(0, 5)` — the first five error strings
+/// the two `warn` bags carry.
+fn first_errors(errors: &[String]) -> Vec<&str> {
+    errors.iter().take(5).map(String::as_str).collect()
+}
+
+/// v4's `for (const err of errors) { const m = err.match(/^\/data\/(\w+)\//);
+/// if (m) errorSections.add(m[1]); }` — a `Set`, so FIRST-SEEN order, which is
+/// the order `Object.keys(sectionsToRepair)` comes out in, and therefore the
+/// order of the repair prompt's section list.
+fn validation_error_sections(errors: &[String]) -> Vec<String> {
+    // `\w` is ASCII [A-Za-z0-9_] in a JS regex without the `u` flag.
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| regex::Regex::new(r"^/data/((?-u:\w)+)/").unwrap());
+    let mut out: Vec<String> = Vec::new();
+    for err in errors {
+        let Some(caps) = re.captures(err) else {
+            continue;
+        };
+        let section = caps[1].to_string();
+        if !out.contains(&section) {
+            out.push(section);
+        }
+    }
+    out
+}
+
+/// What one iteration of v4's repair `for` body decided.
+enum RepairOutcome {
+    /// `Object.keys(sectionsToRepair).length === 0` — v4 `break`s.
+    NothingToRepair,
+    /// The revalidation passed.
+    Repaired,
+    /// The revalidation still failed; `remaining` is `revalidation.errors.length`.
+    StillInvalid { remaining: usize },
+    /// v4's `catch` — the call threw, or `parseLLMJson` did.
+    Threw(String),
+}
+
+/// One iteration of v4's repair loop body: rebuild `sectionsToRepair` from the
+/// CURRENT export, ask the model, replace only the sections the reply carries,
+/// revalidate. `export_data` is mutated in place exactly as v4 mutates
+/// `exportData.data` through its `dataObj` alias — the repairs ride out on the
+/// returned export.
+///
+/// `validation_errors` is the FIRST validation's list, never a revalidation's:
+/// v4 embeds `validationResult.errors` in the prompt on every attempt.
+async fn repair_attempt<CMP: CompletionProvider>(
+    c: &ImportCallCtx<'_, CMP>,
+    export_data: &mut Value,
+    error_sections: &[String],
+    validation_errors: &[String],
+) -> RepairOutcome {
+    // `const dataObj = exportData.data as Record<string, unknown>`.
+    let mut sections_to_repair = Map::new();
+    for section in error_sections {
+        // `if (dataObj[section])` — JS truthy, so an EMPTY ARRAY qualifies.
+        let value = export_data.get("data").and_then(|d| d.get(section));
+        if js_truthy(value) {
+            sections_to_repair.insert(section.clone(), value.cloned().unwrap());
+        }
+    }
+    if sections_to_repair.is_empty() {
+        return RepairOutcome::NothingToRepair;
+    }
+    let section_keys: Vec<String> = sections_to_repair.keys().cloned().collect();
+    let prompt = repair_prompt(
+        validation_errors,
+        &Value::Object(sections_to_repair),
+        &section_keys,
+    );
+
+    // v4 `callLLM(provider, apiKey, modelName, '', repairPrompt,
+    // {temperature: 0.5, maxTokens: 2000, ...llmOpts})` — an EMPTY source
+    // context, so the user message is `"\n\n---\n\n" + repairPrompt`.
+    let raw = match call_llm(c, "", &prompt, 0.5, 2000).await {
+        Ok(raw) => raw,
+        Err(msg) => return RepairOutcome::Threw(msg),
+    };
+    let repaired_sections = match parse_llm_json(&raw) {
+        Ok(v) => v,
+        Err(e) => return RepairOutcome::Threw(llm_json_failure_message(&raw, &e)),
+    };
+
+    // `for (const section of Object.keys(sectionsToRepair)) if
+    // (repairedSections[section]) dataObj[section] = repairedSections[section]`
+    // — only the sections the reply actually carries are replaced, and a
+    // falsy value (`null`, `0`, `""`, `false`) leaves the original standing.
+    // A reply that is not an object answers `undefined` at every key.
+    for section in &section_keys {
+        let replacement = repaired_sections.get(section);
+        if js_truthy(replacement) {
+            let replacement = replacement.cloned().unwrap();
+            if let Some(data) = export_data.get_mut("data").and_then(Value::as_object_mut) {
+                data.insert(section.clone(), replacement);
+            }
+        }
+    }
+
+    let revalidation = validate_qtap_export(export_data);
+    if revalidation.valid {
+        RepairOutcome::Repaired
+    } else {
+        RepairOutcome::StillInvalid {
+            remaining: revalidation.errors.len(),
         }
     }
 }
@@ -1710,25 +1830,117 @@ async fn run_import_inner<CMP: CompletionProvider>(
         }
     };
 
-    // Step 9: Validation — the NAMED REFUSAL (module header): no JSON-Schema
-    // engine in this build, so no repair pass either.
+    // Step 9: Validation (no LLM call)
     on_progress(json!({"type": "step_start", "step": "validation"}));
-    tracing::warn!(
-        target: AI_IMPORT_LOG_TARGET,
-        "[AIImport] Validation unavailable in this build; returning the export unvalidated"
-    );
-    on_progress(json!({
-        "type": "step_error",
-        "step": "validation",
-        "error": VALIDATION_UNAVAILABLE,
-    }));
-    errors.insert(
-        "validation".into(),
-        Value::String(VALIDATION_UNAVAILABLE.to_string()),
-    );
+    let validation = validate_qtap_export(&export_data);
+
+    if validation.valid {
+        on_progress(json!({
+            "type": "step_complete",
+            "step": "validation",
+            "snippet": "Validation passed",
+        }));
+    } else {
+        let error_count = validation.errors.len();
+        tracing::warn!(
+            target: AI_IMPORT_LOG_TARGET,
+            context = %ctx(json!({
+                "errorCount": error_count,
+                "errors": first_errors(&validation.errors),
+            })),
+            "[AIImport] Validation failed, attempting repair"
+        );
+        on_progress(json!({
+            "type": "step_error",
+            "step": "validation",
+            "error": format!("{error_count} validation error(s)"),
+        }));
+
+        // Step 10: Repair (one LLM call per attempt, up to MAX_REPAIR_ATTEMPTS).
+        // The sections come from the error PATHS of the FIRST validation; their
+        // values are re-read from the export at each attempt (v4 rebuilds
+        // `sectionsToRepair` inside the loop, over the mutated `dataObj`).
+        let error_sections = validation_error_sections(&validation.errors);
+
+        let mut repaired = false;
+        let mut attempt = 0usize;
+        while attempt < MAX_REPAIR_ATTEMPTS && !repaired {
+            on_progress(json!({"type": "step_start", "step": "repair"}));
+            match repair_attempt(&c, &mut export_data, &error_sections, &validation.errors).await {
+                // v4's `break` out of the `for` — no repairable section.
+                RepairOutcome::NothingToRepair => {
+                    tracing::warn!(
+                        target: AI_IMPORT_LOG_TARGET,
+                        context = %ctx(json!({"errors": first_errors(&validation.errors)})),
+                        "[AIImport] No repairable sections identified from error paths"
+                    );
+                    break;
+                }
+                RepairOutcome::Repaired => {
+                    repaired = true;
+                    on_progress(json!({
+                        "type": "step_complete",
+                        "step": "repair",
+                        "snippet": "Repair successful",
+                    }));
+                    tracing::info!(
+                        target: AI_IMPORT_LOG_TARGET,
+                        context = %ctx(json!({"attempt": attempt + 1})),
+                        "[AIImport] Repair successful on attempt"
+                    );
+                }
+                RepairOutcome::StillInvalid { remaining } => {
+                    on_progress(json!({
+                        "type": "step_error",
+                        "step": "repair",
+                        "error": format!("Repair attempt {} still has errors", attempt + 1),
+                    }));
+                    tracing::warn!(
+                        target: AI_IMPORT_LOG_TARGET,
+                        context = %ctx(json!({
+                            "attempt": attempt + 1,
+                            "remainingErrors": remaining,
+                        })),
+                        "[AIImport] Repair attempt failed"
+                    );
+                }
+                // v4's `catch` — the call threw, or the reply would not parse.
+                RepairOutcome::Threw(msg) => {
+                    on_progress(json!({
+                        "type": "step_error",
+                        "step": "repair",
+                        "error": msg,
+                    }));
+                    tracing::warn!(
+                        target: AI_IMPORT_LOG_TARGET,
+                        context = %ctx(json!({"attempt": attempt + 1, "error": msg})),
+                        "[AIImport] Repair attempt error"
+                    );
+                }
+            }
+            attempt += 1;
+        }
+
+        if !repaired {
+            // Validation failed but the data is still returned — the user
+            // decides. The count is the FIRST validation's, never a
+            // revalidation's.
+            errors.insert(
+                "validation".into(),
+                Value::String(format!(
+                    "Validation has {error_count} error(s) that could not be auto-repaired"
+                )),
+            );
+            tracing::warn!(
+                target: AI_IMPORT_LOG_TARGET,
+                context = %ctx(json!({"errorCount": error_count})),
+                "[AIImport] Could not fully repair validation errors"
+            );
+        }
+    }
 
     // Guarantee the structural scaffolding the import path requires survived
-    // assembly (and, in v4, any LLM repair).
+    // assembly and any LLM repair.
     if let Some(data) = export_data.get_mut("data") {
         restamp_structural_fields(data, &iso_from_unix_ms(now_ms));
     }

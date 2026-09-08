@@ -348,6 +348,48 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — feat(core): the AI-import validation + repair steps, retiring `VALIDATION_UNAVAILABLE` (P4.86 unit 3)
+
+_Versions: core 0.0.837, harness 0.0.726._
+
+Lands v4's real steps 9 and 10 in `run_ai_import_streaming`
+(`lib/services/ai-import.service.ts:1128-1225`): the assembled export is
+validated through the new `generators::qtap_schema` engine, and on failure
+the failing sections are handed back to the model to repair, up to
+`MAX_REPAIR_ATTEMPTS` (2) times. P4.9K2's named `VALIDATION_UNAVAILABLE`
+refusal is DELETED and its both-directions differential pins retired.
+
+Ported whole: the `step_complete validation` / `Validation passed` frame; the
+`step_error validation` `N validation error(s)` frame; the section set derived
+from the error paths (`/^\/data\/(\w+)\//`, a `Set`, so first-seen order —
+which is the order the repair prompt's section list comes out in); the
+`if (dataObj[section])` JS-truthy gate (an empty array qualifies); v4's repair
+prompt template byte for byte at temperature 0.5 / 2000 max tokens with an
+EMPTY source context; `parseLLMJson`; the `if (repairedSections[section])`
+truthy gate that leaves a section standing when the reply omits it or answers
+`null`; the revalidation; the `break` when no section is repairable; the
+`errors.validation` sentence built from the FIRST validation's count; and all
+five `[AIImport]` log lines with v4's levels and field bags.
+
+`ai_import_tier3_equivalence` grows seven cases covering the loop — a repair
+that succeeds on attempt 1, one that succeeds on attempt 2, one that exhausts
+both attempts, a run with no repairable section (a truthy non-boolean
+`includeMemories` is stamped raw into the manifest, so the only error is
+outside `/data/`), a repair call that throws, a reply that will not parse, and
+a reply that omits the section — and its validation/repair pins become plain
+equalities. 31 cases, 176 model calls, 501 frames, 12 repair attempts.
+
+The one carried divergence is the engine's: ajv adds a root
+`must match "then" schema` per failed `if/then` branch, so every error COUNT
+differs by one on these cases. The counts reach the wire in five slots (the
+frame, `errors.validation`, and three log bags) and each is now rewritten to
+`<n>` for the byte diff while BOTH sides' raw values are asserted against
+committed tables, so a count moving on either side reddens. The error STRINGS
+(the log bags' `slice(0, 5)` and the repair prompt's `errors.join('\n')`)
+are canonicalized to the sorted set of instance paths — the comparand
+`qtap_schema_validate_equivalence` proves equal row by row — while the rest of
+the repair prompt is compared as bytes.
+
 #### 2026-09-07 — feat(core): the `.qtap` export schema validator (P4.86 unit 2)
 
 _Versions: core 0.0.836, harness 0.0.725._

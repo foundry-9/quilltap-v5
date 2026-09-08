@@ -114444,3 +114444,107 @@ New: `crates/quilltap-core/src/generators/qtap_schema.rs`,
 `harness/oracle/cases/qtap-schema-validate.test.ts`,
 `harness/oracle/fixtures/qtap-schema-validate.json`. Touched:
 `generators/mod.rs` (the `// === P4.86 ===` fence).
+
+## P4.86 unit 3 — the AI-import validation + repair steps (2026-09-07)
+
+**v4:** `lib/services/ai-import.service.ts:1128-1225`. **v5:**
+`generators/ai_import.rs` — steps 9 and 10 in `run_ai_import_streaming`, plus
+the three new private helpers (`first_errors`, `validation_error_sections`,
+`repair_attempt` + `RepairOutcome`). **P4.9K2's `VALIDATION_UNAVAILABLE`
+constant is DELETED** and both its differential pins with it.
+
+Ported, each against v4's source:
+
+* the `step_start validation` frame, then either `step_complete validation`
+  `snippet: 'Validation passed'` or the `warn` +
+  `step_error validation` `error: `${n} validation error(s)``;
+* `errorSections` from `/^\/data\/(\w+)\//` over the error strings — a `Set`,
+  so FIRST-SEEN order, which is the order `Object.keys(sectionsToRepair)` and
+  therefore the repair prompt's closing section list come out in (v5 keeps a
+  `Vec` with a `contains` guard rather than a set, for that reason). `\w` is
+  ASCII in a JS regex without `u`, so the Rust regex spells it `(?-u:\w)`;
+* the loop `for (attempt = 0; attempt < MAX_REPAIR_ATTEMPTS && !repaired;
+  attempt++)`, with `sectionsToRepair` rebuilt INSIDE it from the mutated
+  export — `if (dataObj[section])` is JS truthy, so an EMPTY ARRAY qualifies;
+* `break` + `[AIImport] No repairable sections identified from error paths`
+  when nothing is repairable (v4 emits `step_start repair` BEFORE the break,
+  so the frame trace carries a `step_start repair` with no outcome — kept);
+* the repair prompt through the already-ported `repair_prompt` builder, called
+  with an EMPTY source context (v4 `callLLM(..., '', repairPrompt, …)`, so the
+  user message is `"\n\n---\n\n" + repairPrompt`), `temperature: 0.5`,
+  `maxTokens: 2000`;
+* `parseLLMJson`, then `if (repairedSections[section])` — a JS truthy gate, so
+  a reply that OMITS the section and one that answers `null` for it both leave
+  the original standing;
+* revalidate → `step_complete repair` `Repair successful` + `info
+  [AIImport] Repair successful on attempt {attempt: n+1}`, or `step_error
+  repair` `Repair attempt ${n+1} still has errors` + `warn [AIImport] Repair
+  attempt failed {attempt, remainingErrors}`;
+* the `catch` → `step_error repair` carrying the thrown message + `warn
+  [AIImport] Repair attempt error {attempt, error}`. v4's
+  `|| 'Repair failed'` fallback can never render (every throw here is an
+  Error), the same dead-fallback shape as `run_step`'s — recorded, not ported;
+* `!repaired` → `errors.validation = `Validation has ${n} error(s) that could
+  not be auto-repaired`` using the **FIRST** validation's count, never a
+  revalidation's, + `warn [AIImport] Could not fully repair validation
+  errors`.
+
+### The differential
+
+`ai_import_tier3_equivalence` 24 → 31 cases (176 model calls, 501 frames, 15
+validations passed, 12 repair attempts, 3 successful, 2 refusals, 7 fatal
+runs). The seven new cases:
+
+| case | what it pins |
+| --- | --- |
+| `validation_repair_succeeds` | the memories step answers a non-string `summary` and a non-array `keywords`, which the assembler copies AS-IS → `Repair successful` on attempt 1 |
+| `validation_repair_fails_then_succeeds` | attempt 1's reply is still invalid, attempt 2's is not — the loop bound and the 1-based attempt numbering |
+| `validation_repair_fails_twice` | both attempts exhausted → `errors.validation`, export returned anyway |
+| `validation_no_repairable_sections` | a truthy non-boolean `includeMemories` is stamped RAW into `manifest.settings.includeMemories` (schema: boolean), so the only error is OUTSIDE `/data/` → empty `errorSections` → `break` with NO repair call |
+| `validation_repair_call_throws` | the provider throws on both attempts |
+| `validation_repair_reply_unparseable` | attempt 1's reply will not parse (the catch arm carries `parseLLMJson`'s message), attempt 2 succeeds |
+| `validation_repair_reply_omits_section` | `if (repairedSections[section])` is TRUTHY: a reply of `{}` and one of `{"memories": null}` both leave the section standing |
+
+Everything compares as a PLAIN EQUALITY — frames, log lines, the repair
+prompt's template/JSON block/section list, and the returned export's bytes.
+
+**The one carried divergence** is the engine's, and it is pinned rather than
+hidden. ajv adds a root `/: must match "then" schema` per failed `allOf[i].
+then` branch; the `jsonschema` crate does not. So the error COUNT differs by
+one on every case whose break is inside `/data/` — and by nothing at all on
+`validation_no_repairable_sections`, whose break is in the manifest (measured:
+1 = 1 on both sides, the control arm). The count reaches FIVE wire slots:
+
+| slot | where |
+| --- | --- |
+| `frame` | the `step_error validation` frame's `N validation error(s)` |
+| `errorsValidation` | `done.errors.validation`'s sentence |
+| `warnErrorCount` | `[AIImport] Validation failed, attempting repair` |
+| `remaining#<attempt>` | `[AIImport] Repair attempt failed` |
+| `couldNotRepairCount` | `[AIImport] Could not fully repair validation errors` |
+
+Each is rewritten to `<n>` for the byte diff while BOTH sides' raw values are
+collected in encounter order and asserted against the committed
+`V4_VALIDATION_COUNTS` / `V5_VALIDATION_COUNTS` tables (27 rows each) — so a
+count moving on EITHER side reddens, and the table is the record of the
+divergence. The error STRINGS (the two log bags' `slice(0, 5)` and the repair
+prompt's `errors.join('\n')`) differ in wording too, so they are canonicalized
+to the sorted SET of instance PATHS with ajv's wrapper struck — exactly the
+comparand `qtap_schema_validate_equivalence` proves equal row by row.
+
+`V4_APP_VERSION` moved `4.10.0-dev.0` → `4.10.0-dev.5`: v4 bumps its ROOT
+`package.json` on every commit and `ai-import.service.ts` stamps it into the
+manifest, so **that constant moves with every regen of this family** — by
+design (the assert proves the stamp reached the manifest on both sides before
+the value is normalized away). Noted here so the next regen is not mistaken
+for a port regression.
+
+### Mutation proofs (each reddened, then reverted)
+
+| mutation | effect |
+| --- | --- |
+| a repaired section is never replaced | `validation_repair_succeeds` runs a second attempt the corpus does not script — the harness's `no scripted call #8` panic |
+| the restamp is skipped when validation failed | 1 case DIFFERS (the returned export's bytes) |
+| `MAX_REPAIR_ATTEMPTS = 1` | 5 cases DIFFER |
+| the replacement gate is `is_some()` instead of JS truthy | 1 case DIFFERS (`validation_repair_reply_omits_section`'s `null` arm) |
+| `errors.validation` uses the revalidation's count | the `V5_VALIDATION_COUNTS` table reddens |

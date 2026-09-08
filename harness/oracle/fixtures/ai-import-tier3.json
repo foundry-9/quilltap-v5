@@ -388,6 +388,141 @@
         "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
         "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
       ]
+    },
+    {
+      "name": "validation_repair_succeeds",
+      "$comment": "P4.86 step 10: the memories step answers a non-string `summary` and a non-array `keywords`, which the assembler copies AS-IS, so validation fails with errors under /data/memories/. One repair call returns the whole section repaired -> `Repair successful` on attempt 1.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        "{\"memories\": [{\"id\": \"a9000000-0000-4000-8000-000000000001\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Lit the lamps in the storm.\", \"summary\": \"Storm lamps.\", \"keywords\": [\"storm\"], \"importance\": 0.9, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}, {\"id\": \"a9000000-0000-4000-8000-000000000002\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": [\"paint\"], \"importance\": 0.4, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}]}"
+      ]
+    },
+    {
+      "name": "validation_repair_fails_then_succeeds",
+      "$comment": "P4.86 step 10: attempt 1's reply is still invalid (`Repair attempt 1 still has errors`), attempt 2's is not -> `Repair successful` on attempt 2. Pins the loop bound and the 1-based attempt numbering.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        "{\"memories\": [{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]}",
+        "{\"memories\": [{\"id\": \"a9000000-0000-4000-8000-000000000001\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Lit the lamps in the storm.\", \"summary\": \"Storm lamps.\", \"keywords\": [\"storm\"], \"importance\": 0.9, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}, {\"id\": \"a9000000-0000-4000-8000-000000000002\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": [\"paint\"], \"importance\": 0.4, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}]}"
+      ]
+    },
+    {
+      "name": "validation_repair_fails_twice",
+      "$comment": "P4.86 step 10: both attempts fail -> MAX_REPAIR_ATTEMPTS exhausted, `errors.validation` set from the FIRST validation's count, and the export returned anyway.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        "{\"memories\": [{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]}",
+        "{\"memories\": [{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]}"
+      ]
+    },
+    {
+      "name": "validation_no_repairable_sections",
+      "$comment": "P4.86 step 9/10: a truthy non-boolean `includeMemories` is stamped RAW into `manifest.settings.includeMemories`, which the schema declares boolean \u2014 so validation fails with NO /data/<section>/ path, `errorSections` is empty, and v4 breaks out of the repair loop with `No repairable sections identified from error paths` having made NO repair call.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes.",
+        "includeMemories": "yes"
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\":\"Lit the lamps in the storm.\",\"summary\":\"Storm lamps.\",\"keywords\":[\"storm\"],\"importance\":0.9},{\"content\":\"Pays in stories.\",\"summary\":\"Stories.\",\"keywords\":[],\"importance\":1.4}]"
+      ]
+    },
+    {
+      "name": "validation_repair_call_throws",
+      "$comment": "P4.86 step 10: the repair call throws on both attempts -> `step_error repair` carrying the thrown message and `[AIImport] Repair attempt error`.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        {
+          "throws": "the provider hung up"
+        },
+        {
+          "throws": "the provider hung up again"
+        }
+      ]
+    },
+    {
+      "name": "validation_repair_reply_unparseable",
+      "$comment": "P4.86 step 10: attempt 1's reply will not parse (the catch arm carries parseLLMJson's message), attempt 2 succeeds.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        "I am afraid I cannot fix that.",
+        "{\"memories\": [{\"id\": \"a9000000-0000-4000-8000-000000000001\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Lit the lamps in the storm.\", \"summary\": \"Storm lamps.\", \"keywords\": [\"storm\"], \"importance\": 0.9, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}, {\"id\": \"a9000000-0000-4000-8000-000000000002\", \"characterId\": \"a9000000-0000-4000-8000-0000000000ff\", \"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": [\"paint\"], \"importance\": 0.4, \"tags\": [], \"source\": \"MANUAL\", \"createdAt\": \"2026-03-02T18:20:30.000Z\", \"updatedAt\": \"2026-03-02T18:20:30.000Z\"}]}"
+      ]
+    },
+    {
+      "name": "validation_repair_reply_omits_section",
+      "$comment": "P4.86 step 10: `if (repairedSections[section])` is a JS TRUTHY test \u2014 a reply that omits the section, and one that answers `null` for it, both leave the original section standing, so both attempts fail.",
+      "body": {
+        "profileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceText": "Mira keeps the harbor lanterns of Saltmere and hums four notes."
+      },
+      "calls": [
+        "{\"name\":\"Mira Lanternwright\",\"title\":\"The Harbor Keeper\",\"identity\":\"Mira keeps the lanterns of Saltmere.\",\"description\":\"She hums while she works.\",\"manifesto\":\"You keep the lanterns lit.\",\"personality\":\"You fear deep water.\",\"scenario\":\"The harbor at dusk.\"}",
+        "{\"firstMessage\":\"*She looks up.* Evening.\",\"exampleDialogues\":\"{{char}}: Hm.\\n{{user}}: Hi.\"}",
+        "[{\"name\":\"Main\",\"content\":\"You are Mira.\",\"isDefault\":true},{\"name\":\"Terse\",\"content\":\"Few words.\",\"isDefault\":false}]",
+        "{\"headAndShouldersPrompt\":\"weathered face, grey eyes\",\"shortPrompt\":\"grey eyes, white hair\",\"mediumPrompt\":\"m\",\"longPrompt\":\"l\",\"completePrompt\":\"c\",\"fullDescription\":\"## Overview\\nSmall.\"}",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"types\":[\"top\"],\"isDefault\":true},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\"],\"replace\":true}]",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\"]}",
+        "[{\"content\": \"Lit the lamps in the storm.\", \"summary\": 123, \"keywords\": [\"storm\"], \"importance\": 0.9}, {\"content\": \"Painted the buoy.\", \"summary\": \"Buoy.\", \"keywords\": \"paint\", \"importance\": 0.4}]",
+        "{}",
+        "{\"memories\": null}"
+      ]
     }
   ]
 }
