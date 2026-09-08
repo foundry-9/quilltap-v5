@@ -117251,3 +117251,29 @@ over them — the diffs are the port and nothing else. The new spec file is clea
 
 Gate: 415 SPA spec files / 6,793 tests; `npm run build` clean;
 `check-qt-classes` 950 classes. SPA 0.5.685.
+
+### Unit 5 — the run popup's progressions
+
+v4's `CustomToolRunDialog.tsx` maps to `chat/custom-tools-popup.ts` and to
+nothing else — measured: `chat/tools/run-tool-modal.ts` mentions neither the
+dialog nor `references`. The `CustomToolReferences` type lives in
+`chat/custom-tools.api.ts` (not `core-contract.ts`), where the §1 vocabulary
+was declared, and that is where the three optional keys landed.
+
+Ported: `progress` / `progressWrites` / `now`, all optional and all documented
+"absent on older servers"; the `{{now}}` placeholder row; `progress.<id>` in
+the writes sentence; and the consults paragraph with v4's exact bytes
+(`It consults your timed progressions:` … `. A progression you are not carrying
+simply does not match.`). The panel's open gate becomes reads OR writes OR
+progressions.
+
+**Three mutation proofs — and the third is the finding.** The panel gate
+ignoring progressions and the consults sentence losing its `, ` separator both
+reddened at once. The ORDER's named mutation — the popup rendering
+`<id>.<field>` instead of ids — **SURVIVED**: the writes spec asserted
+`toContain('progress.cannon')`, and `progress.cannon.endTime` contains that
+string. The spec now compares the WHOLE sentence with two ids, exactly as its
+`metadata`/`state` sibling has since the dogfood-#51 follow-up, and the
+mutation reddens.
+
+Gate: 415 SPA spec files / 6,798 tests; `npm run build` clean. SPA 0.5.686.

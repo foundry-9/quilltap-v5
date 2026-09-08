@@ -63,6 +63,16 @@ export interface CustomToolReferences {
   stateWrites?: string[];
   /** Metadata keys this tool's effects may WRITE on the rolling character. Absent on older servers. */
   metadataWrites?: string[];
+  /**
+   * Progression IDS this tool reads — ids rather than `<id>.<field>` keys, so
+   * the panel says "consults your cannon" and never edges toward the odds the
+   * roster deliberately withholds. Absent on older servers.
+   */
+  progress?: string[];
+  /** Progression ids this tool's effects may WRITE. Absent on older servers. */
+  progressWrites?: string[];
+  /** The tool quotes `{{now}}`. Absent on older servers. */
+  now?: boolean;
 }
 
 /** A roster entry, plus §1's `references` (absent on a roster from an older server). */

@@ -526,6 +526,26 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(chat): the run popup names the progressions a tool consults or adjusts
+
+_Versions: SPA 0.5.686._
+
+P4.D170 unit 5. Ports v4 `0587d1e96`'s `components/chat/CustomToolRunDialog.tsx`
+hunk into `chat/custom-tools-popup.ts` — v5's twin of that dialog's reference
+panel. `CustomToolReferences` gains the three optional keys (`progress`,
+`progressWrites`, `now`, all "absent on older servers"), `{{now}}` gets a
+placeholder row, a written progression joins the writes sentence as
+`progress.<id>`, and the progressions a tool READS get a sentence of their own
+— v4's reason being that the interesting claim is which timed condition the
+tool consults, not which of its dozen derived fields the author quoted.
+
+Five new spec cases. Three mutation proofs: the panel gate ignoring
+progressions, the consults sentence losing its separator, and the writes list
+rendering `<id>.<field>` keys instead of ids — the last SURVIVED its first run
+against a `toContain` assertion (`progress.cannon` is a substring of
+`progress.cannon.endTime`), so that spec now compares the whole sentence, as
+its metadata sibling already did.
+
 #### 2026-09-08 — feat(workbench): the `progress` subject, prefix, placeholders and the bench's derived list
 
 _Versions: SPA 0.5.685._

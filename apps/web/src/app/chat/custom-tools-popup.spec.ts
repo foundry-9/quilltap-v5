@@ -702,3 +702,126 @@ describe('CustomToolsPopup — the borrowed sheet', () => {
     expect(text(fixture)).not.toContain('Nothing on the table answers to that.');
   });
 });
+
+/**
+ * The progressions half of the reference panel (v4 `0587d1e96`'s
+ * `CustomToolRunDialog.tsx` hunk).
+ *
+ * Progressions get their own SENTENCE rather than placeholder rows, and the
+ * vocabulary carries IDS rather than `<id>.<field>` keys — v4's own reason:
+ * "the interesting claim is WHICH timed condition the tool consults or adjusts,
+ * not which of its dozen derived fields the author happened to quote", and a
+ * field-level list would edge toward the odds the roster deliberately withholds.
+ */
+describe('CustomToolsPopup — what a tool says about progressions', () => {
+  it('gives {{now}} a placeholder row of its own', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [{ ...UNLOCK, references: { ...UNLOCK.references!, now: true } }],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    expect(text(fixture)).toContain('{{now}}');
+    expect(text(fixture)).toContain('the moment the run began, to the millisecond');
+  });
+
+  it('names the progressions it consults, by id, in its own sentence', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          { ...UNLOCK, references: { ...UNLOCK.references!, progress: ['cannon', 'gestation'] } },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    const body = text(fixture);
+    // EXACT, for the reason the write sentence above is: a fragment assertion
+    // would be blind to a missing separator or a stray space.
+    const sentence = body
+      .slice(
+        body.indexOf('It consults your timed progressions'),
+        body.indexOf('simply does not match.') + 22,
+      )
+      .replace(/\s+/g, ' ');
+    expect(sentence).toBe(
+      'It consults your timed progressions: cannon, gestation. A progression you are not carrying' +
+        ' simply does not match.',
+    );
+  });
+
+  it('lists a written progression by ID — never an <id>.<field> key', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...UNLOCK,
+            references: { ...UNLOCK.references!, progressWrites: ['cannon', 'gestation'] },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    // EXACT, not `toContain`: `progress.cannon` is a substring of
+    // `progress.cannon.endTime`, so a fragment assertion is blind to the very
+    // thing the vocabulary's id-not-key rule exists to prevent.
+    const body = text(fixture);
+    const sentence = body
+      .slice(body.indexOf('When it runs'), body.indexOf('rides with the roll itself.') + 27)
+      .replace(/\s+/g, ' ');
+    expect(sentence).toBe(
+      'When it runs, this tool may also write: progress.cannon, progress.gestation.' +
+        ' The record of what actually changed rides with the roll itself.',
+    );
+  });
+
+  it('opens the panel for a tool that only consults a progression', async () => {
+    // The panel's gate is reads OR writes OR progressions: a tool with no
+    // placeholders and no writes still has something to declare.
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...UNLOCK,
+            references: {
+              value: false,
+              roll: false,
+              dice: false,
+              llm: false,
+              params: [],
+              metadata: [],
+              state: [],
+              progress: ['cannon'],
+            },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    expect(text(fixture)).toContain('What this tool can quote');
+    expect(text(fixture)).toContain('It consults your timed progressions:');
+  });
+
+  it('says nothing at all when the roster carries none of the three keys', async () => {
+    // An older server sends no `progress` / `progressWrites` / `now`, which must
+    // read as "consults nothing" rather than as an error.
+    const fixture = await mount(stub({ tools: [UNLOCK], errors: [] }));
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    expect(text(fixture)).not.toContain('It consults your timed progressions');
+    expect(text(fixture)).not.toContain('{{now}}');
+    expect(text(fixture)).not.toContain('progress.');
+  });
+});

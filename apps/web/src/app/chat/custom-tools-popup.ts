@@ -207,7 +207,11 @@ interface ReferenceRow {
 
               <!-- A tool that quotes nothing gets no panel. An empty list under a
                    heading promising a list is worse than the heading's absence. -->
-              @if (referenceRows().length > 0 || writeTargets().length > 0) {
+              @if (
+                referenceRows().length > 0 ||
+                writeTargets().length > 0 ||
+                readsProgress().length > 0
+              ) {
                 <details class="rounded-lg qt-border p-5" open>
                   <summary
                     class="text-sm font-medium qt-text cursor-pointer list-none flex items-center gap-2"
@@ -236,6 +240,17 @@ interface ReferenceRow {
 
                   @if (missingPlaceholderNote(); as note) {
                     <p class="text-xs qt-text-secondary mt-4 leading-relaxed">{{ note }}</p>
+                  }
+
+                  @if (readsProgress().length > 0) {
+                    <p class="text-xs qt-text-secondary mt-4 leading-relaxed">
+                      It consults your timed progressions:
+                      @for (id of readsProgress(); track id; let i = $index) {
+                        <span
+                          >@if (i > 0) {, }<code class="font-mono qt-text">{{ id }}</code></span
+                        >
+                      }. A progression you are not carrying simply does not match.
+                    </p>
                   }
 
                   @if (writeTargets().length > 0) {
@@ -692,6 +707,12 @@ export class CustomToolsPopup {
         meaning: "the oracle's answer to the question this tool poses",
       });
     }
+    if (refs.now) {
+      rows.push({
+        placeholder: '{{now}}',
+        meaning: 'the moment the run began, to the millisecond',
+      });
+    }
 
     for (const name of refs.params) {
       rows.push({
@@ -731,8 +752,20 @@ export class CustomToolsPopup {
     return [
       ...(refs?.stateWrites ?? []).map((path) => `state.${path}`),
       ...(refs?.metadataWrites ?? []).map((key) => `metadata.${key}`),
+      ...(refs?.progressWrites ?? []).map((id) => `progress.${id}`),
     ];
   });
+
+  /**
+   * The progressions the tool consults, by ID.
+   *
+   * v4's own reason for a sentence rather than a placeholder row: "the
+   * interesting claim is WHICH timed condition the tool consults or adjusts,
+   * not which of its dozen derived fields the author happened to quote".
+   */
+  protected readonly readsProgress = computed<string[]>(
+    () => this.selectedTool()?.references?.progress ?? [],
+  );
 
   /** v4's closing note: a placeholder whose source is missing simply stands. */
   protected readonly missingPlaceholderNote = computed<string | null>(() => {
