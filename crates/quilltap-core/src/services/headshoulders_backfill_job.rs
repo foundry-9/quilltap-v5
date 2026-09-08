@@ -236,19 +236,18 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
     // The §3 unification review caught this arm failing the job instead —
     // the P4.48 `safeQuery` class.
     let uid = user_id.to_string();
-    let chat_settings = match db
-        .read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, &uid))
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(
-                user_id = %user_id,
-                error = %e,
-                "Error finding chat settings by user ID"
-            );
-            None
-        }
-    };
+    let chat_settings =
+        match db.read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, &uid)) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(
+                    user_id = %user_id,
+                    error = %e,
+                    "Error finding chat settings by user ID"
+                );
+                None
+            }
+        };
     let uid = user_id.to_string();
     let all_profiles = db
         .read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))
