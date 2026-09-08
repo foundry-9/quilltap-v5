@@ -64,7 +64,26 @@
  */
 
 import { MAX_DIE_SIDES, MIN_DIE_SIDES, parseDiceNotation } from './dice-notation';
-import { zodLenMaxOk, zodLenMinOk } from './zod-length';
+import {
+  aborted,
+  at,
+  checkIssue,
+  hardIssue,
+  hasKey,
+  invalidType,
+  isPlainObject,
+  parseBool,
+  parseEnum,
+  parseFiniteNumber,
+  prefix,
+  resHard,
+  resOk,
+  stringLengthIssues,
+  union,
+  unrecognizedKeys,
+  type Issue,
+  type Res,
+} from './zod-shim';
 import { MAX_EFFECT_EXPRESSION_LENGTH, parseExpression } from './expressions';
 
 export { MAX_EFFECT_EXPRESSION_LENGTH };
@@ -140,12 +159,6 @@ const AT_LEAST_ONE_WIDE =
 
 /** v4's `StringOperandSchema` min-length message. */
 const EMPTY_SUBSTRING = 'the substring to look for must not be empty';
-
-/**
- * v4's `z.number().finite()` expectation string. See the module note: this is
- * the one arm the oracle corpus does not pin.
- */
-const FINITE_EXPECTED = 'number';
 
 /** The comparator keys, in the order tests are described to a reader. */
 export const COMPARATOR_KEYS = [
@@ -593,113 +606,11 @@ export interface QtapCustomTool {
 // ---------------------------------------------------------------- issue model
 
 /**
- * One rejection, in Zod's shape. `cont` mirrors Zod's `continue` flag: true only
- * for issues raised by a check, which is what makes them non-aborting.
+ * One rejection, in Zod's shape. Re-exported from `./zod-shim`, where the issue
+ * model and the leaf validators moved when `progressions/schema.ts` became
+ * their second consumer (P4.D170) — importers of this module are unchanged.
  */
-export interface Issue {
-  path: string[];
-  message: string;
-  cont: boolean;
-  /**
-   * Present only for `invalid_union`: each branch's issues, with paths left
-   * RELATIVE to the union (v4's `flattenIssues` re-walks them without the
-   * prefix, so they must not be prefixed here).
-   */
-  unionErrors?: Issue[][];
-}
-
-/** An aborting issue — anything not raised by a check. */
-function hardIssue(message: string): Issue {
-  return { path: [], message, cont: false };
-}
-
-/** A continuable issue — Zod's `ctx.addIssue` / `refine` shape. */
-function checkIssue(message: string, path: string[] = []): Issue {
-  return { path, message, cont: true };
-}
-
-/** Prefix one issue's path with `seg`. */
-function at(issue: Issue, seg: string): Issue {
-  return { ...issue, path: [seg, ...issue.path] };
-}
-
-/** v4 `util.aborted`: a payload is aborted once any issue is not continuable. */
-function aborted(issues: readonly Issue[]): boolean {
-  return issues.some((i) => !i.cont);
-}
-
-/**
- * Prefix every issue's path with `seg`. Deliberately does NOT touch
- * `unionErrors` — Zod keeps branch paths relative to the union.
- */
-function prefix(seg: string, issues: Issue[]): Issue[] {
-  return issues.map((i) => at(i, seg));
-}
-
-/** A parse result: the value when one could be built, plus any issues. */
-interface Res<T> {
-  value: T | undefined;
-  issues: Issue[];
-}
-
-function resOk<T>(value: T): Res<T> {
-  return { value, issues: [] };
-}
-
-/** Shape failure — no value, and the issue aborts. */
-function resHard<T>(message: string): Res<T> {
-  return { value: undefined, issues: [hardIssue(message)] };
-}
-
-/**
- * v4 `handleUnionResults`. The middle arm is the subtle one: when exactly one
- * branch is non-aborted, Zod returns THAT branch rather than wrapping, which is
- * how a failed `refine` inside one branch surfaces its own sentence instead of a
- * bare "Invalid input" at the union.
- */
-function union<T>(branches: Res<T>[]): Res<T> {
-  const clean = branches.find((b) => b.issues.length === 0);
-  if (clean) return clean;
-
-  const nonAborted = branches.filter((b) => !aborted(b.issues));
-  if (nonAborted.length === 1) return nonAborted[0];
-
-  return {
-    value: undefined,
-    issues: [
-      {
-        path: [],
-        message: 'Invalid input',
-        cont: false,
-        unionErrors: branches.map((b) => b.issues),
-      },
-    ],
-  };
-}
-
-/** v4 `util.parsedType`. `undefined` is a missing key. */
-function parsedType(v: unknown): string {
-  if (v === undefined) return 'undefined';
-  if (v === null) return 'null';
-  if (Array.isArray(v)) return 'array';
-  const t = typeof v;
-  if (t === 'boolean' || t === 'number' || t === 'string' || t === 'object') return t;
-  return t;
-}
-
-function invalidType(expected: string, got: unknown): string {
-  return `Invalid input: expected ${expected}, received ${parsedType(got)}`;
-}
-
-/** A JSON object — `typeof 'object'` minus null and arrays. */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-/** Mirrors Rust's `map.contains_key` / Zod's own key-presence test. */
-function hasKey(obj: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(obj, key);
-}
+export type { Issue };
 
 // ------------------------------------------------------------ leaf validators
 
@@ -718,62 +629,15 @@ function parseString(
 ): Res<string> {
   if (typeof input !== 'string') return resHard(invalidType('string', input));
 
-  const issues: Issue[] = [];
   // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures strings in code points once the UTF-16
-  // count crosses a bound — `zod-length.ts` carries each check's window.
-  if (min !== undefined && !zodLenMinOk(input, min)) {
-    issues.push(checkIssue(`Too small: expected string to have >=${min} characters`));
-  }
-  if (max !== undefined && !zodLenMaxOk(input, max)) {
-    issues.push(checkIssue(`Too big: expected string to have <=${max} characters`));
-  }
+  // count crosses a bound — `zod-length.ts` carries each check's window, and
+  // `zod-shim.ts` renders both sentences.
+  const issues: Issue[] = stringLengthIssues(input, min, max);
   if (identifier && !IDENTIFIER_PATTERN.test(input)) {
     issues.push(checkIssue(IDENTIFIER_MESSAGE));
   }
 
   return { value: input, issues };
-}
-
-function parseBool(input: unknown): Res<boolean> {
-  if (typeof input === 'boolean') return resOk(input);
-  return resHard(invalidType('boolean', input));
-}
-
-/**
- * v4 `z.number().finite()`. Unlike the Rust port, this arm IS reachable here:
- * `JSON.parse('{"gt":1e999}')` yields `Infinity` in a browser exactly as it does
- * in v4's Node. See the module note — it is the one message the corpus cannot
- * pin.
- */
-function parseFiniteNumber(input: unknown): Res<number> {
-  if (typeof input !== 'number') return resHard(invalidType('number', input));
-  if (!Number.isFinite(input)) return resHard(invalidType(FINITE_EXPECTED, input));
-  return resOk(input);
-}
-
-function parseEnum<T extends string>(input: unknown, options: readonly T[]): Res<T> {
-  if (typeof input === 'string' && (options as readonly string[]).includes(input)) {
-    return resOk(input as T);
-  }
-  const list = options.map((o) => `"${o}"`).join('|');
-  return resHard(`Invalid option: expected one of ${list}`);
-}
-
-/**
- * The strict-object tail: report keys outside `known` as ONE issue, in the
- * input's own order. Zod raises this AFTER the shape. Since Zod 4.5.4 (v4
- * `6e1a64ea6`, `zod` 4.4.3 → 4.5.4) the issue carries `continue: true`: the
- * object is NOT aborted, its refines still run, and inside a union it stays a
- * live branch — so a `when: true | {…}` with a stray key now reports the object
- * branch alone (with its refine) where 4.4.3 wrapped both branches under
- * `invalid_union`. The server twin (`custom_tool_types.rs::unrecognized_keys`)
- * carries the same flag; `pascal_custom_tool_definition_equivalence` is the pin.
- */
-function unrecognizedKeys(obj: Record<string, unknown>, known: readonly string[]): Issue[] {
-  const extra = Object.keys(obj).filter((k) => !known.includes(k));
-  if (extra.length === 0) return [];
-  const quoted = extra.map((k) => `"${k}"`).join(', ');
-  return [checkIssue(extra.length === 1 ? `Unrecognized key: ${quoted}` : `Unrecognized keys: ${quoted}`)];
 }
 
 // --------------------------------------------------------- schema validators
@@ -1092,7 +956,11 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   // `.finite()` on the number arm here (unlike a `$state` fallback).
   let defaultValue: number | string | boolean | StateRef | undefined;
   const rawDefault = input['default'];
-  if (typeof rawDefault === 'number' || typeof rawDefault === 'string' || typeof rawDefault === 'boolean') {
+  if (
+    typeof rawDefault === 'number' ||
+    typeof rawDefault === 'string' ||
+    typeof rawDefault === 'boolean'
+  ) {
     defaultValue = rawDefault;
   } else {
     const branches: Res<number | string | boolean | StateRef>[] = [
@@ -1329,7 +1197,13 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
-  if (!hasComparator && out.roll === undefined && out.llm === undefined && !hasParams && !hasMetadata) {
+  if (
+    !hasComparator &&
+    out.roll === undefined &&
+    out.llm === undefined &&
+    !hasParams &&
+    !hasMetadata
+  ) {
     issues.push(
       checkIssue(
         'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
@@ -1544,8 +1418,7 @@ function parseOutcome(input: unknown): Res<CustomToolOutcome> {
 
 /** A successful parse, or the rejection list in Zod's order. */
 export type SafeParseResult =
-  | { success: true; data: QtapCustomTool }
-  | { success: false; issues: Issue[] };
+  { success: true; data: QtapCustomTool } | { success: false; issues: Issue[] };
 
 /** v4 `QtapCustomToolSchema.safeParse`. */
 export function safeParse(raw: unknown): SafeParseResult {
@@ -1867,11 +1740,14 @@ function validateWhenSubjects(
       issues.push(checkIssue(`tests undeclared parameter "${name}"`, [...path, 'params', name]));
       continue;
     }
-    validateComparator(declared, comparator, valueTypeOf(target.type), `parameter "${name}"`, issues, [
-      ...path,
-      'params',
-      name,
-    ]);
+    validateComparator(
+      declared,
+      comparator,
+      valueTypeOf(target.type),
+      `parameter "${name}"`,
+      issues,
+      [...path, 'params', name],
+    );
   }
 
   // An `llm` test on a tool with no `llm` block could never fire — there is
@@ -2008,7 +1884,10 @@ function validateRollRefs(
     const target = declared[value.$param];
     if (!target) {
       issues.push(
-        checkIssue(`roll.${field} references undeclared parameter "${value.$param}"`, ['roll', field]),
+        checkIssue(`roll.${field} references undeclared parameter "${value.$param}"`, [
+          'roll',
+          field,
+        ]),
       );
       continue;
     }

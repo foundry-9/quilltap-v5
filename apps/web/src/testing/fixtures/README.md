@@ -54,3 +54,39 @@ file.
   If the v4 tree is dirty, generate from a pinned detached worktree at the
   baseline instead. Expect 175 lines; a shorter file means the generator errored
   and left the old one in place.
+
+## `progressions-schema.oracle.ndjson`
+
+**71 rows** — 62 `progression` + 9 `progressions`. Drives
+`app/progressions/schema.oracle.spec.ts`, which replays every row through the
+SPA's hand-ported `progressions/schema.ts` and byte-compares the verdict, the
+whole joined rejection sentence (paths and their order included) and, on an
+accept, `JSON.stringify` of the parsed data — so the declaration key order and
+the omitted optionals are pinned too.
+
+The SPA has no `zod` (measured 2026-09-08: absent from `apps/web/package.json`,
+imported nowhere), so that module reimplements the slice of Zod 4.5.4 v4's
+`ProgressionSchema` uses. The sentence is compared rather than regex-matched
+because it is payload: the progression editor modal renders
+`${issue.path.join('.') || 'This entry'}: ${issue.message}` straight to the
+author.
+
+- **Provenance:** v4 `25f534c0b` (the character-progressions commit
+  `0587d1e96` plus bug 126), recorded 2026-09-08 at the P4.D170 lane from a
+  detached worktree pinned there, under `zod` 4.5.4.
+- **Owner of the generator:** `apps/web/oracle/progressions-schema.recorder.ts`
+  (this lane's own; it lives outside `src/` because it imports v4's `@/lib/…`
+  and would not compile in the SPA's tsconfig).
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4d170-25f534c0b
+  git -C ~/source/quilltap-server worktree add --detach "$PIN" 25f534c0b
+  ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+  cp <V5>/apps/web/oracle/progressions-schema.recorder.ts "$PIN/"
+  cd "$PIN" && npx tsx progressions-schema.recorder.ts \
+    > <V5>/apps/web/src/testing/fixtures/progressions-schema.oracle.ndjson
+  ```
+
+  Expect 71 lines; a shorter file means the recorder errored and the redirect
+  already truncated the old one.

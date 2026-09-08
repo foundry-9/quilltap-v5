@@ -116975,3 +116975,87 @@ the third is the one worth naming in advance:
 The pre-widening effect-target refusal sentence (`must start with "state." or
 "metadata."`) is still in nine places in that tree — unit 2 recorded it, and it
 remains D170's.
+---
+
+## P4.D170 — character progressions, the SPA (the `25f534c0b` progressions + bug-126 drift catch-up round)
+
+Lane branch `claude/p4-d170-progressions-spa-port-a330ac`, from `main`. Drift
+ledger §2 probe at lane start: **PASS** (v4 on `main`, tree clean,
+`25f534c0b..main` and `1a2b2164c..bugfix` both empty). Regen rule **PIN
+REQUIRED**; the lane's pin is `/tmp/qt-v4-pin-p4d170-25f534c0b`, verified by the
+markers `lib/progressions/engine.ts` and `help/character-progressions.md`
+existing only there.
+
+### Unit 1 — the client-safe twins (`progressions/{schema,engine}.ts`) + the extracted Zod shim
+
+**The order's premise "Zod stays Zod — the SPA HAS zod" is REFUTED by
+measurement.** `apps/web/package.json` declares no `zod`; nothing under `src/`
+imports one; the 4.3.6 copy under `node_modules` is transitive to the Angular
+builder. `pascal/custom-tool-types.ts`'s own header records the same fact and
+reimplements a slice of Zod by hand for exactly this reason. So the twin is a
+hand port in that module's idiom, and the deviation is recorded here rather than
+silently taken (`an-orders-prescribed-shape-may-fight-the-files-idiom`).
+
+Consequence: the issue model and the leaf validators moved out of
+`custom-tool-types.ts` into a NEW `pascal/zod-shim.ts` — `Issue`, `hardIssue`,
+`checkIssue`, `at`, `aborted`, `prefix`, `Res`, `resOk`, `resHard`, `union`,
+`parsedType`, `invalidType`, `isPlainObject`, `hasKey`, `stringLengthIssues`,
+`parseBool`, `parseFiniteNumber`, `parseEnum`, `unrecognizedKeys`,
+`FINITE_EXPECTED`. A pure move: `custom-tool-types.ts` re-exports `Issue` so no
+importer changed, and the twelve pascal spec files (800 tests, the 301-row
+committed corpus among them) were green over it before a line of progressions
+code existed.
+
+**One pre-existing v5 divergence found by the move and fixed.** Zod v4's
+`z.number()` refuses `NaN` and `±Infinity` at the TYPE check and names the
+offending value in `received` (`zod/v4/core/schemas.js:586` — `.finite()` adds
+nothing); the old `parseFiniteNumber` rendered Zod's generic
+`invalidType('number', …)`, i.e. `received number`. The custom-tool corpus
+cannot see it (its module header names it as the one unpinnable arm); the new
+progressions corpus can, and does, in four rows.
+
+**The differential.** No new `harness/oracle/**` case — that tree is out of this
+lane's ownership — so the proof is the shape the order names: v4's own suites
+transcribed 1:1, plus a recorded corpus. The recorder is
+`apps/web/oracle/progressions-schema.recorder.ts` (outside `src/`, beside the
+two existing v4-side recorders there, because it imports v4's `@/lib/…`); it
+drives v4's REAL `lib/progressions/schema.ts` at the pin under `zod` 4.5.4 and
+emits 71 rows (62 `progression` + 9 `progressions`). `schema.oracle.spec.ts`
+byte-compares three things per row: the verdict, the WHOLE joined rejection
+sentence (paths and order included — the editor modal renders it to the author),
+and `JSON.stringify` of the parsed data on an accept, so the DECLARATION key
+order and the omitted optionals are pinned as well as the values. A
+length-assert guards the fixture against truncation making the `it.each` rows
+vacuous.
+
+Measured facts the port had to carry, none of them derivable from v4's prose:
+
+- `Unrecognized key` is CONTINUABLE since Zod 4.5.4, so an unrecognized key
+  still lets the cross-field `superRefine` speak (`reject-unknown-key-and-
+  backwards-span` carries both sentences); a wrong TYPE aborts and suppresses it
+  (`reject-name-wrong-type` carries one).
+- `z.number().int()` is a FORMAT check and ABORTS
+  (`reject-quantity-precision-fractional` shows no refine sentence), while
+  `>0`, `>=0`, `<=6`, the string length caps and the `reportFrequency` regex are
+  ordinary checks and do not.
+- Parsed key order is v4's DECLARATION order — `description` second, `quantity`
+  before `reportTemplate` — with absent optionals omitted.
+- String lengths are CODE POINTS (80 astral emoji pass, 81 fail), so the twin
+  reuses `pascal/zod-length.ts` rather than `String.length`.
+- A record key that fails the identifier rule reports `Invalid key in record`
+  and its VALUE is not reported at all.
+
+The one arm the corpus cannot carry is `NaN`, which has no JSON literal and so
+cannot reach a validator from a real `metadata.json`; it is pinned by a
+hand-written case against the measured sentence, with the zod source line cited.
+
+`engine.spec.ts` and `schema.spec.ts` are v4's `engine.test.ts` and
+`schema.test.ts` transcribed case for case (the only edits mechanical:
+`ProgressionSchema.parse` → this port's `safeParseProgression`, explicit vitest
+imports, bracket access for `noPropertyAccessFromIndexSignature`). v4's third
+suite in `schema.test.ts` — the `qtap-progression.schema.json` mirror agreement
+— is deferred to the unit that vendors the schema.
+
+Gate: 180 tests over the three progressions spec files, green on the first run;
+the full SPA suite 412 files / 6,664 tests; `npm run build` clean;
+`check-qt-classes` 950 classes, every reference resolving. SPA 0.5.682.

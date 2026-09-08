@@ -526,6 +526,35 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(progressions): the SPA's client-safe schema + engine twins, over an extracted Zod shim
+
+_Versions: SPA 0.5.682._
+
+P4.D170 unit 1. Ports v4's two client-safe progressions modules
+(`lib/progressions/{schema,engine}.ts` at `25f534c0b`) into
+`apps/web/src/app/progressions/`, so the Aurora editor and Pascal's Workbench
+can derive, render and flatten a character's timed conditions in the browser
+with the same arithmetic the server prompts with.
+
+The work order's premise that "the SPA HAS zod" is **refuted by measurement**:
+`apps/web/package.json` declares no `zod` and nothing imports one (the 4.3.6
+under `node_modules` is transitive to the Angular builder). So `schema.ts` is a
+hand port in `pascal/custom-tool-types.ts`'s idiom, and the issue model and leaf
+validators both modules now need moved into a new `pascal/zod-shim.ts` — a pure
+extraction, proven by the twelve pascal spec files and the 301-row committed
+custom-tool corpus staying green over it.
+
+One pre-existing SPA divergence found on the way and fixed: `z.number()` in Zod
+v4 refuses `NaN` and `±Infinity` at the TYPE check and names the offending value
+in `received` (`zod/v4/core/schemas.js:586`), where the old `parseFiniteNumber`
+rendered `received number`. The custom-tool corpus could not see it; the new
+progressions corpus can.
+
+Proof: a 71-row corpus recorded from v4's REAL `ProgressionSchema` at the
+`25f534c0b` pin under `zod` 4.5.4, byte-comparing the verdict, the whole joined
+rejection sentence and `JSON.stringify` of the parsed data (so declaration key
+order and omitted optionals are pinned); plus v4's own `engine.test.ts` and
+`schema.test.ts` transcribed case for case. 180 tests, green on the first run.
 
 #### 2026-09-08 — docs(setupphase): the `25f534c0b` progressions + bug-126 drift catch-up round — five work orders, the ledger's four rows ORDERED
 
