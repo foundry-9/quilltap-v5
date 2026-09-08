@@ -2449,7 +2449,14 @@ fn is_route_identifier(field: &str) -> bool {
 // inside the handler) — 416 → 418.
 // Unified (the `2f4254b42` round): the P4.D163 eight and the P4.9K1/K2 seven
 // landed from parallel lanes off the same 411 — 411 + 8 + 7 = 426.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 426;
+// P4.83 added three (`PromptTemplate{Get,Update,Delete}.id`), each the
+// `/api/v1/prompt-templates/[id]` route segment `createContextParamsHandler`
+// hands the route — never a body key. The two body-carrying verbs
+// (`PromptTemplateCreate` / `PromptTemplateUpdate`) ride their five fields as
+// `Option<Option<Value>>` tri-states parsed by v4's `createTemplateSchema` /
+// `updateTemplateSchema` inside the handler, so they are not typed fields and
+// do not move this count — 426 → 429.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 429;
 
 #[test]
 fn census_covers_every_typed_request_field() {

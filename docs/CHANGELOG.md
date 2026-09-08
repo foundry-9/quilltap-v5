@@ -552,6 +552,70 @@ pure Rust, no network and no C (`ahash`, `allocator-api2`,
 
 No source consumes it yet — the module and its differentials arrive in the
 next commits.
+#### 2026-09-07 — feat(prompt-templates): the server surface — the lazy Sample-Prompts seeding v5 never had, the five verbs, and v4's REST edges
+
+_Versions: core 0.0.835, harness 0.0.725, web 0.0.128._
+
+Lands v4's prompt-templates surface end to end on the server side (P4.83
+tiers 1–2), closing the `p4.9k` round's recorded divergence "ImportModal's
+catalogue is always empty — the missing `promptTemplateList` verb".
+
+The catalogue itself is now a VENDORED v5 artifact
+(`crates/quilltap-core/src/services/builtin_prompt_templates.json`, 21
+entries), generated from v4's real plugin module through v4's real
+system-prompt registry by
+`harness/oracle/provision/dump-prompt-templates.ts` and held byte-identical
+to the checkout's `plugins/dist/qtap-plugin-default-system-prompts/prompts/
+*.md` by the new `builtin_prompt_templates_guard`. This corrects the
+`d123658d` round's ratification of v4 `9c01fa99` as NO-PORT: v5 has no
+plugin registry and no seeding, so a v5-only instance had zero built-in
+templates.
+
+⚠ The seeded row's `name` is the registry's DISPLAY name, not the filename:
+`MODERN_GENERAL.md` becomes `MODERN General`. The filename survives only
+inside the seed log's `promptId`.
+
+`services::builtin_prompt_templates::seed_sample_prompts` is v4's LAZY
+seeder at v4's own site — inside the reads, not at startup — insert-if-absent
+by `(name, isBuiltIn = 1)`, never an update. `db::prompt_templates` gains
+`find_all_for_user` / `find_built_in` / `find_by_id` /
+`built_in_name_exists`, reproducing v4's `validateSafe` drop (a stored row
+that fails `PromptTemplateSchema` is invisible to the list) and its
+NULL-column contract: v4's backend hydrates SQL NULL to `undefined`, so a
+READ body OMITS the column entirely, while a CREATE 201 body carries
+explicit `null`s and a PUT 200 body is the read record with the provided
+patch keys laid over it. `PtUpdate`'s three nullable columns became a
+tri-state, closing the repo's former "clearing a column is deferred" gap.
+
+Five dispatch verbs (`promptTemplateList` / `Create` / `Get` / `Update` /
+`Delete`) plus the v4-URL REST edges in the new
+`quilltap-web/src/prompt_templates_routes.rs`, with v4's guard ladders as
+measured (POST and PUT parse the body BEFORE any read, so a Zod-refused body
+never even seeds; GET and DELETE find first) and v4's exact 400/403/404
+bodies including the whole `ZodError.issues` array.
+
+Proven by the new `prompt_templates_routes_equivalence` (31 cases over v4's
+REAL route handlers, comparing status + body bytes + the captured log lines
++ the whole `prompt_templates` table) and the new
+`prompt_templates_web_routes` wire test, which provisions a FRESH instance
+and watches the first list seed 21 rows through the real HTTP server.
+
+The e2e beat's first live run caught a gap no differential could: **v4
+creates the table lazily.** `AbstractBaseRepository.getCollection()`
+`ensureCollection`s on first access, so a v4 instance nobody has opened the
+modal on has no `prompt_templates` table at all — and v5 provisioned it only
+on a fresh instance, so an older one answered an empty catalogue with
+`no such table` in the log. `ensure_prompt_templates_table` now runs at v4's
+own site (inside the seeding pass every read triggers), with a unit test on a
+bare connection and a wire-test arm over a bare instance.
+
+The new family's names are all `*_PT_ROUTES` /
+`build-prompt-templates-routes-fixture.ts` / `prompt-templates-routes.json` /
+`/tmp/qt-pt-routes-fixture.db`, because the table already had a family:
+`prompt_templates_tier2_equivalence` owns the obvious derivations
+(`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
+`build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
+Both families run side by side through the sweep driver.
 
 #### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
 

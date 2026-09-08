@@ -63,6 +63,9 @@ pub mod spa;
 // === end P4.10 ===
 pub mod state;
 pub mod static_serve;
+// === P4.83: the prompt-templates REST edges ===
+pub mod prompt_templates_routes;
+// === end P4.83 ===
 // === P4.D163: the character-subprompts REST edges ===
 pub mod subprompts_routes;
 // === end P4.D163 ===
@@ -626,6 +629,19 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(subprompts_routes::subprompt_item_delete),
         )
         // === end P4.D163 ===
+        // === P4.83: the prompt-templates REST edges (v4-URL faithful) ===
+        .route(
+            "/api/v1/prompt-templates",
+            get(prompt_templates_routes::prompt_templates_collection_get)
+                .post(prompt_templates_routes::prompt_templates_collection_post),
+        )
+        .route(
+            "/api/v1/prompt-templates/{id}",
+            get(prompt_templates_routes::prompt_template_item_get)
+                .put(prompt_templates_routes::prompt_template_item_put)
+                .delete(prompt_templates_routes::prompt_template_item_delete),
+        )
+        // === end P4.83 ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         // P4.18 (unit 4): the request-log analog of v4's `logRequest`. `tower-http`'s

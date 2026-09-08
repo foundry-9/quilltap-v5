@@ -241,6 +241,273 @@ test only); and — added because the second mutation was caught by the flag WAI
 rather than by an assertion — the scan writing its flag while enqueuing nothing,
 which reddens the row-count assert at `1 != 8`.
 
+## Lane record — P4.83 (prompt templates: the `promptTemplateList` verb + `GET /api/v1/prompt-templates`, the built-in sample-prompt seeding v5 never had, and the Import-from-Template catalogue on both character hosts)
+
+Ordered against baseline **`2f4254b42`**, the generator follow-ups +
+prompt-templates round (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86).
+**Drift-ledger §2 freshness probe at lane start (2026-09-07):** PASS — v4
+checkout on `main`, tree clean, `git log 2f4254b42..main` EMPTY,
+`git log 1a2b2164c..bugfix` EMPTY. §1's verdict (zero drift, **NO PIN
+REQUIRED**) stands; every regen in this record ran from the live checkout.
+The lane never wrote the ledger. Re-probed before the unified gate: PASS.
+
+### The premise correction the order asked for, and two more it did not
+
+**(a) The `d123658d` ratification was wrong** (order preamble): v4 `9c01fa99`
+("modernize sample prompts, add the MODERN trio") was dispositioned NO-PORT on
+the claim that "v5 consumes both plugin content and help markdown from the
+instance at runtime". For `help/**` that became true at `p4.9i2`; for the
+sample prompts it was never true — v5 has no system-prompt plugin registry,
+no `prompts/` directory and no seeding, so a v5-only instance held ZERO
+built-in templates and a shared instance listed whatever v4 had seeded. This
+lane vendors the catalogue.
+
+**⚠ THE RE-VENDOR HAZARD (for the ledger's §1 standing list):**
+`crates/quilltap-core/src/services/builtin_prompt_templates.json` is now a
+VENDORED v5 artifact, the `help/**` class. Any v4 commit touching
+`plugins/dist/qtap-plugin-default-system-prompts/prompts/**` is a re-vendor
+obligation; `builtin_prompt_templates_guard` fails the gate the moment the
+checkout's `.md` files and the vendored table disagree (mutation-proven: a
+one-word edit to the vendored `GEMINI_ROMANTIC` content reddens it by name).
+
+**(b) The seeded row's `name` is NOT the filename** — an order premise
+(Tier 1 item 4 and the e2e beat both say "click `MODERN_GENERAL`"). Measured
+against v4's REAL registry: `system-prompt-registry.ts:186` computes
+`` `${modelHint} ${category[0] + category.slice(1).toLowerCase()}` `` as the
+`LoadedSystemPrompt.name`, and `seedSamplePrompts` writes THAT. So
+`MODERN_GENERAL.md` becomes the row **`MODERN General`**; the filename
+survives only inside the registry id (`default-system-prompts/MODERN_GENERAL`),
+which is what the seed log's `promptId` field carries. Every downstream
+artifact in this lane uses the display name.
+
+**(c) §B's null contract is wrong about the wire, in one direction and right
+in another.** The order's §B declares `description: string | null` etc.
+Measured: v4's SQLite backend hydrates every SQL NULL to `undefined`
+(`backend.ts:404-451`, three times over, each with the comment "null →
+undefined for Zod .optional() compatibility"), and the four nullable columns
+are `.nullable().optional()` — so a **READ** body has no such key at all. But
+a **CREATE 201** body DOES carry explicit `null`s, because v4 validates the
+input object rather than re-reading the row, and an **UPDATE 200** body is
+`{...existing, ...updates}`, i.e. the read record (omitting) with the provided
+patch keys laid over it (each already `|| null`). Three different null
+contracts on one surface, all three now pinned. The §B interface is corrected
+in the SPA wire file to `description?: string | null` — optional AND nullable
+— which is true of every shape.
+
+### Unit 1 — the vendored catalogue + its generator + the guard
+
+`harness/oracle/provision/dump-prompt-templates.ts` (the
+`dump-builtin-templates.ts` / `[[byte-exact-static-data-transcription]]`
+pattern) `require`s v4's REAL built plugin module — whose top-level
+`loadPrompts()` reads the 21 `prompts/*.md` in `readdirSync(...).sort()`
+order — and feeds it through v4's REAL `initializeSystemPromptRegistry`, so
+the display-name rule and the `default-system-prompts/<FILE>` ids are v4's
+own code, not a transcription. It emits `promptId` / `name` / `content` /
+`modelHint` / `category` in seed order (21 rows, 64 KB).
+
+`crates/quilltap-harness/tests/builtin_prompt_templates_guard.rs` re-derives
+the whole table from the checkout's `.md` files — transcribing v4's
+`parsePromptFilename` and the display-name rule, both unit-pinned including
+the `< 2 parts → GENERAL` arm and a multi-part model hint — and asserts the
+vendored JSON byte-identical. `QT_V4_CHECKOUT` locates the tree (default
+`$HOME/source/quilltap-server`, the `zod_version_guard` shape); an absent
+checkout prints a loud `SKIP:`, a MOVED prompt is a FAIL naming the re-vendor
+recipe. Rust's `read_dir` is unordered, so the sort is load-bearing (the
+`node-readdir-is-sorted-rust-read-dir-is-not` trap).
+
+### Unit 2 — the repository reads
+
+`db::prompt_templates` gains `find_all_for_user` (v4's `$or: [{isBuiltIn:
+true}, {userId}]`, which the SQLite translator renders with **no `ORDER BY`**
+— rowid order, insertion order, which is the order the modal lists in),
+`find_built_in`, `find_by_id`, and `built_in_name_exists` (the seeder's
+lookup, whose `isBuiltIn` half is load-bearing).
+
+`PromptTemplateRecord` carries `skip_serializing_if` on all four nullable
+columns — see (c) above — and `validate_safe` reproduces v4's per-row
+`validateSafe` drop: the list `.map(validateSafe).filter(Boolean)`s, so a
+stored row violating `PromptTemplateSchema` is INVISIBLE rather than an error.
+Implemented for the constraints a persisted row can violate (the UUID shape of
+`id`/`userId`/each tag, `name` 1..100 CODE POINTS, `content` min 1,
+`description` max 500, and `tags` parsing to an array); the timestamp arm is
+recorded as unmeasured. `tags` deliberately does NOT drop the row for a NULL,
+empty, `'null'` or unparseable column — all four reach Zod as `undefined` via
+`fromJsonSafe` + the null→undefined rule and take `.default([])`. Only a
+well-formed non-array fails.
+
+Measured, not assumed: `list_drops_schema_invalid_row` plants a
+101-code-point name with raw SQL (v4's own repo `create` refuses to write it)
+and v4's list comes back one row shorter than the table.
+
+`PtUpdate`'s three nullable columns became `Option<Option<String>>`, closing
+the repo header's former "clearing a nullable column to NULL is deferred" gap
+— v4's PUT reaches it on every `description: ''`, since it assigns
+`validatedData.description || null` and an empty string is falsy. The one
+existing caller (`prompt_templates_tier2_equivalence`) took a mechanical
+`.map(Some)`; that family's corpus and behaviour are unchanged.
+
+### Unit 3 — the seeder at v4's site
+
+`services::builtin_prompt_templates::seed_sample_prompts` is v4's
+`_doSeedSamplePrompts`: per catalogue entry, `findOne({name, isBuiltIn:
+true})` → absent inserts through the repo's validating `create` with
+`description = `${category} prompt optimized for ${modelHint} models`` and
+logs `Sample prompt template seeded from plugin` with v4's five-field bag;
+present does NOTHING — no update, no log. v4 recomputes `now` per row, inside
+the loop; so does v5.
+
+It is called at v4's own site: from inside the READS, not at startup. Every
+handler that reaches a read calls it first, which is why a GET of a single
+template on a fresh instance seeds 21 rows (`get_missing_404` logs 21 seed
+lines and one route warn). The catalogue probe (`needs_seeding`) runs on the
+READ pool so an already-seeded instance never takes the writer; the inserts
+re-run the same per-name lookup under the write lock, so the decision is never
+acted on stale.
+
+Three refusals recorded in the module doc, none silent: the deprecated
+filesystem `prompts/` fallback is a NO-COUNTERPART; the registry-EMPTY arm (a
+v4 install whose plugin is missing seeds nothing, where v5 always seeds) is a
+RECORDED divergence in v5's favour, pinned by a note rather than a tripwire
+because no committed corpus can express "the catalogue is absent" when it is
+compiled in; and `systemPromptRegistry` itself is not ported — the vendored
+table stands in and carries the same `promptId` strings, so the log line is
+byte-identical. v4's `seedingPromise` single-flight is a Node concurrency
+guard the single writer makes structurally unnecessary.
+
+### Unit 4 — the five verbs and the REST edges
+
+`api::prompt_templates` holds the guard ladders once, for both transports.
+MEASURED on v4's real handlers rather than read off the source:
+
+- **POST** parses `createTemplateSchema` first, then writes. A refused body
+  never even seeds (`create_zod_*_400` all leave `table` at 1 row).
+- **PUT** parses `updateTemplateSchema` FIRST, then 404, then the built-in
+  403 — so a bad body against a missing id is 400, not 404
+  (`put_zod_beats_missing_404`).
+- **GET [id]** / **DELETE** find first (404), then (DELETE) refuse a built-in.
+- The built-in refusals are the ROUTE's — `forbidden('Cannot update built-in
+  templates')` / `forbidden('Cannot delete built-in templates')`, both 403 —
+  sitting above the repository's own silent `null`/`false` guard, which these
+  routes therefore never reach.
+
+The Zod ladder carries v4's exact issue objects, including the create schema's
+two CUSTOM messages (`Name is required` / `Content is required`) where the
+update schema reports Zod's own sentence, and — the one that a hand-written
+schema gets wrong — the fact that `description` / `category` / `modelHint` are
+BARE `z.string()`s with no `.min(1)`, so `''` is valid and the route's `||
+null` then stores NULL. A `.min(1)` added there 400s a body v4 accepts
+(caught by `create_empty_optionals_become_null_201` on the family's first run).
+
+`quilltap-web/src/prompt_templates_routes.rs` serves v4's two URLs, unwraps
+the dispatch envelope to v4's raw body, chooses the create's 201, and owns the
+ONE arm the flat dispatch variants cannot express — a body that is not an
+object at all (the `subprompts_routes` precedent).
+
+**Not ported, recorded:** v4's repository layer logs generically around every
+op (`Entity created`, `Prompt template created successfully`, `Prompt template
+not found for update`, the `Safe validation failed` warn behind each dropped
+row). v5's `db::` layer has no logging anywhere by design, so those lines have
+no counterpart; the differential compares only the two families this port owns
+(the seed line and `[Prompt Templates v1] …`), and the oracle filters
+identically.
+
+### The differential — `prompt_templates_routes_equivalence` (31 cases)
+
+Drives v4's REAL route handlers through the REAL `createContextHandler`
+middleware (only the auth session and the startup gate are mocked; the DB
+stack is the real cipher binding) over a fresh copy of a /tmp fixture per
+case, with `initializePlugins()` per case so `systemPromptRegistry` is v4's
+real bundled inventory — an uninitialized registry is v4's seed-nothing arm,
+and the 21-row assertion is what refuses it silently.
+
+Four comparands per case: **status**, **body bytes**, the captured **log
+lines**, and the whole **`prompt_templates` table**. The table is what proves
+the two halves the body cannot: that a Zod-refused POST/PUT seeded nothing,
+and that a sample prompt already on file was not overwritten.
+
+**⚠ The near-miss worth a memory note: `prompt_templates` ALREADY had a
+family.** `prompt_templates_tier2_equivalence` (Phase 2, repo #4) owns
+`harness/oracle/fixtures/build-prompt-templates-fixture.ts`, the env vars
+`QT_ORACLE_PROMPT_TEMPLATES` / `QT_FIXTURE_PROMPT_TEMPLATES`, AND the /tmp path
+`/tmp/qt-prompt-templates-fixture.db`. This lane's first draft took all four
+names by the obvious derivation from the table name and CLOBBERED the tracked
+builder outright. Both were caught before the commit — the clobber by reading
+`git status` (a new file showing ` M` instead of `??`), the env-var/path
+collision by `recipe_sweep.py --show` on the SIBLING family. Everything here is
+now `*_PT_ROUTES` / `build-prompt-templates-routes-fixture.ts` /
+`prompt-templates-routes.json` / `/tmp/qt-pt-routes-fixture.db`, and both
+families were re-run through the driver side by side (the sibling matched its
+oracle at 2 rows against a fixture rebuilt from the restored builder). The
+lesson generalizes: **before naming a new family after a TABLE, grep the
+existing families for that table** — a second family on one table is normal,
+and the shared unified gate sets every env var at once, so a name collision
+would have had one family silently reading the other's artifacts.
+
+The fixture (`harness/oracle/fixtures/build-prompt-templates-routes-fixture.ts`) is a
+CLEAN PROVISIONED instance — two users and ONE user template inserted first,
+so it holds rowid 1 and the list's rowid order is measurable against any
+name/isBuiltIn sort. Nothing is committed under `fixtures/`. The three other
+shapes are PER-CASE seeds applied identically on both sides: a stale built-in
+under a catalogue name, a user template sharing that name, and the
+schema-invalid plant (raw SQL on both sides — no validating writer can store
+it, which is the point).
+
+**The capture layer is process-global on purpose:** the seed lines fire inside
+`db.write(...)`, on the writer THREAD, which a `set_default`-scoped subscriber
+can never see. The binary holds exactly ONE `#[test]`, runs its cases
+sequentially, and clears one shared buffer per case; the header says so, and
+adding a second test would make them race.
+
+**Seven mutation proofs, each reddening exactly the right cases:**
+
+| mutation | reddens |
+| --- | --- |
+| the seed UPDATES a present row instead of skipping | `list_stale_builtin_never_updated` |
+| the seed lookup drops `isBuiltIn` | `list_user_named_like_builtin_still_seeds` |
+| `count` hard-coded to 21 | four list cases |
+| the READ wire emits nulls instead of omitting | five list cases |
+| PUT's 404 moved above the Zod parse | `put_zod_beats_missing_404` |
+| the `name` max(100) `validateSafe` arm dropped | `list_drops_schema_invalid_row` |
+| the CREATE 201 body reuses the READ (omitting) shape | the three create-201 cases |
+| the vendored JSON hand-edited (the guard) | `builtin_prompt_templates_guard` |
+
+`crates/quilltap-web/tests/prompt_templates_web_routes.rs` proves the WIRE: it
+PROVISIONS a fresh instance (not a committed fixture) and watches the first
+`GET /api/v1/prompt-templates` seed 21 rows through the real HTTP server, then
+walks the 201, the non-object 400, the read-omits-nulls contract, the 404, the
+two 403s and the delete.
+
+### What the e2e beat's FIRST LIVE RUN caught — v4's lazy `ensureCollection`
+
+Both beats failed on `no such table: prompt_templates`, and the modal showed
+v4's "No templates available" with nothing in the UI to say why. The cause is
+the `p4.9i2` `help_docs` class exactly: **v4 creates the table lazily.** Every
+v4 repo op goes through `AbstractBaseRepository.getCollection()`
+(`base.repository.ts:100-114`), which `ensureCollection`s on first access — so
+a v4 instance nobody has ever opened the Import-from-Template modal on has NO
+`prompt_templates` table, and gets one the moment somebody does. v5 provisions
+it on a FRESH instance (it is in `fresh_schema.json`) and had nothing at all
+for an older one; the shared e2e fixture (a copy of the committed chat-send
+instance, 18 tables) is precisely that shape, and so is any real v4 instance
+that has never used the feature.
+
+Fixed at v4's OWN site rather than at boot, because that is where v4 does it:
+`db::prompt_templates::ensure_prompt_templates_table` (the DDL verbatim from
+`fresh_schema.json` with `IF NOT EXISTS`; `generateDDL` emits no index for this
+table) runs first inside `seed_sample_prompts`, which every read path already
+calls. `needs_seeding` flipped with it — a MISSING table is the most work to
+do, not the least, and it had been answering `false`.
+
+Two pins, because the differential's fixture is provisioned and can never see
+this: a unit test that creates the table on a bare in-memory connection,
+asserts the two column DEFAULTs a bare INSERT relies on, and re-runs the ensure
+without wiping the row; and a wire-test arm over `materialize_bare_instance` (a
+writable main DB with NO tables) that watches `GET /api/v1/prompt-templates`
+create the table and seed 21 through the real server, twice. **Mutation-proven:**
+putting `needs_seeding`'s missing-table arm back to `false` reddens the bare
+arm with the exact pre-fix body — `{"templates":[],"count":0}` — and leaves the
+provisioned-instance arm green, which is what makes the two arms worth having
+separately.
 
 ## Lane record — P4.D156 (the client/CLI drift: bug 120's `instances default --json`, the About sentences, the cheap-LLM `qt-checkbox`, and the collapse's three client corrections)
 

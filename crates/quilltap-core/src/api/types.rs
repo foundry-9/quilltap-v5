@@ -3641,6 +3641,71 @@ pub enum Request {
         body: serde_json::Map<String, serde_json::Value>,
     },
     // === end P4.9K2 ===
+    // === P4.83: the prompt-templates verbs (v4 `app/api/v1/prompt-templates/**`) ===
+    /// v4 `GET /api/v1/prompt-templates` → `{ templates, count }`.
+    /// `repos.promptTemplates.findAllForUser(user.id)` — which SEEDS the 21
+    /// built-in "Sample Prompts" first, the first time anybody asks.
+    PromptTemplateList,
+    /// v4 `POST /api/v1/prompt-templates` → `{ template }` (201 at the REST
+    /// edge). The five body fields ride RAW and `double_option` so the handler
+    /// runs v4's whole `createTemplateSchema` ladder — an absent key
+    /// (`received undefined`), a present `null` (`received null`) and a wrong
+    /// type each answer their own Zod issue instead of collapsing at serde
+    /// (the P4.D163 shape; the `oracle-row-option-value-swallows-a-json-null`
+    /// trap).
+    #[serde(rename_all = "camelCase")]
+    PromptTemplateCreate {
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        category: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model_hint: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `GET /api/v1/prompt-templates/[id]` → `{ template }` (404
+    /// `Template not found`). Seeds first, like every other read.
+    #[serde(rename_all = "camelCase")]
+    PromptTemplateGet {
+        id: String,
+    },
+    /// v4 `PUT /api/v1/prompt-templates/[id]` → `{ template }`
+    /// (`updateTemplateSchema`: every field optional). The Zod parse runs
+    /// BEFORE the 404 and the built-in 403 — measured, not assumed.
+    #[serde(rename_all = "camelCase")]
+    PromptTemplateUpdate {
+        id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        category: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model_hint: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `DELETE /api/v1/prompt-templates/[id]` → `{ success: true }`
+    /// (403 `Cannot delete built-in templates` on a sample prompt).
+    #[serde(rename_all = "camelCase")]
+    PromptTemplateDelete {
+        id: String,
+    },
+    // === end P4.83 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -4125,6 +4190,18 @@ pub enum Response {
     /// `ChatSend` architecture).
     HelpChatSend(serde_json::Value),
     // === end P4.9I2A ===
+    // === P4.83: the prompt-templates verbs — append-only ===
+    /// v4 `GET /api/v1/prompt-templates` → `{ templates, count }`. Each element
+    /// is the `PromptTemplateSchema`-ordered row with its NULL columns OMITTED
+    /// (see [`crate::db::prompt_templates::PromptTemplateRecord`]). Pinned by
+    /// `prompt_templates_routes_equivalence`.
+    PromptTemplates(serde_json::Value),
+    /// v4's `{ template }` body — POST's 201, and the `[id]` GET / PUT 200s.
+    /// The three shapes differ in their null contract; the handler builds each.
+    PromptTemplate(serde_json::Value),
+    /// v4 `DELETE /api/v1/prompt-templates/[id]` → `{ success: true }`.
+    PromptTemplateDeleted(serde_json::Value),
+    // === end P4.83 ===
     Error(CoreError),
 }
 

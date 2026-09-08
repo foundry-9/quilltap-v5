@@ -1,0 +1,13 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "ts": "2020-01-01T00:00:00.000Z",
+  "userA": "5e100000-0000-4000-8000-00000000a001",
+  "userB": "5e100000-0000-4000-8000-00000000a002",
+  "userTemplateId": "5e800000-0000-4000-8000-00000000b001",
+  "userTemplateName": "My Own Prompt",
+  "staleBuiltInId": "5e800000-0000-4000-8000-00000000b002",
+  "userCloneId": "5e800000-0000-4000-8000-00000000b003",
+  "invalidRowId": "5e800000-0000-4000-8000-00000000b004",
+  "collidingName": "MODERN General",
+  "staleContent": "OLD CONTENT — v4 never overwrites a sample prompt already on file."
+}

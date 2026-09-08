@@ -223,3 +223,6 @@ pub mod help_chat;
 pub mod headshoulders_backfill_enqueue;
 pub mod headshoulders_backfill_job;
 // === end P4.82 ===
+// === P4.83: the built-in prompt-template (Sample Prompts) seeder ===
+pub mod builtin_prompt_templates;
+// === end P4.83 ===

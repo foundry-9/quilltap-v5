@@ -5384,6 +5384,72 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D163 ===
+            // === P4.83: the prompt-templates verbs ===
+            Request::PromptTemplateList => match self.ready_db() {
+                Ok(db) => super::prompt_templates::prompt_template_list(&db, SINGLE_USER_ID).await,
+                Err(r) => r,
+            },
+            Request::PromptTemplateCreate {
+                name,
+                content,
+                description,
+                category,
+                model_hint,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::prompt_templates::prompt_template_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &super::prompt_templates::flat_body(
+                            name,
+                            content,
+                            description,
+                            category,
+                            model_hint,
+                        ),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::PromptTemplateGet { id } => match self.ready_db() {
+                Ok(db) => {
+                    super::prompt_templates::prompt_template_get(&db, SINGLE_USER_ID, &id).await
+                }
+                Err(r) => r,
+            },
+            Request::PromptTemplateUpdate {
+                id,
+                name,
+                content,
+                description,
+                category,
+                model_hint,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::prompt_templates::prompt_template_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &id,
+                        &super::prompt_templates::flat_body(
+                            name,
+                            content,
+                            description,
+                            category,
+                            model_hint,
+                        ),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::PromptTemplateDelete { id } => match self.ready_db() {
+                Ok(db) => {
+                    super::prompt_templates::prompt_template_delete(&db, SINGLE_USER_ID, &id).await
+                }
+                Err(r) => r,
+            },
+            // === end P4.83 ===
         }
     }
 

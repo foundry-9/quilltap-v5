@@ -192,9 +192,13 @@ fn prompt_templates_tier2_matches_oracle() {
                             &PtUpdate {
                                 name: data.name.clone(),
                                 content: data.content.clone(),
-                                description: data.description.clone(),
-                                category: data.category.clone(),
-                                model_hint: data.model_hint.clone(),
+                                // P4.83 made the three nullable columns a
+                                // TRI-STATE (absent / set-NULL / set-value).
+                                // This corpus only ever SETS a value, so every
+                                // provided field is the inner `Some`.
+                                description: data.description.clone().map(Some),
+                                category: data.category.clone().map(Some),
+                                model_hint: data.model_hint.clone().map(Some),
                                 tags: data.tags.clone(),
                                 updated_at: data.updated_at.clone(),
                             },

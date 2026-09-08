@@ -54,6 +54,9 @@ pub mod memories;
 pub mod memory_maintenance;
 pub mod mount_files;
 pub mod mount_points;
+// === P4.83: the prompt-templates verbs ===
+pub mod prompt_templates;
+// === end P4.83 ===
 pub mod projects;
 pub mod provider_actions;
 pub mod provision;
