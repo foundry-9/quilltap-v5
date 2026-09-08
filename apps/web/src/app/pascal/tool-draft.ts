@@ -48,6 +48,7 @@ import {
   type Visibility,
   type WhenObject,
 } from './custom-tool-types';
+import { parseProgressKey } from '../progressions/schema';
 import { parseDiceNotation } from './dice-notation';
 import { parseExpression } from './expressions';
 import { scanPlaceholders } from './placeholders';
@@ -128,6 +129,8 @@ export type ConditionSubject =
   | { kind: 'roll' }
   | { kind: 'param'; name: string }
   | { kind: 'metadata'; key: string }
+  /** A derived field of one of the character's timed progressions, keyed `<id>.<field>`. */
+  | { kind: 'progress'; key: string }
   /** The LLM consult's answer. */
   | { kind: 'llm' }
   /** Whether the LLM consult succeeded — serializes to the comparator's `ok` key. */
@@ -167,13 +170,18 @@ export type GateMode = 'none' | 'available' | 'withheld';
 
 /**
  * One test in the availability gate. Deliberately narrower than
- * {@link DraftCondition}: the subject is always a metadata key, and the operand
- * is always a literal, because a gate is answered before there are parameters
- * or state to reference.
+ * {@link DraftCondition}: the subject is a sheet rather than a run, and the
+ * operand is always a literal, because a gate is answered before there are
+ * parameters or state to reference.
  */
 export interface DraftGateCondition {
   id: string;
-  /** The metadata key this test reads. */
+  /**
+   * Which sheet this test reads. `metadata` is the character's own fact sheet;
+   * `progress` is the derived progression sheet, keyed `<id>.<field>`.
+   */
+  subject: 'metadata' | 'progress';
+  /** The key this test reads, in that subject's own vocabulary. */
   key: string;
   comparator: ComparatorKey;
   operand:
@@ -332,14 +340,16 @@ function numberText(value: number): string {
 function rollFieldToValue(field: NumberOrParamRef | undefined): NumberOrParamValue {
   if (field === undefined) return { kind: 'literal', text: '' };
   if (isParamRef(field)) return { kind: 'param', name: field.$param };
-  if (isStateRef(field)) return { kind: 'state', path: field.$state, fallback: String(field.fallback) };
+  if (isStateRef(field))
+    return { kind: 'state', path: field.$state, fallback: String(field.fallback) };
   return { kind: 'literal', text: numberText(field) };
 }
 
 function operandToDraft(
   operand: number | string | boolean | { $param: string } | StateRef,
 ): ConditionOperand {
-  if (isStateRef(operand)) return { kind: 'state', path: operand.$state, fallback: operand.fallback };
+  if (isStateRef(operand))
+    return { kind: 'state', path: operand.$state, fallback: operand.fallback };
   if (isParamRef(operand)) return { kind: 'param', name: operand.$param };
   if (typeof operand === 'number') return { kind: 'number', text: numberText(operand) };
   if (typeof operand === 'boolean') return { kind: 'boolean', value: operand };
@@ -386,6 +396,10 @@ export function conditionsFromWhen(when: WhenObject): DraftCondition[] {
     conditions.push(...comparatorToConditions({ kind: 'metadata', key }, comparator));
   }
 
+  for (const [key, comparator] of Object.entries(when.progress ?? {})) {
+    conditions.push(...comparatorToConditions({ kind: 'progress', key }, comparator));
+  }
+
   if (when.llm !== undefined) {
     // `ok` is not a comparator key, so it gets its own chip kind; the loop
     // below only walks COMPARATOR_KEYS and never sees it.
@@ -405,26 +419,35 @@ export function conditionsFromWhen(when: WhenObject): DraftCondition[] {
 
 /**
  * Flatten an availability gate into chips. Key order inside one comparator
- * follows {@link COMPARATOR_KEYS}; metadata keys follow the object's own order.
+ * follows {@link COMPARATOR_KEYS}; keys follow the object's own order, and
+ * `metadata` tests precede `progress` ones so a round trip is stable.
  */
 export function gateConditionsFromGate(gate: ToolGate): DraftGateCondition[] {
   const conditions: DraftGateCondition[] = [];
 
-  for (const [key, comparator] of Object.entries(gate.metadata)) {
-    for (const comparatorKey of COMPARATOR_KEYS) {
-      const operand = (comparator as Record<string, unknown>)[comparatorKey];
-      if (operand === undefined) continue;
-      conditions.push({
-        id: nextDraftId('gate'),
-        key,
-        comparator: comparatorKey,
-        operand:
-          typeof operand === 'number'
-            ? { kind: 'number', text: numberText(operand) }
-            : typeof operand === 'boolean'
-              ? { kind: 'boolean', value: operand }
-              : { kind: 'string', text: String(operand) },
-      });
+  const subjects: Array<['metadata' | 'progress', Record<string, unknown> | undefined]> = [
+    ['metadata', gate.metadata],
+    ['progress', gate.progress],
+  ];
+
+  for (const [subject, tests] of subjects) {
+    for (const [key, comparator] of Object.entries(tests ?? {})) {
+      for (const comparatorKey of COMPARATOR_KEYS) {
+        const operand = (comparator as Record<string, unknown>)[comparatorKey];
+        if (operand === undefined) continue;
+        conditions.push({
+          id: nextDraftId('gate'),
+          subject,
+          key,
+          comparator: comparatorKey,
+          operand:
+            typeof operand === 'number'
+              ? { kind: 'number', text: numberText(operand) }
+              : typeof operand === 'boolean'
+                ? { kind: 'boolean', value: operand }
+                : { kind: 'string', text: String(operand) },
+        });
+      }
     }
   }
 
@@ -440,6 +463,7 @@ export function gateConditionsFromGate(gate: ToolGate): DraftGateCondition[] {
  */
 export function gateFromConditions(conditions: DraftGateCondition[]): ToolGate | undefined {
   const metadata: Record<string, Record<string, unknown>> = {};
+  const progress: Record<string, Record<string, unknown>> = {};
 
   for (const condition of conditions) {
     const key = condition.key.trim();
@@ -459,11 +483,18 @@ export function gateFromConditions(conditions: DraftGateCondition[]): ToolGate |
       operand = condition.operand.text;
     }
 
-    metadata[key] = metadata[key] ?? {};
-    metadata[key][condition.comparator] = operand;
+    // A chip saved before the progress subject existed carries no `subject`;
+    // metadata is what it always meant.
+    const sheet = condition.subject === 'progress' ? progress : metadata;
+    sheet[key] = sheet[key] ?? {};
+    sheet[key][condition.comparator] = operand;
   }
 
-  return Object.keys(metadata).length > 0 ? ({ metadata } as ToolGate) : undefined;
+  const gate: Record<string, unknown> = {};
+  if (Object.keys(metadata).length > 0) gate['metadata'] = metadata;
+  if (Object.keys(progress).length > 0) gate['progress'] = progress;
+
+  return Object.keys(gate).length > 0 ? (gate as ToolGate) : undefined;
 }
 
 /**
@@ -673,6 +704,7 @@ export function whenFromConditions(conditions: DraftCondition[]): WhenObject | u
   const roll: Record<string, unknown> = {};
   const params: Record<string, Record<string, unknown>> = {};
   const metadata: Record<string, Record<string, unknown>> = {};
+  const progress: Record<string, Record<string, unknown>> = {};
   const llm: Record<string, unknown> = {};
 
   for (const condition of conditions) {
@@ -710,12 +742,20 @@ export function whenFromConditions(conditions: DraftCondition[]): WhenObject | u
         metadata[key][condition.comparator] = operand;
         break;
       }
+      case 'progress': {
+        const key = condition.subject.key;
+        if (!key) continue;
+        progress[key] = progress[key] ?? {};
+        progress[key][condition.comparator] = operand;
+        break;
+      }
     }
   }
 
   if (Object.keys(roll).length > 0) when['roll'] = roll;
   if (Object.keys(params).length > 0) when['params'] = params;
   if (Object.keys(metadata).length > 0) when['metadata'] = metadata;
+  if (Object.keys(progress).length > 0) when['progress'] = progress;
   if (Object.keys(llm).length > 0) when['llm'] = llm;
 
   return Object.keys(when).length > 0 ? (when as WhenObject) : undefined;
@@ -780,7 +820,7 @@ export function definitionFromDraft(draft: ToolDraft): Record<string, unknown> {
   doc['$schema'] = draft.schemaValue || DEFAULT_SCHEMA_VALUE;
   doc['name'] = draft.name;
   if (draft.title.trim() !== '') doc['title'] = draft.title;
-  
+
   if (draft.chipLabel.trim() !== '') doc['chipLabel'] = draft.chipLabel;
   doc['description'] = draft.description;
   if (draft.disabled) doc['disabled'] = true;
@@ -958,6 +998,11 @@ function auditPlaceholders(
       case 'value':
       case 'roll':
       case 'metadata':
+      // `progress.<id>.<field>` and `{{now}}` are always resolvable at run
+      // time — the sheet is derived, not authored — so neither can be
+      // warned about from the draft the way an undeclared parameter can.
+      case 'progress':
+      case 'now':
         break;
       case 'dice':
         if (draft.rollForm !== 'dice') {
@@ -970,9 +1015,7 @@ function auditPlaceholders(
             warn(where, '{{llm}} is not available here — the consult cannot quote its own answer'),
           );
         } else if (!draft.llmEnabled) {
-          issues.push(
-            warn(where, '{{llm}} renders as written unless the LLM consult is enabled'),
-          );
+          issues.push(warn(where, '{{llm}} renders as written unless the LLM consult is enabled'));
         }
         break;
       case 'params':
@@ -1057,6 +1100,16 @@ function validateCondition(
     issues.push(err(where, 'a metadata condition needs a key'));
     return;
   }
+  if (condition.subject.kind === 'progress') {
+    // Same parser the load-time schema uses, so the form and the loader agree
+    // about what a progress key is — and the author reads the specific reason
+    // rather than one generic sentence covering four different mistakes.
+    const parsed = parseProgressKey(condition.subject.key.trim());
+    if (!parsed.ok) {
+      issues.push(err(where, `a progress condition ${parsed.reason}`));
+      return;
+    }
+  }
   if (
     (condition.subject.kind === 'llm' || condition.subject.kind === 'llm-ok') &&
     !draft.llmEnabled
@@ -1087,7 +1140,10 @@ function validateCondition(
       draftParamValueType(target) !== 'number'
     ) {
       issues.push(
-        err(where, `${condition.comparator} orders "${condition.subject.name}", which is not numeric`),
+        err(
+          where,
+          `${condition.comparator} orders "${condition.subject.name}", which is not numeric`,
+        ),
       );
     }
   }
@@ -1099,7 +1155,10 @@ function validateCondition(
     const subjectType = subjectValueType(condition.subject, paramByName);
     if (subjectType !== null && subjectType !== 'string') {
       issues.push(
-        err(where, `${condition.comparator} searches a ${subjectType}, and only text can contain text`),
+        err(
+          where,
+          `${condition.comparator} searches a ${subjectType}, and only text can contain text`,
+        ),
       );
     }
     const needle = condition.operand;
@@ -1111,7 +1170,10 @@ function validateCondition(
       const target = paramByName.get(needle.name);
       if (!needle.name || !target) {
         issues.push(
-          err(where, `compares against "${needle.name || '(no parameter)'}", which is not declared`),
+          err(
+            where,
+            `compares against "${needle.name || '(no parameter)'}", which is not declared`,
+          ),
         );
       } else if (draftParamValueType(target) !== 'string') {
         issues.push(
@@ -1141,7 +1203,10 @@ function validateCondition(
       draftParamValueType(target) !== 'number'
     ) {
       issues.push(
-        err(where, `${condition.comparator} needs a numeric operand; "${operand.name}" is ${target.type}`),
+        err(
+          where,
+          `${condition.comparator} needs a numeric operand; "${operand.name}" is ${target.type}`,
+        ),
       );
     } else if (
       condition.subject.kind !== 'metadata' &&
@@ -1160,7 +1225,10 @@ function validateCondition(
       }
     }
   }
-  if ((operand.kind === 'string' || operand.kind === 'boolean') && condition.subject.kind !== 'metadata') {
+  if (
+    (operand.kind === 'string' || operand.kind === 'boolean') &&
+    condition.subject.kind !== 'metadata'
+  ) {
     const subjectType = subjectValueType(condition.subject, paramByName);
     if (ORDERING_COMPARATORS.has(condition.comparator)) {
       issues.push(err(where, `${condition.comparator} can only order numbers`));
@@ -1271,7 +1339,9 @@ function validateDraftEffects(draft: ToolDraft, issues: DraftIssue[]): void {
       }
     } else if (effect.valueKind === 'expression') {
       if (effect.value.trim() === '') {
-        issues.push(err(where, "the value needs an expression — quote literal prose: 'broken pick'"));
+        issues.push(
+          err(where, "the value needs an expression — quote literal prose: 'broken pick'"),
+        );
       } else {
         const parsed = parseExpression(effect.value);
         if (!parsed.ok) {
@@ -1290,8 +1360,14 @@ function validateDraftEffects(draft: ToolDraft, issues: DraftIssue[]): void {
       }
     }
 
-    if (effect.when.kind === 'verbatim' && effect.when.when.llm !== undefined && !draft.llmEnabled) {
-      issues.push(err(where, 'the condition tests the LLM consult, but the consult is not enabled'));
+    if (
+      effect.when.kind === 'verbatim' &&
+      effect.when.when.llm !== undefined &&
+      !draft.llmEnabled
+    ) {
+      issues.push(
+        err(where, 'the condition tests the LLM consult, but the consult is not enabled'),
+      );
     }
   }
 }
@@ -1309,6 +1385,10 @@ function subjectValueType(
       return target ? draftParamValueType(target) : null;
     }
     case 'metadata':
+    // A progression the definition has never met: whether this character
+    // carries `cannon` at all, let alone what `cannon.percent` holds, is
+    // unknowable from the file — the same fail-soft position metadata is in.
+    case 'progress':
       return null;
     case 'llm':
       // The answer's type is the model's business — unknowable here, like a
@@ -1320,7 +1400,9 @@ function subjectValueType(
 }
 
 /** Identity of a chip for duplicate detection: subject (+key/name) + comparator. */
-export function conditionSlotKey(condition: Pick<DraftCondition, 'subject' | 'comparator'>): string {
+export function conditionSlotKey(
+  condition: Pick<DraftCondition, 'subject' | 'comparator'>,
+): string {
   const subject = condition.subject;
   switch (subject.kind) {
     case 'value':
@@ -1331,6 +1413,8 @@ export function conditionSlotKey(condition: Pick<DraftCondition, 'subject' | 'co
       return `param:${subject.name}:${condition.comparator}`;
     case 'metadata':
       return `metadata:${subject.key}:${condition.comparator}`;
+    case 'progress':
+      return `progress:${subject.key}:${condition.comparator}`;
     case 'llm':
       return `llm:${condition.comparator}`;
     case 'llm-ok':

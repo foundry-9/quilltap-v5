@@ -3,6 +3,17 @@
  * tools can be gated on the invoking character's metadata"), pinned against
  * v4's REAL Zod at `231be14c`.
  *
+ * ⚠ **Refreshed at v4 `25f534c0b` (P4.D170).** `0587d1e96` gave Pascal's format
+ * a `progress` family, and the sentences these rows carry MOVED with it: the
+ * effect target's terminal reason gained `"progress."`, both "must test
+ * something" refines now read ``a non-empty `params`, `metadata`, or
+ * `progress` ``, and the gate's "must test at least one …" refine moved from the
+ * metadata RECORD to the gate OBJECT (so its path is the gate, and a gate with
+ * no `metadata` key at all reads as "tests nothing" rather than
+ * `expected record, received undefined`). Every replacement below was MEASURED
+ * against v4's real schema at that pin, not inferred — the same rows moved in
+ * the shared corpus's own re-recording at that sha.
+ *
  * Same shape and same teeth as `custom-tool-types.state.spec.ts`: the committed
  * corpus NDJSON is P4.d19's to regenerate (§3 of the round's shared contract),
  * so this file is the stand-in with identical rigour — every row below was
@@ -138,7 +149,7 @@ const ROWS: Row[] = [
     id: "gate-empty-metadata",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{}}}",
     success: false,
-    reason: "availableWhen.metadata: must test at least one metadata key",
+    reason: "availableWhen: must test at least one metadata key or progress field",
     data: null,
   },
   {
@@ -152,7 +163,7 @@ const ROWS: Row[] = [
     id: "gate-unknown-subject-params",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"params\":{\"a\":{\"eq\":1}}}}",
     success: false,
-    reason: "availableWhen.metadata: Invalid input: expected record, received undefined; availableWhen: Unrecognized key: \"params\"",
+    reason: "availableWhen: Unrecognized key: \"params\"; availableWhen: must test at least one metadata key or progress field",
     data: null,
   },
   {

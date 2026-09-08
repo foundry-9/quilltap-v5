@@ -390,6 +390,7 @@ export class GateSection {
       ...this.draft().gateConditions,
       {
         id: `new-gate-${gateIdCounter}`,
+        subject: 'metadata',
         key: '',
         comparator: 'eq',
         operand: { kind: 'boolean', value: true },

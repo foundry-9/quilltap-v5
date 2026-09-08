@@ -10,13 +10,20 @@
  * neither is offered to everyone, which is every file written before this key
  * existed.
  *
- * ## Why metadata alone
+ * ## Why metadata and progress alone
  *
  * The gate is answered before the deal. There is no roll to test, no resolved
  * parameters (nobody has called anything yet), and no consult. What a character
- * carries into the room is their `metadata.json`, so that is the only subject a
- * pre-roll test can honestly have — and the reason a gate's operands are
- * literals rather than `$param`/`$state` references.
+ * carries into the room is their `metadata.json` — and, derived from the
+ * `progressions` key inside it against the wall clock, their timed
+ * progressions. Those two are the only subjects a pre-roll test can honestly
+ * have, and the reason a gate's operands are literals rather than
+ * `$param`/`$state` references.
+ *
+ * The progress sheet is what makes `availableWhen: { progress: {
+ * "cannon.complete": { eq: true } } }` — the whole weapon-recharge use case —
+ * a gate rather than a branch in every outcome table. The roster already holds
+ * the invoker's metadata, so deriving the sheet from it adds no reads.
  *
  * ## Fail-soft, and therefore fail-CLOSED for `availableWhen`
  *
@@ -31,6 +38,7 @@
  * tell an author whether a fact sheet would be dealt to without a round trip.
  */
 
+import type { ProgressPrimitive } from '../progressions/engine';
 import type { QtapCustomTool, ToolGate } from './custom-tool-types';
 import { metadataComparatorHolds, type Primitive } from './metadata-match';
 
@@ -57,14 +65,21 @@ export function hasToolGate(
 export function evaluateToolGate(
   definition: Pick<QtapCustomTool, 'availableWhen' | 'withheldWhen'>,
   metadata: Record<string, unknown> | null | undefined,
+  /**
+   * The invoker's derived progress sheet (`flattenProgressions`), keyed
+   * `"<id>.<field>"`. Omitted → `{}`, so every `progress` test fails and the
+   * fail-closed / fail-open reading above applies to it unchanged.
+   */
+  progress?: Record<string, ProgressPrimitive> | null,
 ): ToolGateVerdict {
   const sheet = metadata ?? {};
+  const progressSheet = progress ?? {};
 
-  if (definition.availableWhen && !gateHolds(definition.availableWhen, sheet)) {
+  if (definition.availableWhen && !gateHolds(definition.availableWhen, sheet, progressSheet)) {
     return { available: false, withheldBy: 'availableWhen' };
   }
 
-  if (definition.withheldWhen && gateHolds(definition.withheldWhen, sheet)) {
+  if (definition.withheldWhen && gateHolds(definition.withheldWhen, sheet, progressSheet)) {
     return { available: false, withheldBy: 'withheldWhen' };
   }
 
@@ -72,8 +87,14 @@ export function evaluateToolGate(
 }
 
 /** Every test in a gate must hold. Keys AND together, as they do in a `when`. */
-function gateHolds(gate: ToolGate, metadata: Record<string, unknown>): boolean {
-  for (const [key, comparator] of Object.entries(gate.metadata)) {
+function gateHolds(
+  gate: ToolGate,
+  metadata: Record<string, unknown>,
+  progress: Record<string, ProgressPrimitive>,
+): boolean {
+  // Both subjects go through the SAME comparison table — one semantics, no
+  // second implementation to drift — differing only in which sheet they read.
+  for (const [key, comparator] of Object.entries(gate.metadata ?? {})) {
     const holds = metadataComparatorHolds(comparator, key, metadata, {
       // A gate's operands are literals by construction — the schema admits no
       // `$param` or `$state` here — so resolution is the identity.
@@ -81,5 +102,13 @@ function gateHolds(gate: ToolGate, metadata: Record<string, unknown>): boolean {
     });
     if (!holds) return false;
   }
+
+  for (const [key, comparator] of Object.entries(gate.progress ?? {})) {
+    const holds = metadataComparatorHolds(comparator, key, progress, {
+      resolveOperand: (comparatorKey) => comparator[comparatorKey] as Primitive,
+    });
+    if (!holds) return false;
+  }
+
   return true;
 }

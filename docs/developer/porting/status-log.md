@@ -117059,3 +117059,82 @@ suite in `schema.test.ts` — the `qtap-progression.schema.json` mirror agreemen
 Gate: 180 tests over the three progressions spec files, green on the first run;
 the full SPA suite 412 files / 6,664 tests; `npm run build` clean;
 `check-qt-classes` 950 classes, every reference resolving. SPA 0.5.682.
+
+### Unit 2 — the Pascal twins' `progress` family
+
+Ports the client-safe half of v4 `0587d1e96`'s Pascal hunks into
+`pascal/{custom-tool-types,placeholders,tool-gate,tool-draft}.ts` plus the two
+Workbench switches the type change forces (`subjectSelectValue`,
+`describeSlot`) and the gate seed's `subject: 'metadata'`. The Workbench's own
+affordances — the subject select, the key inputs, the prefix button, the
+placeholder menu, the bench's derived list — are the NEXT unit; this one is the
+schema/draft layer they will sit on.
+
+**Measured at the pin, because the shipped hunks say things the prose does
+not.** The gate's refine moved from the metadata RECORD to the gate OBJECT and
+BOTH subjects became optional, which changes two observable things: the issue
+PATH (`availableWhen`, not `availableWhen.metadata`), and what a gate with no
+`metadata` key at all answers — `must test at least one metadata key or
+progress field` where it used to be `expected record, received undefined`. A
+progress record key that fails `parseProgressKey` reports Zod's own
+`Invalid key in record` and DISCARDS the parser's specific reason, which is
+exactly why v4 asserts those reasons on the Workbench surface instead (its own
+`tool-draft.test.ts` block, ported here).
+
+**The differentials.**
+
+1. The SHARED corpus `apps/web/src/testing/fixtures/pascal-custom-tool-
+   definition.oracle.ndjson` — a CONSUMER copy of the Pascal lane's oracle case
+   — re-recorded from a `/tmp/qt-v4-pin-p4d170-25f534c0b` worktree. **Exactly
+   twelve of 301 rows moved**, every one a sentence this drift changed
+   (`when-tests-nothing`, `when-empty-params`, `metadata-empty-object`,
+   `unknown-key-inside-when`, `contains-bare-value`, `gate-empty-metadata`,
+   `gate-missing-metadata`, `effect-target-no-prefix`,
+   `effect-target-empty-string`, `effect-when-empty`,
+   `effects-two-bad-elements`, `effect-and-outcome-issue`). ⚠ The Pascal lane
+   owns the generator and will extend the corpus with its own progress rows; the
+   unifier reconciles this copy with whatever that lane produces.
+2. A NEW `pascal-progress.oracle.ndjson` (71 rows) from this lane's own
+   `apps/web/oracle/pascal-progress.recorder.ts`, covering the arms that did not
+   exist before — 38 definitions (both gate subjects, empty/absent combinations,
+   the four bad-key shapes, `when.progress`, all ten effect-target arms, the
+   reserved-key pair with `metadata.progressionsNotes` as the near-miss control,
+   the two new placeholders inside an expression), 16 raw `parseEffectTarget`
+   results compared as whole serialized objects, 10 `classifyPlaceholder` refs,
+   and 7 `evaluateToolGate` verdicts against a sheet the spec DERIVES with
+   `flattenProgressions` and byte-compares to v4's before the gate sees it.
+   Length asserts guard both fixtures against a truncation making the `it.each`
+   rows vacuous.
+3. v4's four new `tool-draft.test.ts` cases as parity specs, plus four of this
+   lane's own for the gate-chip subject rules.
+
+**Seven mutation proofs, each reddening exactly its rows:**
+
+| mutation | reddens |
+| --- | --- |
+| a subject-less chip reads as `progress` | the one spec built to construct one — it SURVIVED the first pass, which is why that spec exists |
+| `gateFromConditions` emits an empty `progress` | 16 shared-corpus gate round-trip rows |
+| `gateConditionsFromGate` walks progress first | the metadata-first flatten spec |
+| the gate refine keeps its old `metadata` path | 7 rows across three files |
+| the reserved-key guard drops the `progressions.` child arm | 2 rows |
+| the progress record key takes any non-empty string | the four bad-key rows |
+| `tool_gate` ignores the progress sheet | 4 gate-verdict rows |
+
+The subject-less mutation surviving the first run is the finding worth keeping:
+`gateFromConditions`'s comment claims a rule the TYPE cannot express (a draft
+persisted before the field existed), so nothing a current build authors can
+reach it — it needed a spec that deletes the field by construction.
+
+Three hand-written spec files carrying captured v4 rows from older pins
+(`custom-tool-types.{effects,gate,llm}.spec.ts`) had their moved sentences
+re-measured at `25f534c0b`, each with a vintage note in its header. One
+`side-effects-section.spec.ts` assertion moved with them.
+
+⚠ **Process note:** a `prettier --write src/app/pascal/` reformatted five files
+this lane never touched and inflated four spec diffs (the
+`prettier-write-a-directory-is-never-a-noop` trap, in the exact shape the note
+describes). All reverted; every edit re-applied surgically; the final diff is
+the port and nothing else.
+
+Gate: 413 SPA spec files / 6,750 tests; `npm run build` clean; `check-qt-classes`
+950 classes. SPA 0.5.683.

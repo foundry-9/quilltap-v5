@@ -29,6 +29,7 @@ function gatedDraft(conditions: DraftGateCondition[] = []): ToolDraft {
 
 const chip = (over: Partial<DraftGateCondition> = {}): DraftGateCondition => ({
   id: 'g1',
+  subject: 'metadata',
   key: 'rank',
   comparator: 'eq',
   operand: { kind: 'boolean', value: true },

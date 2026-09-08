@@ -24,10 +24,13 @@ import {
   newDraft,
   renameParameterEverywhere,
   serializeDraft,
+  gateConditionsFromGate,
+  gateFromConditions,
   slugFromTitle,
   validateDraft,
   whenFromConditions,
   type DraftCondition,
+  type DraftGateCondition,
   type ToolDraft,
 } from './tool-draft';
 
@@ -420,6 +423,53 @@ describe('validateDraft', () => {
     const issues = validateDraft(newDraft());
     expect(issues.some((i) => i.message.includes('must test something'))).toBe(true);
     expect(issues.some((i) => i.where.section === 'identity')).toBe(true);
+  });
+
+  /**
+   * v4's `a progress condition key` block (`tool-draft.test.ts` at
+   * `25f534c0b`). The Workbench is where the shared `parseProgressKey`'s
+   * per-mistake messages actually reach a person: through `when.progress` they
+   * are lost to Zod's own "Invalid key in record". So this is the surface worth
+   * asserting the wording on.
+   */
+  describe('a progress condition key', () => {
+    function draftWithProgressKey(key: string) {
+      const draft = newDraft();
+      draft.name = 'probe';
+      draft.description = 'x';
+      draft.outcomes[0].message = 'm';
+      draft.outcomes[0].conditions = [
+        {
+          id: 'a',
+          subject: { kind: 'progress', key },
+          comparator: 'eq',
+          operand: { kind: 'boolean', value: true },
+        },
+      ];
+      return validateDraft(draft).filter((i) => i.severity === 'error');
+    }
+
+    it('accepts a well-formed one', () => {
+      expect(draftWithProgressKey('cannon.complete')).toEqual([]);
+    });
+
+    it('says specifically that no field was named', () => {
+      expect(draftWithProgressKey('cannon').some((i) => i.message.includes('names no field'))).toBe(
+        true,
+      );
+    });
+
+    it('says specifically that the id is not an id', () => {
+      expect(
+        draftWithProgressKey('Cannon.complete').some((i) =>
+          i.message.includes('not a progression id'),
+        ),
+      ).toBe(true);
+    });
+
+    it('rejects a blank key', () => {
+      expect(draftWithProgressKey('').length).toBeGreaterThan(0);
+    });
   });
 
   it('blocks duplicate subject+comparator pairs but not distinct metadata keys', () => {
@@ -927,7 +977,7 @@ describe('the availability gate in the draft', () => {
     it('blocks a condition with no metadata key', () => {
       const draft = gated();
       draft.gateConditions = [
-        { id: 'g1', key: '  ', comparator: 'eq', operand: { kind: 'boolean', value: true } },
+        { id: 'g1', subject: 'metadata', key: '  ', comparator: 'eq', operand: { kind: 'boolean', value: true } },
       ];
       expect(gateErrors(draft).some((m) => m.includes('needs a metadata key'))).toBe(true);
     });
@@ -935,8 +985,8 @@ describe('the availability gate in the draft', () => {
     it('blocks ordering against text, and containment against a number', () => {
       const draft = gated();
       draft.gateConditions = [
-        { id: 'g1', key: 'rank', comparator: 'gte', operand: { kind: 'string', text: 'senior' } },
-        { id: 'g2', key: 'abilities', comparator: 'contains', operand: { kind: 'number', text: '7' } },
+        { id: 'g1', subject: 'metadata', key: 'rank', comparator: 'gte', operand: { kind: 'string', text: 'senior' } },
+        { id: 'g2', subject: 'metadata', key: 'abilities', comparator: 'contains', operand: { kind: 'number', text: '7' } },
       ];
       const errors = gateErrors(draft);
       expect(errors.some((m) => m.includes('can only order numbers'))).toBe(true);
@@ -946,8 +996,8 @@ describe('the availability gate in the draft', () => {
     it('blocks an empty substring and an unparseable number', () => {
       const draft = gated();
       draft.gateConditions = [
-        { id: 'g1', key: 'abilities', comparator: 'contains', operand: { kind: 'string', text: '' } },
-        { id: 'g2', key: 'rank', comparator: 'eq', operand: { kind: 'number', text: '' } },
+        { id: 'g1', subject: 'metadata', key: 'abilities', comparator: 'contains', operand: { kind: 'string', text: '' } },
+        { id: 'g2', subject: 'metadata', key: 'rank', comparator: 'eq', operand: { kind: 'number', text: '' } },
       ];
       const errors = gateErrors(draft);
       expect(errors.some((m) => m.includes('must not be empty'))).toBe(true);
@@ -957,8 +1007,8 @@ describe('the availability gate in the draft', () => {
     it('blocks the same key tested twice with the same comparator', () => {
       const draft = gated();
       draft.gateConditions = [
-        { id: 'g1', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '3' } },
-        { id: 'g2', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '5' } },
+        { id: 'g1', subject: 'metadata', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '3' } },
+        { id: 'g2', subject: 'metadata', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '5' } },
       ];
       expect(gateErrors(draft).some((m) => m.includes('only once'))).toBe(true);
     });
@@ -967,7 +1017,7 @@ describe('the availability gate in the draft', () => {
       const draft = gated();
       draft.gateMode = 'none';
       draft.gateConditions = [
-        { id: 'g1', key: '', comparator: 'eq', operand: { kind: 'boolean', value: true } },
+        { id: 'g1', subject: 'metadata', key: '', comparator: 'eq', operand: { kind: 'boolean', value: true } },
       ];
       expect(gateErrors(draft)).toEqual([]);
     });
@@ -977,6 +1027,7 @@ describe('the availability gate in the draft', () => {
       draft.gateConditions = [
         {
           id: 'g1',
+          subject: 'metadata',
           key: 'toolAbilities',
           comparator: 'contains',
           operand: { kind: 'string', text: 'programmable' },
@@ -1258,5 +1309,71 @@ describe('effects in the draft', () => {
       value: '1',
     }));
     expect(validateDraft(draft).some((i) => i.message.includes('at most 16 effects'))).toBe(true);
+  });
+});
+
+/**
+ * The gate's two subjects (v4 `0587d1e96`).
+ *
+ * `gateFromConditions`'s comment — "a chip saved before the progress subject
+ * existed carries no `subject`; metadata is what it always meant" — is a claim
+ * about a draft PERSISTED before the field existed, so the type cannot express
+ * it and no chip a current build authors can reach it. It is pinned here by
+ * construction: a mutation reading a subject-less chip as `progress` survives
+ * every other spec in this file and in the corpus.
+ */
+describe('gate chips carry their subject', () => {
+  const chip = (over: Partial<DraftGateCondition>): DraftGateCondition => ({
+    id: 'g1',
+    subject: 'metadata',
+    key: 'rank',
+    comparator: 'eq',
+    operand: { kind: 'string', text: 'captain' },
+    ...over,
+  });
+
+  it('sorts a chip with NO subject into metadata — what it always meant', () => {
+    const legacy = chip({});
+    delete (legacy as Partial<DraftGateCondition>).subject;
+    expect(JSON.stringify(gateFromConditions([legacy]))).toBe(
+      JSON.stringify({ metadata: { rank: { eq: 'captain' } } }),
+    );
+  });
+
+  it('sorts a progress chip into progress, and keeps metadata first', () => {
+    const gate = gateFromConditions([
+      chip({
+        id: 'g1',
+        subject: 'progress',
+        key: 'cannon.complete',
+        operand: { kind: 'boolean', value: true },
+      }),
+      chip({ id: 'g2' }),
+    ]);
+    // `metadata` is written first whatever order the chips arrive in, which is
+    // what makes `gateConditionsFromGate` → `gateFromConditions` stable.
+    expect(JSON.stringify(gate)).toBe(
+      JSON.stringify({
+        metadata: { rank: { eq: 'captain' } },
+        progress: { 'cannon.complete': { eq: true } },
+      }),
+    );
+  });
+
+  it('emits neither subject when nothing survives, rather than an empty one', () => {
+    expect(gateFromConditions([chip({ key: '   ' })])).toBeUndefined();
+    expect(
+      JSON.stringify(
+        gateFromConditions([chip({}), chip({ id: 'g2', subject: 'progress', key: ' ' })]),
+      ),
+    ).toBe(JSON.stringify({ metadata: { rank: { eq: 'captain' } } }));
+  });
+
+  it('flattens a two-subject gate metadata-first', () => {
+    const chips = gateConditionsFromGate({
+      progress: { 'cannon.complete': { eq: true } },
+      metadata: { rank: { eq: 'captain' } },
+    });
+    expect(chips.map((c) => c.subject)).toEqual(['metadata', 'progress']);
   });
 });

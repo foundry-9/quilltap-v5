@@ -2,6 +2,17 @@
  * The consulted-oracle + containment arms of the browser schema twin, pinned
  * against v4's REAL Zod at `616930db` (P4.6bc unit 1).
  *
+ * ⚠ **Refreshed at v4 `25f534c0b` (P4.D170).** `0587d1e96` gave Pascal's format
+ * a `progress` family, and the sentences these rows carry MOVED with it: the
+ * effect target's terminal reason gained `"progress."`, both "must test
+ * something" refines now read ``a non-empty `params`, `metadata`, or
+ * `progress` ``, and the gate's "must test at least one …" refine moved from the
+ * metadata RECORD to the gate OBJECT (so its path is the gate, and a gate with
+ * no `metadata` key at all reads as "tests nothing" rather than
+ * `expected record, received undefined`). Every replacement below was MEASURED
+ * against v4's real schema at that pin, not inferred — the same rows moved in
+ * the shared corpus's own re-recording at that sha.
+ *
  * The committed 115-row corpus NDJSON is lane D8's to regenerate (§C of the
  * work order), so it cannot carry the arms this drift added. This file is the
  * stand-in with the same teeth: every row below was CAPTURED by driving v4's
@@ -225,7 +236,7 @@ const ROWS: Row[] = [
     id: "when-empty-object",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`",
+    reason: "outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`",
     data: null,
   },
   {
@@ -274,7 +285,7 @@ const ROWS: Row[] = [
     id: "contains-bare-value",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"contains\":\"x\"},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: Unrecognized key: \"contains\"; outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`",
+    reason: "outcomes.0.when: Unrecognized key: \"contains\"; outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`",
     data: null,
   },
   {

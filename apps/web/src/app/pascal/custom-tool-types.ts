@@ -63,6 +63,14 @@
  * is the one message in this file NOT pinned by the differential.
  */
 
+import {
+  PROGRESSIONS_METADATA_KEY,
+  PROGRESSION_ID_PATTERN,
+  WRITABLE_PROGRESSION_FIELDS,
+  isWritableProgressionField,
+  parseProgressKey,
+  type WritableProgressionField,
+} from '../progressions/schema';
 import { MAX_DIE_SIDES, MIN_DIE_SIDES, parseDiceNotation } from './dice-notation';
 import {
   aborted,
@@ -347,19 +355,29 @@ export interface GateComparator {
 /**
  * An availability gate: whether this invoker is offered the tool at all.
  *
- * Keyed by metadata key, AND-composed, and fail-soft in exactly the way an
- * outcome's `metadata` test is — a key the character lacks does not match. The
- * subject is `metadata` and only `metadata` because a gate is answered BEFORE
- * the deal: there is no roll to test, no parameters (nobody has called
- * anything), and no consult. `metadata` is what a character carries into the
- * room, so it is the one thing that can be asked about before they sit down.
+ * Keyed by metadata key or by `"<id>.<field>"`, AND-composed across BOTH
+ * subjects, and fail-soft in exactly the way an outcome's `metadata` test is —
+ * a key the character lacks does not match. The subjects are `metadata` and
+ * `progress` and nothing else because a gate is answered BEFORE the deal: there
+ * is no roll to test, no parameters (nobody has called anything), and no
+ * consult. What a character carries into the room is their `metadata.json` and,
+ * derived from the `progressions` key inside it against the wall clock, their
+ * timed progressions.
  *
- * The subject lives under its own key rather than at the top of the object so a
- * later build can add a second one without re-shaping every file already
- * written.
+ * Each subject lives under its own key rather than at the top of the object,
+ * which is what let `progress` join at `0587d1e96` without re-shaping every file
+ * already written. Both are OPTIONAL since then, and the "must test at least one
+ * metadata key or progress field" refine moved from the metadata RECORD to the
+ * gate OBJECT — so its issue path is the gate, not `gate.metadata`.
  */
 export interface ToolGate {
-  metadata: Record<string, GateComparator>;
+  metadata?: Record<string, GateComparator>;
+  /**
+   * Test the invoking character's timed progressions, keyed `"<id>.<field>"`.
+   * Derived fresh from the wall clock at roster time; a progression the
+   * character does not carry does not match (v4 `0587d1e96`).
+   */
+  progress?: Record<string, GateComparator>;
 }
 
 /**
@@ -432,6 +450,13 @@ export interface WhenObject {
   roll?: NumericComparator;
   params?: Record<string, ParamComparator>;
   metadata?: Record<string, MetadataComparator>;
+  /**
+   * Test the invoking character's timed progressions, keyed `"<id>.<field>"` —
+   * percent, complete, remainingMs, state and the rest, derived from the wall
+   * clock at run start. A progression the character does not carry does not
+   * match, exactly as an absent metadata key does not (v4 `0587d1e96`).
+   */
+  progress?: Record<string, MetadataComparator>;
   llm?: LlmComparator;
 }
 
@@ -459,6 +484,13 @@ export interface EffectWhen {
   roll?: NumericComparator;
   params?: Record<string, ParamComparator>;
   metadata?: Record<string, MetadataComparator>;
+  /**
+   * Test the invoking character's timed progressions, keyed `"<id>.<field>"` —
+   * percent, complete, remainingMs, state and the rest, derived from the wall
+   * clock at run start. A progression the character does not carry does not
+   * match, exactly as an absent metadata key does not (v4 `0587d1e96`).
+   */
+  progress?: Record<string, MetadataComparator>;
   llm?: LlmComparator;
   /** Test the WINNING outcome's semantic state. */
   outcome?: { eq?: OutcomeState; neq?: OutcomeState };
@@ -482,7 +514,8 @@ export interface CustomToolEffect {
 /** A parsed effect target, with the raw text kept for records and messages. */
 export type EffectTarget =
   | { kind: 'state'; path: Array<string | number>; raw: string }
-  | { kind: 'metadata'; key: string; raw: string };
+  | { kind: 'metadata'; key: string; raw: string }
+  | { kind: 'progress'; id: string; field: WritableProgressionField; raw: string };
 
 /**
  * v4 `lib/state/state-paths.ts` `parsePath` — the one function of that module
@@ -523,6 +556,15 @@ function parseStatePath(path: string | undefined): Array<string | number> {
  * - `metadata.<key>` — the remainder is taken WHOLE as the key. Metadata keys
  *   are the user's vocabulary, so dots inside the key are fine precisely
  *   because it is not path-parsed.
+ * - `progress.<id>.<field>` — a field of one of the rolling character's timed
+ *   progressions. Unlike a metadata key, BOTH halves are the format's own
+ *   vocabulary and both are checked here: the id against the progression
+ *   identifier rule, the field against the closed writable set (which includes
+ *   the `remove` pseudo-field — write `true` to delete the progression).
+ *   Writing an id nobody authored CREATES the progression, so there is nothing
+ *   to check about existence; what would be a silent no-op is a `quantity`
+ *   written whole, or a `percent` written at all, and both are rejected here
+ *   with the field list in the reason.
  */
 export function parseEffectTarget(
   target: string,
@@ -543,15 +585,60 @@ export function parseEffectTarget(
     return { ok: true, target: { kind: 'state', path, raw: target } };
   }
 
+  // Checked BEFORE `metadata.`, which it does not prefix-collide with, but
+  // ordering it first keeps the two user-facing families adjacent below.
+  if (target.startsWith('progress.')) {
+    const rest = target.slice('progress.'.length);
+    const dot = rest.indexOf('.');
+    if (dot <= 0 || dot === rest.length - 1) {
+      return {
+        ok: false,
+        reason: 'must name "progress.<progression id>.<field>" — e.g. "progress.cannon.endTime"',
+      };
+    }
+    const id = rest.slice(0, dot);
+    const field = rest.slice(dot + 1);
+    if (!PROGRESSION_ID_PATTERN.test(id)) {
+      return {
+        ok: false,
+        reason: `writes progression "${id}", which is not a valid id — lowercase, starting with a letter, then letters, digits, _ or - (at most 64)`,
+      };
+    }
+    if (!isWritableProgressionField(field)) {
+      return {
+        ok: false,
+        reason: `writes "${field}", which is not a writable progression field — use one of ${WRITABLE_PROGRESSION_FIELDS.join(', ')}`,
+      };
+    }
+    return { ok: true, target: { kind: 'progress', id, field, raw: target } };
+  }
+
   if (target.startsWith('metadata.')) {
     const key = target.slice('metadata.'.length);
     if (key.length === 0) {
       return { ok: false, reason: 'names no metadata key after "metadata."' };
     }
+    // The reserved key is not writable through this door. An effect's value is
+    // always a PRIMITIVE, so `metadata.progressions` would replace the whole
+    // progressions object with a string or a number — wiping every timed span
+    // the character carries, past the schema validation and the rollback that
+    // guard the `progress.` path, and fail-soft enough on the next read that
+    // nobody would notice. `metadata.progressions.cannon` is refused for the
+    // adjacent reason: a metadata key is taken WHOLE, so that writes a literal
+    // key named "progressions.cannon" and touches no progression at all, which
+    // is not what anyone writing it means.
+    if (key === PROGRESSIONS_METADATA_KEY || key.startsWith(`${PROGRESSIONS_METADATA_KEY}.`)) {
+      return {
+        ok: false,
+        reason:
+          `writes the reserved "${PROGRESSIONS_METADATA_KEY}" key through "metadata." — ` +
+          'use "progress.<id>.<field>" instead, which is validated and rolled back on a bad result',
+      };
+    }
     return { ok: true, target: { kind: 'metadata', key, raw: target } };
   }
 
-  return { ok: false, reason: 'must start with "state." or "metadata."' };
+  return { ok: false, reason: 'must start with "state.", "metadata." or "progress."' };
 }
 
 export interface CustomToolOutcome {
@@ -880,41 +967,62 @@ function parseGateComparator(input: unknown): Res<GateComparator> {
 }
 
 /**
- * v4 `ToolGateSchema` — `z.strictObject({ metadata: z.record(…).refine(…) })`.
- * The "must test at least one metadata key" refine sits on the RECORD, so it is
- * skipped once an entry has aborted, and its issue path is `metadata`.
+ * v4 `ToolGateSchema` — `z.strictObject({ metadata: …optional(), progress:
+ * …optional() }).refine(…)`.
+ *
+ * `0587d1e96` moved the "must test at least one …" refine from the metadata
+ * RECORD to the gate OBJECT and made both subjects optional, which changes two
+ * observable things and both are corpus-pinned: the issue PATH is the gate
+ * rather than `gate.metadata`, and a gate with NO `metadata` key at all now
+ * reads as "tests nothing" rather than `expected record, received undefined`.
+ * Being an object-level refine it is skipped once the object has aborted.
  */
 function parseToolGate(input: unknown): Res<ToolGate> {
   if (!isPlainObject(input)) return resHard(invalidType('object', input));
 
   const issues: Issue[] = [];
-  let metadata: Record<string, GateComparator> | undefined;
+  const out: ToolGate = {};
 
-  const raw = input['metadata'];
-  if (isPlainObject(raw)) {
-    // Gate keys take `z.string().min(1)`, the same non-empty grammar a `when`'s
-    // `metadata` keys take — the user hand-authors `metadata.json`.
-    const r = parseRecord(raw, (k) => k.length > 0, parseGateComparator);
-    const metaIssues = [...r.issues];
-    if (!aborted(metaIssues) && Object.keys(r.value ?? {}).length === 0) {
-      metaIssues.push(checkIssue('must test at least one metadata key'));
+  // Gate metadata keys take `z.string().min(1)`, the same non-empty grammar a
+  // `when`'s `metadata` keys take — the user hand-authors `metadata.json`.
+  // Progress keys are the FORMAT's vocabulary, so `parseProgressKey` checks
+  // their shape; a key that fails is a record-key failure, and Zod reports its
+  // own `Invalid key in record` and discards the refinement's reason (v4 asserts
+  // that in both directions, so nobody tries to surface a message the schema
+  // cannot surface).
+  const subjects: Array<['metadata' | 'progress', (key: string) => boolean]> = [
+    ['metadata', (k) => k.length > 0],
+    ['progress', (k) => parseProgressKey(k).ok],
+  ];
+
+  for (const [subject, keyValid] of subjects) {
+    if (!hasKey(input, subject)) continue;
+    const raw = input[subject];
+    if (isPlainObject(raw)) {
+      const r = parseRecord(raw, keyValid, parseGateComparator);
+      issues.push(...prefix(subject, r.issues));
+      if (r.value !== undefined) out[subject] = r.value;
+    } else {
+      // "record", not "object": Zod names a `z.record` by its own type, and the
+      // captured rows pin it. The three PRE-EXISTING `z.record` sites in this
+      // file — `when.params`, `when.metadata`, top-level `parameters` — said
+      // "object" until the `231be14c` unification: P4.d19 fixed the Rust half
+      // and added the three corpus rows that had never covered them, so
+      // P4.d20's deliberate hold-off ended and all four sites now say "record"
+      // on both v5 halves.
+      issues.push(...prefix(subject, [hardIssue(invalidType('record', raw))]));
     }
-    issues.push(...prefix('metadata', metaIssues));
-    metadata = r.value;
-  } else {
-    // "record", not "object": Zod names a `z.record` by its own type, and the
-    // captured rows pin it. The three PRE-EXISTING `z.record` sites in this file
-    // — `when.params`, `when.metadata`, top-level `parameters` — said "object"
-    // until the `231be14c` unification: P4.d19 fixed the Rust half and added the
-    // three corpus rows that had never covered them, so P4.d20's deliberate
-    // hold-off ended and all four sites now say "record" on both v5 halves.
-    issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
   }
 
-  issues.push(...unrecognizedKeys(input, ['metadata']));
+  issues.push(...unrecognizedKeys(input, ['metadata', 'progress']));
 
-  const value = metadata !== undefined && !aborted(issues) ? { metadata } : undefined;
-  return { value, issues };
+  if (aborted(issues)) return { value: undefined, issues };
+
+  if (Object.keys(out.metadata ?? {}).length + Object.keys(out.progress ?? {}).length === 0) {
+    issues.push(checkIssue('must test at least one metadata key or progress field'));
+  }
+
+  return { value: out, issues };
 }
 
 /**
@@ -1176,6 +1284,20 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
       issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
     }
   }
+  let progressPresent = false;
+  if (hasKey(input, 'progress')) {
+    progressPresent = true;
+    const raw = input['progress'];
+    if (isPlainObject(raw)) {
+      // Progress keys are the FORMAT's vocabulary, so their shape IS checkable
+      // at load time — unlike a metadata key, which is the user's own.
+      const r = parseRecord(raw, (k) => parseProgressKey(k).ok, parseParamComparator);
+      issues.push(...prefix('progress', r.issues));
+      if (r.value !== undefined) out.progress = r.value;
+    } else {
+      issues.push(...prefix('progress', [hardIssue(invalidType('record', raw))]));
+    }
+  }
 
   if (hasKey(input, 'llm')) {
     const r = parseLlmComparator(input['llm']);
@@ -1184,7 +1306,14 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
   }
 
   issues.push(
-    ...unrecognizedKeys(input, [...NUMERIC_COMPARATOR_KEYS, 'roll', 'params', 'metadata', 'llm']),
+    ...unrecognizedKeys(input, [
+      ...NUMERIC_COMPARATOR_KEYS,
+      'roll',
+      'params',
+      'metadata',
+      'progress',
+      'llm',
+    ]),
   );
 
   if (aborted(issues)) return { value: undefined, issues };
@@ -1197,16 +1326,19 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
+  const hasProgress =
+    progressPresent && out.progress !== undefined && Object.keys(out.progress).length > 0;
   if (
     !hasComparator &&
     out.roll === undefined &&
     out.llm === undefined &&
     !hasParams &&
-    !hasMetadata
+    !hasMetadata &&
+    !hasProgress
   ) {
     issues.push(
       checkIssue(
-        'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`',
+        'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`',
       ),
     );
   }
@@ -1264,6 +1396,20 @@ function parseEffectWhen(input: unknown): Res<EffectWhen> {
       issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
     }
   }
+  // `progress` rides in from `WHEN_SUBJECTS_SHAPE`, so it sits between
+  // `metadata` and `llm` here exactly as it does on an outcome row's `when`.
+  let progressPresent = false;
+  if (hasKey(input, 'progress')) {
+    progressPresent = true;
+    const raw = input['progress'];
+    if (isPlainObject(raw)) {
+      const r = parseRecord(raw, (k) => parseProgressKey(k).ok, parseParamComparator);
+      issues.push(...prefix('progress', r.issues));
+      if (r.value !== undefined) out.progress = r.value;
+    } else {
+      issues.push(...prefix('progress', [hardIssue(invalidType('record', raw))]));
+    }
+  }
   if (hasKey(input, 'llm')) {
     const r = parseLlmComparator(input['llm']);
     issues.push(...prefix('llm', r.issues));
@@ -1281,6 +1427,7 @@ function parseEffectWhen(input: unknown): Res<EffectWhen> {
       'roll',
       'params',
       'metadata',
+      'progress',
       'llm',
       'outcome',
     ]),
@@ -1295,17 +1442,20 @@ function parseEffectWhen(input: unknown): Res<EffectWhen> {
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
+  const hasProgress =
+    progressPresent && out.progress !== undefined && Object.keys(out.progress).length > 0;
   if (
     !hasComparator &&
     out.roll === undefined &&
     out.llm === undefined &&
     out.outcome === undefined &&
     !hasParams &&
-    !hasMetadata
+    !hasMetadata &&
+    !hasProgress
   ) {
     issues.push(
       checkIssue(
-        'must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, or a non-empty `metadata`',
+        'must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, or `progress`',
       ),
     );
   }

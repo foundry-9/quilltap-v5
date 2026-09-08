@@ -499,7 +499,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
   it('stays silent while the gate is still half-typed — the form already complains', async () => {
     const draft = gatedDraft();
     draft.gateConditions = [
-      { id: 'g1', key: '', comparator: 'eq', operand: { kind: 'boolean', value: true } },
+      { id: 'g1', subject: 'metadata', key: '', comparator: 'eq', operand: { kind: 'boolean', value: true } },
     ];
     const fixture = await render(draft, stubClient());
     expect(fixture.componentInstance.draftGate()).toBeNull();
@@ -583,7 +583,7 @@ function gatedDraft(): ToolDraft {
   const draft = validDraft();
   draft.gateMode = 'available';
   draft.gateConditions = [
-    { id: 'g1', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '3' } },
+    { id: 'g1', subject: 'metadata', key: 'rank', comparator: 'gte', operand: { kind: 'number', text: '3' } },
   ];
   return draft;
 }

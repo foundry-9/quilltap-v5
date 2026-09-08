@@ -168,7 +168,9 @@ describe('SideEffectsSection (v4 SideEffectsSection.tsx)', () => {
     const fixture = await render(
       draftWith([effect({ target: 'nowhere.x', valueKind: 'expression', value: 'broken pick' })]),
     );
-    expect(text(fixture)).toContain('target must start with "state." or "metadata."');
+    expect(text(fixture)).toContain(
+      'target must start with "state.", "metadata." or "progress."',
+    );
     expect(text(fixture)).toContain('the expression does not parse');
   });
 

@@ -526,6 +526,36 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(pascal): the SPA's `progress` family — the gate's second subject, `when.progress`, the third effect target, `{{now}}`
+
+_Versions: SPA 0.5.683._
+
+P4.D170 unit 2. Ports the client-safe half of v4 `0587d1e96`'s Pascal hunks:
+`ToolGateSchema`'s optional `metadata` + new `progress` with the refine moved
+from the metadata RECORD to the gate OBJECT, `WHEN_SUBJECTS_SHAPE.progress`
+(and its two reworded "must test something" refines), `EffectTarget`'s
+`progress.<id>.<field>` family with its four load-time refusals, the
+reserved-key refusal on `metadata.progressions[.x]`, `classifyPlaceholder`'s
+`now` and `progress` kinds, `evaluateToolGate`'s third argument, and
+`tool-draft.ts`'s whole hunk set (`DraftGateCondition.subject`,
+`gateConditionsFromGate`'s metadata-first walk, `gateFromConditions`'
+two-sheet split, `whenFromConditions`' `progress` case, the audit's two
+never-warn kinds, `validateCondition`'s progress branch, `subjectValueType`
+and `conditionSlotKey`).
+
+Two corpora prove it. The shared `pascal-custom-tool-definition.oracle.ndjson`
+was re-recorded from v4's real schema at the `25f534c0b` pin: exactly twelve of
+301 rows moved, all of them sentences this drift changed. A new
+`pascal-progress.oracle.ndjson` (71 rows: 38 definitions, 16 effect targets, 10
+placeholders, 7 gate verdicts) carries the arms that did not exist before,
+recorded by this lane's own `apps/web/oracle/pascal-progress.recorder.ts` so no
+other lane's generator was edited. v4's four new `tool-draft.test.ts` cases ride
+as parity specs.
+
+Three hand-written spec files (`custom-tool-types.{effects,gate,llm}.spec.ts`)
+carry captured v4 rows from older pins; their moved sentences were re-measured
+at `25f534c0b` and each file's header now records the vintage move.
+
 #### 2026-09-08 — feat(progressions): the SPA's client-safe schema + engine twins, over an extracted Zod shim
 
 _Versions: SPA 0.5.682._

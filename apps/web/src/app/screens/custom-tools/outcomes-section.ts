@@ -67,6 +67,8 @@ export function subjectSelectValue(subject: ConditionSubject): string {
       return `param:${subject.name}`;
     case 'metadata':
       return 'metadata';
+    case 'progress':
+      return 'progress';
     case 'llm':
       return 'llm';
     case 'llm-ok':
@@ -86,6 +88,8 @@ export function describeSlot(condition: Pick<DraftCondition, 'subject' | 'compar
       return `A row can test ${label} on "${condition.subject.name}" only once.`;
     case 'metadata':
       return `A row can test ${label} on metadata "${condition.subject.key}" only once.`;
+    case 'progress':
+      return `A row can test ${label} on progress "${condition.subject.key}" only once.`;
     case 'llm':
       return `A row can test ${label} on the consult's answer only once.`;
     case 'llm-ok':
