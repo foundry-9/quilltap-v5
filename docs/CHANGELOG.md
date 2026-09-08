@@ -649,6 +649,27 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — test(e2e): scope the wizard beats' locators, repairing a standing red
+
+_Versions: SPA 0.5.680._
+
+The first live run of the three generator specs found the wizard spec's
+existing New Character beat FAILING, and not for anything this round changed:
+`getByText('Select AI Model')` is a strict-mode violation because the string is
+both the modal's step title (`ai-wizard-modal.ts:14`, v4's `STEP_TITLES`) and
+the step's own heading (`profile-selection-step.ts:49`) — v4 renders both too,
+so the locator was wrong from the day the beat was activated. Both files are
+untouched by this lane. Now `getByRole('heading', …)`, matching how the
+neighbouring 'Physical Description Source' assertion was already written.
+
+The new review-pane beat needed the same treatment for a reason this round DID
+create: the New Character form behind the modal carries
+`qt-prompt-field-label` headers, each of which now renders its own
+`qt-prompt-field-example`, so a bare `qt-prompt-field-example p` matched seven
+nodes. Every assertion in that beat is scoped to `qt-wizard-generation-step`.
+
+All three wizard beats green against release binaries.
+
 #### 2026-09-07 — test(spa): a census for the link interceptor's nested-button rule
 
 _Versions: SPA 0.5.679._

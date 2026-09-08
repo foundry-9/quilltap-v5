@@ -253,7 +253,11 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
       await page.goto(`${WIZARD_BASE_URL}/characters/new`);
 
       await page.getByRole('button', { name: 'AI Wizard' }).click();
-      await expect(page.getByText('Select AI Model')).toBeVisible();
+      // Not `getByText`: 'Select AI Model' is BOTH the modal's step title
+      // (`ai-wizard-modal.ts:14`, v4's `STEP_TITLES`) and the step's own
+      // heading (`profile-selection-step.ts:49`) — v4 renders both too, so a
+      // bare text locator is a strict-mode violation, not a product defect.
+      await expect(page.getByRole('heading', { name: 'Select AI Model' })).toBeVisible();
       await page.getByRole('button', { name: 'Next' }).click();
 
       await expect(page.getByRole('heading', { name: 'Physical Description Source' })).toBeVisible();
@@ -295,7 +299,11 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
       await page.goto(`${WIZARD_BASE_URL}/characters/new`);
 
       await page.getByRole('button', { name: 'AI Wizard' }).click();
-      await expect(page.getByText('Select AI Model')).toBeVisible();
+      // Not `getByText`: 'Select AI Model' is BOTH the modal's step title
+      // (`ai-wizard-modal.ts:14`, v4's `STEP_TITLES`) and the step's own
+      // heading (`profile-selection-step.ts:49`) — v4 renders both too, so a
+      // bare text locator is a strict-mode violation, not a product defect.
+      await expect(page.getByRole('heading', { name: 'Select AI Model' })).toBeVisible();
       await page.getByRole('button', { name: 'Next' }).click();
       await expect(page.getByRole('heading', { name: 'Physical Description Source' })).toBeVisible();
       await page.getByRole('button', { name: 'Next' }).click();
@@ -313,22 +321,26 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
       await page.getByRole('button', { name: /Physical Description/ }).first().click();
 
       // P4.84 render 1 — the shared voice hint (v4 `GenerationStep.tsx:379`).
-      const hint = page.locator('qt-prompt-field-example p');
+      // Scoped to the step component: the New Character form BEHIND the modal
+      // carries `qt-prompt-field-label` headers, each of which now renders its
+      // own `qt-prompt-field-example`, so a bare selector matches seven nodes.
+      const step = page.locator('qt-wizard-generation-step');
+      const hint = step.locator('qt-prompt-field-example p');
       await expect(hint).toBeVisible();
       await expect(hint).toContainText('Written as:');
 
       // P4.84 render 2 — the tier panel (v4 `:103-148`): the truncated teaser
       // and the four labelled tiers with their UTF-16 char counts.
-      await expect(page.getByText(`Short prompt: ${PHYSICAL_300[1].substring(0, 100)}...`)).toBeVisible();
-      await expect(page.getByText(`Short (${PHYSICAL_300[1].length} chars):`)).toBeVisible();
-      await expect(page.getByText(`Medium (${PHYSICAL_300[2].length} chars):`)).toBeVisible();
-      await expect(page.getByText(`Long (${PHYSICAL_300[3].length} chars):`)).toBeVisible();
-      await expect(page.getByText(`Complete (${PHYSICAL_COMPLETE.length} chars):`)).toBeVisible();
+      await expect(step.getByText(`Short prompt: ${PHYSICAL_300[1].substring(0, 100)}...`)).toBeVisible();
+      await expect(step.getByText(`Short (${PHYSICAL_300[1].length} chars):`)).toBeVisible();
+      await expect(step.getByText(`Medium (${PHYSICAL_300[2].length} chars):`)).toBeVisible();
+      await expect(step.getByText(`Long (${PHYSICAL_300[3].length} chars):`)).toBeVisible();
+      await expect(step.getByText(`Complete (${PHYSICAL_COMPLETE.length} chars):`)).toBeVisible();
 
       // P4.84 render 3 — `fullDescription` through the bare-CommonMark preview
       // (v4 `:127-140`): a real heading element, the qtap href intact past
       // Angular's URL sanitizer, and the raw `<b>` dropped.
-      const prose = page.locator('.prose.qt-prose-auto');
+      const prose = step.locator('.prose.qt-prose-auto');
       await expect(prose.locator('h2')).toHaveText('Appearance');
       await expect(prose.locator('a')).toHaveAttribute('href', 'qtap://project/ledger.md');
       await expect(prose.locator('b')).toHaveCount(0);

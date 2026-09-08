@@ -115091,3 +115091,280 @@ this lane landed it.
   regression. It was already stale before this lane touched it.
 * The unifier regenerates all four generator tier-3 families once after
   P4.85's edits (the P4.D119 rule); this lane's is `ai_import_tier3`.
+## Lane record — P4.84 (the SPA follow-ups the `p4.9k` round recorded: the wizard review pane, the continue toasts, `runTemplateSave`, the AI-import title, the three K4 divergences, the interceptor census)
+
+Ordered against round baseline **`2f4254b42`** (the generator follow-ups +
+prompt-templates round: P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86). **Drift-ledger
+§2 freshness probe at lane start (2026-09-07):** PASS — v4 checkout on `main`,
+tree clean, `git log 2f4254b42..main` EMPTY, `git log 1a2b2164c..bugfix` EMPTY.
+§1's verdict (zero drift, NO PIN REQUIRED) stands; the lane never wrote the
+ledger. Nothing was regenerated — this lane authors no oracle — so every v4
+reading below is a direct read of the live checkout at the baseline.
+
+**Branch:** `claude/spa-generator-smalls-porting-c29b92`. **Commits:**
+`9fb89c81` (the `qt-prompt-field-example` extraction), `4df1b5a4` (the review
+pane's three renders + the CommonMark preview), `5bfb550e` (the two continue
+toasts), `745bbffa` (`runTemplateSave` onto the shared helper), `659444bf` (the
+AI-import title + the three K4 dispositions), `410ccb28` (the interceptor
+census). **Zero Rust:** `git diff main -- crates/ Cargo.toml Cargo.lock` is
+EMPTY, as the order's gate item 4 requires.
+
+### Tier 1, all six items
+
+**1. The wizard review pane's three renders** (`generation-step.ts`). v4's
+expanded row (`GenerationStep.tsx:373-385`) renders `<PromptFieldExample>` above
+every hinted field, then `renderFieldPreview` (`:96-170`); v5 rendered each
+field's plain text and nothing else. All three landed:
+
+- the voice hint, resolved v4's way (`FIELD_HINT_KEYS[field]` →
+  `PROMPT_FIELD_HINTS[hintKey]` → `hint?.example`). The map was already in v5,
+  byte-transcribed, beside the optimizer rather than beside the hints table
+  where v4 keeps it — a home divergence, recorded in the method's doc, not
+  moved (`ui/prompt-field-hints.ts` is not this lane's file);
+- the physical-description tier panel (`:103-148`): the 100-UTF-16-unit Short
+  teaser with its literal `...`, then Short/Medium/Long/Complete each labelled
+  with `String.length`, then Full Description;
+- scenarios as `<strong>title</strong>` + `whitespace-pre-wrap` content
+  (`:151-163`). The `**title**\ncontent` join stays the COLLAPSED teaser's
+  shape on both sides, and the spec asserts the pane does not show it.
+
+`renderFieldPreview`'s `isExpanded` branch is reproduced unconditionally,
+because v4 reaches that function only from inside its own `isExpanded &&`
+block — the flag is invariably true there. v4's default branch is two nested
+`<div>`s where v5 had one; matched.
+
+**2. `generation-preview-markdown.ts` — and the K3 premise REFUTED.** The note
+`generation-step.ts` carried said v5 "has no chat-independent Markdown renderer
+to reuse here". It has **two** (`almanack/almanack-markdown.ts`,
+`help/help-doc-markdown.ts`) — and neither is reusable anyway, for a reason the
+note did not give: v4 passes **no `remarkPlugins`** at `:127-140`, so the wizard
+pipeline is bare CommonMark, where the Almanack's adds GFM and the help
+reader's adds GFM + math. A GFM pipeline would render a generated `| a | b |`
+as a table and `~~x~~` struck where v4 shows literal text. So the new module is
+v4's three-plugin chain transcribed: `remark-parse → remark-rehype →
+rehype-stringify`. Its spec's discriminating cases are the GFM ones — tables,
+strikethrough and literal autolinks all asserted ABSENT — because a spec that
+only checked "renders bold" would pass against either existing pipeline.
+
+Raw HTML is dropped (remark-rehype's default without `allowDangerousHtml`,
+which is also ReactMarkdown's), and the render is trusted with
+`bypassSecurityTrustHtml` for the reason the Almanack card documents: Angular's
+URL sanitizer would otherwise rewrite a `qtap://` href to `unsafe:`.
+
+**Tier-3 deferral, recorded loudly:** v4's `a` override routes `isQtapUri`
+hrefs through its `QtapLink` component. **v5 has no `QtapLink` analog on any
+surface** — the Salon, Almanack and help renderers all leave a `qtap://` href
+on a plain anchor, and the link-OPENING path is a standing server-side
+deferral. So this pipeline leaves them alone too and the spec pins that
+(`href` intact, no `qt-qtap-doc`): inventing a shape nothing else in v5 emits
+would add a second divergence on top of v4's. When a `QtapLink` analog lands,
+this module is one of its call sites.
+
+**A second recorded divergence, unfixable from this lane:** v5's only
+`isQtapUri` twin (`chat/render/qtap-linkify.ts:24`) is
+`url.startsWith('qtap://')` — **case-SENSITIVE**, where v4's
+(`lib/doc-edit/qtap-uri.ts:107-109`) lower-cases first. A generated `QTAP://…`
+link therefore takes a different branch in v4 than in v5. That file is not this
+lane's, and the divergence is pre-existing at the Salon call site, so it is
+recorded here rather than patched: **a candidate for whichever lane owns
+`chat/render/`.**
+
+**3. The two continue toasts** (`salon-conversation.ts`). v4's
+`triggerContinueMode` (`useSSEStreaming.ts:997-1012`) refuses twice before it
+sends. Both land at `runTurn`'s continue entrance — measured as the right
+chokepoint: v4's function is reached from ALL FOUR of its continue call sites
+(`SalonView.tsx:688`, `useTurnManagement.ts:154`/`:204`/`:240`), which map
+one-for-one onto v5's `onSidebarNudge` / `onNudge` / `onSidebarSkip`. v4's
+ORDER is kept (seat arm first), and the roster arm reads v4's WIDE predicate
+(`useParticipants.hasActiveCharacters` — any active CHARACTER, no `controlledBy`
+filter), NOT this component's narrow `controlledBy === 'llm'` twin, which
+belongs to `onSidebarSkip` and carries v4's other, shorter sentence.
+
+The participant arm fires only when a seat was named: v5's composer Continue
+names none, and v4 has no composer Continue at all (its `triggerContinueMode`
+requires a participantId), so there is no v4 behaviour for that call to
+contradict.
+
+**A silent early return removed on the way.** `onSidebarNudge` had
+`if (!participant) return;`. v4's `handleNudge` (`:126-133`) guards ONLY
+`controlledBy === 'user'` and lets an unfindable id fall through to the toast —
+so v5's return had made the seat arm unreachable from the sidebar entirely.
+Pinned by its own case; restoring the return reddens it.
+
+**Tier 2 item 7 — MEASURED, NOT PORTED, and not claimed moot.** v4's
+`if (isPaused) return` is a silent refusal. Two of v4's four call sites lift
+the pause first (`:137-139`, `:225-227`), so the guard is a no-op there; the
+one that does not is `handleContinue` (`:195-208`), the user card's Continue —
+v5's `onSidebarSkip`. On a paused chat **v5 generates and v4 does not**. Not
+ported because the fix is a chokepoint decision this lane could not close on
+its own evidence: `runTurn` is the twin of v4's one `triggerContinueMode`, but
+v5's unpause-first entrances reach it through `setPauseState`'s
+`invalidateQueries`, so a guard there depends on the refetch having landed in
+the chat signal first — an ordering this lane did not measure, and getting it
+wrong would silently break two working paths. **Pinned with its repro** as a
+recorded divergence (`salon-turn-controls.spec.ts`), so the next lane starts
+from a measurement rather than a hypothesis.
+
+**4. `runTemplateSave` onto the shared helper** (`details-tab.ts`). v4's
+(`useCharacterView.ts:255-281`) calls the same `applyCharacterFieldUpdates` the
+optimizer calls; v5 inlined the fan-out, as the `p4.9k` round recorded and the
+helper's own doc comment said. The lift **restores a leg those two callers
+never had**: a template replacement touching a system prompt now dispatches
+`characterPromptUpdate` before the main update, because the character PUT body
+strips `systemPrompts`. v4's order kept — empty transform short-circuits,
+failures collected not thrown, refetch ALWAYS (partial failure included) and
+only then the toast.
+
+One behavioural difference the lift brings, recorded: the helper's
+`err.message ? … : default` guard where the inline copy took a bare
+`err.message`, so an `Error` with an empty message now reads as the default
+sentence.
+
+**5. The AI-import title — and the order's premise REFUTED.** The order asked
+for the fixed title on the Salon mount alone, reading Aurora's as showing v4's
+step titles standing alone. Measured at the baseline: **v4 has no standalone
+mount.** `SummonFromLoreModal.tsx:70-73` AND `AuroraView.tsx:683-691` both wrap
+`AIImportWizard` in chrome carrying the same fixed `Summon From Lore` title
+beside a Close control, and the step name is a section heading INSIDE the
+wizard (`AIImportWizard.tsx:705-707`), under the step indicator. So v5 needs no
+`[title]` input: the dialog carries the fixed title (which reaches both of v5's
+mounts — `add-character-dialog.ts` and `characters-list.ts` — with no call-site
+change) and the step name moves to its own `<h3 class="qt-section-title">`.
+v5's Close stays the dialog chrome's icon button, v5's convention throughout.
+
+**6. The three K4 divergences, each dispositioned with evidence.**
+
+- **The `imported` count line is DEAD CODE in v4.** `import-execute`
+  (`app/api/v1/system/tools/route.ts:882`) answers `ImportResult`, whose
+  `imported` is a `QuilltapExportCounts` **object**
+  (`lib/import/quilltap-import/types.ts:169-181`);
+  `useAIImport.ts:351` stores it as `importedCount` typed `number`; the render
+  gate (`AIImportWizard.tsx:480`, `importedCount > 1`) then compares an object
+  with `>` — ToPrimitive gives `"[object Object]"`, ToNumber gives `NaN`, and
+  `NaN > 1` is `false`. Always, on every import, and the `|| 0` fallback cannot
+  render it either (checked in Node, not reasoned). v5 was summing the counts
+  and showing the line; that is now closed in v4's direction, with the coercion
+  itself reproduced and pinned. **v4-first filing candidate:** the upstream fix
+  is to read a total out of the counts object (or have the route answer a
+  number); until v4 makes it, v5 stays quiet.
+- **The stale-closure apply banner is a v4 BUG; v5 stays correct.**
+  `CharacterOptimizerModal.tsx:105-113` reads `optimizer.error` from the
+  closure that created the handler; `applyChanges` sets it via `setError`,
+  which cannot update that captured value. So after a FAILED apply v4 reads the
+  pre-call `null`, shows "Refinements Commissioned", calls `onApplied()` 1.5 s
+  later, and suppresses its own error pane through the `!applySuccess` guard at
+  `:495` — **a failed apply reports success and loses the message.** v5 reads
+  `state.error()`, a signal. Kept, pinned, and the mutation that reproduces
+  v4's read shows the success banner exactly as v4 does. **v4-first filing
+  candidate with that repro.**
+- **The error-terminal phase was already faithful; the stream-end arm was
+  not.** v4's `error` case (`useCharacterOptimizer.ts:220-226`) sets the message
+  and clears loading with NO `setPhase` — which v5's fold already did, now
+  pinned at both fold and state level. But v4's `:233-238` — a read loop that
+  ends without ever seeing a `done` frame stops the spinner and shows whatever
+  suggestions landed — had **no v5 counterpart**: a dispatch resolving with no
+  terminal hit `applyOptimizerEvent`'s `default` arm, so `loading` stayed true
+  and the modal span forever. Ported at the one place v5 can see it (the
+  dispatch's own resolution), keyed on `loading` still being set, which is
+  exactly v4's condition since both terminals clear it.
+
+**7. The interceptor's nested-button census** (`link-interceptor.spec.ts`). The
+v5-only pass-through rule's safety rests on an unstated invariant: every
+clickable control inside a card's anchor is a `<button>`. The census renders
+each card and walks Angular's `DebugElement.listeners`, which report template
+event bindings — including those inside CHILD components rendered in the anchor
+(`ScriptoriumBadge`, `ConciergeMark`), where a scan of the card's own template
+sees nothing. A third case plants a `<span (click)>` in a throwaway component so
+a census that silently found nothing cannot pass.
+
+Card set measured at the port: the chat card (three anchor-descendant buttons —
+remove, copy-link, delete) and the character card. `prospero/project-card.ts`,
+`home/recent-chat-item.ts`, `home/home-character-card.ts` and
+`home/project-item.ts` were each checked and have **no** click-bound anchor
+descendants, so they are recorded as outside the census rather than silently
+omitted.
+
+**Tier 2 item 8 (the scenario-editor adoption): landed**, with the extraction
+scoped by measurement. v4's `PromptFieldExample` has two callers of its own
+(`PromptFieldLabel`'s header, `SuggestionCard.tsx:161`) plus the new
+`GenerationStep` site; v4 writes the line INLINE in three other places, and
+v5's `ai-import-wizard.ts` copies match v4's inline pair (different structural
+context, and `qt-text-muted` rather than `qt-text-secondary`), so those two stay
+inline. The scenario editor's copy is adopted per the order.
+
+Two Angular decisions worth carrying forward: the host is **`display: contents`**
+(v4's is a React function component, so it contributes no box, and every
+adoption site relies on the `<p>` being its container's direct layout child —
+the OPPOSITE call from `PromptFieldLabel`'s `block` host, and for the opposite
+reason: that one IS a `space-y-*` child); and the paragraph classes ride
+**`[attr.class]`, not `[class]`**, because Angular's class binding dedups and
+reorders the tokens and so cannot reproduce v4's `className` string
+byte-for-byte.
+
+### Mutation proofs
+
+Every fix reddened on reversion, run one at a time with the file restored
+between: the voice hint removed; a tier dropped from the four; the scenarios'
+`whitespace-pre-wrap` dropped; the Markdown call replaced by the raw string;
+each toast sentence altered; the seat arm's `&& p.isActive` dropped; the two
+arms swapped (v4's order); the roster arm respelled to the narrow predicate;
+`onSidebarNudge`'s silent return restored; the helper call replaced by the old
+inline fan-out; the toast moved before the refetch; the error join respelled;
+the chrome title bound back to the step; the step heading deleted; the
+`importedCount` sum restored; the stream-end arm removed; the modal's error
+guard dropped (which reproduces v4's stale read and shows "Refinements
+Commissioned" on a failure); a `<span (click)>` planted inside the real chat
+card's anchor.
+
+**Two mutations initially SURVIVED and each exposed a vacuous case, both
+rewritten:** the arm-order swap (the roster predicate is a memoized `computed`,
+so an in-place roster mutation cannot move it — the case now renders the
+emptied roster instead of mutating it), and `onSidebarNudge`'s silent return
+(the case that was meant to cover it drives the banner nudge, not the sidebar
+one — a case naming an id absent from the roster was added).
+
+### Deferred loudly
+
+- v4's `QtapLink` semantics beyond the href (Tier 3, above).
+- `isQtapUri`'s case-sensitivity divergence in `chat/render/qtap-linkify.ts` —
+  not this lane's file.
+- The `isPaused` continue guard (Tier 2 item 7, above) — measured, pinned,
+  ordered by evidence rather than ported blind.
+
+### Gotchas worth a memory note
+
+- **A backtick inside an Angular inline template's `<!-- -->` comment**
+  terminates the outer TS template literal — hit TWICE in this lane (in
+  `generation-step.ts` and `ai-import-wizard.ts`), confirming the existing note
+  a third and fourth time. The errors name everything except the comment.
+- **`[class]` cannot pin a transcribed `className`.** Angular's class binding
+  dedups AND reorders; `[attr.class]` sets the attribute verbatim. The first
+  draft of `prompt-field-example.spec.ts` failed on
+  `"mt-1 qt-text-secondary text-xs"` vs v4's `"text-xs qt-text-secondary mt-1"`.
+- **A jsdom spec cannot read source.** Neither Vite's `?raw` query nor
+  `node:fs` resolves under `@angular/build:unit-test` (both were probed and
+  both fail at build time), so a source-level census has to live in a Node
+  script under `scripts/`. `DebugElement.listeners` is the in-spec substitute,
+  and it is strictly better here: it sees child components' bindings too.
+- **An in-place mutation of a query-backed object is visible to a fresh
+  `.find()` in a handler but INVISIBLE to a `computed()`.** Two cases in this
+  lane were vacuous for exactly that reason. Render the state you mean to
+  measure.
+- **A template interpolation on its own line emits trailing whitespace.** v4's
+  JSX `</strong> {expr}...` renders with none; the teaser assertion caught it,
+  and the fix is to keep the whole line in the template on one line.
+
+### Verification gate
+
+`npm run lint` (incl. `check-qt-classes`, 950 classes, every reference
+resolving), `npm test` and `npm run build` after every unit and again at the
+end; the three generator e2e specs by name against release binaries. Numbers
+in the final report.
+
+**One intermittent observed and recorded:** on one `npm test` run,
+`generate-image-page.spec.ts > fetches the file-id source and saves under the
+image filename` failed on `fetchSpy.mock.calls[0][0]` — a global-`fetch` spy
+reading someone else's first call. It is green in isolation and green on every
+other full run in this lane (four of them), and no file this lane touched goes
+near it. Recorded as the standing vitest global-pollution class rather than
+claimed clean or claimed broken.
