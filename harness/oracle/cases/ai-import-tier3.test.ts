@@ -16,10 +16,14 @@
  *     scripted `calls` BY CALL INDEX and recording
  *     `provider|baseUrl|model|temperature|maxTokens|profileParameters|messages`.
  *   - `Date` frozen at the corpus `frozenNowMs` (the assembler's stamps).
+ *   - `@/lib/services/llm-logging.service` `logLLMCall` → a recorder (P4.86
+ *     tier-2 item 10): the emitted `llmLogCalls` are v4's REAL call arguments
+ *     (`type`, `provider`, `modelName`), so the family compares the call TYPE
+ *     and COUNT without an llm-logs partition on either side.
  *   - `@/lib/startup` `isPluginSystemInitialized` → true; the registry REAL.
  *   - `ensureProcessorRunning` no-op'd.
- * `fileStorageManager.downloadFile`, `extractFileContent`, `validateQtapExport`
- * (ajv over the real schema) and `logLLMCall` stay REAL.
+ * `fileStorageManager.downloadFile`, `extractFileContent` and
+ * `validateQtapExport` (ajv over the real schema) stay REAL.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -198,6 +202,27 @@ async function runCase(
     };
   });
 
+  // P4.86 tier-2 item 10: v4's REAL `logLLMCall` is replaced by a recorder so
+  // the family can compare the `type` string and the per-case call count
+  // without an llm-logs partition on either side. The call is gated in v4 by
+  // `if (options.userId && options.profileProvider)`.
+  const llmLogCalls: Array<{ type: string; provider: string; modelName: string }> = [];
+  jest.doMock('@/lib/services/llm-logging.service', () => {
+    const actual = jest.requireActual('@/lib/services/llm-logging.service');
+    return {
+      __esModule: true,
+      ...actual,
+      logLLMCall: async (params: { type: string; provider: string; modelName: string }) => {
+        llmLogCalls.push({
+          type: params.type,
+          provider: params.provider,
+          modelName: params.modelName,
+        });
+        return null;
+      },
+    };
+  });
+
   const logLines: Array<{ level: string; message: string; context: unknown }> = [];
 
   const work = mkdtempSync(join(scratch, 'imp-'));
@@ -255,6 +280,7 @@ async function runCase(
     const status = response.status;
     const contentType = response.headers.get('content-type') ?? '';
     let body: unknown = null;
+    let rawSse: string | null = null;
     const events: unknown[] = [];
     if (contentType.startsWith('text/event-stream') && response.body) {
       const decoder = new TextDecoder();
@@ -267,6 +293,8 @@ async function runCase(
         if (value) buffered += decoder.decode(value, { stream: true });
       }
       buffered += decoder.decode();
+      // v4's exact response bytes (P4.86 tier-2 item 9's framing half).
+      rawSse = buffered;
       for (const line of buffered.split('\n')) {
         const t = line.trim();
         if (t.startsWith('data:')) {
@@ -278,7 +306,7 @@ async function runCase(
       body = await response.json();
     }
     unfreezeClock();
-    return { name: c.name, status, body, events, calls, logLines };
+    return { name: c.name, status, body, rawSse, events, calls, logLines, llmLogCalls };
   } finally {
     unfreezeClock();
     for (const spy of spies) spy.mockRestore();

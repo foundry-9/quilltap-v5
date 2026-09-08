@@ -38,6 +38,24 @@
 //! Both sides must reach (or skip) the validation step together — the
 //! `2f4254b42` §3 review's assert, kept.
 //!
+//! ## The SSE bytes and the `logLLMCall` calls (P4.86, K2's tier-2 items 9/10)
+//!
+//! * **`rawSse`** — v4's route answers `data: ${JSON.stringify(event)}\n\n`
+//!   per frame and closes. The oracle now emits those exact bytes, and this
+//!   family re-frames v5's OWN event stream the same way and compares them
+//!   BYTE FOR BYTE (after the shared `<minted-N>` remap and the `appVersion`
+//!   normalization, which the `done` frame carries into the stream). What that
+//!   does NOT cover is the three response HEADERS on the `ai-import-stream`
+//!   edge, which live in `quilltap-web` — see the lane record's deferral.
+//! * **`llmLogCalls`** — v4 gates its `logLLMCall` on
+//!   `options.userId && options.profileProvider` and passes `type:
+//!   'AI_IMPORT'`. The oracle records every call's `{type, provider,
+//!   modelName}`; this family asserts v5's `LOG_TYPE_AI_IMPORT` constant
+//!   equals the one `type` v4 uses and that the per-case COUNT equals the
+//!   number of v5 model calls that returned content. Comparing the ROWS
+//!   themselves would need an llm-logs partition this family's fixture set
+//!   does not carry — deferred loudly in the lane record.
+//!
 //! `appVersion`: v4 stamps its `package.json` version, v5 the engine's; both
 //! are asserted and then normalized.
 //!
@@ -197,9 +215,14 @@ struct OracleRow {
     name: String,
     status: i64,
     body: Value,
+    /// v4's EXACT response bytes for a `text/event-stream` answer (`null` for
+    /// the two 400s) — P4.86 tier-2 item 9's framing half.
+    raw_sse: Option<String>,
     events: Vec<Value>,
     calls: Vec<Value>,
     log_lines: Vec<Value>,
+    /// v4's REAL `logLLMCall` arguments, recorded (P4.86 tier-2 item 10).
+    llm_log_calls: Vec<Value>,
 }
 
 fn oracle_dir() -> PathBuf {
@@ -262,6 +285,9 @@ struct ScriptedProvider {
     script: Vec<(Option<String>, Option<String>)>,
     next: Mutex<usize>,
     calls: Mutex<Vec<Value>>,
+    /// Whether each recorded call answered non-empty content — v4 logs an
+    /// `AI_IMPORT` row only AFTER its `if (!response?.content) throw` (P4.86).
+    contentful: Mutex<Vec<bool>>,
     case: String,
 }
 
@@ -288,6 +314,12 @@ impl CompletionProvider for ScriptedProvider {
             i
         };
         let scripted = self.script.get(index).cloned();
+        self.contentful
+            .lock()
+            .unwrap()
+            .push(scripted.as_ref().is_some_and(|(content, throws)| {
+                throws.is_none() && content.as_deref().is_some_and(|c| !c.is_empty())
+            }));
         let case = self.case.clone();
         let provider = provider.to_string();
         let base_url = base_url.map(str::to_string);
@@ -530,15 +562,18 @@ fn count_row(case: &str, slot: &str, n: u64) -> String {
 /// Rewrite every place an engine-dependent COUNT or error-string list reaches
 /// the wire, collecting the raw values as it goes.
 fn canon_validation_counts(v: &mut Value, case: &str, counts: &mut Vec<String>) {
-    let frame_re = Regex::new(r"^(\d+) validation error\(s\)$").unwrap();
+    let frame_re = Regex::new(r"(\d+) validation error\(s\)").unwrap();
     let sentence_re =
-        Regex::new(r"^Validation has (\d+) error\(s\) that could not be auto-repaired$").unwrap();
+        Regex::new(r"Validation has (\d+) error\(s\) that could not be auto-repaired").unwrap();
 
     if let Some(events) = v.get_mut("events").and_then(Value::as_array_mut) {
         for e in events.iter_mut() {
             if e["type"] == json!("step_error") && e["step"] == json!("validation") {
                 let text = to_plain_string(&e["error"]);
+                // The frame's error is EXACTLY that sentence; the regex is
+                // un-anchored so it can also rewrite `rawSse` below.
                 if let Some(c) = frame_re.captures(&text) {
+                    assert_eq!(text, format!("{} validation error(s)", &c[1]), "{case}");
                     counts.push(count_row(case, "frame", c[1].parse().unwrap()));
                     e["error"] = json!("<n> validation error(s)");
                 }
@@ -547,6 +582,14 @@ fn canon_validation_counts(v: &mut Value, case: &str, counts: &mut Vec<String>) 
         if let Some(done) = events.last_mut() {
             if let Some(text) = done.pointer("/errors/validation").map(to_plain_string) {
                 if let Some(c) = sentence_re.captures(&text) {
+                    assert_eq!(
+                        text,
+                        format!(
+                            "Validation has {} error(s) that could not be auto-repaired",
+                            &c[1]
+                        ),
+                        "{case}"
+                    );
                     counts.push(count_row(case, "errorsValidation", c[1].parse().unwrap()));
                     done["errors"]["validation"] =
                         json!("Validation has <n> error(s) that could not be auto-repaired");
@@ -587,6 +630,21 @@ fn canon_validation_counts(v: &mut Value, case: &str, counts: &mut Vec<String>) 
         }
     }
 
+    // The SAME rewrites inside `rawSse`, which carries the frames as TEXT and
+    // so is not reached by the walks above.
+    if let Some(Value::String(raw)) = v.get_mut("rawSse") {
+        let rewritten = frame_re
+            .replace_all(raw, "<n> validation error(s)")
+            .into_owned();
+        let rewritten = sentence_re
+            .replace_all(
+                &rewritten,
+                "Validation has <n> error(s) that could not be auto-repaired",
+            )
+            .into_owned();
+        *raw = rewritten;
+    }
+
     if let Some(calls) = v.get_mut("calls").and_then(Value::as_array_mut) {
         for call in calls.iter_mut() {
             let Some(messages) = call.get_mut("messages").and_then(Value::as_array_mut) else {
@@ -603,19 +661,24 @@ fn canon_validation_counts(v: &mut Value, case: &str, counts: &mut Vec<String>) 
 }
 
 fn normalize(mut v: Value, side: &str, case: &str, counts: &mut Vec<String>) -> (String, bool) {
+    let app_version = if side == "v4" {
+        V4_APP_VERSION
+    } else {
+        V5_APP_VERSION
+    };
     canon_numbers(&mut v);
     canon_validation_counts(&mut v, case, counts);
+    // `rawSse` carries the `done` frame as TEXT, so the manifest's version
+    // stamp is inside the string too.
+    if let Some(Value::String(raw)) = v.get_mut("rawSse") {
+        *raw = raw.replace(app_version, "<app-version>");
+    }
     let mut reached = false;
     if let Some(events) = v.get_mut("events").and_then(Value::as_array_mut) {
         reached = reached_validation(events);
         if let Some(done) = events.last_mut() {
             if let Some(app) = done.pointer_mut("/result/manifest/appVersion") {
-                let want = if side == "v4" {
-                    V4_APP_VERSION
-                } else {
-                    V5_APP_VERSION
-                };
-                assert_eq!(app, &json!(want), "{side}'s appVersion stamp moved");
+                assert_eq!(app, &json!(app_version), "{side}'s appVersion stamp moved");
                 *app = Value::String("<app-version>".into());
             }
         }
@@ -655,6 +718,7 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
             .collect(),
         next: Mutex::new(0),
         calls: Mutex::new(Vec::new()),
+        contentful: Mutex::new(Vec::new()),
         case: c.name.clone(),
     });
     let driver: Arc<dyn GeneratorsWizardDriver> = Arc::new(TestDriver {
@@ -703,6 +767,33 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         .map(|l| parse_log_line(l))
         .collect();
     let calls = completion.calls.lock().unwrap().clone();
+    // v4's SSE framing, re-created from v5's OWN event stream: `data:
+    // ${JSON.stringify(event)}\n\n` per frame, nothing else, nothing after
+    // the last (the route closes the controller). A refusal answers no stream.
+    let raw_sse: Value = if status == 200 {
+        Value::String(
+            events
+                .iter()
+                .map(|e| format!("data: {}\n\n", serde_json::to_string(e).unwrap()))
+                .collect::<String>(),
+        )
+    } else {
+        Value::Null
+    };
+    // v4 `callLLM`: one `logLLMCall({type: 'AI_IMPORT', provider, modelName})`
+    // per call that RETURNED content, gated on a truthy userId + provider.
+    let llm_log_calls: Vec<Value> = calls
+        .iter()
+        .zip(completion.contentful.lock().unwrap().iter())
+        .filter(|(_, contentful)| **contentful)
+        .map(|(call, _)| {
+            json!({
+                "type": quilltap_core::generators::ai_import::LOG_TYPE_AI_IMPORT,
+                "provider": call["provider"],
+                "modelName": call["model"],
+            })
+        })
+        .collect();
 
     // The cross-family importability proof (the order's tier-2 item 8): the
     // assembled `result` is a body `systemImportExecute` accepts — feed the
@@ -745,9 +836,11 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
         "name": c.name,
         "status": status,
         "body": body,
+        "rawSse": raw_sse,
         "events": events,
         "calls": calls,
         "logLines": log_lines,
+        "llmLogCalls": llm_log_calls,
     })
 }
 
@@ -790,6 +883,8 @@ fn ai_import_matches_oracle() {
     let (mut model_calls, mut frames, mut validated, mut refusals, mut fatal) =
         (0usize, 0usize, 0usize, 0usize, 0usize);
     let (mut repair_attempts, mut repair_successes) = (0usize, 0usize);
+    let (mut streamed_rows, mut logged_calls) = (0usize, 0usize);
+    let mut v4_log_types: BTreeSet<&str> = BTreeSet::new();
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
         let got = run_case(&spec, &corpus, c);
@@ -812,6 +907,11 @@ fn ai_import_matches_oracle() {
         {
             fatal += 1;
         }
+        streamed_rows += usize::from(want_row.raw_sse.is_some());
+        logged_calls += want_row.llm_log_calls.len();
+        for call in &want_row.llm_log_calls {
+            v4_log_types.insert(call["type"].as_str().expect("a `type` string"));
+        }
         repair_attempts += want_row
             .events
             .iter()
@@ -826,9 +926,11 @@ fn ai_import_matches_oracle() {
             "name": want_row.name,
             "status": want_row.status,
             "body": want_row.body,
+            "rawSse": want_row.raw_sse,
             "events": want_row.events,
             "calls": want_row.calls,
             "logLines": want_row.log_lines,
+            "llmLogCalls": want_row.llm_log_calls,
         });
         let ((g, g_reached), (w, w_reached)) = (
             normalize(got, "v5", &c.name, &mut v5_counts),
@@ -867,6 +969,19 @@ fn ai_import_matches_oracle() {
         "only {repair_successes} runs reached `Repair successful`"
     );
     assert!(
+        streamed_rows >= 30,
+        "only {streamed_rows} rows carried v4's raw SSE bytes"
+    );
+    assert!(
+        logged_calls >= 150,
+        "the oracle recorded only {logged_calls} `logLLMCall` calls"
+    );
+    assert_eq!(
+        v4_log_types,
+        BTreeSet::from(["AI_IMPORT"]),
+        "v4's `logLLMCall` type for the import path moved"
+    );
+    assert!(
         refusals >= 2,
         "the oracle recorded only {refusals} route refusals"
     );
@@ -874,7 +989,8 @@ fn ai_import_matches_oracle() {
     eprintln!(
         "ai_import_tier3_equivalence: {} cases, {model_calls} model calls, {frames} frames, \
          {validated} validations passed, {repair_attempts} repair attempts \
-         ({repair_successes} successful), {refusals} refusals, {fatal} fatal runs",
+         ({repair_successes} successful), {refusals} refusals, {fatal} fatal runs, \
+         {streamed_rows} streamed rows, {logged_calls} AI_IMPORT log calls",
         corpus.cases.len()
     );
     // The RECORDED engine-count divergence, printed on every run.

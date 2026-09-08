@@ -348,6 +348,39 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — test(harness): the AI-import family's raw SSE bytes and `logLLMCall` calls, and the swap-remove they caught (P4.86 tier-2 item 10)
+
+_Versions: core 0.0.839, harness 0.0.728._
+
+Closes P4.9K2's Tier-2 items 9/10 for the AI-import family, as far as this
+lane owns them.
+
+`rawSse`: the oracle now emits v4's EXACT response bytes for every streamed
+run, and the differential re-frames v5's own event stream the same way
+(`data: ${JSON.stringify(event)}\n\n` per frame, nothing after the last) and
+compares them byte for byte. 37 of the 39 cases carry a stream.
+
+**That comparand immediately caught a real v5 defect.** The `pronouns` step's
+"not derivable" arm called `serde_json::Map::remove`, which under
+`preserve_order` is a SWAP-remove — so dropping `pronouns` moved the last key
+(`wardrobe_items`) into its slot, and every downstream `stepResults` projection
+carried the wrong key order. v4 assigns `undefined` into the key, which leaves
+every other key where it was and is simply dropped by `JSON.stringify`, so
+`shift_remove` is the faithful spelling. The frame diff could not see it: it
+sorts object keys before comparing. Fixed, and red-first proven.
+
+`llmLogCalls`: the oracle records v4's REAL `logLLMCall` arguments (`type`,
+`provider`, `modelName`) through a recorder mock, and the differential
+compares them per case — 182 calls, all `AI_IMPORT`. v4 gates the call on
+`options.userId && options.profileProvider`, a truthy test v5 did not carry;
+now ported (the committed fixture's profile always has a provider, so the
+closed arm is unmeasured by the corpus and pinned in the source comment
+instead).
+
+Deferred loudly: the three response HEADERS on the
+`?action=ai-import-stream` edge live in `quilltap-web`, which this lane does
+not own — recorded in the status log with the exact shape.
+
 #### 2026-09-07 — fix(core): the AI-import truthy-non-array body arms, and three smalls in `generators_wizard` (P4.86 tier 2)
 
 _Versions: core 0.0.838, harness 0.0.727._

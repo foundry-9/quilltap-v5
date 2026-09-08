@@ -1064,6 +1064,14 @@ async fn call_llm<CMP: CompletionProvider>(
     if response.content.is_empty() {
         return Err("No response from model".to_string());
     }
+    // v4's `if (options.userId && options.profileProvider)` — a JS TRUTHY gate
+    // on both, so an empty `userId` or a profile with an empty `provider`
+    // writes NO log row (P4.86 tier-2 item 10). The committed fixture's
+    // profile always carries a provider, so the corpus cannot exercise the
+    // closed arm — RECORDED, and pinned by the unit test below instead.
+    if c.user_id.is_empty() || c.provider.is_empty() {
+        return Ok(js_trim(&response.content).to_string());
+    }
     let _ = log_llm_call(
         c.db,
         LogLlmCallParams {
@@ -1761,7 +1769,17 @@ async fn run_import_inner<CMP: CompletionProvider>(
                         );
                     }
                     None => {
-                        results.remove("pronouns");
+                        // `shift_remove`, NOT `remove`: with `preserve_order`
+                        // a `serde_json::Map` is an `IndexMap` whose `remove`
+                        // is a SWAP-remove, which would move the last key
+                        // (`wardrobe_items`) into `pronouns`'s slot. v4 writes
+                        // `undefined` into the key, which keeps every other
+                        // key where it was and is simply dropped by
+                        // `JSON.stringify` — so an order-preserving removal is
+                        // the faithful spelling. Caught by the `rawSse`
+                        // comparand (P4.86); the frame diff sorts keys and
+                        // could not see it.
+                        results.shift_remove("pronouns");
                         tracing::info!(
                             target: AI_IMPORT_LOG_TARGET,
                             "[AIImport] Pronouns not derivable from source — leaving null"

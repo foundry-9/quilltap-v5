@@ -114631,3 +114631,81 @@ unclosable in principle; the case was re-shaped to avoid it rather than
 recorded as a divergence, and it is noted here as the one place the two number
 models genuinely part company. Any future corpus row whose assembled export
 can carry a `NaN` will hit it.
+
+## P4.86 tier-2 item 10 — `rawSse` + `llmLogCalls` on the AI-import family (2026-09-07)
+
+P4.9K2 left items 9/10 OPEN for this family: "the two SSE edges assert shape,
+and neither `Cache-Control` nor `Connection`; no `llm_logs` count compare."
+
+### `rawSse` — and the defect it caught on its first run
+
+The oracle now emits v4's EXACT response bytes for every streamed run
+(`rawSse`, `null` for the two 400s), and the differential re-frames v5's own
+event stream the same way — `data: ${JSON.stringify(event)}\n\n` per frame,
+nothing before, nothing after the last — and compares BYTES. 37 of 39 rows
+carry a stream. The string is subject to the same `<minted-N>` remap as the
+rest of the payload, plus two textual normalizations the parsed walks cannot
+reach into: the side's `appVersion` and the two engine-dependent validation
+counts.
+
+**Its first run found a real v5 defect.** The `pronouns` step's
+"not derivable" arm called `serde_json::Map::remove` — which, under
+`preserve_order`, is a **SWAP-remove** — so dropping `pronouns` moved the LAST
+key (`wardrobe_items`, inserted moments earlier) into its slot, and every
+`stepResults` projection from then on carried the wrong key order. v4 assigns
+`undefined` into the key: every other key stays where it was, and
+`JSON.stringify` simply omits it. `shift_remove` is the faithful spelling.
+**The frame diff was structurally blind to this** — `normalize` sorts object
+keys before serializing, so only a byte comparand over the wire text could see
+it. That is the whole argument for item 9, made by consequence.
+
+### `llmLogCalls`
+
+The oracle replaces `@/lib/services/llm-logging.service`'s `logLLMCall` with a
+recorder and emits every call's `{type, provider, modelName}`; the differential
+builds v5's expected list from the recorded model calls that answered content
+and compares them per case. **182 calls across the corpus, all `AI_IMPORT`** —
+the `type` string the order asked to measure, now asserted as the only value
+v4 uses.
+
+v4 gates the call on `if (options.userId && options.profileProvider)` — a JS
+truthy test on both. **v5 carried no gate**, so a profile with an empty
+`provider` (or an empty `userId`) would have written a row v4 skips. Ported.
+The committed fixture's profile always carries a provider, so the CLOSED arm
+is unmeasured by this corpus — recorded in the source comment rather than
+silently assumed.
+
+### Deferred loudly
+
+* **The three response HEADERS on `POST /api/v1/system/tools?action=ai-import-
+  stream`** (`content-type: text/event-stream`, `cache-control: no-cache`,
+  `connection: keep-alive`). They are produced by
+  `quilltap-web::generator_sse::stream_generator`, and the file that would
+  assert them (`crates/quilltap-web/tests/generator_sse_wire.rs`) belongs to
+  **P4.85** under this round's Ownership table, which gives P4.86 no
+  `quilltap-web` file and no `quilltap-web` version bump (§R.8). The generic
+  header assertions already exist there for the optimizer edge; the missing
+  arm is the ai-import edge's own. **Shape for whoever lands it:** drive the
+  `?action=ai-import-stream` route with a driver that emits two frames and
+  resolves, then assert the three headers and that the body equals
+  `data: {…}\n\ndata: {…}\n\n`. The framing half is already proven here
+  against v4's real bytes.
+* **Comparing the llm-log ROWS** (rather than the calls) would need an
+  llm-logs partition, which this family's fixture set does not carry
+  (`character-generators-{main,mount}.db` is a pair, and §R.7 freezes it this
+  round). The call-level compare above is strictly stronger than a bare count
+  — it carries the `type`, `provider` and `modelName` of every call — but it
+  cannot see a write that fails inside `log_llm_call` itself.
+
+### Mutation proofs (each reddened, then reverted)
+
+| mutation | effect |
+| --- | --- |
+| `shift_remove` reverted to `serde_json`'s swap-remove | reddens (this is the defect, red-first) |
+| the SSE framing loses its space after `data:` | reddens |
+| an `AI_IMPORT` row is recorded even when the call answered nothing | 4 cases DIFFER |
+| `LOG_TYPE_AI_IMPORT` moves to `AI_IMPORTS` | 29 cases DIFFER |
+
+Family after this unit: **39 cases, 188 model calls, 553 frames, 18
+validations passed, 12 repair attempts (3 successful), 2 refusals, 12 fatal
+runs, 37 streamed rows, 182 `AI_IMPORT` log calls.**
