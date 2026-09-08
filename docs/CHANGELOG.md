@@ -526,6 +526,38 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+#### 2026-09-08 — feat(progressions): the Progressions card on the System Prompts tab
+
+_Versions: SPA 0.5.684._
+
+P4.D170 unit 3. Ports v4's three new components
+(`components/characters/progressions/{ProgressionsSection, ProgressionEditorModal,
+useCharacterProgressions}` at `25f534c0b`) into
+`apps/web/src/app/progressions/`, wired on the Aurora System Prompts tab
+immediately after the subprompts card, exactly where v4 mounts it.
+
+The card lists each entry with its id, a state pill and the live line the
+character will actually read — rendered on a one-second clock by the same
+client-safe engine the server prompts with. The modal carries
+`datetime-local` inputs in the browser's own zone, the five duration
+shortcuts, the cadence radios that write the schema's own grammar back out,
+the eleven-token placeholder legend and a live preview of the sentence. The id
+is coerced from the name on create and fixed afterwards.
+
+Saving is a client-side read-modify-write of the whole `metadata` object
+through the ordinary `characterUpdate` — no new verb, no new REST edge, no
+`api/types.rs` variant. The character is RE-READ before the write (the PUT
+replaces the whole object, so a stale spread would drop someone else's keys),
+the reserved key is DELETED rather than emptied when the last entry goes, and
+the saved entry is stamped `updatedAt` so the next turn reports it whatever its
+cadence says.
+
+v4's 19 jest cases ride as parity specs, the save-payload trio among them.
+Seven mutation proofs: the spread dropped, the delete skipped, the re-read
+skipped, the id unfixed on edit, the id following the name on edit, the
+`updatedAt` stamp dropped, the collision check dropped — each reddens exactly
+its own rows.
+
 #### 2026-09-08 — feat(pascal): the SPA's `progress` family — the gate's second subject, `when.progress`, the third effect target, `{{now}}`
 
 _Versions: SPA 0.5.683._

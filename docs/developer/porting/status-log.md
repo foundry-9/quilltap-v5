@@ -117138,3 +117138,59 @@ the port and nothing else.
 
 Gate: 413 SPA spec files / 6,750 tests; `npm run build` clean; `check-qt-classes`
 950 classes. SPA 0.5.683.
+
+### Unit 3 — the Progressions card
+
+NEW `apps/web/src/app/progressions/{character-progressions.api.ts,
+progressions-section.ts, progression-editor-modal.ts}`, following the P4.D165
+subprompts trio's shape, wired at `system-prompts-tab.ts` right after
+`<qt-subprompts-section>` — v4's own slot (`index.tsx:91-95`).
+
+**§C.5 discharged with nothing new on the wire.** The save is a client-side
+read-modify-write of the character's whole `metadata` through the existing
+`characterUpdate`: re-read via `characterGet`, spread every other key, replace
+or DELETE `progressions`, stamp `updatedAt`, invalidate
+`characters.detail(id)` + `characters.all`. `CharacterDetail` gained a typed
+`metadata?: Record<string, unknown> | null` (the index signature already
+carried it untyped). No verb, no edge, no `api/types.rs` variant.
+
+**Tier-3 item verified rather than assumed:** the realtime topic map's
+`characters/<id>` arm already invalidates `characterKeys.detail(id)`
+(`core/realtime-topic-map.ts:90-98`), which IS this card's query key — so no
+new realtime key, exactly as the order predicted. Nothing invented.
+
+**Two recorded divergences from the sibling subprompts trio, both because v4
+makes them:** this dialog does NOT use the shared `qt-modal` (v4 hand-rolls
+its overlay here, where its own `SubpromptEditorModal` uses v4's `Modal`), and
+the form seeds in `ngOnInit` rather than an effect — the parent keys the
+component on the entry being edited, so the mount IS the reset.
+
+**Three Angular-specific carries the port had to make explicit:**
+`PLACEHOLDER_LEGEND`'s eleven `{{…}}` tokens and the template textarea's
+`{{description}} You are …` placeholder are TS constants and a BOUND attribute,
+because Angular interpolates `{{…}}` in template text and in a plain attribute
+value alike (the `PROMPT_FIELD_HINTS` precedent); `maxlength` is
+`[attr.maxlength]`, since it is not a DOM property; and both one-second clocks
+are `signal` + `setInterval` cleared through `DestroyRef`.
+
+**Parity specs: v4's 19 `progressions.test.tsx` cases transcribed case for
+case** (three `idFromName`, three list, one tombstone, three save-payload, nine
+editor), plus one of this lane's own for the error toast. The one mechanical
+change is the harness: v5 drives `characterGet`/`characterUpdate` through a
+`CoreClient` stub where v4 stubs `fetch`, and the recorded "PUTs" are the
+`characterUpdate` requests.
+
+**Seven mutation proofs, each reddening exactly its rows:**
+
+| mutation | reddens |
+| --- | --- |
+| the RMW drops the `...metadata` spread | `spreads every other metadata key back in` |
+| the reserved key is emptied, not deleted | that row + `drops the reserved key entirely` |
+| the RMW trusts the query snapshot instead of re-reading | `spreads every other metadata key back in` |
+| the id input is not disabled on edit | `fixes the id on an existing entry` |
+| the id follows the name on EDIT too | that row + the two save rows |
+| `updatedAt` is not stamped | `saves an edit with updatedAt stamped` |
+| the create collision check is dropped | `refuses a create whose id collides` |
+
+Gate: 414 SPA spec files / 6,769 tests; `npm run build` clean;
+`check-qt-classes` 950 classes. SPA 0.5.684.

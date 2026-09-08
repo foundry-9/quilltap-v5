@@ -3230,6 +3230,14 @@ export interface CharacterDetail {
   defaultImageProfileId: string | null;
   aliases: string[];
   pronouns: Pronouns | null;
+  /**
+   * The vault's freeform fact sheet (`metadata.json`), overlaid onto the row by
+   * `vault_read_overlay.rs` — `{}` when the file is absent or unparseable.
+   * Typed here since P4.D170 because the progressions card reads its one
+   * reserved key (`progressions`) and writes the whole object back through
+   * `characterUpdate`; the index signature below already carried it untyped.
+   */
+  metadata?: Record<string, unknown> | null;
   characterDocumentMountPointId: string | null;
   tags: string[];
   createdAt: string;

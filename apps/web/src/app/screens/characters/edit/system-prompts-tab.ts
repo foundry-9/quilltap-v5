@@ -12,6 +12,7 @@ import {
 } from '../generators/prompts-editor/prompt-templates.api';
 import { CharacterPromptPreviewModal } from '../generators/prompts-editor/preview-modal';
 import { PromptModal, type PromptFormData } from './prompt-modal';
+import { ProgressionsSection } from '../../../progressions/progressions-section';
 import { SubpromptsSection } from '../../../subprompts/subprompts-section';
 
 /**
@@ -35,6 +36,7 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
     PromptModal,
     CharacterPromptPreviewModal,
     CharacterPromptImportModal,
+    ProgressionsSection,
     SubpromptsSection,
   ],
   template: `
@@ -138,6 +140,13 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
          template literal, and the errors then blame everything but the
          comment (backtick-in-an-angular-inline-template-comment). -->
     <qt-subprompts-section [characterId]="characterId()" [characterName]="characterName()" />
+
+    <!-- Progressions - the timed conditions this character carries, kept under
+         one reserved key in the vault's metadata.json. A sibling of the
+         subprompts above: both are things attached to the character rather
+         than prose fields of them, and both are read at the top of a turn.
+         (v4 index.tsx:91-95, right after SubpromptsSection.) -->
+    <qt-progressions-section [characterId]="characterId()" [characterName]="characterName()" />
 
     @if (modalOpen()) {
       <qt-prompt-modal
