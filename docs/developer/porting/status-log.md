@@ -114062,3 +114062,238 @@ word it was waiting for.
 **Still owed (human):** the Brahma budget on a deep query, memory dedup +
 conversation-summary regeneration's first run, and the NanoGPT
 prompt-caching cost question (#101).
+
+---
+
+## P4.85 — the Rust follow-ups the generator round recorded (lane record)
+
+**Lane:** `claude/rust-generator-smalls-port-7dcc85`, branched from `main` at
+`f3bf405f`. **Baseline `2f4254b42`, zero drift** — the ledger's §2 probe passed
+at lane start and again before every regen batch (checkout on `main`, tree
+clean, both log ranges empty), so every oracle was regenerated from the LIVE
+checkout through `harness/tools/recipe_sweep.py --run <family>`, per the
+ledger's NO-PIN-REQUIRED rule. **CLOSED — every Tier-1 and Tier-2 item landed.**
+
+### Item 1 — `[Chats v1] Impersonation stopped`
+
+v4 logs it at `app/api/v1/chats/[id]/actions/participants.ts:126`, after the
+optional connection-profile reassignment and the
+`resolveParticipantCharacterName` read and before the response, with
+`{ chatId, participantId, characterName }`. v5's `chat_stop_impersonate` ran
+the identical sequence in silence. Ported at v4's position with the three
+fields, and pinned by `stop_impersonate_log_line` over the committed
+`chat-delete-*` trio the P4.80 family already drives.
+
+The `character_name` field is asserted against the RESPONSE envelope's own
+`characterName` rather than a transcribed literal, which is what proves the
+line sits after the resolve. Three silence arms fix its position: a 404 chat,
+a participant not on the chat, and a dangling `newConnectionProfileId` — that
+last one being the arm that matters, because v4's profile 404 lands BETWEEN
+the impersonation write and the log line, so the state has already moved and
+nothing is announced. Mutation-proven (delete the `tracing::info!` → red).
+
+### Item 2 — the re-framer's two `RecvError::Closed` arms
+
+Both were silent. Both are v5-only states with no v4 counterpart at all: v4's
+per-route `ReadableStream` is fed by the runner's own `onProgress` callback and
+can neither lag nor close while the run executes, whereas v5's rides one shared
+broadcast. Neither is reachable by a user today (the sender lives for the
+engine's life), but a silent arm is the #103/#110/#116 class, so both now warn
+naming the `progress_id` and the arm, beside the `Lagged` warn that was already
+there. All three are recorded as v5-only divergences in the module doc.
+
+**The pre-commit arm's client shape, MEASURED and written down** (the order
+asked): the loop leaves with no frame and no dispatch result, so the caller
+commits to a stream anyway — **200 with v4's three SSE headers and an EMPTY
+body** — while the run keeps executing on the engine.
+
+Reaching either arm means dropping the last `Sender`, which a caller holding
+`&Sender` cannot do, so the body split into a private `stream_generator_from`
+taking the receiver by value; the public entry point is unchanged and the two
+tests are in-crate. Both mutation-proven.
+
+**Banked, not changed:** `stream_generator`'s resolved-before-any-frame branch
+sends every pending frame into a 64-slot mpsc BEFORE returning the response, so
+a run that resolves with more than 64 frames in one poll would deadlock the
+request. Not reachable in production — a real runner awaits its model calls and
+so cannot resolve inside a single poll, which is why the item-9 tests below
+yield after their first emit to take the production (pump) path instead.
+
+### Item 3 — one answer to an impossible parse state in `generators_detail.rs`
+
+The file answered the same state — a body field that resolved to neither a
+value nor a validation issue — three ways: seven `.expect("no issues")` panics
+in `parse_optimize_body`; three silent `unwrap_or_default()`s in
+`parse_external_prompt_body` that fabricated an empty connection-profile id or
+a zero token budget and handed them to the runner; and
+`serde_json::to_value(result).unwrap_or(Value::Null)` on the rename arm, a 200
+carrying `null` where v4's `NextResponse.json` throwing is the middleware's
+500. A panic across the dispatch boundary is a dead connection; a fabricated
+value is worse, because it looks like a request.
+
+All ten now pass through one `resolved()` gate returning
+`GeneratorBodyRefusal::Impossible`, which answers **v4's own arm for an
+uncaught non-Zod throw in a handler**: `contextLogger.error('… Unhandled route
+error' …)` then `serverError('Internal server error')` — measured at
+`lib/api/middleware/context.ts:206-207`, a logged flat 500. The `ZodError` arm
+is unchanged.
+
+`scenarioId` is the one field deliberately left un-gated, with the reason
+written down: it is `.optional()`, so `None` there is what v4 returns for an
+absent value, not a gap. (The order's `:504-507` pointer named that line; the
+silence it was pointing at is the `unwrap_or_default()` block below it.)
+
+Four tests: the impossible arm's status/sentence/log line, the validation arm
+still v4's 400, all nine gated fields driven at the gate (the state cannot be
+constructed through either parse function), and **a source census over the
+production zone** asserting the three retired spellings stay retired. The
+census is the one that matters and is the only one the mutation reddens — the
+other three stay green with an `unwrap_or_default()` put back. Its zone is cut
+at the file's `#[cfg(test)]` with a floor assert, and its needles are assembled
+rather than spelled (the first version matched its own banned-list literal).
+
+### Item 4 — the two `[Characters v1] … starting` route lines
+
+"Compared by nothing", and they were: each generator family filters its SERVICE
+prefix (`[CharacterOptimizer]` / the external prompt's own lines), so no oracle
+ever saw the ROUTE's announcement, and neither line moves a response field or a
+DB row. They are not oracle comparands now either — v5 emits them as individual
+tracing fields where the service lines carry one `context=` JSON bag, so
+`parse_log_line` cannot read them — but they are capture-pinned against v4's
+measured bags.
+
+The optimizer's nine keys (`post.ts:101`) are driven twice: once with every
+option at its Zod default, so v4's `searchQuery || '(none)'` and the two
+`sinceDate`/`beforeDate` nulls are exercised as v4 renders them, and once with
+all six set. **The first run corrected the test, not the port** — `maxMemories`
+defaults to 30, not 50 (`z.number().int().min(5).max(200).optional().default(30)`).
+
+The external prompt's four keys (`post.ts:320`) are driven once, with an
+assertion that `systemPromptId` and `scenarioId` are NOT in v4's bag though
+they are parsed on the line above — the arm a helpful port would fail.
+
+Each has silence arms for v4's two preceding gates (the 404 and the Zod parse).
+Both mutation-proven: dropping `maxTokens` and dropping `outputMode` redden
+exactly their tests. Both driven with `driver: None`, so neither costs a model
+call.
+
+### Item 5 — the image-profile generate route's Zod length rule
+
+`POST /api/v1/image-profiles/{id}?action=generate` measured its `prompt`
+against `z.string().min(1).max(4000)` with `jsstr::utf16_len`, while the
+sibling `images_generate` route already used `jsstr::zod_len_min_ok` /
+`zod_len_max_ok` for the identical schema. Zod has counted CODE POINTS since
+4.5 (`zod_version_guard` pins 4.5.4), so the two routes disagreed on any astral
+prompt. Switched.
+
+`image_generate_route_equivalence` gains two arms, built identically on both
+sides rather than spelled: `'A moonlit tower ' + 'a'.repeat(3983) + U+1F702` is
+4000 code points in 4001 UTF-16 units, which v4 accepts and runs the tool for;
+one code point over is still refused. **Red-first** — with `utf16_len` restored
+the at-max arm answers 400 against the oracle's 201 while the over-max arm
+stays green, so the fix cannot have been "stop counting".
+
+The at-max arm also found a latent bug in that family's own UUID normalizer: it
+sliced 36 raw bytes with no char-boundary check and panicked on the first
+non-ASCII envelope any corpus row had ever produced. Now `str::get`.
+
+### Item 6 — P4.9K1/K2's Tier-2 items 9 and 10
+
+**Item 9 (the SSE bytes) — CLOSED for the optimizer and wizard edges.** Both
+oracles decoded the stream into `events` and threw v4's framing away, so the K0
+re-framer — whose whole job is that framing — was compared by nothing. Both now
+emit `rawSse`, the response body verbatim, beside `events`.
+
+The comparison is made at the re-framer, not through the HTTP edge with a
+canned driver as the order sketched: the web venue has no generator-driver
+injection seam (the driver comes from the spine bundle, and the live edge test
+runs the production spine), and there is a better shape available.
+`generator_sse_wire`'s two new tests replay each recorded run's OWN frames
+through `stream_generator` and compare the body to that same row's `rawSse`
+**byte for byte with no normalization at all** — both comparands come from one
+oracle row, so anything v4 minted is identical on both sides and the framing is
+the only thing left under test. **24 optimizer streams and 28 wizard streams
+match**, plus all three headers on both edges. Mutation-proven: `data: ` →
+`data:` reddens seven of the nine tests in that file. External prompt answers
+JSON, not SSE — item 9 does not apply there, as the order says; recorded.
+
+**Item 10 (the `llm_logs` counts) — CLOSED for all three, after the order's
+premise was REFUTED by measurement.** The order said the oracles "keep
+`logLLMCall` REAL and write the scratch data dir's llm-logs DB", and all three
+case headers said the same. They were wrong: **`jest.setup.ts:379` replaces the
+whole `@/lib/services/llm-logging.service` module with no-op `jest.fn()`s for
+every jest run.** Diagnosed by consequence — a first regen died on `no such
+table: llm_logs`, and once that was guarded every case answered `{}`; a
+diagnostic run then showed the partition present, `isLoggingEnabled` returning
+enabled defaults, no swallowed error, and **zero tables** after a full run. This
+is the `jest-setup-storage-manager-stub` class exactly.
+
+All three cases now `jest.doMock` the module back to `requireActual` per case
+(the files' own established idiom, beside the six they already un-mock), the
+headers are corrected in place, and each row carries `llmLogCounts` — the
+per-case DELTA of `SELECT type, COUNT(*) … GROUP BY type`, because one scratch
+data dir serves the whole run. The table check is kept: v4 creates `llm_logs`
+lazily on its first write, so a case that logged nothing has no table, not an
+empty one.
+
+v5's side had the mirror-image gap — all three families passed
+`llm_logs: None`, so its own `log_llm_call` wrote nowhere. Each now opens a
+real partition per case via `common::materialize_llm_logs`.
+
+**v4's `type` strings per runner, measured:** `EXTERNAL_PROMPT`
+(`external-prompt-generator.service.ts:186`), `CHARACTER_OPTIMIZER`
+(`character-optimizer.service.ts:848` and `:995`), `CHARACTER_WIZARD`
+(`character-wizard.service.ts:427` and `:539`). All three families are green —
+v5 writes the same rows — and all three are mutation-proven: disabling a
+`log_llm_call` reddens 6, 18 and 2 cases respectively, the wizard's arithmetic
+discriminating 7 from 8 (the vision call's own row).
+
+### Tier 2 — items 7 and 8
+
+Item 7: the live `optimize-stream` edge asserted two of v4's three SSE headers;
+`connection: keep-alive` is now asserted too. Item 9's tests already assert all
+three on both edges at the re-framer, where the constant lives.
+
+Item 8: a header census over the three JSON arms. **v4's `NextResponse.json`
+was MEASURED against v4's own `next/server`** — it sets exactly one header,
+`content-type: application/json`, with no charset parameter and no
+`cache-control`/`connection`. The census asserts that content type and the
+ABSENCE of the SSE trio's other two, arm by arm, so a leak in either direction
+is caught; every other assertion in that file reads the body. Proven
+non-vacuous by adding `content-length` to the absent list — it fails, naming
+the real header map. The `generate-external-prompt` row uses the Zod refusal,
+so the census costs no model call.
+
+### Tier 3 — recorded, not changed
+
+The five `is_none_or` ownership gates (unreachable — the profile row marshals a
+required `String`). The `Plugin system initialization failed` arm and the
+`pdf-parse not available` line belong to the wizard/import files and are
+P4.86's, untouched.
+
+### Deferred loud
+
+`crates/quilltap-web/tests/generators_wizard_routes.rs` asserts only
+`content-type` on both of its stream sites. Nobody owns that file this round,
+so it was left alone; item 9's wizard test asserts all three headers at the
+re-framer, and both edges share the one `SSE_HEADERS` constant, so the coverage
+exists — but the live-edge assertion is a one-line follow-up.
+
+### Fixtures and regen
+
+No committed fixture was rebuilt. Three oracle CASES were extended
+(`character-optimizer-tier3.test.ts`, `character-wizard-tier3.test.ts`,
+`external-prompt-tier3.test.ts`) and one corpus grew two arms
+(`image-generate-route.test.ts`). Their per-family fixture JSONs are unchanged.
+Every regen ran through the sweep driver after a passing probe:
+
+```
+python3 harness/tools/recipe_sweep.py --run character_optimizer_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --run character_wizard_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --run external_prompt_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --run image_generate_route_equivalence
+```
+
+The new `generator_sse_wire` tests are not in a recipe (they read two families'
+NDJSONs from `QT_ORACLE_CHARACTER_OPTIMIZER` / `QT_ORACLE_CHARACTER_WIZARD`);
+their run line is in that file's module header.

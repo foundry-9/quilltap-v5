@@ -116,6 +116,26 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — test(harness): ground item 9 by re-decoding the oracle's own rawSse
+
+_Versions: core 0.0.838, harness 0.0.729._
+
+P4.85's gate follow-ups.
+
+The optimizer and wizard oracle rows now carry v4's stream twice — `rawSse`
+verbatim and `events` decoded from it — and `generator_sse_wire` replays
+`events` expecting to reproduce `rawSse`. That premise is now asserted where
+it lives: both families re-decode `rawSse` and compare it to `events` before
+running the case. It keeps the two representations honest (a future oracle
+edit capturing `buffered` before the decoder's final flush would leave the
+wire test comparing a truncated stream to a complete one) and it is
+mutation-proven — altering one frame's payload in a copy of the NDJSON
+reddens it.
+
+Also: the P4.85 item-3 block was inserted between `invalid_type`'s doc
+comment and its function, which `clippy::empty_line_after_doc_comments`
+caught; the block moved above that section.
+
 #### 2026-09-07 — test(web): the generator edges' response headers, served and absent
 
 _Versions: web 0.0.130._

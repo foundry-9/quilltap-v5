@@ -392,6 +392,31 @@ fn parse_log_line(line: &str) -> Value {
     json!({"level": level, "message": message, "context": context})
 }
 
+/// **P4.85 item 9's grounding assertion.** The row carries v4's stream TWICE —
+/// `rawSse` verbatim and `events` decoded from it — and `generator_sse_wire`
+/// replays `events` expecting to reproduce `rawSse`. That only means anything
+/// if the two agree HERE, so the decode is redone and compared: every `data: `
+/// payload of `rawSse`, in order, must be exactly `events`.
+///
+/// It also catches the shape a future oracle edit could quietly introduce —
+/// capturing `buffered` before the decoder's final flush, say — which would
+/// leave the wire test comparing a truncated stream to a complete one.
+fn assert_raw_sse_decodes_to_events(name: &str, raw: Option<&str>, events: &[Value]) {
+    let Some(raw) = raw else { return };
+    let decoded: Vec<Value> = raw
+        .split('\n')
+        .map(str::trim)
+        .filter_map(|l| l.strip_prefix("data:"))
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| serde_json::from_str::<Value>(p).expect("a JSON frame"))
+        .collect();
+    assert_eq!(
+        decoded, events,
+        "{name}: the oracle's rawSse and its decoded events disagree"
+    );
+}
+
 fn sorted(v: &Value) -> Value {
     match v {
         Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
@@ -575,6 +600,7 @@ fn character_wizard_matches_oracle() {
         (0usize, 0usize, 0usize, 0usize, 0usize);
     for c in &corpus.cases {
         let want_row = &oracle[&c.name];
+        assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
         let got = run_case(&spec, c);
         model_calls += want_row.calls.len();
         frames += want_row.events.len();

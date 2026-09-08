@@ -139,11 +139,6 @@ fn require_character(db: &Db, character_id: &str) -> Result<Value, Response> {
 }
 
 // ===========================================================================
-// Zod 4 issue rendering (the `chat_create::CreateZodIssue` idiom, as values)
-// ===========================================================================
-
-/// `invalid_type` — Zod 4's key order `expected, code, path, message`.
-// ===========================================================================
 // P4.85 item 3 — the ONE answer to an impossible parse state
 // ===========================================================================
 
@@ -205,6 +200,11 @@ fn resolved<T>(v: Option<T>, field: &'static str) -> Result<T, GeneratorBodyRefu
     v.ok_or(GeneratorBodyRefusal::Impossible { field })
 }
 
+// ===========================================================================
+// Zod 4 issue rendering (the `chat_create::CreateZodIssue` idiom, as values)
+// ===========================================================================
+
+/// `invalid_type` — Zod 4's key order `expected, code, path, message`.
 fn invalid_type(expected: &str, path: &[Value], got: Option<&Value>) -> Value {
     json!({
         "expected": expected,
