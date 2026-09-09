@@ -118156,3 +118156,91 @@ recorded here in full, for the unifier or the human to land:
 >   SURVIVES on BOTH sides, and mutation H1 (widening v5's predicate) reddens
 >   exactly that scenario and only that scenario. The day v4 widens its own,
 >   the arm goes red by design and v5 follows.
+
+### P4.D175 — the lane record's close
+
+**Branch** `claude/p4-d175-vendor-riders-bugs-f3a764`, six commits:
+
+| sha | subject |
+|---|---|
+| `824a7cb5` | fix(realtime): announce the Commonplace Book — bug 128's `memories` topic |
+| `0ba9e2e6` | fix(images): a generated image's label is not its description — bug 132's writers and reader |
+| `f64000ae` | fix(boot): clear the placeholder descriptions bug 132 already wrote |
+| `e26b99c8` | chore(help): re-vendor the help tree at v4 `78b381a96` (122 → 123) |
+| `dcead11c` | docs(p4.d175): ratify the six riders, annotate the walk's bug-132 PASS, record the owed filing |
+| (this one) | the lane record's close |
+
+**Every Tier-1 item (1–6) and both Tier-2 items (7–8) LANDED. Nothing under
+this order remains OPEN.**
+
+#### Measured deviations from the order (recorded, per `work-order-facts-need-the-same-verification-as-commit-prose`)
+
+1. **The §R.2 probe passed under its pre-authorized exception with a
+   thirteen-file, not nine-file, `--stat`** — the extra four measured as
+   version-bump-only. See §0 above. `cc65d6bfc` is next-round drift and it
+   re-opens `story_background_job.rs` and `help/dangerous-content.md`, both of
+   which this lane touched.
+2. **The order's bug-128 wiring shape ("a counting bus seam") needed a new
+   seam to exist at all.** `HintCapture` arms a THREAD-scoped bus by design,
+   and the repository layer only ever runs on the write pool's dedicated OS
+   thread, so the publishes were invisible to it. `HintCapture::arm_writer_
+   thread` sends one no-op write job that arms the same channel there. Without
+   it the order's prescribed pin was not buildable.
+3. **`realtime/publish_sites.rs` and `realtime/mod.rs` were edited**, and the
+   Ownership row names only `realtime/{types,job_topics}.rs` in its owns
+   column. Both are inside `realtime/**`, which every other lane's must-not-
+   touch column forbids, so there is no collision — but it is a widening of
+   the named list and is recorded rather than assumed. (`mod.rs` is one word:
+   "the six topics" → "the seven topics".)
+4. **The heal needed v4's control FLOW, not just its predicates** — the
+   short-circuiting `shouldRun`, the swallowed link-leg error, the silent
+   `else`. See unit 4; the first draft got all three wrong and the corpus
+   reddened two of them.
+5. **The upstream filing is recorded, not written.** Writing into
+   `~/source/quilltap-server` would dirty the checkout, and six sibling lanes'
+   §R.2 probes treat unrecorded dirt as a STOP. Full text in unit 6.
+
+#### Spotted, not mine — for the unifier and the next round
+
+- **The memory-gate logging family is absent from v5 entirely.** `4a9be9878`
+  adds two `logger.debug` lines and the route's `[Memories API] Deleted every
+  memory for a chat`; v5 has none of them, nor the TWO
+  `…touched an unusually large neighbour set` WARNS that predate this commit,
+  nor v4's `logFields` (`memoryId`, `neighbourCount`, `charactersAffected`,
+  `durationMs`). A pre-existing four-line gap this commit widens to five —
+  finding #103/#110/#116's class. Needs its own unit (a clock inside a
+  repository method + a capture-layer pin per line). Named in the source at
+  `db/memories.rs`.
+- **Four heals share a latent boot-failure shape.** Each gates its
+  `CREATE TABLE IF NOT EXISTS migrations_state/migrations_metadata` batch on
+  `migrations_state`'s existence alone, then upserts into
+  `migrations_metadata` — so a partition carrying the first table without the
+  second fails the BOOT. Found by the new host test's first run. Not reachable
+  from v4 (its `state.ts` creates both together), so this lane did not change
+  the hand-duplicated shape; a one-word hardening across
+  `chat_activity_recompute_heal:176`, `files_sha256_realign_heal:316`,
+  `thinking_prefill_retire_heal:195` and this lane's module is a clean
+  follow-up.
+- **The `docs/v4/` mirror wire** (unit 6): twelve retired specs to MOVE into
+  `features/complete/`, two new bug files to mirror at their `bugs/fixed/`
+  paths.
+- **`photo-tools.json` and `build-photo-tools-fixture.ts` are TRACKED and this
+  lane changed both.** No other family builds from that pair (surveyed), but
+  the sweep driver's warning is correct and worth a second look at unification.
+
+#### 💸 owed to the next dogfood pass
+
+- `describe_image` on a genuinely **upload-described** image — after the
+  reorder the only shape that still reaches `source: "stored-description"`.
+- A story background answering `generation-prompt` with the caption GONE from
+  the column — which is also the boot heal's live proof, and the replacement
+  for the 2026-08-24 walk's mis-recorded A2.
+- The heal's real-instance run on the Friday copy. ⚠ **Measure the population
+  FIRST** — v4 will very likely have run its own migration there before the
+  copy is taken, in which case the cross-app leg (v5 honours v4's ledger row
+  and writes nothing) is the free proof and the positive leg needs a plant.
+- ⚠ **The blast radius**: the first attach of a cleared image runs a real
+  vision call, because `api/chat_media.rs:1465` treats the link description as
+  a cache. Expect a burst; it is not a defect.
+- The Salon list card's memory badge un-staling on a real extraction — the v5
+  surface P4.D177 maps the `memories` topic to.
