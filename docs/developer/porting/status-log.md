@@ -116950,3 +116950,28 @@ widening reached the oracles and not just the case files:
 | handler | 4 `updatedAt` stamps (the applier's signature) |
 | route | 6 `run-progress` cases |
 | side-effects (unit 2) | 21 `progress.` targets |
+
+#### Handed to P4.D170, with the trap named
+
+`apps/web/src/app/pascal/custom-tool-types.ts` is the SPA's hand-rolled Zod
+twin, and at this lane's tip it still carries v4's PRE-`0587d1e96` gate shape:
+the per-record refine `must test at least one metadata key` (`:1020–1036`), no
+`progress` record, and a non-optional `metadata`. Three things it will need, and
+the third is the one worth naming in advance:
+
+1. the object-level refine `must test at least one metadata key or progress
+   field`, over the two records' COMBINED size — an empty `metadata` beside a
+   non-empty `progress` is legal;
+2. the `progress` record, keyed `"<id>.<field>"`, whose refused key answers
+   `Invalid key in record` at the key's path (never the parser's own sentence —
+   `flattenIssues` special-cases `invalid_union` and nothing else);
+3. **the absent-vs-empty distinction.** This lane's unit 3 found the server twin
+   collapsing an authored `"metadata": {}` into an omitted key, and the SPA's
+   own `custom-tool-types.gate.spec.ts` pins parsed `data` as a JSON string with
+   key order — so it is measured the same way and will fail the same way. Zod
+   keeps a key it parsed; every READER may treat absent and empty alike, and the
+   WIRE may not.
+
+The pre-widening effect-target refusal sentence (`must start with "state." or
+"metadata."`) is still in nine places in that tree — unit 2 recorded it, and it
+remains D170's.
