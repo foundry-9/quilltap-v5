@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — fix(images): a generated image's label is not its description — bug 132's writers and reader (v4 `78b381a96`)
+
+_Versions: core 0.0.859, harness 0.0.751._
+
+Two writers put a CAPTION in the column every reader treats as "what this
+picture shows". The Lantern's story-background job stored `Story background
+for: <scene or title>` on the `files` row and passed the same string to the
+Scriptorium link; Aurora's avatar job did the same with `<name> — wardrobe
+portrait` through the character vault. `describe_image` then served
+`description` FIRST, ahead of the generation prompt and the vision call — so a
+character asking what a backdrop showed was told the chat title, with
+`source: "stored-description"` and every appearance of success.
+
+Both writers now write `null` and omit the label from the storage-write
+options. `describe_image` reorders to prompt → stored → vision, matching the
+blind-model fallback in `services/file_fallback.rs`, which already had it that
+way. When the prompt is the answer and a non-blank stored description exists,
+the stored text is not thrown away: it rides along as a new optional
+`stored_description` on the result row (absent, never null) and tails the
+formatted text after `On file: `. The log line gains
+`has_stored_description`.
+
+`photo_tools_equivalence`'s `describe_stored` — a row carrying both generation
+prompts AND a stored description — is v4's own new case and flipped red
+against the unedited tree at the `78b381a96` pin. The reorder also left arm 2
+unreachable by that corpus (every described row there carries a prompt), so
+the fixture gained a `storedonly` image: a stored description and no prompt of
+either kind. `describe_whitespace_stored` now measures the negative arm of the
+ride-along — a column that trims to empty produces no key and no tail. The
+two job families flipped red on `doc_mount_file_links` before the edit and are
+green after; `image_generation_tier3` was regenerated and does not reach either
+writer.
+
 #### 2026-09-09 — fix(realtime): announce the Commonplace Book — bug 128's `memories` topic (v4 `4a9be9878`)
 
 _Versions: core 0.0.858, harness 0.0.750._

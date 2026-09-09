@@ -834,16 +834,6 @@ where
     });
     let now_iso = iso_from_unix_ms(deps.now_ms);
     let file_id = uuid::Uuid::new_v4().to_string();
-    // v4 description: `Story background for: ${payload.sceneContext || chat.title}`.
-    let description = format!(
-        "Story background for: {}",
-        payload
-            .scene_context
-            .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| chat_title.clone())
-    );
-
     // Storage branch key: payload.projectId (NOT chat.projectId — v4 wrinkle).
     // An upload Err is v4 uploadFile's throw inside the save try-block — the
     // job fails HERE (v4's catch wrap), before the files row / chat update.
@@ -878,7 +868,6 @@ where
         final_prompt: final_prompt.clone(),
         generation_model,
         revised_prompt: image_data.revised_prompt.clone(),
-        description: description.clone(),
         linked_to,
         project_id: payload.project_id.clone(),
         project_upload,
@@ -1021,7 +1010,6 @@ struct StoryWriteInput {
     final_prompt: String,
     generation_model: String,
     revised_prompt: Option<String>,
-    description: String,
     linked_to: Vec<String>,
     project_id: Option<String>,
     project_upload: Option<common::ProjectUploadResult>,
@@ -1077,7 +1065,9 @@ fn write_story_file(
                 &input.converted_bytes,
                 &input.converted_mime,
                 "generated",
-                Some(&input.description),
+                // Bug 132: no label on the Scriptorium link either — see the
+                // note on the `files` row below.
+                None,
             )?;
             (
                 written.storage_key,
@@ -1106,7 +1096,12 @@ fn write_story_file(
             generation_prompt: Some(input.final_prompt.clone()),
             generation_model: Some(input.generation_model.clone()),
             generation_revised_prompt: input.revised_prompt.clone(),
-            description: Some(input.description.clone()),
+            // No label here. `description` is what `describe_image` and the
+            // blind-model fallback read as "what this picture shows"; a stub
+            // such as "Story background for: <title>" shadowed the prompt above
+            // and the vision path behind it (bug 132). The prompt is the
+            // account of record.
+            description: None,
             tags: Vec::new(),
             project_id: file_project_id,
             folder_path: file_folder_path,

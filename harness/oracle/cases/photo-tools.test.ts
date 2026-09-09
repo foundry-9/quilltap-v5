@@ -246,9 +246,12 @@ async function main(): Promise<void> {
     // OMITS both keys. Every other baked image carries dimensions, so this is
     // the family's only row where the keys are absent rather than present.
     { label: 'attach_dimensionless', tool: 'attach_image', who: 'A', args: { uuid: meta.bakedByKey.dimensionless.linkId } },
-    // ---- describe_image (P4.D108; v4 a14a1811 bug 92 — the looking verb) ----
-    // Tier 1: a stored description is served WITHOUT a vision call ('described'
-    // also carries BOTH generation prompts, so a tier reorder is observable).
+    // ---- describe_image (P4.D108; v4 a14a1811 bug 92 — the looking verb;
+    //      v4 78b381a96 bug 132 — the tier REORDER) ----
+    // Tier 1 is now the generation prompt. 'described' carries BOTH prompts AND
+    // a stored description, so it serves the revised prompt with the stored
+    // text riding along as `stored_description` and tailing formattedText after
+    // `On file: ` — v4's own new case, and the row that flips on the reorder.
     { label: 'describe_stored', tool: 'describe_image', who: 'A', args: { uuid: fid('described') } },
     // Tier 2: revisedPrompt beats prompt; 'fresh' is UNKEPT (no album link) —
     // the no-album-membership rule's pin.
@@ -271,10 +274,15 @@ async function main(): Promise<void> {
     // success row — this FileEntry's width/height are NULL, so both keys are
     // absent from the JSON (tier 2 serves the generation prompt, so no vision).
     { label: 'describe_dimensionless', tool: 'describe_image', who: 'A', args: { uuid: fid('dimensionless') } },
-    // P4.58: a WHITESPACE-ONLY stored description. v4's tier-1 gate is
-    // `entry.description?.trim()` truthiness, so this row must FALL THROUGH to
-    // the generation-prompt tier rather than serving the blank.
+    // P4.58 / P4.D175: a WHITESPACE-ONLY stored description. `stored` is
+    // `entry.description?.trim() || undefined`, so this row serves its
+    // generation prompt with NO `stored_description` key and NO `On file: `
+    // tail — the negative arm of bug 132's ride-along.
     { label: 'describe_whitespace_stored', tool: 'describe_image', who: 'A', args: { uuid: fid('blankdesc') } },
+    // P4.D175: a stored description and NO prompt of either kind — the only
+    // shape that reaches bug 132's reordered arm 2. Served free (no vision
+    // call), and with no ride-along, since the stored text IS the answer.
+    { label: 'describe_stored_only', tool: 'describe_image', who: 'A', args: { uuid: fid('storedonly') } },
     // ---- autoDescribeChatImageAttachment (module level; generateImageDescription
     // mocked at the §C2 seam, everything above it REAL) ----
     // The three sinks: files.description + the blank uploads link + chunks.

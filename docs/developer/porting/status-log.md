@@ -117812,3 +117812,108 @@ python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
 
 Markers after the regen: `grep -c '"topic":"memories"'` = **10**;
 `grep -c batch_memories_delete_derives_no_hint` = **1**; 74 lines.
+
+### Units 2 + 3 — bug 132's two writers and the `describe_image` ladder (v4 `78b381a96`)
+
+**RED FIRST, before any source edit**, both job families regenerated from the
+tip pin against the unedited tree:
+
+- `avatar_job_tier3_equivalence` — FAILED (exit 101), first diverging case
+  `aesthetic_preamble: doc_mount_file_links rows diverged`, v5 writing
+  `"description":"Aurora — wardrobe portrait"` where the pinned oracle writes
+  `""`.
+- `story_background_job_tier3_equivalence` — FAILED (exit 101), first
+  diverging case `appearance_retry: doc_mount_file_links rows diverged`, v5
+  writing `"description":"Story background for: STORYCASE:appearance_retry"`.
+- `photo_tools_equivalence` — FAILED, `resultJson diverged for
+  describe_stored`. That row is v4's own new case.
+
+Neither caption string appears in any regenerated NDJSON afterwards
+(`grep -c` = 0 on both), which is the fix stated as a measurement.
+
+**Writers.** `story_background_job.rs` drops the `format!` entirely (the local
+`description` is gone, not merely unused), `StoryWriteInput::description` is
+gone, `write_lantern_background_to_mount_store` takes `None`, and the `files`
+row takes `description: None` with v4's why-comment. `character_avatar_job.rs`
+is the same shape through `write_character_avatar_to_vault`. The four
+`Option<&str>` bridge parameters in `image_job_storage.rs` and
+`db/doc_mount_file_links.rs` are unchanged (VERIFY-ONLY) — `None` lands as the
+column's `''` default exactly as before.
+
+**Reader.** v5 has no single `handle_describe_image`; it is split at the async
+vision seam, and the whole edit surface is `describe_respond`, which gained a
+fifth parameter. The key goes in at v4's position (after `source`) and is
+ABSENT rather than null when nothing rode along, matching v4's
+`...(storedDescription ? { stored_description } : {})` spread. The ladder in
+`handle_describe_image_precheck` is now prompt → stored → vision with `stored`
+computed ONCE at the top (`description?.trim() || undefined`, so a
+whitespace-only column never triggers the tail); the race arm in
+`handle_describe_image_after_vision` passes no fifth argument, as v4 passes no
+third. Catalog `tools/definitions/data.rs` is input-only and unchanged, as is
+`tools_inventory.rs`.
+
+**Corpus.** The order's diagnosis was right and is now measured: after the
+reorder every described row in the fixture also carries a generation prompt,
+so arm 2 was unreachable. `photo-tools.json` gained `storedonly`
+(`copper-kettle.webp`: a stored description, no prompt of either kind, file id
+`…017`), with the mirrored op on both sides and the completeness assert
+following the corpus length automatically. `describe_whitespace_stored` was
+re-purposed in place — same label, same fixture row — and now measures the
+NEGATIVE arm of the ride-along.
+
+The three arms, from the regenerated oracle (v5 byte-identical):
+
+| case | `source` | `stored_description` | `formattedText` tail |
+|---|---|---|---|
+| `describe_stored` | `generation-prompt` | present | `\n\nOn file: A sepia ink sketch…` |
+| `describe_whitespace_stored` | `generation-prompt` | ABSENT | none |
+| `describe_stored_only` | `stored-description` | ABSENT | none |
+
+**The log field is LOG-ONLY** and no differential compares it, so
+`has_stored_description` is pinned by a capture-layer test in `tools::photo`
+driving `describe_respond` both ways
+(`differential-blind-to-a-log-only-fix`). Note for anyone writing a log pin
+here: `source` is a bare `&str` tracing field and renders UNQUOTED
+(`source=generation-prompt`), not `source="generation-prompt"`.
+
+**Mutations (six, each reddening exactly the named case, reverted by file
+backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| M1 | swap the ladder back (stored before prompt) | `photo_tools` → `describe_stored` |
+| M2 | delete the stored tier (arm 2) whole | `photo_tools` → `describe_stored_only`, on the `throws` mock: *"reached the vision tier — tiers 1/2 must serve without a vision call"* — the new row is load-bearing |
+| M3 | drop the `stored_description` key and the `On file: ` tail | `photo_tools` → `describe_stored` |
+| M4 | drop the non-empty filter on `stored` | `photo_tools` → `describe_whitespace_stored` |
+| M5 | restore the caption on the story `files` row only (link kept `None`) | `story_background_job_tier3` → `appearance_retry: files rows diverged` |
+| M6 | restore the caption on the avatar `files` row only | `avatar_job_tier3` → `aesthetic_preamble: files rows diverged` |
+
+M5/M6 exist because the red-first run is fail-fast and panicked on the LINK
+leg first — they prove the `files` leg independently.
+
+**Tier 2, item 8 — `image_generation_tier3` answered by measurement.**
+Regenerated at the pin and GREEN with the writers already edited; `grep -c` for
+either caption in `/tmp/oracle-image-generation.ndjson` is **0**. Its
+`avatar_fire` / `avatar_autonomous` cases exercise the tool-level generate
+handler, not the job handlers' storage write, so they never reach either
+writer. Recorded either way, as the order asked.
+
+**VERIFY-ONLY, both confirmed:** `services/file_fallback.rs:1097-1132`
+(`run_generate_image_description`) was ALREADY prompt-first — revised prompt,
+then prompt, then description — with v4's nested-ternary `source`;
+`photos/auto_describe_attachment.rs:130-155` (`auto_describe_precheck`) is the
+four-arm gate and correct as is.
+
+Regen recipes (both through the sweep driver at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run photo_tools_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run avatar_job_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run story_background_job_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run image_generation_tier3_equivalence
+```
+
+⚠ **`photo-tools.json` and `build-photo-tools-fixture.ts` are TRACKED and this
+lane changed both** (the sweep driver warned, correctly). Any other family
+built from that pair must be re-run; the survey found none — the pair is
+`photo_tools_equivalence`'s alone.

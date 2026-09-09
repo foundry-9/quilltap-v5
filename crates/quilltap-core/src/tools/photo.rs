@@ -884,21 +884,30 @@ pub fn resolve_describable_file_entry(
     Ok(None)
 }
 
-/// v4's `respond(description, source)` closure — the success row (v4 key
-/// order: `file_id, filename, mime_type, width?, height?, description,
-/// source`; an absent width/height omits the key, as `?? undefined` does
-/// under `JSON.stringify`) + the `'Described image for character'` log line.
+/// v4's `respond(description, source, storedDescription?)` closure — the
+/// success row (v4 key order: `file_id, filename, mime_type, width?, height?,
+/// description, source`, then `stored_description` when one rode along; an
+/// absent width/height omits the key, as `?? undefined` does under
+/// `JSON.stringify`, and so does an absent `stored_description` — v4 spreads
+/// `...(storedDescription ? { stored_description } : {})`, so the key is
+/// ABSENT, never null) + the `'Described image for character'` log line.
+///
+/// `stored` is passed only by the generation-prompt arm (bug 132): when the
+/// prompt is the answer, a non-blank stored description is not thrown away —
+/// it rides along in the row and tails the formatted text after `On file: `.
 fn describe_respond(
     entry: &crate::db::files::FileEntry,
     ctx: &PhotoToolContext,
     description: &str,
     source: &str,
+    stored: Option<&str>,
 ) -> PhotoToolResult {
     tracing::info!(
         file_entry_id = %entry.id,
         character_id = ctx.character_id.as_deref().unwrap_or_default(),
         source,
         description_length = utf16_len(description),
+        has_stored_description = stored.is_some(),
         "Described image for character"
     );
     let mut result = serde_json::Map::new();
@@ -916,11 +925,24 @@ fn describe_respond(
     }
     result.insert("description".into(), Value::String(description.to_string()));
     result.insert("source".into(), Value::String(source.to_string()));
+    if let Some(stored) = stored {
+        result.insert(
+            "stored_description".into(),
+            Value::String(stored.to_string()),
+        );
+    }
+    let formatted_text = match stored {
+        Some(stored) => format!(
+            "{}:\n\n{}\n\nOn file: {}",
+            entry.original_filename, description, stored
+        ),
+        None => format!("{}:\n\n{}", entry.original_filename, description),
+    };
     PhotoToolResult {
         success: true,
         result: Some(Value::Object(result)),
         error: None,
-        formatted_text: Some(format!("{}:\n\n{}", entry.original_filename, description)),
+        formatted_text: Some(formatted_text),
     }
 }
 
@@ -935,8 +957,8 @@ pub enum DescribeImageStep {
 }
 
 /// v4 `handleDescribeImage`, up to the vision call: resolution + the two free
-/// tiers (stored description, then generation revisedPrompt || prompt), with
-/// the two error sentences byte-exact.
+/// tiers (generation revisedPrompt || prompt FIRST, then a stored description
+/// — bug 132's reorder), with the two error sentences byte-exact.
 pub fn handle_describe_image_precheck(
     main: &Connection,
     mount: &Connection,
@@ -960,19 +982,22 @@ pub fn handle_describe_image_precheck(
         )));
     }
 
-    // 1. A description stored at upload time — the common case, and free.
-    if let Some(stored) = entry
+    // A whitespace-only column is no description at all, so it never triggers
+    // the `On file: ` tail either (v4's `?.trim() || undefined`).
+    let stored = entry
         .description
         .as_deref()
         .map(js_trim)
-        .filter(|s| !s.is_empty())
-    {
-        let out = describe_respond(&entry, ctx, stored, "stored-description");
-        return DescribeImageStep::Done(out);
-    }
+        .filter(|s| !s.is_empty());
 
-    // 2. Quilltap generated it, so the prompt that made it is the most
-    //    faithful account available, and also free.
+    // 1. Quilltap generated it, so the prompt that made it is the most faithful
+    //    account available, and free. It outranks whatever sits in
+    //    `description` because that column has held LABELS rather than
+    //    descriptions ("Story background for: <title>", bug 132) — and an
+    //    import from an older export can still carry one. Same ordering as
+    //    `file_fallback::run_generate_image_description` (v4's
+    //    `lib/chat/file-attachment-fallback.ts`). A stored description is not
+    //    thrown away: it rides along as `stored_description`.
     let prompt = entry
         .generation_revised_prompt
         .as_deref()
@@ -986,7 +1011,14 @@ pub fn handle_describe_image_precheck(
                 .filter(|s| !s.is_empty())
         });
     if let Some(p) = prompt {
-        let out = describe_respond(&entry, ctx, p, "generation-prompt");
+        let out = describe_respond(&entry, ctx, p, "generation-prompt", stored);
+        return DescribeImageStep::Done(out);
+    }
+
+    // 2. A description stored at upload time — the common case for uploads, and
+    //    also free.
+    if let Some(stored) = stored {
+        let out = describe_respond(&entry, ctx, stored, "stored-description", None);
         return DescribeImageStep::Done(out);
     }
 
@@ -1006,7 +1038,7 @@ pub fn handle_describe_image_after_vision(
     use crate::photos::auto_describe_attachment::AutoDescribeSkipReason;
 
     if let Some(d) = outcome.description.as_deref().filter(|d| !d.is_empty()) {
-        return describe_respond(entry, ctx, d, "vision-call");
+        return describe_respond(entry, ctx, d, "vision-call", None);
     }
 
     if outcome.skip_reason == Some(AutoDescribeSkipReason::AlreadyDescribed) {
@@ -1018,7 +1050,7 @@ pub fn handle_describe_image_after_vision(
             Err(e) => return PhotoToolResult::err(e.to_string()),
         };
         if let Some(fresh) = fresh {
-            return describe_respond(entry, ctx, &fresh, "stored-description");
+            return describe_respond(entry, ctx, &fresh, "stored-description", None);
         }
     }
 
@@ -1035,6 +1067,78 @@ pub fn handle_describe_image_after_vision(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn described_entry(description: Option<&str>) -> crate::db::files::FileEntry {
+        crate::db::files::FileEntry {
+            id: "f-1".into(),
+            sha256: "abc".into(),
+            original_filename: "copper-kettle.webp".into(),
+            mime_type: "image/webp".into(),
+            size: 12,
+            width: Some(400),
+            height: Some(300),
+            category: "IMAGE".into(),
+            generation_prompt: None,
+            generation_model: None,
+            generation_revised_prompt: None,
+            description: description.map(str::to_string),
+            storage_key: None,
+        }
+    }
+
+    fn ctx() -> PhotoToolContext {
+        PhotoToolContext {
+            chat_id: "c-1".into(),
+            user_id: "u-1".into(),
+            project_id: None,
+            character_id: Some("ch-1".into()),
+            embedding_profile_id: None,
+        }
+    }
+
+    /// Bug 132's log field. `hasStoredDescription` is LOG-ONLY: no differential
+    /// compares it (`differential-blind-to-a-log-only-fix`), and the family's
+    /// `stored_description` key would stay green if the field were dropped.
+    #[test]
+    fn the_describe_log_line_reports_whether_a_description_rode_along() {
+        let entry = described_entry(None);
+        let with_stored = crate::test_support::captured(|| {
+            describe_respond(
+                &entry,
+                &ctx(),
+                "a prompt",
+                "generation-prompt",
+                Some("on file"),
+            );
+        });
+        let line = with_stored
+            .iter()
+            .find(|l| l.contains("Described image for character"))
+            .expect("the log line must be emitted");
+        assert!(
+            line.contains("has_stored_description=true"),
+            "expected has_stored_description=true in: {line}"
+        );
+        assert!(line.contains("source=generation-prompt"), "{line}");
+
+        let without = crate::test_support::captured(|| {
+            describe_respond(
+                &entry,
+                &ctx(),
+                "a stored description",
+                "stored-description",
+                None,
+            );
+        });
+        let line = without
+            .iter()
+            .find(|l| l.contains("Described image for character"))
+            .expect("the log line must be emitted");
+        assert!(
+            line.contains("has_stored_description=false"),
+            "expected has_stored_description=false in: {line}"
+        );
+    }
 
     #[test]
     fn prompt_excerpt_caps_and_ellipsis() {
