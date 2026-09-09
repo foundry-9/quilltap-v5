@@ -117897,3 +117897,45 @@ an unanchored `chat-gallery` also matches v4's OWN
 M4 run raced a concurrent rebuild and produced a reds list
 (`gallery_portrait_only`, `files_list`) that the mutation could not have
 caused; it was discarded and re-run cleanly.
+
+### Lane record — P4.D174 unit 4 (`?download=1`)
+
+`wants_attachment` / `disposition_for` land in `quilltap-web/src/query.rs`
+rather than in `quilltap-core::content_disposition`, because v4's predicate
+takes a `{url: string}` and v5's edge never has one: axum parses the request
+line and hands the handler a decoded pair list. A core-side function taking a
+URL string would have had to invent a URL parser to be reachable, and calling
+it with axum's relative `Uri` would have hit v4's `new URL()` THROW arm on
+every request.
+
+**The tier-1 tsx case the order offered as the first option was NOT written;
+the order's own sanctioned alternative — "fold it into `binary_routes.rs` if
+the web venue can serve it" — was taken**, plus a unit truth table on the
+predicate itself (`wants_attachment_accepts_only_one_and_true`,
+`wants_attachment_is_first_wins`, `disposition_for_maps_the_predicate`). The
+reason is the same one above: the comparand v4's function takes (a URL) and the
+comparand v5's takes (a pair list) are different types, so a corpus of URL
+strings would have measured a parser this port does not otherwise have.
+
+**v4's malformed-URL arm is a structural NO-COUNTERPART**, recorded in the
+predicate's doc comment: axum refuses an unparseable request line before any
+handler runs.
+
+Two arms the port deliberately does NOT wire, both pinned:
+
+- the **thumbnail** leg — v4's `files/[id]/handlers/get.ts` passes `request` to
+  `handleDownloadFile` alone, and `actions/thumbnail.ts` sets no
+  `Content-Disposition` at all (measured at the pin), so `?download=1` has
+  nothing to move there;
+- **`GET /mount-points/{id}/files/{path}?raw=1`**, the fourth byte route —
+  `86d59660c` touches three, and this is not one of them.
+
+`mount_blob_get` has ONE response builder for both of v4's arms (the blob and
+the native-text document), so the "easy port defect" the order names is closed
+by construction — and M11 below proves the assertion would have caught it
+anyway.
+
+| # | mutation | result |
+|---|---|---|
+| M10 | `wants_attachment` returns `false` always | RED — `binary_routes.rs:333` |
+| M11 | the blobs route hardcodes `Disposition::Inline` | RED — `binary_routes.rs:409` |

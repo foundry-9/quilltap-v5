@@ -12,7 +12,10 @@
 //!
 //! Headers per the v4 routes: `Cache-Control: public, max-age=31536000,
 //! immutable` for immutable file bytes, `private, max-age=3600` for mount
-//! paths, RFC 5987 `Content-Disposition: inline`, `X-Frame-Options:
+//! paths, RFC 5987 `Content-Disposition` — `inline` by default and
+//! `attachment` when the request carries `?download=1` (or `download=true`;
+//! v4 `86d59660c`, the gallery's download button), with every other header
+//! unchanged in both modes — `X-Frame-Options:
 //! SAMEORIGIN`, CSP `frame-ancestors 'self'`, and the
 //! `X-File-Sha256`/`X-Blob-Sha256` hashes. No Range support (v4 has none).
 //! Themes assets/fonts + `characters/{id}/photos` are P4.4 deferrals.
@@ -23,6 +26,7 @@ use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::{
     ErrorKind, QuilltapCore, Request as CoreRequest, Response as CoreResponse,
 };
+use quilltap_core::content_disposition::Disposition;
 use quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
 use quilltap_core::db::doc_mount_file_links::{
@@ -112,21 +116,29 @@ fn blob_disposition_name<'a>(relative_path: &'a str, fallbacks: &[&'a str]) -> &
     ""
 }
 
-fn build_content_disposition(filename: &str) -> String {
-    quilltap_core::content_disposition::build_content_disposition(
-        filename,
-        quilltap_core::content_disposition::Disposition::Inline,
-    )
+fn build_content_disposition(filename: &str, disposition: Disposition) -> String {
+    quilltap_core::content_disposition::build_content_disposition(filename, disposition)
 }
 
-/// The immutable file-bytes response (proxy + download routes).
-fn file_bytes_response(mime: &str, filename: &str, bytes: Vec<u8>) -> AxumResponse {
+/// The immutable file-bytes response (proxy + download routes). `disposition`
+/// is the ONLY thing `?download=1` moves — cache, framing and CSP are
+/// byte-identical in both modes (v4 pins exactly that,
+/// `image-download-disposition.test.ts:122`).
+fn file_bytes_response(
+    mime: &str,
+    filename: &str,
+    bytes: Vec<u8>,
+    disposition: Disposition,
+) -> AxumResponse {
     (
         StatusCode::OK,
         [
             ("content-type", mime.to_string()),
             ("content-length", bytes.len().to_string()),
-            ("content-disposition", build_content_disposition(filename)),
+            (
+                "content-disposition",
+                build_content_disposition(filename, disposition),
+            ),
             (
                 "cache-control",
                 "public, max-age=31536000, immutable".to_string(),
@@ -165,7 +177,9 @@ fn mime_for_document(file_type: &str) -> &'static str {
 pub async fn files_proxy(
     State(state): State<SharedState>,
     Path(key): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    let disposition = crate::query::disposition_for(&pairs);
     let (db, backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -178,7 +192,12 @@ pub async fn files_proxy(
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve file"),
     };
     match download_file_result(&db, &backend, &entry) {
-        Ok(bytes) => file_bytes_response(&entry.mime_type, &entry.original_filename, bytes),
+        Ok(bytes) => file_bytes_response(
+            &entry.mime_type,
+            &entry.original_filename,
+            bytes,
+            disposition,
+        ),
         // [Bug 55] Same rule as the by-id download: an absent object is 404,
         // not 500. v4 `notFound('File content')` → `{"error":"File content not
         // found"}`. Every other failure keeps v4's `Failed to download file`
@@ -200,6 +219,12 @@ pub async fn files_get(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
+    // …except `download`, which is read through the shared predicate so the
+    // `'1' | 'true'` rule lives in one place across all three byte routes.
+    // v4 wires it only on the DOWNLOAD leg: `handleGetThumbnail` keeps its own
+    // fixed inline disposition (`files/[id]/handlers/get.ts` passes `request`
+    // to `handleDownloadFile` alone).
+    let disposition = crate::query::disposition_for(&pairs);
     let (db, backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -286,7 +311,12 @@ pub async fn files_get(
         );
     }
     match download_file_result(&db, &backend, &entry) {
-        Ok(bytes) => file_bytes_response(&entry.mime_type, &entry.original_filename, bytes),
+        Ok(bytes) => file_bytes_response(
+            &entry.mime_type,
+            &entry.original_filename,
+            bytes,
+            disposition,
+        ),
         // [Bug 55] The row outlived its bytes (a dangling avatar, a deleted
         // mount point). That is permanent and the client's job to fall back
         // from, so answer 404 rather than 500 — a server error invites a retry
@@ -443,7 +473,13 @@ pub async fn mount_file_get(
 pub async fn mount_blob_get(
     State(state): State<SharedState>,
     Path((id, path)): Path<(String, String)>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // `?download=1` saves rather than renders. v4 reads it ONCE at the top and
+    // hands the same value to BOTH arms (the blob and the native-text
+    // document); v5 has one response builder below, so both are covered by
+    // construction.
+    let disposition = crate::query::disposition_for(&pairs);
     let (db, _backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -497,9 +533,12 @@ pub async fn mount_blob_get(
             [
                 ("content-type", mime),
                 ("content-length", len.to_string()),
-                // v4 `af1bc479`: the stored basename, INLINE — so a gallery's
-                // download button gets the name of the bytes it just fetched.
-                ("content-disposition", build_content_disposition(&name)),
+                // v4 `af1bc479`: the stored basename — so a gallery's download
+                // button gets the name of the bytes it just fetched.
+                (
+                    "content-disposition",
+                    build_content_disposition(&name, disposition),
+                ),
                 ("cache-control", "private, max-age=3600".to_string()),
                 ("x-blob-sha256", sha),
             ],

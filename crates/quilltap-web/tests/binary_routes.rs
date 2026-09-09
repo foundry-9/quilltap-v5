@@ -301,4 +301,154 @@ async fn binary_routes_serve_files_thumbnails_and_mount_bytes() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 404);
+
+    // --- `?download=1` on the three byte routes (v4 `86d59660c`) -----------
+    //
+    // The flag moves the Content-Disposition and NOTHING ELSE: v4's own
+    // `image-download-disposition.test.ts` pins cache, framing and
+    // `X-Blob-Sha256` in BOTH modes, so each arm below re-asserts every other
+    // header it can see.
+
+    // (1) files proxy — attachment, with the RFC 5987 pair intact.
+    for flag in ["1", "true"] {
+        let resp = client
+            .get(format!(
+                "http://{addr}/api/v1/files/proxy/test/hello.txt?download={flag}"
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        assert_eq!(resp.headers()["content-type"], "text/plain");
+        assert_eq!(
+            resp.headers()["cache-control"],
+            "public, max-age=31536000, immutable"
+        );
+        assert_eq!(resp.headers()["x-frame-options"], "SAMEORIGIN");
+        assert_eq!(
+            resp.headers()["content-security-policy"],
+            "frame-ancestors 'self'"
+        );
+        let cd = resp.headers()["content-disposition"].to_str().unwrap();
+        assert!(cd.starts_with("attachment; filename=\"h_llo.txt\""), "{cd}");
+        assert!(cd.contains("filename*=UTF-8''h%C3%A9llo.txt"), "{cd}");
+        assert_eq!(resp.bytes().await.unwrap().as_ref(), b"hello quilltap");
+    }
+
+    // Anything else is inline — `0`, a word, and a present-but-empty value.
+    for flag in ["0", "yes", ""] {
+        let resp = client
+            .get(format!(
+                "http://{addr}/api/v1/files/proxy/test/hello.txt?download={flag}"
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
+        let cd = resp.headers()["content-disposition"].to_str().unwrap();
+        assert!(cd.starts_with("inline; "), "download={flag}: {cd}");
+    }
+
+    // A repeated key takes the FIRST occurrence (v4 `searchParams.get`).
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/files/proxy/test/hello.txt?download=0&download=1"
+        ))
+        .send()
+        .await
+        .unwrap();
+    let cd = resp.headers()["content-disposition"].to_str().unwrap();
+    assert!(cd.starts_with("inline; "), "{cd}");
+
+    // (2) files by id — attachment; the thumbnail leg is NOT wired (v4 passes
+    //     `request` to `handleDownloadFile` alone), so it stays inline.
+    let resp = client
+        .get(format!("http://{addr}/api/v1/files/{IMG_ID}?download=1"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers()["content-type"], "image/png");
+    assert_eq!(
+        resp.headers()["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(resp.headers()["x-frame-options"], "SAMEORIGIN");
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        "attachment; filename=\"dot.png\""
+    );
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/files/{IMG_ID}?action=thumbnail&download=1"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.headers().get("content-disposition").is_none(),
+        "the thumbnail leg sets no Content-Disposition at all (v4's
+         `actions/thumbnail.ts` header block has none), so `?download=1` has
+         nothing to move there — v4 passes `request` to `handleDownloadFile`
+         alone"
+    );
+
+    // (3) mount-point blobs — BOTH arms. The blob arm first…
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/mount-points/{mp}/blobs/Images/holiday/photo.webp?download=1"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers()["content-type"], "image/webp");
+    assert_eq!(resp.headers()["cache-control"], "private, max-age=3600");
+    assert!(resp.headers().contains_key("x-blob-sha256"));
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        "attachment; filename=\"photo.webp\""
+    );
+    // …then the native-text DOCUMENT arm, which v4 wires separately and a port
+    // can easily miss.
+    let want_doc_name = rel.rsplit('/').next().unwrap();
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/mount-points/{mp}/blobs/{rel}?download=true"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()["content-type"],
+        "text/markdown; charset=utf-8"
+    );
+    assert_eq!(resp.headers()["cache-control"], "private, max-age=3600");
+    assert_eq!(resp.headers()["x-blob-sha256"].to_str().unwrap(), sha);
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        format!("attachment; filename=\"{want_doc_name}\"")
+    );
+
+    // The fourth byte route — `/mount-points/{id}/files/{path}?raw=1` — is
+    // deliberately NOT wired: v4 `86d59660c` touches three routes, and this one
+    // is not among them.
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/mount-points/{mp}/files/{rel}?raw=1&download=1"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        !resp
+            .headers()
+            .get("content-disposition")
+            .map(|v| v.to_str().unwrap().starts_with("attachment"))
+            .unwrap_or(false),
+        "the raw mount-file route is not a `?download=1` surface"
+    );
 }

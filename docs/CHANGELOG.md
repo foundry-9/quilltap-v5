@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(files): `?download=1` on the three image byte routes (P4.D174 unit 4)
+
+_Versions: web 0.0.134._
+
+v4 `86d59660c` added `lib/api/content-disposition.ts`'s `wantsAttachment` /
+`dispositionFor` and wired them into `GET /api/v1/files/{id}`,
+`GET /api/v1/files/proxy/{key}` and `GET /api/v1/mount-points/{id}/blobs/{path}`
+so the gallery's download button saves rather than renders, and the Electron
+shell streams through `will-download` instead of the renderer buffering a 4K
+image into a Blob.
+
+The predicates live in `quilltap-web`'s one query reader: `download` is a
+`searchParams.get` read (FIRST wins on a repeat), only the exact strings `'1'`
+and `'true'` download, and everything else — `0`, a word, a present-but-empty
+value, the wrong case — is inline. `file_bytes_response` and the blobs route's
+response builder take the disposition; nothing else about either response
+moves, which is what v4's own disposition test pins.
+
+`binary_routes.rs` grows the arms: both accepted flags and four rejected ones
+on the proxy route, the repeat rule, the by-id route, and BOTH blob arms (the
+blob and the native-text document — v4 wires them separately and a port can
+miss the second). The thumbnail leg is deliberately unwired, because v4 passes
+`request` to `handleDownloadFile` alone; so is the fourth byte route
+(`/mount-points/{id}/files/{path}?raw=1`), which `86d59660c` does not touch.
+
+v4's malformed-URL arm (`new URL(request.url)` in a try/catch) has no
+counterpart and cannot: axum parses the request line before any handler runs,
+so a URL that does not parse never reaches the predicate. Recorded as a
+structural NO-COUNTERPART.
+
 #### 2026-09-09 — feat(gallery): the Salon chat gallery's server half — the nine-source enumerator, the `chatGallery` + `chatSaveGalleryImage` verbs, and the message-attachment walk shared with the chat file listing (P4.D174 units 1–3)
 
 _Versions: core 0.0.858, harness 0.0.750, web 0.0.133._
