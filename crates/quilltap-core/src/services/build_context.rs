@@ -406,6 +406,15 @@ pub struct ContextCharacter {
     pub character_document_mount_point_id: Option<String>,
     /// The [`crate::system_prompt::Character`] subset for the prompt builder.
     pub sys: SysChar,
+    /// The vault's `metadata.json`, hydrated by the read overlay (v4
+    /// `read-overlay.ts:182-196`; absent or unparseable hydrates as `{}`).
+    ///
+    /// **Raw metadata is never injected into a prompt.** The one sanctioned
+    /// reader is [`crate::progressions`], whose DERIVED report rides the
+    /// uncached trailing tail — see `progressions::prompt_section`. A reader
+    /// that wanted to spill the fact sheet itself into a prompt would be a
+    /// design change, not a small one.
+    pub metadata: Option<Value>,
 }
 
 /// v4's `MessageWithParticipant` for the multi-character attribution path.
@@ -1366,16 +1375,101 @@ fn read_prior_scene_emission(
     out
 }
 
+/// One memoised `get_messages` per turn — v4's `loadChatEventsForCadence`
+/// (`context-manager.ts:2154-2164`).
+///
+/// TWO per-turn cadences are derived from this chat's history rather than
+/// stored: Aurora's Core whisper and character progressions. Both want the same
+/// event list, so it is read at most once per turn and cached here — a second
+/// `getMessages` for the same rows would be a read nobody asked for.
+///
+/// The read stays LAZY, which is the half that matters: the Core whisper only
+/// reads once its config says `enabled`, and progressions only once the
+/// character is known to carry one. A character with neither costs nothing.
+struct CadenceEvents<'a> {
+    db: &'a Db,
+    chat_id: String,
+    cached: Option<Result<Vec<crate::core_whisper::WhisperEvent>, String>>,
+    /// How many times the DB was actually hit. The tier-3 differential cannot
+    /// see a read COUNT — only [`cadence_events_are_read_at_most_once`] can.
+    reads: usize,
+}
+
+impl CadenceEvents<'_> {
+    fn load(&mut self) -> Result<&[crate::core_whisper::WhisperEvent], String> {
+        if self.cached.is_none() {
+            self.reads += 1;
+            let cid = self.chat_id.clone();
+            let loaded = self
+                .db
+                .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
+                .map(|rows| rows.iter().map(whisper_event_from_row).collect())
+                .map_err(|e| e.to_string());
+            self.cached = Some(loaded);
+        }
+        match self.cached.as_ref().expect("just populated") {
+            Ok(events) => Ok(events.as_slice()),
+            Err(e) => Err(e.clone()),
+        }
+    }
+}
+
+/// One `chat_messages` row as the cadence walkers read it.
+fn whisper_event_from_row(m: &Value) -> crate::core_whisper::WhisperEvent {
+    crate::core_whisper::WhisperEvent {
+        // P4.D168: read by `find_last_own_turn_ms` (the progressions cadence),
+        // not by the Core-whisper trigger.
+        created_at: m
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        event_type: m
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        role: m.get("role").and_then(Value::as_str).map(str::to_string),
+        participant_id: m
+            .get("participantId")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        content: m.get("content").and_then(Value::as_str).map(str::to_string),
+        system_sender: m
+            .get("systemSender")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        system_kind: m
+            .get("systemKind")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        is_silent_message: m.get("isSilentMessage").and_then(Value::as_bool),
+        target_participant_ids: m
+            .get("targetParticipantIds")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            }),
+    }
+}
+
 /// v4's Core-whisper trigger + READ/ASSEMBLY (W4.6a). Resolves the config
 /// (chat → character → global), runs [`crate::core_whisper::should_fire_core_whisper`]
 /// over the chat's events, and — on a fire — assembles the packet + returns its
 /// LLM-context contribution. Fires the W4.6b whisper POST via the recorded seam.
 /// Any error → `""` (v4 wraps the whole block error-only).
+///
+/// P4.D168: the events arrive through the shared [`CadenceEvents`] memo rather
+/// than a read of its own, so the progressions cadence cannot cost the turn a
+/// second `getMessages` for the same rows.
 async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     db: &Db,
     input: &BuildContextInput,
     responding_participant_id: &str,
     seams: &S,
+    cadence: &mut CadenceEvents<'_>,
 ) -> String {
     use crate::services::core_whisper as cw;
 
@@ -1418,52 +1512,12 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
         return String::new();
     }
 
-    // Trigger over the chat's events.
-    let cid = input.chat.id.clone();
-    let events_raw =
-        match db.read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid)) {
-            Ok(e) => e,
-            Err(_) => return String::new(),
-        };
-    let events: Vec<crate::core_whisper::WhisperEvent> = events_raw
-        .iter()
-        .map(|m| crate::core_whisper::WhisperEvent {
-            // P4.D168: read by `find_last_own_turn_ms` (the progressions
-            // cadence), not by the Core-whisper trigger.
-            created_at: m
-                .get("createdAt")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            event_type: m
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            role: m.get("role").and_then(Value::as_str).map(str::to_string),
-            participant_id: m
-                .get("participantId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            content: m.get("content").and_then(Value::as_str).map(str::to_string),
-            system_sender: m
-                .get("systemSender")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            system_kind: m
-                .get("systemKind")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            is_silent_message: m.get("isSilentMessage").and_then(Value::as_bool),
-            target_participant_ids: m.get("targetParticipantIds").and_then(Value::as_array).map(
-                |a| {
-                    a.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                },
-            ),
-        })
-        .collect();
+    // Trigger over the chat's events — through the per-turn memo, so the
+    // progressions walk below shares this one read (v4 `loadChatEventsForCadence`).
+    let events: Vec<crate::core_whisper::WhisperEvent> = match cadence.load() {
+        Ok(e) => e.to_vec(),
+        Err(_) => return String::new(),
+    };
 
     let decision = crate::core_whisper::should_fire_core_whisper(
         crate::core_whisper::ShouldFireCoreWhisperOptions {
@@ -3194,9 +3248,15 @@ where
     // Core whisper (before commonplace) — v4's trigger + READ/ASSEMBLY (W4.6a);
     // its LLM-context contribution folds into the new user message below. The
     // whisper POST + stale sweep are W4.6b (the recorded seam).
+    let mut cadence_events = CadenceEvents {
+        db,
+        chat_id: input.chat.id.clone(),
+        cached: None,
+        reads: 0,
+    };
     let core_whisper_llm_context = match &input.responding_participant {
         Some(rp) if !input.is_continue_mode => {
-            resolve_core_whisper_llm_context(db, input, &rp.id, seams).await
+            resolve_core_whisper_llm_context(db, input, &rp.id, seams, &mut cadence_events).await
         }
         _ => String::new(),
     };
@@ -3433,6 +3493,43 @@ where
             None => String::new(),
         };
 
+    // Character progressions: the timed conditions this character is carrying —
+    // a pregnancy, a recharging cannon, a fermentation. Derived from the wall
+    // clock and reported on each progression's own cadence, which is walked out
+    // of this chat's history rather than stored. Pure reads on this path: no
+    // writes, so an autonomous turn in the job runner runs it exactly as an
+    // interactive one does.
+    //
+    // Continue mode is skipped deliberately — the model is finishing its own
+    // sentence, and the Core whisper above skips there for the same reason.
+    let progressions_llm_context = if input.is_continue_mode {
+        String::new()
+    } else {
+        let responding_id = input.responding_participant.as_ref().map(|p| p.id.clone());
+        // A thunk, not a list: a character carrying no progressions — very
+        // nearly all of them — must not pay for a history read they will never
+        // consult. v4 passes `loadEvents` ONLY when there is a responding
+        // participant, and the absence is what makes the cadence `null`.
+        let mut events_thunk = || cadence_events.load().map(<[_]>::to_vec);
+        crate::progressions::prompt_section::build_progressions_section(
+            crate::progressions::prompt_section::BuildProgressionsSectionParams {
+                character: Some(crate::progressions::prompt_section::SectionCharacter {
+                    id: &input.character.id,
+                    metadata: input.character.metadata.as_ref(),
+                }),
+                load_events: responding_id.as_ref().map(|_| {
+                    &mut events_thunk
+                        as &mut dyn FnMut()
+                            -> Result<Vec<crate::core_whisper::WhisperEvent>, String>
+                }),
+                responding_participant_id: responding_id.as_deref(),
+                now_ms: input.now_ms,
+                timezone: input.timezone.as_deref(),
+                force: false,
+            },
+        )
+    };
+
     // "Nothing to add" turn-skipping: build the ephemeral Turn note when the
     // orchestrator has decided this character may pass. Injected as a trailing
     // context section on the new user message when there is one, or as its own
@@ -3485,6 +3582,20 @@ where
         if !suparna_mail_llm_context.is_empty() {
             trailing.push(suparna_mail_llm_context.clone());
         }
+        // v4's order (`context-manager.ts:2629-2633`): core whisper, recall,
+        // Suparṇā mail, PROGRESSIONS, turn-skip note.
+        //
+        // MEASURED GAP (P4.D168): the position relative to the TURN-SKIP note is
+        // pinned — swapping these two reddens
+        // `progressions_turn_skip_with_user_message` — but the position relative
+        // to the SUPARṆĀ MAIL is NOT. Both run real on both sides, yet no corpus
+        // op carries unalerted mail, so `suparna_mail_llm_context` is empty in
+        // every row and swapping those two pushes is invisible. Closing it needs
+        // a fixture op with mail AND progressions on one character; recorded
+        // rather than claimed.
+        if !progressions_llm_context.is_empty() {
+            trailing.push(progressions_llm_context.clone());
+        }
         if !turn_skip_instruction.is_empty() {
             trailing.push(turn_skip_instruction.clone());
         }
@@ -3510,14 +3621,20 @@ where
             cache_control: None,
         });
         messages_included += 1;
-    } else if !turn_skip_instruction.is_empty() {
-        // Chained / continue turns carry no new user message, so the note can't
-        // ride as a trailing section above. Push it as its own trailing user
-        // message (same off-scene/timestamp pattern) so the model sees it this
-        // turn. Anthropic 4.6+ rejects role=assistant tails, so 'user' is required.
+    } else if !turn_skip_instruction.is_empty() || !progressions_llm_context.is_empty() {
+        // Chained / continue turns carry no new user message, so neither the
+        // note nor the progressions report can ride as a trailing section above.
+        // Push them as their own trailing user message (same off-scene/timestamp
+        // pattern) so the model sees them this turn, IN THE SAME ORDER they
+        // would have taken there. Anthropic 4.6+ rejects role=assistant tails,
+        // so 'user' is required.
+        let trailing_only: Vec<String> = [progressions_llm_context, turn_skip_instruction]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect();
         context_messages.push(ContextMessage {
             role: "user",
-            content: turn_skip_instruction,
+            content: trailing_only.join("\n\n---\n\n"),
             metadata: None,
             thought_signature: None,
             name: None,
@@ -4128,6 +4245,7 @@ mod distill_latency_tests {
                     name: "Lyra".to_string(),
                     ..Default::default()
                 },
+                metadata: None,
             },
             user_character: None,
             chat: ContextChat {
@@ -4425,6 +4543,7 @@ mod inter_character_log_tests {
                 name: name.to_string(),
                 ..Default::default()
             },
+            metadata: None,
         }
     }
 
@@ -4603,5 +4722,86 @@ mod inter_character_log_tests {
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
         assert!(line.contains("loaded_count=0"), "{line}");
         assert!(line.contains("included_count=0"), "{line}");
+    }
+}
+
+#[cfg(test)]
+mod cadence_memo_tests {
+    use super::*;
+
+    const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .expect("provision a fresh instance");
+        let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).expect("open main");
+        (dir, db)
+    }
+
+    /// **The read-count pin.** v4 memoises the cadence event list so the Core
+    /// whisper and the progressions walk share ONE `getMessages` per turn
+    /// (`context-manager.ts:2154-2164`). A tier-3 differential compares
+    /// PAYLOADS, so it is structurally blind to a second read of the same rows:
+    /// deleting the memo changes nothing it can see. This test is the only
+    /// thing that can, and the mutation that reddens it is replacing
+    /// `CadenceEvents::load`'s cache check with an unconditional read.
+    #[test]
+    fn cadence_events_are_read_at_most_once() {
+        let (_dir, db) = provisioned();
+        let mut cadence = CadenceEvents {
+            db: &db,
+            chat_id: "chat-1".to_string(),
+            cached: None,
+            reads: 0,
+        };
+
+        // Untouched: the lazy half. A turn where neither cadence asks costs
+        // nothing at all — the guarantee that lets a character with no
+        // progressions and no Core whisper pay for this feature not at all.
+        assert_eq!(cadence.reads, 0, "an unasked memo never reads");
+
+        let first = cadence.load().expect("read the empty chat").len();
+        assert_eq!(cadence.reads, 1);
+        let second = cadence.load().expect("second ask is cached").len();
+        assert_eq!(
+            cadence.reads, 1,
+            "the SECOND ask must be served from the cache — one read per turn"
+        );
+        assert_eq!(first, second);
+
+        // A third and fourth ask, since two cadences plus a future reader is
+        // exactly the shape the memo exists for.
+        let _ = cadence.load();
+        let _ = cadence.load();
+        assert_eq!(cadence.reads, 1, "still one read after four asks");
+    }
+
+    /// A failed read is cached too, so a broken table costs one attempt rather
+    /// than one per cadence — and both callers see the same `Err`.
+    #[test]
+    fn a_failed_cadence_read_is_cached_as_well() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No provisioning: `chat_messages` does not exist, so the read fails.
+        let path = dir.path().join("quilltap.db");
+        {
+            let w = crate::db::Writer::open_writable(&path, PEPPER).expect("writable open");
+            w.connection()
+                .execute("CREATE TABLE placeholder (id TEXT)", [])
+                .expect("create");
+        }
+        let db = Db::open_main(&path, PEPPER).expect("open main");
+        let mut cadence = CadenceEvents {
+            db: &db,
+            chat_id: "chat-1".to_string(),
+            cached: None,
+            reads: 0,
+        };
+        assert!(cadence.load().is_err(), "no such table");
+        assert!(cadence.load().is_err(), "and again");
+        assert_eq!(
+            cadence.reads, 1,
+            "a failure is cached, not retried per caller"
+        );
     }
 }

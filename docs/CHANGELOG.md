@@ -116,6 +116,42 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — feat(progressions): the turn reports a character's timed conditions
+
+_Versions: core 0.0.849, harness 0.0.739._
+
+`buildContext` now computes the progressions section after Suparṇā's mail and
+before the turn-skip note, skipped in continue mode, and pushes it into the
+trailing sections of the new user message — or, on a chained turn with no user
+message, as its own `role: user` message alongside the note, in that order.
+`ContextCharacter` gains `metadata`, threaded from the hydrated character at
+`orchestrator::to_context_character`, where the read overlay already hydrates
+the vault's `metadata.json`.
+
+The event list both history-derived cadences want — Aurora's Core whisper and
+character progressions — is read at most once per turn. `CadenceEvents` is v4's
+`loadChatEventsForCadence`: lazy, so a turn where neither cadence asks costs
+nothing, and cached, so a second `getMessages` for the same rows cannot happen.
+A tier-3 differential compares payloads and is structurally blind to a
+duplicate read, so the memo has its own counting test.
+
+`build_context_tier3_equivalence` grows nine ops over a fixture where Charlie
+carries five progressions — deliberately Charlie, because he is never the
+responder in any pre-existing op, so their unchanged output is what proves the
+empty-is-identical guarantee rather than merely asserting it. Two of his
+entries must be dropped (one the schema refuses, one with a malformed id) while
+the others survive. The corpus also grew `isContinueMode` and `turnSkip` knobs.
+
+The cadence arms discriminate three ways from three seeded seats: the `1h`
+progression reports across a clock-hour boundary, skips inside one, and a
+complete `once` progression goes silent — the walk reads the DATABASE, so each
+arm needs its own seat with its own last own turn.
+
+Eight mutation proofs. One is recorded rather than claimed: the section's
+position relative to Suparṇā's mail is unpinned, because no corpus op carries
+unalerted mail. Its position relative to the turn-skip note and the user
+message is pinned.
+
 #### 2026-09-08 — feat(progressions): the prompt-side chokepoint and the cadence input it walks out of history
 
 _Versions: core 0.0.848, harness 0.0.738._

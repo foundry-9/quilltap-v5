@@ -128,6 +128,12 @@ interface Op {
   /** P4.d13 retro arm: set cheapLLMSelection WITHOUT compression so the only
    * canned completion the op consumes is the distillation's. */
   distillEnabled?: boolean;
+  /** [P4.D168] `options.isContinueMode` — the model is finishing its own
+   *  sentence, so the progressions section (and the Core whisper) are skipped. */
+  isContinueMode?: boolean;
+  /** [P4.D168] `options.turnSkip` — the "nothing to add" note, whose trailing
+   *  slot the progressions section now shares. */
+  turnSkip?: { offerSkip: boolean; recentlyAddressed: boolean; characterName: string };
   timestampMode: string | null;
   cachedCompression?: {
     compressedHistory: string;
@@ -400,6 +406,9 @@ async function main(): Promise<void> {
       timestampConfig,
       isInitialMessage: false,
     };
+    // [P4.D168] Absent = v4's own defaults (`isContinueMode = false`, no note).
+    if (op.isContinueMode) options.isContinueMode = true;
+    if (op.turnSkip) options.turnSkip = op.turnSkip;
     if (op.participants && op.respondingParticipantId && op.messagesWithParticipants) {
       const respondingParticipant = op.participants.find(
         (p) => p.id === op.respondingParticipantId

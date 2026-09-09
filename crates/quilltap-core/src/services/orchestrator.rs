@@ -4324,6 +4324,9 @@ fn to_context_character(c: &Value) -> build_context::ContextCharacter {
         name: json_str(c, "name").unwrap_or_default(),
         character_document_mount_point_id: json_str(c, "characterDocumentMountPointId"),
         sys: to_sys_char(c),
+        // The hydrated character Value carries `metadata` off the read overlay —
+        // the same shape `tools/run_custom.rs` reads for Pascal's snapshot.
+        metadata: c.get("metadata").cloned(),
     }
 }
 

@@ -118,9 +118,16 @@ interface SeedMessage {
   id: string;
   role: string;
   content: string;
-  systemSender: string;
-  systemKind: string;
+  /** [P4.D168] absent = a plain character turn, which is what makes it VISIBLE
+   *  to `findLastOwnTurnMs`; a Staff row (`systemSender` set) is skipped. */
+  systemSender?: string | null;
+  systemKind?: string | null;
   createdAt: string;
+  /** [P4.D168] the seat that spoke. The progressions cadence walks
+   *  `getMessages(chat.id)` out of the DATABASE — not the op's
+   *  `messagesWithParticipants`, which feeds attribution — so a seeded row with
+   *  this set is the only way to give an op a real "last own turn". */
+  participantId?: string | null;
 }
 interface Spec {
   testPepperBase64: string;
@@ -285,6 +292,74 @@ async function main(): Promise<void> {
     await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/Verse.md`, composeSubpromptContent('Answer in verse', 'Every reply is a quatrain.'));
   }
 
+  // [P4.D168 / v4 `25f534c0b`] Charlie's vault carries a `metadata.json` with
+  // character progressions. Charlie is deliberately the one who has them: he is
+  // never the RESPONDER in any pre-existing op (only a user-controlled seat in
+  // `multi_character_turn`), so every one of those ops stays byte-identical —
+  // which is what proves the empty-is-identical guarantee rather than merely
+  // asserting it.
+  //
+  // Every instant is anchored on the case's frozen clock, FIXED_NOW_MS =
+  // 1718452800000 = 2024-06-15T12:00:00Z.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const charlie = spec.characters.find((c) => c.name === 'Charlie');
+    if (!charlie) throw new Error('Charlie is not in the corpus');
+    const raw = await repos.characters.findByIdRaw(charlie.id);
+    const vault = raw?.characterDocumentMountPointId as string | null | undefined;
+    if (!vault) throw new Error(`character ${charlie.name} has no vault mount point`);
+    const metadata = {
+      faction: 'Ordo Aurum',
+      progressions: {
+        // `turn` cadence, mid-recharge: reports on every prompted turn.
+        cannon: {
+          name: 'Cannon recharge',
+          startTime: '2024-06-15T11:58:00Z',
+          endTime: '2024-06-15T12:08:00Z',
+          timeIncrement: 'minute',
+          quantity: { total: 1.0, unit: 'MJ', precision: 1 },
+        },
+        // `1h` bucket cadence + a custom template + no percentage: the arm that
+        // distinguishes a same-bucket skip from a crossed-bucket report.
+        pregnancy: {
+          name: 'Pregnancy',
+          description: 'You are carrying a child.',
+          startTime: '2024-01-01T00:00:00Z',
+          endTime: '2024-10-01T00:00:00Z',
+          timeIncrement: 'week',
+          percentageReport: false,
+          reportFrequency: '1h',
+          reportTemplate: '{{description}} You are {{elapsedWhole}} along; due in {{remaining}}.',
+        },
+        // Complete BEFORE the frozen clock and asked to go quiet afterwards —
+        // silenced only once there is a last turn later than the completion.
+        vigil: {
+          name: 'The vigil',
+          startTime: '2024-06-14T00:00:00Z',
+          endTime: '2024-06-14T12:00:00Z',
+          timeIncrement: 'day',
+          onComplete: 'once',
+        },
+        // Refused by the schema (endTime not strictly after startTime): must be
+        // DROPPED with the warn while its siblings survive.
+        broken: {
+          name: 'Broken',
+          startTime: '2024-06-15T11:58:00Z',
+          endTime: '2024-06-15T11:58:00Z',
+          timeIncrement: 'minute',
+        },
+        // A malformed id, dropped before the schema is even consulted.
+        'Not An Id': {
+          name: 'Bad id',
+          startTime: '2024-06-15T11:58:00Z',
+          endTime: '2024-06-15T12:08:00Z',
+          timeIncrement: 'minute',
+        },
+      },
+    };
+    await writeDatabaseDocument(vault, 'metadata.json', JSON.stringify(metadata, null, 2));
+  }
+
   // Knowledge files into the responding character's vault + chunks with embeddings.
   const links = new DocMountFileLinksRepository();
   const chunks = new DocMountChunksRepository();
@@ -433,9 +508,9 @@ async function main(): Promise<void> {
       opaqueContent: null,
       attachments: [],
       createdAt: m.createdAt,
-      participantId: null,
-      systemSender: m.systemSender,
-      systemKind: m.systemKind,
+      participantId: m.participantId ?? null,
+      systemSender: m.systemSender ?? null,
+      systemKind: m.systemKind ?? null,
       targetParticipantIds: null,
     } as never);
     seededMessages++;

@@ -87,6 +87,14 @@ const FIXED_NOW_MS: i64 = 1_718_452_800_000; // matches the oracle's FIXED_NOW_M
 // Corpus spec (harness/oracle/fixtures/build-context-tier3.json).
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpecTurnSkip {
+    offer_skip: bool,
+    recently_addressed: bool,
+    character_name: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SpecOp {
@@ -94,6 +102,13 @@ struct SpecOp {
     character_id: String,
     #[serde(default)]
     new_user_message: Option<String>,
+    /// [P4.D168] the continue-mode skip.
+    #[serde(rename = "isContinueMode", default)]
+    is_continue_mode: bool,
+    /// [P4.D168] the "nothing to add" note, whose trailing slot the
+    /// progressions section shares.
+    #[serde(rename = "turnSkip", default)]
+    turn_skip: Option<SpecTurnSkip>,
     #[serde(default)]
     existing_messages: Vec<SpecMsg>,
     #[serde(default)]
@@ -529,6 +544,11 @@ async fn build_context_tier3_matches_oracle() {
             name: sys.name.clone(),
             character_document_mount_point_id: mount_id,
             sys,
+            // P4.D168: the read overlay already hydrates `metadata` off the
+            // vault's `metadata.json` (`db/vault_read_overlay.rs:277`), so the
+            // progressions the fixture seeds arrive here exactly as production
+            // threads them at `orchestrator::to_context_character`.
+            metadata: char_json.get("metadata").cloned(),
         };
 
         let timestamp_config = op.timestamp_mode.as_deref().map(|mode| TimestampConfig {
@@ -609,6 +629,7 @@ async fn build_context_tier3_matches_oracle() {
                         name: pc_sys.name.clone(),
                         character_document_mount_point_id: pc_mount,
                         sys: pc_sys,
+                        metadata: pc_json.get("metadata").cloned(),
                     },
                 );
             }
@@ -691,7 +712,13 @@ async fn build_context_tier3_matches_oracle() {
         let input = BuildContextInput {
             // U4.4: the enclave per-turn clamp — None on this corpus (inert).
             autonomous_context_cap: None,
-            turn_skip: None,
+            turn_skip: op.turn_skip.as_ref().map(|t| {
+                quilltap_core::services::build_context::TurnSkip {
+                    offer_skip: t.offer_skip,
+                    recently_addressed: t.recently_addressed,
+                    character_name: t.character_name.clone(),
+                }
+            }),
             model_context_limit: model_limit(),
             reserved_outgoing_tokens: op.reserved_outgoing_tokens,
             user_id: spec.user_id.clone(),
@@ -764,7 +791,7 @@ async fn build_context_tier3_matches_oracle() {
             cached_compression_message_count: cached_compression_count,
             generate_memory_recap: op.generate_memory_recap,
             uncensored_fallback: None,
-            is_continue_mode: false,
+            is_continue_mode: op.is_continue_mode,
             now_ms: FIXED_NOW_MS,
             local_offset_minutes: 0,
             minutes_since_last_timestamp_announcement: None,
