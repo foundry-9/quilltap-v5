@@ -118075,3 +118075,84 @@ Regen recipe (the sweep driver, at the tip pin):
 python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
   --run help_tree_equivalence
 ```
+
+### Unit 6 — the six rider ratifications (NO-PORT, with the evidence)
+
+All six re-verified against the pinned worktree at lane time, not taken from
+the ledger's prose (`work-order-facts-need-the-same-verification-as-commit-prose`).
+
+| sha | stat | evidence | verdict |
+|---|---|---|---|
+| `07eee4f4c` | 2 files, +99 | `git show --name-only` minus `docs/` is **EMPTY**. The filing of a defect THIS PORT found (P4.D170's `ProgressionsSection` transcription); v4's fix is `4a9be9878`'s bug-127 half, which is P4.D177's convergence record. At the tip the file has MOVED to `docs/developer/bugs/fixed/bug-127-progressions-invalid-ids-escaped.md` — the unifier's `docs/v4/` mirror wants the NEW path. | **NO-PORT** |
+| `9fc664c94` | 3 files, +297 | Non-`docs/` files: **`.claude/commands/update-documentation.md` only** — v4's own agent tooling, which v5 has its own copy of. The route trail's design of record, read at ordering by P4.D171/P4.D173/P4.D177. Later MOVED to `features/complete/` by `5841a8c62`. | **NO-PORT** |
+| `5fb6bedd6` | 3 files, +245 | Non-`docs/` minus `docs/`: **EMPTY**. Bug 128's plan (231 lines), including the argument for keeping `memories` out of `REPOSITORY_TOPICS` — which unit 1 ports as code and as a negative corpus row. | **NO-PORT** |
+| `df1a075e8` | 4 files, +241 | Non-`docs/` files: **`.claude/commands/update-documentation.md` only**. The gallery's design of record + the first filing of bugs 129/130. Later MOVED. | **NO-PORT** |
+| `c0f9232af` | 56 files, +132/−110 | **The re-run grep, quoted verbatim:** `git show c0f9232af -- app components lib migrations __tests__ \| grep -E '^[+-]' \| grep -vE '^(\+\+\+\|---)' \| grep -vE '^[+-]\s*(//\|\*\|/\*)' \| grep -v 'version'` → **no output**. Every non-doc hunk is a comment-only `See docs/…` path rewrite. Plus **12 renames**, `git show c0f9232af --name-status -M --format= \| grep '^R'`: archived-scenarios-and-wardrobe, character-archive-and-export-fidelity, character-archive-spec, character-progressions, custom-tool-presets, db-size-reduction-spec, pascal-custom-tool-enhancements, pascal-custom-tools, scriptorium-document-policy-frontmatter, state-cascade, tabbed-workspace, z-ai-reasoning-effort-plan — all `docs/developer/features/*.md` → `features/complete/*.md`. | **NO-PORT** |
+| `d3f0ed133` | 4 files, +5/−5 | The whole diff is five version lines, `4.10.0-claude-salon-chat-gallery-6a5awy.19` → `4.10.0-dev.18`, across the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two. No ported comparand; both version fields agree on `main`, so ledger hazard 6 stays closed. | **NO-PORT** |
+
+**Unifier wire, named here because this lane does not touch `docs/v4/`:** all
+twelve retired specs currently sit at the TOP LEVEL of v5's
+`docs/v4/developer/features/` and none in `complete/`. The mirror refresh must
+MOVE them (the twelve above), and mirror the two new bug files at their
+`bugs/fixed/` paths.
+
+### Tier 2, item 7 — the 2026-08-24 walk row A2, annotated
+
+`dogfood-walks/2026-08-24-vision-round-pass.md:75` recorded a PASS of the WRONG
+BEHAVIOUR: A2 exercised `describe_image`'s tier 1 on a **story background**, so
+what it proved "already described" with was the Lantern job's caption — bug 132
+itself, live and green. The row now carries a `⚠ PASS OF THE WRONG
+BEHAVIOUR — annotated 2026-09-09 (P4.D175)` status and a block quote naming the
+cause, the fix, and what that image answers today (`generation-prompt`). The
+row is annotated rather than deleted: the MECHANISM it proved (tier 1 serves
+free; `IMAGE_DESCRIPTION` does not move) is real — the choice of image is what
+hid the defect. **A3 and A5 stand unchanged** (an uploaded PNG with no
+description; a generated image with a prompt and none).
+
+💸 **The replacement item, re-banked:** `describe_image` on a genuinely
+*upload-described* image — one whose `description` a vision call or the
+Librarian wrote — which after the reorder is the only shape that still reaches
+`source: "stored-description"`; plus a story background answering
+`generation-prompt` with the old caption gone from the column, which is also
+the heal's live proof.
+
+### The upstream filing — OWED, and deliberately NOT written from this lane
+
+The order's ruling: keep v5's third writer, keep the predicate narrow, file it
+upstream. **The filing itself is a write into `~/source/quilltap-server`, which
+would DIRTY the v4 checkout — and every sibling lane's §R.2 freshness probe
+treats any dirt beyond the recorded bug-133 edit as a STOP.** With six lanes
+in flight that is not a defensible thing for a lane to do, so the filing is
+recorded here in full, for the unifier or the human to land:
+
+> **v4 bug 134 — the wardrobe preview-avatar writer still stamps a caption
+> into `description` (bug 132's third writer)**
+>
+> - **Symptom.** `78b381a96` fixed two of the three writers that put a label
+>   in the column every reader treats as "what this picture shows". The third
+>   is untouched: `app/api/v1/wardrobe/preview-avatar/route.ts:160` and
+>   `:185` write `` `${character.name} — outfit preview` `` with
+>   `source: 'GENERATED'`.
+> - **Measured, not inferred.** `git show --stat 78b381a96 --
+>   app/api/v1/wardrobe/preview-avatar/route.ts` is EMPTY, and the migration's
+>   `PLACEHOLDER_PREDICATE` (`LIKE 'Story background for: %'` /
+>   `LIKE '% — wardrobe portrait'`) does not match `% — outfit preview`, so
+>   neither the forward fix nor the data heal reaches these rows.
+> - **Residual harm, honestly bounded.** `handleDescribeImage`'s reorder masks
+>   the worst of it: outfit previews carry a `generationPrompt`, so tier 1 now
+>   answers the prompt. What survives is (a) a stale `On file: <Name> — outfit
+>   preview` tail on every such answer, which is the ride-along presenting a
+>   label as a description, and (b) `autoDescribeChatImageAttachment`'s
+>   already-described gate, which still refuses to look at these images.
+> - **The fix**, mirroring `78b381a96`: `description: null` on the `files` row
+>   and the label omitted from `writeCharacterAvatarToVault`'s options at both
+>   sites; and either widen `PLACEHOLDER_PREDICATE` with
+>   `OR "description" LIKE '% — outfit preview'` or add a second migration.
+> - **v5 status: FAITHFUL by ruling.** v5 has the identical writer at
+>   `crates/quilltap-core/src/api/wardrobe.rs:1112` and reproduces v4 exactly
+>   rather than fixing unilaterally. The convergence tripwire is already
+>   armed: `generated_image_placeholder_heal_equivalence`'s
+>   `outfit-preview-survives-the-narrow-predicate` scenario asserts the row
+>   SURVIVES on BOTH sides, and mutation H1 (widening v5's predicate) reddens
+>   exactly that scenario and only that scenario. The day v4 widens its own,
+>   the arm goes red by design and v5 follows.

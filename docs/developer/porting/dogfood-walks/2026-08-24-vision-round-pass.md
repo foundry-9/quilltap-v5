@@ -72,7 +72,23 @@ the describe-fallback arm.
 | # | Owner | Step | Gesture | Expected + how verified | Status |
 |---|---|---|---|---|---|
 | A1 | CLAUDE | The tool is advertised and the catalog carries it | `/api/v1/tools` inventory + a chat's built slate | **PASS.** `GET /api/v1/tools` returns **41** tools with `Describe Image` (`id: describe_image`) present — the count matching P4.D108's `BUILT_IN_TOOLS.len() == 41` tripwire exactly | PASS |
-| A2 | CLAUDE | **Tier 1 — an already-described image is free** | Ask a tools-capable seat to `describe_image` on a photo that already has a description | **PASS.** Driven through the production **Run Tool** path (`chatRunTool` — one of the four tool paths the §4 wire covers), on a real story-background image: `source: "stored-description"`, instant, and the `IMAGE_DESCRIPTION` count in `llm_logs` did not move | PASS |
+| A2 | CLAUDE | **Tier 1 — an already-described image is free** | Ask a tools-capable seat to `describe_image` on a photo that already has a description | **PASS.** Driven through the production **Run Tool** path (`chatRunTool` — one of the four tool paths the §4 wire covers), on a real story-background image: `source: "stored-description"`, instant, and the `IMAGE_DESCRIPTION` count in `llm_logs` did not move | ⚠ **PASS OF THE WRONG BEHAVIOUR — annotated 2026-09-09 (P4.D175)** |
+
+> ⚠ **A2 is retro-annotated.** The image this row exercised was a **story background**, and what it was
+> "already described" with was the *caption* the Lantern job stamped into `files.description` — `Story
+> background for: <chat title>` — not a description of the picture. That is v4 **bug 132**, filed
+> 2026-09-09 and ported here (v4 `78b381a96`): the two image jobs stopped writing the label,
+> `describe_image` reordered to prompt → stored → vision, and a boot heal clears the labels already on
+> disk. On the same image today the answer is `source: "generation-prompt"`, carrying the crafting
+> prompt. The row is left in place rather than deleted, because the mechanism it proved (tier 1 serves
+> free, `IMAGE_DESCRIPTION` does not move) is real — it was the *choice of image* that hid the defect.
+>
+> **A3 and A5 stand unchanged** (an uploaded PNG with no description; a generated image with a prompt
+> and no description). **The replacement 💸 item for the next dogfood pass:** `describe_image` on a
+> genuinely *upload-described* image — one whose `description` a vision call or the Librarian wrote —
+> which is the only shape that still reaches `source: "stored-description"` after the reorder, plus a
+> story background answering `generation-prompt` with the old caption absent from the column.
+
 | A3 | CLAUDE | **Tier 3 — the live vision call (the round's headline)** | The same seat, on an image with no description | **PASS — the vision tier's first live run on real data.** `describe_image` on the freshly uploaded, undescribed test PNG returned `source: "vision-call"` in **6,996 ms** with an accurate description (*"a solid, deep navy blue horizontal band … Three identical, solid royal blue equilateral triangles … evenly spaced"*). A real `IMAGE_DESCRIPTION` row landed — **GROK / grok-4.20-0309-non-reasoning**, the instance's configured describer — with a measured `durationMs`, and the 2,708-char description **persisted onto the file row** (`auto-describe: completed … links_updated=1`). **The three tiers were then proven by a state transition, not by assertion**: re-running the same uuid answered `source: "stored-description"` with `IMAGE_DESCRIPTION` rows 7 → 7. Before the §4 wire this path answered `(describe-failed)` everywhere | PASS |
 | A4 | CLAUDE | …and the `no-bytes` starvation does NOT reproduce | Same run | **PASS.** No `no-bytes` anywhere: the photo-bytes half of the wire is live, and the §3 review's structural-unreachability catch does not reproduce on a real instance | PASS |
 | A5 | CLAUDE | Tier 2 — the prompt-only arm | An image with a generation prompt but no description | **PASS.** A generated image with a prompt and no description answered `source: "generation-prompt"` with the 1,851-char crafting prompt, no vision call | PASS |
