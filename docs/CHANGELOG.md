@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — fix(boot): clear the placeholder descriptions bug 132 already wrote (v4 `78b381a96`)
+
+_Versions: core 0.0.860, harness 0.0.752, host 0.0.118._
+
+The forward half of bug 132 governs images written from now on. For every
+image already on disk the caption still sits in `description`, and
+`auto_describe_precheck` answers `already-described` on the strength of it —
+so the vision tier stays unreachable until the column is cleared. This is that
+pass, and it is the fix's user-visible half rather than a tidy-up.
+
+`db::generated_image_placeholder_heal` clears `files.description` to NULL
+where `source = 'GENERATED'` and the description carries one of the two label
+shapes, and `doc_mount_file_links.description` to its `''` default under the
+same predicate gated on an image MIME type (the link side has no source
+column). It runs from the host's mount-aware boot block, once per instance,
+guarded by v4's own `migrations_state` ledger: a row from either app is
+honoured, and a pass that clears nothing writes none. That last part agrees
+with v4 exactly here — unlike the sha256 realign beside it, this migration's
+`shouldRun()` counts placeholders rather than testing presence.
+
+⚠ Two things are named rather than fixed. `api/chat_media`'s
+`ensure_image_description` treats the LINK description as a cache, so clearing
+these rows makes the next attach of one of these images spend a real vision
+call — once, per image, faithful to v4 whose migration clears the same rows. And
+a THIRD v4 writer (`wardrobe/preview-avatar`, `<Name> — outfit preview`, v5's
+`api/wardrobe.rs:1112`) stamps a caption v4's own fix misses: this port
+reproduces v4 exactly and files it upstream instead of widening the predicate,
+with a corpus arm asserting that row SURVIVES on both sides as the convergence
+tripwire.
+
+The new `generated_image_placeholder_heal_equivalence` drives v4's REAL
+migration and its REAL ledger write over eleven planted scenarios; two host
+tests pin the boot wiring, one of which found — on its first run — that
+planting `migrations_state` without `migrations_metadata` fails the boot,
+because every heal gates its CREATE batch on the first table alone.
+
 #### 2026-09-09 — fix(images): a generated image's label is not its description — bug 132's writers and reader (v4 `78b381a96`)
 
 _Versions: core 0.0.859, harness 0.0.751._

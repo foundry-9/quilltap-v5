@@ -1,0 +1,122 @@
+{
+  "$comment": "P4.D175 — the shared corpus for v4's REAL `clear-generated-image-placeholder-descriptions-v1` migration (v4 `78b381a96`, bug 132) and v5's `db::generated_image_placeholder_heal`. `files` rows are the MAIN partition; `links` are `doc_mount_file_links` in the MOUNT partition. The dash in the wardrobe label is U+2014 with a space either side, exactly as the writer rendered it — a hyphen there matches NOTHING and would make every wardrobe arm vacuous.",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "createdAt": "2020-01-01T00:00:00.000Z",
+  "nowIso": "2026-09-09T12:00:00.000Z",
+  "scenarios": [
+    {
+      "name": "both-labels-cleared",
+      "$comment": "The two shapes the writers produced, on GENERATED files and on image links. Every one clears; the sentence is the plural form.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: Bite Order and Kisses" },
+        { "id": "f-0002", "source": "GENERATED", "description": "Aurora — wardrobe portrait" }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "Story background for: Bite Order and Kisses" },
+        { "id": "l-0002", "originalMimeType": "image/png", "description": "Aurora — wardrobe portrait" }
+      ]
+    },
+    {
+      "name": "uploaded-file-survives",
+      "$comment": "`source = 'GENERATED'` is a conjunct on the FILES side only. A row an operator uploaded that happens to carry a matching caption is NOT touched — and its updatedAt must not move either.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: A Quiet Afternoon" },
+        { "id": "f-0002", "source": "UPLOADED", "description": "Story background for: A Quiet Afternoon" },
+        { "id": "f-0003", "source": "UPLOADED", "description": "Marchpane — wardrobe portrait" }
+      ],
+      "links": []
+    },
+    {
+      "name": "non-image-link-survives",
+      "$comment": "The link side has no source column, so it gates on the MIME type instead. A markdown document whose description happens to match is left alone.",
+      "files": [],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "Story background for: The Long Road" },
+        { "id": "l-0002", "originalMimeType": "text/markdown", "description": "Story background for: The Long Road" },
+        { "id": "l-0003", "originalMimeType": null, "description": "Prospero — wardrobe portrait" }
+      ]
+    },
+    {
+      "name": "outfit-preview-survives-the-narrow-predicate",
+      "$comment": "⚠ THE CONVERGENCE TRIPWIRE. A THIRD v4 writer (app/api/v1/wardrobe/preview-avatar/route.ts:160,:185) stamps `<Name> — outfit preview` with source='GENERATED', and v4's own fix does not touch it — `78b381a96` does not open that file, and the predicate does not match the label. v5 reproduces that EXACTLY (api/wardrobe.rs:1112) and files it upstream instead of widening the predicate. This row must SURVIVE on both sides; it goes red by design the day v4 widens.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Aurora — outfit preview" },
+        { "id": "f-0002", "source": "GENERATED", "description": "Aurora — wardrobe portrait" }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "Aurora — outfit preview" }
+      ]
+    },
+    {
+      "name": "near-misses-survive",
+      "$comment": "The predicate is anchored: 'Story background for: %' must be a PREFIX, '% — wardrobe portrait' a SUFFIX. A row that merely mentions either phrase mid-string is untouched, and so is a wardrobe label written with a plain hyphen.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: X" },
+        { "id": "f-0002", "source": "GENERATED", "description": "A note about the Story background for: X" },
+        { "id": "f-0003", "source": "GENERATED", "description": "Aurora — wardrobe portrait, repainted" },
+        { "id": "f-0004", "source": "GENERATED", "description": "Aurora - wardrobe portrait" }
+      ],
+      "links": []
+    },
+    {
+      "name": "singular-sentence",
+      "$comment": "Exactly one of each: the message's two singular forms, which a plural-only corpus would never render.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: One" }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "Aurora — wardrobe portrait" }
+      ]
+    },
+    {
+      "name": "links-only-files-clean",
+      "$comment": "The files side has nothing; the link side does. v4's shouldRun() only inspects the mount when the files count is ZERO, so this is the arm that exercises that second probe.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "a real description of a real picture" }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/jpeg", "description": "Story background for: Only Here" }
+      ]
+    },
+    {
+      "name": "no-mount-index-skips-the-links",
+      "$comment": "No mount partition at all. The files side still clears; linksSkipped is true and the sentence gains its parenthetical. NOTE this arm is silent — v4 warns only from its catch, never from the plain else.",
+      "noMount": true,
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: No Mount" }
+      ],
+      "links": []
+    },
+    {
+      "name": "links-table-missing-a-column",
+      "$comment": "The mount partition is there but its links table predates `originalMimeType`, so `linksTableUsable` is false — the same skipped arm reached a different way.",
+      "linksTableMissingColumn": true,
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: Old Mount" }
+      ],
+      "links": []
+    },
+    {
+      "name": "nothing-matches-anywhere",
+      "$comment": "v4's shouldRun() is FALSE, so its runner skips and records NOTHING; v5 returns NotApplicable and records nothing. Unlike the sha256 realign, the two ledgers agree here — this migration's shouldRun tests DRIFT, not presence.",
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "a real description" },
+        { "id": "f-0002", "source": "GENERATED", "description": null }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "" }
+      ]
+    },
+    {
+      "name": "ledger-row-present-leaves-everything",
+      "$comment": "A migrations_state row is already there — v4 having run its own migration on the shared instance (the cross-app leg, in the direction that actually happens). Both sides refuse at the completed check, and the labels below are STILL THERE afterwards, so a heal that ignored the ledger would clear them and this arm would redden.",
+      "preCompleted": true,
+      "files": [
+        { "id": "f-0001", "source": "GENERATED", "description": "Story background for: Already Done" }
+      ],
+      "links": [
+        { "id": "l-0001", "originalMimeType": "image/webp", "description": "Aurora — wardrobe portrait" }
+      ]
+    }
+  ]
+}

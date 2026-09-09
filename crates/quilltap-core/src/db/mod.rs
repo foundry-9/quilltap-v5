@@ -68,6 +68,9 @@ pub mod files;
 pub mod files_sha256_realign_heal;
 pub mod folders;
 pub mod folders_unique_path_repair;
+// === P4.D175 ===
+pub mod generated_image_placeholder_heal;
+// === end P4.D175 ===
 pub mod group_character_members;
 pub mod group_doc_mount_links;
 pub mod groups;

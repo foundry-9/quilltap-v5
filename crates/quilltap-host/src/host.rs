@@ -1373,6 +1373,41 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     );
                 }
                 // === end P4.D152 ===
+                // === P4.D175 (v4 `78b381a96`, migration
+                // `clear-generated-image-placeholder-descriptions-v1`, bug 132) ===
+                // Two image jobs stamped a LABEL into `description` — "Story
+                // background for: <title>", "<Name> — wardrobe portrait" — and
+                // `describe_image` served it ahead of the generation prompt.
+                // The forward fix governs new images only: for everything
+                // already on disk the caption still sits in the column, and
+                // `auto_describe_precheck` answers `already-described` on the
+                // strength of it, so the vision tier stays unreachable until
+                // this pass clears it. Needs BOTH connections (the Scriptorium
+                // links live in the mount partition), hence this block.
+                //
+                // Once-only through v4's own migrations_state ledger in the
+                // P4.D140 shape. Unlike the P4.D152 pass above there is NO
+                // divergence: v4's `shouldRun()` here COUNTS placeholders on
+                // both sides, so a pass that clears nothing means v4 never ran
+                // and stamped nothing either.
+                if let quilltap_core::db::generated_image_placeholder_heal::PlaceholderHealOutcome::Ran {
+                    files_cleared,
+                    links_cleared,
+                    links_skipped,
+                } = quilltap_core::db::generated_image_placeholder_heal::clear_generated_image_placeholder_descriptions(
+                    main,
+                    Some(mount_index),
+                    &quilltap_core::clock::now_iso(),
+                )? {
+                    tracing::info!(
+                        target: "quilltap::boot",
+                        files_cleared,
+                        links_cleared,
+                        links_skipped,
+                        "Cleared placeholder descriptions from generated images"
+                    );
+                }
+                // === end P4.D175 ===
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
                 builtin_mounts::ensure_general_scenarios_folder(main, mount_index)?;
                 // Companion (v4 instrumentation.ts Phase 3 tail, `f48f34dc`):

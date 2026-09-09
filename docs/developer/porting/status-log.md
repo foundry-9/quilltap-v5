@@ -117917,3 +117917,113 @@ python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run
 lane changed both** (the sweep driver warned, correctly). Any other family
 built from that pair must be re-run; the survey found none — the pair is
 `photo_tools_equivalence`'s alone.
+
+### Unit 4 — bug 132's boot heal, its ledger row, and the new differential
+
+NEW `crates/quilltap-core/src/db/generated_image_placeholder_heal.rs`, wired in
+`host.rs`'s mount-aware block inside a `// === P4.D175 ===` fence immediately
+after the P4.D152 block, and registered in `db/mod.rs` in its own fence — the
+two shared-file appends the order's §R.5 allots this lane.
+
+**v4's control flow, ported exactly rather than approximated.** The order's
+survey described the predicates; the implementation also had to carry v4's
+*shape*, which the first draft did not:
+
+- `shouldRun()` **short-circuits** on the files count — a positive count
+  returns true WITHOUT the mount partition being opened, so a mount that cannot
+  be read is invisible whenever the main side already has work. Only a clean
+  files side reaches the link probe, and a failure THERE is warned about and
+  read as "nothing to do".
+- The link leg's failure is **swallowed**, not propagated. v4 wraps it in
+  try/catch because a link that keeps its label is a stale caption on a search
+  hit, not a wrong answer from `describe_image` (which reads the FileEntry).
+  The first draft let a `DbError` escape, which would have failed the BOOT on
+  an unreadable mount partition — caught by reading v4's `run()` rather than
+  its predicates.
+- The plain absent/unusable arm is v4's `else`, which sets `linksSkipped` and
+  stays **SILENT**. Only the catch warns. The first draft warned in both, and
+  the corpus reddens that (mutation H5).
+
+**No ledger divergence here, and that is a measurement.** The sibling
+`files_sha256_realign_heal` records one because v4's `shouldRun()` for THAT
+migration tests PRESENCE, so v4 stamps a zero-affected pass. This migration's
+`shouldRun()` counts placeholders on both sides, so a pass that clears nothing
+means v4 never ran and stamped nothing either — the ledger is a plain equality
+on every arm of the new family.
+
+**NEW `generated_image_placeholder_heal_equivalence`** (+
+`harness/oracle/cases/generated-image-placeholder-heal.test.ts` +
+`harness/oracle/fixtures/generated-image-placeholder-heal.json`), modelled on
+`files_sha256_realign_heal_equivalence` and driving v4's REAL migration `run()`
+and its REAL `recordCompletedMigration` over eleven planted scenarios:
+`both-labels-cleared`, `uploaded-file-survives`, `non-image-link-survives`,
+**`outfit-preview-survives-the-narrow-predicate`**, `near-misses-survive`,
+`singular-sentence`, `links-only-files-clean`,
+`no-mount-index-skips-the-links`, `links-table-missing-a-column`,
+`nothing-matches-anywhere`, `ledger-row-present-leaves-everything`. Comparands:
+both whole tables, the `MigrationResult`, the info line's three counts, the
+warns, idempotence, and the ledger. `files.updatedAt` is the one normalized
+field (`<now>` when it moved), which keeps the real discriminator — only a
+CLEARED row's `updatedAt` moves.
+
+**⚠ Recorded limit, not an oversight: both warn arms are UNREACHABLE by this
+corpus on BOTH sides.** v4 warns only from its `catch`, which needs a
+driver-level I/O failure neither side has a seam to inject. What the comparand
+asserts is SILENCE on the two `else`-reached scenarios — which is the
+load-bearing half, and which mutation H5 reddens.
+
+**Mutations (eight, each reddening exactly the named arm, reverted by file
+backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| H1 | widen the predicate to include `% — outfit preview` | `outfit-preview-survives-the-narrow-predicate` and ONLY it — 7 fields (files, links, result, info, both second-run dumps, ledger). **The convergence tripwire, proven live.** |
+| H2 | drop the `source = 'GENERATED'` conjunct | `uploaded-file-survives` (5 fields) |
+| H3 | drop the `originalMimeType LIKE 'image/%'` gate | `non-image-link-survives` (5 fields) |
+| H4 | drop the `AlreadyCompleted` ledger check | `ledger-row-present-leaves-everything` at the outcome assert |
+| H5 | warn from the plain `else` | `no-mount-index-skips-the-links` + `links-table-missing-a-column`, both on `warns` |
+| H6 | stamp the ledger on a `NotApplicable` pass | the `honoured_ledger` / equality arm |
+| H7 | stop moving `updatedAt` on a cleared row | 14 mismatches across five scenarios |
+| H8 | delete the `host.rs` boot call | `the_boot_clears_planted_placeholder_descriptions` times out |
+
+**The boot wiring is pinned** by NEW
+`crates/quilltap-host/tests/host_generated_image_placeholder_heal.rs` — two
+tests over a COPY of the committed `files-{main,mount}.db` pair with the labels
+PLANTED (the pair carries none naturally; a test that planted nothing would
+pass against a deleted call). One proves the GENERATED label cleared and the
+UPLOADED one surviving and the ledger row stamped; the other proves a
+v4-written ledger row leaves everything alone — the cross-app leg in the
+direction that actually happens. Neither sibling heal has such a test; this is
+the P4.82 precedent and the class the §3 reviews keep catching.
+
+**⚠ Spotted, not mine — a latent fragility the THREE sibling heals share.**
+The boot-wiring test's FIRST run failed with `built-in seed failed: no such
+table: migrations_metadata`, because it had planted `migrations_state` alone.
+Every heal (`chat_activity_recompute_heal:176`,
+`files_sha256_realign_heal:316`, `thinking_prefill_retire_heal:195`, and this
+one) gates its `CREATE TABLE IF NOT EXISTS` batch on `migrations_state`'s
+existence and then upserts into `migrations_metadata` — so a partition
+carrying the first table without the second fails the BOOT, not just the pass.
+v4's `migrations/state.ts` always creates both together, so it is not reachable
+from v4 and this lane did NOT unilaterally change the hand-duplicated shape;
+the test now plants both, as v4 does. A one-word hardening (drop the guard, let
+`IF NOT EXISTS` do its job) across all four is a clean follow-up for whoever
+owns those modules next.
+
+**The blast radius is NAMED in the module header and the changelog**, per the
+order: `api/chat_media.rs:1465` (`ensure_image_description`) treats the LINK
+description as a CACHE, so clearing `''` onto those links makes the next attach
+of one of these images run a real vision call. Faithful — v4's migration clears
+the same rows and its own reader has the same shape — and recorded so the first
+dogfood pass after this lands is not surprised by a burst of describe calls.
+`chat_media.rs` was NOT edited (VERIFY-ONLY per the Ownership table).
+
+Regen recipe (the sweep driver, at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run generated_image_placeholder_heal_equivalence
+```
+
+Markers after the regen: 11 lines; `grep -c 'outfit preview'` = 1;
+`grep -c 'mount index not inspected'` = 2.
