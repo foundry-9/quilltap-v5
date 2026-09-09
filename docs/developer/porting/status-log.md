@@ -117880,3 +117880,77 @@ retirement; done by hand per the order's instruction.
 memory hint|RealtimeService|queryKeysForTopic|realtime"` — 40/40 passed;
 `--filter="unparseable|ProgressionsSection|progressions-section"` — 36/36
 passed, zero weakened.
+
+### Unit 5 — the three ACTIVATE-AT-UNIFY e2e beats
+
+NEW `salon-route-trail-flow.spec.ts` (`P4D173_SERVER_LANDED`): a genuine
+failover, not a wire-level injection — two `OPENAI_COMPATIBLE` connection
+profiles created through Settings for this beat alone (distinctive names so
+they cannot be confused with the seeded fixture profiles other specs
+enumerate by position), the primary's `baseUrl` pointed at
+`http://127.0.0.1:1` (a privileged port nothing in the sandbox can bind, so
+every call fails at connect — the `network` trigger class), its `#qt-pf-
+fallback` set to the second (which points at the real in-process mock LLM).
+A fresh, isolated chat (never `Group Expedition`/`Solo Voyage`) is created
+via New Chat, then the Add-Character dialog's `#qt-add-character-profile`
+picker assigns the failing profile to a second character explicitly — New
+Chat's own picker only ever auto-seeds a character's OWN default profile,
+so this is the one place a specific profile can be forced onto a seat
+(the same mechanism `salon-cast-flow.spec.ts` uses to add a character at
+all). The seeded participant is then removed (a SOFT remove —
+`isActive: false` — so it drops out of turn selection without touching the
+roster), leaving the failing-then-understudy seat as the sole active LLM
+participant. A send streams for real through the failover; the beat
+asserts the badge's `[aria-label="Models tried for this reply"]` list (2
+rows), the failed row's `❌` glyph, its hover title naming the primary
+profile, and — after a reload — the identical shape read back off the chat
+GET.
+
+A rotation beat added to `salon-sidebar-flow.spec.ts` (`P4D172_SERVER_
+LANDED`, the file's ONLY other permitted edit besides its position-badge
+assertion): reads Group Expedition's active LLM seats via `chatGet`, seeds
+each a distinct, descending talkativeness via `chatUpdateParticipant`
+(the order a stale talkativeness-only client would draw), then forces a
+rotation to be drawn WITHOUT sending any message —
+`chatTurnAction { action: 'query' }` alone resolves and persists a cycle
+per the §C.2 ruling ("a query action MAY write the chats row, the resolve
+is unconditional"), avoiding any perturbation of
+`salon-token-cost-flow.spec.ts`'s hardcoded token baseline for that chat.
+The beat reads `state.cycleOrder` straight off the query response (never a
+hardcoded expected order — the assertion is against the SERVER's real
+draw) and, after a reload, checks the sidebar's displayed name order
+contains that sequence as a subsequence (the user seat and spoken-this-
+cycle seats interleave around it, so an exact full-list match would be
+over-specified).
+
+NEW `salon-memories-realtime-flow.spec.ts` (`P4D175_SERVER_LANDED`) reuses
+the P4.D125 "pushed-invalidation discriminator" idiom
+(`page-toolbar-flow.spec.ts`'s `jobs` beat) rather than faking any list
+data: it counts real `listChats` dispatch traffic via a `page.on('request',
+…)` listener, fires `memoryHousekeepSweep` against the real server (safe —
+the default housekeeping config's `perCharacterCap: 2000` +
+`mergeSimilar: false` make the sweep a genuine no-op over the fixture's
+memory counts, so no sibling spec's memory-count assumptions move), polls
+`systemJobGet` to `COMPLETED`, and asserts a fresh `listChats` call follows
+within 5 seconds — well inside the realtime hub's slow fallback-poll
+ceiling, so a refetch that prompt can only be the pushed hint, not a timer.
+v5 has no per-chat memory count to assert a changed VALUE against (the same
+measured gap `realtime-topic-map.ts`'s `memories` case records), so this
+beat proves the refetch happened rather than a badge number moving.
+
+All three beats verified with `npx playwright test --list` (parse/type
+check only — no live server this lane): 7 tests found across the three
+files, zero errors. None mutates the shared salon fixture's committed
+state; the route-trail and memories beats create only isolated,
+beat-scoped resources.
+
+**Gate for this unit:** `npm run build` clean; `npm run lint` clean (950
+`qt-*` classes, no new one); `git diff main -- crates/ help/ harness/`
+EMPTY; the full `npm test` suite — 420 test files / 6,966 passed / 1 failed
+(the pre-existing `generate-image-page.spec.ts` cross-test-pollution flake,
+confirmed unrelated by running it in isolation — 1/1 passed alone) / 0
+weakened. The region-fenced files (`message-row.ts`: only the two
+avatar-template regions + the badge import touched, not the save-image
+construct sites; `salon-conversation.ts`: only the turn-state signal +
+`applyTurnResponse` + the one required-field-ripple literal outside either
+named region) verified against `git diff main`.

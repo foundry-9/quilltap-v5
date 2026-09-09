@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — test(e2e): three ACTIVATE-AT-UNIFY beats for the route trail, the drawn rotation, and the memories topic (P4.D177 unit 5)
+
+_Versions: SPA 0.5.694._
+
+Three new e2e beats, all gated on named constants (never capability probes)
+that flip at unification once P4.D171–P4.D175 land: a NEW
+`salon-route-trail-flow.spec.ts` behind `P4D173_SERVER_LANDED` drives a
+REAL failover — two purpose-built `OPENAI_COMPATIBLE` connection profiles
+created through Settings for the beat alone (a primary whose `baseUrl`
+points at an unbindable privileged port, so every call fails to connect,
+with its fallback set to the second, which answers through the real
+in-process mock LLM), assigned to a fresh isolated chat's sole active seat
+via the Add-Character dialog's profile picker — then asserts the badge's
+aria-label list, the failed row's ❌ glyph and hover text, and that a
+reload reads the identical trail off the chat GET. A rotation beat rides
+`salon-sidebar-flow.spec.ts` (`P4D172_SERVER_LANDED`): seeds distinct
+talkativeness on Group Expedition's active LLM seats, forces a rotation
+draw with `?action=turn { action: 'query' }` alone (never sending a
+message, since Group Expedition sends would perturb
+`salon-token-cost-flow.spec.ts`'s hardcoded token baseline), and asserts
+the sidebar's displayed order agrees with the server's own
+`state.cycleOrder` as a subsequence — proving against the server's actual
+draw rather than a guessed expectation. A NEW
+`salon-memories-realtime-flow.spec.ts` (`P4D175_SERVER_LANDED`) reuses the
+P4.D125 "pushed-invalidation discriminator" idiom from
+`page-toolbar-flow.spec.ts`'s `jobs` beat: it counts real `listChats`
+dispatch calls, fires a real `memoryHousekeepSweep` (safe against the fixed
+instance — the default housekeeping config's `perCharacterCap: 2000` and
+`mergeSimilar: false` make it a genuine no-op over the fixture's modest
+memory counts), waits for the job to reach `COMPLETED`, and asserts a fresh
+`listChats` read follows within 5 seconds — well inside the realtime hub's
+slow fallback-poll ceiling, so a refetch that prompt can only be the pushed
+hint. None of the three beats mutate the shared salon fixture's committed
+state.
+
 #### 2026-09-09 — feat(chat): the `memories` realtime topic un-stales the Salon list's memory badge; bug 127's client-fidelity note retires to a convergence record (P4.D177 units 3–4)
 
 _Versions: SPA 0.5.693._
