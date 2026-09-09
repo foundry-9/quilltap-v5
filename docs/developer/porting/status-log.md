@@ -117969,3 +117969,47 @@ CHAT tag. The oracle's answer:
 
 Regen: `images-generate-route` at the `78b381a96` pin — 41 rows, the four new
 ones present (`grep -c "generate_.*chat_id" → 4`).
+
+### Lane record — P4.D174 units 6–8 (the census re-measure + the two Tier-2 items)
+
+**The `query_param_semantics` re-measure needed no hand edit.** Regenerated
+from the `78b381a96` pin: v4's `chat_item_post__unknown` sentence now lists
+**43** actions with `save-image` LAST (measured, not counted from the order),
+and `chat_item_get` gained `gallery` — and the family's own classification held,
+green on the first run. No literal in the tree carries the action list, so the
+order's "31/43 sentences … RE-MEASURE, never hand-edit" reduces to a regen.
+
+**Two `UNSERVED_KNOWN_ACTIONS` rows added**, one per new v4 action, since the
+existing `chat_item_*` RECORDED_DIVERGENCE rows probe `zzz-not-an-action` —
+which is not v4-known and, as these rows MEASURED, takes a different leg with a
+SHORTER sentence. v5's chat edges already distinguish the two: a v4-known
+action gets the dispatch pointer tacked on (`…; the chat GET rides POST
+/api/dispatch`), an invented one does not. Both rows were written to the
+shorter sentence first and corrected against the running edge.
+
+`web_edge_body_parse_guard` UNMOVED (the save body parses through
+`parse_save_image_request`, not a new hand-rolled `and_then(Value::as_…)`);
+`chats_collection_route` green; `images_edge_routes` green with its new arm.
+
+**Tier 2 item 7 — API.md diffed field-for-field against the wire.** The
+documented shapes are transcribed as literals in a `documented` module inside
+the family and checked on the ROLL, not on a hand-built value: the top-level
+keys, `counts`' seven in chip order, every entry key documented and in the
+documented relative order, and the save response's seven. `messageId` is
+excluded from the ORDER check (not from the membership check) because
+`noteMessage` appends it.
+
+**A doc-vs-wire finding, recorded not fixed:** API.md's example entry shows
+`"characterId": null, "characterName": null, "messageId": null`. v4 builds
+those as `undefined` in `passLinkedFiles` and `JSON.stringify` drops them, so
+no client ever receives the key on an entry that has no value for it. The
+doc's nulls are readability; the port's contract is the bytes. All three DO
+reach the wire on the entries that carry them (an avatar, a portrait, an
+attachment respectively), which the family now asserts.
+
+**Tier 2 item 8 — the `ChatFileDelete` guard.** Two new arms on both sides:
+`DELETE /api/v1/chat-files/{id}` answers **404 `File not found`** for a
+`doc_mount_file_links.id` (half the gallery's entries) and **200
+`{success: true}`** for a `files.id` from the same roll. That is what API.md
+means by "accepts only the `file` species", it is what makes `idKind`
+load-bearing in P4.D176's modal, and it was asserted nowhere.

@@ -318,6 +318,61 @@ fn key_order_view(body: &Value) -> Value {
     })
 }
 
+/// `docs/developer/API.md`'s documented shapes for the two actions
+/// (`86d59660c`, `API.md:3298` and `:3367`), transcribed. Diffed field-for-field
+/// against what the wire actually carries — on BOTH sides, since the oracle's
+/// bodies are v4's own.
+mod documented {
+    /// The gallery response's top-level keys, in the documented order.
+    pub const GALLERY_TOP: &[&str] = &["entries", "counts", "total"];
+    /// `counts`' seven keys, in the documented (chip) order.
+    pub const COUNTS: &[&str] = &[
+        "story-background",
+        "avatar",
+        "portrait",
+        "generated",
+        "attachment",
+        "kept",
+        "inline",
+    ];
+    /// One entry's keys, in the documented order.
+    pub const ENTRY: &[&str] = &[
+        "id",
+        "idKind",
+        "url",
+        "filename",
+        "mimeType",
+        "size",
+        "width",
+        "height",
+        "sha256",
+        "createdAt",
+        "source",
+        "characterId",
+        "characterName",
+        "messageId",
+        "isCurrent",
+        "deletable",
+        "linkSummary",
+    ];
+    /// The three keys API.md shows as `null` that the WIRE OMITS. v4 builds
+    /// them as `undefined` in `passLinkedFiles` and `JSON.stringify` drops
+    /// them, so no client ever receives the key — the doc's example is written
+    /// with explicit nulls for readability. Recorded, not "fixed": v4's doc is
+    /// v4's, and the port's contract is the bytes.
+    pub const DOCUMENTED_BUT_OMITTED: &[&str] = &["characterId", "characterName", "messageId"];
+    /// The save response's keys, in the documented order.
+    pub const SAVE: &[&str] = &[
+        "saved",
+        "mountPoint",
+        "relativePath",
+        "linkId",
+        "keptAt",
+        "fileId",
+        "sha256",
+    ];
+}
+
 #[test]
 fn chat_gallery_equivalence() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_CHAT_GALLERY") else {
@@ -339,8 +394,8 @@ fn chat_gallery_equivalence() {
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
     assert!(
-        oracle.len() >= 18,
-        "stale oracle: {} cases (expected the family's 18+)",
+        oracle.len() >= 20,
+        "stale oracle: {} cases (expected the family's 20+)",
         oracle.len()
     );
 
@@ -601,6 +656,101 @@ fn chat_gallery_equivalence() {
         json!({ "fileId": "not-a-uuid", "mountPointId": "also-not-a-uuid" }),
     );
     msg_save(&mut failed, "message_save_empty_body", "msgeb", json!({}));
+
+    // --- The delete guard the gallery modal relies on (API.md: only the
+    //     `"file"` species) ---
+    {
+        let db = fresh_db(&spec, "delnk");
+        let r = rt.block_on(chat_media::chat_file_delete(&db, USER, &meta.kept_link_id));
+        check(
+            &mut failed,
+            &oracle,
+            "chat_file_delete_link_id",
+            &r,
+            Norm::Exact,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "delfl");
+        let r = rt.block_on(chat_media::chat_file_delete(&db, USER, F_UPLOAD));
+        check(
+            &mut failed,
+            &oracle,
+            "chat_file_delete_file_id",
+            &r,
+            Norm::Exact,
+        );
+    }
+
+    // --- API.md's documented shapes, field-for-field against the wire ---
+    {
+        let top: Vec<&str> = gallery_body
+            .as_object()
+            .map(|o| o.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            top,
+            documented::GALLERY_TOP,
+            "API.md's gallery top-level keys"
+        );
+        let counts: Vec<&str> = gallery_body["counts"]
+            .as_object()
+            .map(|o| o.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            counts,
+            documented::COUNTS,
+            "API.md's `counts` keys, in chip order"
+        );
+
+        // Every key an entry carries must be documented, in the documented
+        // RELATIVE order — an entry omits the optionals it has no value for, so
+        // the check is "a subsequence of the documented list", not equality.
+        let mut seen_documented_but_omitted: Vec<&str> =
+            documented::DOCUMENTED_BUT_OMITTED.to_vec();
+        for entry in gallery_body["entries"].as_array().unwrap() {
+            let keys: Vec<&str> = entry
+                .as_object()
+                .map(|o| o.keys().map(String::as_str).collect())
+                .unwrap_or_default();
+            for k in &keys {
+                assert!(
+                    documented::ENTRY.contains(k),
+                    "entry key `{k}` is on the wire but not in API.md"
+                );
+            }
+            // `messageId` is the one key a LATER pass may append, so it can
+            // land out of documented order; every other key is in order.
+            let ordered: Vec<&str> = keys.iter().copied().filter(|k| *k != "messageId").collect();
+            let mut doc = documented::ENTRY
+                .iter()
+                .copied()
+                .filter(|k| *k != "messageId");
+            for k in &ordered {
+                assert!(
+                    doc.any(|d| d == *k),
+                    "entry keys out of API.md's order at `{k}`: {keys:?}"
+                );
+            }
+            seen_documented_but_omitted.retain(|k| !keys.contains(k));
+        }
+        // The three the doc shows as `null`: `characterId` and `characterName`
+        // DO reach the wire (on an avatar and a portrait respectively), and
+        // `messageId` does too — what the doc gets wrong is showing them
+        // present-and-null on an entry that omits them, which the per-entry
+        // subsequence check above already holds the port to.
+        assert!(
+            seen_documented_but_omitted.is_empty(),
+            "documented keys that never appear anywhere on the roll: \
+             {seen_documented_but_omitted:?} — widen the fixture or correct the note"
+        );
+
+        let save: Vec<&str> = oracle["save_image_file"]["body"]
+            .as_object()
+            .map(|o| o.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        assert_eq!(save, documented::SAVE, "API.md's save-image response keys");
+    }
 
     // The vault-attribution arm is only meaningful if the fixture HAS a
     // character-vault album in the roster — a silent renaming of the meta key

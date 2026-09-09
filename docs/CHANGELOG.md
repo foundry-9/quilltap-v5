@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — test(gallery): the two new v4 chat actions pinned as unserved, and API.md's documented shapes diffed against the wire (P4.D174 units 6–8)
+
+_Versions: harness 0.0.752, web 0.0.136._
+
+`86d59660c` adds two v4-known chat actions — `?action=gallery` on the GET and
+`?action=save-image` on the POST, the 43rd and last in v4's list. v5 hosts both
+on `/api/dispatch` and adds no REST edge, which is this order's deliberate
+deferral; `UNSERVED_KNOWN_ACTIONS` now says so out loud for each, with the
+sentence v5's edges actually answer. Measured on the way: v5's chat edges give
+a v4-KNOWN action the dispatch pointer (`…; the chat GET rides POST
+/api/dispatch`) and an invented one the shorter sentence, so the existing
+`zzz-not-an-action` rows could never have covered these.
+
+`query_param_semantics` regenerated at the tip — v4's POST sentence now lists
+43 actions with `save-image` last, and the family's classification held with no
+edit. `web_edge_body_parse_guard` unmoved (the save body parses through the
+shared schema, not a new hand-rolled reader) and `chats_collection_route` green.
+
+Tier 2: `chat_gallery_equivalence` gains API.md's documented shapes as
+literals, diffed field-for-field against the wire on both sides — the top-level
+keys, `counts`' seven in chip order, every entry key documented and in the
+documented relative order (`messageId` excepted, since a later pass appends it),
+and the save response's seven. It also gains the two arms behind the gallery
+modal's `idKind` branch: `DELETE /api/v1/chat-files/{id}` 404s a
+`doc_mount_file_links.id` and accepts a `files.id` from the same roll, which is
+what API.md means by "accepts only the `file` species" and was asserted nowhere.
+
 #### 2026-09-09 — fix(images): v4 bug 130 — the images collection route accepts `chatId` and folds it into `linkedTo` (P4.D174 unit 5)
 
 _Versions: core 0.0.859, harness 0.0.751, web 0.0.135._

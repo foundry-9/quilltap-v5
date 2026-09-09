@@ -22,6 +22,11 @@
  * newly-shared schema (`86d59660c` deleted its private uuid schema, so a
  * non-uuid `fileId` now passes the parse and fails at the attachment guard).
  *
+ * Two more arms carry API.md's claim that `DELETE /api/v1/chat-files/[id]`
+ * accepts only the `"file"` species: a `doc_mount_file_links.id` is a 404 there
+ * (which is what makes `idKind` load-bearing in the gallery modal), a
+ * `files.id` from the same roll is not.
+ *
  * `readImageBuffer` is jest.setup's storage-manager stub ("mock file content"),
  * exactly as the courier-images oracle leaves it — the `image_bytes` case emits
  * those bytes so the Rust canned `FileBytesStore` returns the same. The clock is
@@ -163,6 +168,7 @@ async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
 const CHAT_ROUTE = '@/app/api/v1/chats/[id]/route';
 const FILES_ROUTE = '@/app/api/v1/chats/[id]/files/route';
 const MSG_ROUTE = '@/app/api/v1/chats/[id]/messages/[messageId]/route';
+const CHATFILE_ROUTE = '@/app/api/v1/chat-files/[id]/route';
 
 async function runCase(
   spec: Spec,
@@ -372,6 +378,33 @@ async function main(): Promise<void> {
       name: 'save_image_missing_chat',
       run: async () => savePost(NO_CHAT, { fileId: F_GEN, mountPointId: meta.generalMp }),
     },
+    // --- The delete the gallery modal relies on: `DELETE /chat-files/{id}`
+    //     resolves a `files` row and NOTHING else, so a `doc_mount_file_links`
+    //     id — half the gallery's entries — is a 404. That is what makes
+    //     `idKind === 'file'` load-bearing in the modal (API.md says so in
+    //     those words), and it is asserted nowhere else. ---
+    {
+      name: 'chat_file_delete_link_id',
+      run: async () =>
+        respond(
+          await (await loadRoute(CHATFILE_ROUTE)).DELETE(
+            mockRequest(`${B}/chat-files/${meta.keptLinkId}`),
+            { params: Promise.resolve({ id: meta.keptLinkId }) },
+          ),
+        ),
+    },
+    // …and the `file` species it DOES accept, from the same roll.
+    {
+      name: 'chat_file_delete_file_id',
+      run: async () =>
+        respond(
+          await (await loadRoute(CHATFILE_ROUTE)).DELETE(
+            mockRequest(`${B}/chat-files/${F_UPLOAD}`),
+            { params: Promise.resolve({ id: F_UPLOAD }) },
+          ),
+        ),
+    },
+
     // --- The MESSAGE-scoped leg, now on the shared schema: a non-uuid fileId
     //     passes the parse (v4's private uuid schema is gone) and fails at the
     //     attachment guard instead. ---
