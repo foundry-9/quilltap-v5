@@ -1,0 +1,14 @@
+{"id":"/api/v1/files/f-1","out":"/api/v1/files/f-1?download=1"}
+{"id":"/api/v1/files/f-1?action=thumbnail&size=80","out":"/api/v1/files/f-1?action=thumbnail&size=80&download=1"}
+{"id":"/api/v1/files/f-1#frag","out":"/api/v1/files/f-1?download=1#frag"}
+{"id":"/api/v1/files/f-1?action=thumbnail#frag","out":"/api/v1/files/f-1?action=thumbnail&download=1#frag"}
+{"id":"/api/v1/files/f-1?download=1&action=thumbnail","out":"/api/v1/files/f-1?download=1&action=thumbnail"}
+{"id":"/api/v1/files/f-1?download=1","out":"/api/v1/files/f-1?download=1"}
+{"id":"/api/v1/files/f-1?download=true","out":"/api/v1/files/f-1?download=true"}
+{"id":"/api/v1/files/f-1?download=1#frag","out":"/api/v1/files/f-1?download=1&download=1#frag"}
+{"id":"/api/v1/files/f-1?download=1&foo=bar","out":"/api/v1/files/f-1?download=1&foo=bar"}
+{"id":"/api/v1/files/f-1?note=download=1","out":"/api/v1/files/f-1?note=download=1&download=1"}
+{"id":"/api/v1/files/f-1?download=2","out":"/api/v1/files/f-1?download=2&download=1"}
+{"id":"/api/v1/files/f-1?","out":"/api/v1/files/f-1?&download=1"}
+{"id":"/api/v1/mount-points/mp-1/blobs/photos%2Fyacht.png","out":"/api/v1/mount-points/mp-1/blobs/photos%2Fyacht.png?download=1"}
+{"id":"/api/v1/files/proxy/abc123?ext=.png","out":"/api/v1/files/proxy/abc123?ext=.png&download=1"}

@@ -117668,3 +117668,249 @@ Friday copy, the report on a real turn and in a greeting, the Workbench
 on the live lock, and — human-only — a hostname flip under a running host);
 the recorded candidates above. Bug 127's divergence note in
 `progressions-section.spec.ts` is now a CONVERGENCE site for the next round.
+
+## P4.D176 — the Salon chat gallery, SPA half (the `78b381a96` twelve-commit drift catch-up round)
+
+Lane branch `claude/p4-d176-chat-gallery-spa-porting-d1ac52`, from `main`.
+Drift ledger §2 probe at lane start: v4 `main` HEAD was `cc65d6bfc` — ONE
+commit past the order's `78b381a96` pin, subject "Fix bug 133: a moderated
+chat's story background could escalate to the uncensored provider", tree
+CLEAN. This matches the order's §R.2 pre-authorized exception (the predicted
+bug-133 commit having landed) on every substantive point EXCEPT the file
+count: the ledger's nine recorded files were present, plus four routine
+version-bump riders (`README.md`, `package.json`, `package-lock.json`,
+`packages/quilltap/package.json`) the round's own hazard notes elsewhere
+describe as riding nearly every v4 commit. Judged as within the exception's
+intent (a version bump is not "other dirt") and proceeded on the `78b381a96`
+pin per the order, with `cc65d6bfc` recorded here as next-round drift for
+`/driftcheck`. Regen rule **PIN REQUIRED**; the lane's pin is
+`/tmp/qt-v4-pin-p4d176-78b381a96`, verified by the markers
+`lib/photos/chat-gallery.ts`, `help/chat-gallery.md` present only there and
+`public/schemas/qtap-export.schema.json` at 92,797 bytes.
+
+### What landed — Tier 1, all seven items
+
+1. **The contract + the query.** `core/core-contract.ts` gained a
+   `// === P4.D176 ===` fence: `ChatGallerySource`, `ChatGalleryEntry`,
+   `ChatGalleryResult`, `ChatGalleryRequest` (`chatGallery`),
+   `ChatSaveGalleryImageRequest` (`chatSaveGalleryImage`), transcribed
+   field-for-field from the order's §C.3. NEW `chat/chat-gallery.api.ts`
+   (`injectChatGallery`) — the `injectCharacterSubprompts` idiom: ONE query
+   keyed `chatKeys.gallery(id)`, the 60s `RealtimeService.refetchInterval`
+   fallback, and a `hasData` signal distinct from `total() === 0` (a chat
+   with genuinely no pictures reads `(0)`; a query still pending OR answered
+   by a server that does not implement the verb reads `hasData: false`, which
+   is what keeps the label unnumbered rather than inventing a count). `chat/
+   chat-keys.ts` gained `gallery(id) => ['chat', id, 'gallery']`; a fenced
+   comment (not a code change) in `realtime-topic-map.ts` names it as already
+   covered by the `chats` topic's `['chat', id]` prefix, pinned by three new
+   `chat-keys.spec.ts` cases.
+2. **The Gallery entry, RED FIRST.** `chat/sidebar/organize-section.ts`'s
+   recorded divergence note retired to v4's post-bug-129 shape: the entry is
+   STILL ungated (v5 never had bug 129's shape) but now carries a count from
+   `injectChatGallery`, `title="Every image in this conversation"`. A spec
+   proves the label's number comes from `chatGallery.total` and nothing else
+   (a stub returning `total: 7` on a `chatId`-carrying request), and a
+   SEPARATE spec proves an unknown-verb server (the mocked-server case —
+   `dispatchData` throwing, matching what the shared e2e server answers
+   TODAY) renders the entry unnumbered rather than crashing or showing a
+   stale `(0)`.
+3. **The grid.** `images/photo-gallery-modal.ts` rewritten: chat mode reads
+   `injectChatGallery` (character/user-character modes keep their
+   pre-existing `characterPhotoList` read, per Tier 3's "port the mode switch
+   only if v5's modal already carries it" — it does). v4's seven-source chip
+   order, the `< 2 non-zero sources → no chips` rule (spec-pinned both ways,
+   plus a live e2e assertion), the `current` badge, Save/Download/Delete
+   hover actions, Delete double-guarded on `deletable && idKind === 'file'`
+   (a mutation-style spec calling the guard directly with a link-kind entry
+   flagged deletable). The `document.body` portal (bug 99) — v5's PREDECESSOR
+   of this file never had it; added via the `image-detail-modal.ts`
+   `afterNextRender` idiom, spec-pinned.
+4. **The detail view.** `images/chat-gallery-image-view-modal.ts` rewritten
+   whole: the two hard-wired "first character"/"first user-character" album
+   buttons — which v5's predecessor STILL HAD after v4 deleted them — are
+   gone, replaced by ONE `save` output the host wires to the shared
+   `SaveImageDialog`. The provenance line (all seven `SOURCE_PHRASE` entries,
+   `formatDay`'s placeholder-date `null` arm, the link-count plural) and
+   Jump-to-message are new. Jump's three-hop choreography: the entry's
+   `jumpToMessage` output → `PhotoGalleryModal.handleJumpToMessage` (closes
+   BOTH modals, emits up) → `SalonConversation.onJumpToMessage` (a
+   `setTimeout(...,0)`, v4's own comment carried verbatim) →
+   `MessageList.scrollToMessage` (NEW — the virtualizer's own scroll-to-index,
+   since v5's transcript is windowed where v4's is a flat DOM a
+   `querySelector` can reach directly).
+5. **`SaveImageDialog`'s `target` union.** Both legs land: the message door
+   keeps `messageSaveImage` unchanged; the gallery door dispatches the NEW
+   `chatSaveGalleryImage`. The chat leg's 409 (v5's `kind: 'conflict'`) reads
+   as "already in this album" per §C.3; the exact `keptAt`-dated wording is
+   **not** reproduced (`CoreError` carries no `keptAt` field on the wire this
+   lane can see) — recorded in the source comment as a measured deferral, with
+   a documented fallback to v4's own undated sentence. `chat/message-row.ts`'s
+   construct sites (the order's fenced region) needed NO edit: they already
+   emit the `{messageId, attachmentId}` pair the consumer wraps into
+   `{kind:'message', ...}`.
+6. **Download.** `core/download-utils.ts` gained `withDownloadFlag` /
+   `downloadImageUrl` / `downloadGalleryEntry`, oracle-pinned against v4's
+   REAL `lib/download-utils.ts` at the pin — 14 recorded vectors including one
+   the recorder's own first draft got wrong (idempotence across a trailing
+   `#frag`: the guard regex's `(&|$)` alternation does NOT match before `#`,
+   so `?download=1#frag` is NOT recognised as already-flagged and the flag
+   duplicates — a real v4 quirk, caught by running the recorder against v4's
+   actual code rather than trusting the comment I'd written first).
+   `image-modal.ts` and both gallery views' Download actions now anchor-click
+   through this helper instead of a fetch-to-blob dance (v4's own bug-132-era
+   fix, `ImageModal.tsx`'s diff in the round survey).
+7. **e2e.** NEW `e2e/salon-chat-gallery-flow.spec.ts`: one UNGATED beat (the
+   entry renders unnumbered against the REAL shared server, proving the
+   retired divergence directly) plus four beats gated
+   `P4D174_SERVER_LANDED = false` (chips/filter/detail/provenance,
+   Save+Download, Jump-to-message, Delete-a-generated-file) — every gated
+   beat a best-effort gesture against "Solo Voyage" (Aria's chat: a story
+   background + her own portrait, ≥2 sources with no new SQL seeding, per
+   `characters-flow.spec.ts:214`'s note) or a courier-fixture chat discovered
+   by content for the message-hung Jump target, since "Solo Voyage" carries
+   none. `salon-image-detail-flow.spec.ts` re-gated the same way (its walk
+   moved from `chatFilesList` onto `chatGallery` with the rewrite).
+   `salon-courier-images-flow.spec.ts` and `workspace-gallery-modal-flow.
+   spec.ts` needed NO change — grepped for every gallery-family symbol
+   (`chatFilesList`, `PhotoGalleryModal`, `qt-photo-gallery-modal`,
+   `chatGallery`); zero hits in either file.
+
+### Tier 2
+
+`m6-screen-parity.md`: `PhotoGalleryModal`'s row moved **PARITY (partial)**
+→ **PARITY**; a new `ChatGalleryImageViewModal` row added at **PARITY**;
+`ImageModal`'s row annotated for the download-helper change; the §2.1 prose
+note rewritten to drop the now-closed deferral list. The
+`photo-gallery-modal-deleted-handling` jest suite's cases are folded into the
+rewritten `photo-gallery-modal.spec.ts`'s "character modes — deleted image
+handling" describe block (both character and user-character arms) rather
+than transcribed as a separate file, since the whole spec file needed a
+ground-up rewrite anyway for the `chatGallery`-backed chat-mode half.
+
+**One reduction from the order's Fixtures section, spotted not chased:**
+`qt-image-gallery` (`images/image-gallery.ts`) — the order's survey (from
+2026-08-25) says it "still has no v5 host"; measured at lane start, it
+already has one (`screens/characters/generators/wizard/
+description-source-step.ts:193`), landed by an intervening round. Unrelated
+to this lane's `chatGallery`-backed chat surface either way (it is v4's
+`/api/v1/images` collection surface, P4.73's contract) — left untouched,
+noted for the unifier in case the order's premise needs correcting upstream.
+
+### Tier 3 — deferrals (loud, typed, per the order)
+
+- Electron's `will-download` streaming — NO-COUNTERPART, already recorded in
+  `download-utils.ts`'s module doc before this lane; unchanged.
+- Character-mode gallery strings/mode-switch — NOT deferred: v5's modal
+  already carried the mode switch, so it is ported (see Tier 1 item 3).
+
+### The verification gate
+
+* `npm run lint` (`check-qt-classes` self-test 5/5, then 950 `qt-*` classes /
+  every guarded reference resolving — unchanged count, no new class invented).
+* `npm test` (`node tools/ng-run.mjs test --watch=false`, the full suite,
+  never a bare `ng`): **419 spec files / 6,945 tests / 0 failed**, confirmed
+  by TWO clean back-to-back runs. (The pre-lane baseline was 417/6,887 per
+  the prior round's own record; +2 files — `chat-gallery.api.spec.ts`,
+  `core/download-utils.oracle.spec.ts` — and the growth across every
+  rewritten/touched spec file, incl. the 2 new `scrollToMessage` cases in
+  `message-list.spec.ts`.) One of the intermediate runs during this lane threw
+  an `Unhandled Error` — `auto-scroll.ts:203 TypeError: b.container.scrollTo
+  is not a function`, a stray `setTimeout` from `salon-turn-controls.spec.ts`
+  firing after its own test's teardown — with every Test File and every Test
+  still reported PASSED; `auto-scroll.ts` is untouched by this lane and the
+  error did not reproduce on either of the two clean runs that bookend this
+  gate, so it is recorded as an observed, non-reproducing timing flake in
+  pre-existing test cleanup, not a regression.
+* `npm run build` (`node tools/ng-run.mjs build`) — clean; this is the real
+  type gate (`spa-tsc-does-not-typecheck-app-sources`).
+* `git diff main -- crates/ help/ harness/` — EMPTY, confirmed.
+* RED-FIRST evidence: the retired-divergence spec (Tier 1 item 2) fails
+  against the pre-edit `organize-section.ts` (no `injectChatGallery` call, no
+  numbered label) by construction — the file had no query at all before this
+  lane; the two-album-buttons-deleted spec in
+  `chat-gallery-image-view-modal.spec.ts` ("carries NO character-album
+  toggle buttons") fails against the pre-edit component (which HAD them) by
+  the same construction.
+* Mutation proofs named in the order, all run and confirmed reddening exactly
+  the named spec: dropping the `< 2` chip guard (comment out the length
+  check) reds `photo-gallery-modal.spec.ts`'s "renders NO chips with a single
+  non-zero source"; dropping the `idKind` half of the Delete guard (`!entry.
+  deletable` alone) reds the "delete double-guard" spec; moving the gallery
+  key outside `['chat', id]` (respelling `chatKeys.gallery` to a bare
+  `['gallery', id]`) reds `chat-keys.spec.ts`'s prefix case; re-adding one
+  album button to `ChatGalleryImageViewModal`'s template reds "carries NO
+  character-album toggle buttons".
+
+**Live proof against the real server:** with `quilltap-web`/`quilltap-cli`
+built (`cargo build -p quilltap-web -p quilltap-cli`, shared with the round's
+other lanes on this host — contended, ~3m15s once it got CPU time),
+`salon-chat-gallery-flow.spec.ts`'s ungated beat and the three riding specs
+(`salon-image-detail-flow`, `salon-courier-images-flow`,
+`workspace-gallery-modal-flow`) were run together against the real shared
+server (`--workers=1`).
+
+The FIRST run caught a real gesture defect in the ungated beat itself
+(`round-plan-takeaways`'s "an activation is a measurement, not a formality"):
+`getByRole('button', { name: 'Every image in this conversation' })` matched
+nothing — Playwright's accessible-name computation for a `<button>` prefers
+its visible TEXT content ("Gallery") over its `title` attribute, which is
+what the locator was actually naming. Fixed to
+`page.locator('button[title="Every image in this conversation"]')` (the
+title stays constant across the numbered/unnumbered states; the text is
+asserted separately). Re-run: **the ungated beat PASSES** — `button "Gallery"`
+renders exactly as designed, unnumbered, against the real shared server that
+does not implement `chatGallery` today. The five content-dependent beats all
+SKIP as designed (`P4D174_SERVER_LANDED = false`).
+
+`workspace-gallery-modal-flow.spec.ts` — **2/2 pass**, both runs.
+`salon-image-detail-flow.spec.ts` — its one test SKIPs as designed (the
+re-gate).
+
+**`salon-courier-images-flow.spec.ts` — 2 of 3 pass; the third fails
+REPRODUCIBLY, confirmed NOT this lane's doing.** "an image thumbnail opens
+the lightbox" fails identically across three runs (combined with this lane's
+specs, and — the decisive check — run COMPLETELY ALONE, `npx playwright test
+e2e/salon-courier-images-flow.spec.ts` by itself, still red at the same
+line). Root cause, read off the error-context snapshot: the file's own
+`openChatWith` helper scans every chat card in the fixture and asserts
+`.qt-chat-messages-list` becomes visible after each click — UNGUARDED,
+unlike the selector-presence check right beneath it, which already tolerates
+a miss. One fixture chat belongs to the archived-character tombstone island
+(`[e2e] seeded the archived-character island (P4.D64 tombstone beats are
+live)`, global-setup's own log line) — its vault is DELIBERATELY made
+unavailable, and clicking that card correctly renders `Error:
+applyDocumentStoreOverlayOne: vault unavailable for character
+a1000000-…-000000006 (mount a06f7412-…)` instead of the message list. That is
+correct product behavior for a tombstoned vault; the helper's unguarded
+assertion just cannot tolerate landing on it mid-scan. This is a pre-existing
+brittleness the P4.D64 tombstone fixture (a different round) exposed in a
+file P4.D176 does not own and never edited — filed as a follow-up task
+(`task_1b6b5475`, `spawn_task`) rather than fixed here, per the Ownership
+table's "must not touch: any other EXISTING e2e spec".
+
+### Fixture / oracle notes for the unifier
+
+* **NEW `apps/web/src/testing/fixtures/download-utils.ndjson`** (14 lines) +
+  its recorder `apps/web/oracle/download-utils.recorder.ts` — named
+  `*.recorder.ts` rather than the order's literal `download-utils.ts`,
+  matching the TWO existing recorders' own naming convention
+  (`pascal-progress.recorder.ts`, `progressions-schema.recorder.ts`); a
+  measured deviation from the order's exact filename, not from its intent.
+  Regen recipe (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4d176-78b381a96
+  git -C ~/source/quilltap-server worktree add --detach "$PIN" 78b381a96
+  ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+  cp apps/web/oracle/download-utils.recorder.ts "$PIN/"
+  cd "$PIN" && npx tsx download-utils.recorder.ts \
+    > <V5>/apps/web/src/testing/fixtures/download-utils.ndjson
+  ```
+  Expect 14 lines; a shorter file means the redirect already truncated the
+  old one (the empty-file trap).
+* No `harness/oracle/**` case — out of this lane's ownership; the SPA's own
+  oracle recorder is the proof, per the order's differential-requirement
+  section.
+* No committed DB fixture touched, widened, or regenerated — this lane reads
+  the existing salon e2e fixture read-only, seeding nothing via SQL (the
+  standing rule for SPA lanes).

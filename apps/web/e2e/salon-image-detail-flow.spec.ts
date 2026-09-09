@@ -18,7 +18,17 @@ import { openSidebarSection } from './support/sidebar';
  * gallery is guaranteed ≥2 items and the prev/next arrows have something to
  * do. Uploaded chat files carry no message row, so the chat's rendered
  * transcript — which later content-discovering specs scan — is unchanged.
+ *
+ * P4.D176 RE-GESTURE: the grid this beat drives moved from `chatFilesList`
+ * onto the `chatGallery` query (§C.3) — the sidebar's photo-gallery entry
+ * moved from Chat Info to the Organize drawer with it (`openSidebarSection`).
+ * Gated ACTIVATE-AT-UNIFY behind {@link P4D174_SERVER_LANDED}: until P4.D174
+ * lands server-side, `chatGallery` is an unknown verb and the grid has
+ * nothing to read.
  */
+
+/** Flipped at unification, once P4.D174's `chatGallery` verb lands. */
+const P4D174_SERVER_LANDED = false;
 
 /** A 1×1 transparent PNG; a distinct trailing tail keeps the sha unique. */
 /**
@@ -54,6 +64,7 @@ test.describe('P4.9a2 — the deep image-detail modal family', () => {
   test('gallery → detail modal → arrow → nested Escape closes one layer at a time', async ({
     page,
   }) => {
+    test.skip(!P4D174_SERVER_LANDED, 'chatGallery is P4.D174’s — the grid has nothing to read until it lands');
     test.setTimeout(90_000);
 
     // 1. A general (non-project) chat, via the API.

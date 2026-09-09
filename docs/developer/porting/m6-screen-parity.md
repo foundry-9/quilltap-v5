@@ -432,8 +432,9 @@ v5 verdict.
 | CreateFolderModal | `components/files/FolderManagement/CreateFolderModal.tsx` | `screens/files/create-folder-dialog.ts:7` | **PARITY** (P4.6af) |
 | MoveToProjectModal | `components/files/MoveToProjectModal.tsx` | `screens/files/move-to-project-dialog.ts:19` | **PARITY** (P4.6af) |
 | OrphanCleanupModal | `components/files/OrphanCleanupModal.tsx` | `screens/files/orphan-cleanup-dialog.ts:17` | **PARITY** (P4.6af) |
-| PhotoGalleryModal | `components/images/PhotoGalleryModal.tsx` | `images/photo-gallery-modal.ts:26` | **PARITY (partial)** — chat mode only |
-| ImageModal | `components/chat/ImageModal.tsx` | `images/image-modal.ts:16` | **PARITY** (P4.6ac) |
+| PhotoGalleryModal | `components/images/PhotoGalleryModal.tsx` | `images/photo-gallery-modal.ts:26` | **PARITY** (P4.D176, `78b381a96` — chat mode over `chatGallery`, §C.3; character/user-character modes unchanged) |
+| ChatGalleryImageViewModal | `components/chat/ChatGalleryImageViewModal.tsx` | `images/chat-gallery-image-view-modal.ts:20` | **PARITY** (P4.D176 — the two hard-wired album buttons v4 deleted are gone here too; provenance line + Jump-to-message) |
+| ImageModal | `components/chat/ImageModal.tsx` | `images/image-modal.ts:16` | **PARITY** (P4.6ac; download via `?download=1` — P4.D176) |
 | GenerateImageDialog | `components/images/…` via `ChatModals.tsx:209` | `images/generate-image-dialog.ts:26` | **PARITY (narrowed)** |
 | Scriptorium's five store dialogs | `app/scriptorium/components/{Create,Edit,Delete,ConvertToDatabase,DeconvertToFilesystem}*.tsx` | `screens/scriptorium/{create,edit,delete,convert,deconvert}-store-dialog.ts` | **PARITY** (P4.6z) |
 | Project create/delete | `app/prospero/components/{Create,Delete}ProjectDialog.tsx` | `screens/prospero/project-{create,delete}-dialog.ts` | **PARITY** (P4.6l) |
@@ -449,9 +450,12 @@ v5 verdict.
 **and** chat (`ChatModals.tsx:414`). **Both hosts are now ported** (this note
 used to say the project host only; the chat host landed with `p4.9h1` on
 2026-07-22 — `screens/salon/salon-conversation.ts:460`, opener at `:1354`, and
-the state-cascade deferral closed with it). `PhotoGalleryModal` ports
-chat mode and names its own deferrals at `images/photo-gallery-modal.ts:31`
-(ChatGalleryImageViewModal, tag editing, prev/next navigation). The
+the state-cascade deferral closed with it). `PhotoGalleryModal` reached full
+PARITY with P4.D176 (`78b381a96`) — chat mode over the `chatGallery` query
+(§C.3), with `ChatGalleryImageViewModal` gaining prev/next navigation,
+provenance, and Jump-to-message while losing the two hard-wired album
+buttons v4 itself deleted. Tag editing stays out — it never existed in v4's
+UI (endpoints live, no caller), so there is nothing to port. The
 generate dialog carries a recorded narrowing to four params
 (`p4.6ai:15-16`).
 

@@ -1,10 +1,44 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import { OrganizeSection } from './organize-section';
 
 /** The Organize drawer's entries and their gate (v4 `OrganizeSection`). */
+
+type Req = { type: string; [k: string]: unknown };
+
+function stubClient(
+  galleryTotal: number | 'error' = 'error',
+  seen: Req[] = [],
+): CoreClient {
+  return {
+    ...coreStreamStub(),
+    dispatchData: async (req: Req) => {
+      seen.push(req);
+      if (req.type === 'chatGallery') {
+        if (galleryTotal === 'error') throw new Error("unknown variant `chatGallery`");
+        return {
+          entries: [],
+          counts: {
+            'story-background': 0,
+            avatar: 0,
+            portrait: 0,
+            generated: 0,
+            attachment: 0,
+            kept: 0,
+            inline: 0,
+          },
+          total: galleryTotal,
+        };
+      }
+      return {};
+    },
+  } as unknown as CoreClient;
+}
 
 @Component({
   imports: [OrganizeSection],
@@ -25,13 +59,22 @@ class Host {
   readonly fired: string[] = [];
 }
 
-async function render(): Promise<ComponentFixture<Host>> {
+async function render(core: CoreClient = stubClient()): Promise<ComponentFixture<Host>> {
   TestBed.resetTestingModule();
-  TestBed.configureTestingModule({ imports: [Host] });
+  TestBed.configureTestingModule({
+    imports: [Host],
+    providers: [
+      provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+      { provide: CoreClient, useValue: core },
+    ],
+  });
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
   await fixture.whenStable();
-  fixture.detectChanges();
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
   return fixture;
 }
 
@@ -46,7 +89,7 @@ describe('OrganizeSection', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows Copy ID, State and Gallery — and Edit Enclave only for an autonomous room', async () => {
+  it('shows Copy ID, State and Gallery (unnumbered, chatGallery unimplemented) — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
     expect(labels(fixture)).toEqual([
       'Copy ID',
@@ -106,7 +149,7 @@ describe('OrganizeSection', () => {
     expect(spy).toHaveBeenCalledOnce();
     expect(clicked[0].href).toContain('/api/v1/chats/chat-1?action=export-markdown');
     // Only the anchor's fallback name — the server's Content-Disposition names
-    // the file after the chat.
+    // the file.
     expect(clicked[0].download).toBe('chat_transcript.md');
     // The entry must not fire a Salon output (v4 keeps it entirely local).
     expect(fixture.componentInstance.fired).toEqual([]);
@@ -140,5 +183,37 @@ describe('OrganizeSection', () => {
     // Nothing navigated.
     expect(window.location.href).toBe(hrefBefore);
     expect(fixture.componentInstance.fired).toEqual([]);
+  });
+
+  /**
+   * P4.D176 — the retired divergence. The label's number comes from the
+   * `chatGallery` query, and ONLY from it: a mocked server that does not yet
+   * implement the verb (v4's pre-P4.D174 shape in-lane) renders the entry
+   * unnumbered rather than crashing or inventing a count.
+   */
+  describe('the Gallery count (bug 129 — the invariant carried, not the shape)', () => {
+    it('reads the label number from chatGallery.total, not from any chat-read field', async () => {
+      const seen: Req[] = [];
+      const fixture = await render(stubClient(7, seen));
+      const gallery = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+        (b) => (b as HTMLButtonElement).getAttribute('title') === 'Every image in this conversation',
+      ) as HTMLButtonElement;
+      expect(gallery.textContent!.trim()).toBe('Gallery (7)');
+      // The count's fetch reached a verb that EXISTS (the bug-129 invariant).
+      expect(seen.some((r) => r.type === 'chatGallery' && r['chatId'] === 'chat-1')).toBe(true);
+    });
+
+    it('a chat with genuinely no pictures reads (0), not unnumbered', async () => {
+      const fixture = await render(stubClient(0));
+      expect(labels(fixture)).toContain('Gallery (0)');
+    });
+
+    it('an UNKNOWN verb (chatGallery not yet implemented) renders the entry unnumbered, not gated away', async () => {
+      const fixture = await render(stubClient('error'));
+      // The entry still renders — v4's ungated post-bug-129 shape — just with
+      // no number, rather than claiming a count it does not have.
+      expect(labels(fixture)).toContain('Gallery');
+      expect(labels(fixture)).not.toContain('Gallery (0)');
+    });
   });
 });

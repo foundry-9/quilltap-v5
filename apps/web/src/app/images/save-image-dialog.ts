@@ -10,6 +10,7 @@ import {
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../core/core-client';
+import { CoreDispatchError } from '../core/core-contract';
 import type { AlbumKind, AlbumOption, MessageAttachment } from '../core/core-contract';
 import { Modal } from '../ui/modal';
 import { fileUrl } from './image-urls';
@@ -30,12 +31,30 @@ interface AlbumGroup {
 }
 
 /**
- * SaveImageDialog — the operator "save this attached image" picker (a port of v4
- * `app/salon/[id]/components/SaveImageDialog.tsx`). Opened from the message
- * action bar's Save button, it loads the chat's candidate albums
- * (`chatPhotoAlbums`), lets the operator pick an image (when the message carries
- * more than one), an album (grouped by kind), and an optional caption, then saves
- * via `messageSaveImage`. Mirrors the LLM `keep_image` save path server-side.
+ * Which door the dialog was opened from, and therefore which verb it
+ * dispatches (v4 `SaveImageDialog.tsx:45-47` `SaveImageTarget`, P4.D176).
+ */
+export type SaveImageTarget =
+  | { kind: 'message'; messageId: string; fileId: string }
+  | { kind: 'chat'; fileId: string };
+
+/**
+ * SaveImageDialog — the operator "save this attached image" picker (a port of
+ * v4 `app/salon/[id]/components/SaveImageDialog.tsx` at `78b381a96`, P4.D176).
+ * Opens from two doors — the per-message Save Image toolbar button, and the
+ * chat gallery's Save — and loads the chat's candidate albums
+ * (`chatPhotoAlbums`), lets the operator pick an image (when the message
+ * carries more than one), an album (grouped by kind), and an optional
+ * caption, then saves through whichever verb the {@link target} names.
+ *
+ * The two differ only in the verb they dispatch: the message route's guard —
+ * *is this image attached to this message* — is a real invariant there, and
+ * half the gallery has no message at all (a Lantern backdrop posted with
+ * alerts off, a standing portrait), so the gallery dispatches a chat-scoped
+ * twin whose guard is *is this image in this chat's gallery* (`§C.3`,
+ * `chatSaveGalleryImage`). Everything the reader sees is identical.
+ *
+ * Mirrors the LLM `keep_image` save path under the hood.
  */
 @Component({
   selector: 'qt-save-image-dialog',
@@ -151,10 +170,13 @@ export class SaveImageDialog {
   private readonly core = inject(CoreClient);
 
   readonly chatId = input.required<string>();
-  readonly messageId = input.required<string>();
+  readonly target = input.required<SaveImageTarget>();
+  /**
+   * Candidate images for the in-dialog picker. The message door passes every
+   * image attachment on the message (for the ribbon); the gallery door passes
+   * the ONE entry it opened on (v4 `PhotoGalleryModal.tsx:558-565`).
+   */
   readonly attachments = input.required<MessageAttachment[]>();
-  /** The attachment id pre-selected from the toolbar click (v4 `initialAttachmentId`). */
-  readonly initialAttachmentId = input<string | null>(null);
 
   readonly close = output<void>();
   readonly saved = output<{ mountPoint: string; relativePath: string }>();
@@ -169,12 +191,9 @@ export class SaveImageDialog {
   );
 
   private readonly attachmentOverride = signal<string | null>(null);
+  /** v4 `:82-84` — `target.fileId || imageAttachments[0]?.id || ''`. */
   protected readonly selectedAttachmentId = computed(
-    () =>
-      this.attachmentOverride() ??
-      this.initialAttachmentId() ??
-      this.imageAttachments()[0]?.id ??
-      '',
+    () => this.attachmentOverride() ?? this.target().fileId ?? this.imageAttachments()[0]?.id ?? '',
   );
 
   protected readonly selectedAttachment = computed(
@@ -233,15 +252,26 @@ export class SaveImageDialog {
     this.submitting.set(true);
     this.error.set(null);
     try {
-      const resp = await this.core.dispatch({
-        type: 'messageSaveImage',
-        chatId: this.chatId(),
-        messageId: this.messageId(),
-        fileId: att.id,
-        mountPointId,
-        caption: this.caption().trim() ? this.caption().trim() : undefined,
-      });
-      if (resp.type === 'error') throw new Error(resp.data.message);
+      const target = this.target();
+      const caption = this.caption().trim() ? this.caption().trim() : undefined;
+      const resp =
+        target.kind === 'message'
+          ? await this.core.dispatch({
+              type: 'messageSaveImage',
+              chatId: this.chatId(),
+              messageId: target.messageId,
+              fileId: att.id,
+              mountPointId,
+              caption,
+            })
+          : await this.core.dispatch({
+              type: 'chatSaveGalleryImage',
+              chatId: this.chatId(),
+              fileId: att.id,
+              mountPointId,
+              caption,
+            });
+      if (resp.type === 'error') throw new CoreDispatchError(resp.data);
       const body = (resp.data ?? {}) as {
         mountPoint?: string;
         relativePath?: string;
@@ -253,9 +283,32 @@ export class SaveImageDialog {
       });
       this.close.emit();
     } catch (err) {
-      this.error.set(err instanceof Error ? err.message : String(err));
+      this.error.set(this.errorMessage(err));
     } finally {
       this.submitting.set(false);
     }
+  }
+
+  /**
+   * v4 `:157-168` — the album already holds these bytes is an ANSWER, not a
+   * failure, and deserves to be said in those words. v4 detects it off the
+   * fetch response directly (`res.status === 409 || body.code ===
+   * 'ALREADY_SAVED'`) and formats `body.keptAt` into the sentence when
+   * present; v5's dispatch envelope exposes the refusal as `kind: 'conflict'`
+   * (409) on the CHAT leg (the message leg still answers 400 with the SAME
+   * `ALREADY_SAVED` code, per §C.3 — indistinguishable from any other 400 on
+   * the wire this dialog reads, so it falls to the server's own sentence).
+   * The keptAt-dated wording is NOT reproduced here — `CoreError` carries no
+   * `keptAt` field — so a conflict with no server message falls back to v4's
+   * undated sentence rather than inventing a date.
+   */
+  private errorMessage(err: unknown): string {
+    if (err instanceof CoreDispatchError) {
+      if (this.target().kind === 'chat' && err.kind === 'conflict') {
+        return err.message || 'That picture is already in this album.';
+      }
+      return err.message;
+    }
+    return err instanceof Error ? err.message : String(err);
   }
 }
