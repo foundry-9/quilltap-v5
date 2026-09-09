@@ -34,9 +34,15 @@ pub mod characters;
 pub mod characters_read;
 pub mod chat_activity_recompute_heal;
 pub mod chat_documents;
+// === P4.D171 ===
+pub mod chat_messages_route_trail_repair;
+// === end P4.D171 ===
 pub mod chat_settings;
 pub mod chat_settings_composer_repair;
 pub mod chats;
+// === P4.D171 ===
+pub mod chats_cycle_order_repair;
+// === end P4.D171 ===
 pub mod chats_impersonation;
 pub mod chats_messages;
 pub mod chats_messages_read;

@@ -12,7 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
-#### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
+#### 2026-09-09 — feat(schema): P4.D171 unit 1 — the D23 re-dump for `chat_messages.routeTrail` + `chats.cycleOrderParticipantIds`, the export-schema re-vendor, and the two boot ensures
+
+_Versions: core 0.0.858, harness 0.0.750, host 0.0.118._
+
+The substrate for v4's two `78b381a96`-round schema moves, landed RED-FIRST:
+`provisioning_equivalence` failed on a schema mismatch in partition `main`
+against a `78b381a96`-pinned oracle before any edit. Re-dumped
+`fresh_schema.json` from the pin's live `generateDDL` — exactly the two
+predicted column splices, nothing else moved (`routeTrail` mid-table in
+`chat_messages`, after `pascalMeta`; `cycleOrderParticipantIds` mid-table in
+`chats`, after `spokenThisCycleParticipantIds`) — and regenerated
+`schema-key-order.json` with the shipped generator (two insertions). Re-vendored
+`generators/qtap-export.schema.json` to the `78b381a96` bytes (89,769 →
+92,797) and updated `qtap_schema_embed_guard`'s `VENDORED_BYTES`; confirmed
+green against the tip pin and red (by design) against the `25f534c0b`
+baseline pin.
+
+Two new boot-ensure modules re-home the columns for an existing instance,
+following the P4.D135 idiom: `chat_messages_route_trail_repair` carries v4's
+migration DDL verbatim (`TEXT DEFAULT NULL`, disagreeing with generateDDL's
+bare `TEXT` — the P4.D78/bug-68 class, both shapes carried) with no backfill;
+`chats_cycle_order_repair` carries the ONE shape both the migration and
+generateDDL agree on (`TEXT DEFAULT '[]'`) — the exception to the standing
+two-shape pattern, noted in the module header for the next lane. Both wired
+into `host.rs::seed_built_ins` in a `// === P4.D171 ===` fence after the
+P4.D135 block. A new `host_boot` test boots a legacy fixture (every column
+`make_instance`'s fixture has, minus these two) and asserts both are healed
+post-boot, with the rotation column reading `'[]'` for the pre-existing chat.
+
+`provisioning_matches_v4_fresh_instance` now green.
+
+This unit carries no behavior — nothing writes a non-null `routeTrail` or a
+non-`'[]'` rotation yet (P4.D173 and P4.D172, stacked on this lane's tip).
 
 _Docs-only change._
 

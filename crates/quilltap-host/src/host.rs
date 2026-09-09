@@ -1130,6 +1130,25 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             quilltap_core::db::connection_profiles_fallback_repair::
                 ensure_connection_profiles_fallback_columns(main)?;
             // === end P4.D135 ===
+            // === P4.D171 (v4 `5841a8c62`, migration
+            // `add-route-trail-message-column-v1`) ===
+            // The `chat_messages.routeTrail` column, re-homed from v4's
+            // migration runner for the same reason. Load-bearing on an
+            // existing instance: without it, the message INSERT this port
+            // performs at every turn (which now always binds the column)
+            // would 500.
+            quilltap_core::db::chat_messages_route_trail_repair::
+                ensure_chat_messages_route_trail_column(main)?;
+            // === end P4.D171 ===
+            // === P4.D171 (v4 `2aca73ad6`, migration
+            // `add-cycle-order-column-v1`) ===
+            // The `chats.cycleOrderParticipantIds` column, re-homed from v4's
+            // migration runner for the same reason. Load-bearing on an
+            // existing instance: without it, `ChatUpdate`'s `set_col!` arm
+            // for the drawn rotation would 500 on every turn once the turn
+            // manager writes it.
+            quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(main)?;
+            // === end P4.D171 ===
             // === P4.D97 (v4 `97d2fcb5`, migration
             // `retire-prefill-on-thinking-profiles-v1`) ===
             // The data pass that turns the multi-character [Name] prefill off

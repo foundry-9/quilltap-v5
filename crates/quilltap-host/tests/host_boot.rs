@@ -59,6 +59,7 @@ fn chats_ddl() -> String {
         "allLLMPauseTurnCount REAL",
         "turnQueue TEXT",
         "spokenThisCycleParticipantIds TEXT",
+        "cycleOrderParticipantIds TEXT",
         "documentEditingMode INTEGER",
         "documentMode TEXT",
         "dividerPosition REAL",
@@ -155,7 +156,7 @@ fn make_instance(base: &Path) {
              thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
              recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
              systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-             carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+             carinaMeta TEXT, pascalMeta TEXT, routeTrail TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
              pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
              description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
              createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
@@ -409,4 +410,106 @@ async fn dbkey_lock_unlock_cycle_restarts_drivers() {
     .unwrap();
     wait_for_status(&db, &job, "COMPLETED").await;
     assert_eq!(count.load(Ordering::SeqCst), 2);
+}
+
+/// A pre-`78b381a96` instance: every column `make_instance`'s fixture has,
+/// EXCEPT the two P4.D171 additions — `chat_messages.routeTrail` and
+/// `chats.cycleOrderParticipantIds` — mirroring a genuine long-lived
+/// instance (every earlier round's ensure has already run; only the newest
+/// two columns are missing).
+fn make_legacy_instance_missing_the_two_p4d171_columns(base: &Path) {
+    let data = base.join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    let w = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+    w.connection().execute_batch(BACKGROUND_JOBS_DDL).unwrap();
+    let legacy_chats_ddl = chats_ddl().replace("cycleOrderParticipantIds TEXT, ", "");
+    w.connection().execute_batch(&legacy_chats_ddl).unwrap();
+    w.connection()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
+             content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
+             swipeGroupId TEXT, swipeIndex TEXT, attachments TEXT, debugMemoryLogs TEXT, \
+             thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
+             recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
+             systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
+             carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+             pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
+             description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
+             createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
+             confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
+             CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);",
+        )
+        .unwrap();
+    w.connection()
+        .execute(
+            "INSERT INTO chats (id, userId, title, chatType, messageCount, createdAt, updatedAt) \
+             VALUES ('11111111-1111-4111-8111-111111111111', \
+                     'ffffffff-ffff-ffff-ffff-ffffffffffff', \
+                     'The Reading Room', 'salon', 3, \
+                     '2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    drop(w);
+    let _ = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
+}
+
+fn column_names(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+        .unwrap();
+    stmt.query_map([], |r| r.get::<_, String>(1))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect()
+}
+
+/// P4.D171 — booting a pre-`78b381a96` instance heals both missing columns
+/// (the two-ensure fence in `host.rs::seed_built_ins`, after the P4.D135
+/// block). Load-bearing: without them, the message INSERT and the chats
+/// `set_col!` arm for the drawn rotation would 500 on the very next turn.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn boot_heals_the_two_p4d171_columns_on_a_legacy_instance() {
+    let dir = tempfile::tempdir().unwrap();
+    make_legacy_instance_missing_the_two_p4d171_columns(dir.path());
+
+    let mut config = base_config(dir.path());
+    config.env_pepper = Some(PEPPER.to_string());
+    let host = Host::start(config).unwrap();
+    let core = host.core();
+
+    match core.dispatch(Request::Health).await {
+        Response::Health(h) => assert!(h.ready),
+        other => panic!("unexpected: {other:?}"),
+    }
+
+    let db = core.db().unwrap();
+    let (chats_cols, messages_cols) = db
+        .read_main(|conn| {
+            Ok((
+                column_names(conn, "chats"),
+                column_names(conn, "chat_messages"),
+            ))
+        })
+        .unwrap();
+    assert!(
+        chats_cols.iter().any(|c| c == "cycleOrderParticipantIds"),
+        "boot must heal the drawn-rotation column: {chats_cols:?}"
+    );
+    assert!(
+        messages_cols.iter().any(|c| c == "routeTrail"),
+        "boot must heal the route-trail column: {messages_cols:?}"
+    );
+
+    let rotation: String = db
+        .read_main(|conn| {
+            conn.query_row(
+                "SELECT cycleOrderParticipantIds FROM chats WHERE id = ?1",
+                ["11111111-1111-4111-8111-111111111111"],
+                |r| r.get(0),
+            )
+            .map_err(Into::into)
+        })
+        .unwrap();
+    assert_eq!(rotation, "[]", "no rotation on file for an existing chat");
 }

@@ -117668,3 +117668,113 @@ Friday copy, the report on a real turn and in a greeting, the Workbench
 on the live lock, and — human-only — a hostname flip under a running host);
 the recorded candidates above. Bug 127's divergence note in
 `progressions-section.spec.ts` is now a CONVERGENCE site for the next round.
+
+## Lane record — P4.D171 (the two schema moves — the substrate)
+
+**Unit 1 — the D23 re-dump + `schema-key-order.json` regen + the
+export-schema re-vendor + the two boot ensures.** Branch
+`claude/p4-schema-moves-substrate-559670`, from `main` at `fa74d071`.
+
+RED-FIRST: `provisioning_matches_v4_fresh_instance` (against an oracle built
+from the `/tmp/qt-v4-pin-p4d171-78b381a96` pin, `78b381a96`) panicked
+"schema mismatch in partition main" before any edit (2 passed, 1 failed).
+`qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+likewise failed (v4 92,797 bytes, vendored 89,769) before the re-vendor.
+
+Re-dumped `fresh_schema.json` from the pin's live `generateDDL`
+(`harness/oracle/provision/dump-fresh-schema.ts`, from
+`/tmp/qt-v4-pin-p4d171-78b381a96`): a plain JSON diff against the committed
+file shows EXACTLY the two predicted splices — `"routeTrail" TEXT` inserted
+between `"pascalMeta" TEXT` and `"pendingExternalPrompt" TEXT` in
+`chat_messages`, and `"cycleOrderParticipantIds" TEXT DEFAULT '[]'` inserted
+between `"spokenThisCycleParticipantIds" TEXT DEFAULT '[]'` and
+`"documentEditingMode" INTEGER DEFAULT 0` in `chats` — nothing else moved,
+confirming no unrecorded drift in the pin. Regenerated
+`schema-key-order.json` with `harness/oracle/fixtures/dump-export-key-order.ts`
+from the same pin: two insertions (`cycleOrderParticipantIds` in the `chats`
+export block; `routeTrail` right after `modelName` in the message block, per
+v4's `MessageEventSchema` declaration order — not the DB column order).
+Re-vendored `generators/qtap-export.schema.json` (byte-copy of the pin's
+`public/schemas/qtap-export.schema.json`, 92,797 bytes, md5
+`a347c46b802b3c195d2ab2a21f7e43f4`) and bumped `VENDORED_BYTES`. Verified
+BOTH directions per §R.3: `qtap_schema_embed_guard` green with
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d171-78b381a96`, red (by design) with
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d171-25f534c0b`.
+
+Re-ran `provisioning_equivalence` after the re-dump: all 3 tests green,
+including `provisioning_matches_v4_fresh_instance`.
+
+Two new boot-ensure modules, modeled on
+`connection_profiles_fallback_repair.rs`: `db/chat_messages_route_trail_repair.rs`
+(`ensure_chat_messages_route_trail_column` — carries v4's migration DDL
+verbatim, `TEXT DEFAULT NULL`; generateDDL disagrees with a bare `TEXT`, the
+P4.D78/bug-68 class — no backfill, since "unknown" already reads as `NULL`)
+and `db/chats_cycle_order_repair.rs` (`ensure_chats_cycle_order_column` —
+`TEXT DEFAULT '[]'`, the ONE shape both DDL sources agree on this round, a
+documented exception to the standing two-shape pattern for the next lane to
+read before carrying two on reflex). Each: idempotent, column-guarded via
+`PRAGMA table_info`, a no-op on a table-less partition, four unit tests
+(legacy table heals + appends at the end; a second boot never reclobbers a
+planted value; the generateDDL mid-table shape is recognized and left alone;
+a table-less partition no-ops) — all green. Wired into `db/mod.rs` (two
+`pub mod` lines, each in its own `// === P4.D171 ===` fence) and
+`crates/quilltap-host/src/host.rs::seed_built_ins` (two ensure calls, one
+fence, placed immediately after the P4.D135 block per the order).
+
+New `host_boot` test `boot_heals_the_two_p4d171_columns_on_a_legacy_instance`:
+a fixture with every column `make_instance`'s DDL has, MINUS the two new
+ones (mirroring a genuine long-lived instance — every earlier round's ensure
+has already run, only the newest two columns are missing), boots with
+`env_pepper` set (the `boots_headless_and_pumps_jobs` pattern, not the
+lock/unlock dance), and asserts both columns exist post-boot with the
+rotation column reading `'[]'` for the pre-existing seeded chat. Also
+widened `host_boot.rs`'s `chats_ddl()` and hand-rolled `chat_messages` DDL
+to carry both columns (the reduced-DDL-sweep class, Tier 1 item 9 — the
+existing `boots_headless_and_pumps_jobs` / `dbkey_lock_unlock_cycle_restarts_drivers`
+tests now reflect the current column set rather than relying on the ensure).
+
+Gate for this unit: `cargo fmt --all --check` clean; `cargo clippy -p
+quilltap-core -p quilltap-host -p quilltap-harness --all-targets -- -D
+warnings` clean; `cargo build --workspace` clean. Versions bumped: core
+0.0.857 → 0.0.858, harness 0.0.749 → 0.0.750, host 0.0.117 → 0.0.118.
+
+Regen recipe for this unit's oracles:
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d171-78b381a96   # detached worktree at 78b381a96, three symlink classes
+cd "$PIN"
+QT_ORACLE_PROVISION=/tmp/oracle-provision-p4d171.json \
+QT_V4_FRESH_OUT=/tmp/qt-v4-fresh-p4d171 \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/build-provision-oracle.ts
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema-p4d171.json \
+  $N/npx tsx ~/source/quilltap-v5/harness/oracle/provision/dump-fresh-schema.ts
+$N/node --import tsx ~/source/quilltap-v5/harness/oracle/fixtures/dump-export-key-order.ts \
+  > /tmp/qt-schema-key-order-p4d171.json
+cd ~/source/quilltap-v5/.claude/worktrees/p4-schema-moves-substrate-559670
+QT_ORACLE_PROVISION=/tmp/oracle-provision-p4d171.json \
+QT_FIXTURE_V4_FRESH=/tmp/qt-v4-fresh-p4d171 \
+QT_V5_PROVISION_OUT=/tmp/qt-v5-provisioned-p4d171 \
+  cargo test -p quilltap-harness --test provisioning_equivalence -- --nocapture
+```
+
+**Gotcha for the next lane / for later units in this one:** every existing
+committed fixture `.db` used by the harness (e.g.
+`crates/quilltap-web/tests/fixtures/system-data-main.db`) predates this
+schema move and lacks both columns — confirmed by direct inspection
+(`PRAGMA table_info` via `Db::open` + `read_main`, since bare `sqlite3` CLI
+cannot open the ChaCha20/sqleet cipher). `Db::open` runs NO boot ensures —
+those are exclusively a `host.rs::seed_built_ins` (production boot chain)
+concern; a harness test that copies a fixture and opens it directly via
+`Db::open`/`Writer::open_writable` gets NO healing. Once `chats_read.rs` /
+`chats_messages_read.rs` splice in the new columns (units 3/5), EVERY
+differential test reading `chats`/`chat_messages` through a committed
+fixture predating `78b381a96` will fail with `no such column` unless its own
+fixture-opening helper calls the two ensures explicitly after the copy —
+this is NOT a committed-DB regeneration (§R.11 still holds; the `.db` bytes
+stay untouched) but a widening of the TEST CODE that opens them, matching
+the "widen the /tmp builders" instruction. Expect this to touch many test
+files across the full-workspace run in units 3–9; each one calls
+`ensure_chat_messages_route_trail_column` / `ensure_chats_cycle_order_column`
+on its opened connection before assuming the new columns exist, or is
+identified as one of the "reduced hand-rolled DDL" sites and gets the column
+literal added directly.
