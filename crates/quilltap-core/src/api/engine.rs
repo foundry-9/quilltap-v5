@@ -5080,6 +5080,7 @@ impl CoreEngine {
             Request::ImagesGenerate {
                 prompt,
                 profile_id,
+                chat_id,
                 tags,
                 options,
             } => match self.ready_images_generate() {
@@ -5094,6 +5095,7 @@ impl CoreEngine {
                         crate::clock::now_unix_ms(),
                         prompt.as_ref(),
                         profile_id.as_ref(),
+                        chat_id.as_ref(),
                         tags.as_ref(),
                         options.as_ref(),
                     )

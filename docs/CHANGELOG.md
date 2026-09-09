@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — fix(images): v4 bug 130 — the images collection route accepts `chatId` and folds it into `linkedTo` (P4.D174 unit 5)
+
+_Versions: core 0.0.859, harness 0.0.751, web 0.0.135._
+
+`POST /api/v1/images?action=generate` ignored the chat that asked for the
+image, so a chat-scoped read — the chat file listing, the new chat gallery, the
+stale-chat collapse sweep — could not see it. v4 `86d59660c` added
+`chatId: z.uuid().optional()` and folded it into `linkedTo` beside the tag ids
+through a `Set`.
+
+The `Set` is FIRST-WINS: a caller passing both a CHAT tag and `chatId` links
+the id once, not twice, which would otherwise double every inherited tag
+downstream. `.optional()` rather than `.nullable()`, so an explicit `null`
+refuses exactly as `tags` and `options` do. v4's
+`[Images v1] Generate: resolved linkedTo` debug line rides along.
+
+The web edge forwards the new key — without that the field never arrives and
+the whole corpus is vacuously green, so `images_edge_routes.rs` gains an arm
+whose discriminator is the handler's own uuid refusal: a malformed `chatId` can
+only produce a 400 if the value reached the handler.
+
+`images_generate_route_equivalence` grows four arms (the fold, the CHAT-tag
+collision, a non-uuid, an explicit null). Three mutations red them: dropping
+`chatId` from the fold, dropping the dedupe, and dropping the edge's
+forwarding.
+
 #### 2026-09-09 — feat(files): `?download=1` on the three image byte routes (P4.D174 unit 4)
 
 _Versions: web 0.0.134._

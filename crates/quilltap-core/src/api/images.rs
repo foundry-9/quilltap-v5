@@ -1363,6 +1363,8 @@ struct GenerateBody {
     profile_id: String,
     /// The PARSED tags — used for `linkedTo` and echoed on each receipt entry.
     tags: Option<Vec<Value>>,
+    /// v4 bug 130's `chatId: z.uuid().optional()`.
+    chat_id: Option<String>,
     /// The parsed `options` bag, already narrowed to the five override keys.
     overrides: crate::image_gen::params_builder::ImageGenOverrides,
 }
@@ -1379,6 +1381,7 @@ struct GenerateBody {
 fn parse_generate_body(
     prompt: Option<&Value>,
     profile_id: Option<&Value>,
+    chat_id: Option<&Value>,
     tags: Option<&Value>,
     options: Option<&Value>,
 ) -> Result<GenerateBody, Response> {
@@ -1394,6 +1397,19 @@ fn parse_generate_body(
         .filter(|s| is_zod_uuid(s))
         .ok_or_else(bad)?
         .to_string();
+
+    // `chatId: z.uuid().optional()` (v4 bug 130) — the same uuid gate
+    // `profileId` uses, and `.optional()` rather than `.nullable()`, so an
+    // explicit `null` REFUSES exactly as `tags`/`options` do.
+    let chat_id = match chat_id {
+        None => None,
+        Some(v) => Some(
+            v.as_str()
+                .filter(|s| is_zod_uuid(s))
+                .ok_or_else(bad)?
+                .to_string(),
+        ),
+    };
 
     // The same `{tagType: enum, tagId: string}` array `importFromUrlSchema`
     // carries — and, like it, `.optional()` so an explicit null refuses. The
@@ -1458,6 +1474,7 @@ fn parse_generate_body(
         prompt,
         profile_id,
         tags,
+        chat_id,
         overrides,
     })
 }
@@ -1523,6 +1540,7 @@ pub async fn images_generate(
     now_ms: i64,
     prompt_raw: Option<&Value>,
     profile_id_raw: Option<&Value>,
+    chat_id_raw: Option<&Value>,
     tags_raw: Option<&Value>,
     options_raw: Option<&Value>,
 ) -> Response {
@@ -1535,6 +1553,7 @@ pub async fn images_generate(
             now_ms,
             prompt_raw,
             profile_id_raw,
+            chat_id_raw,
             tags_raw,
             options_raw,
         ),
@@ -1550,10 +1569,17 @@ async fn run_images_generate(
     now_ms: i64,
     prompt_raw: Option<&Value>,
     profile_id_raw: Option<&Value>,
+    chat_id_raw: Option<&Value>,
     tags_raw: Option<&Value>,
     options_raw: Option<&Value>,
 ) -> Response {
-    let body = match parse_generate_body(prompt_raw, profile_id_raw, tags_raw, options_raw) {
+    let body = match parse_generate_body(
+        prompt_raw,
+        profile_id_raw,
+        chat_id_raw,
+        tags_raw,
+        options_raw,
+    ) {
         Ok(b) => b,
         Err(r) => return r,
     };
@@ -1740,8 +1766,15 @@ async fn run_images_generate(
         Err(_) => return internal_error(),
     };
 
-    // ── store each image (route.ts:300-388) ─────────────────────────────────
-    let linked_to: Vec<String> = body
+    // ── store each image (route.ts:304-318) ─────────────────────────────────
+    // Build `linkedTo` from the tags plus the chat that asked for the image.
+    // DEDUPED (v4 bug 130's `Array.from(new Set([...]))`, FIRST-wins): a caller
+    // passing both a CHAT tag and `chatId` must not link the same id twice,
+    // which would double every inherited tag downstream.
+    let mut linked_to: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let tag_count = body.tags.as_ref().map(Vec::len).unwrap_or(0);
+    for id in body
         .tags
         .as_ref()
         .map(|ts| {
@@ -1752,9 +1785,23 @@ async fn run_images_generate(
                         .unwrap_or_default()
                         .to_string()
                 })
-                .collect()
+                .collect::<Vec<_>>()
         })
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .chain(body.chat_id.clone())
+    {
+        if seen.insert(id.clone()) {
+            linked_to.push(id);
+        }
+    }
+    tracing::debug!(
+        profile_id = %body.profile_id,
+        chat_id = ?body.chat_id,
+        tag_count,
+        linked_to_count = linked_to.len(),
+        "[Images v1] Generate: resolved linkedTo"
+    );
 
     let mut prepared: Vec<PreparedGeneratedImage> = Vec::with_capacity(response.images.len());
     for (index, image) in response.images.iter().enumerate() {

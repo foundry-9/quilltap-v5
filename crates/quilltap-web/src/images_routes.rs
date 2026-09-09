@@ -238,23 +238,27 @@ pub async fn images_post(
 /// 500 the middleware's final arm answers. The upload/import fall-through's
 /// content-type dispatch is reached only when the action is NOT `generate`.
 ///
-/// The four body keys cross RAW: v4 Zod-parses them in the handler, so the
+/// The five body keys cross RAW: v4 Zod-parses them in the handler, so the
 /// refusals answer identical bytes on this transport and on Tauri IPC.
 async fn images_generate(state: SharedState, req: axum::extract::Request) -> AxumResponse {
     let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
-    let (prompt, profile_id, tags, options) = match serde_json::from_slice::<Value>(&body) {
+    let (prompt, profile_id, chat_id, tags, options) = match serde_json::from_slice::<Value>(&body)
+    {
         Ok(Value::Object(map)) => (
             map.get("prompt").cloned(),
             map.get("profileId").cloned(),
+            // v4 bug 130 — without this the field never arrives and the route
+            // leg of the differential is vacuously green.
+            map.get("chatId").cloned(),
             map.get("tags").cloned(),
             map.get("options").cloned(),
         ),
         // A body that PARSES but is not an object still reaches v4's Zod parse,
         // which refuses it — the handler answers that, not the edge.
-        Ok(_) => (None, None, None, None),
+        Ok(_) => (None, None, None, None, None),
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
     match dispatch_core(
@@ -262,6 +266,7 @@ async fn images_generate(state: SharedState, req: axum::extract::Request) -> Axu
         CoreRequest::ImagesGenerate {
             prompt,
             profile_id,
+            chat_id,
             tags,
             options,
         },

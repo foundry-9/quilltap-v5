@@ -117939,3 +117939,33 @@ anyway.
 |---|---|---|
 | M10 | `wants_attachment` returns `false` always | RED — `binary_routes.rs:333` |
 | M11 | the blobs route hardcodes `Disposition::Inline` | RED — `binary_routes.rs:409` |
+
+### Lane record — P4.D174 unit 5 (v4 bug 130 — `chatId` on the images collection route)
+
+The order's warning held: **`images_routes.rs` forwarded only four body keys**,
+and the differential drives `api::images::images_generate` DIRECTLY, so without
+the edge fix the whole corpus would have been vacuously green. The edge arm's
+discriminator is the handler's own `z.uuid()` refusal — a malformed `chatId`
+can only produce a 400 if it ARRIVED — which is the cheapest thing that cannot
+pass on a dropped key.
+
+Measured at the pin: the `chatId` gate is the same `z.uuid()` `profileId` uses,
+and `.optional()` (not `.nullable()`), so an explicit `null` is
+`Invalid input: expected string, received null`. Both refusals answer v4's
+`Validation error` 400; v5 does not carry the `details` array (the standing
+project-wide omission this family already records).
+
+`chatId` names nothing in particular — the schema is `z.uuid()` and `linkedTo`
+is a bare id array — so the corpus uses a fresh uuid rather than one of the
+images fixture's, and the `Set` fold is measured by passing the SAME id as a
+CHAT tag. The oracle's answer:
+`["c7000000-…-0000000000c7","ee000000-…-000000000001"]`, the chat id once.
+
+| # | mutation | result |
+|---|---|---|
+| M7 | `chat_id` never reaches the fold | RED — `images_generate_route_equivalence` |
+| M8 | the fold is not deduped | RED — `images_generate_route_equivalence` |
+| M9 | the web edge drops `chatId` | RED — `images_edge_routes` |
+
+Regen: `images-generate-route` at the `78b381a96` pin — 41 rows, the four new
+ones present (`grep -c "generate_.*chat_id" → 4`).

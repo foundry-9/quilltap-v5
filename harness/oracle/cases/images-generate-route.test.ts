@@ -78,6 +78,11 @@ const PROFILE_NOIMAGE = 'aaaa0000-0000-4000-8000-000000000003'; // OLLAMA, no im
 const MISSING_PROFILE = 'aaaa0000-0000-4000-8000-0000000000ff';
 const CHAR_TAG = 'c1000000-0000-4000-8000-000000000003';
 const THEME_TAG = 'ee000000-0000-4000-8000-000000000001';
+// v4 bug 130's `chatId`. Nothing validates that it NAMES a chat — the schema is
+// `z.uuid()` and `linkedTo` is a bare id array — so this is a fresh uuid rather
+// than one of the fixture's, and the `Set` fold is measured by passing the SAME
+// id as a CHAT tag.
+const CHAT_ID = 'c7000000-0000-4000-8000-0000000000c7';
 
 /** A real 1x1 PNG — sharp must decode it for the transcode arm to mean anything. */
 const PNG_1X1 = Buffer.from(
@@ -339,6 +344,37 @@ function buildCases(): CaseSpec[] {
         tags: [{ tagId: CHAR_TAG, tagType: 'CHARACTER', extra: 1 }, { tagType: 'THEME', tagId: THEME_TAG }],
       },
     },
+    // ── v4 bug 130 (`86d59660c`): `chatId` folds into `linkedTo` ────────────
+    // The chat that asked for the image, linked so a chat-scoped read
+    // (`files.findByLinkedTo`) — the chat file listing, the chat gallery, the
+    // stale-chat collapse sweep — can see it.
+    {
+      name: 'generate_with_chat_id',
+      body: { prompt, profileId: PROFILE_MAIN, chatId: CHAT_ID },
+    },
+    // The `Set` is FIRST-WINS: a caller passing both a CHAT tag and `chatId`
+    // links the id ONCE, not twice — which would double every inherited tag
+    // downstream.
+    {
+      name: 'generate_chat_id_and_chat_tag',
+      body: {
+        prompt,
+        profileId: PROFILE_MAIN,
+        chatId: CHAT_ID,
+        tags: [{ tagType: 'CHAT', tagId: CHAT_ID }, { tagType: 'THEME', tagId: THEME_TAG }],
+      },
+    },
+    // `z.uuid()`, so a non-uuid is v4's `Validation error` 400 — and
+    // `.optional()` rather than `.nullable()`, so an explicit null refuses too.
+    {
+      name: 'generate_chat_id_not_uuid',
+      body: { prompt, profileId: PROFILE_MAIN, chatId: 'not-a-uuid' },
+    },
+    {
+      name: 'generate_chat_id_null',
+      body: { prompt, profileId: PROFILE_MAIN, chatId: null },
+    },
+
     // A PNG from the provider: `convertToWebP` transcodes, so only the POLICY
     // (the stored mime) is comparable — the bytes are sharp's on one side and
     // the harness codec's on the other (D19).

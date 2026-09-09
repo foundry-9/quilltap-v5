@@ -3450,6 +3450,12 @@ pub enum Request {
         prompt: Option<serde_json::Value>,
         #[serde(default)]
         profile_id: Option<serde_json::Value>,
+        /// v4 bug 130 (`86d59660c`): the chat that asked for the image, when
+        /// one did — folded into the new file's `linkedTo` beside the tag ids
+        /// so a chat-scoped read (`files.findByLinkedTo`) can see it. Crosses
+        /// RAW like its four siblings; the handler Zod-parses it.
+        #[serde(default)]
+        chat_id: Option<serde_json::Value>,
         #[serde(default)]
         tags: Option<serde_json::Value>,
         #[serde(default)]
