@@ -118268,3 +118268,43 @@ this order remains OPEN.**
    proactively before the final gate of any lane that bumps several crates
    several times — the alternative is an `os error 28` that reads like a port
    defect.
+
+#### The lane's verification gate — GREEN
+
+- `cargo fmt --all --check` → **0**.
+- `cargo clippy --workspace --all-targets -- -D warnings` → **0**;
+  with `--features quilltap-core/native-transport` → **0**. (Exit codes read
+  directly, never after a pipe — `gate-exit-code-after-a-pipe`.)
+- `cargo build --workspace --release` → **0**.
+- `cargo test --workspace` with the lane's fourteen-variable env block and
+  `QT_V4_ROOT` at the `25f534c0b` pin (per §R.3 — `qtap_schema_embed_guard` is
+  red against anything newer until P4.D171 lands its re-vendor):
+  **543 test binaries / 3,075 passed / 0 failed / 1 ignored, exit 0, and ZERO
+  `SKIP:` lines in the whole log.**
+- **Every family this lane moves confirmed RUN by name and duration**, not
+  inferred from silence:
+
+  | family | result |
+  |---|---|
+  | `realtime_topics_equivalence` | ok, 1 passed |
+  | `realtime_publish_sites_guard` | ok, 1 passed |
+  | `photo_tools_equivalence` | ok, 1 passed (0.13 s) |
+  | `avatar_job_tier3_equivalence` | ok, 2 passed (0.30 s) |
+  | `story_background_job_tier3_equivalence` | ok, 2 passed (0.49 s) |
+  | `image_generation_tier3_equivalence` | ok, 1 passed (0.24 s) |
+  | `generated_image_placeholder_heal_equivalence` | ok, 1 passed |
+  | `help_tree_equivalence` | ok, 1 passed (1.21 s) |
+  | `help_tree_embed_guard` | ok, 1 passed |
+  | `help_web_routes` | ok, 1 passed (2.09 s) |
+  | `host_help_docs_boot` | ok, 2 passed (3.07 s) |
+  | `host_generated_image_placeholder_heal` | ok, 2 passed (1.58 s) |
+
+- Ownership honoured: `git diff main -- apps/web/` EMPTY, `git diff main --
+  docs/v4/` EMPTY, and every file on the "must not touch" list measured at
+  **zero** changed lines (`api/chat_media.rs`, `api/memories.rs`,
+  `api/wardrobe.rs`, `photos/auto_describe_attachment.rs`,
+  `services/file_fallback.rs`, `services/image_job_storage.rs`,
+  `db/doc_mount_file_links.rs`, `tools/definitions/data.rs`).
+- Final versions: **core 0.0.860, harness 0.0.753, host 0.0.119**;
+  `quilltap-web` untouched (the order predicted it might move — measured, it
+  did not: `help_web_routes` DERIVES its count and no web test moved).
