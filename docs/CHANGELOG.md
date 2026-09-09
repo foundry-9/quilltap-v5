@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — fix(realtime): announce the Commonplace Book — bug 128's `memories` topic (v4 `4a9be9878`)
+
+_Versions: core 0.0.858, harness 0.0.750._
+
+Nothing announced a memory landing, so a Salon's memory count — and the
+destructive button it labels — sat at whatever was true when the tab opened.
+v4 fixes it with a seventh realtime topic; this is its server half.
+
+`memories` joins `REALTIME_TOPICS` last (v4's declaration order). The four
+chat-scoped memory job types — `MEMORY_EXTRACTION`, `INTER_CHARACTER_MEMORY`,
+`CARINA_MEMORY_EXTRACTION`, `MEMORY_REGENERATE_CHAT` — publish it scoped to
+the `chatId` on their payload, degrading to a collection-wide hint when that
+id cannot be read; `MEMORY_HOUSEKEEPING` is character-scoped and so publishes
+collection-wide by necessity; `MEMORY_REGENERATE_ALL` gets no arm.
+
+Two things stay deliberately absent. `REPOSITORY_TOPICS` gains no `memories`
+row, because `extract_topic_id` takes a positional first argument whenever it
+is a string and would hand back `memories.delete(memoryId)`'s MEMORY id under
+a topic every subscriber filters by CHAT id — a hint that reaches nobody. And
+the by-chat delete route publishes nothing of its own: v4's PR added that
+publish in its first commit and removed it in its second, since the gate
+already announces collection-wide and a second hint would fire on the one
+case the gate is right to stay silent for.
+
+The deletes announce from the repository twins of v4's memory gate
+(`delete_with_unlink` / `delete_many_with_unlink`) under v4's silence guards,
+which covers all eight callers by construction. Held by the existing
+`realtime_topics_equivalence` tier-1 differential — ten rows flipped red
+against the unedited tree at the `78b381a96` pin, plus a new negative row for
+the write-batch leg — by two `realtime_publish_sites_guard` census rows, and
+by six wiring pins driving the real route over a provisioned partition.
+`HintCapture` grew `arm_writer_thread`, because a repository publish only ever
+runs on the write pool's own OS thread.
+
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 
 _Docs-only change._

@@ -29,7 +29,7 @@
 //!
 //! ## Modules
 //!
-//! * [`types`] — the hint on the wire, and the six topics.
+//! * [`types`] — the hint on the wire, and the seven topics.
 //! * [`bus`] — the publish chokepoint and its 250 ms trailing-edge coalescing.
 //! * [`job_topics`] — the PURE job-type/write-batch → topic computation.
 

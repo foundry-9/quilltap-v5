@@ -71,6 +71,33 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          f3892158d-round unification: a fourth enqueue site neither lane's \
          survey table carried.",
     ),
+    (
+        "crates/quilltap-core/src/db/memories.rs",
+        "publish_realtime(RealtimeTopic::Memories, None);",
+        2,
+        "bug 128 (`4a9be9878`). v4 publishes `memories` from the memory GATE — \
+         `deleteMemoryWithUnlink` and `deleteMemoriesWithUnlinkBatch` — whose \
+         v5 twins are these two repository methods. Holding the count here is \
+         what makes the layering choice non-deletable: the eight callers reach \
+         the hint by construction. A THIRD site would mean someone re-added the \
+         route's publish; a FIRST would mean the silence guards (`if deleted` / \
+         `if deleted > 0`) were dropped.",
+    ),
+    (
+        "crates/quilltap-core/src/api/memories.rs",
+        "publish_realtime",
+        0,
+        "bug 128's other half. v4's PR ADDED a publish to `handleDeleteByChatId` \
+         in its first commit and REMOVED it in the second (`ba89e0caa`) as \
+         redundant-and-wrong: the gate already announces `memories` \
+         collection-wide, which a chat-scoped subscriber takes (the client's id \
+         filter only discards an event naming a DIFFERENT id), so a second hint \
+         costs every subscriber a duplicate refetch — and would fire on the one \
+         case the gate is right to stay silent for, a chat with nothing to \
+         delete. `git show 4a9be9878` is the NET, and the net is ZERO publishes \
+         in this file. The behavioural half is \
+         `realtime::publish_sites::memory_gate_tests`.",
+    ),
 ];
 
 fn repo_root() -> PathBuf {

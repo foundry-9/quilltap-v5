@@ -117668,3 +117668,147 @@ Friday copy, the report on a real turn and in a greeting, the Workbench
 on the live lock, and — human-only — a hostname flip under a running host);
 the recorded candidates above. Bug 127's divergence note in
 `progressions-section.spec.ts` is now a CONVERGENCE site for the next round.
+
+---
+
+## P4.D175 — bugs 128/132, the `help/**` re-vendor, and the six rider ratifications (v4 `78b381a96`)
+
+Lane branch `claude/p4-d175-vendor-riders-bugs-f3a764`, opened 2026-09-09 from
+`main`. Pins: `/tmp/qt-v4-pin-p4d175-78b381a96` (the catch-up target) and
+`/tmp/qt-v4-pin-p4d175-25f534c0b` (neutrality). Both verified by marker
+(`lib/photos/chat-gallery.ts`, `lib/chat/turn-manager/cycle-order.ts` and
+`help/chat-gallery.md` present only at the tip; `'memories'` in
+`lib/schemas/realtime.types.ts` only at the tip; `help/` 123 vs 122).
+
+### §0 The lane-start freshness probe — PASSED under §R.2's pre-authorized exception, with one measured deviation
+
+The probe found the checkout on `main`, tree **CLEAN**, `1a2b2164c..bugfix`
+EMPTY, and **exactly one** commit past `78b381a96`: **`cc65d6bfc`** "Fix bug
+133: a moderated chat's story background could escalate to the uncensored
+provider" (2026-09-09 15:51 -0500) — the commit §R.2 pre-authorized by name.
+
+**Deviation, measured not assumed:** the exception's wording says "the
+recorded nine files"; `cc65d6bfc --stat` is **thirteen**. The nine predicted
+files are all present (`story-background.ts`, `appearance-resolution.ts`,
+`image-generation-handler.ts`, `help/dangerous-content.md`, the two unit
+tests, the CHANGELOG, `bugs.md`, and `bugs/fixed/bug-133-moderated-chat-image-
+escalation.md` — at the `fixed/` path, as predicted). The extra four were
+measured before proceeding and are **version-bump-only**, `4.10.0-dev.21` →
+`4.10.0-dev.22`, across the README badge, `package.json`,
+`packages/quilltap/package.json` and the lock's two lines — the `d3f0ed133`
+rider class exactly, with no ported comparand. The lane therefore PROCEEDED on
+its `78b381a96` pin.
+
+**For the next `/driftcheck`: `cc65d6bfc` is the next round's first drift row,
+class PORT.** It re-opens `services/story_background_job.rs` (this lane's
+bug-132 writer 1) and **`help/dangerous-content.md` — one of this lane's
+eleven re-vendored files, edited again**. This lane re-vendors at
+`78b381a96`; the bug-133 help edit is unabsorbed by design.
+
+### Unit 1 — bug 128's server half (v4 `4a9be9878`, the NET of a two-commit squash)
+
+**RED FIRST, before any source edit.** The oracle was regenerated from the tip
+pin against the unedited tree and `realtime_topics_equivalence` failed on
+**exactly ten rows** — the five chat-scoped/housekeeping job types × the
+full-payload and no-payload legs:
+
+```
+completed_full_MEMORY_EXTRACTION        completed_nopayload_MEMORY_EXTRACTION
+completed_full_INTER_CHARACTER_MEMORY   completed_nopayload_INTER_CHARACTER_MEMORY
+completed_full_MEMORY_HOUSEKEEPING      completed_nopayload_MEMORY_HOUSEKEEPING
+completed_full_MEMORY_REGENERATE_CHAT   completed_nopayload_MEMORY_REGENERATE_CHAT
+completed_full_CARINA_MEMORY_EXTRACTION completed_nopayload_CARINA_MEMORY_EXTRACTION
+```
+
+Every one `rust: []` against `oracle: [{"topic":"memories",…}]`. The order
+predicted ten with zero corpus edits; ten is what the pin produced.
+
+What landed: `RealtimeTopic::Memories` LAST in the enum, `REALTIME_TOPICS`
+`[; 6]` → `[; 7]`, the `as_str` arm, and the types test renamed
+`topics_are_v4s_six_in_order` → `…seven…`; the two
+`topics_for_completed_job` arms placed BETWEEN the five-way `chats` arm and
+`CONVERSATION_RENDER`, exactly v4's slot, sharing ONE return for the four
+chat-scoped types so a missing `chatId` degrades collection-wide through
+`str_field`; the `topic_id_fields` `Memories => &[]` arm carrying v4's comment
+verbatim; **no** `REPOSITORY_TOPICS` row; the two publishes in
+`db/memories.rs` under v4's `if deleted` / `if deleted > 0` guards.
+
+**The publish HOME was the order's design choice and the repository won it.**
+v4 publishes from the gate (`lib/memory/memory-gate.ts`), whose v5 twin is the
+repository method, and that placement makes all EIGHT callers correct by
+construction — `api/memories.rs:663`, `memory_service.rs:108`/`:203`,
+`character_archive/service.rs:1242`, `cascade_delete.rs:352`,
+`memory_dedup.rs:399`, `delete_all.rs:354`, `housekeeping.rs:504` (verified by
+grep, all eight reach one of the two twins).
+
+VERIFY-ONLY, both confirmed unmoved: `api/memories.rs::memory_delete_by_chat`
+publishes nothing, and `memory_service.rs:180-182`
+(`delete_memories_by_chat_id_with_vectors`) returns `Default` without calling
+the gate on an empty list — v4's `memory-service.ts:1619` twin, which is
+precisely the case commit 2 (`ba89e0caa`) removed the route publish for.
+
+**A new test seam, and why it was needed.** The repository layer only ever
+runs on the write pool's dedicated OS thread (`db/runtime.rs`'s
+`thread::Builder::spawn`), so a publish made there is invisible to
+`HintCapture`, which arms a THREAD-scoped bus by design (the global one is
+racy across ~1,800 concurrent tests and can panic a plain `#[test]` sibling —
+see `bus.rs`). `HintCapture::arm_writer_thread(&db)` sends one no-op write job
+that arms the same capture channel on that thread; the thread belongs to the
+test's own `Db` and dies with it, so nothing else can collect from it. The
+`BusSpawner` was already a captured `Handle` rather than bare `tokio::spawn`
+for exactly this scenario.
+
+Six wiring pins in `realtime::publish_sites::memory_gate_tests`, the last two
+driving the REAL route over a REAL `provision_fresh_instance` main partition
+(the ownership check needs the whole `chats` table, and a reduced hand-rolled
+one would also collide with the `chats` DDL P4.D171 is moving this round):
+one delete announces; an already-gone memory announces nothing; a batch
+announces once; an empty list and a list matching nothing announce nothing;
+the route announces exactly once from the gate; and a chat with no memories
+announces nothing at all.
+
+Corpus: `harness/oracle/cases/realtime-topics.ts` gained v4's own negative row
+(`batch_memories_delete_derives_no_hint`, `memories.delete` with a positional
+memory id → `[]`), 73 → 74 rows. Census:
+`realtime_publish_sites_guard` gained two rows — `db/memories.rs` at **2** and
+`api/memories.rs` at **0**.
+
+**Mutations (four, each reddening exactly its pin, reverted by file backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| A | a `("memories", RealtimeTopic::Memories)` row in `REPOSITORY_TOPICS` | `realtime_topics_equivalence` → `batch_memories_delete_derives_no_hint` ONLY |
+| B | re-add the route's publish in `memory_delete_by_chat` | the `api/memories.rs` census row (1 ≠ 0) AND both route wiring pins |
+| C | drop both silence guards (`if deleted` / `if deleted > 0`) | `a_batch_that_deletes_nothing_announces_nothing` |
+| D | publish before `delete_with_unlink`'s already-gone early return | `deleting_an_already_gone_memory_announces_nothing` |
+
+**Measured, and recorded rather than chased:** mutation C did NOT red the
+single-delete pin, because `if deleted` at the end of `delete_with_unlink` is
+**unreachable in v4 as in v5** — both return early when the row is missing
+(`findById` / `row_exists`), so the only way past it is a `delete` that
+returns false for a row that exists. The guard is kept for fidelity; what
+actually holds the single-delete silence is the early return, which mutation D
+pins.
+
+**Deferred loud (not this order's mandate, recorded in the source at
+`db/memories.rs`):** `4a9be9878` also adds `logger.debug('[MemoryGate]
+deleteMemoryWithUnlink complete', logFields)`, its batch twin, and
+`handleDeleteByChatId`'s `[Memories API] Deleted every memory for a chat`.
+**v5 carries none of them — nor the two `…touched an unusually large
+neighbour set` WARNS that predate this commit, nor v4's `logFields`**
+(`memoryId`, `neighbourCount`, `charactersAffected`, `durationMs`). That is a
+PRE-EXISTING four-line gap in the memory-gate port which this commit widens to
+five — the finding-#103/#110/#116 class. Closing it wants its own unit: a
+clock inside a repository method plus a capture-layer pin per line. **Spotted,
+not mine.**
+
+Regen recipe (unchanged from the family's committed header; run through the
+sweep driver at the pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run realtime_topics_equivalence
+```
+
+Markers after the regen: `grep -c '"topic":"memories"'` = **10**;
+`grep -c batch_memories_delete_derives_no_hint` = **1**; 74 lines.

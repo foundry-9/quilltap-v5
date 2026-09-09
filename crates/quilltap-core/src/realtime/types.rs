@@ -25,16 +25,21 @@ pub enum RealtimeTopic {
     Characters,
     /// Document stores and their indexing/embedding status.
     MountPoints,
+    /// The Commonplace Book's rows. Scoped by *chat* id rather than by memory
+    /// id — the count beside a Salon's Delete Memories button is what watches
+    /// this, and a memory's own id would mean nothing to it.
+    Memories,
 }
 
 /// Every topic, in v4's declaration order.
-pub const REALTIME_TOPICS: [RealtimeTopic; 6] = [
+pub const REALTIME_TOPICS: [RealtimeTopic; 7] = [
     RealtimeTopic::Jobs,
     RealtimeTopic::AutonomousRooms,
     RealtimeTopic::Chats,
     RealtimeTopic::Projects,
     RealtimeTopic::Characters,
     RealtimeTopic::MountPoints,
+    RealtimeTopic::Memories,
 ];
 
 impl RealtimeTopic {
@@ -47,6 +52,7 @@ impl RealtimeTopic {
             RealtimeTopic::Projects => "projects",
             RealtimeTopic::Characters => "characters",
             RealtimeTopic::MountPoints => "mountPoints",
+            RealtimeTopic::Memories => "memories",
         }
     }
 }
@@ -94,7 +100,9 @@ mod tests {
     use crate::api::types::{Event, EventPayload};
 
     #[test]
-    fn topics_are_v4s_six_in_order() {
+    fn topics_are_v4s_seven_in_order() {
+        // `memories` is LAST: bug 128 (`4a9be9878`) appended it, and the order
+        // is v4's declaration order in `REALTIME_TOPICS`.
         assert_eq!(
             REALTIME_TOPICS.map(RealtimeTopic::as_str).to_vec(),
             vec![
@@ -103,7 +111,8 @@ mod tests {
                 "chats",
                 "projects",
                 "characters",
-                "mountPoints"
+                "mountPoints",
+                "memories"
             ]
         );
     }

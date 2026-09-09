@@ -45,6 +45,8 @@ use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::clock::now_iso;
 use crate::embedding_blob::float32_to_blob;
+use crate::realtime::bus::publish_realtime;
+use crate::realtime::types::RealtimeTopic;
 
 /// Create fields — the post-Zod `Omit<Memory,'id'|'createdAt'|'updatedAt'>` shape
 /// (defaults already materialized by the caller, mirroring v4's `_create` which
@@ -561,7 +563,34 @@ impl<'c> MemoriesRepository<'c> {
             };
             self.update_for_character(&character_id, &id, &patch)?;
         }
-        self.delete(memory_id)
+        let deleted = self.delete(memory_id)?;
+
+        // Bug 128 (`4a9be9878`). Collection-wide: this takes a memory id, not a
+        // chat id, so there is no narrower hint to give. A no-op from the job
+        // child by design — the parent chokepoints announce a child's deletions.
+        //
+        // ⚠ **Deferred loud, and NOT this order's mandate:** `4a9be9878` also
+        // added `logger.debug('[MemoryGate] deleteMemoryWithUnlink complete',
+        // logFields)` here and a twin in the batch method. v5 carries NEITHER —
+        // nor the two `…touched an unusually large neighbour set` WARNS that
+        // predate this commit, nor v4's `logFields` (`memoryId`,
+        // `neighbourCount`, `charactersAffected`, `durationMs`), nor
+        // `handleDeleteByChatId`'s new `[Memories API] Deleted every memory for
+        // a chat`. That is a PRE-EXISTING four-line gap in the memory-gate port
+        // which this commit widens to five — the finding-#103/#110/#116 class —
+        // and closing it wants its own unit: a clock inside a repository method
+        // and a capture-layer pin per line. Recorded in the lane record.
+        //
+        // v4 publishes from the GATE (`lib/memory/memory-gate.ts`), whose v5
+        // twin is this repo method, so every one of the eight callers
+        // (`api/memories.rs`, `memory_service` ×2, `character_archive::service`,
+        // `cascade_delete`, `memory_dedup`, `delete_all`, `housekeeping`) is
+        // covered by construction — including the by-chat delete route, which
+        // deliberately publishes NOTHING of its own.
+        if deleted {
+            publish_realtime(RealtimeTopic::Memories, None);
+        }
+        Ok(deleted)
     }
 
     /// v4's `deleteMemoriesWithUnlinkBatch` — the cascade chokepoint. Scans every
@@ -633,6 +662,12 @@ impl<'c> MemoriesRepository<'c> {
         let mut deleted = 0i64;
         for (character_id, ids) in by_character {
             deleted += self.bulk_delete(&character_id, &ids)?;
+        }
+
+        // Bug 128: collection-wide for the same reason as the single-id path,
+        // and doubly so — a batch can span several chats.
+        if deleted > 0 {
+            publish_realtime(RealtimeTopic::Memories, None);
         }
         Ok(deleted)
     }
