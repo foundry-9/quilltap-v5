@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — chore(help): re-vendor the help tree at v4 `78b381a96` (122 → 123)
+
+_Versions: harness 0.0.753, host 0.0.119._
+
+`help/**` is a vendored v5 artifact, so every v4 commit that touches it is a
+re-vendor obligation. Across the round's twelve commits eleven files moved:
+`help/chat-gallery.md` is new (the Salon chat gallery's page, which rides this
+lane rather than the gallery lanes — one sha, one regen, one count bump), and
+ten were edited by the route trail, the turn manager's drawn rotation, the
+`memories` topic, bug 132 and the progressions fix.
+
+Copied byte-for-byte from a worktree pinned at `78b381a96`; the whole tree is
+`diff -rq`-identical to that pin. The count literals moved to 123 in
+`help_tree_embed_guard` and `host_help_docs_boot`, and `help_content.rs`'s doc
+comment — which had carried a stale `120` from `d883a5ee1` through three
+re-vendors, exactly the failure mode
+`a-vendored-count-is-hard-coded-in-several-crates` names — now says the count
+is derived and points at the one literal instead of restating it.
+
 #### 2026-09-09 — fix(boot): clear the placeholder descriptions bug 132 already wrote (v4 `78b381a96`)
 
 _Versions: core 0.0.860, harness 0.0.752, host 0.0.118._

@@ -118027,3 +118027,51 @@ python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
 
 Markers after the regen: 11 lines; `grep -c 'outfit preview'` = 1;
 `grep -c 'mount index not inspected'` = 2.
+
+### Unit 5 — the `help/**` re-vendor at `78b381a96` (122 → 123)
+
+Taken by `cp` from `/tmp/qt-v4-pin-p4d175-78b381a96/help/`, never by hand.
+Before: `diff -rq help/ <25f534c0b pin>/help/` reported IDENTICAL, so the tree
+was provably at the old pin. After the eleven copies:
+`diff -rq help/ <78b381a96 pin>/help/` reports IDENTICAL, 123 files.
+
+The eleven: `chat-gallery.md` (**NEW** — the Salon chat gallery's page, riding
+this lane rather than P4.D174/P4.D176 per §R.7: one lane, one sha, one
+`help_tree_equivalence` regen, one count bump), plus
+`character-progressions.md`, `chat-message-actions.md`,
+`chat-multi-character.md`, `chat-participants.md`, `chat-turn-manager.md`,
+`chats.md`, `connection-profiles.md`, `dangerous-content.md`,
+`keep-image-tools.md`, `photo-gallery.md`.
+
+**Both halves recorded, as the order asks:**
+
+- `help_tree_equivalence` RED against the `25f534c0b` pin — exit 101,
+  `assertion left == right failed: embedded file count vs the oracle's synced
+  count`. The re-vendor is therefore measured, not asserted.
+- GREEN against the `78b381a96` pin, with `chat-gallery` present in the fresh
+  NDJSON.
+
+Count literals: `help_tree_embed_guard.rs:29` 122 → **123** (its docblock now
+carries the four-pin history), `host_help_docs_boot.rs:88` likewise (the SECOND
+home, in another crate — only a `--workspace` run reaches it). Also fixed:
+`quilltap-host/src/help_content.rs`'s doc comment, which had said **120** since
+`d883a5ee1` and survived THREE re-vendors — it now states that the count is
+derived and names `help_tree_embed_guard` as the only literal, rather than
+restating a number that will go stale again.
+
+Re-vendor-SENSITIVE families, all green after the bump: `help_tree_equivalence`
+(regenerated at the tip), `help_tree_embed_guard` (disk/compile pin),
+`help_web_routes` (derives the count — unmoved, by design). The
+re-vendor-INSENSITIVE families (`help_doc_ensure`, `help_doc_sync`,
+`help_doc_sync_guards`, `embedding_remainder`) build synthetic trees and are
+unaffected; they carry no count literal.
+
+The host embed is a build-script `include!`, so `quilltap-host` is bumped for
+the rebuild even though no host source line changed.
+
+Regen recipe (the sweep driver, at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run help_tree_equivalence
+```

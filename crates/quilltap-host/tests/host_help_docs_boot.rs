@@ -79,13 +79,14 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     provision_fresh_instance(&data, PEPPER).expect("provision");
 
     let expected = embedded_help_count() as i64;
-    // 122 since the P4.D168 re-vendor at v4 `25f534c0b` added
-    // `help/character-progressions.md` (121 at `2f4254b42` after P4.D163's
+    // 123 since the P4.D175 re-vendor at v4 `78b381a96` added
+    // `help/chat-gallery.md` (122 at `25f534c0b` after P4.D168's
+    // `help/character-progressions.md`; 121 at `2f4254b42` after P4.D163's
     // `help/character-subprompts.md`; 120 at `d883a5ee1`). The harness's
     // `help_tree_embed_guard` pins the same count against the on-disk tree —
     // this assert is the SECOND home of it, in another crate, which only a
     // `--workspace` run reaches.
-    assert_eq!(expected, 122, "the vendored tree at v4 25f534c0b");
+    assert_eq!(expected, 123, "the vendored tree at v4 78b381a96");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();
