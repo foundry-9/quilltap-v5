@@ -145,6 +145,59 @@ async function main(): Promise<void> {
     await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/scene.md`, composeSubpromptContent('Mind the scene', 'The scene is: [{{scenario}}]. Persona: [{{persona}}].'));
   }
 
+  // [P4.D168 / v4 `25f534c0b`] Sam's vault carries progressions. Sam, not Aria:
+  // Sam is only ever the USER character in the pre-existing cases, never the
+  // greeted one, so every one of those rows stays byte-identical and the new
+  // `sam_*` cases are the only place the forced section appears.
+  //
+  // Instants are anchored on the case's frozen clock, 1718452800000 =
+  // 2024-06-15T12:00:00Z.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const raw = await repos.characters.findByIdRaw(spec.samId);
+    const vault = raw?.characterDocumentMountPointId as string | null;
+    if (!vault) throw new Error('Sam has no vault');
+    await writeDatabaseDocument(
+      vault,
+      'metadata.json',
+      JSON.stringify(
+        {
+          faction: 'The Harbour Watch',
+          progressions: {
+            // Active mid-span: the ordinary in-progress line.
+            recharge: {
+              name: 'Lantern recharge',
+              startTime: '2024-06-15T11:58:00Z',
+              endTime: '2024-06-15T12:08:00Z',
+              timeIncrement: 'minute',
+            },
+            // Complete and `once`. It still appears in the greeting — MEASURED:
+            // by rule 1 (no last turn ⇒ report everything), not by the `force`
+            // flag, which is inert at this call site because the greeting passes
+            // no event loader. What its presence proves is that the opener
+            // reports unconditionally, silencing nothing.
+            oath: {
+              name: 'The oath',
+              startTime: '2024-06-14T00:00:00Z',
+              endTime: '2024-06-14T12:00:00Z',
+              timeIncrement: 'day',
+              onComplete: 'once',
+            },
+            // Refused by the schema: dropped, siblings survive.
+            broken: {
+              name: 'Broken',
+              startTime: '2024-06-15T11:58:00Z',
+              endTime: '2024-06-15T11:58:00Z',
+              timeIncrement: 'minute',
+            },
+          },
+        },
+        null,
+        2
+      )
+    );
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

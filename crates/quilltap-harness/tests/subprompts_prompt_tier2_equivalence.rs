@@ -107,7 +107,7 @@ fn greeting(
 ) -> Value {
     let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
     let subprompts = resolve_selected_subprompts(main, mount, a, &ids);
-    let ctx = build_chat_context(main, mount, a, None, scenario, None, Some(&subprompts))
+    let ctx = build_chat_context(main, mount, a, None, scenario, None, Some(&subprompts), 0)
         .expect("buildChatContext");
     json!({ "systemPrompt": ctx.system_prompt, "firstMessage": ctx.first_message })
 }

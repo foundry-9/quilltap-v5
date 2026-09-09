@@ -116,6 +116,32 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — feat(progressions): the greeting's forced report
+
+_Versions: core 0.0.850, harness 0.0.740._
+
+`build_system_prompt` in `chat_initialize` now appends the progressions section
+after the `## Additional Instructions` block and before `You are roleplaying
+as`, so an opener knows what its character is carrying. The report is asked for
+forced: a greeting has no turn history to derive a cadence from.
+
+v4 made its builder `async` for this; v5's stays synchronous, because a forced
+build never reads events. The wall clock arrives as a parameter rather than a
+`Date.now()` — `build_chat_context` and `build_system_prompt` both take
+`now_ms`, and `chat_create` passes the same injected clock it mints every other
+value from. Without that the differential could not freeze the spans.
+
+This is the greeting's own flat builder, not the cached identity stack. A
+per-turn clock costs no cache here: the opener is composed once and never
+rebuilt. Everywhere else the report rides the uncached trailing tail.
+
+`chat_context_init_equivalence` grows three cases over a fixture where Sam
+carries progressions and Aria carries none — Sam because he is only ever the
+USER character in the pre-existing cases, so their rows stay byte-identical.
+Both sides freeze the clock to the same instant. The family is LIST-DRIVEN: a
+case added to the oracle alone is never run and the count guard still passes,
+which is how the first attempt at these three passed while measuring nothing.
+
 #### 2026-09-08 — feat(progressions): the turn reports a character's timed conditions
 
 _Versions: core 0.0.849, harness 0.0.739._

@@ -1382,6 +1382,9 @@ where
         resolved_scenario.as_deref(),
         built.first_selected_system_prompt_id.as_deref(),
         Some(&opener_subprompts),
+        // P4.D168: the greeting's FORCED progressions report rides the same
+        // injected clock every other minted value here does.
+        deps.now_ms,
     )?;
 
     let chat_settings = chat_settings::find_by_user_id(main, user_id)?;

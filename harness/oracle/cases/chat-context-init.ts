@@ -56,6 +56,26 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  // [P4.D168] Freeze the wall clock: the greeting's FORCED progressions report
+  // reads `Date.now()`, and the Rust side injects the same constant. Without
+  // this the elapsed/remaining spans differ on every run.
+  const FIXED_NOW_MS = 1718452800000; // 2024-06-15T12:00:00Z
+  const RealDate = Date;
+  const FakeDate = class extends RealDate {
+    constructor(...args: unknown[]) {
+      if (args.length === 0) {
+        super(FIXED_NOW_MS);
+      } else {
+        // @ts-expect-error variadic forwarding
+        super(...args);
+      }
+    }
+    static now(): number {
+      return FIXED_NOW_MS;
+    }
+  } as DateConstructor;
+  (global as { Date: DateConstructor }).Date = FakeDate;
+
   const { buildChatContext } = await import('@/lib/chat/initialize');
 
   await initializeDatabase();
@@ -80,6 +100,18 @@ async function main(): Promise<void> {
     { id: 'sp_dangling_only_renders_nothing', characterId: spec.ariaId, selectedSubpromptIds: ['gone'] },
     { id: 'sp_empty_renders_nothing', characterId: spec.ariaId, selectedSubpromptIds: [] },
     { id: 'sp_with_selected_prompt', characterId: spec.ariaId, selectedSystemPromptId: spec.ariaSp2, selectedSubpromptIds: ['terse'] },
+    // [P4.D168] Sam carries progressions; the greeting asks for the report
+    // FORCED and reports every entry it parses — the complete `once` one
+    // included — while the schema-refused entry is dropped and its siblings
+    // survive. (MEASURED: at this call site `force` is inert either way. The
+    // greeting passes no event loader, so `lastTurnMs` is null and rule 1
+    // reports everything regardless; a mutation flipping `force` to `false`
+    // stays green on BOTH sides. What these arms pin is that the opener reports
+    // unconditionally, and where the block lands in the prompt.)
+    { id: 'prog_forced_greeting', characterId: spec.samId },
+    { id: 'prog_forced_with_scenario', characterId: spec.samId, scenario: 'A misty harbor at dawn.' },
+    // Aria carries none: byte-identical to a pre-feature greeting.
+    { id: 'prog_absent_on_aria', characterId: spec.ariaId },
   ];
 
   const { resolveSelectedSubprompts } = await import('@/lib/subprompts/subprompts');

@@ -147,6 +147,7 @@ fn build_system_prompt(
     scenario: Option<&str>,
     selected_system_prompt_id: Option<&str>,
     subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
+    now_ms: i64,
 ) -> String {
     let character_name = s(character, "name").unwrap_or_default();
     let system_prompt_content =
@@ -205,6 +206,37 @@ fn build_system_prompt(
         prompt.push_str(&format!(
             "\n\n## Additional Instructions\nThe following also apply to you in this conversation.\n{rendered}"
         ));
+    }
+
+    // Character progressions — the timed conditions this character is carrying.
+    // The opener should know she is pregnant, so the report is FORCED here: a
+    // greeting has no turn history to derive a cadence from, and "report
+    // everything, once" is what `force` means to the engine.
+    //
+    // This is the greeting's OWN flat builder, not the cached identity stack, so
+    // a per-turn clock landing here costs no cache: the opener is composed once
+    // and never rebuilt. Anywhere else, progressions ride the uncached trailing
+    // tail — see `progressions::prompt_section`.
+    //
+    // v4 made `buildSystemPrompt` async for this (`initialize.ts:174`) purely
+    // because the chokepoint is; a FORCED build never reads events, so the
+    // synchronous call here is faithful and the clock is a parameter rather than
+    // a `Date.now()` the differential could not freeze.
+    let progressions_section = crate::progressions::prompt_section::build_progressions_section(
+        crate::progressions::prompt_section::BuildProgressionsSectionParams {
+            character: Some(crate::progressions::prompt_section::SectionCharacter {
+                id: s(character, "id").unwrap_or_default().as_str(),
+                metadata: character.get("metadata"),
+            }),
+            load_events: None,
+            responding_participant_id: None,
+            now_ms,
+            timezone: None,
+            force: true,
+        },
+    );
+    if !progressions_section.is_empty() {
+        prompt.push_str(&format!("\n\n{progressions_section}"));
     }
 
     prompt.push_str(&format!("\n\nYou are roleplaying as {character_name}."));
@@ -313,6 +345,8 @@ pub fn build_chat_context(
     custom_scenario: Option<&str>,
     selected_system_prompt_id: Option<&str>,
     subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
+    // The wall clock, injected — the greeting's FORCED progressions report.
+    now_ms: i64,
 ) -> Result<ChatContext, DbError> {
     let character = characters_read::find_by_id(main, mount, character_id)?
         .ok_or_else(|| DbError::Internal("Character not found".to_string()))?;
@@ -342,6 +376,7 @@ pub fn build_chat_context(
         scenario,
         selected_system_prompt_id,
         subprompts,
+        now_ms,
     );
 
     // First message: the processed character firstMessage (system prompt =
@@ -415,7 +450,7 @@ mod tests {
             "personality": "bold",
             "systemPrompts": [{"id": "a", "content": "Base.", "isDefault": true}]
         });
-        let prompt = build_system_prompt(&c, None, Some("A dark forest."), None, None);
+        let prompt = build_system_prompt(&c, None, Some("A dark forest."), None, None, 0);
         assert!(prompt.starts_with("Base.\n\nYou are roleplaying as Aria."));
         assert!(prompt.contains("\n\nCharacter Description:\nA brave knight"));
         assert!(prompt.contains("\n\nPersonality:\nbold"));
@@ -440,7 +475,7 @@ mod tests {
             manifesto: None,
             personality: Some("curious".into()),
         };
-        let prompt = build_system_prompt(&c, Some(&uc), None, None, None);
+        let prompt = build_system_prompt(&c, Some(&uc), None, None, None, 0);
         assert!(prompt.contains(
             "You are talking to Sam (also known as: Sammy, S) (pronouns: they/them/their)."
         ));
