@@ -22,78 +22,86 @@ probe verifies against._
 - **Oracle baseline: `2f4254b42`** — "feat: character subprompts — per-chat
   optional instructions from the vault" (v4 main, 2026-09-07 07:43 -0500,
   `4.10.0-dev.5`), adopted at the `2f4254b42` character-subprompts round
-  unification (P4.D163 → P4.D164 ∥ P4.D165 ∥ P4.9K1-resumed ∥
-  P4.9K2-resumed, 2026-09-07). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-08, the THIRD check that day. The first (morning) found
-  v4 at rest; the second caught character progressions; this one catches bug
-  126 on top of it.
-- **v4 `main` HEAD at check:** `25f534c0b` (2026-09-08 11:29 -0500,
-  `4.10.0-dev.9`) — **FOUR commits past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED, still carrying nothing
-  unabsorbed (the morning check proved its whole content delta against `main`
-  is textually the subprompts commit reversed; it is now additionally behind
-  by the four rows below). ⚠ zsh does not word-split, so a `$PATHS` variable
-  after `--` becomes ONE pathspec matching nothing and both sides of that
-  comparison come back EMPTY — spell the paths inline. That false "identical"
-  is indistinguishable from the real one.
+  unification (2026-09-07). CLAUDE.md's Status bullet agrees. **The
+  `25f534c0b` round's unification is IN PROGRESS and moves the baseline to
+  `25f534c0b` when it lands** — this check was run by that unification's own
+  §2 probe failing.
+- **Checked:** 2026-09-09, at the start of `/unify` for the `25f534c0b`
+  progressions + bug-126 round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥
+  P4.D170). Every lane had already finished; two lanes (P4.D168 at
+  `07eee4f4c`, P4.D169 at `c0f9232af`) saw the probe fail MID-LANE, STOPped
+  and reported as the round's rules require, and resumed under their
+  `25f534c0b` pins — so no unabsorbed drift reached any oracle.
+- **v4 `main` HEAD at check:** `d3f0ed133` (2026-09-09 00:05 -0500,
+  `4.10.0-dev.18`) — **THIRTEEN commits past the baseline: the round's four
+  (ORDERED, being unified) plus NINE that arrived during the round.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED. Its content delta
+  against `main` is still the subprompts commit reversed plus everything
+  below (it is simply behind); nothing unabsorbed lives on it.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree CLEAN.
-- **Verdict: DRIFT PENDING — 4 commits** (§3 rows `d307a4164`, `0587d1e96`,
-  `4097626c6`, `25f534c0b`). One large PORT-NEW feature (**character
-  progressions**, ~6,700 insertions / 55 files), one **PORT** bug fix on the
-  instance lock, and two NO-PORT? riders (the plan doc, a version bump).
-- **⚠ `25f534c0b` (bug 126) is a defect v5 MEASURABLY HAS, and it is
-  CRITICAL.** v4's bugs.md row records the v5 column as "Not yet assessed";
-  this check assessed it. `crates/quilltap-host/src/lock.rs` compares a
-  FRESHLY-READ `hostname()` at every arm v4 just fixed: `heartbeat_tick`
-  (`:527` — `content.hostname != host` → "taken over"), whose caller
-  `host.rs:1584` then `std::process::exit(1)`s or fires the lock-lost
-  teardown; `release_instance_lock` (`:543`, so a renamed process orphans its
-  own lock); the acquisition cascade (`:425` `same_host`, and the
-  container-only freshness window at `:454`, v4's fail-OPEN case); and
-  `classify_lock_status` (`:308`), which is what the CLI's
-  `db --lock-status` / `--lock-clean` answer from. **v5 has no hostname seam
-  at all** — `lock.rs:151` calls `gethostname` directly — so, exactly as in
-  v4, no test can flip the name and `heartbeat_rewrites_and_detects_loss`
-  (`:1021`) only ever mutates the PID. Any v5 host running on a macOS box
-  with `scutil --get HostName` unset can die ~60 s after launch, WAL
-  unmerged. This is not just a port row: it can bite a dogfood walk in
-  progress.
-- **No schema move and no prompt-cache move across the four rows.** Nothing
-  under `lib/db/**` or `generateDDL` changed, so no D23 re-dump: the
-  `progressions` key is a RESERVED KEY inside the character vault's
-  `metadata.json` (document-store-overlay territory, not a table), and the
-  progressions feature asserts as a negative guarantee that neither
-  `IDENTITY_STACK_BUILDER_VERSION` nor `PROMPT_CACHE_STRUCTURE_VERSION` is
-  bumped — verified in the hunks, so v5's committed golden hashes stay valid.
-- **No CONVERGENCE row.** Bug 126 was filed BY v4, from its own live Friday
-  instance under the Electron shell (a home page that stopped rendering),
-  not by this port — so no both-directions pin is implicated, and nothing
-  trips at the baseline move. `docs/developer/bugs.md` moved only to add it.
-- **Vendored-artifact obligations this drift creates:**
-  - **`help/**` — v4 is at 122 files, v5's vendored tree at 121.**
-    `0587d1e96` adds `help/character-progressions.md` and edits five;
-    `25f534c0b` edits a sixth (`database-protection.md`).
-    `help_tree_equivalence` goes RED against any oracle regenerated past the
-    baseline, by design.
-  - **`public/schemas/qtap-custom-tool.schema.json` moved by 529 lines**, and
-    v5's copy at `apps/web/public/schemas/qtap-custom-tool.schema.json` is
-    still byte-identical to the BASELINE — see standing hazard (10): that one
-    is UNGUARDED, so nothing goes red if a lane forgets it.
-  - **`public/schemas/qtap-progression.schema.json` is NEW** (97 lines) and
-    has no v5 counterpart yet.
-  - Unmoved and still clean: the embedded `qtap-export.schema.json`, the
-    21-file sample-prompt source directory, and v4's installed `zod` at
-    `4.5.4` (both `package-lock.json` hunks are its two version lines).
-- **Ordered 2026-09-08 (`/setupphase`): all four §3 rows are `ORDERED` —
-  the `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥
-  P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170; work orders under
-  `docs/developer/porting/work-orders/p4.d16{6,7,8,9}-*.md` and
-  `p4.d170-*.md`). The round's catch-up TARGET is `25f534c0b`; the
-  unifier moves the baseline there.**
-- **Regen rule in force: PIN REQUIRED** — v4 `main` HEAD is past the
-  baseline. Every oracle regen and fixture build runs from a detached
-  worktree pinned at `2f4254b42` per §5.1, until a round moves the baseline.
+- **Verdict: DRIFT PENDING — 13 commits** (4 `ORDERED`, 9 `UNPROCESSED`).
+  The nine new rows are three shipped features and six riders: **two
+  PORT-NEW features** (`5841a8c62` the message route trail — **with a
+  SCHEMA MOVE**, the first `chat_messages` column since bug 68's
+  `multiCharacterPrefill` moved `chat_participants`; `86d59660c` the Salon
+  chat gallery, 4,306 insertions, plus bugs 129/130), **one PORT +
+  CONVERGENCE pair** (`4a9be9878` — bug 128's `memories` realtime topic is
+  a PORT onto the P4.D123–D125 realtime subsystem; bug 127 is v4 ADOPTING
+  P4.D170's rendering of the progressions card's unparseable-ids line), and
+  six NO-PORT? riders (four docs/plans/filings, the twelve-spec
+  `features/complete/` retirement whose 29 source hunks are all
+  comment-path rewrites, and a version bump).
+- **⚠ `5841a8c62` MOVES THE SCHEMA — a D23 re-dump is owed.** The
+  `routeTrail` column on `chat_messages` arrives BOTH as a migration
+  (`migrations/scripts/add-route-trail-message-column-v1.ts`, `TEXT DEFAULT
+  NULL`, `introducedInVersion: '4.10.0'`) AND in the repository Zod shape
+  (`lib/database/repositories/chats-messages.ops.ts:182`,
+  `routeTrail: z.array(...)`) that `generateDDL` (`lib/database/
+  schema-translator.ts`) reads — so `fresh_schema.json` MOVES, and the
+  P4.D78 (bug 68) precedent applies: the generateDDL shape and the migration
+  shape may DISAGREE, both are carried (the re-dump for fresh instances, a
+  boot ensure for existing ones). No cache-version bump anywhere in the
+  nine.
+- **Vendored-artifact obligations the nine create (re-read hazards 4, 9,
+  10 below):**
+  - **`help/**` — v4 is at 123 files, v5's re-vendored tree (P4.D168, at
+    `25f534c0b`) at 122.** `86d59660c` adds `help/chat-gallery.md` and
+    edits `chat-message-actions.md`, `chat-participants.md`,
+    `photo-gallery.md`; `5841a8c62` edits `chats.md`,
+    `connection-profiles.md`, `dangerous-content.md`; `4a9be9878` edits
+    `character-progressions.md` and `chat-participants.md`.
+    `help_tree_equivalence` goes RED against any oracle regenerated past
+    `25f534c0b`, by design.
+  - **`public/schemas/qtap-export.schema.json` moved by +19 lines**
+    (`5841a8c62`, the `routeTrail` message field). **`qtap_schema_embed_guard`
+    is RED against the live checkout** (measured by P4.D169: 92,797 bytes at
+    HEAD against the vendored 89,769; the vendored copy is byte-identical to
+    `25f534c0b`, md5 `430bb227c7029550f773134f42a0c6eb`). The re-vendor
+    rides the route-trail port — vendoring a schema field for a column v5
+    does not yet carry would be wrong — so **until that round lands, every
+    full workspace gate needs `QT_V4_ROOT=<a 25f534c0b pin>`** or the
+    fail-fast run loses its tail to this tripwire (the P4.D169 record names
+    the shape). The two SPA-served schemas (`qtap-custom-tool`,
+    `qtap-progression`) are UNMOVED past `25f534c0b`; P4.D170's new
+    `public_schemas_vendor_guard` stays green.
+  - Unmoved: the 21-file sample-prompt source directory, and v4's installed
+    `zod` at `4.5.4` (every `package-lock.json` hunk across the nine is the
+    lockfile's two identity-version lines — `4.10.0-dev.9` → `-dev.18`).
+- **CONVERGENCE row: bug 127 (`4a9be9878`).** Filed by v4 (`07eee4f4c`)
+  from THIS PORT's P4.D170 lane finding it while transcribing
+  `ProgressionsSection.tsx` — v4's `invalidIds.join('</code>, <code>')`
+  inside a JSX expression is escaped by React. v4 adopted v5's
+  map-with-separator shape. **No oracle compares the line**, so no pin
+  trips at any baseline move; the retirement site is the divergence note in
+  `apps/web/src/app/progressions/progressions-section.spec.ts` (P4.D170),
+  which the absorbing lane rewrites as a convergence record. Bugs 128, 129
+  and 130 were filed by v4 from its own code map — NOT convergences.
+- **Regen rule in force: PIN REQUIRED at `25f534c0b`** — the round's
+  catch-up target, and the baseline once this unification lands (v4 `main`
+  HEAD is past both). Every oracle regen and fixture build runs from a
+  detached worktree pinned at `25f534c0b` per §5.1 until a later round
+  absorbs the nine.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -108,8 +116,10 @@ probe verifies against._
   `token-estimation` at any sha BEFORE `d4138b96b` would not match;
   (4) **`help/**` is a VENDORED v5 ARTIFACT since P4.9I2A** — any v4 commit
   touching `help/**` is a re-vendor obligation and `help_tree_equivalence`
-  goes RED the moment an oracle is regenerated past it, by design; (5)
-  **since `8fbf2afe0`, v4's `jest.config.ts` maps `'^@google/genai$'` →
+  goes RED the moment an oracle is regenerated past it, by design; the
+  vendored COUNT is a literal in several crates (`a-vendored-count-is-hard-
+  coded-in-several-crates`; P4.D168 derived one of the four); (5) **since
+  `8fbf2afe0`, v4's `jest.config.ts` maps `'^@google/genai$'` →
   `__mocks__/@google/genai.ts`** (a manual mock; the SDK is ESM-only).
   Fourteen committed jest-run oracle cases load the plugin tree
   (`orchestrator-tier3`, `help-chat-orchestrator-tier3`,
@@ -119,51 +129,48 @@ probe verifies against._
   `image-generation`, `image-generate-route`, `settings-routes`); the mock is
   never reached by the four proven at the last round's pin (those oracles mock
   `streamMessage` above the plugin layer); the `tsx`/`node` recorders are
-  unaffected; (6) **the CLI-package version nit is CLOSED
-  on `main`** — `2f4254b42` itself carried the fix (its
-  `packages/quilltap/package.json` hunk is `4.9.2-bugfix.1` →
-  `4.10.0-dev.5`), so at the baseline that file and the app's `package.json`
-  agree; the lag survives only on `bugfix`, which predates the fix
-  (`4.9.2-bugfix.1` against a root `4.9.3-bugfix.0`). Still no `--version`
-  comparand, Tier R unaffected; re-watch it after the next merge-back, which
-  is where it came from; (7) **the
-  generator runners (`character_optimizer_tier3`, `character_wizard_tier3`,
-  `ai_import_tier3`, `external_prompt_tier3`) drive v4's REAL runners with a
-  canned `createLLMProvider`** — a v4 change to the provider factory's
-  signature breaks their oracles at LINK time, not at diff time; (8) **the
-  sample-prompt catalogue is a VENDORED v5 ARTIFACT since P4.83**
-  (`crates/quilltap-core/src/services/builtin_prompt_templates.json`, the 21
-  `.md` files under `plugins/dist/qtap-plugin-default-system-prompts/prompts/`
-  at `2f4254b42`) — any v4 commit touching that directory is a re-vendor
+  unaffected; (6) **the CLI-package version nit is CLOSED on `main`** — at
+  `d3f0ed133` `package.json` and `packages/quilltap/package.json` both read
+  `4.10.0-dev.18`; the lag survives only on `bugfix`. Still no `--version`
+  comparand, Tier R unaffected; re-watch it after the next merge-back; (7)
+  **the generator runners (`character_optimizer_tier3`,
+  `character_wizard_tier3`, `ai_import_tier3`, `external_prompt_tier3`)
+  drive v4's REAL runners with a canned `createLLMProvider`** — a v4 change
+  to the provider factory's signature breaks their oracles at LINK time, not
+  at diff time; (8) **the sample-prompt catalogue is a VENDORED v5 ARTIFACT
+  since P4.83** (`crates/quilltap-core/src/services/
+  builtin_prompt_templates.json`, the 21 `.md` files under
+  `plugins/dist/qtap-plugin-default-system-prompts/prompts/` at
+  `2f4254b42`) — any v4 commit touching that directory is a re-vendor
   obligation, and `builtin_prompt_templates_guard` goes RED against the
-  checkout the moment one lands, by design; the `d123658d`-round
-  ratification of `9c01fa99` as "consumed from the instance at runtime" was
-  wrong for prompts (v5 never had the registry); (9) **`public/schemas/
+  checkout the moment one lands, by design; (9) **`public/schemas/
   qtap-export.schema.json` is a VENDORED v5 ARTIFACT since P4.86**
   (`crates/quilltap-core/src/generators/qtap-export.schema.json`, 89,769
-  bytes at `2f4254b42`) — a v4 commit touching it is a re-vendor obligation
-  and `qtap_schema_embed_guard` goes RED against the checkout, by design;
-  (10) ⚠ **`public/schemas/qtap-custom-tool.schema.json` is a FIFTH vendored
-  artifact and the only UNGUARDED one** (recorded 2026-09-08). v5 serves its
-  own copy at `apps/web/public/schemas/qtap-custom-tool.schema.json` — the
-  `$schema` value the Workbench writes into every tool draft
-  (`apps/web/src/app/pascal/tool-draft.ts`) — but nothing compares it to
-  v4's: no Rust guard, no spec, only string assertions on the URL path. It is
-  byte-identical to `2f4254b42` today and `0587d1e96` moved v4's by 529
-  lines, so a re-vendor is owed and **NOTHING will go red if the lane forgets
-  it.** Whoever ports character progressions should land a guard in the
-  `qtap_schema_embed_guard` idiom alongside the re-vendor, and vendor the new
-  `qtap-progression.schema.json` under the same rule.
+  bytes at `25f534c0b`) — a v4 commit touching it is a re-vendor obligation
+  and `qtap_schema_embed_guard` goes RED against the checkout, by design
+  (**it IS red now — see above**); (10) **`public/schemas/
+  qtap-custom-tool.schema.json` and `qtap-progression.schema.json` are the
+  fifth and sixth vendored artifacts, served by the SPA from
+  `apps/web/public/schemas/` and GUARDED since P4.D170** by
+  `crates/quilltap-harness/tests/public_schemas_vendor_guard.rs` (byte
+  equality against `QT_V4_ROOT`, plus a checkout-free self-consistency
+  half) — the standing hazard recorded 2026-09-08 (the custom-tool schema
+  sat 529 lines behind with nothing red) is DISCHARGED; (11) **the progress
+  corpora freeze v4's `Date.now()` per case** (P4.D169) — the discovery,
+  workbench-route and both run-tool oracles carry a `nowMs` the Rust side
+  reads OFF THE ROW; a v4 change that adds a clock read at a new site
+  (roster, bench, run) shows as a per-case drift, not a recipe failure.
 - **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
   `bugfix` fork; the fork → fix → `release: X` squash → merge-back cycle has
   run twice. `bugfix` is currently idle at its branch-start commit while main
-  takes feature work. §4 step 2's two-branch rule stays load-bearing — measure
-  `bugfix` by CONTENT, never its commit list, and remember a content diff can
-  be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-08 midday): DRIFT PENDING — 3 commits, the same posture
-  minus bug 126. Before that (2026-09-08 morning): CLEAR, no pin required —
-  v4 at rest at the baseline, §3 empty; it held about four hours. Before that
-  (2026-09-07, the generator follow-ups round's unification probe): CLEAR._
+  takes feature work — three merged PRs (#58, #59, #60) landed on `main` in
+  one evening. §4 step 2's two-branch rule stays load-bearing — measure
+  `bugfix` by CONTENT, never its commit list, and remember a content diff
+  can be non-empty simply because `bugfix` is behind.
+- _Superseded (2026-09-08 afternoon): DRIFT PENDING — 4 commits, all
+  ORDERED, PIN REQUIRED at `2f4254b42`. Before that (2026-09-08 midday):
+  DRIFT PENDING — 3 commits (the same minus bug 126). Before that
+  (2026-09-08 morning): CLEAR._
 
 ## §2 The freshness probe
 
@@ -206,6 +213,15 @@ when absorbed/ratified.
 | `0587d1e96` | 2026-09-08 | Add character progressions — timed conditions reported per turn (#57) | PORT-NEW | **The feature, ~6,700 insertions / 55 files, five phases squashed into one PR.** New v4 modules `lib/progressions/{schema,engine,prompt-section}.ts` — pure, client-safe, injected clock — have NO v5 counterpart (tier-1 territory: `deriveProgression`, `formatSpan`, `shouldReportProgression`, `renderProgressionReport`, `flattenProgressions`, `inferIncrement`, and a fail-soft `parseProgressions` that drops one bad entry and keeps its siblings). Ported v5 surfaces it reaches: **`build_context`** (`lib/chat/context-manager.ts` — the section is wired after Suparna mail, before the turn-skip note, skipped in continue mode; last touched by P4.D95 / P4.D103 / P4.D163), **`core_whisper.rs`** (`findLastOwnTurnMs` joins `shouldFireCoreWhisper` in `core-whisper-trigger.ts`, and the two cadences now share ONE memoised `getMessages` per turn — a read-count change on a ported path), the **greeting builder** (`lib/chat/initialize.ts`) and **Carina** (both forced, cadence bypassed), the **whole Pascal family** (`custom_tool_types` / `custom_tools` / `placeholders` / `side_effects` / `tool_gate` / `tool_vocabulary` in `quilltap-core::pascal`, plus the SPA's `pascal/tool-draft.ts` twin — ported across P4.D35/P4.D36, the Workbench lanes P4.6BB/P4.D20, P4.D43, and the archived custom-tools-end-to-end round), the **tool subsystem** (`run-custom-tool.ts`, `run-custom-handler.ts`), the **character vault types** (`lib/schemas/character.types.ts` → the store-backed entity slice), **two REST edges** in `quilltap-web` (`/api/v1/custom-tools`, `/api/v1/chats/[id]/custom-tools`), and the **SPA** (a new `components/characters/progressions/` trio — editor modal, section, hook — plus the system-prompts-editor host and four `components/custom-tools/` panels + `CustomToolRunDialog`). Also a `help/**` re-vendor (121 → 122) and two `public/schemas/` files. **No table-schema change and no cache-version bump** (see §1). | ORDERED(P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) |
 | `4097626c6` | 2026-09-08 | doc: Update version | NO-PORT? | `4.10.0-dev.5` → `4.10.0-dev.8` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines. No ported comparand (no `--version` assertion in Tier R); the two version fields still agree on `main`, so standing hazard (6) stays closed there. | ORDERED(P4.D166 — NO-PORT ratification, file-list evidence) |
 | `25f534c0b` | 2026-09-08 | fix: a hostname change no longer makes the app kill its own database (bug 126) | PORT | **v5 measurably HAS this, critically — see §1.** v4's fix, arm for arm: ownership becomes a snapshot written with the lock (**PID + `startedAt`**, compared by `isStillOurLock`), hostname demoted to a label refreshed each tick; acquisition stops claiming a lock merely because the recorded hostname differs, deciding liveness by **heartbeat freshness for every environment** rather than only for Docker (this closes a fail-OPEN case where two processes on one machine could both open the same DB); a renamed process releases its own lock instead of orphaning it; a lock taken by manual override starts a heartbeat; and the lock-loss teardown is registered **inward** by `client.ts` (v4's dynamic `require('./client')` did not resolve in the bundled standalone server — it threw and left the WAL unmerged). v5 surfaces: `quilltap-host/src/lock.rs` (`heartbeat_tick` `:527`, `release_instance_lock` `:543`, the acquire cascade `:425`/`:454`, `classify_lock_status` `:308`) and its caller `host.rs:1584`, all from the P4.D68 → P4.D75 lock work; the CLI's `db --lock-status` / `--lock-clean` (v4 `packages/quilltap/bin/quilltap.js`, 103 lines, gains a shared `assessLock` — **Tier R comparands move**). Porting notes the hunks make explicit: v4 **inverted two existing tests that had been asserting the buggy behavior**, and its suite mocked `os.hostname()` as a constant, which is why it never surfaced in test — v5 has no hostname seam at all, so the port needs one (or, following v4, no hostname comparison left to seam). Also a `help/database-protection.md` re-vendor. v4's own bugs.md guidance: "Carry the invariant, not the code: a hostname is a label, not an identity." | ORDERED(P4.D166) |
+| `07eee4f4c` | 2026-09-08 | docs: file bug 127 — the progressions card escapes its own markup | NO-PORT? | Docs only (`bugs.md` + `bugs/bug-127-…md`). The filing of a defect THIS PORT found: P4.D170's transcription of `ProgressionsSection.tsx` measured v4's `invalidIds.join('</code>, <code>')` inside a JSX expression rendering raw markup for two or more unreadable ids, and recorded v5's map-with-separator rendering as a divergence (`progressions-section.spec.ts`). The fix is `4a9be9878` below. | UNPROCESSED |
+| `9fc664c94` | 2026-09-08 | docs: plan for the message route trail — every model tried, in order, under the avatar | NO-PORT? | Docs only — `docs/developer/features/message-route-trail.md` (286 lines; MOVED to `features/complete/` with an "As built" section by `5841a8c62`), the changelog, the docs index. **The design of record for `5841a8c62`** — read at ordering time. Mirror candidate for `docs/v4/` at the next baseline move. | UNPROCESSED |
+| `5fb6bedd6` | 2026-09-08 | docs: file bug 128 — the Salon's memory count goes stale and disarms its own delete button | NO-PORT? | Docs only (`bugs/bug-128-stale-chat-memory-count.md`, 231 lines — the plan `4a9be9878` carries out, incl. WHY `memories` must stay out of `REPOSITORY_TOPICS`). Filed by v4 from its own live Friday instance (chat `27961b14`: 59 rows, `(0)` on a long-lived tab) — NOT a convergence. | UNPROCESSED |
+| `df1a075e8` | 2026-09-08 | docs: plan for the Salon chat gallery (every image in a conversation, savable and downloadable) | NO-PORT? | Docs only — `docs/developer/features/salon-chat-gallery.md` (224 lines; MOVED to `features/complete/` by `86d59660c`), the index, the changelog, a bug-128 cross-note. **The design of record for `86d59660c`**, and the commit that FIRST FILED bugs 129 and 130 (the never-rendered Gallery button; the images route ignoring `chatId`). Mirror candidate. | UNPROCESSED |
+| `c0f9232af` | 2026-09-08 | docs: retire twelve shipped feature specs to features/complete/ | NO-PORT? | 56 files, but every non-doc hunk is a comment-only `See docs/…` path rewrite (29 source files, one line each: `app/**`, `components/**`, `lib/services/home-data.service.ts`, `lib/workspace/types.ts`, `migrations/scripts/quantize-embeddings.ts`, one plugin test) plus the lockfile's two version lines — VERIFIED by grepping the non-doc hunks for any non-comment line (only the two version lines remain). **Fact the round wants: `character-progressions.md`, the design of record P4.D167 ratified, now lives at `docs/developer/features/complete/character-progressions.md`** — the unifier's `docs/v4/` mirror wire should mirror it at the path the NEW baseline (`25f534c0b`) has, `docs/v4/developer/features/character-progressions.md`, since the mirror is a snapshot at the baseline. Ratify with the file list; nothing to port. | UNPROCESSED |
+| `4a9be9878` | 2026-09-08 | Fix bugs 127–128: stale memory count and escaped markup (#58) | PORT (bug 128) + CONVERGENCE (bug 127) | **Bug 128 — PORT onto the P4.D123–D125 realtime subsystem.** v4 adds a `memories` realtime topic: declared in `lib/schemas/realtime.types.ts` (`REALTIME_TOPICS` + `ALL_REALTIME_PREFIXES`), keyed `queryKeys.memories.chatCount(chatId)` in `lib/query/keys.ts`, mapped in `lib/realtime/topic-map.ts` (`queryKeysForTopic`; `TOPIC_ID_FIELDS.memories = []` — the emptiness is load-bearing, and `memories` is deliberately NOT in `REPOSITORY_TOPICS` because `firstIdArg` would publish a memory id under a chat-scoped topic), published from `lib/realtime/job-topics.ts`'s `topicsForCompletedJob` for the four chat-scoped memory job types (each reading `chatId` off its payload) + collection-wide for `MEMORY_HOUSEKEEPING`, and from ONE parent-side delete chokepoint (`lib/memory/memory-gate.ts` — `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`, collection-wide; the route's own publish was REMOVED in the PR's second commit as redundant-and-wrong, since the gate stays silent for a chat with nothing to delete). Client: `useChatData.ts` subscribes `useRealtimeTopic('memories', chatId)` three lines from its fetcher (`cache: 'no-store'` added); `useMemoryActions.ts` disables the button at zero (`.qt-tool-palette-button:disabled` already styled), replaces the bare `return` with a toast, and re-reads the count from the server before the confirmation; `ChatSidebar.tsx` (+7). v5 surfaces: `crates/quilltap-core/src/realtime/{types.rs,job_topics.rs,publish_sites.rs}` + the 73-case `realtime_topics_equivalence` tier-1 family (P4.D123) — the topic ENUM, the prefix list and the job→topic map are all comparands there and MOVE; `crates/quilltap-core/src/db/memories.rs::{delete_with_unlink,delete_many_with_unlink}` (the gate twin's publish site); the SPA's `core/realtime-topic-map.ts` + `core/realtime.types.ts` (P4.D125), `chat/sidebar/edit-section.ts` (**Delete Memories (n)** — MEASURE whether v5 reads the count once at mount and gates the click on a stale zero before calling it inherited; the bugs.md v5 column says "Not yet assessed"), and `chat/memory-cascade-dialog.ts`. Also two `help/**` edits (`character-progressions.md` +6/−?, `chat-participants.md` +11) — re-vendor obligation. **Bug 127 — CONVERGENCE onto P4.D170:** `ProgressionsSection.tsx` now renders `invalidIds.map((id, i) => <span key={id}>{i > 0 && ', '}<code>{id}</code></span>)`, v5's shape; v4's two new pins in `progressions.test.tsx` (the two-id case asserts no `</code>` in the text + a `<code>` per id; the one-id sentence unchanged). Retire P4.D170's divergence note in `apps/web/src/app/progressions/progressions-section.spec.ts` to a convergence record; no oracle compares the line, nothing trips. | UNPROCESSED |
+| `5841a8c62` | 2026-09-08 | Message route trail: every model tried, in order, under avatar (#59) | PORT-NEW (with a SCHEMA MOVE) | **The feature, 2,112 insertions / 45 files, incl. a NEW `chat_messages.routeTrail` column (D23 re-dump + boot ensure — see §1).** Storage: nullable JSON `routeTrail` (`migrations/scripts/add-route-trail-message-column-v1.ts` + `migrations/scripts/index.ts`; the repository Zod shape in `lib/database/repositories/chats-messages.ops.ts` +26 — the source `generateDDL` reads; `docs/developer/DDL.md`; `lib/startup/prettify.ts` +1); each entry `{profileId, profileName, provider, modelName, via: primary|retry|concierge|understudy|tier-pick, outcome: answered|failed|refused, trigger?, evidence: finish-reason|inferred, detail? (≤200 chars)}`; NULL whenever nothing failed (nearly every message), no backfill; the last entry always agrees with `provider`/`modelName` (asserted by test). Recording: ONE chokepoint `lib/services/chat-message/route-trail.ts` (198 lines, NEW) is the only writer of two new `StreamingState` fields (`routeFailures`, `routeVia` — `lib/services/chat-message/types.ts` +14); `provider-failover.service.ts` (+66) calls it at every site that already logs a failure (the hard-error opener, the chain walk's key-less / thrown / empty candidates, the empty-response opener, the same-profile retry, the Concierge's uncensored reroute — recorded from `routeResult.connectionProfile`; every empty-body classification runs BEFORE `resetStreamingBuffersForSwap` clears `rawResponse`; the pre-call Concierge reroute gets no row but seeds `routeVia = 'concierge'`); `FallbackChainResult.attempts` / `summarizeFallbackAttempts` UNTOUCHED. Persistence: `message-finalizer.service.ts` (+18), `orchestrator.service.ts` (+7), `primary-stream.service.ts` (+7), `streaming.service.ts` (+5). Transport: the SSE `done` event carries it; the chat-GET projection lists it (`app/api/v1/chats/[id]/handlers/get.ts` +4); `.qtap` export carries it with the message (`public/schemas/qtap-export.schema.json` +19 — hazard (9), the re-vendor rides this port; an imported `profileId` is deliberately NOT remapped); `apply-chat-continuation.ts` does NOT copy it. Display: `lib/chat/route-trail-display.ts` (144 lines, pure — collapse adjacent same-profile rows, the ❌/🚫 marks, hover text; `lib/chat/__tests__/route-trail-display.test.ts` 139 lines is a tier-1 seed) + `components/ui/RouteTrailBadge.tsx` (replaces `ProviderModelBadge` when a trail is present; theme hook `[aria-label="Models tried for this reply"]`, no new qt-* class); `MessageRow.tsx` (memo comparator gained an O(1) identity check on `routeTrail`, normalised undefined≡null), `MessageDesktopAvatar.tsx`, `useSSEStreaming.ts` (+9), `app/salon/[id]/types.ts`; a compile-time + runtime parity assertion tying the client-safe trigger enum to the engine's `FallbackTrigger`. Help: `chats.md` (+35), `connection-profiles.md` (+7), `dangerous-content.md` (+8) — re-vendor. Twelve v4 test files as seeds (the finalizer's 160-line and the failover chain's 150-line suites carry the persistence pins). v5 surfaces: `services/provider_failover.rs` + `services/message_finalizer.rs` + `services/primary_stream.rs` + the streaming state (P4.D135 / P4.68 / P4.72 — the failover `llm_logs` rows and the `auth` chain arm landed there), the SSE `done`/chain-complete event on the `Event` channel (P4.D160's `paused` key precedent), `api/salon.rs`'s chat-GET five-field projection (P4.D51/P4.D60), `generators/**` + the import remap (P4.D46/P4.D87 — the deliberate NON-remap needs its own pin), `chat_continuation` (Continue Elsewhere), and the SPA's provider/model badge under the avatar. `IDENTITY_STACK_BUILDER_VERSION` / `PROMPT_CACHE_STRUCTURE_VERSION` untouched. The commit message's "manual V4test pass … still outstanding" is v4's own owed proof. | UNPROCESSED |
+| `86d59660c` | 2026-09-09 | Add the Salon chat gallery — every image in a conversation (#60) | PORT-NEW + PORT (bugs 129, 130) | **The feature, 4,306 insertions / 51 files — all six phases of `salon-chat-gallery.md`.** ONE server-side enumerator `lib/photos/chat-gallery.ts` (962 lines, NEW — nine sources: uploads + library links, `generate_image` output, both Generate Image entry points, `attach_image` re-shows, Librarian attaches, Lantern story backgrounds incl. superseded, Aurora avatar repaints likewise, the cast's standing portraits, Markdown-referenced images in message prose; over BOTH id species — `files.id` and `doc_mount_file_links.id`; deduped by content hash, newest first, portraits last; each entry carries source, species, is-current-background / is-worn-avatar, deletability; `__tests__/unit/lib/photos/chat-gallery.test.ts` 620 lines is the seed) — NO v5 counterpart; `GET /api/v1/chats/[id]?action=gallery` (`handlers/get.ts` +25 — entries + per-source counts + total); `POST /api/v1/chats/[id]?action=save-image` (`actions/save-image.ts` 137 lines NEW, `actions/index.ts`, `handlers/post.ts`) — the chat-scoped twin of the message-scoped save, guarded by GALLERY MEMBERSHIP rather than message attachment, sharing one Zod body schema, one attribution resolver (`lib/photos/save-attribution.ts` 93 lines NEW) and `lib/photos/save-image-to-album.ts` (+18) with `messages/[messageId]/route.ts` (−…); the `/chats/[id]/files` listing (`files/route.ts` 85 lines moved) now SHARES the enumerator's message-attachment walk instead of a second copy; **`?download=1`** on the three image byte routes (`files/[id]/actions/download.ts`, `files/proxy/[...key]/route.ts`, `mount-points/[id]/blobs/[...path]/route.ts`) answering `attachment` instead of `inline` through NEW `lib/api/content-disposition.ts` (26 lines); `lib/download-utils.ts` (+49 — `downloadImageUrl`/`downloadGalleryEntry` hand the URL, not the bytes, to `triggerUrlDownload` so Electron streams); realtime: `queryKeys.chats.gallery(id)` on the EXISTING `chats` topic (`lib/query/keys.ts` +6, `topic-map.ts` +4). **Bug 130** — `app/api/v1/images/route.ts` (+26): optional `chatId` on `generateImageSchema`, folded into `linkedTo` beside the tag ids through a `Set`. **Bug 129** — the Gallery button's `chatPhotoCount` gate read `?action=files`, an action `handleGet` never dispatched (fell through to the whole-chat 200, `data.files` undefined → 0 forever); counter DELETED, `chatPhotoCount`/`fetchChatPhotoCount` leave `useChatData`, the button loses its gate. SPA: `PhotoGalleryModal.tsx` (521-line rewrite — the grid), `ChatGalleryImageViewModal.tsx` (384-line rewrite — the detail view; the two hard-wired "first character" album buttons REMOVED for the shared album dialog, + provenance line + Jump-to-message), `SaveImageDialog.tsx` (+80), `ChatSidebar.tsx`, `ImageModal.tsx`, `useChatGallery.ts` (85 lines NEW), `ChatModals.tsx`, `SalonView.tsx`. Help: `help/chat-gallery.md` NEW (122 → **123**), `chat-message-actions.md`, `chat-participants.md`, `photo-gallery.md`; `docs/developer/API.md` (+142, both actions + the download parameter). v5 surfaces: `api/chat_media.rs` (the message-scoped save over `photos::save_image_to_album` — W4.9b/P4.6ab), `quilltap-web`'s `?action=` dispatch tables (P4.67/P4.72 — the chat GET/POST action lists are CENSUSED there and the new actions move them), the files listing family, `api/images.rs` + `images_routes.rs` (P4.73 — the `?action=generate` Zod parse gains `chatId`), the P4.D114 `Content-Disposition` header work (`inline` today — the `attachment` arm is new), the P4.D114 download surfaces + transcribed `clipboard-utils`, and the SPA's `images/photo-gallery-modal` + `chat/sidebar/organize-section.ts` — where **v5 ALREADY diverged from bug 129's shape**: its Gallery entry is ungated ("v5 has no per-chat photo count on the chat read, so the entry …" — a recorded divergence), so v5 never had bug 129 and that divergence now RETIRES to v4's post-fix shape (an ungated button whose label count comes from the gallery query). The 2026-08-25 dogfood note "`qt-image-gallery` still has no v5 host" is the same surface. **Bug 129 needs the invariant carried, not assessed away: a control gated on a fetched count needs a test that the fetch reaches an endpoint that exists.** | UNPROCESSED |
+| `d3f0ed133` | 2026-09-09 | doc: version update after feature changes merged in | NO-PORT? | `4.10.0-dev.16` → `4.10.0-dev.18` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines (the intermediate `-dev.10…17` steps rode the three PRs' own bumps). No ported comparand; both version fields agree on `main`, hazard (6) stays closed. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

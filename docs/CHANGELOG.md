@@ -12,6 +12,45 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(drift): nine commits arrived during the progressions round — the route trail moves the schema, the chat gallery lands whole
+
+_Docs-only change._
+
+The `25f534c0b` progressions + bug-126 round's unification opened with the
+ledger's freshness probe failing: v4 `main` is at `d3f0ed133`
+(`4.10.0-dev.18`), thirteen commits past the `2f4254b42` baseline — the
+round's four, all finished in their lanes and now being unified, plus nine
+that landed during the round (two of the five lanes saw the probe fail
+mid-lane, stopped and reported as the rules require, and resumed under their
+`25f534c0b` pins). Recorded before any cherry-pick, so the round record can
+name what arrived mid-round and the unification's regens run under the right
+pin.
+
+The nine classify as three shipped features and six riders. `5841a8c62`, the
+message route trail, is a PORT-NEW that moves the schema: a nullable JSON
+`routeTrail` column on `chat_messages` arrives both as a migration and in the
+repository Zod shape `generateDDL` reads, so a D23 re-dump plus a boot ensure
+are owed — the first `chat_messages` column since bug 68 — and it moves the
+vendored `.qtap` export schema by 19 lines, which is why `qtap_schema_embed_guard`
+is red against the live checkout today (measured by P4.D169; the vendored copy
+is byte-identical to the pin). `86d59660c`, the Salon chat gallery, is a
+PORT-NEW of 4,306 insertions with a 962-line nine-source enumerator v5 has no
+counterpart for, two new chat actions, `?download=1` on the three image byte
+routes, and bugs 129/130; v5 never had bug 129 — its Gallery entry was already
+ungated as a recorded divergence, which now retires to v4's post-fix shape.
+`4a9be9878` is a pair: bug 128's `memories` realtime topic is a PORT onto the
+P4.D123–D125 realtime subsystem, and bug 127 is v4 ADOPTING this port's
+rendering of the progressions card's unparseable-ids line — a convergence
+that trips nothing, because no oracle compares the line; the P4.D170 spec's
+divergence note is its retirement site. The six riders are four docs
+commits, the twelve-spec `features/complete/` retirement (every one of its 29
+source hunks a comment-path rewrite, verified by grep), and a version bump.
+
+Vendored obligations: `help/**` is now 123 files against v5's 122; the export
+schema as above; the two SPA-served schemas P4.D170 just guarded are unmoved.
+`zod` stays at 4.5.4. Regen rule: PIN REQUIRED at `25f534c0b`, which is both
+the round's catch-up target and the baseline once this unification lands.
+
 #### 2026-09-08 — docs(setupphase): the `25f534c0b` progressions + bug-126 drift catch-up round — five work orders, the ledger's four rows ORDERED
 
 _Docs-only change._
