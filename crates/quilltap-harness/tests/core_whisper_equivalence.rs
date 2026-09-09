@@ -4,9 +4,21 @@
 //! exercised only through the public function). Pure function — exact
 //! equality on every field.
 //!
+//! **P4.D168 (v4 `0587d1e96`) — `findLastOwnTurnMs`.** The module's second
+//! public export, and the cadence input the character-progressions section
+//! walks out of history: the character's own most recent VISIBLE conversational
+//! turn, walking from the end. v4 put it here rather than in the progressions
+//! module because `shouldFireCoreWhisper` set the precedent — both cadences are
+//! derived from message history and neither writes. The `findLastOwnTurnMs` ops
+//! cover: never spoken; a Staff whisper skipped to the earlier turn; a
+//! targeted-away whisper; a tool-call-only turn; a `Date`-typed `createdAt` (the
+//! case constructs a real `Date`; the wire shows an ISO string); an unparseable
+//! `createdAt` SKIPPED rather than returned; and a USER row with the same
+//! participant id, not counted.
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/core-whisper.ts \
+//!   TZ=UTC npx tsx ~/source/quilltap-v5/harness/oracle/cases/core-whisper.ts \
 //!     > /tmp/oracle-core-whisper.ndjson
 //! Run:
 //!   QT_ORACLE_CORE_WHISPER=/tmp/oracle-core-whisper.ndjson \

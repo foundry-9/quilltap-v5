@@ -135,6 +135,21 @@ pub struct CharacterVaultWriteInput {
     /// character row simply cannot carry it, so `None` (absent) means "no
     /// opinion", NOT "empty". The write is guarded on `!= null` (see
     /// [`write_character_vault_managed_fields`]).
+    ///
+    /// Driven user-side and user-side only. No generation system
+    /// (create-character, summon-from-lore, the optimizer) may invent or
+    /// populate it. Its consumer is Pascal: outcome tables test
+    /// `when.metadata.<key>`. A transparent character can read and edit the file
+    /// through the ordinary `doc_*` tools, like any vault document.
+    ///
+    /// **Raw metadata is never injected into a prompt** (v4's normative comment,
+    /// `lib/schemas/character.types.ts`, amended at `0587d1e96`). The one
+    /// sanctioned reader is the derived character-progressions report: the
+    /// reserved `progressions` key ([`crate::progressions::schema`] — the only
+    /// reserved key; every other key stays freeform) is turned into a
+    /// second-person line by [`crate::progressions::prompt_section`] and
+    /// appended to the uncached per-turn tail. The stored object itself still
+    /// never reaches a model.
     #[serde(default)]
     pub metadata: Option<Value>,
     #[serde(default)]

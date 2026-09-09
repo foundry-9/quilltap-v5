@@ -152,10 +152,14 @@ pub fn build_progressions_section(params: BuildProgressionsSectionParams<'_>) ->
         // `last_turn_ms` above, and `should_report_progression` with `None`
         // takes rule 1 — which returns exactly `{report: true, reason: first}`.
         // v4 writes the ternary anyway (`prompt-section.ts:113-115`); it is
-        // carried here for shape, not because either side can observe it. What
-        // IS observable — a forced build reporting a `once` progression the
-        // cadence would silence — is pinned by
-        // `force_reports_everything_and_never_reads_events`.
+        // carried here for shape, not because either side can observe it. The
+        // one thing `force` DOES change is the walk above: with events and a
+        // participant in hand it skips the read and reports everything anyway —
+        // pinned by `force_reports_everything_and_never_reads_events`. Neither
+        // forced CALL SITE supplies those (the greeting has no history; Carina
+        // is a one-shot), so at both of them `force` is inert both ways: a
+        // mutation flipping it to `false` there stays green on both sides, and
+        // that is measured, not assumed.
         let (report, reason) = if force {
             (true, ReportReason::First)
         } else {
@@ -499,5 +503,107 @@ mod tests {
         );
         assert!(line.contains("characterId=char-1"), "{line}");
         assert!(line.contains("no such table: messages"), "{line}");
+    }
+}
+
+/// The negative cache guarantee (v4 `0587d1e96`, `__tests__/unit/cache-
+/// determinism/system-prompt.test.ts` +34).
+///
+/// A progression is a per-turn clock. If one ever reached system block 1 the
+/// prompt cache would be bisected on every single turn, the cache-determinism
+/// golden would drift on the wall clock, and every chat's stored
+/// `compiledIdentityStacks` would be invalidated once an hour for nothing. The
+/// feature is built as a TRAILING per-turn section for exactly that reason, so
+/// neither builder version moves — v4 asserts that rather than assuming it, and
+/// so does this.
+///
+/// v4 states the guarantee dynamically: it hashes a character carrying
+/// progressions against the same character carrying none and asserts the two
+/// agree. **v5 cannot express that test, because it is already true by
+/// construction** — [`crate::system_prompt::Character`], the input to both
+/// block-1 builders, has no `metadata` field at all, so there is no "carrying"
+/// variant to build. That is a stronger guarantee than v4's, and the census
+/// below is what keeps it true: the day someone threads `metadata` into the
+/// cached builders to reach a progression from there, this test is what fails.
+#[cfg(test)]
+mod cache_negative_guarantee {
+    use crate::cheap_llm::PROMPT_CACHE_STRUCTURE_VERSION;
+    use crate::system_prompt::IDENTITY_STACK_BUILDER_VERSION;
+
+    /// The two stamps the feature must NOT move. `PROMPT_CACHE_STRUCTURE_VERSION`
+    /// keys the per-character cheap-LLM cache; `IDENTITY_STACK_BUILDER_VERSION`
+    /// stamps `chats.compiledIdentityStacks` and invalidates every chat's cached
+    /// stack when it moves. Both are v4's own numbers at `25f534c0b` — a bump
+    /// here without a matching v4 bump is a divergence, not a version bump.
+    #[test]
+    fn neither_builder_version_moves_for_progressions() {
+        assert_eq!(
+            PROMPT_CACHE_STRUCTURE_VERSION, 4,
+            "character progressions must not bump the prompt-cache structure \
+             version — the report is a trailing per-turn section, never part of \
+             the cached prefix"
+        );
+        assert_eq!(
+            IDENTITY_STACK_BUILDER_VERSION, 2,
+            "character progressions must not bump the identity-stack builder \
+             version — a bump would invalidate every chat's compiled stack for a \
+             section that never enters it"
+        );
+    }
+
+    /// Drop `//` line comments (doc comments included) so the census reads CODE
+    /// only. Prose in these files is free to discuss metadata and progressions —
+    /// what must not appear is a builder that can reach them. Crude on purpose:
+    /// a `//` inside a string literal would be over-stripped, which can only
+    /// make the census miss, never fire falsely, and neither file has one.
+    fn code_only(src: &str) -> String {
+        src.lines()
+            .map(|l| match l.find("//") {
+                Some(i) => &l[..i],
+                None => l,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The structural half: neither block-1 builder can so much as name a
+    /// character's `metadata`, which is where the reserved `progressions` key
+    /// lives. Counting occurrences (rather than eyeballing the types) is what
+    /// makes this survive a refactor that reshapes `Character` — a field, an
+    /// accessor or a parameter carrying metadata into either builder fails here
+    /// the moment it is written, before any of it can reach a prompt.
+    #[test]
+    fn the_cached_builders_never_name_a_characters_metadata() {
+        for (label, src) in [
+            (
+                "system_prompt.rs (buildIdentityStack + buildSystemPrompt)",
+                include_str!("../system_prompt.rs"),
+            ),
+            (
+                "services/system_prompt_compiler.rs (the compiledIdentityStacks bake)",
+                include_str!("../services/system_prompt_compiler.rs"),
+            ),
+        ] {
+            let code = code_only(src);
+            // A floor first: an empty read would make every arm below vacuous.
+            assert!(
+                code.len() > 2_000,
+                "{label}: the census read only {} bytes of code — it is measuring \
+                 nothing",
+                code.len()
+            );
+            for needle in ["metadata", "progression"] {
+                let hits = code.matches(needle).count();
+                assert_eq!(
+                    hits, 0,
+                    "{label} names `{needle}` in CODE {hits} time(s). Block 1 is \
+                     the CACHED prefix: a per-turn clock reaching it bisects the \
+                     prompt cache on every turn and drifts the cache-determinism \
+                     golden. The progressions report belongs in the trailing \
+                     tail (`build_context`), the greeting's own flat builder, or \
+                     Carina's user message — never here."
+                );
+            }
+        }
     }
 }

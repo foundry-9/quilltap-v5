@@ -116,6 +116,29 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — test(progressions): the negative cache guarantee, and v4's normative metadata notes
+
+_Versions: core 0.0.852, harness 0.0.742._
+
+v4 asserts, rather than assumes, that character progressions leave system block
+1 alone: a per-turn clock in the cached prefix would bisect the prompt cache
+every turn and drift the cache-determinism golden. Its test hashes a character
+carrying progressions against one carrying none.
+
+v5 cannot express that test, because it is already true by construction —
+`system_prompt::Character`, the input to both block-1 builders, has no
+`metadata` field, so there is no carrying variant to build. The guarantee lands
+instead as the two version constants pinned at v4's numbers plus a code-only
+census over both builders: neither may so much as name `metadata` or
+`progression` outside a comment. Mutation-proven in both directions — an
+accessor threading metadata in fails it, a comment mentioning it does not.
+
+Also carried: v4's normative comment on `Character.metadata` (raw metadata is
+never injected into a prompt; the derived progressions report is its one
+sanctioned reader), and v4's second stated `self_inventory` gap — that
+reconstruction shows a character neither the Taboo section nor the progressions
+report a live turn carries. Closing it is v4's call to make first.
+
 #### 2026-09-08 — feat(progressions): Carina's forced report rides the user message
 
 _Versions: core 0.0.851, harness 0.0.741._

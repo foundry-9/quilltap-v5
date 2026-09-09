@@ -1506,6 +1506,16 @@ fn build_prompt_section(
     // section a real turn would carry — a known, accepted fidelity gap
     // (v4 `lib/tools/handlers/self-inventory/builders.ts`, `7df7de8e`).
     //
+    // [P4.D168 / v4 `0587d1e96`] The SECOND stated gap, carried deliberately:
+    // the character-progressions report is likewise absent here. A live turn
+    // appends it to the trailing tail (`build_context`), the greeting to its own
+    // flat builder, and Carina to its user message; `self_inventory` reconstructs
+    // block 1 alone and calls no chokepoint, so a character introspecting their
+    // own prompt does not see the timed conditions they are carrying. v4 records
+    // this in PROMPT_ARCHITECTURE §13 as a known gap rather than a bug — closing
+    // it is v4's call to make first, and doing it here unilaterally would put a
+    // per-turn clock into a reconstruction that has no clock of its own.
+    //
     // Standing instructions (v4 `8f868109`) ARE included: they are substantive
     // conduct guidance a character should be able to introspect, and the repos
     // are already in hand. Fails soft like the live path.
