@@ -328,6 +328,7 @@ async fn execute_whisper_inner(
                 custom_announcer: None,
                 carina_meta: None,
                 pascal_meta: None,
+                route_trail: None,
                 pending_external_prompt: None,
                 pending_external_prompt_full: None,
                 pending_external_attachments: None,

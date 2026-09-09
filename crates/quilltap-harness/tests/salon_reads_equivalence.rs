@@ -202,6 +202,21 @@ fn salon_reads_match_oracle() {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
+    // P4.D171: the committed `salon-{main,mount}.db` predates the two
+    // `78b381a96`-round schema moves. On a real instance the boot ensures have
+    // already added the columns before any Salon read runs — the same
+    // repaired-at-boot idiom `web_search_runner_wire.rs` uses for the
+    // connection-profiles fallback pair.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::db::chat_messages_route_trail_repair::
+            ensure_chat_messages_route_trail_column(w.connection())
+            .expect("ensure the route-trail column on the vintage fixture");
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            w.connection(),
+        )
+        .expect("ensure the cycle-order column on the vintage fixture");
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -402,6 +417,68 @@ fn salon_reads_match_oracle() {
         let got = response_data(&salon::chats_has_dangerous(&db, uid));
         let want = oracle[name]["body"].clone();
         cases.push((name.into(), got, want));
+    }
+
+    // P4.D171: the route trail (on a message) and the drawn rotation (on the
+    // chat) — the two `78b381a96`-round schema moves. The oracle's
+    // `setRouteTrail`/`setCycleOrder` mirror these exactly. LAST case: shared
+    // db, and the mutation cannot affect earlier reads — but it must first
+    // undo the `has_dangerous_*` loop's own leftover concierge paint back to
+    // the PRISTINE fixture state (the oracle gets a fresh fixture copy per
+    // case; the Rust side shares one; `reset`'s `isDangerousChat = 0` is
+    // that loop's own baseline, not the fixture's untouched NULL).
+    {
+        rt.block_on(db.write(|w| {
+            w.main().connection().execute_batch(
+                "UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = NULL, \
+                 \"dangerCategories\" = NULL",
+            )?;
+            Ok(())
+        }))
+        .expect("restore pristine concierge state");
+        let message_id = "d1000000-0000-4000-8000-000000000002";
+        let trail = serde_json::json!([
+            {
+                "profileId": "cccc0001-0000-4000-8000-000000000001",
+                "profileName": "Primary",
+                "provider": "OPENAI_COMPATIBLE",
+                "modelName": "mock-model",
+                "via": "primary",
+                "outcome": "failed",
+                "trigger": "rate-limit",
+                "evidence": "finish-reason",
+                "detail": "HTTP 429",
+            },
+            {
+                "profileId": "cccc0001-0000-4000-8000-000000000001",
+                "profileName": "Primary",
+                "provider": "OPENAI_COMPATIBLE",
+                "modelName": "mock-model",
+                "via": "retry",
+                "outcome": "answered",
+            },
+        ]);
+        let trail_text = serde_json::to_string(&trail).unwrap();
+        let solo_owned = solo.clone();
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute(
+                "UPDATE \"chat_messages\" SET \"routeTrail\" = ?1 WHERE \"id\" = ?2",
+                rusqlite::params![trail_text, message_id],
+            )?;
+            w.main().connection().execute(
+                "UPDATE \"chats\" SET \"cycleOrderParticipantIds\" = ?1 WHERE \"id\" = ?2",
+                rusqlite::params![
+                    "[\"b1000000-0000-4000-8000-000000000002\",\"b1000000-0000-4000-8000-000000000001\"]",
+                    solo_owned
+                ],
+            )?;
+            Ok(())
+        }))
+        .expect("plant route trail + cycle order");
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let mut want = oracle["get_route_trail_and_cycle_order"]["body"].clone();
+        strip_rendered_html(&mut want);
+        cases.push(("get_route_trail_and_cycle_order".into(), got, want));
     }
 
     drop(db);

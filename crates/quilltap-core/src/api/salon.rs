@@ -406,6 +406,22 @@ fn assemble_chat_get(
             .filter(|v| !v.is_null())
             .unwrap_or(json!([])),
     );
+    // NOTE (P4.D171, measured 2026-09-09 against the `78b381a96` pin): the
+    // work order's §C.2 claimed v4's chat-GET whitelist
+    // (`app/api/v1/chats/[id]/handlers/get.ts:574-629`) projects
+    // `cycleOrderParticipantIds` "after impersonatingParticipantIds". It does
+    // NOT — `git show 2aca73ad6 -- 'app/api/v1/chats/[id]/handlers/get.ts'`
+    // is EMPTY (that commit never touches the file), and `grep
+    // cycleOrderParticipantIds handlers/get.ts` at the `78b381a96` tip finds
+    // nothing. `app/salon/[id]/types.ts:242` declares the field optional and
+    // `SalonView.tsx:753` already reads `chat?.cycleOrderParticipantIds`, but
+    // the server-side whitelist wiring that would populate it is simply
+    // absent — a genuine v4 gap between the client and server halves of this
+    // commit, not a survey-vs-hunk misread on this port's side (verified via
+    // the shipped hunks, never the commit message, per
+    // `work-order-facts-need-the-same-verification-as-commit-prose`). NOT
+    // projecting it here keeps v5 byte-identical to v4's ACTUAL response.
+    // P4.D172/P4.D177 should re-check this before relying on §C.2's claim.
     out.insert(
         "activeTypingParticipantId".into(),
         get_v("activeTypingParticipantId").unwrap_or(Value::Null),
@@ -590,6 +606,10 @@ fn project_message(e: &Value, attachments: Value) -> Value {
     }
     m.insert("provider".into(), or_null("provider"));
     m.insert("modelName".into(), or_null("modelName"));
+    // The route trail (v4 `5841a8c62`, `handlers/get.ts:466`
+    // `routeTrail: event.routeTrail || null`): absent AND null both project as
+    // `null`, never omitted.
+    m.insert("routeTrail".into(), or_null("routeTrail"));
     m.insert(
         "targetParticipantIds".into(),
         or_null("targetParticipantIds"),

@@ -12,6 +12,72 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(schema): P4.D171 unit 3 — chats.rs carries cycleOrderParticipantIds, chats_messages.rs/chats_messages_read.rs carry routeTrail, api/salon.rs projects it (and a §C.2 survey correction)
+
+_Versions: core 0.0.860, harness 0.0.751._
+
+**`chats.rs`** (the write side of unit 2's read splice): the insert-data
+struct gains `cycle_order_participant_ids: String` (default `'[]'`, matching
+`spoken_this_cycle_participant_ids`'s pattern); the 99-parameter INSERT
+widens to 100 by inserting a fresh `?100` placeholder at the correct column
+position (between `spokenThisCycleParticipantIds` and
+`documentEditingMode`) while appending the bound value at the end of
+`params![]` — sequential renumbering of `?26..?99` was unnecessary since
+rusqlite's numbered placeholders bind by their literal number, not their
+text position; `ChatUpdate` gains the matching `Option<String>` field + a
+`set_col!` arm modeled on `spoken_this_cycle_participant_ids`'s. Verified
+against `chats_tier2_equivalence` (create/update/delete) AND
+`chat_create_capstone_equivalence` (the 121-case capstone spine, incl. the
+green-room progress frames and the 201 DTO body) — both green from the
+`78b381a96` pin. Mutation proof: replaced the appended param with a literal
+`["MUTATED"]` — `chats_tier2_matches_oracle` reddened with the mutated value
+visible in the diff; reverted, re-ran green.
+
+**`chats_messages.rs`** (the write side): `MessageEventInput` gains `route_trail:
+Option<serde_json::Value>`; the INSERT column list + `?41` placeholder + the
+`opt_value_json`-bound value appended at the end (every existing construct
+site passes `None` — one exhaustive literal at `tools/whisper.rs:292` needed
+`route_trail: None`). **`chats_messages_read.rs`** (the read side): `routeTrail`
+appended to `COLUMNS` at index 45 (never spliced mid-list, per the file's own
+rule); `marshal_message` emits it via the ordinary `put_opt_json` (omit on
+null/absent), positioned between `modelName` and `targetParticipantIds` — the
+Chat-GET's `|| null` force-present is `api::salon::assemble_chat_get`'s job,
+not this raw-event marshal's. Widened the `MIGRATED_DDL` test fixture.
+**`api/salon.rs`**: the message projection's existing `or_null` helper
+(already implementing v4's exact `|| null` semantics) now covers `routeTrail`
+between `modelName` and `targetParticipantIds`.
+
+**A work-order survey correction (§C.2, recorded in a `salon.rs` code
+comment):** the order claimed v4's chat-GET whitelist
+(`handlers/get.ts:574-629`) projects `cycleOrderParticipantIds` "after
+`impersonatingParticipantIds`". Measured against the `78b381a96` pin: it does
+NOT. `git show 2aca73ad6 -- 'app/api/v1/chats/[id]/handlers/get.ts'` is EMPTY
+(that commit never touches the file) and the field appears nowhere in
+`get.ts` at the tip. `app/salon/[id]/types.ts:242` declares the field
+optional and `SalonView.tsx:753` already reads `chat?.cycleOrderParticipantIds`,
+but the server-side whitelist wiring that would populate it is simply
+absent — a genuine v4 gap between the client and server halves of `2aca73ad6`,
+found by reading the shipped hunks rather than trusting the order's prose
+(`work-order-facts-need-the-same-verification-as-commit-prose`). v5 does NOT
+project the field on the chat GET (byte-identical to v4's actual response);
+the DB-level carry (chats_read.rs, unit 2) is unaffected and already proven.
+P4.D172/P4.D177 should re-verify before relying on §C.2's claim.
+
+Extended `harness/oracle/cases/salon-reads.test.ts` with a new
+`get_route_trail_and_cycle_order` case (`setRouteTrail`/`setCycleOrder`
+CaseSpec fields, raw UPDATEs mirrored on both differential sides) and an
+inline `ALTER TABLE` pair (v4's exact migration DDL) since this jest
+harness's `initializeDatabase()` does not run v4's migration chain — the
+committed `salon-{main,mount}.db` predates both columns. Regenerated
+`chats_messages_read_equivalence`, `chats_messages_tier2_equivalence`,
+`chats_messages_ops_tier2_equivalence`, `salon_reads_equivalence` from the
+`78b381a96` pin — all green. Mutation proofs, red-then-green: dropped the
+`?41` binding in `insert_message` — `chats_messages_tier2_matches_oracle`
+failed with `InvalidParameterCount(40, 41)` (read-only
+`chats_messages_read_equivalence` is unaffected, as expected — it never
+calls the write path); omitted `routeTrail` from the message projection —
+`salon_reads_match_oracle` failed on 5 cases (the `|| null` arm never omits).
+
 #### 2026-09-09 — feat(schema): P4.D171 unit 2 — `chats_read.rs` carries `cycleOrderParticipantIds` (the index-24→25 splice, ~70 renumbered reads)
 
 _Versions: core 0.0.859._

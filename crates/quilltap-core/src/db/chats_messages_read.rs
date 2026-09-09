@@ -74,11 +74,11 @@ use super::DbError;
 /// `type` discriminator is column 1; `chatId` / `isSilentMessage` are not read
 /// here (see module docs). Indices below match this list.
 ///
-/// New columns are APPENDED (`pascalMeta` at 44), never spliced in beside their
-/// schema neighbour: the marshaling below is positional, so inserting one
-/// mid-list would silently re-point every later index. The SELECT order is free
-/// — the emitted key order is fixed by the `Map` insertion order in
-/// [`marshal_message`], not by this list.
+/// New columns are APPENDED (`pascalMeta` at 44, `routeTrail` at 45), never
+/// spliced in beside their schema neighbour: the marshaling below is
+/// positional, so inserting one mid-list would silently re-point every later
+/// index. The SELECT order is free — the emitted key order is fixed by the
+/// `Map` insertion order in [`marshal_message`], not by this list.
 const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptTokens, \
      completionTokens, swipeGroupId, swipeIndex, attachments, debugMemoryLogs, thoughtSignature, \
      reasoningContent, reasoningSegments, participantId, recoveryType, renderedHtml, dangerFlags, \
@@ -86,7 +86,7 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      carinaMeta, pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
      estimatedCostUSD, createdAt, isSilentMessage, confirmed, confirmationChecked, \
-     confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta";
+     confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, routeTrail";
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -184,6 +184,13 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut o, "dangerFlags", row.get(18)?);
     put_opt_string(&mut o, "provider", row.get(34)?);
     put_opt_string(&mut o, "modelName", row.get(35)?);
+    // The route trail (v4 `5841a8c62`): every model tried, in order, for this
+    // reply. `RouteAttemptSchema.array().nullable().optional()` — NULL (nearly
+    // every message) or absent both omit the key here, matching every other
+    // nullable-optional JSON column above; the Chat GET's `|| null` force-
+    // present is `api::salon::assemble_chat_get`'s concern, not this raw event
+    // marshal's.
+    put_opt_json(&mut o, "routeTrail", row.get(45)?);
     put_opt_json(&mut o, "targetParticipantIds", row.get(19)?);
     put_opt_string(&mut o, "systemSender", row.get(20)?);
     put_opt_string(&mut o, "opaqueContent", row.get(22)?);
@@ -348,7 +355,7 @@ mod tests {
         reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
         dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage INTEGER, systemSender TEXT, \
         systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-        carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        carinaMeta TEXT, pascalMeta TEXT, routeTrail TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
         pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \

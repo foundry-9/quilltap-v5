@@ -117814,3 +117814,187 @@ QT_FIXTURE_CHATSREAD=/tmp/qt-chatsread-p4d171.db \
 Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core -p
 quilltap-harness --all-targets -- -D warnings` clean; `cargo build
 --workspace` clean. Version: core 0.0.858 → 0.0.859.
+
+**Unit 3 — `chats.rs` carries `cycleOrderParticipantIds` (unit 2's write
+side); `chats_messages.rs`/`chats_messages_read.rs` carry `routeTrail`;
+`api/salon.rs` projects it; a §C.2 survey correction.**
+
+`chats.rs`: the insert-data struct's `cycle_order_participant_ids: String`
+(default `'[]'`) plus a `?100` placeholder inserted mid-column-list (between
+`spokenThisCycleParticipantIds` and `documentEditingMode`) while the bound
+value is appended to the END of the 100-element `params![]` — rusqlite's
+`?NNN` placeholders bind to `params![]` by their literal number wherever
+they appear in the SQL text, so this avoided renumbering the ~74 placeholders
+after the splice point (the same trick used once more, differently, than
+unit 2's `chats_read.rs` splice, which HAD to renumber because its reads are
+purely positional). `ChatUpdate` gains the field + a `set_col!` arm on the
+`spoken_this_cycle_participant_ids` model.
+
+Verified against TWO families: `chats_tier2_equivalence` (create/update/delete,
+regenerated from the pin, green — 8 rows / 1 annotation row) and
+`chat_create_capstone_equivalence` (the full create spine incl. green-room
+frames and the DTO body — regenerated via its jest+tsx recipe, 121 corpus
+cases, 3 Rust test functions all green). Mutation proof: replaced the
+appended params value with a literal `["MUTATED"]` string — `chats_tier2_
+matches_oracle` reddened, the mutated value visible verbatim in the panic's
+diff; reverted by file backup, re-ran green.
+
+
+
+Write side: `MessageEventInput.route_trail: Option<serde_json::Value>`, the
+INSERT column list gains `routeTrail` + `?41` (appended at the end of the
+41-param list, not mid-splice — simpler than `chats.rs`'s mid-splice since
+`pascalMeta` was already the list's last column), bound via
+`opt_value_json`. Every construct site passes `None`; one exhaustive struct
+literal (`tools/whisper.rs:292`) needed the new field added by hand — found
+by `cargo build` (E0063), not by grep, confirming the field is genuinely
+required everywhere.
+
+Read side: `COLUMNS` gains `routeTrail` appended at index 45 (per the file's
+own documented rule — new columns are appended, never spliced mid-list, to
+avoid re-pointing every later index); `marshal_message` reads it via the
+ordinary `put_opt_json` (omit-on-null, matching every sibling nullable-JSON
+column in the file) at the Map-insertion position v4's `MessageEventSchema`
+projects it (between `modelName` and `targetParticipantIds`). Widened the
+file's `MIGRATED_DDL` test constant.
+
+`api/salon.rs`'s message projection already had an `or_null` closure
+implementing v4's exact `X || null` semantics (falsy → null) for its other
+fields — `routeTrail` slots into it directly between `modelName` and
+`targetParticipantIds`, giving the required "absent and null both project as
+null, never omitted" behavior for free.
+
+**Survey correction (§C.2 of the work order):** verified against the pin
+that v4's chat-GET response does NOT project `cycleOrderParticipantIds`.
+`git show 2aca73ad6 -- 'app/api/v1/chats/[id]/handlers/get.ts'` (the commit
+the order cited) is EMPTY — that commit never touches `get.ts` — and a grep
+for the field at the `78b381a96` tip finds nothing in the file. The client
+side of the same commit (`app/salon/[id]/types.ts:242`,
+`SalonView.tsx:753`) already expects the field, but the server-side
+whitelist that would populate it was never added — a genuine v4-side gap
+between the two halves of that commit. Reverted the initial (order-following)
+addition to `assemble_chat_get`'s chat-GET projection; kept the DB-level
+carry in `chats_read.rs` (unit 2, already proven independently via
+`chats_read_equivalence`). Recorded as a code comment in `salon.rs` at the
+exact insertion point, flagged for P4.D172/P4.D177 to re-check before
+relying on §C.2's claim, and reported here per
+`work-order-facts-need-the-same-verification-as-commit-prose`.
+
+New oracle case `get_route_trail_and_cycle_order` in
+`harness/oracle/cases/salon-reads.test.ts`: new `CaseSpec` fields
+`setRouteTrail`/`setCycleOrder`, applied as raw UPDATEs (mirrored on the
+Rust side, same idiom as the file's existing `setImpersonation`/
+`setConcierge`). The committed `salon-{main,mount}.db` predates BOTH
+`78b381a96`-round columns, and this jest harness's `initializeDatabase()`
+does not run v4's migration chain (confirmed: no migration logic in
+`lib/database/manager.ts`; migrations are a separate app-startup concern
+this harness never drives) — so the test now runs v4's exact migration DDL
+as two try/caught `ALTER TABLE`s on its own fresh fixture copy before
+planting either value. (First regen attempt crashed 4 jest workers on
+unhandled promise rejections from the un-awaited `rawQuery` UPDATE against
+the then-missing column — diagnosis, not a red herring: the `routeTrail`
+key existed as `null` on every message even before the ALTER fix, because
+`event.routeTrail || null` collapses an `undefined` column read the same
+way it collapses a stored `NULL` — so "key present as null" alone does not
+prove the column exists; the crashing workers were the actual signal.)
+
+The Rust harness's shared-db case ordering needed one extra fix beyond the
+new case itself: it runs LAST, and the preceding `has_dangerous_*` loop's
+own `reset` closure leaves `isDangerousChat = 0` (that loop's baseline) where
+the pristine fixture has it `NULL` — a plain `UPDATE … SET conciergeOverride
+= NULL, isDangerousChat = NULL, dangerCategories = NULL` restores the exact
+untouched state before planting the two new columns.
+
+Also widened `salon_reads_equivalence.rs`'s fixture-opening helper with the
+two P4.D171 boot ensures (called on a `Writer` connection before wrapping in
+`Db::open`) — the `web_search_runner_wire.rs` precedent for a committed
+fixture predating a schema move.
+
+Regen recipe:
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d171-78b381a96
+V5W=~/source/quilltap-v5/.claude/worktrees/p4-schema-moves-substrate-559670
+
+# chats_tier2_equivalence
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/qt-chats-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-fixture.ts"
+QT_FIXTURE_CHATS=/tmp/qt-chats-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-tier2.ts" > /tmp/oracle-chats-p4d171.ndjson
+cd "$V5W"
+QT_ORACLE_CHATS=/tmp/oracle-chats-p4d171.ndjson \
+QT_FIXTURE_CHATS=/tmp/qt-chats-fixture-p4d171.db \
+  cargo test -p quilltap-harness --test chats_tier2_equivalence -- --nocapture
+
+# chat_create_capstone_equivalence
+cd "$PIN"
+QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main-p4d171.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount-p4d171.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm-p4d171.db \
+  $N/node --import tsx "$V5W/harness/oracle/fixtures/build-chat-create-capstone.ts"
+TMPO=/tmp/qt-cc-oracle-p4d171; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/chat-create-capstone.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/chat-create-capstone.json" "$TMPO/fixtures/"
+TZ=UTC QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main-p4d171.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount-p4d171.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm-p4d171.db QT_ORACLE_OUT=/tmp/oracle-chat-create-p4d171.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- chat-create-capstone
+cd "$V5W"
+QT_ORACLE_CC=/tmp/oracle-chat-create-p4d171.ndjson \
+QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main-p4d171.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount-p4d171.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm-p4d171.db \
+  cargo test -p quilltap-harness --test chat_create_capstone_equivalence -- --nocapture
+
+# chats_messages_read_equivalence
+cd "$PIN"
+QT_FIXTURE_CHATSMSGREAD=/tmp/qt-chatsmsgread-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-messages-read-fixture.ts"
+QT_FIXTURE_CHATSMSGREAD=/tmp/qt-chatsmsgread-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-messages-read.ts" > /tmp/oracle-chatsmsgread-p4d171.ndjson
+cd "$V5W"
+QT_ORACLE_CHATSMSGREAD=/tmp/oracle-chatsmsgread-p4d171.ndjson \
+QT_FIXTURE_CHATSMSGREAD=/tmp/qt-chatsmsgread-p4d171.db \
+  cargo test -p quilltap-harness --test chats_messages_read_equivalence -- --nocapture
+
+# chats_messages_tier2_equivalence
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/qt-chatsmsg-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-messages-fixture.ts"
+QT_FIXTURE_CHATSMSG=/tmp/qt-chatsmsg-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-messages-tier2.ts" > /tmp/oracle-chatsmsg-p4d171.ndjson
+cd "$V5W"
+QT_ORACLE_CHATSMSG=/tmp/oracle-chatsmsg-p4d171.ndjson \
+QT_FIXTURE_CHATSMSG=/tmp/qt-chatsmsg-fixture-p4d171.db \
+  cargo test -p quilltap-harness --test chats_messages_tier2_equivalence -- --nocapture
+
+# chats_messages_ops_tier2_equivalence (regression-only, unmoved by this unit)
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/qt-chatsmsgops-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts"
+QT_FIXTURE_CHATSMSGOPS=/tmp/qt-chatsmsgops-fixture-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-messages-ops-tier2.ts" > /tmp/oracle-chatsmsgops-p4d171.ndjson
+cd "$V5W"
+QT_ORACLE_CHATSMSGOPS=/tmp/oracle-chatsmsgops-p4d171.ndjson \
+QT_FIXTURE_CHATSMSGOPS=/tmp/qt-chatsmsgops-fixture-p4d171.db \
+  cargo test -p quilltap-harness --test chats_messages_ops_tier2_equivalence -- --nocapture
+
+# salon_reads_equivalence (jest, needs the /tmp mirror — jest ignores .claude/)
+TMPO=/tmp/qt-salon-oracle-p4d171
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/salon-reads.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/salon.json" "$TMPO/fixtures/"
+cd "$PIN"
+QT_FIXTURE_SALON_MAIN="$V5W/crates/quilltap-web/tests/fixtures/salon-main.db" \
+QT_FIXTURE_SALON_MOUNT="$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db" \
+QT_ORACLE_OUT=/tmp/oracle-salon-reads-p4d171.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- salon-reads
+cd "$V5W"
+QT_ORACLE_SALON_READS=/tmp/oracle-salon-reads-p4d171.ndjson \
+  cargo test -p quilltap-harness --test salon_reads_equivalence -- --nocapture
+```
+
+Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core -p
+quilltap-harness --all-targets -- -D warnings` clean; `cargo build
+--workspace` clean. Versions: core 0.0.859 → 0.0.860, harness 0.0.750 →
+0.0.751.

@@ -65,6 +65,12 @@ interface CaseSpec {
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
   }>;
+  /** P4.D171: plant a non-null route trail (on a message) and a non-`'[]'`
+   * drawn rotation (on the chat), the two `78b381a96`-round schema moves the
+   * committed fixture predates. Written as raw UPDATEs (both differential
+   * sides mirror them). */
+  setRouteTrail?: { messageId: string; trail: unknown[] };
+  setCycleOrder?: { chatId: string; order: string[] };
 }
 
 function mockRequest(url: string): unknown {
@@ -144,6 +150,22 @@ async function runCase(
 
   await initializeDatabase();
 
+  // P4.D171: `initializeDatabase()` here does NOT run v4's migration chain (a
+  // higher app-startup concern this harness never drives), and the committed
+  // `salon-{main,mount}.db` predates the two `78b381a96`-round schema moves —
+  // so this test's own fresh copy needs the columns before it can plant
+  // either one. v4's exact migration DDL; harmless once present.
+  try {
+    await rawQuery('ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT DEFAULT NULL');
+  } catch {
+    // already present
+  }
+  try {
+    await rawQuery('ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT \'[]\'');
+  } catch {
+    // already present
+  }
+
   // P4.D60 (bug 51): inject live impersonation state so the GET projection
   // exercises the non-default arm (the columns are stored as JSON string / text).
   if (c.setImpersonation) {
@@ -161,6 +183,21 @@ async function runCase(
       set.isDangerousChat === null ? null : set.isDangerousChat ? 1 : 0,
       set.dangerCategories === null ? null : JSON.stringify(set.dangerCategories),
       set.chatId,
+    ]);
+  }
+
+  // P4.D171: the two `78b381a96`-round schema moves the committed fixture
+  // predates — plant a non-null route trail and a non-`'[]'` drawn rotation.
+  if (c.setRouteTrail) {
+    await rawQuery('UPDATE "chat_messages" SET "routeTrail" = ? WHERE "id" = ?', [
+      JSON.stringify(c.setRouteTrail.trail),
+      c.setRouteTrail.messageId,
+    ]);
+  }
+  if (c.setCycleOrder) {
+    await rawQuery('UPDATE "chats" SET "cycleOrderParticipantIds" = ? WHERE "id" = ?', [
+      JSON.stringify(c.setCycleOrder.order),
+      c.setCycleOrder.chatId,
     ]);
   }
 
@@ -316,6 +353,44 @@ async function main(): Promise<void> {
       ],
     },
     { name: 'has_dangerous_unknown_action', kind: 'hasDangerous', url: 'http://localhost/api/v1/chats?action=no-such-action' },
+    // P4.D171: the route trail (on a message) and the drawn rotation (on the
+    // chat) — the two `78b381a96`-round schema moves. The trail's answering
+    // entry deliberately agrees with the message's stored provider/modelName
+    // (`OPENAI_COMPATIBLE`/`mock-model`, the fixture's `d1000000-…-002`).
+    {
+      name: 'get_route_trail_and_cycle_order',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${soloId}`,
+      chatId: soloId,
+      setRouteTrail: {
+        messageId: 'd1000000-0000-4000-8000-000000000002',
+        trail: [
+          {
+            profileId: 'cccc0001-0000-4000-8000-000000000001',
+            profileName: 'Primary',
+            provider: 'OPENAI_COMPATIBLE',
+            modelName: 'mock-model',
+            via: 'primary',
+            outcome: 'failed',
+            trigger: 'rate-limit',
+            evidence: 'finish-reason',
+            detail: 'HTTP 429',
+          },
+          {
+            profileId: 'cccc0001-0000-4000-8000-000000000001',
+            profileName: 'Primary',
+            provider: 'OPENAI_COMPATIBLE',
+            modelName: 'mock-model',
+            via: 'retry',
+            outcome: 'answered',
+          },
+        ],
+      },
+      setCycleOrder: {
+        chatId: soloId,
+        order: ['b1000000-0000-4000-8000-000000000002', 'b1000000-0000-4000-8000-000000000001'],
+      },
+    },
   ];
 
   const outLines: string[] = [];

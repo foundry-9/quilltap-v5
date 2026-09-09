@@ -156,6 +156,13 @@ pub struct MessageEventInput {
     pub carina_meta: Option<CarinaMetaIn>,
     #[serde(default)]
     pub pascal_meta: Option<PascalMetaIn>,
+    // The route trail (v4 `5841a8c62`): every model tried, in order, for this
+    // reply — `RouteAttemptSchema.array().nullable().optional()`. Carried as a
+    // raw `Value` (not a typed `Vec<RouteAttemptIn>`): this lane only threads
+    // the column through; every existing construct site passes `None`
+    // (P4.D173 is the one writer, via `primary_stream.rs::save_assistant_message`).
+    #[serde(default)]
+    pub route_trail: Option<serde_json::Value>,
     #[serde(default)]
     pub pending_external_prompt: Option<String>,
     #[serde(default)]
@@ -733,6 +740,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
     let custom_announcer = opt_json(&m.custom_announcer)?;
     let carina_meta = opt_json(&m.carina_meta)?;
     let pascal_meta = opt_json(&m.pascal_meta)?;
+    let route_trail = opt_value_json(&m.route_trail)?;
     let pending_external_attachments = opt_json(&m.pending_external_attachments)?;
     let summary_anchor = opt_json(&m.summary_anchor)?;
     let is_silent_message = is_silent_stored(m.is_silent_message);
@@ -750,11 +758,12 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
            systemKind, opaqueContent, hostEvent, customAnnouncer, carinaMeta, \
            pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
            summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
-           confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta) \
+           confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, \
+           routeTrail) \
          VALUES (\
            ?1, ?2, 'message', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
            ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, \
-           ?34, ?35, ?36, ?37, ?38, ?39, ?40)",
+           ?34, ?35, ?36, ?37, ?38, ?39, ?40, ?41)",
         rusqlite::params![
             m.id,
             chat_id,
@@ -796,6 +805,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             m.confirmation_notes,
             m.confirmation_original_content,
             pascal_meta,
+            route_trail,
         ],
     )?;
     Ok(())

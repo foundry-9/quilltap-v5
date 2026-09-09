@@ -295,6 +295,11 @@ pub struct ChatCreate {
     pub turn_queue: String,
     #[serde(default = "default_empty_json_array_str")]
     pub spoken_this_cycle_participant_ids: String,
+    /// The drawn speaking order for this cycle (v4 `2aca73ad6`), as a JSON
+    /// array of participant ids — `'[]'` reads as "no rotation on file".
+    /// Written by the turn manager (P4.D172); this lane only carries it.
+    #[serde(default = "default_empty_json_array_str")]
+    pub cycle_order_participant_ids: String,
     #[serde(default)]
     pub document_editing_mode: bool,
     #[serde(default = "default_normal")]
@@ -532,6 +537,10 @@ pub struct ChatUpdate {
     /// The plain-string `spokenThisCycleParticipantIds` column (holds JSON text);
     /// set by the message-write metadata path when the turn cycle advances.
     pub spoken_this_cycle_participant_ids: Option<String>,
+    /// The plain-string `cycleOrderParticipantIds` column (holds JSON text) —
+    /// the drawn speaking order for this cycle (v4 `2aca73ad6`); set by the
+    /// turn manager (P4.D172). This lane only carries the column.
+    pub cycle_order_participant_ids: Option<String>,
     /// The plain-string `turnQueue` column (holds JSON text) — set by the
     /// turn-orchestration decision core ([`crate::services::turn_orchestrator`]):
     /// the queue-pop write-back and the turn-action mutators.
@@ -820,7 +829,8 @@ impl<'c> ChatsRepository<'c> {
                lastMessageAt, lastRenameCheckInterchange, compactionGeneration, lastSummaryTurn, \
                lastSummaryTokens, lastFullRebuildTurn, summaryAnchorMessageIds, isPaused, \
                isManuallyRenamed, impersonatingParticipantIds, activeTypingParticipantId, \
-               allLLMPauseTurnCount, turnQueue, spokenThisCycleParticipantIds, documentEditingMode, \
+               allLLMPauseTurnCount, turnQueue, spokenThisCycleParticipantIds, \
+               cycleOrderParticipantIds, documentEditingMode, \
                documentMode, dividerPosition, terminalMode, activeTerminalSessionId, \
                rightPaneVerticalSplit, projectId, scenarioText, totalPromptTokens, \
                totalCompletionTokens, estimatedCostUSD, priceSource, showSystemEventsOverride, \
@@ -843,7 +853,7 @@ impl<'c> ChatsRepository<'c> {
                turnSkippingEnabled) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
-               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
+               ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?100, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
                ?35, ?36, ?37, ?38, ?39, ?40, ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48, ?49, ?50, \
                ?51, ?52, ?53, ?54, ?55, ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63, ?64, ?65, ?66, \
                ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, ?81, ?82, \
@@ -949,6 +959,7 @@ impl<'c> ChatsRepository<'c> {
                 opts.updated_at,
                 data.answer_confirmation_override,
                 data.turn_skipping_enabled,
+                data.cycle_order_participant_ids,
             ],
         )?;
         Ok(())
@@ -1071,6 +1082,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.spoken_this_cycle_participant_ids {
             set_col!("spokenThisCycleParticipantIds", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.cycle_order_participant_ids {
+            set_col!("cycleOrderParticipantIds", Box::new(v.clone()));
         }
         if let Some(v) = &patch.turn_queue {
             set_col!("turnQueue", Box::new(v.clone()));
