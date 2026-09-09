@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(drift): a tenth commit landed during the unification's gate — the turn manager draws a cycle's speaking order up front, with a second `chats` column
+
+_Docs-only change._
+
+The `25f534c0b` round's cleanup check found v4 `main` at `2aca73ad6`, one
+past the `d3f0ed133` the unification's opening check recorded, with the
+checkout DIRTY on the same surfaces (bug 131 in flight — a user-driven seat
+weighted at the default in the speaking order). Classified from the hunks: a
+PORT with a SECOND schema move beside the route trail's —
+`chats.cycleOrderParticipantIds TEXT DEFAULT '[]'` through a migration and
+the schema shape — on the whole ported turn manager: the rotation for a cycle
+is drawn once (a talkativeness-weighted permutation, sampled without
+replacement, the same successive-sampling distribution as before), stored on
+the chat, followed seat by seat, repaired rather than redrawn on a mid-cycle
+cast change, and read by the sidebar's Participants list instead of its old
+talkativeness-sorted guess. Pending drift is now ten commits; the regen rule
+stays PIN REQUIRED at `25f534c0b`, and the dirty tree is what the next probe
+should expect to see resolved into a bug-131 commit.
+
 #### 2026-09-09 — docs(unify): the `25f534c0b` progressions + bug-126 drift catch-up round — five orders unified, the baseline moves to `25f534c0b`, nine mid-round v4 commits recorded
 
 _Docs-only change._
