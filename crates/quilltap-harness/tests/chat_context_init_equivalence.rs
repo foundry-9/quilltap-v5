@@ -213,7 +213,14 @@ fn chat_context_init_matches_oracle() {
         ),
         // P4.D168 / v4 `25f534c0b`: the greeting's FORCED progressions report.
         // Sam carries them; Aria carries none.
-        ("prog_forced_greeting", spec.sam_id.clone(), None, None, None, None),
+        (
+            "prog_forced_greeting",
+            spec.sam_id.clone(),
+            None,
+            None,
+            None,
+            None,
+        ),
         (
             "prog_forced_with_scenario",
             spec.sam_id.clone(),
@@ -222,7 +229,14 @@ fn chat_context_init_matches_oracle() {
             None,
             None,
         ),
-        ("prog_absent_on_aria", spec.aria_id.clone(), None, None, None, None),
+        (
+            "prog_absent_on_aria",
+            spec.aria_id.clone(),
+            None,
+            None,
+            None,
+            None,
+        ),
     ];
 
     let mut subprompt_hits = 0usize;

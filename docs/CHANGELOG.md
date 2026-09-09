@@ -116,6 +116,17 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — style(progressions): rustfmt the widened differentials, and the greeting builder's eighth argument
+
+_Versions: core 0.0.853, harness 0.0.743._
+
+The full workspace gate's first run caught two things the per-unit runs did
+not. rustfmt on the two widened differentials, and `too_many_arguments` on
+`build_chat_context`, which the injected clock pushed to eight. v4's
+`buildChatContext` is positional; the repo's rule for a signature that mirrors
+v4's is an `#[allow]` naming the v4 function, which is what it got. Nothing
+observable moved.
+
 #### 2026-09-08 — test(progressions): the negative cache guarantee, and v4's normative metadata notes
 
 _Versions: core 0.0.852, harness 0.0.742._

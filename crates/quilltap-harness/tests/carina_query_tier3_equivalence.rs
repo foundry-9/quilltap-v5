@@ -58,12 +58,12 @@ use std::sync::Mutex;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
-use quilltap_core::progressions::prompt_section::PROGRESSIONS_SECTION_HEADER;
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
     StreamUsage, StreamingCompletionProvider,
 };
+use quilltap_core::progressions::prompt_section::PROGRESSIONS_SECTION_HEADER;
 use quilltap_core::services::carina_query::{
     run_carina_query, BrahmaConsoleResult, CarinaQueryDeps, RunBrahmaConsole,
 };

@@ -337,6 +337,12 @@ fn user_character_from_value(uc: &Value) -> UserCharacter {
 /// Errors: `Character not found` (v4 throws) when the responding character is
 /// absent. The user-character lookup that misses / isn't user-controlled simply
 /// yields `None` (v4's `if (uc && uc.controlledBy === 'user')`).
+// v4's `buildChatContext` takes five positional parameters; v5 adds the two
+// connections it opens for itself and, at P4.D168, the wall clock the greeting's
+// forced progressions report reads (v4 calls `Date.now()` inside the builder,
+// which no differential could freeze). Eight, and the repo's rule for a
+// signature that mirrors v4's is to keep the shape and say so.
+#[allow(clippy::too_many_arguments)] // mirrors v4 buildChatContext + the injected clock
 pub fn build_chat_context(
     main: &Connection,
     mount: &Connection,
