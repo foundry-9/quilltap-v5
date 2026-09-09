@@ -6628,6 +6628,145 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `78b381a96` twelve-commit drift catch-up round (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177) — ORDERED 2026-09-09
+
+**Baseline `25f534c0b`; v4 `main` HEAD `78b381a96` (TWELVE past — the
+ledger's twelve §3 rows, all now `ORDERED(…)`), v4 `bugfix` tip `1a2b2164c`
+and `release` tip `8fbf2afe0` unmoved; the checkout on `main`, CLEAN at the
+planning probe and then DIRTY on the human's bug-133 edit (recorded in the
+ledger's §1 with ONE pre-authorized probe exception mirrored in every order's
+§R.2); regen rule PIN REQUIRED (every regen from a lane-unique detached
+worktree at `78b381a96`, neutrality regens at `25f534c0b`; a lane whose probe
+fails otherwise STOPs).** The standing rule holds: drift debt clears before
+new scope, so the round IS the catch-up. Round name in the work orders: "the
+`78b381a96` twelve-commit drift catch-up round". The round-wide §C wire
+contract, the §R meeting points and the Ownership table are spliced
+byte-identically into every order (md5-verified at planning). Four fresh v4
+surveys (2026-09-09, at the tip) are folded into the orders' survey sections.
+
+- **P4.D171 — the two schema moves, the substrate** (`work-orders/p4.d171-
+  schema-moves-substrate.md`): the ONE D23 re-dump from the tip landing
+  `chat_messages.routeTrail` (the two DDL shapes DISAGREE — `TEXT` vs `TEXT
+  DEFAULT NULL`, both carried, P4.D78) and `chats.cycleOrderParticipantIds`
+  (they AGREE — `TEXT DEFAULT '[]'`) together; both boot ensures fenced into
+  `host.rs`; the ~70-index renumbering in `chats_read.rs`; the appended
+  message column (index 45) + the INSERT `?41` with an explicit `None` at
+  every construct site; the raw export/import/restore carry + the
+  `routeTrail[].profileId` NON-remap pin; the chat-GET projections of both
+  raw values; `schema-key-order.json` regenerated; the export-schema
+  re-vendor + `VENDORED_BYTES` (un-reds `qtap_schema_embed_guard`); the
+  reduced-DDL sweep. From `main`; **lands FIRST, then its surface is
+  FROZEN** — the base of the stack.
+- **P4.D172 — the turn manager from the TIP** (`work-orders/p4.d172-turn-
+  manager-tip-server.md`, stacked on P4.D171): `2aca73ad6` + `d14da3a56`
+  read as ONE unit at `78b381a96` (the second rewrites the first's call
+  sites). The RNG decision made in the order: the single `random01: f64`
+  becomes an ORDERED draw sequence on both sides (v4's `drawCycleOrder`
+  consumes one `Math.random` per remaining candidate; the three frozen-zero
+  tier-3 families cannot see a reordered rotation; `message_finalizer.rs:
+  1610` hard-codes `0.0` in PRODUCTION — a v5 defect closed on the way).
+  `cycle_order` / `weighted_random` (the THIRD hand-rolled pick in
+  `chat_create.rs` folded in) / `room_characters` as flat crate-root
+  modules; the whole-room batched map at all six sites (**v5 measurably has
+  bug 131** at `turn_orchestrator.rs:512`/`:739`; `enclave/announce.rs:284`
+  STAYS on the alias as v4 does); the strike at v5's ONE `update_chat_
+  metadata` chokepoint; `?action=query` now WRITES; the turn envelope's
+  `state.cycleOrder` + whole-room names; the Continue-Elsewhere carry
+  (measured: v4 DOES copy it, remapped); two NEW tier-1/2 families.
+- **P4.D173 — the route trail, server** (`work-orders/p4.d173-route-trail-
+  server.md`, stacked on P4.D171, parallel with P4.D172 — `message_
+  finalizer.rs` and `orchestrator.rs` fenced BY FUNCTION between them):
+  `services/route_trail.rs` (the ONE writer of two `StreamingState`
+  fields), the twelve failover record sites at the positions tabled
+  (three of v4's empty-response arms DO NOT EXIST in v5 — `let _ =
+  restream_into(…)` swallows them — added with v4's log lines), persistence
+  on the message INSERT, the `done` frame, `routeVia` seeded from v5's
+  existing `did_reroute`, `EffectiveProfile.name` at twelve sites; the NEW
+  tier-1 `route_trail_compose_equivalence` + the tier-3 arms per `via` ×
+  `outcome`.
+- **P4.D174 — the Salon chat gallery, server** (`work-orders/p4.d174-chat-
+  gallery-server.md`, from `main`): `photos/chat_gallery.rs` (the four
+  passes, seven sources, dedupe on `sha256` over both id species, the
+  STABLE newest-first sort with portraits carrying the character's
+  `createdAt`, the `messageId` forwarding), the two verbs as DISPATCH ONLY
+  (v5 does not mirror v4's action tables — the `query_param_semantics`
+  divergence rows re-measured, the census `429` recounted — the only lane
+  adding variants), the shared `SaveImageRequestSchema` + `save_attribution`
+  (the message leg's uuid sentences GONE, its 400 kept; the chat leg's 409),
+  the files-listing walk shared, `?download=1|true` on the three byte routes
+  (BOTH mount-blob arms), bug 130's `chatId` + the web edge forwarding it; a
+  NEW committed `chat-gallery-{main,mount}.db` pair; `courier-images-*`
+  MIGRATED in place (the Playwright seeder reads it).
+- **P4.D175 — bugs 128/132 + the vendored artifacts + the riders**
+  (`work-orders/p4.d175-bugs-128-132-vendor-riders.md`, from `main`): the
+  `memories` topic (the two `job_topics` arms, NO `REPOSITORY_TOPICS` row,
+  the two gate publishes in `db/memories.rs`, the route publishes NOTHING —
+  `4a9be9878` is a SQUASH whose second commit removed it; `realtime_topics_
+  equivalence` flips ten rows red-first with zero edits; **v5's sidebar
+  never had bug 128's count**, measured); bug 132 whole (both writers →
+  `None`, `describe_respond`'s `stored_description` + the `On file:` tail,
+  the ladder reordered prompt → stored → vision; the heal over BOTH
+  partitions with a `migrations_state` row — LOAD-BEARING, the vision tier
+  is unreachable while the caption sits in the column; `photo_tools`'
+  `describe_stored` flips red-first and a `storedonly` row closes the arm-2
+  coverage hole; **the third writer v4's fix misses — `— outfit preview` —
+  KEPT faithfully and FILED upstream**, the heal family's arm its
+  convergence tripwire); the whole `help/**` re-vendor at the tip (11
+  files, +177/−22, 122 → 123 at the two live literals + the stale
+  `help_content.rs` 120); the six NO-PORT ratifications with evidence; the
+  2026-08-24 walk row A2 annotated (it proved the WRONG behaviour).
+- **P4.D176 — the gallery SPA** (`work-orders/p4.d176-chat-gallery-spa.md`,
+  from `main`, `apps/web/**` SPLIT with P4.D177): the grid rewrite (chips
+  only at ≥ 2 sources, the `qt-tab*` classes, the Delete double-guard, the
+  body-reparent idiom), the detail view (provenance line, link count,
+  Jump-to-message's three-hop choreography; **the two hard-wired album
+  buttons v5 still has RETIRED**), the `target` union on `SaveImageDialog`
+  with the 409 read, one URL download helper over `?download=1`, the
+  Gallery entry's recorded divergence retired to v4's post-fix ungated-
+  with-a-count shape; gated beats on `P4D174_SERVER_LANDED`.
+- **P4.D177 — the Salon smalls SPA** (`work-orders/p4.d177-salon-smalls-
+  spa.md`, from `main`): the route-trail badge under the message avatar —
+  **NET-NEW: v5 renders no provider/model badge there at all** — with the
+  display twin's recorded vectors and the plain-badge fallback; the drawn
+  rotation in the participants list under the RULED client mechanism (v5's
+  SPA has no `calculateTurnStateFromHistory`: read the raw string off the
+  chat GET and `state.cycleOrder` off the turn response); the `memories`
+  topic mapped to the Salon LIST's keys (the measured v5 surface; the
+  spec's `'memories'`-as-unknown exemplar goes red-first); bug 127's
+  divergence note → a convergence record; gated beats on
+  `P4D172/P4D173/P4D175_SERVER_LANDED`.
+
+**Deliberately left out:** the in-flight v4 bug 133 (uncommitted at
+ordering — the next round's first row; do not fold it in); every phase-4
+candidate that is not drift (the lock-conflict 503-vs-409, the Suparṇā-mail
+ordering comparand, the `{{start}}`/`{{end}}` host-zone fallback, the
+`MONTHS_SHORT` duplicate, the `pascal-progress` corpus fold, the
+`subprompts_prompt_tier2` coupling, the census's honest totality, the
+present-but-null lead, the `CaptureLayer` consolidation, the standing
+human-only 💸 items); a Delete-Memories count for v5's sidebar (v4's client
+fix has no v5 surface — the `edit-section.ts` deferral stands, now naming
+bug 128's shape); a widening of bug 132's heal predicate to the third writer
+(v4-faithful + an upstream filing instead); REST edges for the two gallery
+actions (dispatch only); a `rand` crate (the draw source is a closure).
+
+Recommended arrangement: P4.D171 starts ALONE and first (from `main`; small
+and mechanical — a Sonnet-tier agent can carry it, with the ~70-index
+renumbering pinned by the distinct-values fixture); P4.D174, P4.D175,
+P4.D176 and P4.D177 start with it from `main` (four more worktrees — the
+two SPA lanes are cheap; the two Rust lanes want the Opus tier); when
+P4.D171's gate is green and its tip sha is recorded, P4.D172 and P4.D173
+start in parallel from that tip (Opus tier both — the turn manager for the
+RNG decision and the six-site consolidation, the route trail for the twelve
+record sites). Six worktrees at peak, `CARGO_INCREMENTAL=0`, one Playwright
+at a time (P4.D176/P4.D177 run only their own specs). Unify in the order
+D171, D172, D173, D174, D175, D176, D177; the unifier flips the four gate
+constants, runs the §C name-for-name diff, lands the `chat_continuation.rs`
+comment wire, refreshes the `docs/v4/` mirror (incl. MOVING the twelve
+retired specs into `features/complete/` and mirroring the new bug files at
+their `bugs/fixed/` paths), recounts the version bumps as base + total,
+moves the baseline to `78b381a96`, and marks the twelve rows ABSORBED /
+NO-PORT-RATIFIED.
+
 ## The `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) — UNIFIED 2026-09-09
 
 **ALL FIVE ORDERS CLOSED; the oracle baseline MOVES `2f4254b42` →

@@ -12,6 +12,55 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
+
+_Docs-only change._
+
+The next round is the drift catch-up the ledger's §3 has been carrying: v4's
+twelve commits past `25f534c0b`, absorbed to the tip `78b381a96`. The §2
+probe passed at planning (then the checkout went dirty on the human's bug-133
+edit — recorded in the ledger's §1 and in every order's §R.2 with one
+pre-authorized exception, so the lanes do not stop on it). Four fresh v4
+surveys (the turn manager read at the TIP, the route trail, the chat gallery,
+bugs 128/132 + the six riders) sized the split; the orders carry their
+findings so no lane re-derives them.
+
+Seven orders under `docs/developer/porting/work-orders/`, ownership disjoint
+at file level with four files fenced by function or region and the round-wide
+§C wire contract, §R meeting points and Ownership table spliced
+byte-identically into all seven (md5-verified): **P4.D171** the two schema
+moves as a substrate — the ONE D23 re-dump landing `chat_messages.routeTrail`
+and `chats.cycleOrderParticipantIds` together, both boot ensures, the raw
+read/write/export/import carry, the chat-GET projections, the export-schema
+re-vendor that un-reds `qtap_schema_embed_guard` (lands FIRST, then freezes);
+**P4.D172** the turn manager from the tip (`2aca73ad6` + bug 131 as one
+unit — the drawn rotation, the whole-room batched character map at all six
+sites, the strike, the RNG injection becoming an ORDERED SEQUENCE on both
+sides, `?action=turn`'s `state.cycleOrder`; v5 measurably has bug 131 at two
+sites and a hard-coded `random01 = 0.0` in production), stacked on P4.D171;
+**P4.D173** the route trail's behaviour (the one chokepoint, the twelve
+failover record sites — three of v4's arms do not exist in v5 today — the
+INSERT-time persistence, the `done` frame, `EffectiveProfile.name`), stacked
+on P4.D171 beside P4.D172 with `message_finalizer.rs`/`orchestrator.rs`
+fenced by function; **P4.D174** the gallery server (the nine-source
+enumerator over both id species, `chatGallery` + `chatSaveGalleryImage` as
+dispatch verbs with v4's 409, the shared files-listing walk, `?download=1`
+on the three byte routes, bug 130's `chatId`, a NEW committed
+`chat-gallery-*` pair); **P4.D175** bug 128's `memories` topic (ten oracle
+rows flip red-first for free; v5's sidebar never had the count), bug 132
+whole (both writers, the prompt-first `describe_image` ladder with
+`stored_description`, the load-bearing data heal with a ledger row, the
+third writer v4's fix misses KEPT and filed upstream), the whole `help/**`
+re-vendor at the tip (122 → 123) and the six NO-PORT ratifications;
+**P4.D176** the gallery SPA (the grid/detail/save-dialog rewrite, the two
+hard-wired album buttons v5 still has RETIRED, the ungated Gallery entry's
+divergence retired to v4's post-fix shape); **P4.D177** the Salon smalls
+SPA (the route-trail badge under the avatar — net-new, v5 renders no badge
+there at all — with recorded vectors, the rotation in the participants list
+under a ruled client mechanism, the `memories` topic mapped to the Salon
+list's keys, bug 127's convergence record). `phase-4.md` gains the ORDERED
+section; the drift ledger's twelve rows read `ORDERED(…)`.
+
 #### 2026-09-09 — docs(drift): two more v4 commits — bug 131's speaking-order weights and bug 132's image labels, both defects v5 measurably has
 
 _Docs-only change._
