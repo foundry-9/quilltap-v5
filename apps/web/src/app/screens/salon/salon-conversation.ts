@@ -3410,6 +3410,7 @@ export class SalonConversation {
       attachments: [],
       provider: null,
       modelName: null,
+      routeTrail: null,
       targetParticipantIds: null,
       isSilentMessage: null,
       systemSender: null,

@@ -18,6 +18,8 @@ import { resolveWhisperTargetLabel } from './whisper-visibility';
 import { ConfirmationBadge } from './confirmation-badge';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
+import { RouteTrailBadge } from './route-trail-badge';
+import { ProviderModelBadge } from './sidebar/provider-model-badge';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import {
   getAnnouncementAccentClasses,
@@ -50,7 +52,19 @@ export interface ImageClickEvent {
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, Tooltip, ConfirmationBadge, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
+  imports: [
+    Avatar,
+    Icon,
+    Tooltip,
+    ConfirmationBadge,
+    CourierBubble,
+    MessageContent,
+    ProviderModelBadge,
+    RouteTrailBadge,
+    ThinkingBlock,
+    TokenBadge,
+    ToolMessage,
+  ],
   template: `
     <!-- v4 stamps message-<id> on the row (MessageRow.tsx:222,263); it is how
          handleReattributed scrolls a moved line back into view. -->
@@ -71,6 +85,14 @@ export interface ImageClickEvent {
                takes dangerous={isDangerousChat}. -->
           <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
             <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+            <!-- v4 MessageDesktopAvatar.tsx:35-39 — RouteTrailBadge replaces the
+                 plain badge when a trail is present; a one-row trail renders
+                 pixel-identical to the plain badge (P4.D177). -->
+            @if (message().routeTrail?.length) {
+              <qt-route-trail-badge [routeTrail]="message().routeTrail!" size="xs" />
+            } @else {
+              <qt-provider-model-badge [provider]="message().provider" [modelName]="message().modelName" size="xs" />
+            }
           </div>
         }
         <div class="qt-chat-message-body group">
@@ -89,6 +111,14 @@ export interface ImageClickEvent {
              dangerous={isDangerousChat}. -->
         <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+          <!-- v4 MessageDesktopAvatar.tsx:35-39 — RouteTrailBadge replaces the
+               plain badge when a trail is present; a one-row trail renders
+               pixel-identical to the plain badge (P4.D177). -->
+          @if (message().routeTrail?.length) {
+            <qt-route-trail-badge [routeTrail]="message().routeTrail!" size="xs" />
+          } @else {
+            <qt-provider-model-badge [provider]="message().provider" [modelName]="message().modelName" size="xs" />
+          }
         </div>
       }
 
@@ -390,6 +420,11 @@ export interface ImageClickEvent {
     </div>
   `,
 })
+// v4's `MessageRow` is wrapped in `React.memo` with a hand-written comparator
+// that (P4.D177) gained an O(1) identity check on `routeTrail` — NO-COUNTERPART
+// here: Angular's `OnPush` change detection already re-renders only on input
+// *reference* changes for every field at once, so there is no per-field memo
+// comparator to extend.
 export class MessageRow {
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();

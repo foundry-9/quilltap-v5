@@ -43,6 +43,7 @@ function message(over: Partial<MessageDto>): MessageDto {
     attachments: [],
     provider: null,
     modelName: null,
+    routeTrail: null,
     targetParticipantIds: null,
     isSilentMessage: null,
     systemSender: null,
@@ -854,5 +855,130 @@ describe('MessageRow — the dangerous-chat avatar ring (P4.69, v4 MessageDeskto
     const avatar = avatarOf(fixture);
     expect(avatar).not.toBeNull();
     expect(avatar!.classList.contains('qt-chat-avatar-dangerous')).toBe(false);
+  });
+});
+
+describe('MessageRow — the provider/model badge under the avatar (NET-NEW, P4.D177)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const avatarOf = (fixture: ComponentFixture<MessageRow>) =>
+    fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement | null;
+
+  it('shows the plain badge under the regular assistant row when there is no route trail', () => {
+    const fixture = render(message({ provider: 'anthropic', modelName: 'claude-sonnet-5', routeTrail: null }));
+    const avatar = avatarOf(fixture);
+    expect(avatar!.querySelector('qt-provider-model-badge')).not.toBeNull();
+    expect(avatar!.querySelector('qt-route-trail-badge')).toBeNull();
+  });
+
+  it('shows the plain badge under the COURIER assistant row too', () => {
+    const fixture = render(
+      message({ pendingExternalPrompt: 'PROMPT', provider: 'openai', modelName: 'gpt-5', routeTrail: null }),
+    );
+    expect(fixture.nativeElement.querySelector('qt-courier-bubble')).not.toBeNull();
+    const avatar = avatarOf(fixture);
+    expect(avatar!.querySelector('qt-provider-model-badge')).not.toBeNull();
+  });
+
+  it('renders no badge under the USER row (v4 passes no `badge` prop there)', () => {
+    const fixture = render(message({ role: 'USER', participantId: null, content: 'Hullo.', provider: null, modelName: null }));
+    const avatar = avatarOf(fixture);
+    expect(avatar).not.toBeNull();
+    expect(avatar!.querySelector('qt-provider-model-badge')).toBeNull();
+    expect(avatar!.querySelector('qt-route-trail-badge')).toBeNull();
+  });
+
+  it('renders nothing when the message has no provider and no trail (old rows)', () => {
+    const fixture = render(message({ provider: null, modelName: null, routeTrail: null }));
+    const avatar = avatarOf(fixture);
+    // qt-provider-model-badge mounts but its own @if renders nothing for a falsy provider.
+    expect(avatar!.querySelector('[aria-label="Models tried for this reply"]')).toBeNull();
+  });
+});
+
+describe('MessageRow — the route trail badge (P4.D177)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const avatarOf = (fixture: ComponentFixture<MessageRow>) =>
+    fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement | null;
+
+  const TRAIL = [
+    {
+      profileId: '00000000-0000-4000-8000-00000000000a',
+      profileName: 'OpenAI gpt-5',
+      provider: 'openai',
+      modelName: 'gpt-5',
+      via: 'primary' as const,
+      outcome: 'failed' as const,
+      trigger: 'network' as const,
+      detail: 'Connection error.',
+    },
+    {
+      profileId: '00000000-0000-4000-8000-00000000000b',
+      profileName: 'Anthropic Sonnet',
+      provider: 'anthropic',
+      modelName: 'claude-sonnet-5',
+      via: 'understudy' as const,
+      outcome: 'answered' as const,
+    },
+  ];
+
+  it('replaces the plain badge with the trail when routeTrail is a non-empty array', () => {
+    const fixture = render(message({ provider: 'anthropic', modelName: 'claude-sonnet-5', routeTrail: TRAIL }));
+    const avatar = avatarOf(fixture);
+    expect(avatar!.querySelector('qt-route-trail-badge')).not.toBeNull();
+    // Scoped to a direct child: qt-route-trail-badge legitimately renders its
+    // OWN qt-provider-model-badge per row, so a subtree query would find those.
+    expect(avatar!.querySelector(':scope > qt-provider-model-badge')).toBeNull();
+  });
+
+  it('renders one list row per collapsed profile with the aria-label hook', () => {
+    const fixture = render(message({ routeTrail: TRAIL }));
+    const list = avatarOf(fixture)!.querySelector('[aria-label="Models tried for this reply"]');
+    expect(list).not.toBeNull();
+    expect(list!.querySelectorAll('li').length).toBe(2);
+  });
+
+  it('marks the failed row with the ❌ glyph and strikes it through', () => {
+    const fixture = render(message({ routeTrail: TRAIL }));
+    const list = avatarOf(fixture)!.querySelector('[aria-label="Models tried for this reply"]')!;
+    // Scoped to `li > span`: the provider icon SVG nested inside each badge
+    // ALSO carries role="img" (it is its own accessible glyph).
+    const glyphs = Array.from(list.querySelectorAll('li > span[role="img"]')).map((el) => el.textContent);
+    expect(glyphs).toEqual(['❌']);
+    expect(list.querySelector('s')).not.toBeNull();
+  });
+
+  it('carries the hover text through to the row title', () => {
+    const fixture = render(message({ routeTrail: TRAIL }));
+    const list = avatarOf(fixture)!.querySelector('[aria-label="Models tried for this reply"]')!;
+    const titledBadge = list.querySelector('[title*="fell over"]');
+    expect(titledBadge).not.toBeNull();
+  });
+
+  it('renders an empty array exactly as no trail (falls back to the plain badge)', () => {
+    const fixture = render(message({ provider: 'anthropic', modelName: 'claude-sonnet-5', routeTrail: [] }));
+    const avatar = avatarOf(fixture);
+    expect(avatar!.querySelector('qt-route-trail-badge')).toBeNull();
+    expect(avatar!.querySelector('qt-provider-model-badge')).not.toBeNull();
+  });
+
+  it('a one-row trail renders with no mark and no strike, as the plain badge would (v4’s own acceptance criterion)', () => {
+    const oneRow = [
+      {
+        profileId: '00000000-0000-4000-8000-00000000000a',
+        profileName: 'OpenAI gpt-5',
+        provider: 'openai',
+        modelName: 'gpt-5',
+        via: 'primary' as const,
+        outcome: 'answered' as const,
+      },
+    ];
+    const fixture = render(message({ provider: 'openai', modelName: 'gpt-5', routeTrail: oneRow }));
+    const list = avatarOf(fixture)!.querySelector('[aria-label="Models tried for this reply"]')!;
+    expect(list.querySelectorAll('li').length).toBe(1);
+    expect(list.querySelector('s')).toBeNull();
+    expect(list.textContent).not.toContain('❌');
+    expect(list.textContent).not.toContain('🚫');
   });
 });

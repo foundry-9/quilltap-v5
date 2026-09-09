@@ -117668,3 +117668,96 @@ Friday copy, the report on a real turn and in a greeting, the Workbench
 on the live lock, and — human-only — a hostname flip under a running host);
 the recorded candidates above. Bug 127's divergence note in
 `progressions-section.spec.ts` is now a CONVERGENCE site for the next round.
+
+## P4.D177 — the Salon smalls, SPA half (the `78b381a96` twelve-commit drift catch-up round)
+
+**Freshness probe at lane start:** the ledger's §2 probe (`branch --show-
+current`, `status --short`, the two `log --oneline` ranges) matched the
+pre-authorized exception written into the ledger's §1 and this order's §R.2:
+tree CLEAN, `78b381a96..main` exactly ONE commit (`cc65d6bfc`, "Fix bug 133:
+a moderated chat's story background could escalate to the uncensored
+provider") naming bug 133, `1a2b2164c..bugfix` empty. Per the exception, the
+lane proceeds on its `78b381a96` pin; `cc65d6bfc` is recorded here as
+next-round drift, on top of the ledger's own twelve UNPROCESSED rows.
+
+Pin worktree: `/tmp/qt-v4-pin-p4d177-78b381a96` (detached at `78b381a96`,
+`node_modules` symlinked to `~/source/quilltap-server/node_modules` — the
+established sibling-lane convention). Markers verified: `lib/chat/route-
+trail-display.ts`, `lib/chat/turn-manager/{cycle-order,room-characters}.ts`,
+`lib/services/chat-message/route-trail.ts` all present; `cycleOrderParticipantIds`
+in `lib/schemas/chat.types.ts`; `'memories'` in `lib/schemas/realtime.types.ts`.
+
+### Unit 1 — the route trail: the display twin, the badge (NET-NEW), the carry
+
+`chat/route-trail-display.ts` — a straight port of v4's `lib/chat/route-
+trail-display.ts` (collapse adjacent same-profile rows keeping the opening
+`via` and the last outcome, the ❌/🚫ROUTE_OUTCOME_GLYPH map, the hover-text
+join, `routeOutcomeLabel`), with v4's 139-line `route-trail-display.test.ts`
+transcribed 1:1 (case text preserved) as `route-trail-display.spec.ts`, PLUS
+a recorded-vector corpus: `apps/web/oracle/route-trail-display.ts` executes
+v4's REAL module at the `78b381a96` pin (collapse × 4 scenarios, hover text
+× 12, the three glyph/label sweeps, and — the ground truth for the SPA's
+hand-rolled unions since v5 has no zod — the `via`/`outcome`/`trigger`
+enums' literal values straight off `RouteAttemptViaEnum` / `RouteAttemptOutcomeEnum`
+/ the unwrapped `trigger` zod enum). 25 lines recorded
+(`route-trail-display.oracle.ndjson`, line count pinned in the consuming
+`route-trail-display.oracle.spec.ts`), byte-identical to the hand transcription.
+
+`chat/route-trail-badge.ts` — NET-NEW: v5's message row mounted no provider/
+model badge under the desktop avatar at all (only `add-character-dialog.ts`
+and `participant-card.ts` used `qt-provider-model-badge`, per the survey).
+This unit lands BOTH halves: the plain badge fallback and the trail list
+(`qt-route-trail-badge`, the aria-label hook `[aria-label="Models tried for
+this reply"]`, no new `qt-*` class — matching v4's only theme hook), wired
+at message-row.ts's two assistant avatar regions (the courier branch and the
+regular branch; the user-side region at `:385`(pre-edit numbering) gets
+neither, matching v4). `route-trail-badge.spec.ts` transcribes v4's
+`RouteTrailBadge.test.tsx` 1:1. `message-row.spec.ts` grew four new describe
+blocks (no existing case weakened) — the plain-badge mount, the trail-badge
+mount + glyph/strike/hover assertions, and a "one-row trail renders with no
+mark and no strike" case standing in for v4's byte-identity claim (v4's own
+test doesn't assert exact DOM equality either — it asserts the same
+structural absence of marks/strikes the hand-rolled twin now asserts).
+
+The `MessageRow` memo comparator's O(1) `routeTrail` identity check (v4
+`MessageRow.tsx:560`) is recorded NO-COUNTERPART in a doc comment on the
+`MessageRow` class — Angular `OnPush` already re-renders on any input
+*reference* change across every field at once, so there is no per-field
+comparator to extend.
+
+The carry: `core-contract.ts` gains `RouteAttemptVia`/`RouteAttemptOutcome`/
+`RouteAttemptTrigger`/`RouteAttempt` (fenced `// === P4.D177 ===`, placed
+immediately before `MessageDto` since it references the type),
+`MessageDto.routeTrail: RouteAttempt[] | null` (always present, between
+`modelName` and `targetParticipantIds` per §C.1 — NOT optional, since the
+chat-GET wire key is `null`-not-omitted, the same shape as the existing
+`provider`/`modelName` fields), and `ChatStreamFrame.routeTrail?: RouteAttempt[]
+| null` (optional, after `modelName`, before `isSilentMessage`, matching the
+frame's other done-only optional fields). `chat-stream.reducer.ts` (not
+explicitly listed in either P4.D176's or P4.D177's Ownership row, but
+necessary plumbing for the SSE done-fold half of this unit's mandate, and
+touched by no other lane this round) gains `routeTrail` on the `assistant`
+variant of `StreamMessage` and folds `frame.routeTrail ?? null` at its one
+construction site in `reduceDone`. `message-list.ts:402`'s stream→canonical
+mapper carries `sm.routeTrail` through, so a reload reads the same trail off
+the message DTO the settled bubble showed live.
+
+**Required-field ripple.** Making `MessageDto.routeTrail` non-optional broke
+every spec file that hand-builds a full `MessageDto` object literal (an
+`as unknown as` cast is unaffected). Thirteen sites across eleven spec files
+plus one production file (`salon-conversation.ts`'s optimistic user-bubble
+construction, outside either lane's named region-fence but a bare type-
+completion ripple, not a functional edit) needed `routeTrail: null,` inserted
+after `modelName: null,` — done mechanically with a `perl -0pi` pass, verified
+by build.
+
+**Gate for this unit:** `npm run build` clean; `npx ... --filter="route
+trail"` (message-row.spec.ts's four new describe blocks) — 7/7 passed after
+two selector fixes (a subtree `querySelector('qt-provider-model-badge')`
+inside the avatar was finding the badge `qt-route-trail-badge` itself
+mounts per row — scoped to `:scope > qt-provider-model-badge`; a `[role=
+"img"]` sweep was also catching the provider icon SVG's own `role="img"` —
+scoped to `li > span[role="img"]`); `--filter="RouteTrailBadge|route-trail-
+display|agrees with v4|P4.D132"` — 179/179 passed (route-trail-display.spec,
+route-trail-display.oracle.spec, route-trail-badge.spec, message-row.spec,
+message-list.spec's P4.D132 confirmation-family case, chat-stream.reducer.spec).

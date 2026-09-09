@@ -2848,6 +2848,60 @@ export interface PascalMeta {
   callerParticipantId?: string;
 }
 
+// === P4.D177 ===
+/**
+ * How a connection profile came to be asked for one attempt on the call
+ * sheet (v4 `RouteAttemptViaEnum`, `lib/schemas/chat.types.ts`).
+ */
+export type RouteAttemptVia = 'primary' | 'retry' | 'concierge' | 'understudy' | 'tier-pick';
+
+/**
+ * What became of one attempt: `failed` means the profile fell over on its own
+ * (timeout, auth, rate limit, 5xx, an unexplained empty body); `refused` means
+ * it declined on content grounds; `answered` means it produced the reply (v4
+ * `RouteAttemptOutcomeEnum`).
+ */
+export type RouteAttemptOutcome = 'answered' | 'failed' | 'refused';
+
+/**
+ * A failed/refused attempt's trigger class. Duplicates the engine's
+ * `FallbackTrigger` (`crates/quilltap-core/src/services/route_trail.rs`) BY
+ * VALUE on purpose — this is client code, the engine's is not (v4's own
+ * client/engine parity assertion, `RouteAttemptSchema.trigger`).
+ */
+export type RouteAttemptTrigger =
+  | 'auth'
+  | 'rate-limit'
+  | 'network'
+  | 'model-missing'
+  | 'provider-error'
+  | 'empty-response'
+  | 'moderation-refusal';
+
+/**
+ * One call (or one skipped-before-calling candidate) against one connection
+ * profile, as recorded on an assistant message's `routeTrail` (v4
+ * `RouteAttemptSchema`). `profileId` is stored for the record and never
+ * dereferenced by the UI — a profile can be deleted, and an imported trail
+ * may name one that never existed in this instance.
+ */
+export interface RouteAttempt {
+  profileId: string;
+  profileName: string;
+  provider: string;
+  modelName: string;
+  via: RouteAttemptVia;
+  outcome: RouteAttemptOutcome;
+  /** Absent when answered. */
+  trigger?: RouteAttemptTrigger;
+  /** How a refusal was established: the provider said so, or it was inferred
+   *  from an empty body on a Concierge-flagged turn. */
+  evidence?: 'finish-reason' | 'inferred';
+  /** ≤ 200 UTF-16 units (199 + U+2026 when truncated). Never the full error body. */
+  detail?: string;
+}
+// === /P4.D177 ===
+
 /**
  * One persisted message (v4 `handleGet` per-message projection) — MINUS
  * `renderedHtml` (v5 renders markdown client-side; see the rendering service).
@@ -2871,6 +2925,10 @@ export interface MessageDto {
   attachments: MessageAttachment[];
   provider: string | null;
   modelName: string | null;
+  /** Every connection profile tried for this turn, oldest attempt first; `null`
+   *  when nothing failed (nearly every message) — v4's `event.routeTrail ||
+   *  null`, always present, never omitted (P4.D177 §C.1). */
+  routeTrail: RouteAttempt[] | null;
   targetParticipantIds: string[] | null;
   isSilentMessage: boolean | null;
   systemSender: SystemSender;
@@ -4178,6 +4236,9 @@ export interface ChatStreamFrame {
   participantId?: string;
   provider?: string | null;
   modelName?: string | null;
+  /** `null` emitted when nothing failed (P4.D177 §C.1); folded onto the
+   *  settled message by `message-list.ts`'s streaming→message mapper. */
+  routeTrail?: RouteAttempt[] | null;
   isSilentMessage?: boolean;
   emptyResponse?: boolean;
   emptyResponseReason?: string;

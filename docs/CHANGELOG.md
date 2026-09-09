@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(chat): the message route trail — every model tried, in order, under the avatar (P4.D177 unit 1)
+
+_Versions: SPA 0.5.691._
+
+v4's `5841a8c62` shipped a per-message `routeTrail`: every connection profile
+tried for a turn, oldest attempt first, recorded on the assistant message and
+carried on the SSE `done` frame and the chat-GET projection. This unit lands
+the whole client-side reading half. `chat/route-trail-display.ts` is a
+straight port of v4's `lib/chat/route-trail-display.ts` — collapsing adjacent
+same-profile attempts into one row, the ❌/🚫 glyphs, the hover text — with
+v4's 139-line test suite transcribed 1:1 plus a recorded-vector corpus
+(`route-trail-display.oracle.ndjson`, 25 rows) driven through v4's REAL
+module at the `78b381a96` pin; the corpus also carries the three enums'
+literal values as the ground truth for the hand-rolled
+`RouteAttemptVia`/`RouteAttemptOutcome`/`RouteAttemptTrigger` unions v5 has to
+maintain by hand (no zod on the SPA side). `chat/route-trail-badge.ts` is
+NET-NEW for v5: the message row previously mounted no provider/model badge
+under the desktop avatar at all, so this unit lands both the plain
+`qt-provider-model-badge` fallback and the trail list, wired at both avatar
+sites in `message-row.ts` (the courier branch and the regular assistant
+branch) — a one-row trail renders with no mark and no strike, exactly the
+plain badge would. `core-contract.ts` carries the new `RouteAttempt` shape,
+`MessageDto.routeTrail` (always present, `null` when nothing failed) and
+`ChatStreamFrame.routeTrail` (optional, mirroring the frame's other done-only
+fields), fenced `// === P4.D177 ===`; `chat-stream.reducer.ts` folds the SSE
+`done` frame's `routeTrail` onto the streamed bubble, and `message-list.ts`'s
+stream→canonical mapper carries it through so a reload reads the same trail
+off the message DTO. The `MessageRow` memo comparator's O(1) `routeTrail`
+identity check (v4 `MessageRow.tsx:560`) is recorded NO-COUNTERPART — Angular
+`OnPush` already re-renders on any input reference change, so there is no
+per-field comparator to extend.
+
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 
 _Docs-only change._
