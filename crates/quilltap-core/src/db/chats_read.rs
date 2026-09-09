@@ -48,7 +48,7 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 97 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT order).
+/// All 98 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT order).
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
 /// `commonplaceRecallHistory` and `budgetMaxTurns` — its generateDDL/Zod-shape
 /// position.
@@ -57,7 +57,8 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      lastRenameCheckInterchange, compactionGeneration, lastSummaryTurn, lastSummaryTokens, \
      lastFullRebuildTurn, summaryAnchorMessageIds, isPaused, isManuallyRenamed, \
      impersonatingParticipantIds, activeTypingParticipantId, allLLMPauseTurnCount, turnQueue, \
-     spokenThisCycleParticipantIds, documentEditingMode, documentMode, dividerPosition, terminalMode, \
+     spokenThisCycleParticipantIds, cycleOrderParticipantIds, documentEditingMode, documentMode, \
+     dividerPosition, terminalMode, \
      activeTerminalSessionId, rightPaneVerticalSplit, projectId, scenarioText, totalPromptTokens, \
      totalCompletionTokens, estimatedCostUSD, priceSource, showSystemEventsOverride, \
      requestFullContextOnNextMessage, disabledTools, disabledToolGroups, forceToolsOnNextMessage, \
@@ -195,126 +196,133 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
         "spokenThisCycleParticipantIds".into(),
         Value::String(row.get::<_, Option<String>>(24)?.unwrap_or_else(empty_arr)),
     );
+    // The drawn speaking order for this cycle (v4 2aca73ad6): the raw JSON
+    // string, as v4 spreads the row — always present (`.default('[]')`), same
+    // shape as `turnQueue`/`spokenThisCycleParticipantIds` beside it.
+    obj.insert(
+        "cycleOrderParticipantIds".into(),
+        Value::String(row.get::<_, Option<String>>(25)?.unwrap_or_else(empty_arr)),
+    );
     obj.insert(
         "documentEditingMode".into(),
-        Value::Bool(row.get::<_, Option<i64>>(25)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(26)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "documentMode".into(),
         Value::String(
-            row.get::<_, Option<String>>(26)?
+            row.get::<_, Option<String>>(27)?
                 .unwrap_or_else(|| "normal".into()),
         ),
     );
-    obj.insert("dividerPosition".into(), number_or(row.get(27)?, 45.0));
+    obj.insert("dividerPosition".into(), number_or(row.get(28)?, 45.0));
     obj.insert(
         "terminalMode".into(),
         Value::String(
-            row.get::<_, Option<String>>(28)?
+            row.get::<_, Option<String>>(29)?
                 .unwrap_or_else(|| "normal".into()),
         ),
     );
-    put_opt_string(&mut obj, "activeTerminalSessionId", row.get(29)?);
+    put_opt_string(&mut obj, "activeTerminalSessionId", row.get(30)?);
     obj.insert(
         "rightPaneVerticalSplit".into(),
-        number_or(row.get(30)?, 50.0),
+        number_or(row.get(31)?, 50.0),
     );
-    put_opt_string(&mut obj, "projectId", row.get(31)?);
-    put_opt_string(&mut obj, "scenarioText", row.get(32)?);
-    obj.insert("totalPromptTokens".into(), number_or(row.get(33)?, 0.0));
-    obj.insert("totalCompletionTokens".into(), number_or(row.get(34)?, 0.0));
-    put_opt_number(&mut obj, "estimatedCostUSD", row.get(35)?);
-    put_opt_string(&mut obj, "priceSource", row.get(36)?);
-    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(37)?);
+    put_opt_string(&mut obj, "projectId", row.get(32)?);
+    put_opt_string(&mut obj, "scenarioText", row.get(33)?);
+    obj.insert("totalPromptTokens".into(), number_or(row.get(34)?, 0.0));
+    obj.insert("totalCompletionTokens".into(), number_or(row.get(35)?, 0.0));
+    put_opt_number(&mut obj, "estimatedCostUSD", row.get(36)?);
+    put_opt_string(&mut obj, "priceSource", row.get(37)?);
+    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(38)?);
     obj.insert(
         "requestFullContextOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(38)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(39)?.unwrap_or(0) == 1),
     );
-    obj.insert("disabledTools".into(), array_or_empty(row.get(39)?));
-    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(40)?));
+    obj.insert("disabledTools".into(), array_or_empty(row.get(40)?));
+    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(41)?));
     obj.insert(
         "forceToolsOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(41)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(42)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "allowCrossCharacterVaultReads".into(),
-        Value::Bool(row.get::<_, Option<i64>>(42)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(43)?.unwrap_or(0) == 1),
     );
-    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(43)?);
-    obj.insert("state".into(), object_or_empty(row.get(44)?));
-    put_opt_json(&mut obj, "compressionCache", row.get(45)?);
-    put_opt_bool(&mut obj, "agentModeEnabled", row.get(46)?);
-    obj.insert("agentTurnCount".into(), number_or(row.get(47)?, 0.0));
-    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(48)?);
-    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(49)?);
-    put_opt_string(&mut obj, "imageProfileId", row.get(50)?);
-    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(51)?);
-    put_opt_bool(&mut obj, "isDangerousChat", row.get(52)?);
-    put_opt_number(&mut obj, "dangerScore", row.get(53)?);
-    obj.insert("dangerCategories".into(), array_or_empty(row.get(54)?));
-    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(55)?);
-    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(56)?);
-    put_opt_string(&mut obj, "conciergeOverride", row.get(57)?);
-    put_opt_json(&mut obj, "sceneState", row.get(58)?);
-    put_opt_string(&mut obj, "renderedMarkdown", row.get(59)?);
-    put_opt_json(&mut obj, "equippedOutfit", row.get(60)?);
-    put_opt_json(&mut obj, "characterAvatars", row.get(61)?);
-    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(62)?);
+    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(44)?);
+    obj.insert("state".into(), object_or_empty(row.get(45)?));
+    put_opt_json(&mut obj, "compressionCache", row.get(46)?);
+    put_opt_bool(&mut obj, "agentModeEnabled", row.get(47)?);
+    obj.insert("agentTurnCount".into(), number_or(row.get(48)?, 0.0));
+    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(49)?);
+    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(50)?);
+    put_opt_string(&mut obj, "imageProfileId", row.get(51)?);
+    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(52)?);
+    put_opt_bool(&mut obj, "isDangerousChat", row.get(53)?);
+    put_opt_number(&mut obj, "dangerScore", row.get(54)?);
+    obj.insert("dangerCategories".into(), array_or_empty(row.get(55)?));
+    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(56)?);
+    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(57)?);
+    put_opt_string(&mut obj, "conciergeOverride", row.get(58)?);
+    put_opt_json(&mut obj, "sceneState", row.get(59)?);
+    put_opt_string(&mut obj, "renderedMarkdown", row.get(60)?);
+    put_opt_json(&mut obj, "equippedOutfit", row.get(61)?);
+    put_opt_json(&mut obj, "characterAvatars", row.get(62)?);
+    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(63)?);
     obj.insert(
         "chatType".into(),
         Value::String(
-            row.get::<_, Option<String>>(63)?
+            row.get::<_, Option<String>>(64)?
                 .unwrap_or_else(|| "salon".into()),
         ),
     );
-    put_opt_string(&mut obj, "helpPageUrl", row.get(64)?);
-    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(65)?);
-    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(66)?);
-    put_opt_json(&mut obj, "courierCheckpoints", row.get(67)?);
-    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(68)?);
-    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(69)?);
+    put_opt_string(&mut obj, "helpPageUrl", row.get(65)?);
+    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(66)?);
+    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(67)?);
+    put_opt_json(&mut obj, "courierCheckpoints", row.get(68)?);
+    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(69)?);
+    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(70)?);
     // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
     // realtime and is omitted (v4's undefined dropped by JSON.stringify).
-    put_opt_string(&mut obj, "timelineMode", row.get(70)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(71)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(72)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(73)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(74)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(75)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(76)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(77)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(78)?);
-    put_opt_string(&mut obj, "runState", row.get(79)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(80)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(81)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(82)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(83)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(84)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(85)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(86)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(87)?);
+    put_opt_string(&mut obj, "timelineMode", row.get(71)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(72)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(73)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(74)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(75)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(76)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(77)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(78)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(79)?);
+    put_opt_string(&mut obj, "runState", row.get(80)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(81)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(82)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(83)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(84)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(85)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(86)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(87)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(88)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(88)?, 0.0),
-    );
-    obj.insert(
-        "runDestructiveToolsAllowed".into(),
         number_or(row.get(89)?, 0.0),
     );
     obj.insert(
-        "budgetExcludeCacheHits".into(),
-        number_or(row.get(90)?, 1.0),
+        "runDestructiveToolsAllowed".into(),
+        number_or(row.get(90)?, 0.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(91)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(92)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(93)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(94)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(95)?));
-    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(96)?));
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(97)?);
+    obj.insert(
+        "budgetExcludeCacheHits".into(),
+        number_or(row.get(91)?, 1.0),
+    );
+    put_opt_string(&mut obj, "runVisibility", row.get(92)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(93)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(94)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(95)?);
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(96)?));
+    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(97)?));
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(98)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(98)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(99)?);
 
     Ok(Value::Object(obj))
 }

@@ -157,7 +157,8 @@
       "coreWhisperInterval": 3,
       "turnSkippingEnabled": false,
       "showThinking": false,
-      "answerConfirmationOverride": "ON"
+      "answerConfirmationOverride": "ON",
+      "cycleOrderParticipantIds": "[\"w\",\"v\",\"u\"]"
     },
     {
       "id": "c0000002-0000-4000-8000-000000000002",

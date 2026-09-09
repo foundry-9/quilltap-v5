@@ -117778,3 +117778,39 @@ files across the full-workspace run in units 3–9; each one calls
 on its opened connection before assuming the new columns exist, or is
 identified as one of the "reduced hand-rolled DDL" sites and gets the column
 literal added directly.
+
+**Unit 2 — `chats_read.rs`'s `cycleOrderParticipantIds` splice.** Spliced
+`ALL_COLUMNS` and renumbered every `row.get(N)` for N ≥ 25 in `marshal_row`
+(a scripted Python regex pass over the function body only — confirmed no
+other function in the file uses an index ≥ 25, so the substitution is safe
+file-wide). New field emitted as a plain string, default `'[]'`, same
+pattern as `turnQueue`/`spokenThisCycleParticipantIds`.
+
+Planted a distinct value (`["w","v","u"]`) on chat 1 of
+`harness/oracle/fixtures/chats-read-tier2.json` (already distinct on nearly
+every shifted column), regenerated the fixture + oracle from the
+`/tmp/qt-v4-pin-p4d171-78b381a96` pin, ran `chats_read_equivalence` green
+(15 queries). **Mutation proof, red-then-green:** shifted the new field's
+index 25 → 24 (duplicating its neighbor's read) — the test failed with
+`cycleOrderParticipantIds` reading `["z"]` (the neighbor's value) instead of
+`["w","v","u"]`; reverted by file backup, re-ran green.
+
+Regen recipe:
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d171-78b381a96
+V5W=~/source/quilltap-v5/.claude/worktrees/p4-schema-moves-substrate-559670
+cd "$PIN"
+QT_FIXTURE_CHATSREAD=/tmp/qt-chatsread-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-chats-read-fixture.ts"
+QT_FIXTURE_CHATSREAD=/tmp/qt-chatsread-p4d171.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/chats-read.ts" > /tmp/oracle-chatsread-p4d171.ndjson
+cd "$V5W"
+QT_ORACLE_CHATSREAD=/tmp/oracle-chatsread-p4d171.ndjson \
+QT_FIXTURE_CHATSREAD=/tmp/qt-chatsread-p4d171.db \
+  cargo test -p quilltap-harness --test chats_read_equivalence -- --nocapture
+```
+
+Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core -p
+quilltap-harness --all-targets -- -D warnings` clean; `cargo build
+--workspace` clean. Version: core 0.0.858 → 0.0.859.

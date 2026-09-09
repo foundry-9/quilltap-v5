@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(schema): P4.D171 unit 2 — `chats_read.rs` carries `cycleOrderParticipantIds` (the index-24→25 splice, ~70 renumbered reads)
+
+_Versions: core 0.0.859._
+
+Spliced `cycleOrderParticipantIds` into `chats_read.rs`'s positional read:
+`ALL_COLUMNS` gains the column between `spokenThisCycleParticipantIds` and
+`documentEditingMode` (the generateDDL/DDL order), and every `row.get(N)` for
+N ≥ 25 in `marshal_row` shifted to N+1 (a scripted renumber over the
+function's ~74 call sites, verified to touch nothing outside `marshal_row` —
+the only other indexed reader in the file, `find_core_whisper_overrides`,
+uses its own named-column SELECT at indices 0/1). The new field emits as a
+plain string default `'[]'`, matching how `turnQueue` /
+`spokenThisCycleParticipantIds` are marshaled beside it.
+
+Planted a distinct `cycleOrderParticipantIds` value
+(`["w","v","u"]`, distinct from `spokenThisCycleParticipantIds`'s `["z"]`) on
+the already-richly-distinct chat 1 in `chats-read-tier2.json`, regenerated
+the fixture + oracle from the `78b381a96` pin, and ran the differential:
+`chats_read_matches_oracle` green (15 queries). Mutation proof: reverted the
+new field's index from 25 to 24 (duplicating `spokenThisCycleParticipantIds`'s
+read) — `cycleOrderParticipantIds` came back `["z"]` instead of `["w","v","u"]`
+and the test failed exactly there; reverted, re-ran green.
+
 #### 2026-09-09 — feat(schema): P4.D171 unit 1 — the D23 re-dump for `chat_messages.routeTrail` + `chats.cycleOrderParticipantIds`, the export-schema re-vendor, and the two boot ensures
 
 _Versions: core 0.0.858, harness 0.0.750, host 0.0.118._
