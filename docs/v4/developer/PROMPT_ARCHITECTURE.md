@@ -50,6 +50,7 @@ On Anthropic, step 8 is impossible (Sonnet 4.6+ rejects a trailing `assistant` m
 
 1. `## Character Identity` — "You are {{char}}. Everything that follows defines who you are…"
 2. **Base system prompt** — the participant's `selectedSystemPromptId`, falling back to the character's `isDefault` prompt, falling back to nothing.
+2a. `## Additional Instructions` — the participant's `selectedSubpromptIds`, resolved from the character vault's `Subprompts/*.md` by the compiler and rendered as `### <title>` blocks under the wrapper "The following also apply to you in this conversation." Omitted entirely when none are selected, so the output for an unselected seat is byte-identical and no version bump was needed. Design: [character-subprompts](features/complete/character-subprompts.md).
 3. `## Character Manifesto` — `character.manifesto`, under the wrapper "The following you hold as true about yourself, without question."
 4. `## Character Personality` — `character.personality`, under the wrapper "The following is what you know about yourself. Others do not see it unless you show them."
 5. `## Character Aliases` — "You also go by: …"
@@ -101,10 +102,12 @@ It deliberately **does not name the other participants**. An inline roster is ex
 | Chat created | `compileAllIdentityStacks` |
 | Participant added / reactivated | `compileIdentityStackForParticipant` |
 | Participant `selectedSystemPromptId` changed | `compileIdentityStackForParticipant` |
+| Participant `selectedSubpromptIds` changed (order-insensitive) | `compileIdentityStackForParticipant` |
+| A subprompt file edited or deleted | `fanOutSubpromptChange` (`lib/subprompts/chat-fanout.ts`) → `compileIdentityStackForParticipant` for every live LLM seat of that character carrying it; a delete strips the id from the seat first |
 | Chat `scenarioText` changed | `compileAllIdentityStacks` |
 | Chat merge brings a participant across | `compileIdentityStackForParticipant` |
 
-**Edits to the character record itself do not invalidate anything.** Renaming a character or rewriting their personality does not fan out across their chats; that fan-out is an unbuilt design pass. Correctness is preserved by the **read-through fallback**: when the cached entry is missing or empty, `buildSystemPrompt` rebuilds from current data for that turn and does not persist it. So a stale entry is a stale *prompt*, not a broken one — worth knowing when a character edit appears not to take effect in an existing chat.
+**Edits to the character record itself do not invalidate anything** (the subprompt fan-out above is the one deliberate exception — a subprompt is per-chat input the user toggled, and the seat record would otherwise point at text that no longer exists). Renaming a character or rewriting their personality does not fan out across their chats; that fan-out is an unbuilt design pass. Correctness is preserved by the **read-through fallback**: when the cached entry is missing or empty, `buildSystemPrompt` rebuilds from current data for that turn and does not persist it. So a stale entry is a stale *prompt*, not a broken one — worth knowing when a character edit appears not to take effect in an existing chat.
 
 Compiler failures never propagate: a cache write that fails logs and returns, and the fallback covers it.
 
@@ -154,9 +157,26 @@ Sections are appended to the new user message in this order, separated by `---`:
 1. Aurora Core packet
 2. Commonplace Book recall (scene state → recap → relevant memories → inter-character memories → knowledge → relevant past conversations → retrospective recall). The relevant-past-conversations section is present only when the instance-wide `memoryRecall.perTurnConversationSummaries` setting is on (off by default); otherwise that list reaches the character through the recap, the fold-posted `relevant-conversations` whisper, or the retrospective mini-recap.
 3. Suparṇā mail
-4. "Nothing to add" turn-skip note
+4. Character progressions
+5. "Nothing to add" turn-skip note
 
-On continue / nudge / chained autonomous turns there is no new user message, so the turn-skip note is pushed as its own trailing `user` message.
+On continue / nudge / chained autonomous turns there is no new user message, so the turn-skip note — and the progressions section, in the same order — is pushed as its own trailing `user` message.
+
+**Character progressions** (§9a) are the newest of these and the only one derived from the wall clock.
+
+### 9a. Character progressions
+
+A **progression** is a named span of time on a character — a gestation, a recharging weapon, a fuse — stored under the reserved `progressions` key in the vault's `metadata.json`. Every prompted turn, the engine derives elapsed / remaining / percent from `Date.now()`, decides from the entry's own cadence whether *this* turn mentions it, and renders a second-person line. Design of record: [features/character-progressions.md](features/character-progressions.md); user documentation: `help/character-progressions.md`.
+
+Three properties matter to this document:
+
+- **It is never in block 1.** A per-turn clock inside the cached prefix would bisect the cache on every single turn. `IDENTITY_STACK_BUILDER_VERSION` and `PROMPT_CACHE_STRUCTURE_VERSION` are **not** bumped by the feature, and the cache-determinism suite asserts the negative directly: a character carrying progressions hashes identically to one carrying none.
+- **It is ephemeral.** Recomputed every turn, never persisted as a message, and carrying no Staff persona. A transcript whisper per turn for a `turn`-cadence weapon would be noise.
+- **Empty is byte-for-byte nothing**, and costs nothing: the chokepoint takes the event list as a *thunk*, so a character with no progressions triggers no history read at all.
+
+Cadence is derived from message history rather than stored — `findLastOwnTurnMs` in `core-whisper-trigger.ts`, beside the Core whisper's own cadence, which set that precedent. Zero writes on the prompt path, no participant-JSON race, and safe in the forked job child (no read-your-writes). The accepted approximation: a character prompted who does not speak leaves no new turn, so a period-cadence entry can be mentioned once more inside the same period.
+
+`isContinueMode` skips the section entirely — the model is finishing its own sentence, and the Core whisper skips there for the same reason.
 
 **Ordering constraint:** the Core whisper is computed and placed before the Commonplace Book whisper, on purpose. Identity grounds the speaker; memory then situates them. Reversed, recall floods identity and the character starts performing the person who had those experiences rather than being the person who grew from them. Do not reorder without reading the Core whisper design first.
 
@@ -212,16 +232,18 @@ It deliberately omits `personality` and `manifesto`, the private vantage points,
 |---|---|---|
 | **Help chats** | `lib/help-chat/system-prompt-builder.ts` | Same identity preamble and identity reminder, plus a help-assistant role, page documentation context, and other help characters. No roleplay template, scene state, timestamps, Concierge, or project context. |
 | **Brahma Console** | `lib/brahma-console/system-prompt-builder.ts` | Character-less neutral brief. No identity, no personality, no page context, no memories. Optional SQL-access section when `run_sql` is enabled. |
-| **Carina** | `lib/services/carina/carina.service.ts` | `buildIdentityStack` + an explicit scenario section + the standing-instructions section (project + the answerer's groups, mirrored insertion) + a "Reference Query / Who Is Asking" section built from the asker's public identity card + the answerer's own memory recall. No conversation history — the isolation is the point. |
-| **`self_inventory`** | `lib/tools/handlers/self-inventory/builders.ts` | Reconstructs the prompt for introspection, including standing instructions. Known fidelity gap: it omits the Taboo section a live turn carries. |
+| **Carina** | `lib/services/carina/carina.service.ts` | `buildIdentityStack` + an explicit scenario section + the standing-instructions section (project + the answerer's groups, mirrored insertion) + a "Reference Query / Who Is Asking" section built from the asker's public identity card + the answerer's own memory recall. No conversation history — the isolation is the point. A **forced** progressions report rides on the `role: 'user'` question, never on the single system message: that block carries the Anthropic breakpoint at index 0, and a per-turn clock inside it would bisect the cache on every query. |
+| **`self_inventory`** | `lib/tools/handlers/self-inventory/builders.ts` | Reconstructs the prompt for introspection, including standing instructions. Known fidelity gaps: it omits the Taboo section a live turn carries, and now also the character-progressions section (§9a). |
+| **Greeting** | `lib/chat/initialize.ts` (its own flat builder) | Composed once at chat creation and handed to `generateGreetingMessage` as the system prompt. Carries a **forced** progressions report after the subprompts block — an opener should know she is pregnant, and a greeting has no turn history to derive a cadence from. Per-turn content is free here: the opener is composed once and never rebuilt, so no cache is at stake. |
 | **Character-voiced announcer** | `lib/services/announcer/character-voiced.ts` | `buildSystemPrompt` with no Taboo phrases and no standing instructions. |
 
 ## 14. Traps
 
-- **`lib/chat/initialize.ts` is legacy.** Its private `buildSystemPrompt` still runs at chat creation and its output is written as a `role: SYSTEM` message at the head of the chat — but `buildConversationMessages` filters history down to `USER`/`ASSISTANT`/`TOOL`, so **that message never reaches the model**. It is an artifact. Do not "fix" a prompt by editing it, and do not delete it casually either — the chat-creation flow and its tests still depend on `buildChatContext` for the processed first message.
+- **`lib/chat/initialize.ts` is half legacy.** Its private `buildSystemPrompt` runs at chat creation and its output is written as a `role: SYSTEM` message at the head of the chat — and `buildConversationMessages` filters history down to `USER`/`ASSISTANT`/`TOOL`, so **that message never reaches the model on any later turn**. The stored message is an artifact. The *string* is not: the same value is handed to `generateGreetingMessage` as the system prompt for the generated opener, which is why the progressions report is appended there (§13) and why an edit to that builder does change what a model sees, exactly once per chat. Do not "fix" a prompt by editing it, and do not delete it casually either — the chat-creation flow and its tests still depend on `buildChatContext` for the processed first message.
 - **Character edits do not invalidate compiled stacks** (§6). Expect one stale turn's worth of confusion when debugging.
 - **Nothing turn-variable belongs in system blocks 1–2** (§1, §5).
 - **Do not reorder Core before/after Commonplace** (§9).
+- **Never derive progression state at a call site** (§9a). Elapsed / remaining / percent come from `lib/progressions/` and nowhere else.
 - **Cache-structure bumps are structural, not cosmetic** (§7).
 - **Whisper role must end `user`.** Anthropic 4.6+ rejects an `assistant` tail; any new trailing injection has to follow the same pattern as the timestamp and off-scene pushes.
 
@@ -237,7 +259,9 @@ It deliberately omits `personality` and `manifesto`, the private vantage points,
 | `lib/services/chat-message/orchestrator.service.ts` | Tool mode + tool instructions, Prospero cadence, agent-mode and tool-change injections |
 | `lib/chat/context/message-attribution.ts` | `name` attribution, history-access and presence-window filtering, whisper visibility |
 | `lib/chat/context/compression.ts`, `lib/chat/context-summary.ts` | Budget compression and the Librarian rolling summary |
-| `lib/chat/context/core-whisper-trigger.ts` | Aurora Core cadence |
+| `lib/chat/context/core-whisper-trigger.ts` | Aurora Core cadence; `findLastOwnTurnMs`, shared with progressions |
+| `lib/progressions/schema.ts`, `engine.ts` | Progression shape (Zod source of truth) and the pure, client-safe derivation |
+| `lib/progressions/prompt-section.ts` | `buildProgressionsSection` — the one prompt-side reader of progression state |
 | `lib/templates/processor.ts` | `processTemplate`, `buildTemplateContext`, `processCharacterTemplates` |
 | `lib/llm/cache-key.ts` | Per-character provider cache key + structure version |
 | `lib/plugins/system-prompt-registry.ts` | `SYSTEM_PROMPT` plugin registry |

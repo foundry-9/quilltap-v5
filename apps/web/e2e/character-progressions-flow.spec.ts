@@ -35,7 +35,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  */
 
 /** Flipped at unification, once P4.D168's `build_progressions_section` lands. */
-const P4D168_SERVER_LANDED = false;
+const P4D168_SERVER_LANDED = true;
 
 const CHARACTER = 'Bram';
 const PROGRESSION_NAME = 'Cannon recharge';
@@ -302,13 +302,25 @@ test.describe('P4.D170 — character progressions', () => {
         },
       });
 
+      // The verb's shape is v4's `createChatSchema` (P4.78): a `participants`
+      // roster, never a bare `characterIds` list — the first live run of this
+      // beat sent the latter and the create answered no chat at all.
+      // …and every LLM seat needs a connection profile, or the create refuses
+      // (the `chat-delete-flow` idiom: the fixture's OPENAI_COMPATIBLE profile).
+      const list = await dispatch(ctx, { type: 'connectionProfileList' });
+      const profiles = (list['profiles'] ?? []) as Array<{ id: string; provider?: string }>;
+      const profileId =
+        profiles.find((p) => p.provider === 'OPENAI_COMPATIBLE')?.id ?? profiles[0]?.id;
+      expect(profileId, 'the fixture must seed a connection profile').toBeTruthy();
       const created = await dispatch(ctx, {
         type: 'chatCreate',
-        characterIds: [id],
         title: 'P4.D170 progressions greeting',
+        participants: [
+          { type: 'CHARACTER', characterId: id, controlledBy: 'llm', connectionProfileId: profileId },
+        ],
       });
       const chatId = ((created['chat'] as { id?: string } | undefined) ?? {}).id!;
-      expect(chatId, 'the chat was created').toBeTruthy();
+      expect(chatId, `the chat was created: ${JSON.stringify(created).slice(0, 300)}`).toBeTruthy();
 
       try {
         // The greeting FORCES the section, cadence bypassed, so the persisted

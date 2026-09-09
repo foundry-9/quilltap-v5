@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — chore(unify): the `25f534c0b` round's unification wires — both gated beats LIVE, the consumer corpus re-recorded at 362 rows, the `docs/v4/` mirror at the pin
+
+_Versions: SPA 0.5.690._
+
+The cross-lane obligations no single lane could discharge. `P4D168_SERVER_LANDED`
+and `P4D169_SERVER_LANDED` flipped to `true`; their first executions found four
+gesture defects, all spec-side: `chatCreate` wants a `participants` roster
+(never a bare `characterIds`) and every LLM seat a `connectionProfileId`; the
+Workbench's fresh draft ships an empty outcome row that must test something
+and carry a message before Save enables; the destination picker is a store
+badge plus "Keep it here" (no "Save here" button). With those, the greeting
+beat proves the prompt path end to end and the progress-gate beat round-trips
+through a real file. The SPA's consumer copy of `pascal-custom-tool-definition
+.oracle.ndjson` re-recorded from the unified generator at the pin (301 → 362
+rows) — which is what exposed the nine SPA-twin failures the review fixed.
+The `docs/v4/` mirror refreshed at `25f534c0b` (ten files, incl. the ordered
+`character-progressions.md` design of record and the bug-126 write-up); the
+SPA lock file's identity version resynced (it had lagged since 0.5.673); the
+nineteen CHANGELOG headers the union merge had glued to the previous entry's
+last line given their blank line back.
+
 #### 2026-09-09 — fix(unify): the `25f534c0b` round's §3 review findings — the refine-after-abort gate, `shift_remove` in the progress applier, the CLI's `Math.round` twin, the memoised read's retry, the SPA shim's `received Infinity`
 
 _Versions: core 0.0.857, harness 0.0.749, host 0.0.117, cli 0.0.20, SPA 0.5.689._

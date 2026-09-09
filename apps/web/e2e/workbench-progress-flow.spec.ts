@@ -32,7 +32,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * therefore STUBS it before touching the placeholder menu; a bare click would
  * insert nothing and the assertion would be measuring the stub's absence.
  */
-const P4D169_SERVER_LANDED = false;
+const P4D169_SERVER_LANDED = true;
 
 /** The name beat (b) would author. Distinct enough that no sibling spec reads it. */
 const PROGRESS_TOOL_NAME = 'e2e_progress_contrivance';
@@ -223,14 +223,26 @@ test.describe('P4.D170 — the Workbench’s progress affordances', () => {
     await gate.getByLabel('Comparator').selectOption('eq');
     await expect(gate.getByLabel('Operand value')).toHaveValue('true');
 
-    await page.getByRole('button', { name: /^Save/ }).click();
+    // The fresh draft ships one empty non-catch-all outcome row that must test
+    // something and carry a message, or Save stays disabled ("The draft has
+    // errors to resolve first") — the same two lines `workbench-gate-flow`
+    // gives it. Scoped to the outcomes card: the gate chip carries the same
+    // aria-labels.
+    const outcomesCard = page.locator('qt-outcomes-section');
+    await outcomesCard.getByRole('button', { name: 'add condition' }).first().click();
+    await outcomesCard.getByLabel('Operand number').first().fill('0.5');
+    await page.getByLabel('Outcome message').first().fill('The probe reads {{value}}.');
+
+    // `exact`: "Save As…" also starts with Save.
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(
       page.getByRole('heading', { name: 'Where shall Pascal keep this contrivance?' }),
     ).toBeVisible({ timeout: 15_000 });
-    await page
-      .getByRole('button', { name: /^Save here/ })
-      .first()
-      .click();
+    // The destination picker: choose a store badge, then "Keep it here" — the
+    // `workbench-gate-flow` gesture (there is no "Save here" button; the first
+    // live run waited 30 s on one).
+    await page.getByRole('dialog').locator('.qt-badge').first().click();
+    await page.getByRole('button', { name: 'Keep it here' }).click();
     await expect(page.getByText('Pascal has filed the contrivance.')).toBeVisible({
       timeout: 15_000,
     });

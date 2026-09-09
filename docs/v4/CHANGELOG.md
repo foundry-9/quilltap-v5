@@ -4,6 +4,119 @@
 
 ### 4.10-dev
 
+#### Fixed: a hostname change no longer makes the app shut its own database down (bug 126)
+
+The instance lock's heartbeat checked every 60 seconds whether it still owned the lock by comparing
+the recorded hostname against a freshly read `os.hostname()`. On macOS that value is not stable: when
+`scutil --get HostName` is unset, which is the default, the system derives the name dynamically and
+reports something like `MacBook-Pro.local` at one moment and `Mac` at the next, switching on Wi-Fi
+reconnects, sleep/wake, VPN changes and DHCP lease renewals. The heartbeat read the change as another
+process taking the database, closed its connections and exited. Under the Electron shell the server
+is not restarted, so the window stayed open over a dead backend: the home dashboard rendered nothing
+while an already-open Salon tab kept drawing from its cache, which made it look like a UI problem.
+Every recorded occurrence logged an identical PID with only the hostname differing.
+
+- Lock ownership is now a snapshot taken when the lock is written — PID plus the acquisition
+  timestamp — and the heartbeat compares against that. Both fields are overwritten by any process
+  that takes the lock, so a real takeover is still detected immediately. Hostname is a label only.
+- Acquisition no longer claims a lock just because the recorded hostname differs. A differing name
+  cannot distinguish another machine from this one after a rename, so the decision is made on
+  heartbeat freshness for every environment rather than only for Docker. This closes a case where
+  two processes on one machine could both open the same database.
+- A process whose machine was renamed now releases its own lock on exit instead of leaving a stale
+  file behind, and a lock taken by manual override starts a heartbeat.
+- The lock-loss shutdown now runs the same ordered teardown as SIGTERM and SIGINT, registered by
+  the SQLite client. It previously used a dynamic `require` that did not resolve in the bundled
+  standalone server, so it threw instead of closing anything and the WAL was left unmerged.
+- `quilltap db --lock-status` no longer reports a running app as `STALE (different host)`, and
+  `--lock-clean` refuses to delete a lock whose heartbeat is still being refreshed.
+
+#### Added: character progressions
+
+Characters can now carry progressions: named spans of time with a start, an end, and rules for how
+often to report on them. A pregnancy that began on 1 August and is due 1 May; a cannon that takes
+ten minutes to recharge; a fermentation that finishes in three weeks. On every prompted turn
+Quilltap computes elapsed time, remaining time and percentage from the wall clock and appends a
+second-person report to the character's prompt, so the model never has to do the arithmetic or
+remember that time has passed.
+
+- Stored under one reserved `progressions` key in the character vault's `metadata.json`. Every
+  other key stays freeform. Validated at the point of use rather than at hydration: a malformed
+  entry is dropped alone with a warning and the rest survive. Published JSON schema at
+  `public/schemas/qtap-progression.schema.json`; no migration.
+- Each entry declares the unit its report speaks in (`second` through `year`) and a cadence: every
+  turn, whenever the whole-unit count ticks over, or at most once per wall-clock period (`1h`,
+  `30s`, `2d`). An entry the user or a tool has just changed reports on the next turn regardless,
+  as does one that has just started or finished.
+- Spans render as whole units plus a remainder in the next finer unit ("20 weeks, 3 days"). Months
+  and years are fixed-length (30.436875 and 365.2425 days), so the arithmetic is deterministic and
+  calendar-free.
+- Optional per-entry description, quantity (`0.3/1.0 MJ`), and report template with placeholders
+  (`{{elapsed}}`, `{{remaining}}`, `{{percent}}`, `{{quantity}}`, and others). An unknown
+  placeholder renders as written.
+- The report is a trailing per-turn section, after Suparṇā's mail and before the turn-skip note.
+  It never enters the cached system block, so prompt caching is unaffected and no builder version
+  is bumped. It is not persisted as a message. The greeting builder and Carina both append a forced
+  report; continue turns skip it.
+- Cadence is derived from the character's own last turn in the chat rather than stored, so the
+  prompt path performs no writes. A character who is prompted but does not speak can hear a
+  period-cadence entry once more inside the same period; this is documented.
+- Pascal custom tools gain a `progress` read subject (`when.progress`, availability gates) keyed
+  `"<id>.<field>"`, `{{progress.<id>.<field>}}` and `{{now}}` placeholders, and
+  `progress.<id>.<field>` effect targets. A tool can be withheld until a recharge completes and
+  re-arm it on a successful roll with `{{now}}` and `{{now}} + 600000`. Writing to an unknown id
+  creates the progression; `remove` deletes one. Progress writes fold into the existing single
+  character metadata write. A result the schema refuses is rolled back and the roll still stands.
+- `metadata.progressions` and `metadata.progressions.*` are refused as effect
+  targets when a tool file loads. An effect writes a primitive, so the former
+  would replace the whole reserved object with a string, bypassing the
+  progressions validation and rollback; the latter would write a literal key
+  named `progressions.cannon` and touch no progression.
+- The model cannot set its own progression: there is no LLM tool for it, and the `state` tool has
+  no access. Only the user and Pascal's server-side effects write them.
+- New Progressions card on the Aurora character edit page (System Prompts tab) with an editor for
+  each entry and a live preview of the line the character will read. Archived characters are
+  read-only.
+- Pascal's Workbench gains the `progress` condition subject, the `progress.` effect-target prefix,
+  the `{{now}}` and `{{progress.…}}` insert options, and a live list of what a hand-typed fact
+  sheet's progressions derive to.
+
+#### Docs: plan for character progressions
+
+Added `docs/developer/features/character-progressions.md`: a plan for timed, in-progress
+character properties (a pregnancy with a due date, a weapon recharging over ten minutes). Each one
+is stored under a reserved `progressions` key in the vault's `metadata.json` with a published JSON
+schema, and on every prompted turn the character is told elapsed time, remaining time and percent
+complete, deterministically, in the unit and at the cadence the entry declares. The report lives in
+the uncached per-turn tail of the prompt, never in the cached system block. Pascal custom tools gain
+a `progress.<id>.<field>` read subject and gate, a `{{now}}` reference, and `progress.*` effect
+targets so a roll can re-arm a countdown. Includes an Aurora editor card and a phased task list.
+No code changes yet.
+
+#### Added: character subprompts
+
+Characters can now carry subprompts: short, optional instructions stored as Markdown files in
+the vault's root-level `Subprompts/` folder (frontmatter `title`, body = the instruction, written
+in the second person like a system prompt). The folder is created on the first write; a missing
+folder lists as empty.
+
+- Which subprompts are in play is stored per seat on the chat (`participants[].selectedSubpromptIds`).
+  Pick them from a Subprompts dropdown under each character's system-prompt selector in the New Chat
+  dialog, and from the same dropdown on the participant card in the Salon's Participants drawer.
+  Every dropdown offers "New subprompt…", which opens the Lexical editor in place and ticks the new
+  one on.
+- Manage them on the Aurora System Prompts tab, beneath the primary prompts. The AI Wizard and
+  Character Optimizer leave subprompts alone.
+- Selected subprompts render in the compiled identity stack directly after the system prompt as an
+  `## Additional Instructions` block, and in the greeting. Changing the selection recompiles the
+  seat's cached stack; editing a subprompt recompiles every chat carrying it; deleting one strips it
+  from those seats first. A seat with none selected produces a byte-identical prompt, so no builder
+  version bump.
+- A character dressing themselves in the green room sees the selected subprompts alongside their
+  dressing instructions.
+- New routes: `GET/POST /api/v1/characters/[id]/subprompts`,
+  `GET/PUT/DELETE /api/v1/characters/[id]/subprompts/[subpromptId]`.
+
 ### 4.9.2
 
 #### Fixed: a help chat's tool results now reach the model on every provider (bug 124)

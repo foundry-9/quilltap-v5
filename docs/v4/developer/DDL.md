@@ -296,7 +296,7 @@ keyed by `(mountPointId, relativePath)` where `mountPointId` matches
 | personality | `personality.md` |
 | exampleDialogues | `example-dialogues.md` |
 | pronouns, aliases, title, firstMessage, talkativeness, canChooseOutfit | `properties.json` — `canChooseOutfit` is optional-with-default (absent hydrates as `false`), so old vaults need no backfill and no migration exists. |
-| metadata | `metadata.json` — optional; a flat object of user-authored keys with any JSON value. Absent file or unparseable content hydrates as `{}` (**not** a keystone — only `properties.json` may declare a vault broken), so old vaults need no backfill and no migration exists. A patch REPLACES the whole object rather than merging keys. |
+| metadata | `metadata.json` — optional; a flat object of user-authored keys with any JSON value. Absent file or unparseable content hydrates as `{}` (**not** a keystone — only `properties.json` may declare a vault broken), so old vaults need no backfill and no migration exists. A patch REPLACES the whole object rather than merging keys. One **reserved key**, `progressions`, holds the character's timed spans and IS validated — by `lib/progressions/schema.ts` (the runtime source of truth), mirrored for editors at `public/schemas/qtap-progression.schema.json`. Validation happens at the point of use, not at hydration: the parser stays shape-agnostic, and a malformed entry is dropped alone with a `warn` while its siblings survive. Every other key stays freeform and unchecked. No migration: the key appears on first write. |
 | physicalDescription.fullDescription | `physical-description.md` |
 | physicalDescription.{headAndShoulders,short,medium,long,complete}Prompt | `physical-prompts.json` |
 | systemPrompts[] | `Prompts/<sanitized-name>.md` (one file per record) |
@@ -451,7 +451,7 @@ CREATE INDEX "idx_cpd_plugin" ON "character_plugin_data"("pluginName");
 CREATE TABLE "chats" (
   "id" TEXT PRIMARY KEY,
   "userId" TEXT NOT NULL,
-  "participants" TEXT DEFAULT '[]',
+  "participants" TEXT DEFAULT '[]',  -- JSON array of ChatParticipantBase (lib/schemas/chat.types.ts); per-seat prompt choice in selectedSystemPromptId, subprompts in play in selectedSubpromptIds (vault file names sans .md) since 4.10
   "title" TEXT NOT NULL,
   "contextSummary" TEXT,
   "sillyTavernMetadata" TEXT,

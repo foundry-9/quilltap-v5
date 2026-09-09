@@ -52,6 +52,7 @@ API reference for Quilltap v4.3 and later.
   - [Model Classes](#model-classes)
   - [Characters](#characters)
   - [Character System Prompts](#character-system-prompts)
+  - [Character Subprompts](#character-subprompts)
   - [Character Scenarios](#character-scenarios)
   - [Character Plugin Data](#character-plugin-data)
   - [NPCs](#npcs)
@@ -1698,6 +1699,78 @@ Delete a system prompt.
 
 ---
 
+### Character Subprompts
+
+Subprompts are short, optional instructions stored as Markdown files in the character vault's root-level `Subprompts/` folder (frontmatter `title`, body = the instruction). A chat chooses which are in play per seat via `participants[].selectedSubpromptIds` (see chat creation and `update-participant`). The `subpromptId` is the file name without `.md`. Design: [character-subprompts](features/complete/character-subprompts.md).
+
+#### `GET /api/v1/characters/[id]/subprompts`
+
+List the character's subprompts, sorted by title. A missing `Subprompts/` folder lists as empty.
+
+**Response**: `200 OK`
+
+```json
+{
+  "subprompts": [
+    {
+      "id": "be-terse",
+      "path": "Subprompts/be-terse.md",
+      "title": "Be terse",
+      "content": "You keep every reply under three sentences unless asked for more.",
+      "updatedAt": "2026-09-07T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### `POST /api/v1/characters/[id]/subprompts`
+
+Create a subprompt. Creates the `Subprompts/` folder on first use; the id is derived from the title (`-2`, `-3` on collision).
+
+**Request Body**:
+
+```json
+{
+  "title": "Be terse",
+  "content": "You keep every reply under three sentences unless asked for more."
+}
+```
+
+**Response**: `201 Created` — `{ "subprompt": { ... } }`. `409` when the character is archived; `400` on a blank title or body.
+
+#### `GET /api/v1/characters/[id]/subprompts/[subpromptId]`
+
+Read one subprompt. `404` when absent; `400` on a malformed id.
+
+#### `PUT /api/v1/characters/[id]/subprompts/[subpromptId]`
+
+Update title and/or content. The id never changes. Every chat with the subprompt in play recompiles its cached identity stack.
+
+**Request Body** (both optional):
+
+```json
+{
+  "title": "Be very terse",
+  "content": "You keep every reply to one sentence."
+}
+```
+
+**Response**: `200 OK` — `{ "subprompt": { ... } }`.
+
+#### `DELETE /api/v1/characters/[id]/subprompts/[subpromptId]`
+
+Delete a subprompt. The id is struck from every seat that had it in play, and those seats recompile.
+
+**Response**: `200 OK`
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
 ### Character Scenarios
 
 Scenarios are named narrative contexts that can be selected when starting a chat with a character.
@@ -2784,13 +2857,13 @@ The roster is resolved **fresh on every request** — never cached — so a defi
 
 **The roll spec and outcome table are never returned.** The dialog does not show the odds; `definitionPath` + `mountName` let the UI link to the user's own file instead.
 
-**`references` is vocabulary, not odds.** Each listing carries what its definition actually *quotes* — derived by `collectToolVocabulary` in `lib/pascal/tool-vocabulary.ts`. Every field is an **occurrence**, not an availability: `dice` is true only if some rendered string writes `{{dice}}`, not merely because the roll is dice; `params` lists only the declared parameters some message or prompt quotes back. Sources are outcome messages, the `llm` prompt, `when.metadata` keys, and `$state` references anywhere in the definition. It names what a tool reads and says; it never says what the tool concludes from it.
+**`references` is vocabulary, not odds.** Each listing carries what its definition actually *quotes* — derived by `collectToolVocabulary` in `lib/pascal/tool-vocabulary.ts`. Every field is an **occurrence**, not an availability: `dice` is true only if some rendered string writes `{{dice}}`, not merely because the roll is dice; `params` lists only the declared parameters some message or prompt quotes back. Sources are outcome messages, the `llm` prompt, `when.metadata` and `when.progress` keys, gates, effect targets, and `$state` references anywhere in the definition. `progress` and `progressWrites` report progression **ids** rather than `"<id>.<field>"` keys — "this tool consults your cannon" is vocabulary, where naming the field it reads edges toward the odds this endpoint withholds. It names what a tool reads and says; it never says what the tool concludes from it.
 
 #### `GET /api/v1/chats/[id]/custom-tools`
 
 List the roster for the run dialog. Because a character-tier store shadows farther tiers, the roster is resolved once per character participant and merged: a tool that resolves identically for everyone is listed once; a tool whose definition differs per character is listed once **per variant**, each labelled with that character's name. `asCharacterId` records whose perspective produced the entry and is replayed by the run action.
 
-**Whose perspective the single-variant row records.** It decides no variant, but the run action reads that character's fact sheet for `when.metadata` and their groups for `$state`, so it is not arbitrary: it is the operator's own played character — the participant named by `activeTypingParticipantId`, else the first present `controlledBy: 'user'` participant. When none of theirs is a candidate (an all-LLM chat, or an `availableWhen`/`withheldWhen` gate their character did not pass) it falls back to participant order **and carries a `characterLabel`**, so the caller can see whose sheet the run will consult.
+**Whose perspective the single-variant row records.** It decides no variant, but the run action reads that character's fact sheet for `when.metadata` (and, derived from the `progressions` key inside it, for `when.progress`) and their groups for `$state`, so it is not arbitrary: it is the operator's own played character — the participant named by `activeTypingParticipantId`, else the first present `controlledBy: 'user'` participant. When none of theirs is a candidate (an all-LLM chat, or an `availableWhen`/`withheldWhen` gate their character did not pass) it falls back to participant order **and carries a `characterLabel`**, so the caller can see whose sheet the run will consult.
 
 **Response**: `200 OK`
 
