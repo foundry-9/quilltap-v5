@@ -1,0 +1,14 @@
+{"kind":"rotation","id":"rotation-not-talkativeness","participantIds":"[\"carol\",\"alice\",\"bob\"]","positions":"[1,2,3]","statuses":"[\"eligible\",\"eligible\",\"eligible\"]"}
+{"kind":"rotation","id":"generating-head-rotation-behind","participantIds":"[\"alice\",\"carol\",\"bob\"]","positions":"[1,2,3]","statuses":"[\"generating\",\"eligible\",\"eligible\"]"}
+{"kind":"rotation","id":"latecomer-behind-dealt-in","participantIds":"[\"carol\",\"bob\",\"alice\"]","positions":"[1,2,3]","statuses":"[\"eligible\",\"eligible\",\"eligible\"]"}
+{"kind":"rotation","id":"no-rotation-falls-back-to-talkativeness","participantIds":"[\"alice\",\"bob\",\"carol\"]","positions":"[1,2,3]","statuses":"[\"eligible\",\"eligible\",\"eligible\"]"}
+{"kind":"parse-cycle-order","id":"absent","raw":null,"out":"[]"}
+{"kind":"parse-cycle-order","id":"null","raw":null,"out":"[]"}
+{"kind":"parse-cycle-order","id":"empty-string","raw":"","out":"[]"}
+{"kind":"parse-cycle-order","id":"literal-empty-array","raw":"[]","out":"[]"}
+{"kind":"parse-cycle-order","id":"bad-json","raw":"{not json","out":"[]"}
+{"kind":"parse-cycle-order","id":"non-array-object","raw":"{\"a\":1}","out":"[]"}
+{"kind":"parse-cycle-order","id":"non-array-number","raw":"42","out":"[]"}
+{"kind":"parse-cycle-order","id":"strings-only","raw":"[\"a\",\"b\",\"c\"]","out":"[\"a\",\"b\",\"c\"]"}
+{"kind":"parse-cycle-order","id":"mixed-drops-non-strings","raw":"[\"a\",1,\"b\",null,\"c\"]","out":"[\"a\",\"b\",\"c\"]"}
+{"kind":"parse-cycle-order","id":"all-non-strings","raw":"[1,2,3]","out":"[]"}

@@ -237,6 +237,37 @@ describe('ChatSidebar', () => {
     expect(fixture.componentInstance.nudged).toEqual(['bob']);
   });
 
+  it('draws the eligible seats by the cycle order, not by talkativeness (P4.D177 §C.2)', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    // Talkativeness would sort loudest-first: alice, bob, carol. The rotation
+    // says otherwise, and the whole `TurnState` (cycleOrder included) is what
+    // chat-sidebar.ts's `turnOrder` computed feeds straight to
+    // `computePredictedTurnOrder` — no separate wiring needed here.
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice', { character: { ...participant('a', 'Alice').character!, talkativeness: 0.9 } }),
+      participant('bob', 'Bob', { character: { ...participant('b', 'Bob').character!, talkativeness: 0.6 } }),
+      participant('carol', 'Carol', { character: { ...participant('c', 'Carol').character!, talkativeness: 0.2 } }),
+    ]);
+    fixture.componentInstance.turnSelectionResult.set(null);
+    fixture.componentInstance.turnState.set({
+      ...createInitialTurnState(),
+      cycleOrder: ['carol', 'bob', 'alice'],
+    });
+    fixture.detectChanges();
+
+    const names = Array.from(
+      sidebarEl(fixture).querySelectorAll('.qt-participant-card-name'),
+    ).map((n) => n.textContent?.trim());
+    expect(names).toEqual(['Carol', 'Bob', 'Alice', 'You']);
+
+    const badges = Array.from(
+      sidebarEl(fixture).querySelectorAll('[data-testid="position-badge"]'),
+    ).map((b) => b.textContent?.trim());
+    expect(badges).toEqual(['1', '2', '3', '4']);
+  });
+
   it('reports the pause toggle from the collapsed strip', async () => {
     const fixture = await render();
     button(fixture, 'Pause auto-responses').click();

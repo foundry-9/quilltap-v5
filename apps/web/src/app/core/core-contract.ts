@@ -3098,6 +3098,15 @@ export interface ChatDetail {
   activeTypingParticipantId?: string | null;
   impersonatingParticipantIds?: string[];
   /**
+   * The current cycle's drawn speaking order, RAW off the row — a
+   * JSON-encoded array of participant ids, exactly as v4 spreads
+   * `chats.cycleOrderParticipantIds` onto the chat payload with no schema in
+   * between (P4.D177 §C.2). `'[]'` (or an absent/empty value) reads as "no
+   * rotation on file"; parse with `parseCycleOrder` (`chat/turn-order.ts`),
+   * never `JSON.parse` directly.
+   */
+  cycleOrderParticipantIds?: string;
+  /**
    * The chat's blob mount point — the store whose `images/` folder backs
    * relative markdown image refs (v4 `MessageContent` `blobMountPointId`). v4
    * declares this plumbing but never populates it, so the rewrite arm stays

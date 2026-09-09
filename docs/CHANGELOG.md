@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(chat): the participants list draws its rotation from the cycle order, not a talkativeness guess (P4.D177 unit 2)
+
+_Versions: SPA 0.5.692._
+
+v4's `2aca73ad6` draws a multi-character chat's whole speaking order up
+front and follows it seat by seat; the sidebar used to guess the "still to
+come" order by talkativeness alone because the real pick had not been made
+yet. `chat/turn-order.ts` gains `TurnState.cycleOrder` and the step-4
+comparator: seats in the drawn rotation sort by rotation rank, a seat the
+rotation never dealt in falls behind those it did, and a chat with no
+rotation on file yet falls back to the old talkativeness-descending guess —
+v4's four new test cases transcribed as parity specs, plus a recorded-vector
+corpus (`turn-order-rotation.oracle.ndjson`, 14 rows) driven against v4's
+real `computePredictedTurnOrder` AND `parseCycleOrder` at the pin (the
+recorder caught a divergence between this order's prose and v4's actual
+source: `parseCycleOrder` *filters* non-string array elements rather than
+voiding the whole result, fixed before it shipped). `ChatDetail` carries the
+new `cycleOrderParticipantIds` raw JSON string (§C.2); `salon-conversation.ts`
+seeds `turnState.cycleOrder` synchronously from the chat GET the instant a
+chat loads, then `applyTurnResponse` refines it from `?action=turn`'s
+`state.cycleOrder` once the async query resolves — the two sources the
+ruling names, since v5's SPA has no `calculateTurnStateFromHistory` to
+recompute either one from a message walk. `chat-sidebar.ts`'s `turnOrder`
+computed already fed the whole `TurnState` through to
+`computePredictedTurnOrder`, so no additional wiring was needed there —
+verified with a new spec case seeding distinct talkativeness AND a
+cycle order that disagrees with it. The mechanism divergence (v4
+recomputes client-side from history; v5 only ever takes both fields back
+from the server) is recorded in the class docs and `m6-screen-parity.md`.
+
 #### 2026-09-09 — feat(chat): the message route trail — every model tried, in order, under the avatar (P4.D177 unit 1)
 
 _Versions: SPA 0.5.691._

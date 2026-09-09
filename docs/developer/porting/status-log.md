@@ -117761,3 +117761,68 @@ scoped to `li > span[role="img"]`); `--filter="RouteTrailBadge|route-trail-
 display|agrees with v4|P4.D132"` — 179/179 passed (route-trail-display.spec,
 route-trail-display.oracle.spec, route-trail-badge.spec, message-row.spec,
 message-list.spec's P4.D132 confirmation-family case, chat-stream.reducer.spec).
+
+### Unit 2 — the drawn rotation reaching the participants list
+
+`chat/turn-order.ts` gains `TurnState.cycleOrder: string[]` (v4
+`TurnState.cycleOrder`) and step 4's comparator (rotation rank first, a
+latecomer the rotation never dealt in behind those it did, the old
+talkativeness-descending sort as the fallback with no rotation on file) —
+lifted from v4's `computePredictedTurnOrder` verbatim, with v4's four new
+`turn-order.test.ts` cases transcribed 1:1 into `turn-order.spec.ts`
+("orders the rest of the cycle by the rotation, not by talkativeness",
+"keeps the seat now generating at the head, with the rotation behind it",
+"puts a seat the rotation never dealt in behind those it did", "falls back
+to the talkativeness sort with no rotation on file"; `createInitialTurnState()`
+now returns `cycleOrder: []`, the direct `toEqual` pin grown to match).
+
+A recorded-vector corpus (`apps/web/oracle/turn-order-rotation.ts` →
+`turn-order-rotation.oracle.ndjson`, 14 lines) drives v4's REAL
+`computePredictedTurnOrder` over the same four scenarios AND v4's REAL
+`parseCycleOrder` (`lib/chat/turn-manager/cycle-order.ts`) over ten inputs —
+**the recorder caught a real divergence between this order's prose and v4's
+actual source**: the order's §C.2 text describes the client twin's lenience
+as "non-array → [], strings only", which reads as an all-or-nothing refusal
+on a mixed array; v4's REAL `parseCycleOrder` instead `.filter()`s out
+non-string elements and keeps the rest (`["a",1,"b",null,"c"]` → `["a","b","c"]`,
+not `[]`). The hand-written `parseCycleOrder` client twin (new in
+`turn-order.ts`, since v5's SPA has no `calculateTurnStateFromHistory` to
+call v4's own) was written to the prose's stricter reading first and fixed
+to match the recorded behavior before it shipped — exactly the failure mode
+the differential discipline exists to catch.
+
+`core-contract.ts`'s `ChatDetail` gains `cycleOrderParticipantIds?: string`
+(the raw JSON string, after `impersonatingParticipantIds`, per §C.2 — landed
+here even though the Rust projection is P4.D171/P4.D172's, since
+`core-contract.ts` is apps/web/** and this round splits that tree only
+between P4.D176 and P4.D177). `salon-conversation.ts`'s `_turnEffect` (my
+region-fence: the turn-state signal) now seeds `turnState.cycleOrder`
+synchronously from `parseCycleOrder(chat.cycleOrderParticipantIds)` the
+instant a chat loads or settles, ahead of the async `refreshTurn()` call;
+`applyTurnResponse` (also my region) folds `state.cycleOrder` off every
+`?action=turn` response — the two sources the ruling names (§C.2), since v5
+never recomputes `spokenSinceUserTurn`/`lastSpeakerId` from history either.
+
+`chat-sidebar.ts`'s `turnOrder` computed already passed the WHOLE
+`TurnState` through to `computePredictedTurnOrder` — no wiring change was
+needed there, only a new spec case (`chat-sidebar.spec.ts`, after the
+existing "lists the cast in predicted turn order" case, the ONLY prior DOM
+order assertion) seeding three characters with DISTINCT talkativeness and a
+`cycleOrder` that disagrees with it, proving the sidebar draws the rotation
+and not the talkativeness guess: `['Carol','Bob','Alice','You']` against
+what talkativeness alone would draw (`['Alice','Bob','Carol','You']`).
+
+The mechanism divergence — v4 recomputes `TurnState` client-side from
+message history (`calculateTurnStateFromHistory`); v5 only ever takes
+`cycleOrder` (and `queue`) back from the server, the same shape as v5's
+pre-existing `spokenSinceUserTurn`/`lastSpeakerId` divergence — is recorded
+in the `TurnState.cycleOrder` doc comment, the `_turnEffect`/
+`applyTurnResponse` doc comments, and a new row in `m6-screen-parity.md`
+§1.2 (alongside the route-trail badge and the now-closed provider/model
+badge MISSING row).
+
+**Gate for this unit:** `npm run build` clean; `--filter="rotation|cycleOrder|
+cycle order|turn-order-rotation"` — 22/22 passed; `--filter="v4 SalonView:1171|
+turn|Turn|applyTurnResponse|the sidebar's display-only"` (turn-order.spec,
+turn-order-rotation.oracle.spec, chat-sidebar.spec, salon-conversation.spec,
+message-list.spec's turn-related cases) — 377/377 passed, zero weakened.

@@ -42,6 +42,17 @@ export interface TurnState {
   queue: string[];
   /** Last speaker (cannot speak again unless nudged/queued, except if only character). */
   lastSpeakerId: string | null;
+  /**
+   * The whole cycle's speaking order, drawn once up front and followed seat by
+   * seat (v4 `TurnState.cycleOrder`, P4.D177 — the client mechanism divergence:
+   * v5's SPA has no `calculateTurnStateFromHistory`, so this is set from the
+   * chat GET's raw `cycleOrderParticipantIds` string (see
+   * {@link parseCycleOrder}) and from `?action=turn`'s `state.cycleOrder` on
+   * every turn response, never recomputed client-side. Empty when the current
+   * cycle has not drawn a rotation yet, in which case step 4 below falls back
+   * to the old talkativeness-descending guess.
+   */
+  cycleOrder: string[];
 }
 
 /** Result of the turn-selection algorithm (v4 `TurnSelectionResult`). */
@@ -118,7 +129,29 @@ export function createInitialTurnState(): TurnState {
     currentTurnParticipantId: null,
     queue: [],
     lastSpeakerId: null,
+    cycleOrder: [],
   };
+}
+
+/**
+ * Parse the chat GET's raw `cycleOrderParticipantIds` JSON string into a
+ * participant-id array — a client twin of v4's own `lib/chat/turn-manager/
+ * cycle-order.ts` `parseCycleOrder` (P4.D177 §C.2, v4's mechanism reads the
+ * SAME server-authored string via `calculateTurnStateFromHistory`). A missing
+ * string, invalid JSON, or a non-array value all read as "no rotation on
+ * file"; a non-string ELEMENT within an otherwise-array value is dropped
+ * rather than voiding the whole result (v4's `.filter`, not an all-or-nothing
+ * refusal).
+ */
+export function parseCycleOrder(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string');
+  } catch {
+    return [];
+  }
 }
 
 /** The queue position for a participant (1-indexed), or 0 if not queued (v4 `getQueuePosition`). */
@@ -212,23 +245,40 @@ export function computePredictedTurnOrder(options: ComputeTurnOrderOptions): Tur
     (p) => !isParticipantPresent(p.status || 'active'),
   );
 
-  // 4. Eligible participants (active, not spoken this cycle, not last speaker, not user),
-  //    sorted by talkativeness descending.
-  const eligible = activeParticipants
-    .filter((p) => {
-      if (placed.has(p.id)) return false;
-      if (p.id === userParticipantId) return false; // User handled separately.
-      if (turnState.spokenSinceUserTurn.includes(p.id)) return false;
-      if (p.id === turnState.lastSpeakerId) return false;
-      // Must be LLM-controlled (or undefined type CHARACTER).
-      if (p.controlledBy === 'user') return false;
-      return true;
-    })
-    .sort((a, b) => {
-      const talkA = a.character?.talkativeness ?? 0.5;
-      const talkB = b.character?.talkativeness ?? 0.5;
-      return talkB - talkA; // Descending.
-    });
+  // 4. Still to come this cycle. With a drawn rotation these are in the order
+  //    they will actually speak; without one (a chat whose cycle has not
+  //    started, or a client whose row predates the rotation) they fall back
+  //    to the old talkativeness-descending guess (P4.D177 — v4 `2aca73ad6`).
+  //
+  //    The user's own seat holds a place in the rotation, but it is
+  //    positioned in step 5 rather than here, so it keeps its distinct
+  //    `user-turn` styling.
+  const stillToCome = activeParticipants.filter((p) => {
+    if (placed.has(p.id)) return false;
+    if (p.id === userParticipantId) return false; // User handled separately.
+    if (turnState.spokenSinceUserTurn.includes(p.id)) return false;
+    if (p.id === turnState.lastSpeakerId) return false;
+    // Must be LLM-controlled (or undefined type CHARACTER).
+    if (p.controlledBy === 'user') return false;
+    return true;
+  });
+
+  const rotationIndex = new Map<string, number>();
+  // Absent on a turn state built before the rotation existed — read as "none".
+  (turnState.cycleOrder ?? []).forEach((id, index) => rotationIndex.set(id, index));
+
+  const eligible = [...stillToCome].sort((a, b) => {
+    const aRank = rotationIndex.get(a.id);
+    const bRank = rotationIndex.get(b.id);
+    // Anyone in the rotation comes before anyone who is not (a latecomer whose
+    // seat the current cycle never dealt in).
+    if (aRank !== undefined && bRank !== undefined) return aRank - bRank;
+    if (aRank !== undefined) return -1;
+    if (bRank !== undefined) return 1;
+    const talkA = a.character?.talkativeness ?? 0.5;
+    const talkB = b.character?.talkativeness ?? 0.5;
+    return talkB - talkA; // Descending.
+  });
 
   for (const p of eligible) {
     addEntry(p.id, 'eligible');
