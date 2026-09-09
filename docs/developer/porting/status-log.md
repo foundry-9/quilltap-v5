@@ -116926,3 +116926,27 @@ Ownership fences verified empty: `git diff main --` over `apps/web/`, `help/`,
 `build_context.rs`, `core_whisper.rs`, `chat_initialize.rs`, `carina_query.rs`
 and `quilltap-host/src` shows nothing, and `progressions/{schema,engine}.rs` is
 byte-identical to P4.D167's tip.
+
+#### The by-name recipe sweep (the order's gate step 3)
+
+All eleven Pascal families run through `harness/tools/recipe_sweep.py --run
+<family> --v4 /tmp/qt-v4-pin-p4d169-25f534c0b` — the sanctioned regen path, from
+the lane's pin, one at a time. **11/11 `recipe ran end-to-end`, zero failures,
+no recipe rot**, and the tree was clean afterwards (the sweep regenerates, and
+some recipes write into the repo). Each family's own count printed on the way,
+matching the by-name gate run above.
+
+The changed-bytes greps over the regenerated NDJSONs, which is what says the
+widening reached the oracles and not just the case files:
+
+| corpus | discriminating bytes |
+|---|---|
+| vocabulary | 9 rows with a non-empty `progress`/`progressWrites`/`now` |
+| definition | 19 `progress.` effect targets, 17 gate rows carrying a flattened sheet |
+| execution | 8 `{{now}}` rows |
+| expressions | 3 `{{now}}` rows |
+| discovery | 8 `progress-` scenarios |
+| workbench-route | 3 rows carrying the `progress` key |
+| handler | 4 `updatedAt` stamps (the applier's signature) |
+| route | 6 `run-progress` cases |
+| side-effects (unit 2) | 21 `progress.` targets |
