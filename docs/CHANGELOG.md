@@ -116,6 +116,30 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — feat(progressions): Carina's forced report rides the user message
+
+_Versions: core 0.0.851, harness 0.0.741._
+
+A Carina call now carries the answerer's timed conditions, appended to the
+question rather than to the system block. That single system block holds the
+Anthropic cache breakpoint at index 0, and a per-turn clock inside it would
+bisect the cache on every query.
+
+`carina_query_tier3_equivalence` grows one case: Quill carries progressions and
+answers exactly one question; every other answerer carries none and every
+pre-existing row is byte-identical to a regen of the corpus before this change
+(minted ids masked), which is the empty-is-identical guarantee measured rather
+than asserted. The canned stream is keyed on the messages, so the case is its
+own tripwire — a section in the wrong message or a span rendered differently
+misses the key and answers `llm-failed` against v4's `ok`. Two assertions read
+v5's own outgoing messages: no system message may carry the header, and at
+least one case must put it on a user message, so the arm cannot go vacuous.
+
+Four mutation proofs. A fifth is recorded rather than claimed: flipping `force`
+to `false` here changes nothing on either side, because Carina passes no event
+loader, so the cadence has no last turn and rule 1 reports everything anyway.
+The flag is carried for shape. The same is true at the greeting.
+
 #### 2026-09-08 — feat(progressions): the greeting's forced report
 
 _Versions: core 0.0.850, harness 0.0.740._

@@ -459,11 +459,37 @@ where
         system_prompt.push_str(&format!("\n\n{memory_recall}"));
     }
 
+    // Character progressions — the answerer's own timed conditions, FORCED (a
+    // Carina call is a one-shot with no turn history to derive a cadence from).
+    //
+    // It rides on the USER message rather than the system one: this single
+    // system block carries the Anthropic cache breakpoint at index 0, and a
+    // per-turn clock inside it would bisect the cache on every query.
+    let progressions_section = crate::progressions::prompt_section::build_progressions_section(
+        crate::progressions::prompt_section::BuildProgressionsSectionParams {
+            character: Some(crate::progressions::prompt_section::SectionCharacter {
+                id: &answerer_id,
+                metadata: answerer.get("metadata"),
+            }),
+            load_events: None,
+            responding_participant_id: None,
+            // `deps.now_ms` is v4's JS `Date.now()` — a float here, an integer there.
+            now_ms: deps.now_ms as i64,
+            timezone: None,
+            force: true,
+        },
+    );
+    let question_with_progressions = if progressions_section.is_empty() {
+        opts.question.clone()
+    } else {
+        format!("{}\n\n---\n\n{progressions_section}", opts.question)
+    };
+
     let prior_exchanges = load_prior_carina_exchanges(db, &chat_id, &answerer_id);
     let mut current_messages: Vec<StreamMessage> = Vec::new();
     current_messages.push(StreamMessage::system(system_prompt));
     current_messages.extend(prior_exchanges);
-    current_messages.push(StreamMessage::user(opts.question.clone()));
+    current_messages.push(StreamMessage::user(question_with_progressions));
 
     // 5. Build the chat's tool slate, minus `ask_carina` (recursion guard).
     let image_profile_id = s(&chat, "imageProfileId");

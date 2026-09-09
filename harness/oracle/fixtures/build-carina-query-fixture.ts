@@ -46,6 +46,12 @@ interface CharSpec {
   scenarios?: unknown[];
   systemPrompts?: unknown[];
   defaultConnectionProfileId?: string;
+  /**
+   * [P4.D168] The freeform fact sheet, written to the vault's `metadata.json` by
+   * v4's own `repos.characters.create` — the home of the reserved
+   * `progressions` key the Carina call reports from.
+   */
+  metadata?: Record<string, unknown>;
 }
 interface ProfileSpec {
   id: string;

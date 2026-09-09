@@ -19,17 +19,30 @@
 //! and after all cases, the `chat_messages` / `chats` / `background_jobs` table
 //! dumps in the shared-cross-table id-map remap form.
 //!
+//! **P4.D168 (v4 `0587d1e96`) — the forced character-progressions report.**
+//! `Quill` is the one answerer carrying progressions (`metadata.progressions` in
+//! their vault); the `progressions_forced` case proves v4's forced section lands
+//! on the USER message and leaves the single system block — which carries the
+//! Anthropic cache breakpoint at index 0 — alone. Force BYPASSES
+//! `shouldReportProgression`, so Quill's `once`-complete wager reports here
+//! where a cadence would silence it. Every other case's answerer has no
+//! `progressions` key and its bytes are unmoved: that is the empty-is-identical
+//! guarantee, measured rather than asserted.
+//!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
-//! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
+//! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp).
+//! `TZ=UTC` on BOTH stages: the progressions renderer's `formatInstant` falls
+//! back to the host zone in v4 and to UTC in the port, so the two agree only
+//! when the oracle's host zone IS UTC (the distill-transitive pin):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}   # the v5 checkout (or your worktree)
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
+//!   TZ=UTC QT_FIXTURE_OUT=/tmp/qt-carina-query-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-carina-query-mount.db \
 //!     $N/npx tsx $V5W/harness/oracle/fixtures/build-carina-query-fixture.ts
 //!   mkdir -p /tmp/carina-oracle/cases /tmp/carina-oracle/fixtures
 //!   cp $V5W/harness/oracle/cases/carina-query-tier3.test.ts /tmp/carina-oracle/cases/
 //!   cp $V5W/harness/oracle/fixtures/carina-query-tier3.json /tmp/carina-oracle/fixtures/
-//!   QT_FIXTURE_CARINA_MAIN=/tmp/qt-carina-query-main.db QT_FIXTURE_CARINA_MOUNT=/tmp/qt-carina-query-mount.db \
+//!   TZ=UTC QT_FIXTURE_CARINA_MAIN=/tmp/qt-carina-query-main.db QT_FIXTURE_CARINA_MOUNT=/tmp/qt-carina-query-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-carina-query.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "/tmp/carina-oracle/cases" -- carina-query-tier3
 //! Run:
@@ -45,10 +58,11 @@ use std::sync::Mutex;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
+use quilltap_core::progressions::prompt_section::PROGRESSIONS_SECTION_HEADER;
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
-    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
-    StreamingCompletionProvider,
+    canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamMessage, StreamParams,
+    StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::carina_query::{
     run_carina_query, BrahmaConsoleResult, CarinaQueryDeps, RunBrahmaConsole,
@@ -196,8 +210,22 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    /// [P4.D168] Every message list this provider was ASKED for, in call order —
+    /// the v5 side of the wire, so the placement assertions below read `got` and
+    /// not the oracle. The canned key already forces v5's messages to equal v4's
+    /// byte-for-byte (a miss answers `llm-failed` against v4's `ok`); this
+    /// records them so a misplaced section fails by name instead of as a miss.
+    seen: Mutex<Vec<Vec<StreamMessage>>>,
 }
 impl QueuedStreamingProvider {
+    /// The number of streamed calls so far — bracket a case with two reads to
+    /// get exactly that case's calls.
+    fn seen_len(&self) -> usize {
+        self.seen.lock().unwrap().len()
+    }
+    fn seen_from(&self, start: usize) -> Vec<Vec<StreamMessage>> {
+        self.seen.lock().unwrap()[start..].to_vec()
+    }
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
         let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
             HashMap::new();
@@ -211,6 +239,7 @@ impl QueuedStreamingProvider {
         }
         Self {
             queues: Mutex::new(queues),
+            seen: Mutex::new(Vec::new()),
         }
     }
 }
@@ -227,6 +256,7 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             params.temperature,
             &params.messages,
         );
+        self.seen.lock().unwrap().push(params.messages.clone());
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
@@ -580,8 +610,14 @@ async fn carina_query_tier3_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
+    // [P4.D168] How many cases put the forced progressions report on the USER
+    // message. Asserted as a floor after the loop so the placement arm below
+    // cannot go vacuous the day an answerer stops carrying progressions.
+    let mut cases_reporting_progressions = 0usize;
+
     for case in &spec.cases {
         let sink = RecordingSink::new();
+        let calls_before = streaming.seen_len();
         let deps = CarinaQueryDeps {
             db: &db,
             embedding: &embedding,
@@ -646,7 +682,42 @@ async fn carina_query_tier3_matches_oracle() {
             "{}: carinaAnswer event diverges",
             case.name
         );
+
+        // [P4.D168 / v4 `carina.service.ts:583-600`] Where the forced report
+        // lands. v4 appends it to the USER message and leaves the single system
+        // block alone — that block carries the Anthropic cache breakpoint at
+        // index 0, and a per-turn clock inside it would bisect the cache on
+        // every query. Both arms read v5's OWN outgoing messages.
+        for messages in streaming.seen_from(calls_before) {
+            for m in &messages {
+                if let StreamMessage::System { content } = m {
+                    assert!(
+                        !content.contains(PROGRESSIONS_SECTION_HEADER),
+                        "{}: the progressions report reached the SYSTEM block — \
+                         it belongs on the user message (the cache breakpoint sits here)",
+                        case.name
+                    );
+                }
+            }
+            if messages.iter().any(|m| {
+                matches!(m, StreamMessage::User { content, .. }
+                    if content.contains(PROGRESSIONS_SECTION_HEADER))
+            }) {
+                cases_reporting_progressions += 1;
+                break;
+            }
+        }
     }
+
+    // The floor: at least one case's answerer actually carries progressions, so
+    // the placement arms above measured something. `progressions_forced` is that
+    // case; every other answerer's `metadata` has no `progressions` key, and
+    // their rows are byte-identical to the pre-feature corpus.
+    assert!(
+        cases_reporting_progressions >= 1,
+        "no case put a progressions report on the user message — the placement \
+         arms are vacuous (did the forced call stop firing?)"
+    );
 
     // Dump + diff the three tables in the shared-id-map remap form.
     let mut got_cm = db

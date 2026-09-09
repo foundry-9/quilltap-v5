@@ -2,6 +2,7 @@
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "seedTimestamp": "2026-06-01T00:00:00.000Z",
   "nowMs": 1780272000000,
+  "_progressionsComment": "P4.D168 (v4 `0587d1e96`): `Quill` is the ONLY answerer carrying character progressions, and answers exactly one case (`progressions_forced`), so every pre-existing case's bytes are untouched — which is what proves the empty-is-identical guarantee rather than merely asserting it. Every instant is anchored on the corpus clock (nowMs = 2026-06-01T00:00:00Z). Carina asks for the report FORCED, and reports everything it parses: the `once`-complete wager appears alongside the other two. (MEASURED: at this call site the `force` flag is inert either way — Carina passes no event loader, so `lastTurnMs` is null and rule 1 reports every entry regardless. A mutation flipping `force` to `false` here stays green on BOTH sides; what the case pins is that the section is built at all, unconditionally, and where it lands.)  Quill's insertion order (tincture, sabbatical, wager) is deliberately not sorted order (sabbatical, tincture, wager) so a dropped `ids.sort()` shows up in this family too. The section rides the USER message, never the system one; the canned stream is keyed on `provider|model|temperature|messages`, so the case is its own tripwire — put the section in the wrong message, drop the force, or render one span differently and the key misses, giving `llm-failed` against v4's `ok`.",
   "userId": "00000000-0000-4000-8000-757365720000",
   "connectionProfiles": [
     {
@@ -161,6 +162,45 @@
       "controlledBy": "llm",
       "identity": "Bystander is a reference-desk character who answers plainly.",
       "description": "Bystander keeps concise notes."
+    },
+    {
+      "id": "00000000-0000-4000-8000-7175696c6c00",
+      "name": "Quill",
+      "canBeCarina": true,
+      "controlledBy": "llm",
+      "identity": "Quill is a reference-desk character who answers plainly.",
+      "description": "Quill keeps concise notes.",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "tincture": {
+            "name": "Tincture steeping",
+            "startTime": "2026-05-31T23:30:00Z",
+            "endTime": "2026-06-01T00:30:00Z",
+            "timeIncrement": "minute",
+            "quantity": { "total": 60, "unit": "ml", "precision": 0 }
+          },
+          "sabbatical": {
+            "name": "Sabbatical",
+            "startTime": "2026-06-08T00:00:00Z",
+            "endTime": "2026-07-08T00:00:00Z",
+            "timeIncrement": "day"
+          },
+          "wager": {
+            "name": "The wager",
+            "startTime": "2026-05-01T00:00:00Z",
+            "endTime": "2026-05-02T00:00:00Z",
+            "timeIncrement": "day",
+            "onComplete": "once"
+          },
+          "broken": {
+            "name": "Broken",
+            "startTime": "2026-06-01T00:00:00Z",
+            "endTime": "2026-06-01T00:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      }
     }
   ],
   "chat": {
@@ -579,6 +619,22 @@
       "operatorInitiated": false,
       "streams": [],
       "expectPost": false,
+      "brahma": false
+    },
+    {
+      "name": "progressions_forced",
+      "characterName": "Quill",
+      "question": "What are you carrying?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [
+        [
+          { "content": "Quill answers plainly." },
+          { "done": true }
+        ]
+      ],
+      "expectPost": true,
       "brahma": false
     }
   ],
