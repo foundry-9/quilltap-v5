@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(p4.d174): the lane's gate of record, the twelve per-family regens, and the two findings that belong to sibling lanes
+
+_Docs-only change._
+
+The gate: 542 test binaries / 3,073 passed / 0 failed / 1 ignored, zero SKIP
+lines, exit 0, with every family the lane moves confirmed RUN by per-binary
+duration (Tier R at 366 s). fmt clean, clippy clean in both feature sets,
+release build clean. Twelve families regenerated from a pinned worktree — seven
+at the round's `78b381a96` target, five at the `25f534c0b` baseline as
+neutrality checks.
+
+Two findings recorded for other lanes rather than fixed here. The committed
+`courier-images-*.db` fixture is schema-vintage-stale for the round's tip: four
+of its fourteen cases 500 in v4's own handlers once regenerated at
+`78b381a96`, because the fixture predates the round's two new columns — that is
+P4.D171's substrate obligation showing through a committed fixture, and it will
+bite any lane regenerating a courier oracle at the new baseline.
+`photo_tools_equivalence` goes red at the tip on v4 bug 132, which is
+P4.D175's port; it is green at the baseline pin, and the two lanes share its
+default `/tmp` fixture paths.
+
+The gate caught two of its own problems worth the note: `QT_NODE` set to the
+node `bin` directory rather than the binary (Tier R spawns it, and the whole
+run is fail-fast per binary), and `os error 28` — the disk filled mid-gate,
+reclaimed with `cargo clean -p` over this lane's own crates only.
+
 #### 2026-09-09 — test(gallery): the two new v4 chat actions pinned as unserved, and API.md's documented shapes diffed against the wire (P4.D174 units 6–8)
 
 _Versions: harness 0.0.752, web 0.0.136._

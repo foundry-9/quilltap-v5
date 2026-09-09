@@ -118013,3 +118013,125 @@ attachment respectively), which the family now asserts.
 `{success: true}`** for a `files.id` from the same roll. That is what API.md
 means by "accepts only the `file` species", it is what makes `idKind`
 load-bearing in P4.D176's modal, and it was asserted nowhere.
+
+### P4.D174 — the gate of record
+
+**The freshness probe re-run at the end of the lane and unchanged from lane
+start:** checkout on `main`, tree CLEAN, `78b381a96..main` still exactly
+`cc65d6bfc` (bug 133), `bugfix` unmoved. Every regen this lane ran came from a
+pinned detached worktree, never the checkout.
+
+- `cargo fmt --all --check` — clean. `cargo clippy --workspace --all-targets
+  -- -D warnings` — clean in BOTH feature sets (default and
+  `--features quilltap-core/native-transport`). `cargo build --release
+  --workspace` — clean.
+- **`cargo test --workspace` with the lane's 18-variable env block
+  (`QT_V4_ROOT` / `QT_V4_CHECKOUT` at the `25f534c0b` pin per §R.3, `QT_NODE`
+  the Node 24.13.1 BINARY): 542 test binaries / 3,073 passed / 0 failed /
+  1 ignored, ZERO `SKIP:` lines, exit 0** (read directly, never after a pipe).
+  Every family this lane moves confirmed RUN by per-binary duration:
+  `chat_gallery_equivalence` 0.18 s, `courier_images_routes_equivalence`
+  0.08 s, `images_generate_route_equivalence` 3.20 s,
+  `query_param_semantics_equivalence` 3 tests / 1.30 s, `binary_routes`
+  0.95 s, `images_edge_routes` 0.96 s, `dispatch_wrong_type_census` 4 tests,
+  `web_edge_body_parse_guard` 2 tests, `photo_tools_equivalence` 0.25 s,
+  `files_routes_equivalence` 0.16 s, `images_routes_equivalence` 2.71 s, and
+  Tier R `cli_differential` 366.67 s.
+- **The gate's own catch, twice.** (1) The first full run failed at binary 2
+  with `spawn CLI: PermissionDenied` — `QT_NODE` had been set to the node
+  `bin` DIRECTORY rather than the `node` binary, and `cli_differential`
+  spawns it. Fixed and re-run whole; `cargo test --workspace` is fail-fast per
+  BINARY, so that first log's 2 `test result` lines were not a result.
+  (2) **`os error 28` — the disk filled mid-gate** (417 MB free; this
+  worktree's `target/` was 21 GB and two sibling lanes held 29 GB and 93 GB).
+  Reclaimed by `cargo clean -p` over this lane's own six crates only
+  (16.5 GB, keeping the cached amalgamation build), never a sibling's.
+  53 GB free at the end.
+
+**Per-family regens, all through `harness/tools/recipe_sweep.py --run <family>
+--v4 <pin>` except the four hand-run ones whose recipes this lane authored or
+re-mirrored:**
+
+| family | pin | result |
+|---|---|---|
+| `chat_gallery_equivalence` (NEW) | `78b381a96` | 20 cases, green |
+| `images_generate_route_equivalence` | `78b381a96` | 41 rows, green |
+| `query_param_semantics_equivalence` | `78b381a96` | 224 rows, green |
+| `images_routes_equivalence` | `78b381a96` | green |
+| `files_routes_equivalence` | `78b381a96` | green |
+| `photos_relative_path_equivalence` | `78b381a96` | green (13 inputs) |
+| `image_generate_route_equivalence` (the PROFILE route) | `78b381a96` | green — UNMOVED, as the order predicted |
+| `courier_images_routes_equivalence` | `25f534c0b` | green (neutrality — see the unit-1–3 record) |
+| `photo_tools_equivalence` | `25f534c0b` | green (neutrality — see below) |
+| `chat_export_equivalence` | `25f534c0b` | green |
+| `markdown_transcript_equivalence` | `25f534c0b` | green (55 rows, 10 disposition) |
+| `almanack_tier2_equivalence` | `25f534c0b` | green |
+
+**`photo_tools_equivalence` is a `25f534c0b` NEUTRALITY family for this lane,
+not a tip regen — and its tip regen is RED BY DESIGN.** Regenerated at
+`78b381a96` it fails `describe_stored`: v4's `78b381a96` reorders
+`handleDescribeImage` to prompt → stored → vision and adds the
+`stored_description` rider (bug 132). That is **P4.D175's** port, not this
+lane's; §R.11 assigns `photo-tools.json` and its builder to that lane. Green at
+the baseline pin, which is the neutrality claim this lane owes.
+
+⚠ **A /tmp collision this lane created, for P4.D175's attention:** the sweep
+driver's `photo_tools_equivalence` recipe writes `/tmp/qt-photo-{main,mount}.db`
+and `/tmp/oracle-photo-tools.ndjson` at the DEFAULT paths, and this lane ran it
+twice (once at each pin). If P4.D175 had a build in flight against those paths
+it was clobbered (`tmp-fixtures-collide-across-parallel-lanes`); the fix is that
+lane re-running its own recipe, which it will do anyway for bug 132.
+
+### P4.D174 — what remains OPEN, and what is "spotted, not mine"
+
+**OPEN under this order: nothing in Tiers 1 or 2.** All six Tier-1 items and
+both Tier-2 items landed. Tier 3's two deferrals stand as written and are now
+executable: no REST edge for either action (pinned as two
+`UNSERVED_KNOWN_ACTIONS` rows), and no server-side realtime change (the
+gallery key sits under v5's existing `['chat', id]` prefix — P4.D176's spec is
+the verification, named here as the order asks).
+
+**Measured deviations from the order, each with its reason:**
+
+1. **The chat-scoped save arms live in `chat_gallery_equivalence`, not in a
+   migrated `courier-images-*.db`.** The order said "migrate in place: a
+   gallery-member image, a non-member, an already-saved one, a link-id
+   `fileId`". They are all there, over the NEW fixture this lane owns, which
+   the Playwright seeder does not read — so the committed courier pair the
+   seeder DOES read was not touched at all. The courier family still carries
+   the message leg and is regenerated as the neutrality proof.
+2. **The `wants_attachment` tier-1 tsx case was not written**; the order's own
+   alternative (fold into `binary_routes.rs`) was taken, plus a unit truth
+   table. Reason in the unit-4 record: v4's predicate takes a URL and v5's
+   takes axum's pair list, so a URL corpus would measure a parser this port
+   does not have.
+3. **The ordered NaN-`createdAt` fixture arm was removed after being measured
+   UNREACHABLE through v4's own reader** (unit-1 record).
+4. **The order's "`:548` quotes v4's whole 30-action sentence — RE-MEASURE,
+   never hand-edit"** turned out to need no edit at all: no literal in the tree
+   carries the action list, so the re-measure is a regen (unit-6 record).
+5. **The order's "`mount_blob_get` … BOTH its arms — the easy port defect"** is
+   closed by construction: v5 has one response builder for both arms. M11
+   proves the assertion would have caught it regardless.
+
+**Spotted, not mine — for the unifier:**
+
+- **The committed `courier-images-*.db` fixture is schema-vintage-stale for the
+  round's tip.** Regenerated at `78b381a96`, four of its fourteen cases 500 in
+  v4's OWN handlers (`add_tool_result_user`, `add_tool_result_character`,
+  `resolve`, `resolve_cadence`; `cancel` too) because the fixture predates
+  `chat_messages.routeTrail` and `chats.cycleOrderParticipantIds`. **This is
+  P4.D171's substrate obligation showing through a committed fixture**, and it
+  will bite any lane that regenerates a courier-family oracle at the new
+  baseline. The read/save cases are byte-identical at both shas.
+- **`photo_tools_equivalence` goes RED at the tip on bug 132** (above) — it is
+  on P4.D175's list, and the two lanes' /tmp paths for it collide.
+- `docs/developer/API.md`'s gallery example shows three optional entry keys as
+  explicit `null` that the wire omits (unit-6 record). v4's doc, v4's to fix;
+  recorded, not touched.
+- 💸 **The dogfood queue gains:** the gallery roll on real Friday data (the
+  nine sources at scale — the one thing no fixture can pose), a Save from the
+  gallery into a character vault and the 409 on a repeat, `?download=1` from
+  the browser (the Electron `will-download` half is only reachable in the
+  shell), and a chat-scoped `generate_image` whose output then appears in the
+  same chat's `files` listing (bug 130's user-visible half).
