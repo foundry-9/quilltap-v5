@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(schema): P4.D171 unit 5 — Tier-2 doc notes (the agreeing-shape exception, the re-dump register)
+
+_Versions: core 0.0.862._
+
+Two Tier-2 doc notes, per the work order: `chats_read.rs`'s module doc
+gains a section on `cycleOrderParticipantIds` being the ONE column this
+round whose migration DDL and `generateDDL` shape AGREE (`TEXT DEFAULT
+'[]'` both sides) — unlike every other column this port has carried across
+a schema move (most recently `routeTrail` right beside it, `TEXT` vs `TEXT
+DEFAULT NULL`) — so the next lane touching a schema move does not carry two
+shapes on reflex. `provisioning/mod.rs`'s `FRESH_SCHEMA_JSON` doc comment
+gains a re-dump register (append-only) naming every commit that has
+re-dumped `fresh_schema.json`, through `78b381a96`.
+
 #### 2026-09-09 — feat(schema): P4.D171 unit 4 — export/import/restore carry (rides the typed structs for free), the routeTrail non-remap negative pin, and the reduced-DDL sweep
 
 _Versions: core 0.0.861, harness 0.0.752._

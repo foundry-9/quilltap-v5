@@ -40,6 +40,20 @@
 //! match v4's query translator emits; `find_recent_summarized_by_character`
 //! reproduces v4's `$exists`/`$nin`/`$ne` → `IS NOT NULL` / `NOT IN` / `!=` plus
 //! `ORDER BY "lastMessageAt" DESC` + `LIMIT`.
+//!
+//! ## `cycleOrderParticipantIds` — the ONE column whose two v4 shapes AGREE
+//!
+//! P4.D171 (v4 `2aca73ad6`) — measured at the `78b381a96` re-dump: BOTH the
+//! migration (`addColumnIfMissing('chats', 'cycleOrderParticipantIds',
+//! "TEXT DEFAULT '[]'")`) and `generateDDL` (`z.string().default('[]')` in
+//! `ChatMetadataBaseSchema`) declare the identical type and default. Every
+//! OTHER column this port has carried across a schema move has disagreed
+//! between the two v4 shapes (the P4.D77/D78/D135 pattern, most recently
+//! `chat_messages.routeTrail` beside this one — bare `TEXT` vs `TEXT DEFAULT
+//! NULL`) — so [`super::chats_cycle_order_repair`]'s ensure carries only ONE
+//! DDL, not two. Do not carry two shapes on reflex for the next column move;
+//! re-measure at the new pin first (`git show <sha> --
+//! migrations/scripts/<name>.ts lib/schemas/chat.types.ts`).
 
 use rusqlite::{Connection, Row};
 use serde_json::{Map, Value};

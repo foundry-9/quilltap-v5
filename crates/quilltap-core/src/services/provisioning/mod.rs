@@ -67,6 +67,11 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// The captured fresh-instance DDL (per partition), verbatim from v4's real
 /// `ensureCollection`/`getCollection`. Regenerate with
 /// `harness/oracle/provision/dump-fresh-schema.ts` (recipe in its header).
+///
+/// Re-dump register (append, never restructure): `1766701c2` (P4.D135),
+/// `e30acf4e3` (P4.D78), `8330d3e79` (P4.D77), `0871733bb` (P4.D73),
+/// `0a26dadc5` (P4.D49), `78b381a96` (P4.D171 — `chat_messages.routeTrail` +
+/// `chats.cycleOrderParticipantIds`, one dump landing both).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted

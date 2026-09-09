@@ -118134,3 +118134,19 @@ cd "$V5W"
 QT_ORACLE_UUID_REMAP=/tmp/oracle-backup-uuid-remap-p4d171.ndjson \
   cargo test -p quilltap-harness --test backup_uuid_remap_equivalence -- --nocapture
 ```
+
+**Unit 5 — the two Tier-2 doc notes.** `chats_read.rs` gains a module-doc
+section naming `cycleOrderParticipantIds` as the one column this round
+whose migration DDL and `generateDDL` shape agree — measured at the
+`78b381a96` re-dump, both declare `TEXT DEFAULT '[]'` — contrasted against
+`routeTrail` right beside it (`TEXT` vs `TEXT DEFAULT NULL`, both carried).
+`provisioning/mod.rs`'s `FRESH_SCHEMA_JSON` doc comment gains an
+append-only re-dump register (the work order's own survey list, which does
+not exist verbatim anywhere else in the repo — it reads as the order
+author's own `git log` research rather than a quote of an existing
+document) naming every commit that has re-dumped `fresh_schema.json`,
+through `78b381a96` (P4.D171).
+
+Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core
+--all-targets -- -D warnings` clean; `cargo build --workspace` clean.
+Version: core 0.0.861 → 0.0.862.
