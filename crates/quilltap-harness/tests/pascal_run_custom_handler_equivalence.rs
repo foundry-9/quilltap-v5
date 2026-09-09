@@ -53,7 +53,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 /// P4.D169: Pascal's run entrance now takes its clock from the caller.
-/// 2026-09-08T12:00:00Z.
+/// 2026-08-29T12:00:00Z.
 const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";

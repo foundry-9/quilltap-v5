@@ -4749,7 +4749,7 @@ impl CoreEngine {
                     SINGLE_USER_ID,
                     &chat_id,
                     // P4.D169: production's clock — one reading for the listing.
-                    crate::clock::now_unix_ms() as i64,
+                    crate::clock::now_unix_ms(),
                 ),
                 Err(r) => r,
             },
@@ -4777,7 +4777,7 @@ impl CoreEngine {
                         // templates read, `{{now}}`, and the `updatedAt` an effect
                         // stamps — so a tool cannot see one moment and record
                         // another.
-                        crate::clock::now_unix_ms() as i64,
+                        crate::clock::now_unix_ms(),
                     )
                     .await
                 }
@@ -4815,7 +4815,7 @@ impl CoreEngine {
                         // arms never touch it.
                         consult.as_deref(),
                         // P4.D169: the bench's one reading (v4 `benchNowMs`).
-                        crate::clock::now_unix_ms() as i64,
+                        crate::clock::now_unix_ms(),
                     )
                     .await
                 }
@@ -4837,7 +4837,7 @@ impl CoreEngine {
                     llm.as_ref(),
                     // P4.D169: the audit's one reading — the sheet is derived
                     // once and held fixed across every draw.
-                    crate::clock::now_unix_ms() as i64,
+                    crate::clock::now_unix_ms(),
                 ),
                 Err(r) => r,
             },

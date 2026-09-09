@@ -35,7 +35,7 @@ use serde_json::{json, Map, Value};
 
 /// The roster's frozen wall clock. P4.D169 injects `resolve_roster_from_pool`'s
 /// `now_ms` so a progression-gated definition's verdict is reproducible; until
-/// the corpus carries one, no row reads it. 2026-09-08T12:00:00Z.
+/// the corpus carries one, no row reads it. 2026-08-29T12:00:00Z.
 const ROSTER_NOW_MS: i64 = 1_788_004_800_000;
 
 fn str_list(v: &Value, key: &str) -> Vec<String> {

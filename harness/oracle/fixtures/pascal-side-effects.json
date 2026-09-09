@@ -1,0 +1,2079 @@
+{
+  "note": "P4.D169 item 5 — the side-effect applier's corpus, 49 rows. Rows 1-15 are v4's `__tests__/unit/lib/pascal/side-effects.test.ts` (the state/metadata matrix that predates progressions, so the family is green on the pre-change applier); rows 16-47 are its `side-effects-progress.test.ts` siblings. v4 has 31 `it`s there and this has 32 rows, which is four deliberate departures: its increment case asserts twice and became two rows, its declined-time case loops three values and became three, its `warns naming the character's progression and the issue` is the SAME input as the drop-and-restore row above it and rides that row's `warns` comparand rather than repeating the input, and its `defaults nowMs to the wall clock` has no row at all — v5's `now_ms` is not optional (the entrance passes the reading it already took), which is a recorded divergence, not a gap. v4's three commit-half fail-soft cases have no row either: they mock a repository REJECTION, which the pure planning pass this corpus drives cannot express — v5 proves those in `side_effects.rs`'s commit tests.",
+  "nowMs": 1788876000000,
+  "cases": [
+    {
+      "name": "tier/chat — a key already at the chat tier writes back to the chat",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "encounter",
+              "count"
+            ],
+            "raw": "state.encounter.count"
+          },
+          "value": {
+            "n": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/project — a key living at the project tier writes to the project",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {
+          "campaign": {
+            "act": 1
+          }
+        },
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        },
+        "projectId": "proj-1"
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "campaign",
+              "act"
+            ],
+            "raw": "state.campaign.act"
+          },
+          "value": {
+            "n": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/group — a key living at the group tier writes to the single applicable group",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {
+          "fleet": "massed"
+        },
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "single",
+          "candidates": [
+            {
+              "id": "grp-1",
+              "name": "Armada"
+            }
+          ],
+          "appliedGroupId": "grp-1"
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "fleet"
+            ],
+            "raw": "state.fleet"
+          },
+          "value": {
+            "s": "scattered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/general — a key living at the general tier writes to general state",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {
+          "weather": "fog"
+        },
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "weather"
+            ],
+            "raw": "state.weather"
+          },
+          "value": {
+            "s": "rain"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/default — a key found nowhere defaults to the chat tier",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "fresh"
+            ],
+            "raw": "state.fresh"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/no projectId — the project tier is never searched without one",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {
+          "campaign": 1
+        },
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "campaign"
+            ],
+            "raw": "state.campaign"
+          },
+          "value": {
+            "n": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/ambiguous groups — a group-only key is shadowed at the chat tier",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "ambiguous",
+          "candidates": [
+            {
+              "id": "grp-1",
+              "name": "Armada"
+            },
+            {
+              "id": "grp-2",
+              "name": "Flotilla"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "fleet"
+            ],
+            "raw": "state.fleet"
+          },
+          "value": {
+            "s": "scattered"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tier/several — the chat tier wins when a key lives at more than one",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {
+          "count": 2
+        },
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        },
+        "projectId": "proj-1"
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 9
+          }
+        }
+      ]
+    },
+    {
+      "name": "batching — ONE write per touched store, whatever the effect count",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {
+          "campaign": {}
+        },
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        },
+        "projectId": "proj-1"
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "a"
+            ],
+            "raw": "state.a"
+          },
+          "value": {
+            "n": 1
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "b"
+            ],
+            "raw": "state.b"
+          },
+          "value": {
+            "n": 2
+          }
+        },
+        {
+          "index": 2,
+          "target": {
+            "kind": "state",
+            "path": [
+              "campaign",
+              "act"
+            ],
+            "raw": "state.campaign.act"
+          },
+          "value": {
+            "n": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "batching — sequential effects see each other through the local copies",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "tally"
+            ],
+            "raw": "state.tally"
+          },
+          "value": {
+            "n": 5
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "tally"
+            ],
+            "raw": "state.tally"
+          },
+          "value": {
+            "n": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "underscore guard — a user-only first segment writes nothing, re-checked at apply time",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "_secrets",
+              "combo"
+            ],
+            "raw": "state._secrets.combo"
+          },
+          "value": {
+            "n": 1
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "open"
+            ],
+            "raw": "state.open"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata — read-modify-writes the snapshot as one whole-object update",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "lockpick": "good pick",
+        "unrelated": true
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "metadata",
+            "key": "lockpick",
+            "raw": "metadata.lockpick"
+          },
+          "value": {
+            "s": "broken pick"
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "metadata",
+            "key": "attempts",
+            "raw": "metadata.attempts"
+          },
+          "value": {
+            "n": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata — skipped entirely when no character rolled",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": null,
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "metadata",
+            "key": "lockpick",
+            "raw": "metadata.lockpick"
+          },
+          "value": {
+            "s": "broken"
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "x"
+            ],
+            "raw": "state.x"
+          },
+          "value": {
+            "n": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "fail-soft — an unreadable cascade skips state effects and keeps metadata",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": null,
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "x"
+            ],
+            "raw": "state.x"
+          },
+          "value": {
+            "n": 1
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "metadata",
+            "key": "k",
+            "raw": "metadata.k"
+          },
+          "value": {
+            "s": "v"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fail-soft — a run where nothing applies writes nothing at all",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "skipped": "condition did not hold"
+        }
+      ]
+    },
+    {
+      "name": "one write — progress rides inside the metadata replace, not a write of its own",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        },
+        {
+          "index": 2,
+          "target": {
+            "kind": "metadata",
+            "key": "lastFired",
+            "raw": "metadata.lastFired"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        }
+      ]
+    },
+    {
+      "name": "one write — every other metadata key is left untouched",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "one write — the caller's snapshot is not mutated",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "one write — a run nobody made re-arms nobody's cannon",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": null,
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "re-arm — records previous and next for pascalMeta.effects",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "re-arm — stamps updatedAt with the run clock, so the next turn reports it regardless of cadence",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "re-arm — keeps the author's chosen increment when a tool merely nudges a boundary",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "progressions": {
+          "pregnancy": {
+            "name": "Pregnancy",
+            "startTime": "2026-08-01T00:00:00Z",
+            "endTime": "2027-05-01T00:00:00Z",
+            "timeIncrement": "week"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "pregnancy",
+            "field": "endTime",
+            "raw": "progress.pregnancy.endTime"
+          },
+          "value": {
+            "n": 1808179200000
+          }
+        }
+      ]
+    },
+    {
+      "name": "re-arm — later effects see earlier ones through the local copy",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — mints a progression nobody authored, with the documented defaults",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "name",
+            "raw": "progress.fuse.name"
+          },
+          "value": {
+            "s": "Fuse"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — names the created progression after its id when nothing says otherwise",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "onComplete",
+            "raw": "progress.fuse.onComplete"
+          },
+          "value": {
+            "s": "once"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — infers 'minute' from the span a created progression ends up with",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — infers 'month' from a forty-week span",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "gestation",
+            "field": "startTime",
+            "raw": "progress.gestation.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "gestation",
+            "field": "endTime",
+            "raw": "progress.gestation.endTime"
+          },
+          "value": {
+            "n": 1813068000000
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — produces an entry the schema accepts",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "create — creates the reserved key on a character who has never had one",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum"
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "name",
+            "raw": "progress.fuse.name"
+          },
+          "value": {
+            "s": "Fuse"
+          }
+        }
+      ]
+    },
+    {
+      "name": "time — epoch milliseconds are stored as ISO",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788876600000
+          }
+        }
+      ]
+    },
+    {
+      "name": "time — an ISO string with an offset is normalised",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "s": "2026-09-08T14:10:00+00:00"
+          }
+        }
+      ]
+    },
+    {
+      "name": "time — prose is declined rather than stored as rubbish",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "s": "next Tuesday"
+          }
+        }
+      ]
+    },
+    {
+      "name": "time — a boolean is declined rather than stored as rubbish",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "time — NaN is declined rather than stored as rubbish",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "nan": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "quantity — writes one field without disturbing the others",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:20:00Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "quantity.total",
+            "raw": "progress.cannon.quantity.total"
+          },
+          "value": {
+            "n": 2.5
+          }
+        }
+      ]
+    },
+    {
+      "name": "quantity — mints a quantity block when the progression had none",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:20:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "quantity.unit",
+            "raw": "progress.cannon.quantity.unit"
+          },
+          "value": {
+            "s": "rounds"
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — deletes the progression on a write of true",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "remove",
+            "raw": "progress.cannon.remove"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — does NOT delete on a write of false",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "remove",
+            "raw": "progress.cannon.remove"
+          },
+          "value": {
+            "b": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — a truthy NUMBER is not true, so it does not delete either",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "remove",
+            "raw": "progress.cannon.remove"
+          },
+          "value": {
+            "n": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — a truthy STRING is not true, so it does not delete either",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "remove",
+            "raw": "progress.cannon.remove"
+          },
+          "value": {
+            "s": "yes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — skips fail-soft when the named progression does not exist",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "zeppelin",
+            "field": "remove",
+            "raw": "progress.zeppelin.remove"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove — leaves the character's other progressions alone",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          },
+          "fuse": {
+            "name": "Fuse",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "remove",
+            "raw": "progress.cannon.remove"
+          },
+          "value": {
+            "b": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — drops a run whose result would not validate, restoring the pre-run entry",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788872400000
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — never throws on an increment the schema refuses",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "timeIncrement",
+            "raw": "progress.cannon.timeIncrement"
+          },
+          "value": {
+            "s": "fortnight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — drops only the offending progression, keeping a sound one in the same run",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "name",
+            "raw": "progress.fuse.name"
+          },
+          "value": {
+            "s": "Fuse"
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "timeIncrement",
+            "raw": "progress.cannon.timeIncrement"
+          },
+          "value": {
+            "s": "fortnight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — keeps a metadata write in the same run when a progress write is dropped",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum",
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-09-08T13:50:00Z",
+            "endTime": "2026-09-08T14:00:00Z",
+            "timeIncrement": "minute"
+          }
+        }
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "metadata",
+            "key": "lastFired",
+            "raw": "metadata.lastFired"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "timeIncrement",
+            "raw": "progress.cannon.timeIncrement"
+          },
+          "value": {
+            "s": "fortnight"
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — leaves no empty reserved key behind when every write rolls back",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "faction": "Ordo Aurum"
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "startTime",
+            "raw": "progress.cannon.startTime"
+          },
+          "value": {
+            "n": 1788876000000
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "progress",
+            "id": "cannon",
+            "field": "endTime",
+            "raw": "progress.cannon.endTime"
+          },
+          "value": {
+            "n": 1788875400000
+          }
+        }
+      ]
+    },
+    {
+      "name": "post-validation — validates a created progression too",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "reportFrequency",
+            "raw": "progress.fuse.reportFrequency"
+          },
+          "value": {
+            "s": "sometimes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "RMW base — folds progress writes over a snapshot whose progressions key is malformed",
+      "chatId": "chat-1",
+      "toolName": "fire_cannon",
+      "characterId": "char-1",
+      "metadataSnapshot": {
+        "progressions": "not an object"
+      },
+      "cascade": {
+        "chatState": {},
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "progress",
+            "id": "fuse",
+            "field": "name",
+            "raw": "progress.fuse.name"
+          },
+          "value": {
+            "s": "Fuse"
+          }
+        }
+      ]
+    }
+  ]
+}

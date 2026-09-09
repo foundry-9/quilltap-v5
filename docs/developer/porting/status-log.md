@@ -116433,3 +116433,205 @@ gains `participantId`/`systemSender`/`systemKind`),
 `build-chat-context-init-fixture.ts` (Sam's), `build-carina-query-fixture.ts`
 (`CharSpec.metadata`, written through v4's own `repos.characters.create`).
 DELIVERS `help/**` at `25f534c0b` — seven files, the tree 121 → 122.
+---
+
+## P4.D169 — the Pascal family reads, writes and reports progressions (units 1–2)
+
+Branch `claude/p4-d169-progressions-pascal-6daa42`, stacked on P4.D167's tip
+`7551134e`. Pin `/tmp/qt-v4-pin-p4d169-25f534c0b` for every regen.
+
+### Unit 1 — the read subject, `{{now}}`, and one clock per run (`99356a2e`)
+
+`PlaceholderRef::{Now, Progress}` and `EffectTarget::Progress{id, field, raw}`
+through `parse_effect_target` (progress checked BEFORE `metadata.`, with the
+`metadata.progressions` / `metadata.progressions.<x>` reserved-key guard and all
+four refusals); `ToolGate.progress` with `metadata` emptyable and the
+object-level refine `must test at least one metadata key or progress field`;
+`ToolVocabulary`'s `progress` / `progressWrites` / `now` in v4's declaration
+order; `evaluate_tool_gate(definition, metadata, progress)`; the roster's lazy
+`progress_sheet`, derived only when a gate actually names `progress`; the
+applier's `EffectTarget::Progress` planner branch, `apply_progress_write`,
+`read_progression_field`, `normalise_instant`, the post-validation pass and
+`survived`; and `now_ms` threaded from every entrance, so the sheet the tables
+read and the entries the effects write cannot disagree about the moment.
+
+Three red-first proofs were RECOVERED rather than taken in order — I ported
+before capturing them, then reverted the tree and re-ran against the
+already-regenerated oracles. Genuine evidence, out of sequence, and recorded as
+such: the vocabulary's three new keys in v4's declaration order, the definition
+family's refine-message change, and `run_custom`'s fourth preamble sentence.
+
+**Two order premises corrected by measurement at the pin.** The order says Zod
+"DISCARDS the refine's message" on a bad record key; it does not — it NESTS it
+under `issues[]`. What makes the order's conclusion right is `flattenIssues`,
+which special-cases `invalid_union` and nothing else, so the load-time string is
+`progress.cannon: Invalid key in record` and the per-mistake sentences reach an
+author only through the Workbench. And `ToolVocabulary`'s doc claiming "All
+seven keys are ALWAYS present" was already wrong at nine fields before this
+lane took it to twelve; it is now worded without a count, because a number there
+goes stale in silence.
+
+### Unit 2 — the applier's differential and every progress log line
+
+**NEW `pascal_side_effects_equivalence`** — the family the order requires
+before the progress arms are trusted. `harness/oracle/cases/
+pascal-side-effects.test.ts` drives v4's REAL `applyCustomToolEffects` with
+`getRepositories` and `writeGeneralState` mocked to RECORDERS; the Rust side
+answers through the new feature-gated `side_effects::differential::plan_run`,
+which exposes the P4.D35 pure planning pass. Both sides read ONE committed
+corpus (`harness/oracle/fixtures/pascal-side-effects.json`, 49 rows), so the
+list-driven trap — a case added to the `.ts` alone and never run — cannot
+happen here.
+
+Four comparands per row: the whole `metadata` object of the ONE character write
+(with its COUNT, which is the progress branch's load-bearing claim — a progress
+effect rides the metadata replace, never a write of its own), the state writes
+in v4's fixed commit order each with the id it lands under, the returned
+`AppliedEffect[]` through v5's own payload serializer (so `previous`'s
+absent-vs-`null` distinction is in the diff), and the warn lines rebuilt whole
+— level, target, field names, field order and message bytes. The warn is not
+decoration: in `applied` alone a dropped write and a write that never applied
+are indistinguishable.
+
+47 rows green on the family's first run, matching the oracle's own counts (24
+character writes, 21 carrying a progressions record, 12 state-write rows, 7
+warned); 49 after the mutation pass below.
+
+**The corpus is v4's two applier suites, with four departures, all deliberate.**
+Rows 1–15 are `side-effects.test.ts` — the state/metadata matrix that predates
+progressions. Rows 16–49 are `side-effects-progress.test.ts`, which has 31
+`it`s against these 32 rows: its increment case asserts twice and became two
+rows; its declined-time case loops three values and became three; its `warns
+naming the character's progression` is the SAME input as the drop-and-restore
+row above it and rides that row's `warns` comparand instead of repeating the
+input; and its `defaults nowMs to the wall clock` has no row at all, because
+v5's `now_ms` is not optional — the entrance passes the reading it already
+took. v4's three commit-half fail-soft cases have no row either: they mock a
+repository REJECTION, which the planning pass cannot express, and v5 proves
+them in `side_effects.rs`'s own commit tests. (The order said 30 cases;
+measured, v4 has 31.)
+
+**The order's own mutation premise was wrong, and the mutation pass is what
+caught it.** "`remove` on ANY truthy value (reddens the `false` row)" cannot
+redden anything: v4's rule is `value !== true` and `false` is falsy, so a
+truthiness mistake and v4 agree on both values v4 ever tests. The mutation
+SURVIVED. The discriminating value is a truthy non-`true` one, which no row in
+either suite carried — so two rows are NOT v4's: `remove` written as a truthy
+number and as a truthy string. v4 declines both. With them the mutation reddens.
+
+**Red-first, without pretending.** This family cannot compile against the
+pre-change tree — its seam and `EffectTarget::Progress` are the port. What it
+CAN do, and does, is order the corpus so the fail-fast is the measurement: with
+the progress branch neutered, rows 1–15 (v4's pre-progressions matrix) pass and
+row 16 is the first to fail. That is the order's "green on the existing
+metadata/state arms, red on the progress arms", measured rather than asserted.
+
+### Item 6 — the log lines, with their silence halves
+
+- `Custom tool {subject} test did not match` — TEMPLATED at one call site, so
+  pinned in BOTH spellings; a port that hard-coded either would satisfy a pin on
+  the other. Also pinned: v4's decline sentences come from the SHARED
+  `metadata-match` helper and say "metadata key" whichever sheet is read.
+  Rewording that for the progress subject would read better and diverge.
+- The two new `render_template` arms — the progress arm's reason is FIXED where
+  metadata's splits two ways (the flattened sheet is primitives all the way
+  down, so a miss can only be a missing key), and the `{{now}}` arm names NO
+  fields at all, asserted as a whole line so a helpful extra field would redden.
+- `Custom tool progress effect folded`, plus the two silences that matter: a
+  DECLINED write logs the skip and not the fold, and a plain metadata write logs
+  no fold at all.
+
+**The fold pin caught a real gap in this port.** v5 logged
+`previous=Some(String("…"))` — neither of v4's two shapes, which are the bare
+value and, when it is `undefined`, no `previous` key at all (pino drops it). The
+two arms are now written out and both are pinned.
+
+### Measured, not assumed
+
+- **`chat_run_tool.rs` is NOT an entrance** (Tier 2 item 7). It dispatches
+  through `services::tool_execution` into `tools/executor.rs`, whose single
+  `RunCustomToolContext` construction (`executor.rs:645`) already carries the
+  run clock. Nothing to thread.
+- **No `api/types.rs` fence is needed** (Tier 2 item 8).
+  `CoreResponse::CustomToolPreview` is an untyped `serde_json::Value`
+  (`types.rs:3883`), so the `progress` key rides the body as v4's spread does —
+  after `gate`, present only when the sheet is non-empty.
+
+### Two defects of my own, found and fixed
+
+- **`1_788_004_800_000` is 2026-08-29T12:00:00Z, not 2026-09-08T12:00:00Z.** I
+  wrote that ISO into seven comments from arithmetic I never checked — ten days
+  out, in exactly the comments that tell the next reader what a frozen clock
+  means for a span. The constant is unchanged (every Pascal corpus is recorded
+  against it); the annotations are corrected.
+- **Unit 1's commit was gated on the WRONG worktree's clippy log** — P4.D168's,
+  read from a stale scratchpad path. This tree had nine findings (six redundant
+  `as i64` on `now_unix_ms()`, which already returns `i64`, and three arity
+  limits) and a stale in-crate assertion still carrying the pre-widening
+  effect-target refusal sentence. It also had the `run_custom` catalog entry in
+  `tools/definitions/data.rs` still carrying the PRE-change preamble, which is a
+  byte-identity obligation (`empty_roster_description_matches_data_rs`) — that
+  file is GENERATED, so it was regenerated at the pin through
+  `gen-tool-catalog.mjs` rather than hand-edited, and the diff is exactly one
+  line with the other 57 definitions byte-identical. All fixed here. The lesson
+  is narrow and worth stating: a gate log is only evidence for the tree whose
+  path it names.
+
+### Still open in this lane — the corpus blindness, MEASURED
+
+The sweep at the pin came back 10/10 ok, but a green family is not coverage.
+Grepping the regenerated NDJSONs for the discriminating bytes says exactly how
+far items 1-4 have got: their SOURCE is in and their families are green because
+v4's behaviour on the OLD rows is matched, not because any row exercises a
+progression.
+
+| corpus | progress coverage today |
+|---|---|
+| `pascal-side-effects` (this lane's NEW family) | 49 rows, 21 carrying `progress.` targets, 6 warn rows — discriminating |
+| `pascal-tool-vocabulary` | 48 rows carry the three new keys; **0 rows have a non-empty `progress` / `progressWrites` / `now`** |
+| `pascal-custom-tool-definition` | 4 rows mention `progress.` and **all four are the widened REFUSAL sentence** — no row declares a valid `progress.` target |
+| `pascal-workbench-route` | **0** rows carry `progress` |
+| `pascal-expressions` | **0** rows carry `{{now}}` |
+
+So the next unit's worklist is not "widen the corpora" in the abstract: it is
+those four numbers, and each of them is a floor to assert once it moves.
+
+### Out of ownership, recorded loudly
+
+Three files this lane changed are NOT in its Ownership row, and all three are
+compiler-forced rather than chosen:
+
+- `tools/executor.rs` (+4) — the SINGLE construction site of
+  `RunCustomToolContext`, which is an owned type that gained a required
+  `now_ms`. This is also the answer to Tier 2 item 7.
+- `services/tool_build.rs` (+11) — the slate builder's call into the owned
+  roster resolver, which gained `roster_now_ms`. The comment records the
+  deliberate two-reading order: the gates read the clock when the slate is
+  built and the run takes its own reading, exactly as v4's
+  `resolveCustomToolRoster` and handler each call `Date.now()`, so a cannon
+  that finishes charging between the two is offered and then rolls as charged.
+- `tools/definitions/data.rs` (2 lines, GENERATED) — the byte-identity
+  obligation against `build_run_custom_description(&[])`, which unit 1 moved.
+  Regenerated at the pin, never hand-edited.
+
+None of them is a behavior change of its own; each is the far side of a
+signature this lane owns. The unifier should see them as part of the D169 diff,
+not as a cross-lane collision.
+
+### Handed to the round, not fixed here
+
+- **`apps/web/src/app/pascal/custom-tool-types.effects.spec.ts` and
+  `apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`
+  still carry the PRE-widening refusal sentence** (`must start with "state." or
+  "metadata."`) in nine places. That tree is P4.D170's ownership; this lane did
+  not touch it. Those specs will be red against v4 at `25f534c0b` until D170
+  re-records them.
+- **The drift ledger's §2 probe FAILED mid-lane** — v4 moved five commits past
+  `25f534c0b` (`07eee4f4c`, `9fc664c94`, `5fb6bedd6`, `df1a075e8`,
+  `c0f9232af`). Measured, not classified: four are docs-only; the fifth touches
+  56 files but every non-doc hunk is a `See docs/…` comment-path rewrite as
+  twelve shipped feature specs move to `features/complete/`. Two facts the
+  round wants: **bug 127 is filed against this very feature's SPA card** (the
+  progressions card escapes its own markup — P4.D170's surface), and
+  `character-progressions.md`, the design of record, has MOVED to
+  `features/complete/`. This lane wrote nothing to the ledger.

@@ -129,6 +129,9 @@ fn load_perspectives(
 }
 
 /// Resolve the roster as one character sees it (v4 `resolveForPerspective`).
+// P4.D169: mirrors v4 `resolveForPerspective` plus the run clock the progress
+// sheet is derived against.
+#[allow(clippy::too_many_arguments)]
 fn resolve_for_perspective(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,

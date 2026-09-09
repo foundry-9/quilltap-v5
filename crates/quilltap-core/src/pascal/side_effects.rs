@@ -304,16 +304,34 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                         continue;
                     }
                     Ok((previous, next_value)) => {
-                        tracing::debug!(
-                            target: "quilltap::pascal",
-                            context = CONTEXT,
-                            chat_id,
-                            tool = tool_name,
-                            effect_target = %raw,
-                            previous = ?previous,
-                            next = ?next_value,
-                            "Custom tool progress effect folded",
-                        );
+                        // v4 logs `previous: applied.previous`, and its logger
+                        // DROPS a key whose value is `undefined` — so a fold
+                        // that had nothing before names no `previous` at all,
+                        // rather than naming it as absent. One `?previous` on
+                        // the `Option` would print `Some(...)`/`None`, which is
+                        // neither of v4's two shapes, so the arms are written
+                        // out.
+                        match &previous {
+                            Some(previous) => tracing::debug!(
+                                target: "quilltap::pascal",
+                                context = CONTEXT,
+                                chat_id,
+                                tool = tool_name,
+                                effect_target = %raw,
+                                previous = ?previous,
+                                next = ?next_value,
+                                "Custom tool progress effect folded",
+                            ),
+                            None => tracing::debug!(
+                                target: "quilltap::pascal",
+                                context = CONTEXT,
+                                chat_id,
+                                tool = tool_name,
+                                effect_target = %raw,
+                                next = ?next_value,
+                                "Custom tool progress effect folded",
+                            ),
+                        }
                         pending.push((
                             Store::Metadata,
                             AppliedEffect {
@@ -890,6 +908,99 @@ fn resolve_tier(
     EffectTier::Chat
 }
 
+/// The differential seam (P4.D169 item 5).
+///
+/// v4's two applier suites mock `getRepositories` and assert on the ARGUMENTS
+/// of the writes; `pascal_side_effects_equivalence` drives v4's real
+/// `applyCustomToolEffects` that way and needs v5 to answer the same question.
+/// The pure planning pass already IS that answer — it decides every store's
+/// whole next value without touching one — so this exposes it rather than
+/// standing up a database whose tables would then be the thing under test.
+///
+/// Feature-gated: nothing outside a test may plan without committing.
+#[cfg(any(test, feature = "test-support"))]
+pub mod differential {
+    use super::*;
+
+    /// What a run would have written, per store — the mocked repositories' view.
+    pub struct PlannedRun {
+        /// The applier's return value: the writes that landed, in effect order.
+        pub applied: Vec<AppliedEffect>,
+        /// The whole `metadata` object the ONE character write would carry, or
+        /// `None` when no character write happens (nobody rolled, no metadata
+        /// or progress effect applied, or every progress write rolled back).
+        pub character_write: Option<Map<String, Value>>,
+        /// Every state store touched, in v4's fixed commit order, each with the
+        /// id it is written under (`None` for general state, which has none).
+        pub state_writes: Vec<(EffectTier, Option<String>, Value)>,
+    }
+
+    /// Plan a run without committing it.
+    pub fn plan_run(params: ApplyCustomToolEffectsParams<'_>) -> PlannedRun {
+        let chat_id = params.chat_id;
+        let cascade = params.cascade;
+        let character_id = params.character_id;
+
+        let Plan {
+            tiers,
+            metadata_next,
+            pending,
+        } = plan_applications(&params);
+
+        // v4 returns before `getRepositories()` is even called when nothing
+        // applies, so no store is observed at all.
+        if pending.is_empty() {
+            return PlannedRun {
+                applied: Vec::new(),
+                character_write: None,
+                state_writes: Vec::new(),
+            };
+        }
+
+        let touched: Vec<Store> = {
+            let mut seen: Vec<Store> = Vec::new();
+            for (store, _) in &pending {
+                if !seen.contains(store) {
+                    seen.push(*store);
+                }
+            }
+            seen
+        };
+
+        let mut state_writes = Vec::new();
+        if let (Some(tiers), Some(cascade)) = (tiers.as_ref(), cascade) {
+            for tier in [
+                EffectTier::Chat,
+                EffectTier::Project,
+                EffectTier::Group,
+                EffectTier::General,
+            ] {
+                if !touched.contains(&Store::Tier(tier)) {
+                    continue;
+                }
+                let id = match tier {
+                    EffectTier::Chat => Some(chat_id.to_string()),
+                    EffectTier::Project => cascade.project_id.clone(),
+                    EffectTier::Group => cascade.group_tier.applied_group_id.clone(),
+                    EffectTier::General => None,
+                };
+                state_writes.push((tier, id, tiers[tier as usize].clone()));
+            }
+        }
+
+        let character_write = match (touched.contains(&Store::Metadata), character_id) {
+            (true, Some(_)) => metadata_next,
+            _ => None,
+        };
+
+        PlannedRun {
+            applied: pending.into_iter().map(|(_, entry)| entry).collect(),
+            character_write,
+            state_writes,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::custom_tool_types::parse_effect_target;
@@ -1047,7 +1158,7 @@ mod tests {
             metadata_snapshot: metadata,
             // A fixed instant for the in-crate rig: the P4.D169 progress arms
             // are proven by the differential family, which freezes the same
-            // clock on both sides. 2026-09-08T12:00:00Z.
+            // clock on both sides. 2026-08-29T12:00:00Z.
             now_ms: 1_788_004_800_000,
         })
     }
@@ -1256,6 +1367,140 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&previously_null).unwrap(),
             r#"{"target":"state.k","previous":null,"next":1,"tier":"chat"}"#
+        );
+    }
+}
+
+#[cfg(test)]
+mod progress_fold_debug_tests {
+    //! P4.D169: v4's `Custom tool progress effect folded` debug — the one line
+    //! class the differential family cannot pin, because it is a DEBUG and the
+    //! oracle records only warns. Presence AND silence: a folded write logs it,
+    //! a DECLINED write must not (the applier's `skip` sentence is the line
+    //! that belongs there, and a fold line on the decline path would claim a
+    //! write that never happened).
+
+    use super::super::custom_tool_types::parse_effect_target;
+    use super::*;
+    use crate::test_support::captured;
+    use serde_json::json;
+
+    /// 2026-08-29T12:00:00Z — the in-crate rig's fixed instant.
+    const NOW: i64 = 1_788_004_800_000;
+
+    fn effect(target: &str, value: Value) -> ResolvedEffect {
+        ResolvedEffect::Applicable {
+            index: 0,
+            target: parse_effect_target(target).expect("target parses"),
+            value: match value {
+                Value::Number(n) => {
+                    super::super::metadata_match::ResolvedValue::Number(n.as_f64().expect("finite"))
+                }
+                Value::String(s) => super::super::metadata_match::ResolvedValue::String(s),
+                Value::Bool(b) => super::super::metadata_match::ResolvedValue::Bool(b),
+                other => panic!("unsupported literal {other}"),
+            },
+        }
+    }
+
+    fn snapshot() -> Map<String, Value> {
+        json!({
+            "progressions": {
+                "cannon": {
+                    "name": "Cannon recharge",
+                    "startTime": "2026-08-29T11:50:00Z",
+                    "endTime": "2026-08-29T12:00:00Z",
+                    "timeIncrement": "minute"
+                }
+            }
+        })
+        .as_object()
+        .unwrap()
+        .clone()
+    }
+
+    fn run(effects: &[ResolvedEffect], metadata: &Map<String, Value>) -> Vec<String> {
+        captured(|| {
+            plan_applications(&ApplyCustomToolEffectsParams {
+                chat_id: "chat-1",
+                tool_name: "fire_cannon",
+                effects,
+                cascade: None,
+                character_id: Some("char-1"),
+                metadata_snapshot: metadata,
+                now_ms: NOW,
+            });
+        })
+    }
+
+    #[test]
+    fn a_folded_progress_write_logs_v4s_line_with_its_bag() {
+        let effects = [effect("progress.cannon.endTime", json!(NOW + 600_000))];
+        let lines = run(&effects, &snapshot());
+        let folded: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom tool progress effect folded"))
+            .collect();
+        assert_eq!(folded.len(), 1, "{lines:?}");
+        assert_eq!(
+            *folded[0],
+            "DEBUG quilltap::pascal Custom tool progress effect folded \
+context=pascal.side-effects chat_id=chat-1 tool=fire_cannon \
+effect_target=progress.cannon.endTime previous=String(\"2026-08-29T12:00:00Z\") \
+next=String(\"2026-08-29T12:10:00.000Z\")"
+        );
+    }
+
+    /// The `undefined` arm: a field the entry did not carry names NO `previous`
+    /// key at all, because v4's logger drops an `undefined` value. A single
+    /// `?Option` field would print `None` here — a shape v4 never emits.
+    #[test]
+    fn a_fold_with_nothing_before_names_no_previous_key() {
+        let effects = [effect("progress.fuse.onComplete", json!("once"))];
+        let lines = run(&effects, &Map::new());
+        let folded: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom tool progress effect folded"))
+            .collect();
+        assert_eq!(folded.len(), 1, "{lines:?}");
+        assert!(!folded[0].contains("previous"), "{}", folded[0]);
+        assert!(
+            folded[0].ends_with("next=String(\"once\")"),
+            "{}",
+            folded[0]
+        );
+    }
+
+    #[test]
+    fn a_declined_progress_write_logs_the_skip_and_not_the_fold() {
+        // Prose is neither epoch milliseconds nor an ISO instant.
+        let effects = [effect("progress.cannon.endTime", json!("next Tuesday"))];
+        let lines = run(&effects, &snapshot());
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Custom tool progress effect folded")),
+            "a declined write must not claim a fold: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("Custom tool effect not applied")
+                && l.contains(
+                    "reason=progress time effect wrote neither epoch milliseconds nor an ISO instant"
+                )),
+            "{lines:?}"
+        );
+    }
+
+    /// The other silence half: a plain metadata write is not a progress fold.
+    #[test]
+    fn a_metadata_write_logs_no_fold_line() {
+        let effects = [effect("metadata.lastFired", json!(NOW))];
+        let lines = run(&effects, &snapshot());
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Custom tool progress effect folded")),
+            "{lines:?}"
         );
     }
 }

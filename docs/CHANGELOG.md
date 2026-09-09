@@ -307,6 +307,44 @@ integration test only `cargo test --workspace` reaches, so they surfaced one
 full gate run at a time. The `quilltap-web` site now derives the count from the
 embedded table; the two remaining literals are deliberate independent pins and
 cross-reference each other.
+#### 2026-09-08 — test(pascal): the side-effect applier's differential, and every progress log line pinned
+
+_Versions: core 0.0.849, harness 0.0.738._
+
+New `pascal_side_effects_equivalence`: 49 corpus rows driving v4's real
+`applyCustomToolEffects` with `getRepositories` and `writeGeneralState` mocked
+to recorders, diffed against `side_effects`' pure planning pass. Four
+comparands per row — the one character write, the state writes in commit order,
+the returned `AppliedEffect[]`, and the warn lines. Rows 1-15 are v4's
+pre-progressions state/metadata matrix, so a neutered progress branch leaves
+them green and reddens at row 16; rows 16-49 are v4's progress suite.
+
+Two corpus rows are not v4's. A mutation that swapped `value !== true` for JS
+truthiness on the `remove` pseudo-field survived, because v4 tests `remove` with
+`true` and `false` only and both rules agree on those; `remove` written as a
+truthy number and as a truthy string are the rows that tell them apart.
+
+Item 6's log lines pinned with presence and silence: the templated
+`Custom tool ${subject} test did not match` in both spellings, the two new
+`render_template` debug arms, and `Custom tool progress effect folded`. The
+fold pin caught a real gap — v5 rendered `previous=Some(String("..."))` where v4
+logs the bare value and omits the key when it is `undefined`; the two arms are
+now written out.
+
+Also, three things the previous commit's gate should have caught and did not,
+because it was run against the wrong worktree's logs: nine clippy findings (six
+redundant `as i64` on `now_unix_ms()`, which already returns `i64`, and three
+arity allows naming their v4 functions); a stale in-crate assertion carrying the
+pre-widening effect-target refusal sentence; and the `run_custom` catalog entry
+in `tools/definitions/data.rs`, which had not learned the preamble's new fourth
+sentence. `data.rs` is generated, so it was REGENERATED at the pin rather than
+hand-edited — one line moved, the other 57 definitions byte-identical.
+
+Seven comments annotating `1_788_004_800_000` as 2026-09-08T12:00:00Z corrected
+to 2026-08-29T12:00:00Z. The constant is unchanged; the arithmetic behind the
+annotation was never checked.
+
+
 #### 2026-09-08 — feat(pascal): the `progress` read subject, `{{now}}`, and one clock per run
 
 _Versions: core 0.0.848, harness 0.0.737._

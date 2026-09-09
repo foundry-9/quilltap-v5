@@ -43,7 +43,7 @@ use std::sync::Mutex;
 /// P4.D169: Pascal's entrances now take their clock from the caller, so a
 /// differential can freeze it. Until this family's corpus carries a
 /// progression, no row reads the value; a fixed instant keeps the run
-/// reproducible. 2026-09-08T12:00:00Z.
+/// reproducible. 2026-08-29T12:00:00Z.
 const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
 
 /// The oracle's `LlmScript`, rebuilt on this side so both runs hand the core the

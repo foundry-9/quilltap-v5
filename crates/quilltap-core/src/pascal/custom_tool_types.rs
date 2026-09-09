@@ -3395,7 +3395,9 @@ mod tests {
     fn parse_effect_target_rejects() {
         assert_eq!(
             parse_effect_target("encounter.count").unwrap_err(),
-            "must start with \"state.\" or \"metadata.\""
+            // P4.D169: v4 widened this sentence when `progress.` joined the
+            // grammar (`custom-tool.types.ts:755`).
+            "must start with \"state.\", \"metadata.\" or \"progress.\""
         );
         assert_eq!(
             parse_effect_target("state.").unwrap_err(),

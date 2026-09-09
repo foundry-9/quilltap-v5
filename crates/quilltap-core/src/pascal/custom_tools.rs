@@ -1556,6 +1556,113 @@ pub fn resolve_placeholder_value(
 }
 
 #[cfg(test)]
+mod comparator_subject_debug_tests {
+    //! P4.D169: v4's `logger.debug(`Custom tool ${subject} test did not match`)`
+    //! is TEMPLATED — one call site, two subjects. Pinned in BOTH spellings,
+    //! because a port that hard-coded either one would still satisfy a pin on
+    //! the other.
+
+    use super::*;
+    use crate::pascal::custom_tool_types::{ParamComparator, When, WhenObject};
+    use crate::test_support::captured;
+
+    fn subjects<'a>(
+        params: &'a ResolvedParams,
+        metadata: Option<&'a Map<String, Value>>,
+        progress: Option<&'a Map<String, Value>>,
+    ) -> OutcomeSubjects<'a> {
+        OutcomeSubjects {
+            value: 1.0,
+            roll: 1.0,
+            params,
+            metadata,
+            progress,
+            llm: None,
+            state: None,
+        }
+    }
+
+    fn missing_key_test(key: &str) -> Vec<(String, ParamComparator)> {
+        vec![(
+            key.to_string(),
+            ParamComparator {
+                eq: Some(crate::pascal::custom_tool_types::AnyOperand::Number(1.0)),
+                ..Default::default()
+            },
+        )]
+    }
+
+    #[test]
+    fn the_subject_is_interpolated_into_the_message_for_both_sheets() {
+        let params: ResolvedParams = Vec::new();
+        let sheet = Map::new();
+
+        for (subject, when) in [
+            (
+                "metadata",
+                WhenObject {
+                    metadata: Some(missing_key_test("nickname")),
+                    ..Default::default()
+                },
+            ),
+            (
+                "progress",
+                WhenObject {
+                    progress: Some(missing_key_test("cannon.percent")),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let subs = subjects(&params, Some(&sheet), Some(&sheet));
+            let lines = captured(|| {
+                let held = matches_when(&When::Object(Box::new(when)), &subs, "fire_cannon");
+                assert_eq!(held, Ok(false), "{subject}: a missing key fails soft");
+            });
+            assert_eq!(lines.len(), 1, "{subject}: {lines:?}");
+            let key = if subject == "metadata" {
+                "nickname"
+            } else {
+                "cannon.percent"
+            };
+            assert_eq!(
+                lines[0],
+                format!(
+                    "DEBUG quilltap::pascal Custom tool {subject} test did not match \
+tool=fire_cannon key={key} reason=the character has no such metadata key"
+                ),
+                "{subject}"
+            );
+        }
+    }
+
+    /// v4's decline sentences come from the SHARED `metadata-match` helper and
+    /// say "metadata key" whichever sheet is being read. Rewording that for the
+    /// progress subject would read better and diverge, so the quirk is pinned
+    /// here rather than left to a future tidy-up.
+    #[test]
+    fn the_decline_reason_says_metadata_even_for_the_progress_sheet() {
+        let params: ResolvedParams = Vec::new();
+        let sheet = Map::new();
+        let subs = subjects(&params, Some(&sheet), Some(&sheet));
+        let lines = captured(|| {
+            let _ = matches_when(
+                &When::Object(Box::new(WhenObject {
+                    progress: Some(missing_key_test("cannon.percent")),
+                    ..Default::default()
+                })),
+                &subs,
+                "fire_cannon",
+            );
+        });
+        assert!(
+            lines[0].ends_with("reason=the character has no such metadata key"),
+            "{}",
+            lines[0]
+        );
+    }
+}
+
+#[cfg(test)]
 mod render_template_debug_tests {
     //! v4's four `render_template` debug lines (`custom-tools.ts:1247-1270`),
     //! ported at P4.77 — a log-only fix, invisible to every other proof in
@@ -1692,6 +1799,99 @@ mod render_template_debug_tests {
         }
     }
 
+    /// P4.D169: v4's two NEW `render_template` arms. The progress reason is
+    /// FIXED where metadata's splits two ways — the flattened sheet is
+    /// primitives all the way down, so a miss can only ever be a missing key,
+    /// and v4 says so in one sentence covering both halves.
+    #[test]
+    fn a_missing_progression_field_warns_with_v4s_one_fixed_reason() {
+        let mut sheet = Map::new();
+        sheet.insert("cannon.percent".to_string(), Value::from(0.5));
+        // Both halves of the key can miss, and both land here.
+        for (template, why) in [
+            ("{{progress.zeppelin.percent}}", "no such progression"),
+            ("{{progress.cannon.altitude}}", "no such field"),
+        ] {
+            let mut v = vars(None, None);
+            v.progress = Some(&sheet);
+            let lines = captured(|| {
+                let out = render_template(template, &v);
+                assert_eq!(out, template, "{why}: the hole stays visible");
+            });
+            assert_eq!(lines.len(), 1, "{why}: {lines:?}");
+            let line = &lines[0];
+            assert!(line.starts_with("DEBUG quilltap::pascal"), "{why}: {line}");
+            assert!(
+                line.contains(
+                    "Custom tool message references a progression the character cannot render"
+                ),
+                "{why}: {line}"
+            );
+            assert!(
+                line.contains(&format!("placeholder={template}")),
+                "{why}: {line}"
+            );
+            assert!(
+                line.contains(
+                    "reason=the character carries no such progression, or it has no such field"
+                ),
+                "{why}: {line}"
+            );
+        }
+    }
+
+    /// A character with no progressions at all takes the same arm — there is no
+    /// separate "no sheet" sentence in v4, and inventing one would diverge.
+    #[test]
+    fn a_progress_placeholder_with_no_sheet_takes_the_same_arm() {
+        let lines = captured(|| {
+            render_template("{{progress.cannon.percent}}", &vars(None, None));
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains(
+                "Custom tool message references a progression the character cannot render"
+            ),
+            "{}",
+            lines[0]
+        );
+    }
+
+    /// v4 logs NO fields on this one — not even the placeholder, which
+    /// `{{now}}` already names. A pin that only matched the message would not
+    /// notice a helpful extra field creeping in, so the field list is asserted
+    /// EMPTY.
+    #[test]
+    fn a_now_placeholder_with_no_run_clock_warns_and_names_no_fields() {
+        let lines = captured(|| {
+            let out = render_template("at {{now}}", &vars(None, None));
+            assert_eq!(out, "at {{now}}", "the hole stays visible");
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "DEBUG quilltap::pascal Custom tool message references {{now}} with no run clock to render",
+            "v4 logs this line bare"
+        );
+    }
+
+    /// The silence half for both new arms: a run clock and a sheet that answer
+    /// render quietly. Without this, a line wired to the wrong branch — firing
+    /// on every render rather than on a miss — would still pass above.
+    #[test]
+    fn a_rendered_progression_and_clock_log_nothing() {
+        let mut sheet = Map::new();
+        sheet.insert("cannon.percent".to_string(), Value::from(0.5));
+        let mut v = vars(None, None);
+        v.progress = Some(&sheet);
+        v.now = Some(1_788_004_800_000);
+        let lines = captured(|| {
+            let out = render_template("{{progress.cannon.percent}} @ {{now}}", &v);
+            assert_eq!(out, "0.5 @ 1788004800000");
+        });
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
     /// The silence half: a template with nothing unrenderable logs nothing at
     /// all — a line attached to the wrong branch is exactly what a
     /// presence-only assertion cannot catch.
@@ -1787,6 +1987,9 @@ async fn resolve_llm_consult(
 /// to announce the result. The one impurity is the optional LLM consult, which
 /// arrives as an injected [`LlmInvoker`] so this stays testable and the proving
 /// bench can substitute a pretend oracle.
+// P4.D169: mirrors v4 `executeCustomTool` plus the run clock — the ONE reading
+// `{{now}}` renders with and the progress sheet is derived against.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_custom_tool(
     definition: &QtapCustomTool,
     supplied_params: Option<&serde_json::Map<String, Value>>,
@@ -2020,6 +2223,8 @@ pub struct CustomToolAuditResult {
 /// draws through the crypto directly); a deterministic corpus (min===max ranges)
 /// never consumes a byte, which is how the cross-language differential pins the
 /// exact hit counts.
+// P4.D169: mirrors v4 `simulateOutcomes` plus the run clock, as above.
+#[allow(clippy::too_many_arguments)]
 pub fn simulate_outcomes(
     definition: &QtapCustomTool,
     supplied_params: Option<&Map<String, Value>>,

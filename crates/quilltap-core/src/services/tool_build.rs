@@ -506,7 +506,7 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
                         // and the handler each call `Date.now()` — so a cannon
                         // that finishes charging between the two is offered and
                         // then rolls as charged, which is the honest order.
-                        crate::clock::now_unix_ms() as i64,
+                        crate::clock::now_unix_ms(),
                     ))
                 })
             })

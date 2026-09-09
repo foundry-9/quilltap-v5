@@ -642,7 +642,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // Production's one reading for this run (v4 `Date.now()` at the top
             // of the handler). Every family that drives this path injects its
             // own frozen instant instead.
-            now_ms: crate::clock::now_unix_ms() as i64,
+            now_ms: crate::clock::now_unix_ms(),
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's
