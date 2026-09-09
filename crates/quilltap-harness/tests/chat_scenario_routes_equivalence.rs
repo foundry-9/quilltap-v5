@@ -170,6 +170,12 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-scenario-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-scenario-mount.db"), &mount).unwrap();
+    // P4.D171: the committed `chat-scenario-main.db` predates the two
+    // `78b381a96`-round schema moves.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

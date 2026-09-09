@@ -117998,3 +117998,139 @@ Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core -p
 quilltap-harness --all-targets -- -D warnings` clean; `cargo build
 --workspace` clean. Versions: core 0.0.859 → 0.0.860, harness 0.0.750 →
 0.0.751.
+
+**Unit 4 — export/import/restore carry (item 7) and the reduced-DDL sweep
+(item 9), driven to a green `cargo test --workspace`.**
+
+Export/import needed NO new code — both columns ride for free through the
+typed structs units 2/3 already widened: `services/qtap_export/records.rs`
+builds chat/message records via `chats_read::find_by_id`/
+`chats_messages_read::get_messages`; `services/quilltap_import/entities.rs`
+deserializes each `.qtap` chat/message straight into
+`ChatCreate`/`ChatEventInput` via `serde_json::from_value`. Grepped both
+directories for `pascalMeta`/`pascal_meta` (the order's suggested carry-site
+finder) and found ZERO matches outside `schema-key-order.json` — confirming
+the pass-through is genuinely whole-object, not field-by-field.
+
+The deliberate non-remap of `routeTrail[].profileId` was ALREADY true of the
+shipped code before this unit touched anything —
+`services/backup/uuid_remap.rs::remap_chat`'s message field list
+(`["id", "swipeGroupId", "participantId"]`) has never named `routeTrail`.
+Added the missing negative-arm PROOF: a new hand-authored case in
+`harness/oracle/cases/backup-uuid-remap.test.ts` —
+`route_trail_profile_id_not_remapped` — with a `connectionProfiles` row and
+a participant `connectionProfileId` sharing one id (`rt-profile-1`), and a
+message `routeTrail[0].profileId` carrying the SAME value. Regenerated the
+corpus (which REBUILDS wholesale — `wide` from the real system-data DB
+family, every hand-authored case fresh from the `.ts` source, so a direct
+JSON edit would have been silently overwritten) + oracle from the pin:
+`connectionProfiles[0].id` and the participant's `connectionProfileId` both
+mint to `00000000-…-001`, while `routeTrail[0].profileId` stays
+`rt-profile-1` — exactly the intended contrast.
+`backup_uuid_remap_equivalence` green, 22 cases (was 21).
+
+**Mutation proof, red-then-green:** patched `remap_chat`'s message-mapping
+closure to wrongly walk into `routeTrail[].profileId` and remap it via
+`r.remap_str` — `backup_uuid_remap_equivalence` reddened on EXACTLY the new
+case (`route_trail_profile_id_not_remapped`), with the mutated
+`00000000-…` value visible in the byte diff against the oracle's
+`rt-profile-1`; reverted by file backup, re-ran green (confirmed `uuid_remap.rs`
+carries no diff in the final `git status`). Documented the deliberate
+absence with a comment in `services/quilltap_import/reconcile.rs` (a
+different, unrelated import stage the order also named) pointing at the
+actual proof site, per the order's "NO edit — add the pin" instruction.
+
+**The reduced-DDL sweep.** Ran `cargo test --workspace` cold (no oracle env
+vars — a structural/regression pass) and iterated fail-fast-per-binary to a
+genuinely clean run: **541 test binaries / 3,074 tests / 0 failed / 0
+build errors**, `CARGO_INCREMENTAL=0` throughout (the disk-discipline rule —
+this session also hit and recovered from a genuine near-full-disk incident
+mid-sweep, see the gotcha below). Fixes, all found by an actual failing
+`cargo test`, never by speculative file auditing:
+
+1. A SECOND stale hard-coded schema byte count — `generators/qtap_schema.rs`'s
+   own `the_embedded_schema_compiles` unit test asserted
+   `QTAP_EXPORT_SCHEMA_JSON.len() == 89_769` independently of
+   `qtap_schema_embed_guard.rs`'s copy (which unit 1 already updated). Missed
+   because a plain `grep -rn "89769"` after unit 1's edit would have caught
+   it — recorded as the `a-vendored-count-is-hard-coded-in-several-crates`
+   class for the next lane touching this schema.
+2. Two hand-rolled `chats`/`chat_messages` DDLs in `enclave/lifecycle.rs` and
+   `enclave/step.rs` — exactly the two files the work order's survey named
+   — widened with both columns (the DDL's own text, plus `step.rs`'s
+   `CHAT_MESSAGES_DDL` for `routeTrail`).
+3. New `test_support::ensure_p4d171_columns(conn: &Connection)` — a
+   one-line helper (gated `#[cfg(any(test, feature = "test-support"))]`,
+   the same P4.77 shared rig every crate already opts into) that runs both
+   boot ensures on a writable connection. Applied at every committed-fixture
+   fresh_db()/fixture_db()/seed_*() site the sweep's iterations surfaced:
+   `api/help_chats.rs`, `api/subprompts.rs`,
+   `services/brahma_console/orchestrator/tests.rs`,
+   `services/help_chat/orchestrator.rs`, `services/outfit_selections.rs`,
+   `subprompts/fanout.rs` (all inside `quilltap-core`'s own `#[cfg(test)]`
+   modules — the earlier per-file two-ensure-call pattern from units 1/3
+   stays in `quilltap-harness` test files, which predate the helper's
+   creation and were already green when it landed);
+   `crates/quilltap-harness/tests/{attach_mount_file_equivalence,
+   chat_delete_equivalence, chat_export_equivalence,
+   chat_scenario_routes_equivalence, chat_upload_codec_wiring,
+   system_backup_equivalence, system_delete_data_equivalence,
+   system_export_equivalence, system_import_state,
+   title_update_tier3_equivalence}.rs`; `restore_vintage_state.rs`'s
+   `open()` (the mirror-boot idiom, alongside its existing `linkGroupId`
+   ensure for the P4.D41 mount-index case — and the file's OWN
+   `the_vintage_fixture_carries_the_columns_v4s_chain_adds` test
+   deliberately does NOT gain these two columns in its `expected` list,
+   since the vintage fixture correctly predates them and the point of that
+   test is proving they get healed, not that they're pre-baked);
+   `web_search_runner_wire.rs`'s `seed_web_search_chat` (the exact function
+   whose existing `ensure_connection_profiles_fallback_columns` call is the
+   P4.D135 precedent this whole sweep is modeled on).
+4. Confirmed SAFE to leave untouched: `system_restore_state.rs`
+   (`fresh_instance` provisions from `fresh_schema.json` via
+   `provision_fresh_instance` — already carries both columns natively, no
+   committed vintage .db involved) and `system_restore_guards_equivalence.rs`
+   (zero `chats`/`chat_messages` references — a `characters-main.db`-only
+   family).
+
+**Gotcha for the record — a genuine near-full-disk incident mid-sweep:**
+`df -h` read 446 MiB free / 100% capacity while this lane's own
+`cargo build --workspace --tests --all-targets` was running (default
+`CARGO_INCREMENTAL=1`, ~48 GB already in `target/debug/incremental`) AND a
+sibling lane (`p4-d175-vendor-riders-bugs-f3a764`) was independently
+compiling in parallel — the two together exhausted the shared disk. Killed
+only this lane's own two build processes (confirmed by their worktree path
+in `ps aux` before touching anything — never the sibling's, per the
+worktree-isolation rule), then `rm -rf` this lane's own
+`target/debug/incremental` (safe anytime, pure regenerable cache) — freed
+~52 GB, back to healthy. Every gate run after that point used
+`CARGO_INCREMENTAL=0` to prevent the cache regrowing, matching the standing
+disk-discipline instruction more strictly than earlier in the lane.
+
+Gate for this unit: `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean; the same with
+`--features quilltap-core/native-transport` clean; `cargo test --workspace`
+541/3074/0/0 as above. Versions: core 0.0.860 → 0.0.861, harness 0.0.751 →
+0.0.752.
+
+Regen recipe for the new corpus:
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d171-78b381a96
+V5W=~/source/quilltap-v5/.claude/worktrees/p4-schema-moves-substrate-559670
+TMPO=/tmp/qt-uuidremap-oracle-p4d171
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/backup-uuid-remap.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd "$PIN"
+QT_FIXTURE_SD_MAIN="$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db" \
+QT_FIXTURE_SD_MOUNT="$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db" \
+QT_FIXTURE_SD_LLM="$V5W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db" \
+QT_CORPUS_OUT="$V5W/harness/oracle/fixtures/uuid-remap-corpus.json" \
+QT_ORACLE_OUT=/tmp/oracle-backup-uuid-remap-p4d171.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- backup-uuid-remap
+cd "$V5W"
+QT_ORACLE_UUID_REMAP=/tmp/oracle-backup-uuid-remap-p4d171.ndjson \
+  cargo test -p quilltap-harness --test backup_uuid_remap_equivalence -- --nocapture
+```

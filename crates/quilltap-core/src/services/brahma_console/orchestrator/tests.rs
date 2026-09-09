@@ -146,6 +146,10 @@ fn fixture_copy() -> (tempfile::TempDir, Db) {
     let mount = dir.path().join("brahma-mount.db");
     std::fs::copy(fixtures_dir().join("brahma-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("brahma-mount.db"), &mount).unwrap();
+    {
+        let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+        crate::test_support::ensure_p4d171_columns(w.connection());
+    }
     let db = Db::open(
         DbPaths {
             main,

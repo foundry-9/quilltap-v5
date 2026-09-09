@@ -979,6 +979,7 @@ mod tests {
             "allLLMPauseTurnCount REAL",
             "turnQueue TEXT",
             "spokenThisCycleParticipantIds TEXT",
+            "cycleOrderParticipantIds TEXT",
             "documentEditingMode INTEGER",
             "documentMode TEXT",
             "dividerPosition REAL",

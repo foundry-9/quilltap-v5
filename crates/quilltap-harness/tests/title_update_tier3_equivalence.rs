@@ -83,6 +83,12 @@ fn fresh_db(tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("cost-background-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("cost-background-mount.db"), &mount).unwrap();
+    // P4.D171: the committed `cost-background-main.db` predates the two
+    // `78b381a96`-round schema moves.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

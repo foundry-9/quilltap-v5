@@ -159,7 +159,8 @@ mod tests {
     #[test]
     fn the_embedded_schema_compiles() {
         assert!(validator().is_ok(), "the vendored schema must compile");
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 89_769);
+        // P4.D171: 92,797 at v4 `78b381a96` (was 89,769 at `2f4254b42`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 92_797);
     }
 
     #[test]

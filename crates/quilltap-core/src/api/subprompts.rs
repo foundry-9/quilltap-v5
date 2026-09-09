@@ -602,6 +602,10 @@ mod log_tests {
         let mount = dir.path().join("mount.db");
         std::fs::copy(fx("subprompts-main.db"), &main).unwrap();
         std::fs::copy(fx("subprompts-mount.db"), &mount).unwrap();
+        {
+            let w = crate::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+            crate::test_support::ensure_p4d171_columns(w.connection());
+        }
         Db::open(
             DbPaths {
                 main,

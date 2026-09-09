@@ -55,6 +55,20 @@ fn fresh_db(tag: &str) -> Db {
     std::fs::copy(fixtures_dir().join("system-data-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("system-data-mount.db"), &mount).unwrap();
     std::fs::copy(fixtures_dir().join("system-data-llmlogs.db"), &llm).unwrap();
+    // P4.D171: the committed `system-data-*.db` predates the two
+    // `78b381a96`-round schema moves — the same repaired-at-boot idiom
+    // `web_search_runner_wire.rs` uses for the connection-profiles pair.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
+            w.connection(),
+        )
+        .expect("ensure the route-trail column on the vintage fixture");
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            w.connection(),
+        )
+        .expect("ensure the cycle-order column on the vintage fixture");
+    }
     Db::open(
         DbPaths {
             main,

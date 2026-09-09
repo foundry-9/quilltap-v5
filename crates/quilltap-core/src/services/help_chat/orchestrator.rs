@@ -1533,6 +1533,10 @@ mod log_context_tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::copy(src.join("help-chat-main.db"), dir.path().join("main.db")).unwrap();
         std::fs::copy(src.join("help-chat-mount.db"), dir.path().join("mount.db")).unwrap();
+        {
+            let w = crate::db::Writer::open_writable(&dir.path().join("main.db"), PEPPER).unwrap();
+            crate::test_support::ensure_p4d171_columns(w.connection());
+        }
         let db = Db::open(
             DbPaths {
                 main: dir.path().join("main.db"),

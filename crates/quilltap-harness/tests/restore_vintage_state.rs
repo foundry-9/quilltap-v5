@@ -104,6 +104,20 @@ fn open(instance: &Path) -> Db {
         )
     })
     .expect("boot-align the vintage mount partition");
+    // P4.D171: the same mirror-boot idiom for the two `78b381a96`-round
+    // columns — the fixture predates them, and a real instance is repaired at
+    // boot before any restore ever runs. Without this, restoring a chat/
+    // message row into this vintage main partition 500s with "no such
+    // column: cycleOrderParticipantIds" / "routeTrail".
+    db.write_blocking(|writers| {
+        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
+            writers.main().connection(),
+        )?;
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            writers.main().connection(),
+        )
+    })
+    .expect("boot-align the vintage main partition");
     db
 }
 

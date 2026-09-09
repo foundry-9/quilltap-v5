@@ -188,6 +188,25 @@ fn fresh_fixture(tag: &str) -> Scratch {
 }
 
 fn open_db(scratch: &Scratch) -> Db {
+    // P4.D171: the committed `system-data-main.db` predates the two
+    // `78b381a96`-round schema moves too (the same class the P4.70 doc
+    // comment above describes) — the repaired-at-boot idiom
+    // `web_search_runner_wire.rs` uses for the connection-profiles pair,
+    // rather than another in-place fixture migration (out of this lane's
+    // mandate — §R.11).
+    {
+        let w =
+            quilltap_core::db::Writer::open_writable(&scratch.root.join("main.db"), TEST_PEPPER)
+                .unwrap();
+        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
+            w.connection(),
+        )
+        .expect("ensure the route-trail column on the vintage fixture");
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            w.connection(),
+        )
+        .expect("ensure the cycle-order column on the vintage fixture");
+    }
     Db::open(
         DbPaths {
             main: scratch.root.join("main.db"),

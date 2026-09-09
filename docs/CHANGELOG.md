@@ -12,6 +12,71 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(schema): P4.D171 unit 4 — export/import/restore carry (rides the typed structs for free), the routeTrail non-remap negative pin, and the reduced-DDL sweep
+
+_Versions: core 0.0.861, harness 0.0.752._
+
+**Export/import carry (item 7) needed NO new code.** `services/qtap_export/
+records.rs` builds chat and message records via `chats_read::find_by_id` /
+`chats_messages_read::get_messages` — the exact functions unit 2/3 already
+widened — so both columns ride the export for free. `services/
+quilltap_import/entities.rs` deserializes each `.qtap` chat/message straight
+into `ChatCreate`/`ChatEventInput` via `serde_json::from_value` — the same
+structs unit 3 added fields to — so import rides for free too.
+
+**The deliberate non-remap of `routeTrail[].profileId`** (v4's design of
+record: "a historical reference, NOT remapped on import") was already true
+of the code — `services/backup/uuid_remap.rs::remap_chat`'s message field
+list (`["id", "swipeGroupId", "participantId"]`) never named it. Added the
+negative-arm pin: a new hand-authored case `route_trail_profile_id_not_remapped`
+in `backup-uuid-remap.test.ts` (a connection-profile id that gets remapped at
+`connectionProfiles[0].id` AND the participant's `connectionProfileId`, but
+appears unchanged inside a planted `routeTrail[0].profileId`), regenerated the
+corpus + oracle from the pin, `backup_uuid_remap_equivalence` green (22
+cases). Mutation proof: added a wrongful remap of `routeTrail[].profileId` —
+reddened exactly the new case; reverted, re-ran green. Documented the
+deliberate absence in `reconcile.rs` (a different, unrelated import stage)
+with a pointer to the actual proof site.
+
+**The reduced-DDL sweep (item 9), driven to a genuinely green
+`cargo test --workspace` (541 binaries / 3074 tests / 0 failed / 0 errors):**
+- A second stale hard-coded schema byte count in `generators/qtap_schema.rs`'s
+  own unit test (`the_embedded_schema_compiles`) — missed in unit 1 because
+  only `qtap_schema_embed_guard.rs`'s copy was updated. 89,769 → 92,797.
+- Two hand-rolled `chats`/`chat_messages` DDLs (`enclave/lifecycle.rs`,
+  `enclave/step.rs`) widened with both columns.
+- New `test_support::ensure_p4d171_columns` (gated the same
+  `#[cfg(any(test, feature = "test-support"))]` as the rest of that
+  P4.77 shared rig) — a one-line call replacing the two-ensure block at
+  every committed-fixture-opening site this sweep touched, inside
+  `quilltap-core` itself (`api/help_chats.rs`, `api/subprompts.rs`,
+  `services/brahma_console/orchestrator/tests.rs`, `services/help_chat/
+  orchestrator.rs`, `services/outfit_selections.rs`, `subprompts/fanout.rs`)
+  and across `quilltap-harness` (`attach_mount_file_equivalence.rs`,
+  `chat_delete_equivalence.rs`, `chat_export_equivalence.rs`,
+  `chat_scenario_routes_equivalence.rs`, `chat_upload_codec_wiring.rs`,
+  `restore_vintage_state.rs` — the mirror-boot idiom, alongside its existing
+  `linkGroupId` ensure — `system_backup_equivalence.rs`,
+  `system_delete_data_equivalence.rs`, `system_export_equivalence.rs`,
+  `system_import_state.rs`, `title_update_tier3_equivalence.rs`, and
+  `web_search_runner_wire.rs`'s `seed_web_search_chat` — the same function
+  that already carries the P4.D135 connection-profiles-fallback precedent
+  this whole sweep is modeled on).
+- Confirmed unaffected and left untouched: `system_restore_state.rs`
+  (provisions FRESH from `fresh_schema.json`, already carrying both
+  columns) and `system_restore_guards_equivalence.rs` (no `chats`
+  references at all).
+
+Every fix in this sweep was found by an actual `cargo test --workspace`
+failure (`no such column: cycleOrderParticipantIds` / `routeTrail`), never
+by speculative auditing — driven to completion across roughly a dozen
+fail-fast iterations, `CARGO_INCREMENTAL=0` throughout per the standing
+disk-discipline rule.
+
+`qtap_schema_validate_equivalence`, `system_export_equivalence`,
+`chat_export_equivalence`, `restore_vintage_state` (all 6 cases) re-run
+green from the pin, per the order's Tier-1 item 1 closing note.
+
 #### 2026-09-09 — feat(schema): P4.D171 unit 3 — chats.rs carries cycleOrderParticipantIds, chats_messages.rs/chats_messages_read.rs carry routeTrail, api/salon.rs projects it (and a §C.2 survey correction)
 
 _Versions: core 0.0.860, harness 0.0.751._

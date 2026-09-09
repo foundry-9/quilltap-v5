@@ -129,6 +129,20 @@ pub fn captured_with<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
     (out, lines)
 }
 
+/// P4.D171: heal a fixture's main-partition connection with the two
+/// `78b381a96`-round schema moves (`chat_messages.routeTrail`,
+/// `chats.cycleOrderParticipantIds`) — the repaired-at-boot idiom, for the
+/// many committed and hand-rolled `chats`/`chat_messages` test fixtures that
+/// predate them. Idempotent; a no-op on a table-less partition or an
+/// already-healed one. Call on a writable connection before any read that
+/// names either column (every `chats_read`/`chats_messages_read` call).
+pub fn ensure_p4d171_columns(conn: &rusqlite::Connection) {
+    crate::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(conn)
+        .expect("ensure the route-trail column on a test fixture");
+    crate::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(conn)
+        .expect("ensure the cycle-order column on a test fixture");
+}
+
 /// `job_runner.rs`'s holdout idiom: a process-global subscriber, armed once,
 /// with a per-thread buffer — see the module doc for why this is a
 /// genuinely different contract from [`captured`], not a copy that drifted.

@@ -183,6 +183,9 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
     quilltap_core::db::connection_profiles_fallback_repair::
         ensure_connection_profiles_fallback_columns(conn)
         .expect("ensure the fallback columns on the vintage fixture");
+    // P4.D171: the same idiom for the two `78b381a96`-round schema moves —
+    // this fixture predates those too.
+    quilltap_core::test_support::ensure_p4d171_columns(conn);
 
     let cp = connection_profiles::CpCreate {
         user_id: USER.to_string(),

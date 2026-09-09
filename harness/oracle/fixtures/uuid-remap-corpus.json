@@ -189,6 +189,7 @@
             "allLLMPauseTurnCount": 0,
             "turnQueue": "[]",
             "spokenThisCycleParticipantIds": "[\"e1000000-0000-4000-8000-000000000001\"]",
+            "cycleOrderParticipantIds": "[]",
             "documentEditingMode": false,
             "documentMode": "normal",
             "dividerPosition": 45,
@@ -267,6 +268,7 @@
             "allLLMPauseTurnCount": 0,
             "turnQueue": "[]",
             "spokenThisCycleParticipantIds": "[]",
+            "cycleOrderParticipantIds": "[]",
             "documentEditingMode": false,
             "documentMode": "normal",
             "dividerPosition": 45,
@@ -3641,6 +3643,83 @@
             "connectionProfileId": "cp-orphan"
           }
         ],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": []
+      }
+    },
+    {
+      "name": "route_trail_profile_id_not_remapped",
+      "note": "P4.D171 (v4 5841a8c62): a message's routeTrail is NOT in messages' remapFields list (only id/swipeGroupId/participantId are), so a routeTrail[].profileId that IS a real connection-profile id elsewhere in the same backup must come out of remapBackupData UNCHANGED inside the trail even though that SAME id, read off connectionProfiles[0].id or the participant's connectionProfileId, gets minted a fresh one. v4's design of record (docs/developer/features/complete/message-route-trail.md) states this is deliberate: profileId is a historical reference, never remapped on import.",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "rt-chat-1",
+            "userId": "old-user",
+            "participants": [
+              {
+                "id": "rt-part-1",
+                "connectionProfileId": "rt-profile-1"
+              }
+            ],
+            "messages": [
+              {
+                "id": "rt-msg-1",
+                "participantId": "rt-part-1",
+                "routeTrail": [
+                  {
+                    "profileId": "rt-profile-1",
+                    "profileName": "Primary",
+                    "provider": "anthropic",
+                    "modelName": "claude-opus-4-8",
+                    "via": "primary",
+                    "outcome": "answered"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [
+          {
+            "id": "rt-profile-1",
+            "name": "Primary"
+          }
+        ],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
         "pluginConfigs": [],
         "chatSettings": [],
         "folders": [],

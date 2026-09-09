@@ -69,6 +69,20 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-dialogs-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-dialogs-mount.db"), &mount).unwrap();
+    // P4.D171: the committed `chat-dialogs-{main,mount}.db` predates the two
+    // `78b381a96`-round schema moves — the same repaired-at-boot idiom
+    // `web_search_runner_wire.rs` uses for the connection-profiles pair.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::db::chat_messages_route_trail_repair::ensure_chat_messages_route_trail_column(
+            w.connection(),
+        )
+        .expect("ensure the route-trail column on the vintage fixture");
+        quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(
+            w.connection(),
+        )
+        .expect("ensure the cycle-order column on the vintage fixture");
+    }
     Db::open(
         DbPaths {
             main,

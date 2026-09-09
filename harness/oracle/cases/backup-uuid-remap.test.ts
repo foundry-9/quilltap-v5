@@ -484,6 +484,37 @@ function edgeCases(): Case[] {
       }),
     },
     {
+      name: 'route_trail_profile_id_not_remapped',
+      note: "P4.D171 (v4 5841a8c62): a message's routeTrail is NOT in messages' remapFields list (only id/swipeGroupId/participantId are), so a routeTrail[].profileId that IS a real connection-profile id elsewhere in the same backup must come out of remapBackupData UNCHANGED inside the trail even though that SAME id, read off connectionProfiles[0].id or the participant's connectionProfileId, gets minted a fresh one. v4's design of record (docs/developer/features/complete/message-route-trail.md) states this is deliberate: profileId is a historical reference, never remapped on import.",
+      targetUserId: t,
+      data: bag({
+        connectionProfiles: [{ id: 'rt-profile-1', name: 'Primary' }],
+        chats: [
+          {
+            id: 'rt-chat-1',
+            userId: 'old-user',
+            participants: [{ id: 'rt-part-1', connectionProfileId: 'rt-profile-1' }],
+            messages: [
+              {
+                id: 'rt-msg-1',
+                participantId: 'rt-part-1',
+                routeTrail: [
+                  {
+                    profileId: 'rt-profile-1',
+                    profileName: 'Primary',
+                    provider: 'anthropic',
+                    modelName: 'claude-opus-4-8',
+                    via: 'primary',
+                    outcome: 'answered',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    },
+    {
       name: 'array_field_guards',
       note: "remapArrayFields' Array.isArray guard: a non-array is left alone (it is NOT routed through remapArray's dead [] branch); an empty array stays empty",
       targetUserId: t,

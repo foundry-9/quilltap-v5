@@ -230,10 +230,9 @@ mod log_tests {
         let mount = dir.path().join("mount.db");
         std::fs::copy(fx("subprompts-main.db"), &main).unwrap();
         std::fs::copy(fx("subprompts-mount.db"), &mount).unwrap();
-        (
-            Writer::open_writable(&main, TEST_PEPPER).unwrap(),
-            Writer::open_writable(&mount, TEST_PEPPER).unwrap(),
-        )
+        let main_w = Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        crate::test_support::ensure_p4d171_columns(main_w.connection());
+        (main_w, Writer::open_writable(&mount, TEST_PEPPER).unwrap())
     }
 
     /// A seam that fails the compile for ONE named seat and records the rest.

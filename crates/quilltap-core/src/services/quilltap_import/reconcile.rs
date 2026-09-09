@@ -10,6 +10,15 @@
 //! remap leaves the stored value alone — the character-vault mount FK in
 //! particular is preserved rather than nulled (orphaned-vault avoidance, v4's
 //! own comment at `reconcile.ts:99-106`).
+//!
+//! P4.D171: `chat_messages.routeTrail` is NOT touched here, deliberately — v4's
+//! design of record (`docs/developer/features/complete/message-route-trail.md`)
+//! states `profileId` inside a route-trail entry "is a historical reference and
+//! is NOT remapped on import", and the field is absent from `remap_chat`'s
+//! message field list (`services/backup/uuid_remap.rs`) for the same reason.
+//! The negative pin lives in `backup_uuid_remap_equivalence`
+//! (`route_trail_profile_id_not_remapped`), since that is the module that
+//! actually rewrites ids for a new-account restore.
 
 use rusqlite::Connection;
 use serde_json::{Map, Value};

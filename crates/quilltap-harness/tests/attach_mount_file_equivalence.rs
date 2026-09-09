@@ -277,6 +277,13 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     std::fs::copy(fixtures_dir().join("attach-file-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("attach-file-mount.db"), &mount).unwrap();
     std::fs::copy(fixtures_dir().join("attach-file-llmlogs.db"), &ll).unwrap();
+    // P4.D171: the committed `attach-file-main.db` predates the two
+    // `78b381a96`-round schema moves — the same repaired-at-boot idiom
+    // `web_search_runner_wire.rs` uses for the connection-profiles pair.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

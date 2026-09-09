@@ -1850,6 +1850,7 @@ mod tests {
         std::fs::copy(fixtures.join("subprompts-mount.db"), &mount_path).unwrap();
         let main = crate::db::Writer::open_writable(&main_path, PAIR_PEPPER).unwrap();
         let mount = crate::db::Writer::open_writable(&mount_path, PAIR_PEPPER).unwrap();
+        crate::test_support::ensure_p4d171_columns(main.connection());
         let (out, lines) = captured_with(|| {
             resolve_subprompts_for_seat_conn(
                 main.connection(),

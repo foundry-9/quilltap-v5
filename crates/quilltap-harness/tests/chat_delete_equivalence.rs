@@ -153,6 +153,12 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     std::fs::copy(fixtures_dir().join("chat-delete-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-delete-mount.db"), &mount).unwrap();
     std::fs::copy(fixtures_dir().join("chat-delete-llmlogs.db"), &llm).unwrap();
+    // P4.D171: the committed `chat-delete-main.db` predates the two
+    // `78b381a96`-round schema moves.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

@@ -138,6 +138,13 @@ fn scratch_instance(tag: &str) -> PathBuf {
         data.join("quilltap-mount-index.db"),
     )
     .unwrap();
+    // P4.D171: the committed `images-main.db` predates the two
+    // `78b381a96`-round schema moves.
+    {
+        let w =
+            quilltap_core::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     base
 }
 
