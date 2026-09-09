@@ -155,6 +155,57 @@ function gated(name: string, clause: 'availableWhen' | 'withheldWhen', metadata:
   return tool(name, { [clause]: { metadata }, ...extra });
 }
 
+/**
+ * P4.D169: `resolveCustomToolRoster` takes ONE `Date.now()` reading and derives
+ * the progression sheet from it, so a progression-gated verdict is only
+ * reproducible against a frozen clock. Frozen here to the same instant the v5
+ * side passes as `ROSTER_NOW_MS`.
+ *
+ * No pre-existing row reads a clock, so freezing it moves none of their bytes.
+ */
+const ROSTER_NOW_MS = Date.parse('2026-08-29T12:00:00Z');
+
+/** A definition gated on a progression rather than on the metadata sheet. */
+function progressGated(
+  name: string,
+  clause: 'availableWhen' | 'withheldWhen',
+  progress: Record<string, unknown>,
+  extra: Record<string, unknown> = {}
+) {
+  return tool(name, { [clause]: { progress }, ...extra });
+}
+
+/**
+ * A character's `metadata.json` carrying one ten-minute cannon recharge that
+ * finishes five minutes after the frozen instant — so `complete` is false now
+ * and would be true five minutes later, and the two gate rows below differ by
+ * nothing but the span they name.
+ */
+const CHARGING_METADATA = {
+  faction: 'Ordo Aurum',
+  clearance: 5,
+  progressions: {
+    cannon: {
+      name: 'Cannon recharge',
+      startTime: new Date(ROSTER_NOW_MS - 5 * 60_000).toISOString(),
+      endTime: new Date(ROSTER_NOW_MS + 5 * 60_000).toISOString(),
+      timeIncrement: 'minute',
+    },
+  },
+};
+
+/** The same character, with the span already finished. */
+const CHARGED_METADATA = {
+  ...CHARGING_METADATA,
+  progressions: {
+    cannon: {
+      ...CHARGING_METADATA.progressions.cannon,
+      startTime: new Date(ROSTER_NOW_MS - 20 * 60_000).toISOString(),
+      endTime: new Date(ROSTER_NOW_MS - 10 * 60_000).toISOString(),
+    },
+  },
+};
+
 // -------------------------------------------------------------- the corpus
 const gappy = {
   name: 'gappy',
@@ -440,6 +491,128 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSp
     mounts: { m1: { enabled: true, files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))] } },
     sheet: { ctxMetadata: { clearance: 5 }, vaultMetadata: { clearance: 0 } },
   },
+
+  // ---- P4.D169: the progression sheet, at roster time --------------------
+  //
+  // The whole feature, seen from where it matters: the weapon is not OFFERED
+  // until it has finished charging, so the model never learns the tool exists
+  // while it cannot be used. Two scenarios differing by nothing but the span
+  // the character carries.
+  {
+    id: 'progress-gate-withholds-while-charging',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/fire.tool.json', progressGated('fire', 'availableWhen', { 'cannon.complete': { eq: true } }))],
+      },
+    },
+    sheet: { vaultMetadata: CHARGING_METADATA },
+  },
+  {
+    id: 'progress-gate-offers-once-charged',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/fire.tool.json', progressGated('fire', 'availableWhen', { 'cannon.complete': { eq: true } }))],
+      },
+    },
+    sheet: { vaultMetadata: CHARGED_METADATA },
+  },
+  // A character carrying NO progressions at all: an availableWhen fails CLOSED.
+  {
+    id: 'progress-gate-fails-closed-with-no-progressions',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/fire.tool.json', progressGated('fire', 'availableWhen', { 'cannon.complete': { eq: true } }))],
+      },
+    },
+    sheet: { vaultMetadata: { faction: 'Ordo Aurum' } },
+  },
+  // ...and a withheldWhen on the same character fails OPEN.
+  {
+    id: 'progress-gate-fails-open-under-withheld-when',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/fire.tool.json', progressGated('fire', 'withheldWhen', { 'cannon.complete': { eq: true } }))],
+      },
+    },
+    sheet: { vaultMetadata: { faction: 'Ordo Aurum' } },
+  },
+  // A metadata test AND a progress test in one gate, on one character: the
+  // roster reads the vault ONCE and answers both sheets from it.
+  {
+    id: 'progress-and-metadata-in-one-gate',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [
+          file(
+            'Tools/fire.tool.json',
+            tool('fire', {
+              availableWhen: { metadata: { clearance: { gte: 3 } }, progress: { 'cannon.complete': { eq: true } } },
+            })
+          ),
+        ],
+      },
+    },
+    sheet: { vaultMetadata: CHARGED_METADATA },
+  },
+  // The same gate against a charging character: the metadata half holds and the
+  // progress half does not, so the tool is withheld — which is the row that
+  // says the two sheets AND rather than either one deciding.
+  {
+    id: 'progress-and-metadata-in-one-gate-progress-misses',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [
+          file(
+            'Tools/fire.tool.json',
+            tool('fire', {
+              availableWhen: { metadata: { clearance: { gte: 3 } }, progress: { 'cannon.complete': { eq: true } } },
+            })
+          ),
+        ],
+      },
+    },
+    sheet: { vaultMetadata: CHARGING_METADATA },
+  },
+  // A METADATA-only gate beside a progression-carrying character: the sheet is
+  // derived only for a definition whose gate names it, and `sheetReads` is
+  // what says the lazy read still happens exactly once either way.
+  {
+    id: 'progress-not-derived-for-a-metadata-only-gate',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/hack.tool.json', gated('hack', 'availableWhen', { clearance: { gte: 3 } }))],
+      },
+    },
+    sheet: { vaultMetadata: CHARGING_METADATA },
+  },
+  // The context sheet wins over the vault for progressions too — and a context
+  // sheet carrying no `progressions` key fails an availableWhen CLOSED even
+  // though the vault would have satisfied it.
+  {
+    id: 'progress-gate-reads-the-context-sheet-not-the-vault',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/fire.tool.json', progressGated('fire', 'availableWhen', { 'cannon.complete': { eq: true } }))],
+      },
+    },
+    sheet: { ctxMetadata: { faction: 'Ordo Aurum' }, vaultMetadata: CHARGED_METADATA },
+  },
 ];
 
 function serializeRoster(roster: Awaited<ReturnType<typeof resolveCustomToolRoster>>) {
@@ -462,6 +635,14 @@ function serializeRoster(roster: Awaited<ReturnType<typeof resolveCustomToolRost
 }
 
 describe('discovery oracle', () => {
+  beforeAll(() => {
+    // See ROSTER_NOW_MS: the roster's one clock reading, frozen.
+    jest.spyOn(Date, 'now').mockReturnValue(ROSTER_NOW_MS);
+  });
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
   it('emits', async () => {
     for (const scenario of scenarios) {
       jest.clearAllMocks();

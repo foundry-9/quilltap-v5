@@ -9,8 +9,10 @@
  * this object on every listing — so the whole shape is compared, key order
  * included, rather than field by field. Each row ships the definition's BYTES
  * (parsed by both sides' own JSON parser, exactly as `readToolFile` does) and
- * the SERIALIZED vocabulary, so "all seven keys always present" is part of what
- * is compared rather than a claim in a comment.
+ * the SERIALIZED vocabulary, so "every key always present" is part of what is
+ * compared rather than a claim in a comment. (P4.D169 took the object to
+ * twelve keys; the count is not written down here, because a number in a
+ * comment goes stale in silence and the compared bytes cannot.)
  *
  * Every definition here LOADS: a vocabulary is only ever computed for a
  * definition the roster accepted, so a rejected file has no vocabulary to
@@ -180,6 +182,66 @@ const corpus: Array<[string, Record<string, unknown>]> = [
   // A tool whose ONLY vocabulary is a write is still non-empty — the two new
   // lists join `isEmptyVocabulary`.
   ['write-only-is-not-empty', withEffects([{ target: 'state.k', value: 1 }])],
+
+  // ---- P4.D169: the progress lists and the `now` boolean ------------------
+  // Ids are what a run dialog can honestly say; the `<id>.<field>` key is the
+  // odds line the roster withholds, so these rows compare the whole object and
+  // a port that reported keys fails them at the first one.
+  ['progress-read-from-when-gate-and-placeholder', def({
+    availableWhen: { progress: { 'cannon.complete': { eq: true } } },
+    outcomes: [
+      { when: { progress: { 'fuse.started': { eq: true } } }, message: '{{progress.kettle.percent}}', state: 'info' },
+      CATCH_ALL,
+    ],
+  })],
+  ['progress-writes-separate-from-reads', def({
+    outcomes: [
+      { when: { progress: { 'cannon.complete': { eq: true } } }, message: '-', state: 'info' },
+      CATCH_ALL,
+    ],
+    effects: [
+      { target: 'progress.cannon.startTime', value: '{{now}}' },
+      { target: 'progress.cannon.endTime', value: '{{now}} + 600000' },
+    ],
+  })],
+  ['progress-ids-never-keys', def({ availableWhen: { progress: { 'cannon.percent': { gte: 100 } } } })],
+  // The fourth collection site — an EFFECT's own `when.progress`. v4's unit
+  // suite reaches the other three; a port that ported `outcome.when` and both
+  // gates and stopped there passes every row above and fails this one.
+  ['progress-from-an-effect-condition', withEffects([
+    { when: { progress: { 'kettle.complete': { eq: true } } }, target: 'state.poured', value: true },
+  ])],
+  ['progress-from-a-withheld-gate', def({ withheldWhen: { progress: { 'gestation.complete': { eq: false } } } })],
+  // `{{now}}` inside an effect EXPRESSION, quoted nowhere else: the boolean
+  // rides the same one scanner as a message's.
+  ['now-from-an-effect-expression', withEffects([{ target: 'metadata.stamped', value: '{{now}}' }])],
+  // Each new conjunct of `isEmptyVocabulary` alone, so a dropped one is a
+  // single red rather than a shared one.
+  ['progress-read-only-is-not-empty', def({ availableWhen: { progress: { 'cannon.complete': { eq: true } } } })],
+  ['progress-write-only-is-not-empty', withEffects([{ target: 'progress.cannon.remove', value: true }])],
+  ['now-only-is-not-empty', withMessage('It is {{now}}.')],
+  // Ids from four sites at once, deduped and collated: `-` (0x2D) sorts before
+  // `_` (0x5F) by code unit and ICU weighs both below the letters, so a
+  // byte-order sort cannot pass this row. The id grammar admits no case
+  // difference, so punctuation is the whole of the disagreement reachable here.
+  ['progress-ids-sorted-and-deduped', def({
+    availableWhen: { progress: { 'zeta.complete': { eq: true } } },
+    outcomes: [
+      { when: { progress: { 'a-b.complete': { eq: true }, 'a_b.complete': { eq: true } } }, message: '{{progress.alpha.percent}} {{progress.zeta.percent}}', state: 'info' },
+      CATCH_ALL,
+    ],
+    effects: [{ target: 'progress.zeta.endTime', value: 1 }],
+  })],
+  // A half-written placeholder classifies as `unknown` and so names no id —
+  // the same silence `{{params.}}` and `{{metadata.}}` already get.
+  ['progress-placeholder-half-written', withMessage('Bare {{progress.}} and {{progress.cannon}} and {{progress.cannon.}}.')],
+  ['progress-write-and-read-are-different-ids', def({
+    outcomes: [
+      { when: { progress: { 'kettle.complete': { eq: true } } }, message: '-', state: 'info' },
+      CATCH_ALL,
+    ],
+    effects: [{ target: 'progress.cannon.startTime', value: 1 }],
+  })],
 ];
 
 for (const [id, doc] of corpus) {
@@ -193,7 +255,7 @@ for (const [id, doc] of corpus) {
     kind: 'vocabulary',
     id,
     inputJson: text,
-    // The whole object as it is serialized: all seven keys, in v4's key order.
+    // The whole object as it is serialized: every key, in v4's key order.
     vocabulary: JSON.stringify(vocabulary),
     empty: isEmptyVocabulary(vocabulary),
   });

@@ -82,6 +82,15 @@ const parseCases: Array<[string, string]> = [
   ['ref-state-path', '{{state.encounter.count}}'],
   ['ref-state-bracket-index', '{{state.party[0].hp}}'],
   ['ref-inner-whitespace-trimmed', '{{  value  }}'],
+  // P4.D169: the two new ref families. `isKnownRef` routes through
+  // `classifyPlaceholder`, so the grammar learns `now` and
+  // `progress.<id>.<field>` for free — and a port that taught the CLASSIFIER
+  // both and left the expression gate behind fails these three and nothing
+  // else in the corpus.
+  ['ref-now', '{{now}}'],
+  ['ref-now-arithmetic', '{{now}} + 600000'],
+  ['ref-progress-derived-field', '{{progress.cannon.percent}} / 100'],
+  ['ref-progress-dotted-field-is-the-field', '{{progress.cannon.quantity.total}}'],
   // `refs` is first-appearance order, DEDUPLICATED. Both properties need a row
   // that repeats a name — without one, a port that simply pushed every ref it
   // walked would pass the whole corpus (proven: that mutation went undetected
@@ -109,6 +118,13 @@ const parseCases: Array<[string, string]> = [
   ['ref-empty-prefix-params', '{{params.}}'],
   ['ref-empty-prefix-metadata', '{{metadata.}}'],
   ['ref-empty-prefix-state', '{{state.}}'],
+  // A half-written progression key is `unknown`, exactly as a bare
+  // `{{params.}}` is: the classifier splits at the FIRST dot and needs a
+  // non-empty half on each side.
+  ['ref-empty-prefix-progress', '{{progress.}}'],
+  ['ref-progress-names-only-an-id', '{{progress.cannon}}'],
+  ['ref-progress-empty-field', '{{progress.cannon.}}'],
+  ['ref-progress-empty-id', '{{progress..percent}}'],
   ['ref-empty-name', '{{}}'],
   ['ref-never-closes', '{{value'],
   ['ref-lone-brace', '{value}'],
@@ -170,6 +186,15 @@ const REFS: Record<string, ExprValue> = {
   'state.floor': 1,
   'state.debt': 50,
   'state.name': 'Aurum',
+  // P4.D169: one run clock and one flattened progression sheet, in the shape
+  // `flattenProgressions` hands the resolver — the derived fields are
+  // primitives all the way down. `progress.zeppelin.*` is deliberately absent:
+  // an absent key is the fail-soft path.
+  now: 1_788_004_800_000,
+  'progress.cannon.percent': 50,
+  'progress.cannon.state': 'active',
+  'progress.cannon.complete': false,
+  'progress.cannon.remainingMs': 300_000,
 };
 
 const evalCases: Array<[string, string]> = [
@@ -220,6 +245,15 @@ const evalCases: Array<[string, string]> = [
   ['ref-unresolved-state', '{{state.absent}} + 1'],
   ['ref-unresolved-alone', '{{params.missing}}'],
   ['ref-roll-arithmetic', '{{roll}} * 2 + {{params.bonus}}'],
+  // P4.D169: the run clock and the derived sheet through the same evaluator.
+  // The absent-progression row is the one that matters at run time — the
+  // effect skips with this reason and the ROLL still stands.
+  ['ref-now-arithmetic', '{{now}} + 600000'],
+  ['ref-progress-percent-arithmetic', '{{progress.cannon.percent}} / 100'],
+  ['ref-progress-boolean-never-coerced', '{{progress.cannon.complete}} + 1'],
+  ['ref-progress-state-concat', "'the cannon is ' + {{progress.cannon.state}}"],
+  ['ref-progress-absent-progression', '{{progress.zeppelin.percent}} + 1'],
+  ['ref-progress-absent-field', '{{progress.cannon.trimester}} + 1'],
   ['ref-string-state-concat', "{{state.name}} + ' owes ' + {{state.debt}}"],
 
   // ---- literals evaluate to themselves -----------------------------------

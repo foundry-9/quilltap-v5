@@ -59,8 +59,36 @@ import {
   formatValue,
 } from '@/lib/pascal/custom-tools';
 import { QtapCustomToolSchema, type QtapCustomTool, type When } from '@/lib/pascal/custom-tool.types';
+// P4.D169: the flattened sheet is derived through the REAL engine and RECORDED
+// on each row, so this family stays a Pascal differential rather than a second
+// copy of P4.D167's engine one.
+import { flattenProgressions, UNIT_MS } from '@/lib/progressions/engine';
 
 const OUT = process.env.QT_ORACLE_OUT;
+
+/**
+ * P4.D169: one character carrying a ten-minute cannon recharge — v4's own
+ * suite's specimen, so the derived fields here are the ones its assertions
+ * name. Shared by the render rows, the `matchesWhen` rows and the
+ * `executeCustomTool` rows below.
+ */
+const PROGRESS_START = Date.parse('2026-09-08T14:00:00Z');
+const PROGRESS_METADATA = {
+  faction: 'Ordo Aurum',
+  progressions: {
+    cannon: {
+      name: 'Cannon recharge',
+      startTime: '2026-09-08T14:00:00Z',
+      endTime: '2026-09-08T14:10:00Z',
+      timeIncrement: 'minute',
+      quantity: { total: 1.0, unit: 'MJ', precision: 1 },
+    },
+  },
+};
+/** The three instants the corpus poses, flattened once here. */
+const PROGRESS_SHEET_AT_START = flattenProgressions(PROGRESS_METADATA, PROGRESS_START);
+const PROGRESS_SHEET_HALF = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 5 * UNIT_MS.minute);
+const PROGRESS_SHEET_CHARGED = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 11 * UNIT_MS.minute);
 const rows: unknown[] = [];
 const emit = (r: unknown) => rows.push(r);
 
@@ -204,6 +232,74 @@ describe('renderTemplate', () => {
           params,
           metadata: META,
           llm,
+        }),
+      });
+    }
+
+    // ---- P4.D169: {{progress.<id>.<field>}} and {{now}} -------------------
+    //
+    // Their own block rather than a fourth tuple slot, so every row above
+    // keeps its recorded bytes exactly as it had them: these two families are
+    // the only ones that read the two new vars, and a row that renders neither
+    // cannot tell whether they were supplied.
+    //
+    // The sheet is derived through the REAL engine at a frozen instant and
+    // RECORDED on the row, so both sides render against the same primitives
+    // rather than this becoming a second copy of the engine differential.
+    const RENDER_NOW = PROGRESS_START + UNIT_MS.minute;
+    const RENDER_SHEET = flattenProgressions(PROGRESS_METADATA, RENDER_NOW);
+    const HALF_SHEET = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 5 * UNIT_MS.minute);
+
+    const progressMessages: Array<[string, string, Record<string, unknown>, number | null]> = [
+      // The derived fields, through the same number/string conventions the
+      // {{metadata.*}} rows above pin.
+      ['progress-state-string', '{{progress.cannon.state}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-elapsed-phrase', '{{progress.cannon.elapsed}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-percent-number', '{{progress.cannon.percent}}', HALF_SHEET, RENDER_NOW],
+      ['progress-boolean', 'done? {{progress.cannon.complete}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-remaining-number', 'left {{progress.cannon.remainingMs}}', RENDER_SHEET, RENDER_NOW],
+      // The two misses. Both are left EXACTLY as written — the same silence a
+      // missing metadata key gets, and the reason the debug line exists.
+      ['progress-absent-progression', '{{progress.zeppelin.percent}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-absent-field', '{{progress.cannon.trimester}}', RENDER_SHEET, RENDER_NOW],
+      // A half-written key is `unknown`, like `{{params.}}` and `{{metadata.}}`.
+      ['progress-prefix-only', 'bare {{progress.}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-names-only-an-id', 'bare {{progress.cannon}}', RENDER_SHEET, RENDER_NOW],
+      ['progress-whitespace', '{{  progress.cannon.state  }}', RENDER_SHEET, RENDER_NOW],
+      // An EMPTY sheet is not the same claim as an absent field, and both are
+      // rendered as written; a port could satisfy one and not the other.
+      ['progress-empty-sheet', 'x {{progress.cannon.state}} y', {}, RENDER_NOW],
+      // {{now}} — epoch milliseconds, through the shared number convention, and
+      // left as written when the caller supplied no clock at all.
+      ['now-renders-epoch-ms', '{{now}}', RENDER_SHEET, RENDER_NOW],
+      ['now-in-a-sentence', 'at {{now}} exactly', RENDER_SHEET, RENDER_NOW],
+      ['now-repeated', '{{now}} and {{now}}', RENDER_SHEET, RENDER_NOW],
+      ['now-with-progress', '{{now}}: {{progress.cannon.state}}', RENDER_SHEET, RENDER_NOW],
+      ['now-no-clock-left-verbatim', 'the moment is {{now}}', RENDER_SHEET, null],
+      ['now-whitespace', '{{  now  }}', RENDER_SHEET, RENDER_NOW],
+    ];
+
+    for (const [id, message, progress, now] of progressMessages) {
+      emit({
+        kind: 'renderTemplate',
+        id,
+        tool,
+        message,
+        metadata: META,
+        llm: LLM,
+        progress,
+        // `null` is "no run clock" — the row that proves the placeholder is
+        // left as written rather than rendered as `0` or `undefined`.
+        ...(now === null ? {} : { now }),
+        out: renderTemplate(message, {
+          value: 12.3456,
+          roll: 0.6789,
+          dice: '3d6: [4, 2, 6] = 12',
+          params,
+          metadata: META,
+          llm: LLM,
+          progress,
+          ...(now === null ? {} : { now }),
         }),
       });
     }
@@ -469,6 +565,83 @@ describe('matchesWhen', () => {
         error,
       });
     }
+
+    // ---- P4.D169: when.progress ------------------------------------------
+    //
+    // Its own block, so every row above keeps its recorded bytes. The subject
+    // goes through the SAME fail-soft comparison table as `metadata`, so what
+    // these rows test is not the ordering ladder (the metadata rows above own
+    // that) but the three things this family adds: that the DERIVED sheet is
+    // what a comparator sees, that the miss arms decline rather than throw,
+    // and that the row ANDs with its neighbours like any other subject.
+    const CHARGING = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + UNIT_MS.minute);
+    const CHARGED = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 11 * UNIT_MS.minute);
+    const HALF = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 5 * UNIT_MS.minute);
+    const NEARLY_HALF = flattenProgressions(PROGRESS_METADATA, PROGRESS_START + 4 * UNIT_MS.minute);
+    const BEFORE = flattenProgressions(PROGRESS_METADATA, PROGRESS_START - UNIT_MS.minute);
+    const AT_START = flattenProgressions(PROGRESS_METADATA, PROGRESS_START);
+
+    const progressWhens: Array<[string, Record<string, unknown>, Record<string, unknown>]> = [
+      ['progress-boolean-holds', { progress: { 'cannon.complete': { eq: true } } }, CHARGED],
+      ['progress-boolean-fails', { progress: { 'cannon.complete': { eq: true } } }, CHARGING],
+      ['progress-percent-gte-holds', { progress: { 'cannon.percent': { gte: 50 } } }, HALF],
+      ['progress-percent-gte-fails', { progress: { 'cannon.percent': { gte: 50 } } }, NEARLY_HALF],
+      // Past the end the percent keeps climbing — Pascal sees the overrun.
+      ['progress-percent-uncapped', { progress: { 'cannon.percent': { gt: 100 } } }, CHARGED],
+      ['progress-remaining-negative-holds', { progress: { 'cannon.remainingMs': { lt: 0 } } }, CHARGED],
+      ['progress-remaining-negative-fails', { progress: { 'cannon.remainingMs': { lt: 0 } } }, CHARGING],
+      // The time fields flatten to epoch milliseconds, so they order.
+      ['progress-end-time-orders', { progress: { 'cannon.endTime': { gt: PROGRESS_START } } }, AT_START],
+      ['progress-start-time-orders', { progress: { 'cannon.startTime': { lte: PROGRESS_START } } }, AT_START],
+      ['progress-state-eq-holds', { progress: { 'cannon.state': { eq: 'active' } } }, CHARGING],
+      ['progress-state-eq-fails', { progress: { 'cannon.state': { eq: 'active' } } }, BEFORE],
+      // The fail-soft arms: an id nobody carries, a field that does not exist,
+      // an empty sheet, and an ordering comparator handed a string. None throws.
+      ['progress-absent-progression-declines', { progress: { 'zeppelin.complete': { eq: true } } }, CHARGED],
+      ['progress-absent-field-declines', { progress: { 'cannon.trimester': { eq: 2 } } }, CHARGED],
+      ['progress-empty-sheet-declines', { progress: { 'cannon.complete': { eq: true } } }, {}],
+      ['progress-orders-a-string-declines', { progress: { 'cannon.state': { gt: 1 } } }, CHARGING],
+      // ANDed with the other subjects on the same row.
+      ['progress-anded-with-value-holds', { gt: 0.4, progress: { 'cannon.complete': { eq: false } } }, CHARGING],
+      ['progress-anded-with-value-fails-on-progress', { gt: 0.4, progress: { 'cannon.complete': { eq: false } } }, CHARGED],
+      ['progress-anded-with-metadata', { metadata: { house: { eq: 'Aurum' } }, progress: { 'cannon.complete': { eq: true } } }, CHARGED],
+      // A `$param` operand resolves against the run's parameters, exactly as it
+      // does for the metadata subject.
+      ['progress-param-operand-holds', { progress: { 'cannon.percent': { gte: { $param: 'difficulty' } } } }, HALF],
+      ['progress-param-operand-fails', { progress: { 'cannon.percent': { gte: { $param: 'difficulty' } } } }, BEFORE],
+      ['progress-two-keys-anded', { progress: { 'cannon.complete': { eq: false }, 'cannon.percent': { gte: 50 } } }, HALF],
+      ['progress-two-keys-one-fails', { progress: { 'cannon.complete': { eq: true }, 'cannon.percent': { gte: 50 } } }, HALF],
+    ];
+
+    for (const [id, when, progress] of progressWhens) {
+      const def = define({
+        ...tool,
+        outcomes: [{ when, message: '-', state: 'info' }, CATCH_ALL],
+      });
+      const parsedWhen = def.outcomes[0].when as When;
+      let out: unknown = null;
+      let error: string | null = null;
+      try {
+        out = matchesWhen(
+          parsedWhen,
+          { value: 12, roll: 0.6, params, metadata: SHEET, progress },
+          'probe'
+        );
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      emit({
+        kind: 'matchesWhen',
+        id,
+        tool: def,
+        when: parsedWhen,
+        metadata: SHEET,
+        progress,
+        llm: null,
+        out,
+        error,
+      });
+    }
   });
 });
 
@@ -513,7 +686,15 @@ describe('executeCustomTool', () => {
         string,
         unknown,
         Record<string, unknown> | null | undefined,
-        { private?: boolean; metadata?: Record<string, unknown> } | undefined,
+        // P4.D169: `progress` (the flattened sheet) and `now` (the run clock)
+        // joined v4's overrides. A row that quotes `{{now}}` MUST supply one —
+        // v4 defaults to `Date.now()`, which no differential can compare.
+        {
+          private?: boolean;
+          metadata?: Record<string, unknown>;
+          progress?: Record<string, unknown>;
+          now?: number;
+        } | undefined,
         LlmScript?,
       ]
     > = [
@@ -1208,6 +1389,153 @@ describe('executeCustomTool', () => {
         },
         {},
         undefined,
+      ],
+
+      // ---- P4.D169: the run clock and the progression sheet, end to end ----
+      //
+      // Every row here supplies `now` explicitly. v4 falls back to `Date.now()`
+      // when the caller supplies none, and a wall-clock reading is not a thing
+      // two implementations can be compared on.
+      //
+      // The grammar accepts both new refs in an effect VALUE, which is how a
+      // tool re-arms the thing it just fired.
+      [
+        'effects-now-and-progress-refs',
+        {
+          name: 'recharge',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { target: 'progress.cannon.startTime', value: '{{now}}' },
+            { target: 'progress.cannon.endTime', value: '{{now}} + 600000' },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { progress: PROGRESS_SHEET_AT_START, now: PROGRESS_START },
+      ],
+      // Arithmetic on a DERIVED field: the sheet is primitives, so a percent
+      // divides like any other number.
+      [
+        'effects-arithmetic-on-a-derived-field',
+        {
+          name: 'charge',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [{ target: 'metadata.charge', value: '{{progress.cannon.percent}} / 100' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { progress: PROGRESS_SHEET_HALF, now: PROGRESS_START },
+      ],
+      // A progression the character does not carry fails the expression SOFT:
+      // the effect skips with its reason and the ROLL still stands.
+      [
+        'effects-absent-progression-skips-soft',
+        {
+          name: 'absent',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [{ target: 'metadata.charge', value: '{{progress.zeppelin.percent}} + 1' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { progress: PROGRESS_SHEET_AT_START, now: PROGRESS_START },
+      ],
+      // ONE clock reading holds across a whole run. Two effects, two renders,
+      // one instant — a port that re-read a clock per effect would give these
+      // two different values, and the corpus freezes the caller's reading so
+      // the difference would show.
+      [
+        'effects-one-clock-reading-per-run',
+        {
+          name: 'stamped',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { target: 'metadata.a', value: '{{now}}' },
+            { target: 'metadata.b', value: '{{now}}' },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { now: PROGRESS_START },
+      ],
+      // The same instant reaches the outcome MESSAGE, not just the effects.
+      [
+        'message-renders-now-and-progress',
+        {
+          name: 'reporting',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          chipLabel: 'at {{now}}',
+          outcomes: [
+            { when: true, message: 'the cannon is {{progress.cannon.state}} at {{now}}', state: 'info' },
+          ],
+        },
+        {},
+        { progress: PROGRESS_SHEET_HALF, now: PROGRESS_START + 5 * UNIT_MS.minute },
+      ],
+      // A `when.progress` choosing the OUTCOME inside a real run, both ways.
+      [
+        'outcome-chosen-by-progress-charged',
+        {
+          name: 'fire',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { progress: { 'cannon.complete': { eq: true } } }, message: 'it fires', state: 'success' },
+            { when: true, message: 'still charging', state: 'failure' },
+          ],
+        },
+        {},
+        { progress: PROGRESS_SHEET_CHARGED, now: PROGRESS_START + 11 * UNIT_MS.minute },
+      ],
+      [
+        'outcome-chosen-by-progress-charging',
+        {
+          name: 'fire',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: { progress: { 'cannon.complete': { eq: true } } }, message: 'it fires', state: 'success' },
+            { when: true, message: 'still charging', state: 'failure' },
+          ],
+        },
+        {},
+        { progress: PROGRESS_SHEET_AT_START, now: PROGRESS_START },
+      ],
+      // ...and a `when.progress` gating an EFFECT, which is the fourth
+      // collection site and a different code path from the outcome one.
+      [
+        'effect-condition-reads-progress',
+        {
+          name: 'conditional',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { when: { progress: { 'cannon.complete': { eq: true } } }, target: 'state.fired', value: true },
+            { when: { progress: { 'cannon.complete': { eq: false } } }, target: 'state.waited', value: true },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { progress: PROGRESS_SHEET_CHARGED, now: PROGRESS_START + 11 * UNIT_MS.minute },
+      ],
+      // No sheet at all, with a definition that reads one: every test declines
+      // and every render is left as written. The shape a run gets when the
+      // caller had no character to hydrate.
+      [
+        'no-sheet-supplied-declines-and-renders-verbatim',
+        {
+          name: 'unsheeted',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [{ when: { progress: { 'cannon.complete': { eq: true } } }, target: 'state.fired', value: true }],
+          outcomes: [{ when: true, message: 'x {{progress.cannon.state}} y', state: 'info' }],
+        },
+        {},
+        { now: PROGRESS_START },
       ],
     ];
 

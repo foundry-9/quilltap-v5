@@ -177,10 +177,10 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     // "programmable" is not, and is not said here. A gated-out tool never reaches
     // a roster listing at all, so this only ever describes one the reader has.
     for gate in [&definition.available_when, &definition.withheld_when] {
-        for (key, _) in gate.iter().flat_map(|g| g.metadata.iter()) {
+        for (key, _) in gate.iter().flat_map(|g| g.metadata.iter().flatten()) {
             add(&mut found.metadata, key);
         }
-        for (key, _) in gate.iter().flat_map(|g| g.progress.iter()) {
+        for (key, _) in gate.iter().flat_map(|g| g.progress.iter().flatten()) {
             add(&mut found.progress, progression_id(key));
         }
     }

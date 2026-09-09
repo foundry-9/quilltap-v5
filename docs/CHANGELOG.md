@@ -307,6 +307,51 @@ integration test only `cargo test --workspace` reaches, so they surfaced one
 full gate run at a time. The `quilltap-web` site now derives the count from the
 embedded table; the two remaining literals are deliberate independent pins and
 cross-reference each other.
+#### 2026-09-09 — test(pascal): the progression corpora — six families that were green at zero coverage
+
+_Versions: core 0.0.850, harness 0.0.739._
+
+The four families P4.D169's own lane record measured at ZERO progress coverage,
+plus the two entrance-adjacent ones, now carry rows that exercise a progression.
+Every one of them was GREEN before this commit, which is the point: their source
+was ported, their oracles were regenerated at the pin, and not one row read a
+progression. A green family is not coverage.
+
+Vocabulary: twelve rows — the three collection sites v4's own suite reaches plus
+the fourth it does not (an effect's own `when.progress`), each new
+`isEmptyVocabulary` conjunct alone, and an ordering row whose ids disagree by
+code unit and by ICU (`a_b` sorts BEFORE `a-b`). Expressions: `{{now}}` and
+`{{progress.<id>.<field>}}` as accepted refs, four half-written keys as
+rejections, and the eval rows including the absent progression that fails SOFT.
+Definition: the thirteen writable targets generated from v4's own exported list,
+every `parseEffectTarget` refusal sentence whole, the reserved-key guard with the
+two neighbours it must not catch, the five record-key shapes that answer
+`Invalid key in record`, and twenty-one gate verdicts posed against a flattened
+sheet recorded on the row. Execution: seventeen render rows, twenty-two
+`when.progress` rows, and nine `executeCustomTool` runs. Roster: the
+weapon-recharge story — the tool is not OFFERED until the cannon has finished
+charging. Workbench route: the preview `progress` key present iff non-empty and
+spread after `gate`, and an audit whose shares flip 10000/0 with the sheet.
+
+Four corpora needed a frozen clock to be comparable at all, since v4 reads
+`Date.now()` at roster time, at bench time and at run start. The discovery and
+workbench-route oracles now freeze it to the same instant the Rust side passes;
+no pre-existing row reads a clock, so their recorded bytes did not move.
+
+**A real port defect, caught by a new row.** `gate-progress-and-empty-metadata`
+found that v5 DROPPED an authored-but-empty `"metadata": {}` from a parsed gate
+where v4 keeps it: Zod keeps a key it parsed, and collapsing "absent" with
+"present and empty" is only invisible until the parsed data is compared byte for
+byte. `ToolGate`'s two records became `Option`, which also let the roster's lazy
+sheet derivation become faithful — v4's test is `availableWhen?.progress ||
+withheldWhen?.progress`, a JS truthiness test on the RECORD, and `{}` is truthy.
+
+Every family gained an executable coverage floor, each proven to fire against a
+corpus with its progression rows stripped out. Thirteen mutation proofs, each
+reddening exactly the row it was written for — including the two the frozen
+clocks earned: a second `now_unix_ms()` at the effect stage, and one re-read per
+roster definition.
+
 #### 2026-09-08 — test(pascal): the side-effect applier's differential, and every progress log line pinned
 
 _Versions: core 0.0.849, harness 0.0.738._

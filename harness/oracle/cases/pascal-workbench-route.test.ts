@@ -55,6 +55,12 @@ interface CaseSpec {
    * The committed fixture itself stays profile-free.
    */
   profile?: boolean;
+  /**
+   * P4.D169: pin the bench's ONE clock reading, so a body whose `metadata`
+   * carries `progressions` renders the same derived spans on both sides.
+   * Omitted on every clock-independent case.
+   */
+  nowMs?: number;
 }
 
 /** The same profile the pascal handler/route oracles insert (P4.6bd). */
@@ -363,6 +369,12 @@ async function runCase(
   }
 }
 
+/**
+ * P4.D169: the instant every clock-independent case runs at, matching the Rust
+ * side's own default. 2026-08-29T12:00:00Z.
+ */
+const PASCAL_NOW_MS = 1_788_004_800_000;
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const fixturesDir = join(here, '..', 'fixtures');
@@ -389,8 +401,22 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const out = fs.createWriteStream(outPath);
+  const realNow = Date.now;
   for (const c of corpus.cases) {
-    const row = await runCase(spec, c, corpus, scratch, fixtures);
+    // P4.D169: the bench route takes ONE `Date.now()` reading and derives the
+    // progression sheet from it, so a body carrying `progressions` is only
+    // reproducible against a frozen clock. A case pins its own instant with
+    // `nowMs`; every other case is clock-independent and gets the same fixed
+    // one the Rust side defaults to, which leaves their recorded bytes where
+    // they were.
+    const nowMs = c.nowMs ?? PASCAL_NOW_MS;
+    Date.now = () => nowMs;
+    let row: unknown;
+    try {
+      row = await runCase(spec, c, corpus, scratch, fixtures);
+    } finally {
+      Date.now = realNow;
+    }
     out.write(JSON.stringify(row) + '\n');
   }
   out.end();

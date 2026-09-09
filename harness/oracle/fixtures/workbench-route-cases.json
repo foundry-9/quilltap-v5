@@ -303,6 +303,56 @@
           "state": "info"
         }
       ]
+    },
+    "progressGate": {
+      "name": "progress_gate",
+      "title": "Offered Once Charged",
+      "description": "A table dealt only once the cannon has finished charging.",
+      "availableWhen": {
+        "progress": {
+          "cannon.complete": {
+            "eq": true
+          }
+        }
+      },
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "The line hums for {{value}}.",
+          "state": "success"
+        }
+      ]
+    },
+    "progressReader": {
+      "name": "progress_reader",
+      "title": "The Charge Report",
+      "description": "A table that reads the cannon's charge and the run clock.",
+      "roll": {
+        "min": 0.8,
+        "max": 0.8
+      },
+      "outcomes": [
+        {
+          "when": {
+            "progress": {
+              "cannon.complete": {
+                "eq": true
+              }
+            }
+          },
+          "message": "Charged at {{now}}.",
+          "state": "success"
+        },
+        {
+          "when": true,
+          "message": "{{progress.cannon.percent}}% at {{progress.cannon.state}}, {{progress.cannon.remainingMs}}ms to go.",
+          "state": "partial"
+        }
+      ]
     }
   },
   "cases": [
@@ -792,6 +842,167 @@
       "action": "audit",
       "definition": "effectful",
       "_comment": "P4.D35: an audit that wrote ten thousand times would not be an audit. The body carries no chipLabel and no effects, and the stores are untouched."
+    },
+    {
+      "name": "preview-progress-key-present",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressReader",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "hasKey": true,
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-08-29T11:55:00.000Z",
+            "endTime": "2026-08-29T12:05:00.000Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788004800000,
+      "_comment": "P4.D169: the bench body carries `progressions`, so the response gains the `progress` key — the FLATTENED sheet, spread after `gate`. The definition reads it, so the chosen outcome and the rendered message are its consequence."
+    },
+    {
+      "name": "preview-progress-key-absent-without-progressions",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressReader",
+      "metadata": {
+        "faction": "Ordo Aurum"
+      },
+      "nowMs": 1788004800000,
+      "_comment": "The same definition against a body with NO progressions: the sheet is empty, so the `progress` key is ABSENT rather than an empty object — and every read renders as written."
+    },
+    {
+      "name": "preview-progress-key-absent-with-no-metadata",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressReader",
+      "nowMs": 1788004800000,
+      "_comment": "No metadata at all: the same absence, reached the other way."
+    },
+    {
+      "name": "preview-progress-gate-withheld-while-charging",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressGate",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "hasKey": true,
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-08-29T11:55:00.000Z",
+            "endTime": "2026-08-29T12:05:00.000Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788004800000,
+      "_comment": "The gate verdict is evaluated WITH the derived sheet: still charging, so withheld by availableWhen."
+    },
+    {
+      "name": "preview-progress-gate-offered-once-charged",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressGate",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "hasKey": true,
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-08-29T11:40:00.000Z",
+            "endTime": "2026-08-29T11:50:00.000Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788004800000,
+      "_comment": "The same gate against a finished span: available. The two rows differ by nothing but the character's metadata."
+    },
+    {
+      "name": "preview-progress-gate-empty-sheet-fails-closed",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressGate",
+      "nowMs": 1788004800000,
+      "_comment": "No sheet: an availableWhen fails CLOSED, and the response carries no `progress` key."
+    },
+    {
+      "name": "preview-progress-as-imogen",
+      "method": "POST",
+      "action": "preview",
+      "definition": "progressReader",
+      "metadataCharacter": "imogen",
+      "nowMs": 1788004800000,
+      "_comment": "The metadata comes from a real character's vault rather than the body. Imogen carries no progressions, so this is the vault-hydrated shape of the absent case."
+    },
+    {
+      "name": "audit-progress-reader",
+      "method": "POST",
+      "action": "audit",
+      "definition": "progressReader",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "hasKey": true,
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-08-29T11:40:00.000Z",
+            "endTime": "2026-08-29T11:50:00.000Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788004800000,
+      "_comment": "P4.D169: simulateOutcomes takes the sheet derived ONCE, so an audit of a progression-reading table reports the shares its when.progress actually chooses."
+    },
+    {
+      "name": "audit-progress-gate-charging",
+      "method": "POST",
+      "action": "audit",
+      "definition": "progressReader",
+      "metadata": {
+        "faction": "Ordo Aurum",
+        "hasKey": true,
+        "progressions": {
+          "cannon": {
+            "name": "Cannon recharge",
+            "startTime": "2026-08-29T11:55:00.000Z",
+            "endTime": "2026-08-29T12:05:00.000Z",
+            "timeIncrement": "minute",
+            "quantity": {
+              "total": 1.0,
+              "unit": "MJ",
+              "precision": 1
+            }
+          }
+        }
+      },
+      "nowMs": 1788004800000,
+      "_comment": "The same audit against the charging character: the other outcome takes every run."
     }
   ]
 }

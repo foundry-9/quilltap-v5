@@ -24,6 +24,7 @@
 //!   QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
 
+use quilltap_core::pascal::custom_tool_types::When;
 use quilltap_core::pascal::custom_tool_types::{
     collect_unknown_keys, display_title, format_definition_issues, safe_parse,
 };
@@ -98,6 +99,12 @@ fn pascal_custom_tool_definition_matches_oracle() {
     let mut seen_clauses: Vec<String> = Vec::new();
     let mut seen_available: Vec<bool> = Vec::new();
     let mut seen_has_gate: Vec<bool> = Vec::new();
+    // P4.D169's four floors. The lane that widened this corpus measured all
+    // four at ZERO beforehand, and a green family is not coverage.
+    let mut gates_reading_progress = 0usize;
+    let mut gates_testing_progress = 0usize;
+    let mut defs_writing_progress = 0usize;
+    let mut defs_testing_progress = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Title { id, input, out } => {
@@ -128,6 +135,26 @@ fn pascal_custom_tool_definition_matches_oracle() {
                             success,
                             "case '{id}': v5 accepted, v4 rejected with: {reason:?}"
                         );
+                        if tool
+                            .effects
+                            .iter()
+                            .flatten()
+                            .any(|e| e.target.starts_with("progress."))
+                        {
+                            defs_writing_progress += 1;
+                        }
+                        if tool
+                            .available_when
+                            .iter()
+                            .chain(tool.withheld_when.iter())
+                            .any(|g| g.progress.is_some())
+                            || tool
+                                .outcomes
+                                .iter()
+                                .any(|o| matches!(&o.when, When::Object(w) if w.progress.is_some()))
+                        {
+                            defs_testing_progress += 1;
+                        }
                         let got = serde_json::to_string(&tool).unwrap();
                         assert_eq!(
                             got,
@@ -194,6 +221,20 @@ fn pascal_custom_tool_definition_matches_oracle() {
                         bucket.push(flag);
                     }
                 }
+                // P4.D169: a corpus that quietly lost its progression rows
+                // would otherwise still pass every assertion above. Each of the
+                // three is a floor the widening earned.
+                if !progress.as_ref().is_none_or(Map::is_empty) {
+                    gates_reading_progress += 1;
+                }
+                if tool
+                    .available_when
+                    .iter()
+                    .chain(tool.withheld_when.iter())
+                    .any(|g| g.progress.as_ref().is_some_and(|p| !p.is_empty()))
+                {
+                    gates_testing_progress += 1;
+                }
                 gates += 1;
             }
         }
@@ -208,6 +249,22 @@ fn pascal_custom_tool_definition_matches_oracle() {
         seen_clauses,
         vec!["availableWhen".to_string(), "withheldWhen".to_string()],
         "the gate corpus must withhold by BOTH clauses (saw {seen_clauses:?})"
+    );
+    assert!(
+        gates_reading_progress > 0,
+        "no gate row posed a non-empty progression sheet"
+    );
+    assert!(
+        gates_testing_progress > 0,
+        "no gate row's definition actually TESTS a progression"
+    );
+    assert!(
+        defs_writing_progress > 0,
+        "no definition row declares a `progress.<id>.<field>` effect target"
+    );
+    assert!(
+        defs_testing_progress > 0,
+        "no definition row carries a `progress` record in a `when` or a gate"
     );
     seen_available.sort();
     seen_has_gate.sort();

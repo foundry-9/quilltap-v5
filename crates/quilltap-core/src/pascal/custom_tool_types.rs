@@ -664,25 +664,27 @@ pub struct ToolGate {
     /// Ordered, mirroring the authored key order `Object.keys` walks.
     ///
     /// v4 made this OPTIONAL at `0587d1e96`: a gate may now test progressions
-    /// alone. An absent key and an empty object are the same thing to every
-    /// reader (`Object.entries(gate.metadata ?? {})`), so v5 keeps one `Vec`
-    /// that may be empty rather than an `Option<Vec>` — but the SERIALIZED
-    /// shape must still distinguish them, which is why the writer skips an
-    /// empty one (v4 omits the key it never parsed).
+    /// alone. Every READER treats an absent key and an empty object alike
+    /// (`Object.entries(gate.metadata ?? {})`), but the two are NOT the same on
+    /// the wire — Zod keeps a key it parsed, so an authored `"metadata": {}`
+    /// survives into the parsed data and an omitted one does not. Hence
+    /// `Option`, not an emptyable `Vec`: the parsed `data` is compared byte for
+    /// byte by the definition differential, and collapsing the two shapes was a
+    /// real divergence its `gate-progress-and-empty-metadata` row caught.
     #[serde(
-        skip_serializing_if = "Vec::is_empty",
-        serialize_with = "ser_param_comparators"
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_param_comparators"
     )]
-    pub metadata: Vec<(String, GateComparator)>,
+    pub metadata: Option<Vec<(String, GateComparator)>>,
     /// Test the invoking character's timed progressions, keyed `"<id>.<field>"`
     /// — e.g. `{ "cannon.complete": { "eq": true } }`. Derived fresh from the
     /// wall clock at roster time. A progression the character does not carry
     /// does not match.
     #[serde(
-        skip_serializing_if = "Vec::is_empty",
-        serialize_with = "ser_param_comparators"
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_param_comparators"
     )]
-    pub progress: Vec<(String, GateComparator)>,
+    pub progress: Option<Vec<(String, GateComparator)>>,
 }
 
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
@@ -1602,14 +1604,16 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
     // progressions alone. The old per-record `must test at least one metadata
     // key` is GONE — what replaced it is one object-level refine over the two
     // records' combined size, below.
-    let mut metadata = Some(Vec::new());
+    // `Some(None)` is "the key was absent"; `Some(Some(v))` is "it parsed";
+    // `None` is "it failed". v4 keeps a key it parsed, empty or not.
+    let mut metadata: Option<Option<Vec<_>>> = Some(None);
     match obj.get("metadata") {
         None => {}
         Some(Value::Object(m)) => {
             // Metadata keys are `z.string().min(1)`, as they are in a `when`.
             let r = parse_record(m, |k| !k.is_empty(), |v| parse_gate_comparator(Some(v)));
             issues.extend(prefix("metadata", r.issues));
-            metadata = r.value;
+            metadata = r.value.map(Some);
         }
         other => {
             // A `z.record` reports `record`, not `object` — Zod's own
@@ -1622,7 +1626,7 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
         }
     }
 
-    let mut progress = Some(Vec::new());
+    let mut progress: Option<Option<Vec<_>>> = Some(None);
     match obj.get("progress") {
         None => {}
         Some(Value::Object(m)) => {
@@ -1642,7 +1646,7 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
                 |v| parse_gate_comparator(Some(v)),
             );
             issues.extend(prefix("progress", r.issues));
-            progress = r.value;
+            progress = r.value.map(Some);
         }
         other => {
             issues.extend(prefix(
@@ -1659,7 +1663,9 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
     // so it is skipped once anything inside aborted.
     let value = match (metadata, progress) {
         (Some(metadata), Some(progress)) if !aborted(&issues) => {
-            if metadata.is_empty() && progress.is_empty() {
+            let tested =
+                metadata.as_ref().map_or(0, Vec::len) + progress.as_ref().map_or(0, Vec::len);
+            if tested == 0 {
                 issues.push(Issue::check(
                     "must test at least one metadata key or progress field",
                 ));

@@ -74,6 +74,14 @@ fn fixture_refs(name: &str) -> Option<ExprValue> {
         "state.floor" => ExprValue::Number(1.0),
         "state.debt" => ExprValue::Number(50.0),
         "state.name" => ExprValue::String("Aurum".to_string()),
+        // P4.D169: one run clock and one flattened progression sheet, in the
+        // shape `flatten_progressions` hands the resolver. `progress.zeppelin.*`
+        // is deliberately absent — an absent key IS the fail-soft path.
+        "now" => ExprValue::Number(1_788_004_800_000.0),
+        "progress.cannon.percent" => ExprValue::Number(50.0),
+        "progress.cannon.state" => ExprValue::String("active".to_string()),
+        "progress.cannon.complete" => ExprValue::Bool(false),
+        "progress.cannon.remainingMs" => ExprValue::Number(300_000.0),
         _ => return None,
     };
     Some(v)

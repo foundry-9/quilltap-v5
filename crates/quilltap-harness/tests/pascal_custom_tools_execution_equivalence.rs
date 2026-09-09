@@ -270,6 +270,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut counts = std::collections::BTreeMap::<String, usize>::new();
+    let mut coverage = std::collections::BTreeMap::<String, usize>::new();
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -461,10 +462,40 @@ fn pascal_custom_tools_execution_matches_oracle() {
             other => panic!("unknown row kind '{other}'"),
         }
 
+        // P4.D169's floors. Every one of these was ZERO before this lane widened
+        // the corpus, and every family below was GREEN at zero — which is the
+        // whole reason they are asserted rather than assumed.
+        if !row
+            .get("progress")
+            .and_then(Value::as_object)
+            .is_none_or(serde_json::Map::is_empty)
+            || !row["overrides"]
+                .get("progress")
+                .and_then(Value::as_object)
+                .is_none_or(serde_json::Map::is_empty)
+        {
+            *coverage.entry(format!("{kind}:progress")).or_default() += 1;
+        }
+        if row.get("now").is_some() || row["overrides"].get("now").is_some() {
+            *coverage.entry(format!("{kind}:now")).or_default() += 1;
+        }
+
         *counts.entry(kind).or_default() += 1;
     }
 
     assert!(!counts.is_empty(), "oracle file looks empty");
+    for key in [
+        "renderTemplate:progress",
+        "renderTemplate:now",
+        "matchesWhen:progress",
+        "executeCustomTool:progress",
+        "executeCustomTool:now",
+    ] {
+        assert!(
+            coverage.get(key).copied().unwrap_or(0) > 0,
+            "no row exercised '{key}' (coverage: {coverage:?})"
+        );
+    }
     for kind in [
         "formatValue",
         "renderTemplate",

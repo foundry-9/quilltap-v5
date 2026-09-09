@@ -353,7 +353,12 @@ pub fn resolve_roster_from_pool(
                 ]
                 .into_iter()
                 .flatten()
-                .any(|g| !g.progress.is_empty());
+                // v4: `availableWhen?.progress || withheldWhen?.progress` — a
+                // truthiness test on the RECORD, and `{}` is truthy in JS. So
+                // an authored-but-empty `progress` derives the sheet too; the
+                // parsed shape keeps presence, which is the only reason this
+                // can be faithful.
+                .any(|g| g.progress.is_some());
                 let metadata = sheet.get_or_insert_with(&mut invoker_metadata).clone();
                 let progress = if names_progress {
                     Some(progress_sheet.get_or_insert_with(|| {

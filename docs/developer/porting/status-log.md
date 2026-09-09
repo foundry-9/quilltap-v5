@@ -116635,3 +116635,111 @@ not as a cross-lane collision.
   progressions card escapes its own markup — P4.D170's surface), and
   `character-progressions.md`, the design of record, has MOVED to
   `features/complete/`. This lane wrote nothing to the ledger.
+
+### Unit 3 — the progression corpora: six families that were green at zero
+
+Unit 2's lane record ended with a table of four numbers, every one of them zero,
+and the sentence "the next unit's worklist is not 'widen the corpora' in the
+abstract: it is those four numbers." This is that unit. It closes all four and
+two more the same measurement caught.
+
+| corpus | before | after |
+|---|---|---|
+| `pascal-tool-vocabulary` | 0 rows with a non-empty `progress`/`progressWrites`/`now` | 12 rows, 11 non-empty |
+| `pascal-custom-tool-definition` | 4 mentions, all the widened REFUSAL sentence | 41 definition rows + 21 gate verdicts |
+| `pascal-expressions` | 0 rows with `{{now}}` | 4 parse + 4 rejection + 6 eval |
+| `pascal-workbench-route` | 0 rows carrying `progress` | 9 (7 preview, 2 audit) |
+| `pascal-custom-tools-execution` | 0 | 17 render + 22 `when` + 9 run |
+| `pascal-roster` (discovery) | 0 | 8 scenarios |
+
+**Every one of those families was GREEN at zero.** The source had landed, the
+oracles had been regenerated at the pin, the sweep came back 10/10 — and not one
+row read a progression. That is the whole argument for the floors below.
+
+#### The four frozen clocks
+
+Four of these corpora could not be compared at all until v4's clock was frozen,
+because v4 reads `Date.now()` at roster time (`resolveCustomToolRoster`), at
+bench time (`handlePreview`/`handleAudit`) and at run start. The discovery and
+workbench-route oracles now freeze it — the workbench one per case, so a case may
+pin its own instant with `nowMs` — to the same instant the Rust side passes.
+**No pre-existing row reads a clock, so not one of their recorded bytes moved**,
+which is the property that made this safe to do to two mature corpora.
+
+Two mutations exist only because of those freezes: a second `now_unix_ms()` at
+the effect stage reddens `effects-now-and-progress-refs`, and one clock re-read
+per roster definition reddens `progress-gate-withholds-while-charging`. Neither
+could have been detected before.
+
+#### A real port defect, found by a new row
+
+`gate-progress-and-empty-metadata` — a gate carrying `"metadata": {}` beside a
+non-empty `progress` — failed on the parsed `data` compare. v5 dropped the empty
+record; **v4 keeps it**, because Zod keeps a key it parsed and `{}` is a value.
+The unit-1 doc comment had reasoned the opposite in as many words ("An absent key
+and an empty object are the same thing to every reader... so v5 keeps one `Vec`
+that may be empty"), which is true of every READER and false of the wire.
+
+`ToolGate.metadata` and `.progress` are now `Option<Vec<…>>`. Three readers
+flatten (`gate_holds`, `collect_tool_vocabulary`, and the object-level refine's
+combined-size count), and the fix bought a second fidelity gain for free: the
+roster's lazy sheet derivation tests `g.progress.is_some()`, because v4's guard
+is `availableWhen?.progress || withheldWhen?.progress` — a JS truthiness test on
+the RECORD, and `{}` is truthy in JS. An authored-but-empty `progress` derives
+the sheet in v4, and now in v5.
+
+#### A v4 fidelity fact worth recording
+
+**v4's unknown-reference sentence was never updated for the two new families.**
+The grammar accepts `{{now}}` and `{{progress.<id>.<field>}}`, but a rejection
+still reads `… use value, roll, dice, llm, params.x, metadata.key, or
+state.path`. v5 reproduces it byte for byte (pinned by four new rejection rows).
+A candidate upstream nicety, not a port question.
+
+#### The floors, each proven to fire
+
+Every widened family gained an executable coverage assertion, and each was
+proven by running the family against its own oracle with the progression rows
+grepped out:
+
+- vocabulary — `now` seen BOTH set and unset; all seven lists seen non-empty
+  (`stateWrites`/`metadataWrites` had been uncovered since P4.D35); a
+  multi-entry `progress` list, for the ordering.
+- definition — a gate row posing a non-empty sheet; a gate row whose definition
+  actually tests one; a definition declaring a `progress.` target; a definition
+  carrying a `progress` record.
+- execution — `renderTemplate:progress`, `renderTemplate:now`,
+  `matchesWhen:progress`, `executeCustomTool:progress`, `executeCustomTool:now`.
+- roster — a scenario gating on `progress` against a progression-carrying
+  invoker sheet.
+
+#### Mutation proofs (thirteen, each reddening exactly one named row)
+
+| mutation | reddens |
+|---|---|
+| `progression_id` reports the whole key | `progress-read-from-when-gate-and-placeholder` |
+| the effect-`when.progress` collection site dropped | `progress-from-an-effect-condition` |
+| byte-order sort for the progress list | `progress-ids-sorted-and-deduped` |
+| the classifier knows `now`, `is_known_ref` does not | `ref-now` |
+| the reserved-key guard dropped | `effect-target-reserved-progressions` |
+| the refine reverted to per-record | `gate-progress-only` |
+| `gate_holds` consults the metadata sheet only | `progress-withheld-while-charging` |
+| `matches_when`'s progress loop dropped | `progress-boolean-fails` |
+| the progress placeholder never resolves | `progress-state-string` |
+| `{{now}}` renders `0` with no clock | `now-no-clock-left-verbatim` |
+| the effect stage re-reads the clock | `effects-now-and-progress-refs` |
+| the roster never derives the sheet | `progress-gate-offers-once-charged` |
+| the roster clock re-read per definition | `progress-gate-withholds-while-charging` |
+
+#### Drift, recorded not acted on
+
+`qtap_schema_embed_guard` is RED against the LIVE v4 checkout, which has moved to
+`d3f0ed133` — two commits past what unit 2 recorded, and one of them changed
+`public/schemas/qtap-export.schema.json` (92,797 bytes against the vendored
+89,769). **The vendored copy is byte-identical to this lane's pin
+(`25f534c0b`, md5 `430bb227c7029550f773134f42a0c6eb`), so this is v4 drift and
+the tripwire firing as designed, not a lane defect.** `generators/**` is nobody's
+in this round's ownership table and the re-vendor belongs to whoever moves the
+baseline. Also newly past the baseline: `5841a8c62` ("Message route trail: every
+model tried, in order, under avatar"), which is a lib change on a ported surface.
+This lane wrote nothing to the drift ledger.

@@ -132,7 +132,10 @@ pub fn gate_holds(
     progress: &Map<String, Value>,
 ) -> bool {
     for (sheet, tests) in [(metadata, &gate.metadata), (progress, &gate.progress)] {
-        for (key, comparator) in tests {
+        // v4: `Object.entries(gate.metadata ?? {})` — an absent record and an
+        // empty one read alike here, which is why the parsed shape keeps them
+        // apart and only the reader flattens.
+        for (key, comparator) in tests.iter().flatten() {
             let holds = metadata_comparator_holds::<Infallible>(
                 comparator,
                 key,

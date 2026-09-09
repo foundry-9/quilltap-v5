@@ -72,6 +72,10 @@ import {
   MAX_TITLE_LENGTH,
 } from '@/lib/pascal/custom-tool.types';
 import { evaluateToolGate, hasToolGate } from '@/lib/pascal/tool-gate';
+// P4.D169: the writable-field rows are generated from v4's own exported list,
+// so a field added upstream arrives in the corpus rather than being forgotten.
+import { WRITABLE_PROGRESSION_FIELDS } from '@/lib/progressions/schema';
+import { flattenProgressions, UNIT_MS } from '@/lib/progressions/engine';
 
 const rows: unknown[] = [];
 
@@ -549,6 +553,59 @@ const corpus: Array<[string, unknown]> = [
   // in the superRefine, so its sentences trail the others.
   ['effect-and-outcome-issue', { ...BASE, outcomes: [{ when: { params: { ghost: { gt: 1 } } }, message: '-', state: 'info' }, CATCH_ALL], effects: [{ target: 'nowhere', value: 1 }] }],
 
+  // ---- P4.D169: the progress subject, at LOAD time ------------------------
+  // Every writable field, one row each, generated from v4's own exported list
+  // so a field added upstream arrives here rather than being forgotten. The
+  // accepted rows carry the parsed `data`, which is where the third
+  // `EffectTarget` arm's shape (`kind`/`id`/`field`/`raw`) becomes payload.
+  ...WRITABLE_PROGRESSION_FIELDS.map(
+    (field) =>
+      [
+        `effect-progress-target-${field.replace('.', '-')}`,
+        withEffects([{ target: `progress.cannon.${field}`, value: 1 }]),
+      ] as [string, unknown]
+  ),
+  // A gate may now test progressions alone, or both sheets at once.
+  ['gate-progress-only', { ...BASE, availableWhen: { progress: { 'cannon.complete': { eq: true } } } }],
+  ['gate-metadata-and-progress', { ...BASE, availableWhen: { metadata: { hasAnsibleAccess: { eq: true } }, progress: { 'cannon.complete': { eq: true } } } }],
+  ['gate-withheld-progress-only', { ...BASE, withheldWhen: { progress: { 'cannon.complete': { eq: false } } } }],
+  ['gate-progress-empty-record', { ...BASE, availableWhen: { progress: {} } }],
+  ['gate-progress-and-empty-metadata', { ...BASE, availableWhen: { metadata: {}, progress: { 'cannon.complete': { eq: true } } } }],
+  // An outcome row and an effect condition may each test the sheet.
+  ['when-progress-well-shaped-key', withWhen({ progress: { 'cannon.complete': { eq: true } } })],
+  ['when-progress-anded-with-value', withWhen({ gt: 0.4, progress: { 'cannon.complete': { eq: false } } })],
+  ['when-progress-param-operand', withWhen({ progress: { 'cannon.percent': { gte: { $param: 'scale' } } } }, NUM_PARAM)],
+  ['when-progress-empty-record', withWhen({ progress: {} })],
+  ['effect-when-progress-condition', withEffects([{ when: { progress: { 'kettle.complete': { eq: true } } }, target: 'state.poured', value: true }])],
+  ['effect-when-progress-empty-record', withEffects([{ when: { progress: {} }, target: 'state.x', value: 1 }])],
+  // The record-KEY grammar. Zod reports a refused key as its own
+  // `Invalid key in record` and `formatDefinitionIssues` never walks the
+  // nested reason, so what an author reads is the PATH naming the offending
+  // key — which is exactly what these five rows pin.
+  ...['cannon', 'Cannon.complete', 'cannon.', '.complete', 'cannon.complete.extra'].map(
+    (key, i) =>
+      [
+        `when-progress-bad-key-${i}`,
+        withWhen({ progress: { [key]: { eq: true } } }),
+      ] as [string, unknown]
+  ),
+  ['gate-progress-bad-key', { ...BASE, availableWhen: { progress: { cannon: { eq: true } } } }],
+  // The `parseEffectTarget` refusals, each sentence whole.
+  ['effect-progress-unwritable-field', withEffects([{ target: 'progress.cannon.percent', value: 1 }])],
+  ['effect-progress-updated-at', withEffects([{ target: 'progress.cannon.updatedAt', value: 1 }])],
+  ['effect-progress-id-not-an-identifier', withEffects([{ target: 'progress.Cannon.endTime', value: 1 }])],
+  ['effect-progress-names-only-an-id', withEffects([{ target: 'progress.cannon', value: 1 }])],
+  ['effect-progress-empty', withEffects([{ target: 'progress.', value: 1 }])],
+  ['effect-progress-empty-field', withEffects([{ target: 'progress.cannon.', value: 1 }])],
+  // The reserved key, through the METADATA door. An effect's value is always a
+  // primitive, so this write would replace every span the character carries
+  // with a string — refused where the author can still be told why.
+  ['effect-target-reserved-progressions', withEffects([{ target: 'metadata.progressions', value: 1 }])],
+  ['effect-target-reserved-progressions-dotted', withEffects([{ target: 'metadata.progressions.cannon', value: 1 }])],
+  // ...and the two neighbours it must NOT catch.
+  ['effect-target-progressions-notes-allowed', withEffects([{ target: 'metadata.progressionsNotes', value: 1 }])],
+  ['effect-target-metadata-progress-dotted-allowed', withEffects([{ target: 'metadata.progress.thing', value: 1 }])],
+
   // ---- where the two new keys sit in the SHAPE ----------------------------
   // Zod walks a shape in declaration order, so the shape position of
   // `chipLabel` (after `title`, before `description`) and of `effects` (after
@@ -618,7 +675,38 @@ for (const [id, text] of rawCorpus) emitDefinition(id, text);
 const AVAILABLE = (metadata: Record<string, unknown>) => ({ ...BASE, availableWhen: { metadata } });
 const WITHHELD = (metadata: Record<string, unknown>) => ({ ...BASE, withheldWhen: { metadata } });
 
-const gateCases: Array<[string, unknown, Record<string, unknown> | null]> = [
+/**
+ * P4.D169: the flattened progression sheet a gate reads, derived through the
+ * REAL engine at a frozen instant and RECORDED on the row, so both sides
+ * compare the same sheet. Deriving it on each side would make this a second
+ * copy of the engine differential (P4.D167's) rather than a gate one.
+ *
+ * One character carrying a ten-minute cannon recharge, exactly as v4's own
+ * suite poses it.
+ */
+const PROGRESS_START = Date.parse('2026-09-08T14:00:00Z');
+const PROGRESS_METADATA = {
+  faction: 'Ordo Aurum',
+  progressions: {
+    cannon: {
+      name: 'Cannon recharge',
+      startTime: '2026-09-08T14:00:00Z',
+      endTime: '2026-09-08T14:10:00Z',
+      timeIncrement: 'minute',
+      quantity: { total: 1.0, unit: 'MJ', precision: 1 },
+    },
+  },
+};
+const sheetAt = (nowMs: number) => flattenProgressions(PROGRESS_METADATA, nowMs);
+const CHARGING = sheetAt(PROGRESS_START + UNIT_MS.minute);
+const CHARGED = sheetAt(PROGRESS_START + 11 * UNIT_MS.minute);
+const AVAILABLE_PROGRESS = (progress: Record<string, unknown>) => ({ ...BASE, availableWhen: { progress } });
+const WITHHELD_PROGRESS = (progress: Record<string, unknown>) => ({ ...BASE, withheldWhen: { progress } });
+const CHARGED_GATE = AVAILABLE_PROGRESS({ 'cannon.complete': { eq: true } });
+
+const gateCases: Array<
+  [string, unknown, Record<string, unknown> | null, (Record<string, unknown> | null)?]
+> = [
   // ---- ungated: every file written before the keys existed --------------
   ['ungated-empty-sheet', BASE, {}],
   ['ungated-null-sheet', BASE, null],
@@ -657,9 +745,48 @@ const gateCases: Array<[string, unknown, Record<string, unknown> | null]> = [
   ['withheld-key-holds-array-offers', WITHHELD({ novice: { eq: true } }), { novice: [true] }],
   ['withheld-multi-key-one-misses-offers', WITHHELD({ novice: { eq: true }, probation: { eq: true } }), { novice: true, probation: false }],
   ['withheld-ncontains-holds', WITHHELD({ house: { ncontains: 'Aurum' } }), { house: 'Ferro' }],
+
+  // ---- P4.D169: the progress sheet, through the SAME comparison table -----
+  // The weapon that is not offered until it has finished charging — the whole
+  // feature in two rows, and the reason a gate is answered before the deal.
+  ['progress-withheld-while-charging', CHARGED_GATE, {}, CHARGING],
+  ['progress-offered-once-charged', CHARGED_GATE, {}, CHARGED],
+  // The same asymmetry the metadata rows above pin, on the new sheet: an
+  // availableWhen fails CLOSED where a withheldWhen fails OPEN. Three shapes of
+  // "no sheet at all" — empty, absent, null — because a port may treat them
+  // differently and v4 does not.
+  // (Absent and `null` collapse to one arm on the Rust side, whose third
+  // parameter is one `Option`. That is not a hole: these two rows are what
+  // PROVE v4 answers them alike, which is the premise the collapse rests on.)
+  ['progress-available-empty-sheet-fails-closed', CHARGED_GATE, {}, {}],
+  ['progress-available-absent-sheet-fails-closed', CHARGED_GATE, {}],
+  ['progress-available-null-sheet-fails-closed', CHARGED_GATE, {}, null],
+  ['progress-withheld-empty-sheet-offers', WITHHELD_PROGRESS({ 'cannon.complete': { eq: true } }), {}, {}],
+  ['progress-withheld-holds', WITHHELD_PROGRESS({ 'cannon.complete': { eq: true } }), {}, CHARGED],
+  // Both sheets in one gate, ANDed: each of the three ways it can fail.
+  ['progress-and-metadata-both-hold', { ...BASE, availableWhen: { metadata: { hasAnsibleAccess: { eq: true } }, progress: { 'cannon.complete': { eq: true } } } }, { hasAnsibleAccess: true }, CHARGED],
+  ['progress-and-metadata-metadata-misses', { ...BASE, availableWhen: { metadata: { hasAnsibleAccess: { eq: true } }, progress: { 'cannon.complete': { eq: true } } } }, { hasAnsibleAccess: false }, CHARGED],
+  ['progress-and-metadata-progress-misses', { ...BASE, availableWhen: { metadata: { hasAnsibleAccess: { eq: true } }, progress: { 'cannon.complete': { eq: true } } } }, { hasAnsibleAccess: true }, CHARGING],
+  // The fail-soft rules again, on the derived sheet: an id the character does
+  // not carry, a field that does not exist, and an ordering comparator handed a
+  // string — none of them throws, all of them decline.
+  ['progress-absent-progression-declines', AVAILABLE_PROGRESS({ 'zeppelin.complete': { eq: true } }), {}, CHARGED],
+  ['progress-absent-field-declines', AVAILABLE_PROGRESS({ 'cannon.trimester': { eq: 2 } }), {}, CHARGED],
+  ['progress-orders-a-string-field-declines', AVAILABLE_PROGRESS({ 'cannon.state': { gt: 1 } }), {}, CHARGING],
+  // The derived numeric fields a gate is actually written against.
+  ['progress-percent-ordering-holds', AVAILABLE_PROGRESS({ 'cannon.percent': { gte: 50 } }), {}, sheetAt(PROGRESS_START + 5 * UNIT_MS.minute)],
+  ['progress-percent-ordering-misses', AVAILABLE_PROGRESS({ 'cannon.percent': { gte: 50 } }), {}, sheetAt(PROGRESS_START + 4 * UNIT_MS.minute)],
+  ['progress-percent-uncapped-past-the-end', AVAILABLE_PROGRESS({ 'cannon.percent': { gt: 100 } }), {}, CHARGED],
+  ['progress-remaining-goes-negative', AVAILABLE_PROGRESS({ 'cannon.remainingMs': { lt: 0 } }), {}, CHARGED],
+  ['progress-state-string-eq', AVAILABLE_PROGRESS({ 'cannon.state': { eq: 'active' } }), {}, CHARGING],
+  ['progress-state-string-eq-before-start', AVAILABLE_PROGRESS({ 'cannon.state': { eq: 'active' } }), {}, sheetAt(PROGRESS_START - UNIT_MS.minute)],
+  ['progress-end-time-is-epoch-ms', AVAILABLE_PROGRESS({ 'cannon.endTime': { gt: PROGRESS_START } }), {}, sheetAt(PROGRESS_START)],
+  // An authored-but-EMPTY record beside a real one: it tests nothing, so it
+  // cannot withhold, and the gate answers on the other sheet alone.
+  ['progress-empty-record-beside-metadata', { ...BASE, availableWhen: { metadata: { rank: { gte: 1 } }, progress: {} } }, { rank: 2 }, CHARGING],
 ];
 
-for (const [id, definition, metadata] of gateCases) {
+for (const [id, definition, metadata, progress] of gateCases) {
   const parsed = QtapCustomToolSchema.safeParse(definition);
   if (!parsed.success) throw new Error(`gate case '${id}': definition does not load`);
   rows.push({
@@ -668,10 +795,17 @@ for (const [id, definition, metadata] of gateCases) {
     // The bytes both sides parse, exactly as the definition rows travel.
     inputJson: JSON.stringify(definition),
     metadata,
+    // P4.D169: the flattened sheet, RECORDED rather than re-derived, and
+    // deliberately `undefined` on a row that poses none — v4's third argument
+    // is optional, and "absent" is a different arm from "empty" and "null".
+    ...(progress === undefined ? {} : { progress }),
     hasGate: hasToolGate(parsed.data),
     // The VERDICT object as it is serialized — `withheldBy` must be ABSENT, not
     // null, whenever the tool is available.
-    verdict: JSON.stringify(evaluateToolGate(parsed.data, metadata)),
+    verdict:
+      progress === undefined
+        ? JSON.stringify(evaluateToolGate(parsed.data, metadata))
+        : JSON.stringify(evaluateToolGate(parsed.data, metadata, progress)),
   });
 }
 

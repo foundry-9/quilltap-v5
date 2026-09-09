@@ -4,8 +4,12 @@
 //!
 //! The whole serialized object is compared rather than field by field, because
 //! it IS payload: `/api/v1/chats/{id}/custom-tools` puts `references` on every
-//! listing, so key order and "all seven keys always present" are the contract
-//! (§1 of the P4.d19 round's shared contract, which the SPA consumes).
+//! listing, so key order and "every key always present" are the contract (§1 of
+//! the P4.d19 round's shared contract, which the SPA consumes).
+//!
+//! P4.D169 widened the object with `progress`, `progressWrites` and `now`, and
+//! the corpus with the rows that read them; the count is deliberately not
+//! written down anywhere here.
 //!
 //! Generate the oracle output (v4 @ 231be14c, Node 24
 //! `~/.nvm/versions/node/v24.13.1/bin`; the pinned detached worktree):
@@ -29,7 +33,7 @@ struct Row {
     /// parser, exactly as `read_tool_file` does.
     #[serde(rename = "inputJson")]
     input_json: String,
-    /// The SERIALIZED vocabulary: seven keys, in v4's declaration order.
+    /// The SERIALIZED vocabulary: every key, in v4's declaration order.
     vocabulary: String,
     empty: bool,
 }
@@ -54,6 +58,7 @@ fn pascal_tool_vocabulary_matches_oracle() {
     let mut seen_nonempty_list: Vec<&str> = Vec::new();
     let mut seen_empty_vocabulary = false;
     let mut seen_multi_entry_list = false;
+    let mut seen_multi_entry_progress = false;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line).unwrap();
@@ -81,6 +86,7 @@ fn pascal_tool_vocabulary_matches_oracle() {
             ("roll", vocabulary.roll),
             ("dice", vocabulary.dice),
             ("llm", vocabulary.llm),
+            ("now", vocabulary.now),
         ] {
             let bucket = if flag {
                 &mut seen_true
@@ -95,12 +101,23 @@ fn pascal_tool_vocabulary_matches_oracle() {
             ("params", &vocabulary.params),
             ("metadata", &vocabulary.metadata),
             ("state", &vocabulary.state),
+            ("stateWrites", &vocabulary.state_writes),
+            ("metadataWrites", &vocabulary.metadata_writes),
+            ("progress", &vocabulary.progress),
+            ("progressWrites", &vocabulary.progress_writes),
         ] {
             if !list.is_empty() && !seen_nonempty_list.contains(&name) {
                 seen_nonempty_list.push(name);
             }
             if list.len() > 1 {
                 seen_multi_entry_list = true;
+            }
+            // The ORDERING of the progression lists is its own claim: the id
+            // grammar admits no case difference, so the only collation
+            // disagreement reachable is punctuation, and one multi-entry row
+            // elsewhere would not exercise it.
+            if name == "progress" && list.len() > 1 {
+                seen_multi_entry_progress = true;
             }
         }
         if row.empty {
@@ -115,17 +132,25 @@ fn pascal_tool_vocabulary_matches_oracle() {
     seen_nonempty_list.sort();
     assert_eq!(
         seen_true,
-        vec!["dice", "llm", "roll", "value"],
+        vec!["dice", "llm", "now", "roll", "value"],
         "every boolean must be seen SET somewhere in the corpus"
     );
     assert_eq!(
         seen_false,
-        vec!["dice", "llm", "roll", "value"],
+        vec!["dice", "llm", "now", "roll", "value"],
         "every boolean must be seen UNSET somewhere in the corpus"
     );
     assert_eq!(
         seen_nonempty_list,
-        vec!["metadata", "params", "state"],
+        vec![
+            "metadata",
+            "metadataWrites",
+            "params",
+            "progress",
+            "progressWrites",
+            "state",
+            "stateWrites"
+        ],
         "every list must be seen non-empty somewhere in the corpus"
     );
     assert!(
@@ -135,6 +160,10 @@ fn pascal_tool_vocabulary_matches_oracle() {
     assert!(
         seen_multi_entry_list,
         "no row exercised the ORDERING of a multi-entry list"
+    );
+    assert!(
+        seen_multi_entry_progress,
+        "no row exercised the ORDERING of a multi-entry progression list"
     );
     eprintln!("OK: pascal tool vocabulary matched oracle ({count} definitions).");
 }

@@ -147,6 +147,7 @@ fn pascal_roster_matches_oracle() {
     let mut count = 0usize;
     let mut saw_is_root_reject = false;
     let mut saw_lazy_read = false;
+    let mut saw_progress_gate = false;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -245,6 +246,24 @@ fn pascal_roster_matches_oracle() {
         if sheet_reads > 0 {
             saw_lazy_read = true;
         }
+        // P4.D169's floor: a scenario whose invoker sheet carries a
+        // `progressions` block AND whose definitions gate on `progress`. It was
+        // zero before this lane widened the corpus, and the family was green at
+        // zero — which is why it is asserted rather than assumed.
+        let sheet_has_progressions = row["input"]["sheet"]["vaultMetadata"]
+            .get("progressions")
+            .is_some()
+            || row["input"]["sheet"]["ctxMetadata"]
+                .get("progressions")
+                .is_some();
+        if sheet_has_progressions
+            && serde_json::to_string(&row["input"]["mounts"])
+                // The mount's file `content` is the definition's TEXT, so the
+                // gate key arrives escaped inside a JSON string.
+                .is_ok_and(|m| m.contains(r#"progress\":"#))
+        {
+            saw_progress_gate = true;
+        }
         count += 1;
     }
 
@@ -256,6 +275,11 @@ fn pascal_roster_matches_oracle() {
     assert!(
         saw_lazy_read,
         "no case exercised the LAZY invoker fact-sheet read (P4.d19)"
+    );
+    assert!(
+        saw_progress_gate,
+        "no case gated a definition on `progress` against a progression-carrying \
+         invoker sheet (P4.D169)"
     );
     // Spot-check the predicate directly.
     assert!(is_root_tool_file("Tools/x.tool.json"));
