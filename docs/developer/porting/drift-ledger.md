@@ -19,29 +19,30 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `2f4254b42`** — "feat: character subprompts — per-chat
-  optional instructions from the vault" (v4 main, 2026-09-07 07:43 -0500,
-  `4.10.0-dev.5`), adopted at the `2f4254b42` character-subprompts round
-  unification (2026-09-07). CLAUDE.md's Status bullet agrees. **The
-  `25f534c0b` round's unification is IN PROGRESS and moves the baseline to
-  `25f534c0b` when it lands** — this check was run by that unification's own
-  §2 probe failing.
-- **Checked:** 2026-09-09, at the start of `/unify` for the `25f534c0b`
-  progressions + bug-126 round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥
-  P4.D170). Every lane had already finished; two lanes (P4.D168 at
-  `07eee4f4c`, P4.D169 at `c0f9232af`) saw the probe fail MID-LANE, STOPped
-  and reported as the round's rules require, and resumed under their
-  `25f534c0b` pins — so no unabsorbed drift reached any oracle.
+- **Oracle baseline: `25f534c0b`** — "fix: a hostname change no longer makes
+  the app kill its own database (bug 126)" (v4 main, 2026-09-08 11:29 -0500,
+  `4.10.0-dev.9`), adopted at the `25f534c0b` progressions + bug-126 drift
+  catch-up round unification (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥
+  P4.D170, 2026-09-09). CLAUDE.md's Status bullet agrees. The four rows that
+  round absorbed are retired to §6.
+- **Checked:** 2026-09-09, at that unification (the §2 probe failed at its
+  start — nine commits had landed during the round — and `/driftcheck` ran
+  BEFORE any cherry-pick; the rows below are that check's, re-homed under the
+  new baseline). Two lanes (P4.D168 at `07eee4f4c`, P4.D169 at `c0f9232af`)
+  saw the probe fail MID-LANE, STOPped and reported as the round's rules
+  require, and resumed under their `25f534c0b` pins — so no unabsorbed drift
+  reached any oracle; every unification regen ran from a pinned worktree at
+  `25f534c0b`.
 - **v4 `main` HEAD at check:** `d3f0ed133` (2026-09-09 00:05 -0500,
-  `4.10.0-dev.18`) — **THIRTEEN commits past the baseline: the round's four
-  (ORDERED, being unified) plus NINE that arrived during the round.**
+  `4.10.0-dev.18`) — **NINE commits past the (new) baseline**, all of which
+  arrived during the `25f534c0b` round.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED. Its content delta
   against `main` is still the subprompts commit reversed plus everything
   below (it is simply behind); nothing unabsorbed lives on it.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree CLEAN.
-- **Verdict: DRIFT PENDING — 13 commits** (4 `ORDERED`, 9 `UNPROCESSED`).
-  The nine new rows are three shipped features and six riders: **two
+- **Verdict: DRIFT PENDING — 9 commits** (all `UNPROCESSED`). Three shipped
+  features and six riders: **two
   PORT-NEW features** (`5841a8c62` the message route trail — **with a
   SCHEMA MOVE**, the first `chat_messages` column since bug 68's
   `multiCharacterPrefill` moved `chat_participants`; `86d59660c` the Salon
@@ -97,11 +98,13 @@ probe verifies against._
   `apps/web/src/app/progressions/progressions-section.spec.ts` (P4.D170),
   which the absorbing lane rewrites as a convergence record. Bugs 128, 129
   and 130 were filed by v4 from its own code map — NOT convergences.
-- **Regen rule in force: PIN REQUIRED at `25f534c0b`** — the round's
-  catch-up target, and the baseline once this unification lands (v4 `main`
-  HEAD is past both). Every oracle regen and fixture build runs from a
-  detached worktree pinned at `25f534c0b` per §5.1 until a later round
-  absorbs the nine.
+- **Regen rule in force: PIN REQUIRED at `25f534c0b`** — v4 `main` HEAD is
+  nine commits past the baseline. Every oracle regen and fixture build runs
+  from a detached worktree pinned at `25f534c0b` per §5.1 until a round
+  absorbs the nine and moves the baseline. **`qtap_schema_embed_guard` is RED
+  against the live checkout** (hazard 9) — a full workspace gate needs
+  `QT_V4_ROOT=<a 25f534c0b pin>` until the route-trail port re-vendors the
+  export schema.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -167,10 +170,11 @@ probe verifies against._
   one evening. §4 step 2's two-branch rule stays load-bearing — measure
   `bugfix` by CONTENT, never its commit list, and remember a content diff
   can be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-08 afternoon): DRIFT PENDING — 4 commits, all
-  ORDERED, PIN REQUIRED at `2f4254b42`. Before that (2026-09-08 midday):
-  DRIFT PENDING — 3 commits (the same minus bug 126). Before that
-  (2026-09-08 morning): CLEAR._
+- _Superseded (2026-09-09, the same unification's opening check): DRIFT
+  PENDING — 13 commits against baseline `2f4254b42` (4 ORDERED + 9
+  UNPROCESSED). Before that (2026-09-08 afternoon): DRIFT PENDING — 4
+  commits, all ORDERED, PIN REQUIRED at `2f4254b42`; (2026-09-08 midday): 3
+  commits; (2026-09-08 morning): CLEAR._
 
 ## §2 The freshness probe
 
@@ -209,10 +213,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `d307a4164` | 2026-09-08 | docs: plan for character progressions (timed properties reported per turn) | NO-PORT? | Docs only — `docs/developer/features/character-progressions.md` (375 lines), the changelog, and one v4-side `.claude/` command doc. No shipped code. **Not a throwaway row: this file is the design of record for `0587d1e96`** and should be read at ordering time — it carries the phasing, the cadence grammar's rationale, and the "prompt path performs no writes" constraint. Mirror candidate for `docs/v4/` at the next baseline move. | ORDERED(P4.D167 — NO-PORT ratification + the `docs/v4/developer/features/character-progressions.md` mirror as a unifier wire) |
-| `0587d1e96` | 2026-09-08 | Add character progressions — timed conditions reported per turn (#57) | PORT-NEW | **The feature, ~6,700 insertions / 55 files, five phases squashed into one PR.** New v4 modules `lib/progressions/{schema,engine,prompt-section}.ts` — pure, client-safe, injected clock — have NO v5 counterpart (tier-1 territory: `deriveProgression`, `formatSpan`, `shouldReportProgression`, `renderProgressionReport`, `flattenProgressions`, `inferIncrement`, and a fail-soft `parseProgressions` that drops one bad entry and keeps its siblings). Ported v5 surfaces it reaches: **`build_context`** (`lib/chat/context-manager.ts` — the section is wired after Suparna mail, before the turn-skip note, skipped in continue mode; last touched by P4.D95 / P4.D103 / P4.D163), **`core_whisper.rs`** (`findLastOwnTurnMs` joins `shouldFireCoreWhisper` in `core-whisper-trigger.ts`, and the two cadences now share ONE memoised `getMessages` per turn — a read-count change on a ported path), the **greeting builder** (`lib/chat/initialize.ts`) and **Carina** (both forced, cadence bypassed), the **whole Pascal family** (`custom_tool_types` / `custom_tools` / `placeholders` / `side_effects` / `tool_gate` / `tool_vocabulary` in `quilltap-core::pascal`, plus the SPA's `pascal/tool-draft.ts` twin — ported across P4.D35/P4.D36, the Workbench lanes P4.6BB/P4.D20, P4.D43, and the archived custom-tools-end-to-end round), the **tool subsystem** (`run-custom-tool.ts`, `run-custom-handler.ts`), the **character vault types** (`lib/schemas/character.types.ts` → the store-backed entity slice), **two REST edges** in `quilltap-web` (`/api/v1/custom-tools`, `/api/v1/chats/[id]/custom-tools`), and the **SPA** (a new `components/characters/progressions/` trio — editor modal, section, hook — plus the system-prompts-editor host and four `components/custom-tools/` panels + `CustomToolRunDialog`). Also a `help/**` re-vendor (121 → 122) and two `public/schemas/` files. **No table-schema change and no cache-version bump** (see §1). | ORDERED(P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) |
-| `4097626c6` | 2026-09-08 | doc: Update version | NO-PORT? | `4.10.0-dev.5` → `4.10.0-dev.8` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines. No ported comparand (no `--version` assertion in Tier R); the two version fields still agree on `main`, so standing hazard (6) stays closed there. | ORDERED(P4.D166 — NO-PORT ratification, file-list evidence) |
-| `25f534c0b` | 2026-09-08 | fix: a hostname change no longer makes the app kill its own database (bug 126) | PORT | **v5 measurably HAS this, critically — see §1.** v4's fix, arm for arm: ownership becomes a snapshot written with the lock (**PID + `startedAt`**, compared by `isStillOurLock`), hostname demoted to a label refreshed each tick; acquisition stops claiming a lock merely because the recorded hostname differs, deciding liveness by **heartbeat freshness for every environment** rather than only for Docker (this closes a fail-OPEN case where two processes on one machine could both open the same DB); a renamed process releases its own lock instead of orphaning it; a lock taken by manual override starts a heartbeat; and the lock-loss teardown is registered **inward** by `client.ts` (v4's dynamic `require('./client')` did not resolve in the bundled standalone server — it threw and left the WAL unmerged). v5 surfaces: `quilltap-host/src/lock.rs` (`heartbeat_tick` `:527`, `release_instance_lock` `:543`, the acquire cascade `:425`/`:454`, `classify_lock_status` `:308`) and its caller `host.rs:1584`, all from the P4.D68 → P4.D75 lock work; the CLI's `db --lock-status` / `--lock-clean` (v4 `packages/quilltap/bin/quilltap.js`, 103 lines, gains a shared `assessLock` — **Tier R comparands move**). Porting notes the hunks make explicit: v4 **inverted two existing tests that had been asserting the buggy behavior**, and its suite mocked `os.hostname()` as a constant, which is why it never surfaced in test — v5 has no hostname seam at all, so the port needs one (or, following v4, no hostname comparison left to seam). Also a `help/database-protection.md` re-vendor. v4's own bugs.md guidance: "Carry the invariant, not the code: a hostname is a label, not an identity." | ORDERED(P4.D166) |
 | `07eee4f4c` | 2026-09-08 | docs: file bug 127 — the progressions card escapes its own markup | NO-PORT? | Docs only (`bugs.md` + `bugs/bug-127-…md`). The filing of a defect THIS PORT found: P4.D170's transcription of `ProgressionsSection.tsx` measured v4's `invalidIds.join('</code>, <code>')` inside a JSX expression rendering raw markup for two or more unreadable ids, and recorded v5's map-with-separator rendering as a divergence (`progressions-section.spec.ts`). The fix is `4a9be9878` below. | UNPROCESSED |
 | `9fc664c94` | 2026-09-08 | docs: plan for the message route trail — every model tried, in order, under the avatar | NO-PORT? | Docs only — `docs/developer/features/message-route-trail.md` (286 lines; MOVED to `features/complete/` with an "As built" section by `5841a8c62`), the changelog, the docs index. **The design of record for `5841a8c62`** — read at ordering time. Mirror candidate for `docs/v4/` at the next baseline move. | UNPROCESSED |
 | `5fb6bedd6` | 2026-09-08 | docs: file bug 128 — the Salon's memory count goes stale and disarms its own delete button | NO-PORT? | Docs only (`bugs/bug-128-stale-chat-memory-count.md`, 231 lines — the plan `4a9be9878` carries out, incl. WHY `memories` must stay out of `REPOSITORY_TOPICS`). Filed by v4 from its own live Friday instance (chat `27961b14`: 59 rows, `(0)` on a long-lived tab) — NOT a convergence. | UNPROCESSED |
@@ -375,6 +375,34 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `25f534c0b` progressions + bug-126 drift catch-up round (2026-09-09,
+  baseline `2f4254b42` → `25f534c0b`):** `0587d1e96` ABSORBED(p4.d167 +
+  p4.d168 + p4.d169 + p4.d170 — the whole character-progressions feature:
+  the pure engine tier-1 exact over a 555-row committed corpus [the U+202F
+  prediction refuted, `toFixed` half-up pinned, the abort-suppresses-refine
+  rule measured and fixed at unification]; the prompt path — the chokepoint,
+  `find_last_own_turn_ms`, the ONE memoised cadence read, the trailing section
+  after Suparṇā's mail and before the turn-skip note, the forced greeting and
+  Carina reports, the negative cache guarantee, the seven `help/` files
+  re-vendored [121 → 122]; the Pascal `progress` family end to end — read
+  subject, `{{now}}`, the effect target with create-on-write / normalise /
+  post-validation rollback, the vocabulary's three keys, one clock per run,
+  the NEW `pascal_side_effects_equivalence` family, six corpora widened from
+  zero, the committed `pascal-run-custom-*` pair rebuilt [`shift_remove` at
+  three applier sites landed at unification — key order reaches disk]; the
+  SPA half whole — the client-safe twins over an extracted Zod shim, the
+  Progressions card + editor modal, the Workbench affordances, the run popup,
+  both `public/schemas/` vendors GUARDED, both gated beats flipped LIVE);
+  `25f534c0b` ABSORBED(p4.d166 — bug 126: the ownership snapshot [PID +
+  `startedAt`, keyed by lock path], the heartbeat-freshness cascade for every
+  environment, the renamed-process release, the loss teardown made ordered,
+  the CLI's shared `assess_lock` with Tier R 216 → 223/0; `lock-helpers.js`
+  UNTOUCHED by v4, so the write lock and the launcher's classifier keep the
+  hostname comparison); `d307a4164` NO-PORT-RATIFIED(p4.d167 — the design of
+  record, mirrored to `docs/v4/developer/features/character-progressions.md`
+  at unification) and `4097626c6` NO-PORT-RATIFIED(p4.d166 — version bump,
+  four files, no comparand). Round record: `status-log.md` → "Round record —
+  the `25f534c0b` progressions + bug-126 drift catch-up round unification".
 - **The `2f4254b42` character-subprompts round (2026-09-07, baseline
   `f699da6f6` → `2f4254b42`):** `2f4254b42` ABSORBED(p4.d163 + p4.d164 +
   p4.d165 — the whole feature: the participant `selectedSubpromptIds` carry

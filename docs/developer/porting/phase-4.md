@@ -6628,6 +6628,76 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) — UNIFIED 2026-09-09
+
+**ALL FIVE ORDERS CLOSED; the oracle baseline MOVES `2f4254b42` →
+`25f534c0b`; the four ordered drift rows are ABSORBED / NO-PORT-RATIFIED
+(ledger §6). ⚠ v4 landed NINE commits during the round** — recorded by the
+unification's opening `/driftcheck` (`1dc0addc`) and left `UNPROCESSED` in
+the ledger's §3, so the regen rule stays **PIN REQUIRED at `25f534c0b`**.
+Round record: `status-log.md` → "Round record — the `25f534c0b` progressions
++ bug-126 drift catch-up round unification" (gate numbers, the §3 review's
+findings, the wires). CHANGELOG: the unification entry of 2026-09-09.
+
+What landed, in one line each: bug 126 whole (ownership by PID + `startedAt`
+snapshot keyed by lock path, heartbeat freshness for every environment, the
+renamed-process release, the loss teardown made ORDERED — v5's default arm
+had orphaned the PTY children — the CLI's shared `assess_lock`, Tier R 216 →
+223/0); the progressions engine tier-1 exact over a 555-row committed corpus;
+the prompt path (chokepoint, the ONE memoised cadence read, the trailing
+section, the forced greeting + Carina reports, the negative cache guarantee,
+`help/` 121 → 122); the Pascal `progress` family end to end with the NEW
+side-effects differential and six corpora widened from zero; the SPA half
+whole with both `public/schemas/` vendors guarded and both gated beats LIVE.
+**The §3 review + the unified gate caught, and fixed on the unify branch:**
+the refine-after-abort divergence (measured at the pin, six corpus rows), the
+swap-remove key reordering at three applier sites (order-blind on every
+family), the CLI's `Math.round` twin at five sites, the roster test's
+2026-10-28 wall-clock time bomb, the SPA shim's `received number`, the SPA
+twin failing NINE of the Pascal lane's new corpus rows at the re-record (the
+cross-lane blind spot), the memoised read caching a failure v4 retries, and
+four gesture defects in the two activated beats' first runs.
+
+**Next — in this order:**
+
+1. **The nine-commit drift catch-up (ledger §3, all UNPROCESSED).** Three
+   features: `5841a8c62` the message route trail — **a SCHEMA MOVE**
+   (`chat_messages.routeTrail` via the migration AND the repository Zod shape
+   `generateDDL` reads → D23 re-dump + boot ensure, the P4.D78 bug-68
+   precedent; the failover/finalizer/streaming-state chokepoint, the SSE
+   `done` carry, the chat-GET projection, the `.qtap` export carry + the
+   `qtap-export.schema.json` re-vendor that un-reds `qtap_schema_embed_guard`,
+   the SPA badge; `help/` chats/connection-profiles/dangerous-content);
+   `86d59660c` the Salon chat gallery (the 962-line nine-source enumerator,
+   `?action=gallery` / `?action=save-image`, `?download=1` on the three byte
+   routes, bugs 129/130 — v5's ungated Gallery entry retires to v4's shape;
+   `help/chat-gallery.md` NEW → 123); `4a9be9878` bug 128's `memories`
+   realtime topic onto the P4.D123–D125 subsystem (MEASURE v5's sidebar
+   count read first) + bug 127's CONVERGENCE onto P4.D170's rendering (retire
+   the divergence note in `progressions-section.spec.ts`). Six riders to
+   ratify NO-PORT with evidence; `docs/v4/` mirror refresh at the new pin.
+2. **The owed dogfood pass over this round's surfaces** (💸): a progression
+   authored in the card on the Friday copy, its report on a real turn AND in
+   a fresh chat's greeting, the Workbench `progress` gate + a `progress.`
+   effect through Run Tool on a real vault (create-on-write, the rollback
+   warn in `combined.log`), the CLI `db --lock-status` on the live lock, and
+   — human-only — a hostname flip under a running host (`scutil --set
+   HostName`) proving the heartbeat survives.
+3. **Recorded candidates from this round** (small orders): the lock-conflict
+   boot status answering 503 `unhealthy` where the SPA's lock-conflict screen
+   wants 409 (`classify_lock_status` mirrors the launcher's UNTOUCHED
+   `lock-helpers.js`; re-deciding the code is a v5-composition question —
+   P4.D166 Tier 2 item 8); the Suparṇā-mail vs progressions ORDER comparand
+   (needs a `build_context` fixture op with unalerted mail AND progressions
+   on one character); the `{{start}}`/`{{end}}` UTC fallback where v4 falls
+   back to the HOST zone — both forced sites pass `timezone: None`, so a
+   custom `reportTemplate` naming those placeholders renders differently on
+   a non-UTC host (record as a divergence row or thread the host zone);
+   folding `pascal-progress.oracle.ndjson` into the shared generator; the
+   `MONTHS_SHORT` duplicate in `progressions/engine.rs` → `pub(crate)` in
+   `format_time`; the `subprompts_prompt_tier2` fixture's implicit
+   "no progressions" coupling (a builder assert).
+
 ## The `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170) — ORDERED 2026-09-08
 
 **Baseline `2f4254b42`; v4 `main` HEAD `25f534c0b` (FOUR past — the

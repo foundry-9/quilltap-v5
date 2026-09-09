@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(unify): the `25f534c0b` progressions + bug-126 drift catch-up round — five orders unified, the baseline moves to `25f534c0b`, nine mid-round v4 commits recorded
+
+_Docs-only change._
+
+The round record, the ledger's baseline move (§1 rewritten; the four ordered
+rows retired to §6; the nine mid-round rows kept UNPROCESSED under PIN
+REQUIRED), the phase-4 UNIFIED section with the next round's order of work,
+the five order status headers, and CLAUDE.md's Status bullet. Gate of record
+on the unify branch: 541 test binaries / 3,065 / 0 / 1 ignored with the 38-variable env block, zero SKIP; the 24-family sweep 24/24 fresh from the pin (+ the engine family re-regenerated after the refine fix); Tier R 223 cases inside; clippy both feature sets; release build; ng 417 files / 6,887; full Playwright 302 / 3 / 0 (the three reds the documented P4.D161 / P4.d17 intermittents, 3/3 green by file in isolation; suite 300 → 305). Versions: core 0.0.857, harness 0.0.749, host 0.0.117, cli 0.0.20, web 0.0.132, SPA 0.5.690; tauri unchanged.
+
 #### 2026-09-09 — chore(unify): the `25f534c0b` round's unification wires — both gated beats LIVE, the consumer corpus re-recorded at 362 rows, the `docs/v4/` mirror at the pin
 
 _Versions: SPA 0.5.690._

@@ -117442,3 +117442,229 @@ a DIFFERENT worktree — a green clippy result for someone else's code, for a ru
 that had not started. Harmless here (the real run overwrote it and the recorded
 result is the real one), but the shape is the `tmp-fixture-clobber-by-a-sibling-
 lane` trap in log form. Use the session scratchpad, or check the mtime.
+
+## Round record — the `25f534c0b` progressions + bug-126 drift catch-up round unification (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170), 2026-09-09
+
+**UNIFIED on main (2026-09-09) — ALL FIVE ORDERS CLOSED; the oracle baseline
+MOVES `2f4254b42` → `25f534c0b`; the four ordered drift rows are ABSORBED /
+NO-PORT-RATIFIED (ledger §6).** ⚠ **v4 landed NINE commits during the round**
+(`07eee4f4c` … `d3f0ed133`, `4.10.0-dev.18`): the unification's opening §2
+probe failed, so `/driftcheck` ran and committed FIRST (`1dc0addc`) — the
+route trail (`5841a8c62`, PORT-NEW **with a `chat_messages.routeTrail`
+SCHEMA MOVE** → D23 re-dump + boot ensure owed), the Salon chat gallery
+(`86d59660c`, PORT-NEW + bugs 129/130), bug 128's `memories` realtime topic
++ bug 127's CONVERGENCE onto P4.D170's rendering (`4a9be9878`), and six
+NO-PORT? riders — all `UNPROCESSED` in the ledger's §3; the regen rule stays
+**PIN REQUIRED at `25f534c0b`**, and `qtap_schema_embed_guard` is RED against
+the live checkout (a full workspace gate needs `QT_V4_ROOT` at a pin until the
+route-trail port re-vendors the export schema). Two lanes saw the probe fail
+mid-lane (P4.D168 at `07eee4f4c`, P4.D169 at `c0f9232af`), STOPped, reported,
+and resumed under their pins; no unabsorbed drift reached any oracle. Five
+lanes, 27 commits, reconciled by cherry-pick.
+
+### §1 Survey
+
+Five lane worktrees, all clean: P4.D166 (3 commits, from `main`), P4.D167
+(2, from `main`), P4.D168 (8, stacked on P4.D167's `7551134e`), P4.D169 (6,
+stacked likewise), P4.D170 (8, from `main`). Every status header verified
+against its order's tier list by reading the code (§3). File footprints:
+ZERO source overlaps across the five lanes — the Ownership table held
+exactly; the only shared files were the version manifests and the two
+append-only docs. Out-of-ownership touches, all recorded loudly by their
+lanes and all compiler-forced or doc-only: P4.D169's `tools/executor.rs`,
+`services/tool_build.rs` and the GENERATED `tools/definitions/data.rs` (the
+far sides of owned signatures), `.gitignore` (+`*.db-journal`); P4.D168's
+`quilltap-web/tests/help_web_routes.rs` (the vendored count derived rather
+than transcribed) and the doc-comment-only `db/vault_character_write.rs`.
+The §C/§R sections were byte-identical across the five orders (one md5).
+
+### §2 Reconcile
+
+`unify/25f534c0b` from `main` (after the drift commit); cherry-picks in the
+ordered dependency order D166 → D167 → D168 → D169 → D170 with `merge=union`
+on the two append-only docs. Conflicts: exactly the version-file class —
+`crates/quilltap-core/Cargo.toml`, `crates/quilltap-harness/Cargo.toml`,
+`Cargo.lock` on each of P4.D169's first four commits and P4.D170's guard
+commit — resolved by a resolver that REFUSES any hunk carrying a non-version
+line (none did; every lane's non-version Cargo delta had been audited EMPTY
+before the first pick) and resyncs the lock through `cargo metadata`. **The
+silent-auto-merge trap fired:** P4.D166 and P4.D168 each bumped
+`quilltap-host` 114 → 115 off the same base and the picks kept ONE;
+recounted as base + total bumps in its own commit (`011ecab0`). Final
+recount: core 846 + 10 → **0.0.856** (+1 at the review fixes → 857), harness
+735 + 13 → **0.0.748** (→ 749), host 114 + 2 → **0.0.116** (→ 117), cli 18 +
+1 → **0.0.19** (→ 20), web 131 + 1 → **0.0.132**, SPA 681 + 7 → **0.5.688**
+(→ 690). The union merge glued nineteen CHANGELOG headers to the previous
+entry's last line — the blank lines restored at the wires. The SPA lock file
+had lagged at 0.5.673 since before the round; resynced.
+
+### §3 Review
+
+Four parallel readers (P4.D166; P4.D167 + P4.D168; P4.D169; P4.D170) over the
+whole combined diff against v4 at a pinned `25f534c0b` worktree, plus the
+unifier's own reads of the prompt-path wiring, the lock's ownership snapshot,
+the side-effects applier, the gate semantics and the effect-target ladder.
+**NO blocking findings in any lane.** The should-fixes, all fixed on the
+unify branch in one commit (`49b67c17`) before the gate of record — the ones
+that would have shipped a divergence first:
+
+- **P4.D167 — the `endTime` cross-field refine ran after an ABORT issue.** v4's
+  `superRefine` on a `z.strictObject` is skipped by Zod 4.5.4 once the
+  payload carries a non-continuable issue. Measured at the pin over every
+  field shape: `invalid_type` (wrong type, missing required, `NaN`/`Infinity`,
+  a fractional `int`) and `invalid_value` (the two enums) SUPPRESS the refine;
+  `too_small`, `too_big`, `invalid_format`, `custom` and `unrecognized_keys`
+  continue and the refine still speaks beside them. The corpus was
+  structurally blind — every abort row carried a valid span — and the joined
+  sentence is what `prompt_section` warns and P4.D169's applier warns. Fixed
+  with an `aborted` gate; six abort-and-bad-order rows added (549 → 555);
+  the mutation (`aborted = false`) reddens exactly `name-number-and-bad-order`
+  first.
+- **P4.D169 — `IndexMap::remove` is SWAP-remove at the three `delete` twins**
+  (the rollback of a created entry, the emptied reserved key, the `remove`
+  branch): removing the middle of three progressions moved the last into the
+  hole; dropping `progressions` from a metadata object reordered the
+  character's other keys — bytes that reach disk through the vault writer,
+  invisible to EVERY family because they compare `Value`s (order-independent
+  `PartialEq`) and blind in the corpus by construction (n = 2 and a last-key
+  removal). `shift_remove` at all three, two serialized-order unit tests.
+- **P4.D166 — the CLI's five heartbeat-age renderings used `f64::round`**
+  (half away from zero) where v4's `quilltap.js` uses `Math.round` (half up)
+  — they differ on negative halves, reachable when clock skew dates a
+  heartbeat into the future; the lane had written `js_round` for exactly this
+  in `lock.rs` and not reached for it in `db_cmd.rs`. One shared
+  `quilltap_core::jsnum::math_round` now serves both, unit-pinned.
+- **P4.D170 — the extracted Zod shim still rendered `received number` for
+  `Infinity`/`NaN`** at the seven `custom-tool-types.ts` call sites; the lane
+  record said the divergence was "found by the move and fixed", and the fix
+  had landed only in the progressions twin. Zod 4.5.4 names the value
+  (`schemas.js:586`); fixed and spec-pinned (the arm no committed corpus can
+  carry: `1e999` parses to `Infinity` in a browser and is refused by
+  `serde_json`).
+- **P4.D169 — a wall-clock time bomb in `pascal_build_tools_roster`:** the
+  slate built at the wall clock was compared against the roster resolved at
+  the FROZEN instant; the fixture's `gestation` ends 2026-10-28T12:00:00Z,
+  when the assertion would have gone red for no reason of the code's. Now
+  like with like (the frozen roster keeps the two named arms).
+- **P4.D168 — `CadenceEvents` memoised a FAILED read.** v4's `??=` never
+  assigns on a rejected promise, so the next cadence retries; the lane's test
+  pinned the opposite. Matched, test flipped.
+- Smaller: the fold debug line's `previous`/`next` rendered Rust `Debug`
+  (`String("…")`) — now the JSON value; the workbench-route family's
+  comparand is order-blind so the preview's gate-before-`progress` order was
+  unpinned and no `progress` floor existed — both added; the engine family's
+  1e-12 tolerance claim was never in force (subtrees compare exactly first)
+  — stated honestly; a lock doc comment named a write-lock snapshot site
+  that does not exist and `HEARTBEAT_FRESH_MS`'s doc named one reader where
+  there are two; the side-effects corpus `note` attributed the two lane-added
+  truthy-`remove` rows to v4; `ajv` was imported transitively; the fixtures
+  README's counts were stale and `pascal-progress.oracle.ndjson` had no
+  section.
+
+Recorded, not fixed (named in phase-4.md's candidates): the lock-conflict
+boot status answering 503 `unhealthy` where the SPA's screen wants 409
+(`classify_lock_status` mirrors the launcher's untouched `lock-helpers.js`);
+the `{{start}}`/`{{end}}` UTC fallback vs v4's HOST zone at both forced sites
+(`timezone: None`); the Suparṇā-ordering comparand EMPTY in every family;
+`MONTHS_SHORT` duplicated from `format_time`; the `subprompts_prompt_tier2`
+fixture's implicit no-progressions coupling; folding
+`pascal-progress.oracle.ndjson` into the shared generator; beat (b)'s saved
+contrivance left behind (the e2e fixture is rebuilt per run); the
+`accept-iso-offset-no-colon` corpus id that records a refusal. Three review
+premises were REFUTED by the lanes' own measurements and stand: v4's
+`lock-helpers.js` untouched (P4.D166 Tier-1 item 3), the U+202F separator
+(P4.D167), the `force` ternary's redundancy at both forced sites (P4.D168).
+
+### §4 The wires (`0e8757ae`)
+
+- **The §C name-for-name diff:** every §C.1/§C.4 sentence grepped on both
+  sides (Rust source vs SPA source, spec files separately) — the twelve
+  `ToolVocabulary` keys in v4's declaration order on both sides, the thirteen
+  writable fields, the three `parseProgressKey` reasons, the ten effect-target
+  arms, both refine messages, the section header; the record-level `a
+  character may carry at most 32 progressions` is client-only in v4 too (the
+  server's fail-soft reader trims), as expected.
+- **`P4D168_SERVER_LANDED` and `P4D169_SERVER_LANDED` → `true`.** Their first
+  executions found four gesture defects, all spec-side: `chatCreate` wants a
+  `participants` roster (a bare `characterIds` answered no chat, and the
+  dispatch helper swallowed the refusal — the assert now prints the body) and
+  every LLM seat a `connectionProfileId`; the Workbench template's empty
+  outcome row must test something and carry a message before Save enables;
+  the destination picker is a store badge + "Keep it here". Green after: the
+  greeting beat proves the prompt path end to end (`Time-bound conditions
+  you are carrying` + `Cannon recharge` in the persisted head, read through
+  `chatGet`), the progress-gate beat round-trips through a real file.
+- **The SPA consumer corpus re-recorded from the UNIFIED generator** at the
+  pin: 301 → 362 rows (10 title + 300 definition + 52 gate). **Its first run
+  failed NINE of P4.D169's new rows** — the corpus spec's gate replay never
+  passed the row's recorded progress sheet (the twin's third argument), and
+  its draft round-trip asserted a bijection v4's own `gateFromConditions`
+  does not keep (an authored `metadata: {}` survives the parse, not the
+  editor — now stated as v4's normalization). The cross-lane blind spot the
+  Pascal lane predicted by name.
+- The `docs/v4/` mirror refreshed at `25f534c0b` (ten files, incl. the
+  ordered `character-progressions.md` design of record — at the path the pin
+  has; v4 later moved it to `features/complete/`); the SPA lock resync; the
+  CHANGELOG blank lines.
+
+### §5 The gate of record
+
+Run on the unify branch at `0e8757ae` (the review fixes + the wires
+committed), every regen from the pinned worktree
+`/tmp/qt-v4-pin-unify-25f534c0b` (§5.1, three symlink classes; markers
+verified — `lib/progressions/engine.ts` present, `isStillOurLock` ×3, 122
+help files, the export schema at md5 `430bb227…`):
+
+- `cargo fmt --all --check` — clean (after the review fixes' rustfmt pass;
+  the first gate attempt on the unformatted tree was stopped and re-run
+  whole rather than gated twice).
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean; the same
+  with `--features quilltap-core/native-transport` — clean.
+- **The 24 affected families regenerated FRESH from the pin through the
+  sweep driver — 24/24 ok** (`recipe_sweep.py --run-all --families … --v4
+  <pin>`), every NDJSON non-empty and dated the run, the discriminating
+  bytes grepped: `Time-bound conditions you are carrying` 7 / 2 / 1 rows in
+  build-context / chat-context-init / carina; `findLastOwnTurnMs` 17 rows;
+  `character-progressions` + the bug-126 paragraph in the help tree; the
+  definition corpus 362 rows with 32 `progress.` targets; the vocabulary
+  corpus 8 non-empty `progress` / 4 `progressWrites` / 3 `now`; side-effects
+  21 `progress.` targets; execution 8 and expressions 3 `{{now}}` rows;
+  discovery 8 `progress-` scenarios; the handler's 4 `updatedAt` stamps; the
+  route's 6 `run-progress` cases. The engine family regenerated AGAIN after
+  the refine fix (549 → 555 rows) with the mutation proof run against it
+  (red on `name-number-and-bad-order` first).
+- **`cargo test --workspace` with the round's 38-variable env block
+  (`QT_V4_ROOT` / `QT_V4_CHECKOUT` at the pin, `QT_NODE` = Node 24.13.1):
+  541 test binaries / 3,065 passed / 0 failed / 1 ignored, ZERO `SKIP:`
+  lines, exit 0.** Every round family confirmed RUN by per-binary duration
+  (Tier R `cli_differential` 313.72 s; `chat_create_capstone` 3.77 s;
+  `help_tree` 1.06 s; `pascal_custom_tools_route` 0.50 s; `host_cadence`
+  4 tests 2.29 s; …) and the two that finished in 0.00 s discriminated by
+  hand: `pascal_expressions_equivalence` goes RED on a missing oracle path
+  and prints its SKIP line only when the var is unset; the
+  `public_schemas_vendor_guard` byte-equality arm goes RED against a root
+  whose progression schema differs by one byte. The three `FAILED` strings
+  in the log are v4's own `FAILED-status exclusion disabled` warn lines.
+- `cargo build --release --workspace` — clean. `npm run lint` — 950 `qt-*`
+  classes, every guarded reference resolving; `npm test` — **417 spec files
+  / 6,887 tests / 0 failed** (416 / 6,818 before the review fixes; the new
+  `zod-shim.spec.ts` and the re-recorded corpus account for the growth);
+  `npm run build` — clean.
+- **Full Playwright: 302 passed / 3 failed / 0 skipped (9.1 m); the suite
+  grew 300 → 305** with the two new spec files (three editor/Workbench beats
+  live from the lanes + the two ACTIVATE-AT-UNIFY beats, all five green).
+  The three reds are the documented full-suite intermittents from earlier
+  rounds — the two P4.D161 pause-toast beats and the P4.d17 quill's
+  slow-stream beat — none on a surface this round touched; **re-run by spec
+  FILE in isolation: 3/3 green** (the standing practice for that class).
+
+### §6 What outlives the round
+
+The ledger's nine UNPROCESSED rows (the top next candidate — `phase-4.md`'s
+UNIFIED section lists the order of work: the route trail's schema move
+first); the owed dogfood pass over the round's surfaces (💸 the card on the
+Friday copy, the report on a real turn and in a greeting, the Workbench
+`progress` gate + a `progress.` effect through Run Tool, `db --lock-status`
+on the live lock, and — human-only — a hostname flip under a running host);
+the recorded candidates above. Bug 127's divergence note in
+`progressions-section.spec.ts` is now a CONVERGENCE site for the next round.

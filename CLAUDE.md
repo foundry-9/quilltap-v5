@@ -3274,9 +3274,52 @@ records THERE. Update this summary only when a phase or round completes.
   own buttons are disabled by the predicate the toasts guard). 💸 still owed
   (human): the Brahma deep query, dedup/summaries, #101, and the re-measured
   90 s/120 s compression row.
-- **Oracle baseline: `2f4254b42` (2026-09-07, v4 main — "feat: character
-  subprompts", `4.10.0-dev.1`), adopted at the `2f4254b42`
-  character-subprompts round unification (2026-09-07).**
+- **The `25f534c0b` progressions + bug-126 drift catch-up round (P4.D166 ∥
+  P4.D167 → {P4.D168 ∥ P4.D169} ∥ P4.D170): UNIFIED on main (2026-09-09) —
+  ALL FIVE CLOSED; the oracle baseline MOVES to `25f534c0b`; ⚠ v4 landed
+  NINE commits DURING the round (recorded by the unification's opening
+  `/driftcheck`, all UNPROCESSED — the regen rule stays PIN REQUIRED and
+  `qtap_schema_embed_guard` is RED against the live checkout until the
+  route-trail port re-vendors the export schema).** Bug 126 whole (ownership
+  as a PID + `startedAt` snapshot KEYED BY LOCK PATH — v4's one global made
+  correct for a host holding several; heartbeat freshness for EVERY
+  environment closing v5's own fail-open claim; the renamed-process
+  release; **the loss teardown made ORDERED — v5's default arm had exited
+  without ever stopping the PTY children**; the CLI's shared `assess_lock`,
+  Tier R 216 → 223/0; v4's `lock-helpers.js` UNTOUCHED, so the write lock
+  and the launcher's classifier keep the hostname comparison by design —
+  and the SPA's lock-conflict screen now gets a 503 where it wants 409, a
+  named candidate) ∥ the progressions engine tier-1 exact over a committed
+  555-row corpus (the order's U+202F prediction REFUTED on Node 24 / ICU
+  78; `toFixed` half-up pinned) ∥ the prompt path (the chokepoint, the ONE
+  memoised cadence read shared with the Core whisper, the trailing section
+  after Suparṇā's mail and before the turn-skip note, the forced greeting +
+  Carina reports, the negative cache guarantee with both version constants
+  UNMOVED, `help/` 121 → 122) ∥ the Pascal `progress` family end to end (the
+  read subject, `{{now}}`, the effect target with create-on-write /
+  normalise / post-validation rollback, one clock per run at all four
+  entrances, the NEW `pascal_side_effects_equivalence` family, six corpora
+  widened from ZERO progress coverage with executable floors, the committed
+  run-custom pair rebuilt) ∥ the SPA half whole (the client-safe twins over
+  an extracted Zod shim, the Progressions card + editor modal, the Workbench
+  affordances, the run popup, BOTH `public/schemas/` vendors GUARDED —
+  hazard 10 discharged — and both gated beats flipped LIVE at unification).
+  **The §3 review (four parallel readers + the unifier's reads): NO blocking
+  findings; the should-fixes landed on the unify branch** — headline: the
+  `endTime` refine ran after an aborting Zod issue (measured at the pin, six
+  rows added, red-first), `IndexMap::remove` SWAP-reordering keys that reach
+  disk at three applier sites (order-blind on every family), the CLI's
+  `Math.round` twin at five sites, a 2026-10-28 wall-clock time bomb in the
+  roster test, the SPA shim's `received number`, and — at the wire — the
+  SPA twin FAILING nine of the Pascal lane's rows when its consumer corpus
+  was re-recorded (the cross-lane blind spot), plus four gesture defects in
+  the activated beats' first runs. Gate: 541 test binaries / 3,065 / 0 / 1 ignored with the 38-variable env block, zero SKIP; the 24-family sweep 24/24 fresh from the pin (+ the engine family re-regenerated after the refine fix); Tier R 223 cases inside; clippy both feature sets; release build; ng 417 files / 6,887; full Playwright 302 / 3 / 0 (the three reds the documented P4.D161 / P4.d17 intermittents, 3/3 green by file in isolation; suite 300 → 305). Versions: core 0.0.857, harness 0.0.749, host 0.0.117, cli 0.0.20, web 0.0.132, SPA 0.5.690; tauri unchanged. 💸 the dogfood queue gains the
+  whole feature on the Friday copy + a live hostname flip (human). Round
+  record: `status-log.md`.
+- **Oracle baseline: `25f534c0b` (2026-09-08, v4 main — "fix: a hostname
+  change no longer makes the app kill its own database (bug 126)",
+  `4.10.0-dev.9`), adopted at the `25f534c0b` progressions + bug-126 drift
+  catch-up round unification (2026-09-09).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
