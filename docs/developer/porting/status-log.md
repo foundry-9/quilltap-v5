@@ -116229,3 +116229,207 @@ future widening edits the JSON directly or re-derives from the same recipe.
 DELIVERS `harness/oracle/fixtures/progressions-engine.json` (new, read by this
 family only). CONSUMES nothing; touches no committed DB pair, so **no other
 oracle is invalidated**.
+
+## P4.D168 — character progressions, the PROMPT PATH, 2026-09-08
+
+**Stacked on P4.D167's code tip `1512edac`** (branch
+`claude/p4-d168-progressions-prompt-6daa42`), in parallel with P4.D169 off the
+same tip. Absorbs the prompt half of v4's `0587d1e96` —
+`lib/progressions/prompt-section.ts` (143 lines, new), `context-manager.ts`,
+`core-whisper-trigger.ts`, `initialize.ts`, `carina.service.ts`, the normative
+`character.types.ts` comment — plus the whole round's `help/**` obligation
+(six files from `0587d1e96`, one from `25f534c0b`). Oracle baseline
+`2f4254b42`; every read and every regen from the pinned worktree
+`/tmp/qt-v4-pin-p4d168-25f534c0b`.
+
+**⚠ Drift during the lane.** The ledger's §2 probe passed at lane start. It
+FAILED mid-lane: v4 had moved to `07eee4f4c`, one docs-only commit past the
+recorded `25f534c0b`. The lane STOPped and reported, per the round's rules;
+the human ruled it does not affect this lane and the lane resumed. Every regen
+after that ruling still ran from the `25f534c0b` pin, so no unabsorbed drift
+reached an oracle.
+
+### What landed
+
+Seven commits:
+
+1. `90038864` — the seven-file `help/**` re-vendor at the pin. The tree goes
+   121 → 122 files. The vendored count is hard-coded in FOUR places across
+   THREE crates; the fourth was found only by a full `--workspace` run and is
+   now derived rather than transcribed
+   (`help_web_routes.rs` reads `embedded_help_source_files().len()`).
+2. `b8a327de` — `core_whisper::find_last_own_turn_ms` (+ `WhisperEvent.
+   created_at`) and `progressions/prompt_section.rs`, the chokepoint. Three
+   tracing lines at v4's target with v4's bags, capture-pinned.
+3. `03aa2c94` — `ContextCharacter.metadata`, the memoised cadence read, and
+   the trailing section in `build_context`.
+4. `e3ebe68a` — the greeting's forced report, with the wall clock injected.
+5. `586f816a` — Carina's forced report on the user message.
+6. `9e77d7eb` — the negative cache guarantee and v4's two normative notes.
+7. `c2e297d7` — rustfmt + the `too_many_arguments` allow the gate caught.
+
+### Measured, not assumed
+
+- **`force` is REDUNDANT at both forced call sites, on both sides.** v4's
+  `force ? {report:true,reason:'first'} : shouldReportProgression(…)` ternary
+  cannot be observed from the greeting or from Carina: neither supplies an
+  event loader, so `lastTurnMs` is null and rule 1 returns exactly
+  `{report:true, reason:'first'}` anyway. A mutation flipping `force` to
+  `false` at either site stays GREEN on both sides — run, not reasoned. The
+  flag is carried for shape and the redundancy is recorded at the chokepoint
+  and at both call sites. What `force` genuinely changes — skipping the
+  history walk when events ARE in hand — is pinned by a unit test.
+- **The empty-is-identical guarantee is a measurement.** The carina corpus was
+  regenerated twice at the pin, once with the pre-lane corpus and once with
+  Quill added; with minted uuids masked, every pre-existing per-case row is
+  byte-identical, and the only table deltas are the added row, `messageCount`
+  11 → 12, and one fixture-build wall-clock stamp the harness normalizes.
+- **The progressions carrier in each family is a character who is never the
+  subject of a pre-existing row** — Charlie in build-context (never the
+  responder), Sam in chat-context-init (only ever the USER character), Quill
+  in carina (answers exactly one new case). Their neighbours' unchanged bytes
+  are the guarantee, rather than an assertion about it.
+- **v5 cannot express v4's negative cache test, because it is already true by
+  construction.** `system_prompt::Character` — the input to both block-1
+  builders — has no `metadata` field, so there is no carrying variant to hash
+  against a non-carrying one. The guarantee lands as the two version constants
+  pinned at v4's numbers plus a code-only census over both builders.
+
+### The differential
+
+**Ten families regenerated FRESH from the `25f534c0b` pin through the sweep
+driver and re-run by name — 10/10 ok, zero SKIP** (`--label "P4.D168 lane
+tip"`). The changed bytes were grepped rather than assumed:
+`Time-bound conditions you are carrying` appears 7× in the build-context
+NDJSON, 2× in chat-context-init and 1× in carina; `findLastOwnTurnMs` carries
+17 rows in the core-whisper NDJSON; the fresh help-tree NDJSON carries
+`character-progressions` and the bug-126 paragraph (`not by what the network
+was calling the house`).
+
+- **`build_context_tier3_equivalence`** — nine new ops over a Charlie who
+  carries five progressions (a `turn` cannon mid-recharge, a `1h` pregnancy
+  with a custom template, a complete `once` vigil, one the schema refuses, one
+  with a malformed id). The corpus grew `isContinueMode` and `turnSkip` knobs
+  and three Charlie seats: the cadence walk reads `getMessages(chat.id)` from
+  the DATABASE, not the op's `messagesWithParticipants`, so each cadence arm
+  needs its own seat with its own last own turn. The first pass at those arms
+  was VACUOUS for exactly that reason and was rebuilt.
+- **`chat_context_init_equivalence`** — three greeting cases, and the family's
+  own trap recorded: it is LIST-DRIVEN. Cases added only to the `.ts` oracle
+  landed in the NDJSON, satisfied the bumped count guard, and were NEVER RUN;
+  a mutation survived until they joined the Rust case list too.
+- **`carina_query_tier3_equivalence`** — one case, plus two assertions on v5's
+  own outgoing messages (no system message carries the header; at least one
+  case puts it on a user message, so the arm cannot go vacuous).
+- **`core_whisper_equivalence`** — the `findLastOwnTurnMs` op.
+- **`chat_create_capstone_equivalence`** — unchanged and green: its characters
+  carry no progressions, so the persisted greeting head is byte-identical.
+  That is the empty-is-identical guarantee on the capstone path; a
+  progression-carrying capstone arm was NOT added (the order allowed either,
+  and chat-context-init is the pin).
+- The four help families, green at the re-vendored 122-file tree.
+
+### Mutation proofs
+
+Fifteen across the lane, each restored by file copy (never `git checkout`,
+which would destroy the uncommitted unit around it).
+
+- `find_last_own_turn_ms`: return on an unparseable `createdAt` instead of
+  walking past it; drop the visibility filter; walk forward; accept USER rows.
+  All four red. A fifth (`build_context` stops carrying `createdAt`) survives
+  BY DESIGN and says so — that is not this family.
+- `build_context`: the continue-mode skip dropped; the `else if` join order
+  swapped; the section pushed AFTER the turn-skip note; the `else if` no
+  longer firing for progressions alone; metadata never reaching the section.
+  All five red. The section pushed BEFORE the Suparṇā mail SURVIVES — a
+  measured gap, recorded at the push site: no corpus op carries unalerted
+  mail, so that comparand is empty in every row.
+- The greeting: the section appended after `You are roleplaying as` (red); the
+  empty section still appending its separator (red); metadata never reaching
+  the greeting (red).
+- Carina: the section moved onto the SYSTEM message (red); the section never
+  reaching the question (red); `ids.sort()` dropped (red — the order's
+  required sort proof lands in this family, where Quill's insertion order is
+  deliberately not sorted order).
+- The negative guarantee: `PROMPT_CACHE_STRUCTURE_VERSION` bumped to 5 (red);
+  a `metadata` ACCESSOR added to the cached builder's character type (red);
+  and — the other direction — a COMMENT mentioning metadata does NOT fire it.
+  A first attempt at that mutation added a struct FIELD, which fails to
+  compile; a build failure is not a mutation proof, so it was redone as
+  something that builds.
+
+### Recorded gaps and deferrals — loud, never silent
+
+- **The Suparṇā-ordering comparand is empty.** The section's position relative
+  to the mail is unpinned in every family, because no corpus op carries
+  unalerted mail. Recorded at the push site in `build_context.rs`; closing it
+  needs a fixture op with mail AND progressions on one character.
+- **`force` is inert at both forced call sites** (above). Recorded at the
+  chokepoint and at both sites.
+- **`self_inventory` carries no progressions section** — v4's own second stated
+  gap (PROMPT_ARCHITECTURE §13). Documented at the site, not closed:
+  unilaterally closing a v4 gap would put a per-turn clock into a
+  reconstruction that has no clock of its own.
+- **The character-voiced announcer, help chat and Brahma carry no section** —
+  v4's table; nothing to refuse, recorded here.
+- **Story-clock mapping** — v4 deferred it; nothing to build.
+- The oracle-reading assertions in `chat_context_init_equivalence` guard the
+  FIXTURE, not the port, and say so in the source: they catch a builder that
+  stopped seeding Sam's `metadata.json`, never a v5 regression. What catches
+  that is the row-by-row `assert_eq!(got, want)`.
+
+### Ownership
+
+Stayed inside the order's Ownership section. `progressions/{mod,schema,
+engine}.rs` are P4.D167's and were consumed, not edited, except the one
+sanctioned line in `mod.rs` (`pub mod prompt_section;`) inside the
+`// === P4.D168 ===` fence. `pascal/**`, `tools/run_custom.rs`,
+`api/custom_tools.rs` (P4.D169) and `apps/web/**` (P4.D170) were never opened.
+`docs/CHANGELOG.md` and this log are append-only.
+
+### The verification gate
+
+- **`cargo test --workspace`: 538 test binaries / 3,041 passed / 0 failed / 1
+  ignored, ZERO `SKIP:` lines, exit 0**, with the lane's 20-variable env block.
+  Every one of the lane's families is positively confirmed to have RUN by name
+  and duration, not by the absence of a skip line: `build_context_tier3` 0.28 s,
+  `chat_context_init` 0.03 s, `carina_query_tier3` 0.14 s, `core_whisper`
+  0.00 s, `subprompts_prompt_tier2` 0.07 s, `chat_create_capstone` 3.65 s
+  (3 tests), `help_tree` 1.06 s, `help_doc_sync` 0.07 s, `help_doc_chunking`
+  0.06 s, `help_docs_tier2` 0.01 s, `help_tree_embed_guard` 0.02 s.
+- The fixtures the gate read were COPIED to a lane-private directory first: the
+  recipes all write to shared `/tmp` paths, and three sibling lanes were live.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets
+  -- -D warnings` in BOTH feature sets (plain and
+  `--features quilltap-core/native-transport`) — clean, after the gate's first
+  run caught two things the unit work had missed: rustfmt on the two widened
+  differentials, and `too_many_arguments` on `build_chat_context`, which the
+  injected clock pushed to eight. The repo's precedent for a signature that
+  mirrors v4's is an `#[allow]` naming the v4 function; that is what it got.
+
+### Regen recipe
+
+Every family's recipe header is runnable and carries `TZ=UTC` on BOTH stages
+(the progressions renderer's `formatInstant` falls back to the host zone in v4
+and to UTC in the port, so the two agree only when the oracle's host zone IS
+UTC — the same seam `context_feeders_leaves_equivalence` documents). Regen
+through the sanctioned driver:
+
+```
+python3 harness/tools/recipe_sweep.py --run-all \
+  --families build_context_tier3_equivalence,chat_context_init_equivalence,\
+carina_query_tier3_equivalence,core_whisper_equivalence,\
+subprompts_prompt_tier2_equivalence,chat_create_capstone_equivalence,\
+help_tree_equivalence,help_doc_sync_equivalence,help_doc_chunking_equivalence,\
+help_docs_tier2_equivalence \
+  --v4 /tmp/qt-v4-pin-p4d168-25f534c0b
+```
+
+### Fixtures
+
+Widened `/tmp` builders only; no committed DB pair was rebuilt.
+`build-context-tier3-fixture.ts` (Charlie's `metadata.json` + `SeedMessage`
+gains `participantId`/`systemSender`/`systemKind`),
+`build-chat-context-init-fixture.ts` (Sam's), `build-carina-query-fixture.ts`
+(`CharSpec.metadata`, written through v4's own `repos.characters.create`).
+DELIVERS `help/**` at `25f534c0b` — seven files, the tree 121 → 122.

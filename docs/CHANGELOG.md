@@ -116,6 +116,18 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+#### 2026-09-08 — docs(progressions): the P4.D168 lane record
+
+_Docs-only change._
+
+The prompt-path lane's record in `status-log.md`: what landed, the four things
+measured rather than assumed (the redundant `force` flag at both forced call
+sites, the empty-is-identical guarantee proven by a two-corpus regen diff, the
+carrier-character choice in each family, and why v5 cannot express v4's
+negative cache test), the ten families regenerated at the pin, the fifteen
+mutation proofs including the two that correctly survive, the recorded gaps,
+and the gate.
+
 #### 2026-09-08 — style(progressions): rustfmt the widened differentials, and the greeting builder's eighth argument
 
 _Versions: core 0.0.853, harness 0.0.743._
