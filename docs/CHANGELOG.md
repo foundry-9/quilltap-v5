@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(drift): two more v4 commits — bug 131's speaking-order weights and bug 132's image labels, both defects v5 measurably has
+
+_Docs-only change._
+
+A standalone `/driftcheck` from a main checkout. The §2 probe FAILED: v4 `main`
+is at `78b381a96` (`4.10.0-dev.21`), TWELVE commits past the `25f534c0b`
+baseline. The checkout is now CLEAN — the 14 modified files the last check
+recorded as the human mid-edit on bug 131 committed as `d14da3a56`, exactly as
+that check predicted. `bugfix` and `release` are unmoved; no dependency moved,
+so v4's installed `zod` stays at `4.5.4` and hazard (1) stays closed.
+
+Both new commits are PORT on already-ported surfaces, and both defects were
+measured present in v5 at this check rather than inferred. `d14da3a56` (bug
+131): four of six paths that build the `characterId → Character` map before
+asking who speaks next read `getActiveCharacterParticipants`, a `@deprecated`
+alias returning LLM-controlled seats only — so a seat the human drives was
+weighted at the 0.5 default whatever its talkativeness said, was never dropped
+when archived, and reported as `"Unknown"` by `?action=turn`. v5 carries the
+alias faithfully and calls it at `turn_orchestrator.rs:512` and `:739`. v4's fix
+is one batched `loadRoomCharacters` chokepoint over `getPresentCharacterSeats`,
+which also changes behaviour beyond the map's width: an unreadable vault now
+logs and drops instead of throwing the turn. It REWRITES the call sites
+`2aca73ad6` added, so the catch-up round must port the turn-manager family from
+the tip. `78b381a96` (bug 132): the story-background and wardrobe-portrait jobs
+stored a caption in the `description` column and `describe_image` served it
+ahead of the generation prompt, so a character asking what a backdrop showed was
+told the chat title. v5 writes both labels (`story_background_job.rs:839`,
+`character_avatar_job.rs:365`) and serves `stored-description` first
+(`tools/photo.rs:970`) — and the 2026-08-24 dogfood pass proved that arm live
+and green, a proof of the wrong behaviour. Its migration is a pure data heal
+with no DDL, so it wants a boot heal, not a D23 re-dump.
+
+The two schema moves already owed (`chat_messages.routeTrail`,
+`chats.cycleOrderParticipantIds`) are unchanged, `help/**` stays at 123 against
+v5's vendored 122, and the regen rule stays PIN REQUIRED at `25f534c0b`.
+
 #### 2026-09-09 — docs(phase-4): the next round's first item counts ten drift commits, not nine
 
 _Docs-only change._

@@ -6660,12 +6660,21 @@ four gesture defects in the two activated beats' first runs.
 
 **Next — in this order:**
 
-1. **The TEN-commit drift catch-up (ledger §3, all UNPROCESSED — read the
-   ledger, not this count).** Four features — the tenth, `2aca73ad6`, landed
+1. **The TWELVE-commit drift catch-up (ledger §3, all UNPROCESSED — read
+   the ledger, not this count).** Six features/fixes. `2aca73ad6` landed
    during this round's gate: the turn manager draws a cycle's speaking order
    up front with a SECOND schema move (`chats.cycleOrderParticipantIds`), on
-   the whole ported turn chain, and a bug-131 commit was in flight behind it
-   at the cleanup check. The nine before it: `5841a8c62` the message route trail — **a SCHEMA MOVE**
+   the whole ported turn chain. Two more landed the next morning
+   (2026-09-09 `/driftcheck`), both PORT and **both defects v5 measurably
+   HAS**: `d14da3a56` bug 131 — a user-driven seat's talkativeness never
+   reached the draw, because four of six map-building sites read the
+   `@deprecated` LLM-only accessor (v5 carries the alias and calls it at
+   `turn_orchestrator.rs:512`/`:739`); it **REWRITES `2aca73ad6`'s hunks**,
+   so port the turn-manager family from the TIP. And `78b381a96` bug 132 —
+   generated images stored a caption in the `description` column and
+   `describe_image` served it ahead of the prompt (v5 writes both labels and
+   serves `stored-description` first), with a DATA migration that wants a
+   boot heal, not a re-dump. The nine before those: `5841a8c62` the message route trail — **a SCHEMA MOVE**
    (`chat_messages.routeTrail` via the migration AND the repository Zod shape
    `generateDDL` reads → D23 re-dump + boot ensure, the P4.D78 bug-68
    precedent; the failover/finalizer/streaming-state chokepoint, the SSE
