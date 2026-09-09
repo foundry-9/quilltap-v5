@@ -12,6 +12,58 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(gallery): the Salon chat gallery's server half — the nine-source enumerator, the `chatGallery` + `chatSaveGalleryImage` verbs, and the message-attachment walk shared with the chat file listing (P4.D174 units 1–3)
+
+_Versions: core 0.0.858, harness 0.0.750, web 0.0.133._
+
+v4 `86d59660c` added one server-side enumerator that knows every way a picture
+can end up in a conversation — uploads and library links, `generate_image`
+output, both Generate Image entry points, `attach_image` re-shows, Librarian
+attaches, Lantern story backgrounds (including superseded ones), Aurora avatar
+repaints likewise, the cast's standing portraits, and Markdown-referenced
+images in message prose — over both id species (`files.id` and
+`doc_mount_file_links.id`), deduped by content hash, newest first with
+portraits last. There was no v5 counterpart.
+
+`photos/chat_gallery.rs` ports it whole: the four passes, the classifier
+ladder (current background → `generated/` path → worn avatar → `avatarOverrides`
+repaint → `images/history/` or `/character-avatars/` → `GENERATED` →
+attachment), the `EntryCollector`'s two dedup rules (the first pass to see an
+image wins its source; a later pass may only ADD a `messageId`), and the sort.
+Entries are `serde_json::Map` objects rather than a derived struct on purpose:
+v4's per-entry key order is its JS construction order, which differs per pass,
+and `noteMessage` APPENDS `messageId` to an entry an earlier pass already
+built. A fixed declaration order diverges on exactly that arm, and every
+differential normalizer sorts keys, so the raw sequence is pinned as its own
+comparand.
+
+`resolveMessageAttachmentEntries` — v4's second pass, which the
+`/chats/{id}/files` listing now shares instead of keeping a second copy — is
+lifted out with it; `chat_files_list` calls it, its response bytes unchanged,
+and gains v4's fail-soft `[Chats v1 Files] Failed to read messages for
+attachment walk` warn plus the new resolved-attachments debug line.
+
+Two dispatch verbs: `chatGallery` answers the BARE `{entries, counts, total}`
+(v4 uses `NextResponse.json`, not `successResponse`), 404s a missing chat
+before the enumerator runs, and answers 500 rather than an empty roll when the
+enumerator throws — both are true at once because the enumerator fails soft at
+every pass. `chatSaveGalleryImage` is the chat-scoped twin of the message
+toolbar's save, guarded by GALLERY MEMBERSHIP rather than message attachment,
+answering v4's ladder in order and — the one place the two doors differ —
+**409** with `{error, code, relativePath, keptAt}` where the message leg keeps
+400. `photos/save_attribution.rs` carries the one attribution rule both doors
+use and the shared request schema; the message leg's private uuid schema is
+deleted with it, so `fileId must be a UUID` is gone and a non-uuid id now
+passes the parse and fails at the attachment guard — an observable v4 change on
+an already-ported v5 surface.
+
+New `chat_gallery_equivalence` (18 cases) over a new committed
+`chat-gallery-{main,mount}.db` pair drives v4's real enumerator through its
+real route. Five mutations red exactly the right cases; a sixth — dropping
+pass 3's `hasSha` skip — survives CORRECTLY and is recorded: v4's guard is
+behaviourally redundant with the collector's own sha dedup for the entry list.
+`courier_images_routes_equivalence` regenerated as a neutrality check, green.
+
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 
 _Docs-only change._

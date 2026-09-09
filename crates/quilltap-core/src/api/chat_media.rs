@@ -34,10 +34,10 @@ use crate::db::{
     characters_read, chats_messages_read, chats_read, doc_mount_points::DocMountPointsRepository,
     instance_settings, project_doc_mount_links::ProjectDocMountLinksRepository, projects,
 };
-use crate::photos::keep_image_markdown::KeptImageAttributionRole;
+use crate::photos::save_attribution::{parse_save_image_request, resolve_save_attribution};
 use crate::photos::save_image_to_album::{
-    save_image_to_album, FileBytesStore, SaveImageAttribution, SaveImageErrorCode,
-    SaveImageSideEffects, SaveImageToAlbumInput,
+    save_image_to_album, FileBytesStore, SaveImageErrorCode, SaveImageSideEffects,
+    SaveImageToAlbumInput,
 };
 use crate::services::courier_transport::{
     cancel_external_turn, CancelExternalTurnOutcome, ResolveExternalTurnOutcome,
@@ -243,28 +243,19 @@ pub async fn message_save_image(
     side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
     kept_at: &str,
 ) -> Response {
-    // v4 saveImageSchema: fileId uuid, mountPointId uuid, caption?, tags?.
-    let file_id = match body.get("fileId").and_then(Value::as_str) {
-        Some(s) => s.to_string(),
-        None => return bad_request("fileId must be a UUID"),
+    // The SHARED body schema (v4 `SaveImageRequestSchema`, moved into
+    // `save-image-to-album.ts` by `86d59660c`): this route's private uuid
+    // schema — and its `fileId must be a UUID` / `mountPointId must be a UUID`
+    // sentences — is DELETED, so a non-uuid id now passes the parse and fails
+    // at the attachment guard below.
+    let parsed = match parse_save_image_request(body) {
+        Ok(p) => p,
+        Err(message) => return bad_request(message),
     };
-    let mount_point_id = match body.get("mountPointId").and_then(Value::as_str) {
-        Some(s) => s.to_string(),
-        None => return bad_request("mountPointId must be a UUID"),
-    };
-    let caption = body
-        .get("caption")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let tags: Vec<String> = body
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
+    let file_id = parsed.file_id;
+    let mount_point_id = parsed.mount_point_id;
+    let caption = parsed.caption;
+    let tags = parsed.tags;
 
     // --- gates ---
     let chat_id_owned = chat_id.to_string();
@@ -306,80 +297,11 @@ pub async fn message_save_image(
             let mount = super::mount_files::mount_conn(ws)?;
             let main = ws.main().connection();
 
-            // Attribution: prefer a participant character whose vault == mountPointId.
-            let mut attribution: Option<SaveImageAttribution> = None;
-            if let Some(participants) = chat_owned.get("participants").and_then(Value::as_array) {
-                for p in participants {
-                    if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-                        continue;
-                    }
-                    let Some(cid) = p.get("characterId").and_then(Value::as_str) else {
-                        continue;
-                    };
-                    let Some((vault_mp_id, vault_mp_name, char_name)) =
-                        character_vault(main, mount, cid)
-                    else {
-                        continue;
-                    };
-                    if vault_mp_id != mp_owned {
-                        continue;
-                    }
-                    attribution = Some(SaveImageAttribution {
-                        // v4: character?.name ?? vault.mountPointName.
-                        name: if char_name.is_empty() {
-                            vault_mp_name
-                        } else {
-                            char_name
-                        },
-                        id: Some(cid.to_string()),
-                        role: KeptImageAttributionRole::Character,
-                    });
-                    break;
-                }
-            }
-            // Else the active-impersonated / first user-controlled persona, else the auth
-            // user, else "Quilltap".
-            if attribution.is_none() {
-                let mut user_persona_name: Option<String> = None;
-                let mut user_persona_id: Option<String> = None;
-                let active_typing = chat_owned
-                    .get("activeTypingParticipantId")
-                    .and_then(Value::as_str);
-                let participants = chat_owned
-                    .get("participants")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let is_user =
-                    |p: &Value| p.get("controlledBy").and_then(Value::as_str) == Some("user");
-                let active = active_typing.and_then(|id| {
-                    participants
-                        .iter()
-                        .find(|p| p.get("id").and_then(Value::as_str) == Some(id) && is_user(p))
-                        .cloned()
-                });
-                let fallback = participants.iter().find(|p| is_user(p)).cloned();
-                if let Some(up) = active.or(fallback) {
-                    if let Some(cid) = up.get("characterId").and_then(Value::as_str) {
-                        if let Ok(Some(ch)) = characters_read::find_by_id(main, mount, cid) {
-                            if let Some(name) = ch.get("name").and_then(Value::as_str) {
-                                user_persona_name = Some(name.to_string());
-                                user_persona_id =
-                                    ch.get("id").and_then(Value::as_str).map(str::to_string);
-                            }
-                        }
-                    }
-                }
-                let (user_name, _username) =
-                    read_user(main, &user_id_owned).unwrap_or((None, None));
-                attribution = Some(SaveImageAttribution {
-                    name: user_persona_name
-                        .or(user_name)
-                        .unwrap_or_else(|| "Quilltap".to_string()),
-                    id: user_persona_id.or_else(|| Some(user_id_owned.clone())),
-                    role: KeptImageAttributionRole::User,
-                });
-            }
+            // Who the save is attributed to — the one rule, shared with the
+            // gallery's chat-scoped twin so both doors write the same byline
+            // into the kept-image sidecar.
+            let attribution =
+                resolve_save_attribution(main, mount, &chat_owned, &mp_owned, &user_id_owned);
 
             let input = SaveImageToAlbumInput {
                 mount_point_id: &mp_owned,
@@ -387,7 +309,7 @@ pub async fn message_save_image(
                 caption: caption_owned.as_deref(),
                 tags: &tags_owned,
                 chat_id: Some(&chat_id_for_scene),
-                attribution: attribution.unwrap(),
+                attribution,
             };
             Ok(save_image_to_album(
                 main,
@@ -419,6 +341,226 @@ pub async fn message_save_image(
             | SaveImageErrorCode::AlreadySaved => bad_request(err.message),
         },
         Err(e) => internal(e),
+    }
+}
+
+// ===========================================================================
+// === P4.D174 === The chat gallery (v4 `86d59660c`)
+// ===========================================================================
+
+/// v4 `GET /chats/[id]?action=gallery` → the BARE `{entries, counts, total}`
+/// (v4 answers `NextResponse.json(gallery)`, not `successResponse`).
+///
+/// A missing chat is a 404 **before** the enumerator runs. An enumerator
+/// failure is a 500 with v4's fixed sentence — NOT an empty roll: the
+/// enumerator already fails soft at every pass, so anything that escapes it is
+/// a real fault (pinned by v4's own `chat-gallery-actions.test.ts:136`).
+pub fn chat_gallery(db: &Db, chat_id: &str) -> Response {
+    let cid = chat_id.to_string();
+    match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(_)) => {}
+        Ok(None) => return not_found("Chat"),
+        Err(e) => {
+            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Failed to list chat gallery");
+            return Response::error(ErrorKind::Internal, "Failed to list chat gallery");
+        }
+    }
+    let cid = chat_id.to_string();
+    let gallery = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            crate::photos::chat_gallery::get_chat_gallery(main, mount, &cid)
+        })
+    });
+    match gallery {
+        Ok(gallery) => {
+            let total = gallery.get("total").cloned().unwrap_or(Value::Null);
+            let counts = gallery.get("counts").cloned().unwrap_or(Value::Null);
+            tracing::debug!(
+                chat_id = %chat_id,
+                total = %total,
+                counts = %counts,
+                "[Chats v1] Gallery listed"
+            );
+            Response::ChatMedia(gallery)
+        }
+        Err(e) => {
+            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Failed to list chat gallery");
+            Response::error(ErrorKind::Internal, "Failed to list chat gallery")
+        }
+    }
+}
+
+/// v4 `POST /chats/[id]?action=save-image` (`actions/save-image.ts`) — the
+/// chat-scoped twin of [`message_save_image`].
+///
+/// The message route asks *"is this image attached to this message"*. Half the
+/// gallery has no message at all — a Lantern backdrop and an Aurora repaint post
+/// no announcement when `alertCharactersOfLanternImages` is off (the default),
+/// and a participant's standing portrait was never part of a turn — so this
+/// route asks the question the gallery can answer: *"is this image in this
+/// chat's gallery"*.
+///
+/// The refusal ladder, in v4's order: schema → 400 (the joined sentences); no
+/// chat → 404; not in the gallery → 400 `Image is not in this chat`;
+/// `ALREADY_SAVED` → **409** with `{error, code, relativePath, keptAt}` (the one
+/// place the two doors differ — the message leg answers 400, deliberately);
+/// any other save error → 400 with its message; anything else → 500.
+#[allow(clippy::too_many_arguments)]
+pub async fn chat_save_gallery_image(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    body: &Value,
+    bytes: Arc<dyn FileBytesStore>,
+    side_effects: Arc<dyn SaveImageSideEffects + Send + Sync>,
+    kept_at: &str,
+) -> Response {
+    let parsed = match parse_save_image_request(body) {
+        Ok(p) => p,
+        Err(message) => return bad_request(message),
+    };
+    let file_id = parsed.file_id;
+    let mount_point_id = parsed.mount_point_id;
+
+    let cid = chat_id.to_string();
+    let chat = match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+
+    // The guard: the id must name a picture this conversation actually holds.
+    // Without it the action would save any image in the instance into any album
+    // on the strength of a chat id.
+    let cid = chat_id.to_string();
+    let entries = match db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            crate::photos::chat_gallery::list_chat_gallery(main, mount, &cid)
+        })
+    }) {
+        Ok(e) => e,
+        Err(e) => return internal(e),
+    };
+    let Some(entry) = entries
+        .iter()
+        .find(|e| e.get("id").and_then(Value::as_str) == Some(file_id.as_str()))
+    else {
+        tracing::info!(
+            chat_id = %chat_id,
+            file_id = %file_id,
+            gallery_total = entries.len(),
+            "[SaveGalleryImage] rejected: id is not in this chat gallery"
+        );
+        return bad_request("Image is not in this chat");
+    };
+    let id_kind = entry
+        .get("idKind")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let source = entry
+        .get("source")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    let user_id_owned = user_id.to_string();
+    let chat_owned = chat.clone();
+    let mp_owned = mount_point_id.clone();
+    let file_owned = file_id.clone();
+    let caption_owned = parsed.caption.clone();
+    let tags_owned = parsed.tags.clone();
+    let chat_id_for_scene = chat_id.to_string();
+    let kept_owned = kept_at.to_string();
+    let source_for_log = source.clone();
+
+    let result = db
+        .write(move |ws| {
+            let mount = super::mount_files::mount_conn(ws)?;
+            let main = ws.main().connection();
+            let attribution =
+                resolve_save_attribution(main, mount, &chat_owned, &mp_owned, &user_id_owned);
+            tracing::debug!(
+                chat_id = %chat_id_for_scene,
+                file_id = %file_owned,
+                id_kind = %id_kind,
+                source = %source_for_log,
+                mount_point_id = %mp_owned,
+                attribution_role = ?attribution.role,
+                "[SaveGalleryImage] saving"
+            );
+            let input = SaveImageToAlbumInput {
+                mount_point_id: &mp_owned,
+                file_id: &file_owned,
+                caption: caption_owned.as_deref(),
+                tags: &tags_owned,
+                chat_id: Some(&chat_id_for_scene),
+                attribution,
+            };
+            Ok(save_image_to_album(
+                main,
+                mount,
+                &input,
+                &*bytes,
+                &*side_effects,
+                &kept_owned,
+            ))
+        })
+        .await;
+
+    match result {
+        Ok(Ok(saved)) => {
+            tracing::info!(
+                chat_id = %chat_id,
+                file_id = %file_id,
+                source = %source,
+                mount_point_id = %mount_point_id,
+                relative_path = %saved.relative_path,
+                link_id = %saved.link_id,
+                "[SaveGalleryImage] saved"
+            );
+            Response::ChatMedia(json!({
+                "saved": true,
+                "mountPoint": saved.mount_point_name,
+                "relativePath": saved.relative_path,
+                "linkId": saved.link_id,
+                "keptAt": saved.kept_at,
+                "fileId": saved.file_id,
+                "sha256": saved.sha256,
+            }))
+        }
+        Ok(Err(err)) => {
+            tracing::info!(
+                chat_id = %chat_id,
+                code = ?err.code,
+                message = %err.message,
+                "[SaveGalleryImage] rejected"
+            );
+            // Already in that album is not a failure of the request — it is the
+            // answer to it, and the dialog says so in those words.
+            if err.code == SaveImageErrorCode::AlreadySaved {
+                // v4's 409 body is `{error, code, relativePath, keptAt}` — four
+                // siblings. `code` rides the existing flat carrier (its
+                // documented purpose: "the SPA error translation keys on this
+                // first"); the two riders ride `details`, which a transport
+                // spreads beside `error` exactly as the files-delete refusal
+                // spreads `characterId`. §C.3 of the round contract.
+                let mut resp = Response::error(ErrorKind::Conflict, err.message);
+                if let Response::Error(e) = &mut resp {
+                    e.code = Some("ALREADY_SAVED".to_string());
+                    e.details = Some(Box::new(json!({
+                        "relativePath": err.existing_relative_path,
+                        "keptAt": err.existing_created_at,
+                    })));
+                }
+                return resp;
+            }
+            bad_request(err.message)
+        }
+        Err(e) => {
+            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            Response::error(ErrorKind::Internal, "Failed to save image")
+        }
     }
 }
 
@@ -814,159 +956,54 @@ pub fn chat_files_list(db: &Db, chat_id: &str) -> Response {
         Err(e) => return internal(e),
     };
 
-    // ── The mount-file announcement walk (v4 `route.ts:386-424`) ───────────
+    // ── The mount-file announcement walk (v4 `route.ts:460-497`) ──────────
     // Mount-file attachments are recorded only on Librarian announcement
-    // messages (no link table). Walk the chat's messages and collect any
-    // attachment ids that resolve through the mount index. The whole walk is
-    // inside v4's `try`: any failure warns and leaves the uploaded/generated
-    // list intact.
+    // messages (no link table). The walk that resolves them lives in
+    // `photos::chat_gallery` alongside the chat gallery's own passes, so this
+    // listing and the gallery can never disagree about which attachments a
+    // message carries (v4 `86d59660c` lifted the same loop out of this route).
     {
-        use crate::db::doc_mount_blobs::DocMountBlobsRepository;
-        use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-
-        let mut seen: std::collections::HashSet<String> = files
+        let seen: std::collections::HashSet<String> = files
             .iter()
             .filter_map(|f| f.get("id").and_then(Value::as_str))
             .map(str::to_string)
             .collect();
+        // A message read that fails costs the mount-file attachments and
+        // nothing else; the linked files are already in hand and are the better
+        // half of the answer. This listing has always degraded rather than
+        // 500'd here.
         let cid = chat_id.to_string();
-        match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
-            Ok(events) => {
-                for event in events {
-                    if event.get("type").and_then(Value::as_str) != Some("message") {
-                        continue;
-                    }
-                    let ids: Vec<String> = event
-                        .get("attachments")
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(str::to_string)
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let created_at = event.get("createdAt").cloned().unwrap_or(Value::Null);
-                    for attachment_id in ids {
-                        if seen.contains(&attachment_id) {
-                            continue;
-                        }
-                        // Try as a link id (modern) or fall back to file id.
-                        let aid = attachment_id.clone();
-                        let resolved = db.read_mount_index(move |c| {
-                            let links = DocMountFileLinksRepository::new(c);
-                            if let Some(l) = links.find_by_id_with_content(&aid)? {
-                                return Ok(Some((
-                                    l.id,
-                                    l.file_id,
-                                    l.mount_point_id,
-                                    l.relative_path,
-                                    l.file_name,
-                                    l.original_file_name,
-                                )));
-                            }
-                            // The legacy fallback: v4's `findByFileId` returns the
-                            // SAME joined shape, so re-read the winning row through
-                            // the joined getter rather than widen `LinkRow`.
-                            let Some(first) = links.find_by_file_id(&aid)?.into_iter().next()
-                            else {
-                                return Ok(None);
-                            };
-                            Ok(links.find_by_id_with_content(&first.id)?.map(|l| {
-                                (
-                                    l.id,
-                                    l.file_id,
-                                    l.mount_point_id,
-                                    l.relative_path,
-                                    l.file_name,
-                                    l.original_file_name,
-                                )
-                            }))
-                        });
-                        let Ok(Some((
-                            id,
-                            file_id,
-                            mount_point_id,
-                            relative_path,
-                            file_name,
-                            original,
-                        ))) = resolved
-                        else {
-                            continue;
-                        };
-                        let fid = file_id.clone();
-                        let blob = db.read_mount_index(move |c| {
-                            DocMountBlobsRepository::new(c).find_by_file_id(&fid)
-                        });
-                        let Ok(Some(blob)) = blob else {
-                            // No blob → a native-text document (bug 38). Surface it
-                            // from the document row with the `/files/` route so the
-                            // attached markdown shows in the chat file list.
-                            if let Some(text_mime) = crate::services::mount_index::path_utils::
-                                native_text_attachment_mime(&relative_path)
-                            {
-                                let fid = file_id.clone();
-                                let doc = db
-                                    .read_mount_index(move |c| {
-                                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(c)
-                                            .find_content_by_file_id(&fid)
-                                    })
-                                    .ok()
-                                    .flatten();
-                                if doc.is_some() {
-                                    let fid = file_id.clone();
-                                    let size = db
-                                        .read_mount_index(move |c| file_size_bytes_for(c, &fid))
-                                        .unwrap_or(0);
-                                    let url = format!(
-                                        "/api/v1/mount-points/{}/files/{}",
-                                        mount_point_id,
-                                        crate::tools::photo::encode_uri(&relative_path)
-                                    );
-                                    files.push(json!({
-                                        "id": id,
-                                        "filename": original.unwrap_or(file_name),
-                                        "filepath": url,
-                                        "mimeType": text_mime,
-                                        "size": size,
-                                        "url": url,
-                                        "createdAt": created_at,
-                                        "type": "mountFile",
-                                    }));
-                                    seen.insert(id);
-                                }
-                            }
-                            continue;
-                        };
-                        let url = format!(
-                            "/api/v1/mount-points/{}/blobs/{}",
-                            mount_point_id,
-                            crate::tools::photo::encode_uri(&relative_path)
-                        );
-                        files.push(json!({
-                            "id": id,
-                            // v4 `originalFileName ?? fileName` — the `??` falls
-                            // back on NULL only, so a stored empty string wins.
-                            "filename": original.unwrap_or(file_name),
-                            "filepath": url,
-                            "mimeType": blob.stored_mime_type,
-                            "size": blob.size_bytes,
-                            "url": url,
-                            "createdAt": created_at,
-                            "type": "mountFile",
-                        }));
-                        seen.insert(id);
-                    }
-                }
-            }
+        let events = match db.read_main(move |c| chats_messages_read::get_messages(c, &cid)) {
+            Ok(e) => e,
             Err(e) => {
                 tracing::warn!(
                     chat_id = %chat_id,
                     error = %e,
-                    "[Chats v1 Files] Failed to enumerate mount-file attachments"
+                    "[Chats v1 Files] Failed to read messages for attachment walk"
                 );
+                Vec::new()
             }
+        };
+        let mount_attachments =
+            crate::photos::chat_gallery::resolve_message_attachment_entries_db(db, &events, &seen);
+        for attachment in &mount_attachments {
+            files.push(json!({
+                "id": attachment.id,
+                "filename": attachment.filename,
+                "filepath": attachment.url,
+                "mimeType": attachment.mime_type,
+                "size": attachment.size,
+                "url": attachment.url,
+                "createdAt": attachment.created_at,
+                "type": "mountFile",
+            }));
         }
+        tracing::debug!(
+            chat_id = %chat_id,
+            linked_files = seen.len(),
+            mount_attachments = mount_attachments.len(),
+            "[Chats v1 Files] Resolved mount-file attachments"
+        );
     }
 
     // Newest first (v4 sorts by createdAt desc).
@@ -1733,25 +1770,6 @@ pub async fn chat_attach_mount_file(
             "createdAt": announcement.get("createdAt").cloned().unwrap_or(Value::Null),
         },
     }))
-}
-
-/// The `doc_mount_files.fileSizeBytes` for a file id (v4's
-/// `mountLink.fileSizeBytes`) — used to size a native-text document in the file
-/// list, which has no blob to read `sizeBytes` from. `0` when the row is gone.
-fn file_size_bytes_for(
-    conn: &rusqlite::Connection,
-    file_id: &str,
-) -> Result<i64, crate::db::DbError> {
-    conn.query_row(
-        "SELECT fileSizeBytes FROM doc_mount_files WHERE id = ?1",
-        [file_id],
-        |r| r.get::<_, i64>(0),
-    )
-    .or_else(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Ok(0),
-        other => Err(other),
-    })
-    .map_err(crate::db::DbError::from)
 }
 
 /// v4 `handleAttachMountDocument` (`chats/[id]/files/route.ts`, bug 38): attach a

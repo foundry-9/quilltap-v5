@@ -1999,6 +1999,26 @@ pub enum Request {
         #[serde(flatten)]
         body: serde_json::Value,
     },
+    // === P4.D174 ===
+    /// v4 `GET /chats/[id]?action=gallery` → the BARE `{entries, counts, total}`
+    /// — every image in the conversation, whatever produced it (v4
+    /// `lib/photos/chat-gallery.ts`). Never nested under `data`.
+    #[serde(rename_all = "camelCase")]
+    ChatGallery {
+        chat_id: String,
+    },
+    /// v4 `POST /chats/[id]?action=save-image` (`{fileId, mountPointId,
+    /// caption?, tags?}`) → `{saved, mountPoint, relativePath, linkId, keptAt,
+    /// fileId, sha256}` — the chat-scoped twin of [`Request::MessageSaveImage`],
+    /// guarded by GALLERY MEMBERSHIP rather than message attachment. `fileId`
+    /// may be a `files.id` OR a `doc_mount_file_links.id`; it is NOT uuid-gated.
+    #[serde(rename_all = "camelCase")]
+    ChatSaveGalleryImage {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === /P4.D174 ===
     /// v4 `GET /chats/[id]?action=photo-albums` → `{albums}`.
     #[serde(rename_all = "camelCase")]
     ChatPhotoAlbums {
