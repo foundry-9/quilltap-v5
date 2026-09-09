@@ -52,6 +52,10 @@ use quilltap_core::tools::run_custom::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+/// P4.D169: Pascal's run entrance now takes its clock from the caller.
+/// 2026-09-08T12:00:00Z.
+const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
@@ -598,6 +602,10 @@ fn run_custom_handler_matches_oracle() {
             ]),
             project_id: None,
             caller_participant_id: Some(P_A.to_string()),
+            // P4.D169: the run's frozen clock. The corpus carries no
+            // progression yet — item 4 widens it — so no row reads this, but a
+            // fixed instant keeps the run reproducible.
+            now_ms: PASCAL_NOW_MS,
         };
         let mut rng = FixedBytes::new(vec![]);
         // The REAL consult invoker, exactly as v4's handler builds one. For the

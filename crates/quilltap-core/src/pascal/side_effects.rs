@@ -58,7 +58,11 @@ use serde_json::{Map, Value};
 
 use super::custom_tool_types::EffectTarget;
 use super::custom_tools::ResolvedEffect;
+use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::WriterSet;
+use crate::progressions::{
+    infer_increment, join_issues, parse_iso_instant, parse_progression, PROGRESSIONS_METADATA_KEY,
+};
 use crate::state::cascade::StateCascadeResult;
 use crate::state::paths::{get_at_path, set_at_path, PathKey};
 
@@ -132,6 +136,12 @@ pub struct ApplyCustomToolEffectsParams<'a> {
     pub character_id: Option<&'a str>,
     /// The character's fact sheet, hydrated at run start — the metadata RMW base.
     pub metadata_snapshot: &'a Map<String, Value>,
+    /// The run's ONE clock reading — the instant every touched progression is
+    /// stamped `updatedAt` with, and the `now` a created-on-write entry starts
+    /// from. v4 defaults it to `Date.now()`; v5 makes the entrance pass the
+    /// reading it already took, so the sheet the tables read and the entries the
+    /// effects write cannot disagree about the moment.
+    pub now_ms: i64,
 }
 
 /// Every store an application may touch, for the ordered commit below.
@@ -203,6 +213,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         cascade,
         character_id,
         metadata_snapshot,
+        now_ms,
     } = params;
 
     // v4 `effects.filter(isApplicableEffect)`. The resolved value is a
@@ -230,6 +241,10 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         ]
     });
     let mut metadata_next: Option<Map<String, Value>> = None;
+    // Progression ids this run touched, and what each held BEFORE it did.
+    // `None` in the value slot means "the character did not carry this id",
+    // which is what a rollback of a created-on-write entry must restore to.
+    let mut progressions_touched: Vec<(String, Option<Value>)> = Vec::new();
 
     let skip = |reason: &str, target: &str| {
         tracing::debug!(
@@ -266,6 +281,50 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                         tier: None,
                     },
                 ));
+            }
+
+            EffectTarget::Progress { id, field, raw } => {
+                let Some(_) = character_id else {
+                    // Same asymmetry as a metadata write: a run nobody made
+                    // re-arms nobody's cannon.
+                    skip("no rolling character, progress effect skipped", raw);
+                    continue;
+                };
+                let next = metadata_next.get_or_insert_with(|| metadata_snapshot.clone());
+                match apply_progress_write(
+                    next,
+                    id,
+                    field,
+                    value,
+                    now_ms,
+                    &mut progressions_touched,
+                ) {
+                    Err(reason) => {
+                        skip(&reason, raw);
+                        continue;
+                    }
+                    Ok((previous, next_value)) => {
+                        tracing::debug!(
+                            target: "quilltap::pascal",
+                            context = CONTEXT,
+                            chat_id,
+                            tool = tool_name,
+                            effect_target = %raw,
+                            previous = ?previous,
+                            next = ?next_value,
+                            "Custom tool progress effect folded",
+                        );
+                        pending.push((
+                            Store::Metadata,
+                            AppliedEffect {
+                                target: raw.clone(),
+                                previous,
+                                next: next_value,
+                                tier: None,
+                            },
+                        ));
+                    }
+                }
             }
 
             EffectTarget::State { path, raw } => {
@@ -321,10 +380,251 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         }
     }
 
+    // Post-validation. A progression that came out of this run's writes in a
+    // state the schema refuses (an `endTime` no longer after its `startTime` is
+    // the obvious one) has its entry restored to what it was and every write
+    // that touched it struck from the applied list. The roll still stands.
+    let mut dropped_progressions: Vec<String> = Vec::new();
+    if let Some(next) = metadata_next.as_mut() {
+        if !progressions_touched.is_empty() {
+            let mut record = match next.get(PROGRESSIONS_METADATA_KEY) {
+                Some(Value::Object(m)) => m.clone(),
+                _ => Map::new(),
+            };
+            for (id, previous) in &progressions_touched {
+                // A removal leaves nothing to validate — an absent progression
+                // is a perfectly legal outcome, and the only one `remove` can
+                // produce.
+                let Some(entry) = record.get(id) else {
+                    continue;
+                };
+                let Err(issues) = parse_progression(entry) else {
+                    continue;
+                };
+                dropped_progressions.push(id.clone());
+                tracing::warn!(
+                    target: "quilltap::pascal",
+                    context = CONTEXT,
+                    chat_id,
+                    tool = tool_name,
+                    progression_id = %id,
+                    issue = %join_issues(&issues),
+                    "Custom tool progress writes dropped — the result would not validate",
+                );
+                match previous {
+                    None => {
+                        record.remove(id);
+                    }
+                    Some(v) => {
+                        record.insert(id.clone(), v.clone());
+                    }
+                }
+            }
+            // Every touched entry may have been rolled back; don't leave an
+            // empty reserved key behind where the character had none.
+            if record.is_empty() {
+                next.remove(PROGRESSIONS_METADATA_KEY);
+            } else {
+                next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+            }
+        }
+    }
+
+    // v4's `survived` — a write to a dropped progression never happened as far
+    // as `pascalMeta.effects` is concerned.
+    let survived = |entry: &AppliedEffect| -> bool {
+        let Some(rest) = entry.target.strip_prefix("progress.") else {
+            return true;
+        };
+        let id = match rest.find('.') {
+            Some(dot) => &rest[..dot],
+            // v4 slices to `indexOf('.')`, which is -1 here and yields "" — a
+            // target this shape cannot exist (load validation forbids it), and
+            // "" is in no dropped set either way.
+            None => "",
+        };
+        !dropped_progressions.iter().any(|d| d == id)
+    };
+    let pending: Vec<(Store, AppliedEffect)> =
+        pending.into_iter().filter(|(_, e)| survived(e)).collect();
+
     Plan {
         tiers,
         metadata_next,
         pending,
+    }
+}
+
+/// The default span a created-on-write progression gets: an hour from now.
+const CREATED_PROGRESSION_SPAN_MS: i64 = 3_600_000;
+
+/// Fold one `progress.<id>.<field>` write into the local metadata copy.
+///
+/// Creates the progression when the id is new, with defaults chosen so a
+/// countdown a tool armed out of nothing is immediately reportable: the id as
+/// its name, now as its start, an hour out as its end, and the increment
+/// INFERRED from the resulting span. Because effects see each other through this
+/// same copy, an `endTime` written first and a `startTime` second both land, and
+/// the increment is re-inferred each time either moves — so `{{now}}` /
+/// `{{now}} + 600000` yields a recharge that speaks in minutes without the
+/// author saying so.
+///
+/// Time fields take a NUMBER (epoch milliseconds, the `{{now}} + 600000` idiom)
+/// or an ISO string, and normalise to ISO on write.
+///
+/// Never panics: a value of the wrong shape declines the write with v4's reason,
+/// and the caller logs it as a skip.
+fn apply_progress_write(
+    metadata_next: &mut Map<String, Value>,
+    id: &str,
+    field: &str,
+    value: &Value,
+    now_ms: i64,
+    touched: &mut Vec<(String, Option<Value>)>,
+) -> Result<(Option<Value>, Value), String> {
+    let mut record = match metadata_next.get(PROGRESSIONS_METADATA_KEY) {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+
+    // Remember the PRE-RUN entry the first time this run touches this id, so a
+    // post-validation rollback restores what the character actually had rather
+    // than a half-written intermediate.
+    if !touched.iter().any(|(k, _)| k == id) {
+        touched.push((id.to_string(), record.get(id).cloned()));
+    }
+
+    if field == "remove" {
+        // Only a truthy write removes: `progress.cannon.remove = false` is most
+        // naturally read as "don't remove it", and silently deleting there would
+        // be a nasty surprise.
+        if value != &Value::Bool(true) {
+            metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+            return Err("progress remove effect wrote a value other than true".to_string());
+        }
+        let Some(previous) = record.remove(id) else {
+            metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+            return Err("progress remove effect names no such progression".to_string());
+        };
+        metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+        return Ok((Some(previous), Value::Null));
+    }
+
+    let before = record.get(id);
+    let mut entry: Map<String, Value> = match before {
+        Some(Value::Object(m)) => m.clone(),
+        _ => {
+            let mut minted = Map::new();
+            minted.insert("name".into(), Value::String(id.to_string()));
+            minted.insert("startTime".into(), Value::String(iso_from_unix_ms(now_ms)));
+            minted.insert(
+                "endTime".into(),
+                Value::String(iso_from_unix_ms(now_ms + CREATED_PROGRESSION_SPAN_MS)),
+            );
+            minted.insert(
+                "timeIncrement".into(),
+                Value::String(
+                    infer_increment(CREATED_PROGRESSION_SPAN_MS as f64)
+                        .as_str()
+                        .to_string(),
+                ),
+            );
+            minted
+        }
+    };
+
+    let previous = read_progression_field(&entry, field);
+
+    if field == "startTime" || field == "endTime" {
+        let Some(iso) = normalise_instant(value) else {
+            metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+            return Err(
+                "progress time effect wrote neither epoch milliseconds nor an ISO instant"
+                    .to_string(),
+            );
+        };
+        entry.insert(field.to_string(), Value::String(iso));
+    } else if let Some(quantity_key) = field.strip_prefix("quantity.") {
+        let mut quantity: Map<String, Value> = match entry.get("quantity") {
+            Some(Value::Object(m)) => m.clone(),
+            _ => {
+                let mut minted = Map::new();
+                minted.insert("total".into(), Value::from(1));
+                minted.insert("unit".into(), Value::String("units".into()));
+                minted.insert("precision".into(), Value::from(1));
+                minted
+            }
+        };
+        quantity.insert(quantity_key.to_string(), value.clone());
+        entry.insert("quantity".into(), Value::Object(quantity));
+    } else {
+        entry.insert(field.to_string(), value.clone());
+    }
+
+    // A moved boundary re-infers the increment ONLY on an entry this RUN
+    // created: an author who chose 'week' keeps 'week' when a tool nudges a due
+    // date, but a countdown minted from nothing has nobody's choice to respect.
+    //
+    // The test is the PRE-RUN entry, not `before` — by the second effect of a
+    // `startTime` then `endTime` pair, `before` is the entry the first effect
+    // just minted, and reading it would freeze the increment at the default
+    // hour's 'minute' however long the span turned out to be.
+    let created_this_run = touched
+        .iter()
+        .find(|(k, _)| k == id)
+        .is_some_and(|(_, v)| v.is_none());
+    if created_this_run && (field == "startTime" || field == "endTime") {
+        let start = parse_iso_instant(entry.get("startTime").unwrap_or(&Value::Null));
+        let end = parse_iso_instant(entry.get("endTime").unwrap_or(&Value::Null));
+        if let (Some(start), Some(end)) = (start, end) {
+            entry.insert(
+                "timeIncrement".into(),
+                Value::String(infer_increment((end - start) as f64).as_str().to_string()),
+            );
+        }
+    }
+
+    // Stamped on every touched entry so the next prompt reports the change
+    // regardless of cadence — cadence rule 2.
+    entry.insert("updatedAt".into(), Value::String(iso_from_unix_ms(now_ms)));
+    let next_value = read_progression_field(&entry, field).unwrap_or(Value::Null);
+    record.insert(id.to_string(), Value::Object(entry));
+    metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
+
+    Ok((previous, next_value))
+}
+
+/// Read one writable field off a progression entry, `quantity.x` included.
+fn read_progression_field(entry: &Map<String, Value>, field: &str) -> Option<Value> {
+    let Some(quantity_key) = field.strip_prefix("quantity.") else {
+        return entry.get(field).cloned();
+    };
+    match entry.get("quantity") {
+        Some(Value::Object(q)) => q.get(quantity_key).cloned(),
+        _ => None,
+    }
+}
+
+/// A time an effect wrote, as ISO. Epoch milliseconds (what `{{now}} + 600000`
+/// evaluates to) and an ISO string are both accepted and both stored as ISO, so
+/// the file stays readable however the tool expressed itself.
+fn normalise_instant(value: &Value) -> Option<String> {
+    match value {
+        Value::Number(n) => {
+            let ms = n.as_f64()?;
+            if !ms.is_finite() {
+                return None;
+            }
+            // v4 `new Date(value)` → `Invalid Date` beyond ±8.64e15, whose
+            // `toISOString()` throws and is caught as `null` by the guard above
+            // it (`Number.isNaN(date.getTime())`).
+            if ms.abs() > 8.64e15 {
+                return None;
+            }
+            Some(iso_from_unix_ms(ms as i64))
+        }
+        Value::String(_) => parse_iso_instant(value).map(iso_from_unix_ms),
+        _ => None,
     }
 }
 
@@ -501,6 +801,9 @@ pub async fn apply_effects_for_run(
     cascade: Option<StateCascadeResult>,
     character_id: Option<String>,
     metadata_snapshot: &Map<String, Value>,
+    // The run's one clock reading, threaded from the entrance — the same instant
+    // the roster's gates, the progress sheet and `{{now}}` used.
+    now_ms: i64,
 ) -> Vec<AppliedEffect> {
     let effects = match &result.effects {
         Some(e) if !e.is_empty() => e.clone(),
@@ -521,6 +824,7 @@ pub async fn apply_effects_for_run(
                     cascade: cascade.as_ref(),
                     character_id: character_id.as_deref(),
                     metadata_snapshot: &metadata,
+                    now_ms,
                 },
             ))
         })
@@ -741,6 +1045,10 @@ mod tests {
             cascade,
             character_id,
             metadata_snapshot: metadata,
+            // A fixed instant for the in-crate rig: the P4.D169 progress arms
+            // are proven by the differential family, which freezes the same
+            // clock on both sides. 2026-09-08T12:00:00Z.
+            now_ms: 1_788_004_800_000,
         })
     }
 

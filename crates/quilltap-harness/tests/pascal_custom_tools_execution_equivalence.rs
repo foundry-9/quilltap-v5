@@ -40,6 +40,12 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 
+/// P4.D169: Pascal's entrances now take their clock from the caller, so a
+/// differential can freeze it. Until this family's corpus carries a
+/// progression, no row reads the value; a fixed instant keeps the run
+/// reproducible. 2026-09-08T12:00:00Z.
+const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
 /// The oracle's `LlmScript`, rebuilt on this side so both runs hand the core the
 /// SAME canned oracle. `None` leaves the seam unwired.
 enum Script {
@@ -288,6 +294,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let message = row["message"].as_str().unwrap();
                 let metadata = metadata_of(row.get("metadata"));
+                let progress = metadata_of(row.get("progress"));
                 let llm = llm_subject_of(row.get("llm"));
                 let got = render_template(
                     message,
@@ -297,6 +304,11 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         dice: "3d6: [4, 2, 6] = 12",
                         params: &params,
                         metadata: metadata.as_ref(),
+                        // P4.D169: a row may pose a flattened progress sheet and
+                        // a run clock. Absent on every pre-existing row, which
+                        // is what keeps their bytes unmoved.
+                        progress: progress.as_ref(),
+                        now: row.get("now").and_then(Value::as_i64),
                         llm: llm.as_ref(),
                         state: state.as_ref(),
                     },
@@ -342,12 +354,14 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
                 let when = &tool.outcomes[0].when;
                 let metadata = metadata_of(row.get("metadata"));
+                let progress = metadata_of(row.get("progress"));
                 let llm = llm_subject_of(row.get("llm"));
                 let subjects = OutcomeSubjects {
                     value: 12.0,
                     roll: 0.6,
                     params: &params,
                     metadata: metadata.as_ref(),
+                    progress: progress.as_ref(),
                     llm: llm.as_ref(),
                     state: state.as_ref(),
                 };
@@ -371,6 +385,9 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 let supplied = supplied_of(&row);
                 let private = row["overrides"].get("private").and_then(Value::as_bool);
                 let metadata = metadata_of(row["overrides"].get("metadata"));
+                // P4.D169: v4's `overrides.progress` / `overrides.now`. Absent
+                // on every pre-existing row.
+                let progress = metadata_of(row["overrides"].get("progress"));
                 let state = state_of(row["overrides"].get("state"));
 
                 let pool = hex_bytes(row["poolHex"].as_str().unwrap());
@@ -389,6 +406,11 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     state.as_ref(),
                     &mut rng,
                     invoker.as_ref().map(|i| i as &dyn LlmInvoker),
+                    progress.as_ref(),
+                    row["overrides"]
+                        .get("now")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(PASCAL_NOW_MS),
                 ));
 
                 // The byte cursor is the assertion inspection cannot make.

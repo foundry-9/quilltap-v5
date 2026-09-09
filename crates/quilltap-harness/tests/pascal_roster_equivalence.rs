@@ -33,6 +33,11 @@ use quilltap_core::pascal::roster::{
 };
 use serde_json::{json, Map, Value};
 
+/// The roster's frozen wall clock. P4.D169 injects `resolve_roster_from_pool`'s
+/// `now_ms` so a progression-gated definition's verdict is reproducible; until
+/// the corpus carries one, no row reads it. 2026-09-08T12:00:00Z.
+const ROSTER_NOW_MS: i64 = 1_788_004_800_000;
+
 fn str_list(v: &Value, key: &str) -> Vec<String> {
     v.get(key)
         .and_then(|v| v.as_array())
@@ -222,6 +227,11 @@ fn pascal_roster_matches_oracle() {
                 load_definitions(&files, mount_point_id, &mount_name, tier)
             },
             load_sheet,
+            // P4.D169: the roster's clock. The discovery corpus carries no
+            // progression-gated definition yet — item 2 adds the
+            // weapon-recharge rows and the corpus will then supply the frozen
+            // instant both sides read.
+            ROSTER_NOW_MS,
         );
 
         let got = serialize(&roster);

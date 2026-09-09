@@ -42,9 +42,14 @@ const STATE_PREFIX: &str = "state.";
 
 /// What a definition quotes. Every field means "this tool actually says so".
 ///
-/// All seven keys are ALWAYS present — `false`s and empty arrays, never absent —
-/// so a caller never has to distinguish "none" from "not computed". The key
-/// order is v4's interface declaration order, which is the wire contract.
+/// EVERY key is ALWAYS present — `false`s and empty arrays, never absent — so a
+/// caller never has to distinguish "none" from "not computed". The key order is
+/// v4's interface declaration order, which is the wire contract.
+///
+/// (The count is deliberately not written down. It said "seven" while the
+/// struct carried nine, and P4.D169 took it to twelve; a number here is a fact
+/// that goes stale silently, and the field list below is the only one that
+/// cannot.)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct ToolVocabulary {
     /// True when some rendered string quotes `{{value}}`.
@@ -75,6 +80,19 @@ pub struct ToolVocabulary {
     /// Metadata keys this tool's effects may WRITE on the rolling character. Sorted.
     #[serde(rename = "metadataWrites")]
     pub metadata_writes: Vec<String>,
+    /// Progression IDS this tool READS — from `when.progress` tests, from its
+    /// availability gate, and from `{{progress.<id>.<field>}}` placeholders.
+    /// Ids, not `<id>.<field>` keys: "this tool consults your cannon" is the
+    /// honest sentence for a run dialog, where "it consults cannon.percent"
+    /// edges toward the odds the roster deliberately withholds. Sorted.
+    pub progress: Vec<String>,
+    /// Progression ids this tool's effects may WRITE. A write is a different
+    /// claim than a read — "it consults the cannon" and "it re-arms the cannon"
+    /// deserve different sentences — so writes get their own list. Sorted.
+    #[serde(rename = "progressWrites")]
+    pub progress_writes: Vec<String>,
+    /// True when some rendered string quotes `{{now}}`.
+    pub now: bool,
 }
 
 /// True when a tool quotes nothing at all, and so has no vocabulary to show.
@@ -88,6 +106,9 @@ pub fn is_empty_vocabulary(vocabulary: &ToolVocabulary) -> bool {
         && vocabulary.state.is_empty()
         && vocabulary.state_writes.is_empty()
         && vocabulary.metadata_writes.is_empty()
+        && vocabulary.progress.is_empty()
+        && vocabulary.progress_writes.is_empty()
+        && !vocabulary.now
 }
 
 /// The mutable accumulator v4 calls `found` — insertion-ordered lists standing
@@ -104,6 +125,19 @@ struct Found {
     state: Vec<String>,
     state_writes: Vec<String>,
     metadata_writes: Vec<String>,
+    progress: Vec<String>,
+    progress_writes: Vec<String>,
+    now: bool,
+}
+
+/// The progression id out of a `"<id>.<field>"` sheet key. A key that somehow
+/// carries no dot (load validation forbids it) names the whole string, which is
+/// the least surprising thing to report and never throws.
+fn progression_id(key: &str) -> &str {
+    match key.find('.') {
+        Some(dot) if dot > 0 => &key[..dot],
+        _ => key,
+    }
 }
 
 fn add(into: &mut Vec<String>, name: &str) {
@@ -130,6 +164,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
             for (key, _) in when.metadata.iter().flatten() {
                 add(&mut found.metadata, key);
             }
+            for (key, _) in when.progress.iter().flatten() {
+                add(&mut found.progress, progression_id(key));
+            }
         }
         collect_placeholders(&outcome.message, &declared, &mut found);
     }
@@ -142,6 +179,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     for gate in [&definition.available_when, &definition.withheld_when] {
         for (key, _) in gate.iter().flat_map(|g| g.metadata.iter()) {
             add(&mut found.metadata, key);
+        }
+        for (key, _) in gate.iter().flat_map(|g| g.progress.iter()) {
+            add(&mut found.progress, progression_id(key));
         }
     }
 
@@ -166,6 +206,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
             for (key, _) in when.base.metadata.iter().flatten() {
                 add(&mut found.metadata, key);
             }
+            for (key, _) in when.base.progress.iter().flatten() {
+                add(&mut found.progress, progression_id(key));
+            }
         }
 
         let Ok(target) = parse_effect_target(&effect.target) else {
@@ -175,6 +218,7 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
             EffectTarget::State { raw, .. } => {
                 add(&mut found.state_writes, &raw[STATE_PREFIX.len()..]);
             }
+            EffectTarget::Progress { id, .. } => add(&mut found.progress_writes, id),
             EffectTarget::Metadata { key, .. } => add(&mut found.metadata_writes, key),
         }
     }
@@ -203,6 +247,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         state: sorted(found.state),
         state_writes: sorted(found.state_writes),
         metadata_writes: sorted(found.metadata_writes),
+        progress: sorted(found.progress),
+        progress_writes: sorted(found.progress_writes),
+        now: found.now,
     }
 }
 
@@ -229,6 +276,8 @@ fn collect_placeholders(text: &str, declared: &[&str], found: &mut Found) {
             }
             PlaceholderRef::Metadata { ref key } => add(&mut found.metadata, key),
             PlaceholderRef::State { ref path } => add(&mut found.state, path),
+            PlaceholderRef::Progress { ref id, .. } => add(&mut found.progress, id),
+            PlaceholderRef::Now => found.now = true,
             PlaceholderRef::Unknown { .. } => {}
         }
     }

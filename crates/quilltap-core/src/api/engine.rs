@@ -4744,9 +4744,13 @@ impl CoreEngine {
             // === end P4.6ao ===
             // === P4.6ay: Pascal's custom-tools route ===
             Request::ChatCustomToolsList { chat_id } => match self.ready_db() {
-                Ok(db) => {
-                    super::custom_tools::chat_custom_tools_list(&db, SINGLE_USER_ID, &chat_id)
-                }
+                Ok(db) => super::custom_tools::chat_custom_tools_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &chat_id,
+                    // P4.D169: production's clock — one reading for the listing.
+                    crate::clock::now_unix_ms() as i64,
+                ),
                 Err(r) => r,
             },
             Request::ChatCustomToolRun {
@@ -4768,6 +4772,12 @@ impl CoreEngine {
                         // The assembled consult seam (P4.6bd) — a composer-run
                         // custom tool with an `llm` block consults for real.
                         consult.as_deref(),
+                        // P4.D169: production's clock. This one reading serves the
+                        // roster's gates, the progress sheet the tables and
+                        // templates read, `{{now}}`, and the `updatedAt` an effect
+                        // stamps — so a tool cannot see one moment and record
+                        // another.
+                        crate::clock::now_unix_ms() as i64,
                     )
                     .await
                 }
@@ -4804,6 +4814,8 @@ impl CoreEngine {
                         // bench arm consults for real. The scripted and fail
                         // arms never touch it.
                         consult.as_deref(),
+                        // P4.D169: the bench's one reading (v4 `benchNowMs`).
+                        crate::clock::now_unix_ms() as i64,
                     )
                     .await
                 }
@@ -4823,6 +4835,9 @@ impl CoreEngine {
                     metadata.as_ref(),
                     state.as_ref(),
                     llm.as_ref(),
+                    // P4.D169: the audit's one reading — the sheet is derived
+                    // once and held fixed across every draw.
+                    crate::clock::now_unix_ms() as i64,
                 ),
                 Err(r) => r,
             },

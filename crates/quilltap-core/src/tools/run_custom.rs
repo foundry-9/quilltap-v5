@@ -27,6 +27,7 @@ use crate::pascal::custom_tools::{
 use crate::pascal::js_value::{json_stringify, number_to_string};
 use crate::pascal::roster::{resolve_custom_tool_roster, DiscoveredCustomTool, RosterContext};
 use crate::pascal::side_effects::apply_effects_for_run;
+use crate::progressions::flatten_progressions;
 use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams, PostedPascalMessage,
 };
@@ -103,6 +104,7 @@ const RUN_CUSTOM_PREAMBLE: &str = concat!(
     "An outcome table may also consult your own character's metadata, so the same tool can deal differently to different characters.\n",
     "Some tools additionally pose a question to a separate model mid-run and let its answer steer the outcome; that consult happens server-side too, and you never speak for it.\n",
     "Some tools record side effects when they run — adjusting the scene's persistent state or the rolling character's own records, server-side, as part of the roll.\n",
+    "Some tools consult, or adjust, the rolling character's timed progressions — recharges, gestations, countdowns — server-side; you cannot set one yourself.\n",
     "\n",
     "Available tools:"
 );
@@ -452,6 +454,13 @@ pub struct RunCustomToolContext {
     pub project_id: Option<String>,
     /// The caller's participant id — the whisper target for a private roll.
     pub caller_participant_id: Option<String>,
+    /// Epoch milliseconds at run start — ONE reading for the whole run (v4
+    /// `run-custom-handler.ts:126`). The roster's gates, the progress sheet the
+    /// tables and templates read, `{{now}}`, and the `updatedAt` an effect
+    /// stamps all take THIS instant, so a tool cannot see one moment and record
+    /// another. Injected rather than read here so a differential can freeze it;
+    /// production passes `now_unix_ms()`.
+    pub now_ms: i64,
 }
 
 /// The compact result handed back to the model (v4 `RunCustomToolOutput`).
@@ -633,7 +642,14 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         metadata: Some(metadata.clone()),
     };
     let roster = match db.read_main(|main| {
-        db.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&roster_ctx, main, mount)))
+        db.read_mount_index(|mount| {
+            Ok(resolve_custom_tool_roster(
+                &roster_ctx,
+                main,
+                mount,
+                ctx.now_ms,
+            ))
+        })
     }) {
         Ok(r) => r,
         Err(e) => return (failure(e.to_string(), Some(&tool_name)), None),
@@ -699,6 +715,19 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         .map(|c| c.merged.clone())
         .unwrap_or_else(|| Value::Object(Map::new()));
 
+    // The flattened progress sheet, derived HERE from the same hydrated snapshot
+    // the gates read, against the one `now_ms` this run took — so the tables,
+    // the templates, `{{now}}` and the `updatedAt` the applier stamps all agree
+    // about the instant (v4 `run-custom-handler.ts:148`).
+    let progress = flatten_progressions(
+        Some(&Value::Object(metadata.clone())),
+        ctx.now_ms,
+        // A malformed entry is dropped by the shared reader. The prompt path
+        // already warns about the same vault once per turn; a second warn here
+        // would double every line for a character mid-roll.
+        &mut |_, _| {},
+    );
+
     let result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
         parameters.as_ref(),
@@ -710,6 +739,8 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         // block; withholding it otherwise is the same thing, since a tool with
         // no block never consults.
         entry.definition.llm.as_ref().and(llm_invoke),
+        Some(&progress),
+        ctx.now_ms,
     )
     .await
     {
@@ -734,6 +765,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         cascade,
         ctx.character_id.clone(),
         &metadata,
+        ctx.now_ms,
     )
     .await;
 

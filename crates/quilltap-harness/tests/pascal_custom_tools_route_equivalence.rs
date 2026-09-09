@@ -51,6 +51,12 @@ use quilltap_core::pascal::llm_consult::ProviderConsultRunner;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+/// P4.D169: Pascal's entrances now take their clock from the caller, so a
+/// differential can freeze it. Until this family's corpus carries a
+/// progression, no row reads the value; a fixed instant keeps the run
+/// reproducible. 2026-09-08T12:00:00Z.
+const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 /// P4.d24 — the five operator-perspective rooms (see the fixture builder).
 const CHAT_LLM_LED: &str = "c1000000-0000-4000-8000-000000000002";
@@ -724,7 +730,7 @@ async fn custom_tools_route_matches_oracle() {
 
         let (status, resp_body, sys) = match body {
             None => {
-                let (s, b) = status_body(chat_custom_tools_list(&db, USER, chat));
+                let (s, b) = status_body(chat_custom_tools_list(&db, USER, chat, PASCAL_NOW_MS));
                 (s, b, Vec::new())
             }
             Some(b) => {
@@ -758,6 +764,7 @@ async fn custom_tools_route_matches_oracle() {
                                 parsed.private,
                                 parsed.as_character_id,
                                 Some(&runner),
+                                PASCAL_NOW_MS,
                             )
                             .await,
                         );

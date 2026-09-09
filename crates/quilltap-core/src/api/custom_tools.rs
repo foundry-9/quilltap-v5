@@ -48,6 +48,7 @@ use crate::pascal::roster::{
 use crate::pascal::side_effects::apply_effects_for_run;
 use crate::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use crate::pascal::tool_vocabulary::collect_tool_vocabulary;
+use crate::progressions::flatten_progressions;
 use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams,
 };
@@ -136,6 +137,9 @@ fn resolve_for_perspective(
     project_id: Option<&str>,
     perspective: &Perspective,
     all_character_ids: &[String],
+    // The listing's one clock reading, so every perspective in a chat is
+    // resolved against the same instant rather than drifting across the loop.
+    now_ms: i64,
 ) -> CustomToolRoster {
     resolve_custom_tool_roster(
         &RosterContext {
@@ -152,6 +156,7 @@ fn resolve_for_perspective(
         },
         main,
         mount,
+        now_ms,
     )
 }
 
@@ -358,7 +363,14 @@ fn error_entry(e: &crate::pascal::roster::CustomToolLoadError) -> Value {
 }
 
 /// v4 `handleList` — the roster for the popup.
-pub fn chat_custom_tools_list(db: &Db, user_id: &str, chat_id: &str) -> Response {
+pub fn chat_custom_tools_list(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    // ONE clock reading for the listing, so every perspective's gates are
+    // answered against the same instant rather than drifting across the loop.
+    now_ms: i64,
+) -> Response {
     let user_id = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
     let out = db.read_main(|main| {
@@ -395,6 +407,7 @@ pub fn chat_custom_tools_list(db: &Db, user_id: &str, chat_id: &str) -> Response
                     project_id,
                     perspective,
                     &all_character_ids,
+                    now_ms,
                 );
                 for (name, entry) in roster.tools {
                     if let Some((_, bucket)) = by_name.iter_mut().find(|(n, _)| *n == name) {
@@ -640,6 +653,11 @@ pub async fn chat_custom_tool_run(
     // definition declares an `llm` block then answers the LOUD not-assembled
     // error rather than silently taking the fail-soft consult path.
     consult: Option<&dyn ConsultRunner>,
+    // Epoch milliseconds at run start — ONE reading for the roster's gates, the
+    // progress sheet, `{{now}}` and the `updatedAt` an effect stamps (v4
+    // `chats/[id]/custom-tools/route.ts:456`). Injected so a differential can
+    // freeze it; production passes `now_unix_ms()`.
+    now_ms: i64,
 ) -> Response {
     let user_id_owned = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
@@ -701,6 +719,7 @@ pub async fn chat_custom_tool_run(
                 project_id,
                 &perspective,
                 &all_ids,
+                now_ms,
             );
             match roster.get(&tool_owned) {
                 None => Ok(RunPrep::UnknownTool {
@@ -813,6 +832,17 @@ pub async fn chat_custom_tool_run(
         _ => None,
     };
 
+    // The flattened progress sheet, derived from the SAME snapshot the gates
+    // read and against the SAME `now_ms`. It follows the metadata asymmetry
+    // above by construction: a run nobody made carries an empty `metadata`, so
+    // its sheet is empty too, and every `progress` test declines (v4
+    // `route.ts:457` — `body.asCharacterId ? perspective.metadata : {}`).
+    let progress = flatten_progressions(
+        Some(&Value::Object(metadata.clone())),
+        now_ms,
+        &mut |_, _| {},
+    );
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     let result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
@@ -825,6 +855,8 @@ pub async fn chat_custom_tool_run(
         // block; the chat run attributes the consult to THIS chat, so a
         // dangerous room reroutes to the uncensored profile.
         invoker.as_ref().map(|i| i as &dyn LlmInvoker),
+        Some(&progress),
+        now_ms,
     )
     .await
     {
@@ -862,6 +894,7 @@ pub async fn chat_custom_tool_run(
         Some(cascade),
         as_character_id.map(|_| perspective_character_id),
         &metadata,
+        now_ms,
     )
     .await;
 
@@ -1326,6 +1359,9 @@ pub async fn custom_tool_preview(
     llm: Option<&Value>,
     user_id: &str,
     consult: Option<&dyn ConsultRunner>,
+    // The bench's one clock reading (v4 `benchNowMs`), shared by the preview's
+    // progress sheet, its gate verdict and `{{now}}`.
+    now_ms: i64,
 ) -> Response {
     let BenchRequest {
         params,
@@ -1381,6 +1417,14 @@ pub async fn custom_tool_preview(
         _ => None,
     };
 
+    // The bench's sheet: derived from the body's own `metadata` (which may carry
+    // a `progressions` block) at the bench's one clock reading.
+    let progress = flatten_progressions(
+        Some(&Value::Object(metadata.clone())),
+        now_ms,
+        &mut |_, _| {},
+    );
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     match execute_custom_tool(
         &definition,
@@ -1390,6 +1434,8 @@ pub async fn custom_tool_preview(
         state.as_ref(),
         &mut rng,
         invoker,
+        Some(&progress),
+        now_ms,
     )
     .await
     {
@@ -1405,9 +1451,21 @@ pub async fn custom_tool_preview(
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert(
                         "gate".into(),
-                        serde_json::to_value(evaluate_tool_gate(&definition, Some(&metadata)))
-                            .unwrap_or(Value::Null),
+                        serde_json::to_value(evaluate_tool_gate(
+                            &definition,
+                            Some(&metadata),
+                            Some(&progress),
+                        ))
+                        .unwrap_or(Value::Null),
                     );
+                }
+            }
+            // v4's response spread puts `progress` AFTER `gate`, and only when
+            // the sheet is non-empty — a bench body with no `progressions` block
+            // answers exactly as it did before this feature.
+            if !progress.is_empty() {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("progress".into(), Value::Object(progress.clone()));
                 }
             }
             Response::CustomToolPreview(body)
@@ -1424,6 +1482,11 @@ pub fn custom_tool_audit(
     metadata: Option<&Value>,
     state: Option<&Value>,
     llm: Option<&Value>,
+    // The audit's one clock reading: the progress sheet is derived ONCE and held
+    // fixed across every draw, so hit rates for a table branching on
+    // `cannon.complete` are conditional on that single instant — the caveat the
+    // bench already states for a pretend consult.
+    now_ms: i64,
 ) -> Response {
     // §B's mock state is held fixed across every draw.
     let BenchRequest {
@@ -1464,6 +1527,14 @@ pub fn custom_tool_audit(
         }
     });
 
+    // Derived ONCE and held fixed across every draw (v4 `handleAudit` passes
+    // `flattenProgressions(metadata, Date.now())` as the trailing argument).
+    let progress = flatten_progressions(
+        Some(&Value::Object(metadata.clone())),
+        now_ms,
+        &mut |_, _| {},
+    );
+
     let mut rng = crate::tools::rng::OsRandomBytes;
     match crate::pascal::custom_tools::simulate_outcomes(
         &definition,
@@ -1473,6 +1544,7 @@ pub fn custom_tool_audit(
         fixed_llm.as_ref(),
         state.as_ref(),
         &mut rng,
+        Some(&progress),
     ) {
         Ok(result) => Response::CustomToolAudit(json!({
             "runs": result.runs,

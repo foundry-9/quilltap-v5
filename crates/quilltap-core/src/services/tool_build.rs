@@ -497,7 +497,16 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
             .read_main(|main| {
                 db.read_mount_index(|mount| {
                     Ok(crate::pascal::roster::resolve_custom_tool_roster(
-                        ctx, main, mount,
+                        ctx,
+                        main,
+                        mount,
+                        // Building the slate for a turn: the gates read the wall
+                        // clock here, and the RUN that may follow takes its own
+                        // reading. v4 does the same — `resolveCustomToolRoster`
+                        // and the handler each call `Date.now()` — so a cannon
+                        // that finishes charging between the two is offered and
+                        // then rolls as charged, which is the honest order.
+                        crate::clock::now_unix_ms() as i64,
                     ))
                 })
             })

@@ -23,6 +23,12 @@ use quilltap_core::pascal::roster::{resolve_custom_tool_roster, RosterContext};
 use quilltap_core::services::tool_build::{build_tools, BuildToolsInput};
 use quilltap_core::tools::run_custom::build_run_custom_description;
 
+/// P4.D169: Pascal's entrances now take their clock from the caller, so a
+/// differential can freeze it. Until this family's corpus carries a
+/// progression, no row reads the value; a fixed instant keeps the run
+/// reproducible. 2026-09-08T12:00:00Z.
+const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 /// P4.d19: the sheet that is withheld BOTH gated definitions.
@@ -128,7 +134,9 @@ fn build_tools_resolves_and_offers_run_custom() {
 
     let roster = db
         .read_main(|main| {
-            db.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&ctx, main, mount)))
+            db.read_mount_index(|mount| {
+                Ok(resolve_custom_tool_roster(&ctx, main, mount, PASCAL_NOW_MS))
+            })
         })
         .unwrap();
     let expected_roster: Vec<_> = roster.tools.iter().map(|(_, t)| t.clone()).collect();
@@ -186,7 +194,14 @@ fn build_tools_resolves_and_offers_run_custom() {
         .expect("run_custom offered for a non-empty roster");
     let roster_b = db_b
         .read_main(|main| {
-            db_b.read_mount_index(|mount| Ok(resolve_custom_tool_roster(&ctx_b, main, mount)))
+            db_b.read_mount_index(|mount| {
+                Ok(resolve_custom_tool_roster(
+                    &ctx_b,
+                    main,
+                    mount,
+                    PASCAL_NOW_MS,
+                ))
+            })
         })
         .unwrap();
     assert_eq!(

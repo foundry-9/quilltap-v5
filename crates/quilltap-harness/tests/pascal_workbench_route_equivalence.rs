@@ -57,6 +57,21 @@ use quilltap_core::pascal::llm_consult::ProviderConsultRunner;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+/// The bench's clock for one case. v4's route reads `Date.now()`; the corpus
+/// may pin it per case (`nowMs`) so a progression-carrying body renders the same
+/// spans on both sides, and otherwise every row is clock-independent.
+fn bench_now_ms(case: &Value) -> i64 {
+    case.get("nowMs")
+        .and_then(Value::as_i64)
+        .unwrap_or(PASCAL_NOW_MS)
+}
+
+/// P4.D169: Pascal's entrances now take their clock from the caller, so a
+/// differential can freeze it. Until this family's corpus carries a
+/// progression, no row reads the value; a fixed instant keeps the run
+/// reproducible. 2026-09-08T12:00:00Z.
+const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
 /// The fixture's user (`harness/oracle/fixtures/workbench.json`). Reached by
 /// the `{live:true}` arm (the P4.6bd `preview-live-consult` case).
 const USER: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
@@ -422,6 +437,11 @@ fn workbench_route_matches_oracle() {
                                     case.get("llm"),
                                     USER,
                                     Some(&runner),
+                                    // P4.D169: the bench's frozen clock. A case
+                                    // whose `metadata` carries a `progressions`
+                                    // block reads it; every pre-existing case is
+                                    // unmoved by it.
+                                    bench_now_ms(case),
                                 )),
                         )
                     }
@@ -432,6 +452,7 @@ fn workbench_route_matches_oracle() {
                         metadata.as_ref(),
                         case.get("state"),
                         case.get("llm"),
+                        bench_now_ms(case),
                     )),
                 }
             }

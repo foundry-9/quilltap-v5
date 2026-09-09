@@ -47,6 +47,7 @@ pub static PLACEHOLDER_PATTERN: LazyLock<Regex> =
 const PARAMS_PREFIX: &str = "params.";
 const METADATA_PREFIX: &str = "metadata.";
 const STATE_PREFIX: &str = "state.";
+const PROGRESS_PREFIX: &str = "progress.";
 
 /// v4 `PlaceholderRef` — a classified placeholder key. `Unknown` keeps the key
 /// for diagnostics.
@@ -56,10 +57,27 @@ pub enum PlaceholderRef {
     Roll,
     Dice,
     Llm,
-    Params { name: String },
-    Metadata { key: String },
-    State { path: String },
-    Unknown { key: String },
+    /// Epoch milliseconds at run start — ONE value for the whole run, which is
+    /// what lets an effect express "ten minutes from now" as
+    /// `{{now}} + 600000` without the format growing a date grammar.
+    Now,
+    Params {
+        name: String,
+    },
+    Metadata {
+        key: String,
+    },
+    State {
+        path: String,
+    },
+    /// A derived field of one of the rolling character's timed progressions.
+    Progress {
+        id: String,
+        field: String,
+    },
+    Unknown {
+        key: String,
+    },
 }
 
 /// v4 `classifyPlaceholder(key)` — classify one ALREADY-TRIMMED placeholder key.
@@ -72,6 +90,7 @@ pub fn classify_placeholder(key: &str) -> PlaceholderRef {
         "roll" => return PlaceholderRef::Roll,
         "dice" => return PlaceholderRef::Dice,
         "llm" => return PlaceholderRef::Llm,
+        "now" => return PlaceholderRef::Now,
         _ => {}
     }
     if let Some(name) = key.strip_prefix(PARAMS_PREFIX) {
@@ -91,6 +110,25 @@ pub fn classify_placeholder(key: &str) -> PlaceholderRef {
             return PlaceholderRef::State {
                 path: path.to_string(),
             };
+        }
+    }
+    // `progress.<id>.<field>`. Unlike `metadata.`, whose remainder is taken
+    // WHOLE because a metadata key is the user's own vocabulary, this splits at
+    // the FIRST dot: `<id>` is an identifier the format defines and `<field>` is
+    // drawn from a closed set the engine publishes. A key naming only an id, or
+    // only a field, names nothing.
+    //
+    // v4's guard is `dot > 0 && dot < rest.length - 1` — both ends non-empty.
+    // The indices are UTF-16 units there and bytes here, which cannot change the
+    // answer: the test is emptiness at each end, not a position.
+    if let Some(rest) = key.strip_prefix(PROGRESS_PREFIX) {
+        if let Some(dot) = rest.find('.') {
+            if dot > 0 && dot + 1 < rest.len() {
+                return PlaceholderRef::Progress {
+                    id: rest[..dot].to_string(),
+                    field: rest[dot + 1..].to_string(),
+                };
+            }
         }
     }
     PlaceholderRef::Unknown {

@@ -639,6 +639,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             character_ids: ctx.character_ids.clone(),
             project_id: ctx.project_id.clone(),
             caller_participant_id: ctx.calling_participant_id.clone(),
+            // Production's one reading for this run (v4 `Date.now()` at the top
+            // of the handler). Every family that drives this path injects its
+            // own frozen instant instead.
+            now_ms: crate::clock::now_unix_ms() as i64,
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's

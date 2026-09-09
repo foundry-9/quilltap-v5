@@ -9,13 +9,20 @@
 //! neither is offered to everyone, which is every file written before this key
 //! existed.
 //!
-//! # Why metadata alone
+//! # Why metadata and progress alone
 //!
 //! The gate is answered before the deal. There is no roll to test, no resolved
 //! parameters (nobody has called anything yet), and no consult. What a character
-//! carries into the room is their `metadata.json`, so that is the only subject a
-//! pre-roll test can honestly have — and the reason a gate's operands are
-//! literals rather than `$param`/`$state` references.
+//! carries into the room is their `metadata.json` — and, derived from the
+//! `progressions` key inside it against the wall clock, their timed
+//! progressions. Those two are the only subjects a pre-roll test can honestly
+//! have, and the reason a gate's operands are literals rather than
+//! `$param`/`$state` references.
+//!
+//! The progress sheet is what makes `availableWhen: { progress: {
+//! "cannon.complete": { eq: true } } }` — the whole weapon-recharge use case —
+//! a gate rather than a branch in every outcome table. The roster already holds
+//! the invoker's metadata, so deriving the sheet from it adds no reads.
 //!
 //! # Fail-soft, and therefore fail-CLOSED for `availableWhen`
 //!
@@ -82,12 +89,17 @@ pub fn has_tool_gate(definition: &QtapCustomTool) -> bool {
 pub fn evaluate_tool_gate(
     definition: &QtapCustomTool,
     metadata: Option<&Map<String, Value>>,
+    // The invoker's derived progress sheet (`flatten_progressions`), keyed
+    // `"<id>.<field>"`. `None` → `{}`, so every `progress` test fails and the
+    // fail-closed / fail-open reading applies to it unchanged.
+    progress: Option<&Map<String, Value>>,
 ) -> ToolGateVerdict {
     let empty = Map::new();
     let sheet = metadata.unwrap_or(&empty);
+    let progress_sheet = progress.unwrap_or(&empty);
 
     if let Some(gate) = definition.available_when.as_ref() {
-        if !gate_holds(gate, sheet) {
+        if !gate_holds(gate, sheet, progress_sheet) {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::AvailableWhen),
@@ -96,7 +108,7 @@ pub fn evaluate_tool_gate(
     }
 
     if let Some(gate) = definition.withheld_when.as_ref() {
-        if gate_holds(gate, sheet) {
+        if gate_holds(gate, sheet, progress_sheet) {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::WithheldWhen),
@@ -111,23 +123,32 @@ pub fn evaluate_tool_gate(
 }
 
 /// Every test in a gate must hold. Keys AND together, as they do in a `when`.
-pub fn gate_holds(gate: &ToolGate, metadata: &Map<String, Value>) -> bool {
-    for (key, comparator) in &gate.metadata {
-        let holds = metadata_comparator_holds::<Infallible>(
-            comparator,
-            key,
-            metadata,
-            // A gate's operands are literals by construction — the schema admits
-            // no `$param` or `$state` here — so resolution is the identity, and
-            // cannot fail.
-            &mut |comparator_key| Ok(literal_operand(comparator, comparator_key)),
-            &mut |_| {},
-        );
-        match holds {
-            Ok(true) => continue,
-            Ok(false) => return false,
-            // `Infallible` — the resolver above has no error arm to take.
-            Err(never) => match never {},
+///
+/// Both subjects go through the SAME comparison table — one semantics, no second
+/// implementation to drift — differing only in which sheet they read.
+pub fn gate_holds(
+    gate: &ToolGate,
+    metadata: &Map<String, Value>,
+    progress: &Map<String, Value>,
+) -> bool {
+    for (sheet, tests) in [(metadata, &gate.metadata), (progress, &gate.progress)] {
+        for (key, comparator) in tests {
+            let holds = metadata_comparator_holds::<Infallible>(
+                comparator,
+                key,
+                sheet,
+                // A gate's operands are literals by construction — the schema
+                // admits no `$param` or `$state` here — so resolution is the
+                // identity, and cannot fail.
+                &mut |comparator_key| Ok(literal_operand(comparator, comparator_key)),
+                &mut |_| {},
+            );
+            match holds {
+                Ok(true) => continue,
+                Ok(false) => return false,
+                // `Infallible` — the resolver above has no error arm to take.
+                Err(never) => match never {},
+            }
         }
     }
     true

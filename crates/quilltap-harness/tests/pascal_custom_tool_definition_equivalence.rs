@@ -63,6 +63,11 @@ enum Row {
         #[serde(rename = "inputJson")]
         input_json: String,
         metadata: Option<Map<String, Value>>,
+        /// [P4.D169] The flattened progress sheet the gate is posed against.
+        /// Absent on every pre-existing row, which is what keeps their verdicts
+        /// byte-identical.
+        #[serde(default)]
+        progress: Option<Map<String, Value>>,
         #[serde(rename = "hasGate")]
         has_gate: bool,
         verdict: String,
@@ -149,6 +154,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
                 id,
                 input_json,
                 metadata,
+                progress,
                 has_gate,
                 verdict,
             } => {
@@ -160,8 +166,12 @@ fn pascal_custom_tool_definition_matches_oracle() {
 
                 assert_eq!(has_tool_gate(&tool), has_gate, "hasToolGate '{id}'");
 
-                let got = serde_json::to_string(&evaluate_tool_gate(&tool, metadata.as_ref()))
-                    .expect("a verdict serializes");
+                let got = serde_json::to_string(&evaluate_tool_gate(
+                    &tool,
+                    metadata.as_ref(),
+                    progress.as_ref(),
+                ))
+                .expect("a verdict serializes");
                 assert_eq!(
                     got, verdict,
                     "gate case '{id}': verdict differs (withheldBy's absence included)"

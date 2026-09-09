@@ -43,6 +43,7 @@ use super::custom_tool_types::{
     TOOLS_FOLDER, TOOL_FILE_SUFFIX,
 };
 use super::tool_gate::{evaluate_tool_gate, has_tool_gate};
+use crate::progressions::flatten_progressions;
 
 /// Tier precedence, nearest first. A nearer tier shadows a farther one.
 const TIER_ORDER: [MountTier; 5] = [
@@ -300,6 +301,11 @@ pub fn resolve_roster_from_pool(
     pool: &TieredMountPool,
     mut load: impl FnMut(&str, MountTier) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>),
     mut invoker_metadata: impl FnMut() -> Map<String, Value>,
+    // ONE clock reading for the whole roster resolution, so two gates cannot
+    // disagree about whether the cannon has finished charging. Injected rather
+    // than read here (v4 takes `Date.now()` at the top of the function) so the
+    // differential can freeze it.
+    roster_now_ms: i64,
 ) -> CustomToolRoster {
     let mut roster = CustomToolRoster::default();
     // Names switched off by a nearer tier. They must stay off further out.
@@ -309,6 +315,11 @@ pub fn resolve_roster_from_pool(
     // most rosters carry none, and none of them should pay for a vault read.
     // (v4 memoises a promise; synchronous Rust memoises the value.)
     let mut sheet: Option<Map<String, Value>> = None;
+    // The invoker's progressions, derived from that SAME sheet — and only when a
+    // gate actually names `progress`, so a roster of purely metadata-gated tools
+    // pays nothing for the feature. v4 memoises a thunk; synchronous Rust
+    // memoises the value.
+    let mut progress_sheet: Option<Map<String, Value>> = None;
 
     for (tier, mount_point_id) in ordered_mounts(pool) {
         let (found, mount_errors) = load(&mount_point_id, tier);
@@ -332,10 +343,34 @@ pub fn resolve_roster_from_pool(
             // gated tombstone ("suppress this name for novices") is simply both
             // keys at once, and reads exactly as it says.
             if has_tool_gate(&entry.definition) {
-                let verdict = evaluate_tool_gate(
-                    &entry.definition,
-                    Some(sheet.get_or_insert_with(&mut invoker_metadata)),
-                );
+                // v4: `entry.definition.availableWhen?.progress ||
+                // entry.definition.withheldWhen?.progress ? await
+                // invokerProgress() : undefined` — the sheet is derived only for
+                // a definition whose gate names it.
+                let names_progress = [
+                    entry.definition.available_when.as_ref(),
+                    entry.definition.withheld_when.as_ref(),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|g| !g.progress.is_empty());
+                let metadata = sheet.get_or_insert_with(&mut invoker_metadata).clone();
+                let progress = if names_progress {
+                    Some(progress_sheet.get_or_insert_with(|| {
+                        flatten_progressions(
+                            Some(&Value::Object(metadata.clone())),
+                            roster_now_ms,
+                            // A malformed entry is dropped by the shared reader;
+                            // the roster has no author to tell, and the prompt
+                            // path already warns about the same vault.
+                            &mut |_, _| {},
+                        )
+                    }))
+                } else {
+                    None
+                };
+                let verdict =
+                    evaluate_tool_gate(&entry.definition, Some(&metadata), progress.map(|p| &*p));
                 if !verdict.available {
                     // v4's `logger.debug('Custom tool withheld by its
                     // availability gate', {…})`, same point, same fields.
@@ -546,6 +581,10 @@ pub fn resolve_custom_tool_roster(
     ctx: &RosterContext,
     main: &Connection,
     mount: &Connection,
+    // v4 reads `Date.now()` at the top of `resolveCustomToolRoster`; v5 takes it
+    // from the caller so a differential can freeze it, and so the roster's gates
+    // and the run that follows can share ONE reading rather than taking two.
+    roster_now_ms: i64,
 ) -> CustomToolRoster {
     let pool = resolve_tiered_mount_pool(
         main,
@@ -567,6 +606,7 @@ pub fn resolve_custom_tool_roster(
         &pool,
         |mount_point_id, tier| load_tools_from_mount(mount, mount_point_id, tier),
         || load_invoker_metadata(ctx, main, mount),
+        roster_now_ms,
     )
 }
 

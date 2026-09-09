@@ -61,6 +61,10 @@ use serde_json::Value;
 
 use super::dice::{parse_dice_notation, MAX_DIE_SIDES, MIN_DIE_SIDES};
 use super::expressions::parse_expression;
+use crate::progressions::{
+    is_progression_id, is_writable_progression_field, parse_progress_key,
+    PROGRESSIONS_METADATA_KEY, WRITABLE_PROGRESSION_FIELDS,
+};
 use crate::state::paths::{parse_path, PathKey};
 
 /// Well-known folder, at a store's root, holding custom-tool definitions.
@@ -658,8 +662,27 @@ pub type GateComparator = ParamComparator;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ToolGate {
     /// Ordered, mirroring the authored key order `Object.keys` walks.
-    #[serde(serialize_with = "ser_param_comparators")]
+    ///
+    /// v4 made this OPTIONAL at `0587d1e96`: a gate may now test progressions
+    /// alone. An absent key and an empty object are the same thing to every
+    /// reader (`Object.entries(gate.metadata ?? {})`), so v5 keeps one `Vec`
+    /// that may be empty rather than an `Option<Vec>` — but the SERIALIZED
+    /// shape must still distinguish them, which is why the writer skips an
+    /// empty one (v4 omits the key it never parsed).
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "ser_param_comparators"
+    )]
     pub metadata: Vec<(String, GateComparator)>,
+    /// Test the invoking character's timed progressions, keyed `"<id>.<field>"`
+    /// — e.g. `{ "cannon.complete": { "eq": true } }`. Derived fresh from the
+    /// wall clock at roster time. A progression the character does not carry
+    /// does not match.
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "ser_param_comparators"
+    )]
+    pub progress: Vec<(String, GateComparator)>,
 }
 
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
@@ -706,6 +729,18 @@ pub struct WhenObject {
         serialize_with = "ser_opt_param_comparators"
     )]
     pub metadata: Option<Vec<(String, ParamComparator)>>,
+    /// Test the invoking character's timed progressions, keyed `"<id>.<field>"`
+    /// — percent, complete, remainingMs, state and the rest, derived from the
+    /// wall clock at run start. A progression the character does not carry does
+    /// not match, exactly as an absent metadata key does not.
+    ///
+    /// Shape-identical to `metadata`; what differs is that the KEY vocabulary is
+    /// the format's rather than the user's, so it is checked at load time.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_param_comparators"
+    )]
+    pub progress: Option<Vec<(String, ParamComparator)>>,
     /// Test the LLM consult's answer (or, via `ok`, whether it succeeded). Only
     /// valid on a tool that declares an `llm` block.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -789,8 +824,24 @@ pub struct CustomToolEffect {
 /// A parsed effect target, with the raw text kept for records and messages.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EffectTarget {
-    State { path: Vec<PathKey>, raw: String },
-    Metadata { key: String, raw: String },
+    State {
+        path: Vec<PathKey>,
+        raw: String,
+    },
+    Metadata {
+        key: String,
+        raw: String,
+    },
+    /// One field of one of the rolling character's timed progressions. v4 types
+    /// `field` as its `WritableProgressionField` union; v5 keeps a `String`,
+    /// because the gate that makes it writable is
+    /// [`is_writable_progression_field`] at parse time and nothing downstream
+    /// can construct this variant without going through it.
+    Progress {
+        id: String,
+        field: String,
+        raw: String,
+    },
 }
 
 impl EffectTarget {
@@ -798,7 +849,9 @@ impl EffectTarget {
     /// records and what the skip reasons quote.
     pub fn raw(&self) -> &str {
         match self {
-            EffectTarget::State { raw, .. } | EffectTarget::Metadata { raw, .. } => raw,
+            EffectTarget::State { raw, .. }
+            | EffectTarget::Metadata { raw, .. }
+            | EffectTarget::Progress { raw, .. } => raw,
         }
     }
 }
@@ -814,6 +867,15 @@ impl EffectTarget {
 /// - `metadata.<key>` — the remainder is taken WHOLE as the key. Metadata keys
 ///   are the user's vocabulary, so dots inside the key are fine precisely
 ///   because it is not path-parsed.
+/// - `progress.<id>.<field>` — a field of one of the rolling character's timed
+///   progressions. Unlike a metadata key, BOTH halves are the format's own
+///   vocabulary and both are checked here: the id against the progression
+///   identifier rule, the field against the closed writable set (which includes
+///   the `remove` pseudo-field — write `true` to delete the progression).
+///   Writing an id nobody authored CREATES the progression, so there is nothing
+///   to check about existence; what would be a silent no-op is a `quantity`
+///   written whole, or a `percent` written at all, and both are rejected here
+///   with the field list in the reason.
 ///
 /// `Err` carries v4's `reason` string verbatim.
 pub fn parse_effect_target(target: &str) -> Result<EffectTarget, String> {
@@ -833,9 +895,58 @@ pub fn parse_effect_target(target: &str) -> Result<EffectTarget, String> {
         });
     }
 
+    // Checked BEFORE `metadata.`, which it does not prefix-collide with, but
+    // ordering it first keeps the two user-facing families adjacent below.
+    if let Some(rest) = target.strip_prefix("progress.") {
+        // v4: `dot <= 0 || dot === rest.length - 1` refuses. Byte indices here
+        // against UTF-16 units there cannot change the answer — the test is
+        // emptiness at each end, not a position.
+        let dot = rest.find('.');
+        let Some(dot) = dot.filter(|d| *d > 0 && *d + 1 < rest.len()) else {
+            return Err(
+                "must name \"progress.<progression id>.<field>\" — e.g. \"progress.cannon.endTime\""
+                    .to_string(),
+            );
+        };
+        let id = &rest[..dot];
+        let field = &rest[dot + 1..];
+        if !is_progression_id(id) {
+            return Err(format!(
+                "writes progression \"{id}\", which is not a valid id — lowercase, starting with a letter, then letters, digits, _ or - (at most 64)"
+            ));
+        }
+        if !is_writable_progression_field(field) {
+            return Err(format!(
+                "writes \"{field}\", which is not a writable progression field — use one of {}",
+                WRITABLE_PROGRESSION_FIELDS.join(", ")
+            ));
+        }
+        return Ok(EffectTarget::Progress {
+            id: id.to_string(),
+            field: field.to_string(),
+            raw: target.to_string(),
+        });
+    }
+
     if let Some(key) = target.strip_prefix("metadata.") {
         if key.is_empty() {
             return Err("names no metadata key after \"metadata.\"".to_string());
+        }
+        // The reserved key is not writable through this door. An effect's value
+        // is always a PRIMITIVE, so `metadata.progressions` would replace the
+        // whole progressions object with a string or a number — wiping every
+        // timed span the character carries, past the schema validation and the
+        // rollback that guard the `progress.` path, and fail-soft enough on the
+        // next read that nobody would notice. `metadata.progressions.cannon` is
+        // refused for the adjacent reason: a metadata key is taken WHOLE, so
+        // that writes a literal key named "progressions.cannon" and touches no
+        // progression at all, which is not what anyone writing it means.
+        if key == PROGRESSIONS_METADATA_KEY
+            || key.starts_with(&format!("{PROGRESSIONS_METADATA_KEY}."))
+        {
+            return Err(format!(
+                "writes the reserved \"{PROGRESSIONS_METADATA_KEY}\" key through \"metadata.\" — use \"progress.<id>.<field>\" instead, which is validated and rolled back on a bad result"
+            ));
         }
         return Ok(EffectTarget::Metadata {
             key: key.to_string(),
@@ -843,7 +954,7 @@ pub fn parse_effect_target(target: &str) -> Result<EffectTarget, String> {
         });
     }
 
-    Err("must start with \"state.\" or \"metadata.\"".to_string())
+    Err("must start with \"state.\", \"metadata.\" or \"progress.\"".to_string())
 }
 
 /// The custom-tool definition.
@@ -1486,19 +1597,18 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
     };
 
     let mut issues = Vec::new();
-    let mut metadata = None;
+
+    // v4 `0587d1e96` made BOTH records optional: a gate may now test
+    // progressions alone. The old per-record `must test at least one metadata
+    // key` is GONE — what replaced it is one object-level refine over the two
+    // records' combined size, below.
+    let mut metadata = Some(Vec::new());
     match obj.get("metadata") {
+        None => {}
         Some(Value::Object(m)) => {
             // Metadata keys are `z.string().min(1)`, as they are in a `when`.
             let r = parse_record(m, |k| !k.is_empty(), |v| parse_gate_comparator(Some(v)));
-            let mut record_issues = r.issues;
-            // `.refine(keys.length > 0, 'must test at least one metadata key')`
-            // — a check on the record itself, so it is skipped once an entry
-            // aborted.
-            if !aborted(&record_issues) && m.is_empty() {
-                record_issues.push(Issue::check("must test at least one metadata key"));
-            }
-            issues.extend(prefix("metadata", record_issues));
+            issues.extend(prefix("metadata", r.issues));
             metadata = r.value;
         }
         other => {
@@ -1508,12 +1618,56 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
                 "metadata",
                 vec![Issue::hard(invalid_type("record", other))],
             ));
+            metadata = None;
         }
     }
-    issues.extend(unrecognized_keys(obj, &["metadata"]));
 
-    let value = match metadata {
-        Some(metadata) if !aborted(&issues) => Some(ToolGate { metadata }),
+    let mut progress = Some(Vec::new());
+    match obj.get("progress") {
+        None => {}
+        Some(Value::Object(m)) => {
+            // The key vocabulary here is the FORMAT's, not the user's, so it is
+            // checked at load time — through the one parser that owns the
+            // "<id>.<field>" shape, so this and the Workbench's condition
+            // validator cannot drift apart. MEASURED on Zod 4.5.4: a refused
+            // record key is `invalid_key` with the OUTER message
+            // `Invalid key in record`; `parse_progress_key`'s per-mistake
+            // sentence is nested one level down and `formatDefinitionIssues`
+            // never walks it, so the load-time string a person sees is
+            // `progress.<key>: Invalid key in record`. The sentences reach an
+            // author only through the Workbench.
+            let r = parse_record(
+                m,
+                |k| parse_progress_key(k).is_ok(),
+                |v| parse_gate_comparator(Some(v)),
+            );
+            issues.extend(prefix("progress", r.issues));
+            progress = r.value;
+        }
+        other => {
+            issues.extend(prefix(
+                "progress",
+                vec![Issue::hard(invalid_type("record", other))],
+            ));
+            progress = None;
+        }
+    }
+    issues.extend(unrecognized_keys(obj, &["metadata", "progress"]));
+
+    // `.refine(gate => Object.keys(gate.metadata ?? {}).length +
+    // Object.keys(gate.progress ?? {}).length > 0, …)` — an object-level check,
+    // so it is skipped once anything inside aborted.
+    let value = match (metadata, progress) {
+        (Some(metadata), Some(progress)) if !aborted(&issues) => {
+            if metadata.is_empty() && progress.is_empty() {
+                issues.push(Issue::check(
+                    "must test at least one metadata key or progress field",
+                ));
+                None
+            } else {
+                Some(ToolGate { metadata, progress })
+            }
+        }
         _ => None,
     };
     Res { value, issues }
@@ -1997,6 +2151,26 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
             vec![Issue::hard(invalid_type("record", Some(v)))],
         ));
     }
+    // `progress` — shape-identical to `metadata`, but its keys are the FORMAT's
+    // vocabulary and so are checked at load time (see `parse_tool_gate` for the
+    // measured `Invalid key in record` shape).
+    let mut progress_present = false;
+    if let Some(Value::Object(m)) = obj.get("progress") {
+        progress_present = true;
+        let r = parse_record(
+            m,
+            |k| parse_progress_key(k).is_ok(),
+            |v| parse_param_comparator(Some(v)),
+        );
+        issues.extend(prefix("progress", r.issues));
+        out.progress = r.value;
+    } else if let Some(v) = obj.get("progress") {
+        progress_present = true;
+        issues.extend(prefix(
+            "progress",
+            vec![Issue::hard(invalid_type("record", Some(v)))],
+        ));
+    }
 
     let mut llm_present = false;
     if let Some(v) = obj.get("llm") {
@@ -2020,7 +2194,7 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     }
 
     let mut known: Vec<&str> = NUMERIC_COMPARATOR_KEYS.to_vec();
-    known.extend_from_slice(&["roll", "params", "metadata", "llm"]);
+    known.extend_from_slice(&["roll", "params", "metadata", "progress", "llm"]);
     if effect {
         known.push("outcome");
     }
@@ -2041,17 +2215,19 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     let has_comparator = NUMERIC_COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
     let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
+    let has_progress = progress_present && out.progress.as_ref().is_some_and(|m| !m.is_empty());
     if !has_comparator
         && out.roll.is_none()
         && !llm_present
         && !outcome_present
         && !has_params
         && !has_metadata
+        && !has_progress
     {
         issues.push(Issue::check(if effect {
-            "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, or a non-empty `metadata`"
+            "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, or `progress`"
         } else {
-            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`"
+            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`"
         }));
     }
     Res {

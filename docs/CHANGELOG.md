@@ -307,6 +307,42 @@ integration test only `cargo test --workspace` reaches, so they surfaced one
 full gate run at a time. The `quilltap-web` site now derives the count from the
 embedded table; the two remaining literals are deliberate independent pins and
 cross-reference each other.
+#### 2026-09-08 — feat(pascal): the `progress` read subject, `{{now}}`, and one clock per run
+
+_Versions: core 0.0.848, harness 0.0.737._
+
+Pascal can now TEST a progression and RENDER one. `classifyPlaceholder` gains
+`now` and `progress.<id>.<field>` (split at the first dot, both halves the
+format's own vocabulary), which `isKnownRef` picks up for free, so `{{now}} +
+600000` parses as an effect expression. `when.progress` and a gate's `progress`
+read through the SAME fail-soft comparison table as metadata — one semantics, no
+second implementation — differing only in which sheet they consult and what they
+call the subject in the log. A gate's `metadata` becomes optional, so a gate may
+test progressions alone; the old per-record refine is replaced by one over both
+records' combined size.
+
+Every entrance now takes its clock from the caller and threads ONE reading: the
+roster's gates, the flattened progress sheet the tables and templates read,
+`{{now}}`, and the `updatedAt` an effect stamps all take the same instant, so a
+tool cannot see one moment and record another. Production passes
+`now_unix_ms()`; the differentials freeze it. The roster derives the sheet
+lazily, only for a definition whose gate actually names `progress`.
+
+The applier folds `progress.<id>.<field>` writes into the same `metadataNext`
+copy — one character write, the job-child contract untouched — with
+create-on-write defaults, `remove` only on `true`, epoch-or-ISO time
+normalisation, the increment re-inferred only on an entry this run created, and
+a post-validation pass that drops a refused entry's writes, restores what the
+character had, and leaves no empty reserved key behind. The roll still stands.
+
+The vocabulary gains `progress`, `progressWrites` and `now` in v4's declaration
+order, and `metadata.progressions` is refused as an effect target: an effect's
+value is always a primitive, so that write would have replaced the whole
+reserved object with a string.
+
+Three red-first proofs, recovered by reverting the tree and re-running against
+the regenerated oracles: the vocabulary's three new keys, the refine message,
+and the preamble's fourth sentence.
 
 #### 2026-09-08 — docs(progressions): record P4.D167's tip sha — the base the two stacked lanes branch from
 

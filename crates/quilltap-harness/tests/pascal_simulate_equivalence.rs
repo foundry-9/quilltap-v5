@@ -44,6 +44,11 @@ fn simulate_outcomes_matches_oracle() {
             output: o["output"].as_str().unwrap().to_string(),
         });
 
+        // P4.D169: the mock progress sheet, alongside the mock state.
+        let progress = match row.get("progress") {
+            Some(Value::Object(m)) => Some(m.clone()),
+            _ => None,
+        };
         // The mock merged state, held fixed across every draw (P4.d10).
         let state = match row.get("state") {
             Some(s @ Value::Object(_)) => Some(s.clone()),
@@ -58,6 +63,9 @@ fn simulate_outcomes_matches_oracle() {
             llm.as_ref(),
             state.as_ref(),
             &mut rng,
+            // P4.D169: the audit's mock progress sheet, held fixed across every
+            // draw. Absent on every pre-existing row.
+            progress.as_ref(),
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));
         assert_eq!(rng.consumed(), 0, "case '{id}' consumed bytes");

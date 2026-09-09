@@ -533,6 +533,14 @@ pub struct OutcomeSubjects<'a> {
     /// empty map) when nobody in particular rolled — every `metadata` test then
     /// fails and the catch-all answers.
     pub metadata: Option<&'a Map<String, Value>>,
+    /// The invoking character's timed progressions, FLATTENED to the primitive
+    /// sheet `flatten_progressions` produces — `"cannon.percent"`,
+    /// `"cannon.complete"` and the rest, derived from one `now_ms` taken at run
+    /// start. `None` (or an empty map) when nobody in particular rolled, or when
+    /// they carry no progressions; every `progress` test then fails and the
+    /// catch-all answers, exactly as it does for a metadata key the character
+    /// lacks.
+    pub progress: Option<&'a Map<String, Value>>,
     /// The LLM consult's result. `None` when the definition declares no `llm`
     /// block — an `llm` test then fails soft and the table falls through.
     pub llm: Option<&'a LlmSubject>,
@@ -774,15 +782,18 @@ fn matches_metadata_comparator(
     tool_name: &str,
     comparator: &MetadataComparator,
     key: &str,
-    metadata: &Map<String, Value>,
+    sheet: &Map<String, Value>,
     params: &ResolvedParams,
     state: Option<&Value>,
+    // Which sheet is being read, for the operand label and the debug log.
+    subject: ComparatorSubject,
 ) -> Result<bool, CustomToolRunError> {
     let operands = param_operands(comparator);
+    let subject = subject.as_str();
     metadata_comparator_holds(
         comparator,
         key,
-        metadata,
+        sheet,
         &mut |comparator_key| {
             let operand = operands
                 .iter()
@@ -793,23 +804,45 @@ fn matches_metadata_comparator(
                 tool_name,
                 operand,
                 params,
-                &format!("metadata \"{key}\" {comparator_key}"),
+                &format!("{subject} \"{key}\" {comparator_key}"),
                 state,
             )
         },
-        // v4's `logger.debug('Custom tool metadata test did not match', {…})`,
+        // v4's `logger.debug(`Custom tool ${subject} test did not match`, {…})`,
         // at the same point with the same fields (the P4.18 tracing surface, per
-        // the `llm_consult` precedent: v4's `context` becomes the target).
+        // the `llm_consult` precedent: v4's `context` becomes the target). The
+        // message is TEMPLATED on both sides — v4 interpolates the subject, and
+        // `tracing`'s format-args form renders the same bytes.
         &mut |reason| {
             tracing::debug!(
                 target: "quilltap::pascal",
                 tool = tool_name,
                 key,
                 reason,
-                "Custom tool metadata test did not match",
+                "Custom tool {subject} test did not match",
             );
         },
     )
+}
+
+/// Which sheet a [`matches_metadata_comparator`] call is posed against. v4
+/// passes the string literal `'metadata' | 'progress'` and defaults it to
+/// `'metadata'`; v5 makes the two callers name it, because a default that only
+/// one call site overrides is a silent trap the next reader has to go find.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ComparatorSubject {
+    Metadata,
+    Progress,
+}
+
+impl ComparatorSubject {
+    /// v4's literal — the bytes that reach the operand label and the log line.
+    fn as_str(self) -> &'static str {
+        match self {
+            ComparatorSubject::Metadata => "metadata",
+            ComparatorSubject::Progress => "progress",
+        }
+    }
 }
 
 /// Evaluate one comparator against the LLM consult — the second fail-soft
@@ -1053,7 +1086,36 @@ fn matches_when_object(
         let empty = Map::new();
         let metadata = subjects.metadata.unwrap_or(&empty);
         for (key, comparator) in entries {
-            if !matches_metadata_comparator(tool_name, comparator, key, metadata, params, state)? {
+            if !matches_metadata_comparator(
+                tool_name,
+                comparator,
+                key,
+                metadata,
+                params,
+                state,
+                ComparatorSubject::Metadata,
+            )? {
+                return Ok(false);
+            }
+        }
+    }
+
+    // The derived progress sheet reads through the SAME fail-soft table as
+    // metadata — one semantics, no second comparison code — differing only in
+    // which sheet it looks in and what it calls the subject in the log.
+    if let Some(entries) = when.progress.as_ref() {
+        let empty = Map::new();
+        let progress = subjects.progress.unwrap_or(&empty);
+        for (key, comparator) in entries {
+            if !matches_metadata_comparator(
+                tool_name,
+                comparator,
+                key,
+                progress,
+                params,
+                state,
+                ComparatorSubject::Progress,
+            )? {
                 return Ok(false);
             }
         }
@@ -1089,6 +1151,10 @@ pub struct EffectSubjects<'a> {
     pub outcome: WinningOutcome,
     /// Dice breakdown for `{{dice}}` in expressions — a string, `""` for Form A.
     pub dice: &'a str,
+    /// Epoch milliseconds at run start, for `{{now}}` in an effect expression —
+    /// the idiom `{{now}} + 600000` re-arms a countdown ten minutes out without
+    /// the format needing a date grammar.
+    pub now: i64,
 }
 
 /// Evaluate an effect's condition. Delegates the shared subjects to the same
@@ -1166,9 +1232,10 @@ impl Serialize for ResolvedEffect {
     }
 }
 
-/// v4's `EffectTarget` object literals: `{ kind: 'state', path, raw }` and
-/// `{ kind: 'metadata', key, raw }`, in that key order. A path segment is a
-/// string or a number, exactly as `parsePath` produces it.
+/// v4's `EffectTarget` object literals: `{ kind: 'state', path, raw }`,
+/// `{ kind: 'metadata', key, raw }` and `{ kind: 'progress', id, field, raw }`,
+/// each in that key order. A path segment is a string or a number, exactly as
+/// `parsePath` produces it.
 fn effect_target_to_value(target: &EffectTarget) -> Value {
     let mut m = Map::new();
     match target {
@@ -1190,6 +1257,12 @@ fn effect_target_to_value(target: &EffectTarget) -> Value {
         EffectTarget::Metadata { key, raw } => {
             m.insert("kind".into(), Value::String("metadata".into()));
             m.insert("key".into(), Value::String(key.clone()));
+            m.insert("raw".into(), Value::String(raw.clone()));
+        }
+        EffectTarget::Progress { id, field, raw } => {
+            m.insert("kind".into(), Value::String("progress".into()));
+            m.insert("id".into(), Value::String(id.clone()));
+            m.insert("field".into(), Value::String(field.clone()));
             m.insert("raw".into(), Value::String(raw.clone()));
         }
     }
@@ -1216,6 +1289,10 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
         dice: subjects.dice,
         params: subjects.base.params,
         metadata: subjects.base.metadata,
+        progress: subjects.base.progress,
+        // An effect ALWAYS has a run clock — `EffectSubjects.now` is not
+        // optional, which is what makes `{{now}} + 600000` the re-arming idiom.
+        now: Some(subjects.now),
         llm: subjects.base.llm,
         state: subjects.base.state,
     };
@@ -1304,6 +1381,12 @@ pub struct TemplateVars<'a> {
     pub dice: &'a str,
     pub params: &'a ResolvedParams,
     pub metadata: Option<&'a Map<String, Value>>,
+    /// The flattened progress sheet, for `{{progress.<id>.<field>}}`.
+    pub progress: Option<&'a Map<String, Value>>,
+    /// Epoch milliseconds at run start, for `{{now}}` — ONE value for the whole
+    /// run, so two effects in the same file that both say `{{now}}` agree.
+    /// `None` while rendering with no run clock (the placeholder stands).
+    pub now: Option<i64>,
     /// The consult's result. `None` while rendering the consult's own prompt.
     pub llm: Option<&'a LlmSubject>,
     /// The merged persistent state, for `{{state.path}}` placeholders.
@@ -1363,6 +1446,28 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                                 placeholder = whole,
                                 reason,
                                 "Custom tool message references metadata the character cannot render",
+                            );
+                        }
+                        // v4's two new arms sit between `metadata` and
+                        // `state` in the switch. The progress reason is FIXED
+                        // (unlike metadata's two-way split): the flattened sheet
+                        // is primitives all the way down, so "no such key" is
+                        // the only way a lookup can miss, and v4 says so in one
+                        // sentence covering both halves of the key.
+                        PlaceholderRef::Progress { .. } => {
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                placeholder = whole,
+                                reason = "the character carries no such progression, or it has no such field",
+                                "Custom tool message references a progression the character cannot render",
+                            );
+                        }
+                        PlaceholderRef::Now => {
+                            // v4 logs NO fields here — not even the
+                            // placeholder, which `{{now}}` already names.
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                "Custom tool message references {{{{now}}}} with no run clock to render",
                             );
                         }
                         PlaceholderRef::State { path } => {
@@ -1431,6 +1536,14 @@ pub fn resolve_placeholder_value(
             .metadata
             .and_then(|m| m.get(key))
             .and_then(js_primitive),
+        // The flattened sheet is keyed `"<id>.<field>"`, so the two halves the
+        // classifier split are rejoined here rather than looked up in a nested
+        // object — v4 `vars.progress?.[`${ref.id}.${ref.field}`]`.
+        PlaceholderRef::Progress { id, field } => vars
+            .progress
+            .and_then(|m| m.get(&format!("{id}.{field}")))
+            .and_then(js_primitive),
+        PlaceholderRef::Now => vars.now.map(|n| ResolvedValue::Number(n as f64)),
         PlaceholderRef::State { path } => {
             // `state.` is stripped and the remainder is a full state path
             // (v4 `f48f34dc`).
@@ -1464,6 +1577,10 @@ mod render_template_debug_tests {
             dice: "d6",
             params: &EMPTY_PARAMS,
             metadata,
+            // The render-debug rig poses neither subject; the two P4.D169 arms
+            // have their own tests below.
+            progress: None,
+            now: None,
             llm: None,
             state,
         }
@@ -1680,6 +1797,15 @@ pub async fn execute_custom_tool(
     state: Option<&Value>,
     rng: &mut (dyn RandomBytes + Send),
     llm_invoke: Option<&dyn LlmInvoker>,
+    // The flattened progress sheet, derived by the ENTRANCE from the same
+    // metadata snapshot it hands in above, against one `now_ms` taken at run
+    // start. Derived there rather than here so the sheet and `{{now}}` are the
+    // same clock reading the entrance's effect applier will later stamp with.
+    progress: Option<&Map<String, Value>>,
+    // Epoch milliseconds at run start, for `{{now}}`. v4 defaults it to
+    // `Date.now()`; v5 makes every caller pass it, so a differential can freeze
+    // it and no site can quietly take a second reading.
+    now_ms: i64,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
     let params = resolve_params(definition, supplied_params, state)?;
 
@@ -1736,6 +1862,8 @@ pub async fn execute_custom_tool(
                     dice: &dice_breakdown,
                     params: &params,
                     metadata,
+                    progress,
+                    now: Some(now_ms),
                     llm: None,
                     state,
                 },
@@ -1751,6 +1879,7 @@ pub async fn execute_custom_tool(
         roll: raw,
         params: &params,
         metadata,
+        progress,
         llm: llm_subject.as_ref(),
         state,
     };
@@ -1779,6 +1908,8 @@ pub async fn execute_custom_tool(
             dice: &dice_breakdown,
             params: &params,
             metadata,
+            progress,
+            now: Some(now_ms),
             llm: llm_subject.as_ref(),
             state,
         },
@@ -1797,6 +1928,8 @@ pub async fn execute_custom_tool(
                 dice: &dice_breakdown,
                 params: &params,
                 metadata,
+                progress,
+                now: Some(now_ms),
                 llm: llm_subject.as_ref(),
                 state,
             },
@@ -1813,6 +1946,7 @@ pub async fn execute_custom_tool(
                     roll: raw,
                     params: &params,
                     metadata,
+                    progress,
                     llm: llm_subject.as_ref(),
                     state,
                 },
@@ -1821,6 +1955,7 @@ pub async fn execute_custom_tool(
                     index: outcome_index,
                 },
                 dice: &dice_breakdown,
+                now: now_ms,
             };
             Some(resolve_effects(definition, &effect_subjects))
         }
@@ -1899,6 +2034,11 @@ pub fn simulate_outcomes(
     // trailing `state: CustomToolState = {}`).
     state: Option<&Value>,
     rng: &mut dyn RandomBytes,
+    // The mock progress sheet, held fixed across every draw. The bench derives
+    // it from the typed fact sheet at ONE instant, so an audit of a table that
+    // branches on `cannon.complete` is conditional on that one clock reading —
+    // the same caveat the bench already states for a pretend consult.
+    progress: Option<&Map<String, Value>>,
 ) -> Result<CustomToolAuditResult, CustomToolRunError> {
     let params = resolve_params(definition, supplied_params, state)?;
 
@@ -1937,6 +2077,7 @@ pub fn simulate_outcomes(
             roll: raw,
             params: &params,
             metadata,
+            progress,
             llm,
             state,
         };
@@ -2014,7 +2155,7 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let r = simulate_outcomes(&d, None, 20_000, None, None, None, &mut rng).unwrap();
+        let r = simulate_outcomes(&d, None, 20_000, None, None, None, &mut rng, None).unwrap();
         let low = r.outcomes[0].share;
         assert!(
             (0.2..0.4).contains(&low),
@@ -2043,6 +2184,7 @@ mod simulate_tests {
             None,
             None,
             &mut rng,
+            None,
         )
         .unwrap();
         assert_eq!(empty.outcomes[0].hits, 0);
@@ -2050,7 +2192,7 @@ mod simulate_tests {
         let mut sheet = serde_json::Map::new();
         sheet.insert("luck".into(), serde_json::json!(7));
         let carrying =
-            simulate_outcomes(&d, None, 100, Some(&sheet), None, None, &mut rng).unwrap();
+            simulate_outcomes(&d, None, 100, Some(&sheet), None, None, &mut rng, None).unwrap();
         assert_eq!(carrying.outcomes[0].hits, 100);
     }
 
@@ -2062,6 +2204,6 @@ mod simulate_tests {
             "outcomes": [{ "when": true, "message": "x", "state": "info" }],
         }));
         let mut rng = OsRandomBytes;
-        assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng).is_err());
+        assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng, None).is_err());
     }
 }
