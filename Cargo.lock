@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-cli"
-version = "0.0.19"
+version = "0.0.20"
 dependencies = [
  "jiff",
  "libc",
@@ -3949,7 +3949,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.856"
+version = "0.0.857"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3993,7 +3993,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.748"
+version = "0.0.749"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -4014,7 +4014,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.116"
+version = "0.0.117"
 dependencies = [
  "base64 0.22.1",
  "image",

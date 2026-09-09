@@ -318,8 +318,8 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                                 chat_id,
                                 tool = tool_name,
                                 effect_target = %raw,
-                                previous = ?previous,
-                                next = ?next_value,
+                                previous = %previous,
+                                next = %next_value,
                                 "Custom tool progress effect folded",
                             ),
                             None => tracing::debug!(
@@ -328,7 +328,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                                 chat_id,
                                 tool = tool_name,
                                 effect_target = %raw,
-                                next = ?next_value,
+                                next = %next_value,
                                 "Custom tool progress effect folded",
                             ),
                         }
@@ -431,7 +431,11 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                 );
                 match previous {
                     None => {
-                        record.remove(id);
+                        // `shift_remove`: v4 `delete record[id]` keeps every other
+                        // key where it was, and `IndexMap::remove` is SWAP-remove
+                        // (the last key would move into the hole). Key order
+                        // reaches disk through the vault writer.
+                        record.shift_remove(id);
                     }
                     Some(v) => {
                         record.insert(id.clone(), v.clone());
@@ -441,7 +445,9 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
             // Every touched entry may have been rolled back; don't leave an
             // empty reserved key behind where the character had none.
             if record.is_empty() {
-                next.remove(PROGRESSIONS_METADATA_KEY);
+                // `shift_remove` for the same reason: `delete metadataNext[key]`
+                // leaves the character's other metadata keys in their order.
+                next.shift_remove(PROGRESSIONS_METADATA_KEY);
             } else {
                 next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
             }
@@ -520,7 +526,11 @@ fn apply_progress_write(
             metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
             return Err("progress remove effect wrote a value other than true".to_string());
         }
-        let Some(previous) = record.remove(id) else {
+        // `shift_remove` (v4 `delete record[id]`): a swap-remove would move the
+        // LAST progression into the removed one's slot, reordering the reserved
+        // key's entries on disk — invisible to every family, which compare
+        // `Value`s (order-independent), and caught at the unification review.
+        let Some(previous) = record.shift_remove(id) else {
             metadata_next.insert(PROGRESSIONS_METADATA_KEY.to_string(), Value::Object(record));
             return Err("progress remove effect names no such progression".to_string());
         };
@@ -1446,8 +1456,8 @@ mod progress_fold_debug_tests {
             *folded[0],
             "DEBUG quilltap::pascal Custom tool progress effect folded \
 context=pascal.side-effects chat_id=chat-1 tool=fire_cannon \
-effect_target=progress.cannon.endTime previous=String(\"2026-08-29T12:00:00Z\") \
-next=String(\"2026-08-29T12:10:00.000Z\")"
+effect_target=progress.cannon.endTime previous=\"2026-08-29T12:00:00Z\" \
+next=\"2026-08-29T12:10:00.000Z\""
         );
     }
 
@@ -1464,11 +1474,7 @@ next=String(\"2026-08-29T12:10:00.000Z\")"
             .collect();
         assert_eq!(folded.len(), 1, "{lines:?}");
         assert!(!folded[0].contains("previous"), "{}", folded[0]);
-        assert!(
-            folded[0].ends_with("next=String(\"once\")"),
-            "{}",
-            folded[0]
-        );
+        assert!(folded[0].ends_with("next=\"once\""), "{}", folded[0]);
     }
 
     #[test]
@@ -1501,6 +1507,119 @@ next=String(\"2026-08-29T12:10:00.000Z\")"
                 .iter()
                 .any(|l| l.contains("Custom tool progress effect folded")),
             "{lines:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod progress_key_order_tests {
+    //! The unification review (2026-09-09): `IndexMap::remove` is SWAP-remove,
+    //! so the three `delete` twins reordered keys v4 preserves — and every
+    //! differential family compares `Value`s, whose `PartialEq` is
+    //! order-independent, so no corpus could see it. These pins compare the
+    //! SERIALIZED bytes.
+
+    use super::super::custom_tool_types::parse_effect_target;
+    use super::*;
+    use serde_json::json;
+
+    const NOW: i64 = 1_788_004_800_000;
+
+    fn effect(target: &str, value: Value) -> ResolvedEffect {
+        ResolvedEffect::Applicable {
+            index: 0,
+            target: parse_effect_target(target).expect("target parses"),
+            value: match value {
+                Value::Bool(b) => super::super::metadata_match::ResolvedValue::Bool(b),
+                Value::String(s) => super::super::metadata_match::ResolvedValue::String(s),
+                other => panic!("unsupported literal {other}"),
+            },
+        }
+    }
+
+    fn entry(start: &str, end: &str) -> Value {
+        json!({ "name": "x", "startTime": start, "endTime": end, "timeIncrement": "minute" })
+    }
+
+    fn plan(effects: &[ResolvedEffect], metadata: &Map<String, Value>) -> Map<String, Value> {
+        plan_applications(&ApplyCustomToolEffectsParams {
+            chat_id: "chat-1",
+            tool_name: "probe",
+            effects,
+            cascade: None,
+            character_id: Some("char-1"),
+            metadata_snapshot: metadata,
+            now_ms: NOW,
+        })
+        .metadata_next
+        .expect("a metadata write")
+    }
+
+    /// `progress.<id>.remove` on the MIDDLE of three keeps the other two in
+    /// their authored order (a swap-remove would put `c` before `a`).
+    #[test]
+    fn removing_a_middle_progression_keeps_the_others_in_order() {
+        let md = json!({ "progressions": {
+            "a": entry("2026-08-29T11:00:00Z", "2026-08-29T12:30:00Z"),
+            "b": entry("2026-08-29T11:00:00Z", "2026-08-29T12:30:00Z"),
+            "c": entry("2026-08-29T11:00:00Z", "2026-08-29T12:30:00Z"),
+        }});
+        let next = plan(
+            &[effect("progress.b.remove", json!(true))],
+            md.as_object().unwrap(),
+        );
+        let keys: Vec<&str> = next["progressions"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            ["a", "c"],
+            "{}",
+            serde_json::to_string(&next).unwrap()
+        );
+    }
+
+    /// Rolling back a created-on-write entry that failed validation removes it
+    /// without reordering its neighbours, and dropping the reserved key when it
+    /// empties leaves the character's other metadata keys where they were.
+    #[test]
+    fn rollback_and_reserved_key_removal_keep_metadata_order() {
+        // A minted `z` whose endTime is written BEFORE its startTime (both
+        // default to now / now+1h; writing endTime = now makes end == start →
+        // refused → rolled back → removed).
+        let md = json!({ "alpha": 1, "progressions": { "a": entry("2026-08-29T11:00:00Z", "2026-08-29T12:30:00Z") }, "omega": 2 });
+        let next = plan(
+            &[effect("progress.z.endTime", json!("2026-08-29T12:00:00Z"))],
+            md.as_object().unwrap(),
+        );
+        let keys: Vec<&str> = next.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["alpha", "progressions", "omega"]);
+        assert_eq!(
+            next["progressions"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["a"],
+            "the rolled-back mint is gone, the survivor untouched"
+        );
+
+        // Now the reserved key empties: remove the only entry.
+        let md2 = json!({ "alpha": 1, "progressions": { "a": entry("2026-08-29T11:00:00Z", "2026-08-29T12:30:00Z") }, "omega": 2 });
+        let next2 = plan(
+            &[effect("progress.a.remove", json!(true))],
+            md2.as_object().unwrap(),
+        );
+        let keys2: Vec<&str> = next2.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys2,
+            ["alpha", "omega"],
+            "{}",
+            serde_json::to_string(&next2).unwrap()
         );
     }
 }

@@ -7,7 +7,7 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 301 rows generated from v4's REAL
+ * This replays the COMMITTED oracle corpus — 362 rows generated from v4's REAL
  * `QtapCustomToolSchema` at `d883a5ee1` under Zod 4.5.4 (refreshed at the
  * `d883a5ee1` unification: thirteen unrecognized-key rows moved when Zod made
  * `unrecognized_keys` continuable, and two astral-title rows were added for
@@ -42,6 +42,7 @@ import {
 } from './custom-tool-types';
 import { evaluateToolGate, hasToolGate } from './tool-gate';
 import { gateConditionsFromGate, gateFromConditions } from './tool-draft';
+import type { ProgressPrimitive } from '../progressions/engine';
 
 interface TitleRow {
   kind: 'title';
@@ -77,6 +78,13 @@ interface GateRow {
   id: string;
   inputJson: string;
   metadata: Record<string, unknown> | null;
+  /**
+   * P4.D169 (`25f534c0b`): the flattened progress sheet the gate was posed
+   * against, keyed `"<id>.<field>"` — recorded by the oracle, so the browser
+   * replays the SAME sheet rather than deriving one. Absent on the rows that
+   * predate the `progress` subject.
+   */
+  progress?: Record<string, ProgressPrimitive> | null;
   hasGate: boolean;
   verdict: string;
 }
@@ -93,7 +101,7 @@ const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'defini
 const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 
 /**
- * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh —
+ * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with
@@ -222,9 +230,22 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         expect(hasToolGate(result.data)).toBe(gate !== undefined);
         if (!gate) return;
 
-        // Flatten to chips and reassemble: byte-identical, key order included.
+        // Flatten to chips and reassemble: byte-identical, key order included —
+        // over the gate's NON-EMPTY records. v4's `gateFromConditions` emits a
+        // record only when it holds a condition (`if (Object.keys(metadata).
+        // length > 0) gate.metadata = metadata`, `tool-draft.ts`), so an
+        // authored `"metadata": {}` survives the PARSE (the wire keeps a key
+        // Zod parsed — `gate-progress-and-empty-metadata`) but not the DRAFT,
+        // in v4 exactly as here. The bijection this pins is over the editor's
+        // own domain, and the empty record is normalised out of the expected
+        // side rather than out of the twin.
+        const expected: Record<string, unknown> = {};
+        for (const subject of ['metadata', 'progress'] as const) {
+          const record = gate[subject];
+          if (record && Object.keys(record).length > 0) expected[subject] = record;
+        }
         expect(JSON.stringify(gateFromConditions(gateConditionsFromGate(gate)))).toBe(
-          JSON.stringify(gate),
+          JSON.stringify(expected),
         );
       });
     }
@@ -247,7 +268,12 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         if (!parsed.success) return;
 
         expect(hasToolGate(parsed.data)).toBe(row.hasGate);
-        expect(JSON.stringify(evaluateToolGate(parsed.data, row.metadata))).toBe(row.verdict);
+        // The third argument is the row's recorded progress sheet (P4.D169);
+        // the unification's re-record was what first put a `progress` gate
+        // through this replay, and every one failed closed until it was passed.
+        expect(
+          JSON.stringify(evaluateToolGate(parsed.data, row.metadata, row.progress ?? undefined)),
+        ).toBe(row.verdict);
       });
     }
   });

@@ -985,6 +985,68 @@
     {
       "label": "entry-bool",
       "entry": true
+    },
+    {
+      "label": "name-number-and-bad-order",
+      "entry": {
+        "name": 42,
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute"
+      }
+    },
+    {
+      "label": "quantity-string-and-bad-order",
+      "entry": {
+        "name": "Cannon",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "quantity": "x"
+      }
+    },
+    {
+      "label": "timeIncrement-number-and-bad-order",
+      "entry": {
+        "name": "Cannon",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": 3
+      }
+    },
+    {
+      "label": "precision-fractional-and-bad-order",
+      "entry": {
+        "name": "Cannon",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "quantity": {
+          "total": 1,
+          "unit": "MJ",
+          "precision": 1.5
+        }
+      }
+    },
+    {
+      "label": "abort-and-continuable-and-bad-order",
+      "entry": {
+        "name": 42,
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "reportTemplate": ""
+      }
+    },
+    {
+      "label": "onComplete-bad-enum-and-bad-order",
+      "entry": {
+        "name": "Cannon",
+        "startTime": "2026-09-08T14:00:00Z",
+        "endTime": "2026-09-08T14:00:00Z",
+        "timeIncrement": "minute",
+        "onComplete": "maybe"
+      }
     }
   ],
   "parseProgressions": [

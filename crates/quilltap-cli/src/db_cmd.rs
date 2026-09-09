@@ -592,7 +592,10 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
         let status = if alive && is_node {
             "\x1b[32mACTIVE\x1b[0m (process confirmed running)".to_string()
         } else if heartbeat_fresh {
-            let age_str = format!("{}s", (age_ms / 1000.0).round() as i64);
+            let age_str = format!(
+                "{}s",
+                quilltap_core::jsnum::math_round(age_ms / 1000.0) as i64
+            );
             format!(
                 "\x1b[32mACTIVE\x1b[0m ({}, heartbeat {} ago)",
                 non_empty_or(lock_str(&lock, "environment"), "unknown"),
@@ -640,18 +643,18 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
         ));
 
         if !lock_str(&lock, "lastHeartbeat").is_empty() {
-            let age_s = (heartbeat_age_ms(&lock) / 1000.0).round();
+            let age_s = quilltap_core::jsnum::math_round(heartbeat_age_ms(&lock) / 1000.0);
             let mut display = if age_s < 120.0 {
                 format!("{}s ago", crate::nodefmt::js_num_string(age_s))
             } else if age_s < 7200.0 {
                 format!(
                     "{}m ago",
-                    crate::nodefmt::js_num_string((age_s / 60.0).round())
+                    crate::nodefmt::js_num_string(quilltap_core::jsnum::math_round(age_s / 60.0))
                 )
             } else {
                 format!(
                     "{}h ago",
-                    crate::nodefmt::js_num_string((age_s / 3600.0).round())
+                    crate::nodefmt::js_num_string(quilltap_core::jsnum::math_round(age_s / 3600.0))
                 )
             };
             if alive && age_s > 300.0 {
@@ -727,7 +730,7 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
         } else if heartbeat_fresh {
             out::log(&format!(
                 "Lock is still being refreshed (heartbeat {}s ago) — its holder is alive. Cannot clean.",
-                (age_ms / 1000.0).round() as i64
+                quilltap_core::jsnum::math_round(age_ms / 1000.0) as i64
             ));
             out::log("Stop the running instance first, or use --lock-override to force.");
             out::exit(1);

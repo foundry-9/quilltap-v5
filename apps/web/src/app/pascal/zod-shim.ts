@@ -178,7 +178,17 @@ export function parseBool(input: unknown): Res<boolean> {
  */
 export function parseFiniteNumber(input: unknown): Res<number> {
   if (typeof input !== 'number') return resHard(invalidType('number', input));
-  if (!Number.isFinite(input)) return resHard(invalidType(FINITE_EXPECTED, input));
+  if (!Number.isFinite(input)) {
+    // Zod 4.5.4 refuses `NaN`/`±Infinity` at the TYPE check and names the
+    // value in `received` (`zod/v4/core/schemas.js:586`: `Number.isNaN(input)
+    // ? "NaN" : !Number.isFinite(input) ? String(input) : undefined`) — the
+    // `.finite()` chain adds nothing. The progressions twin measured this
+    // first (`progressions/schema.ts` `parseNumber`); the unification review
+    // (2026-09-09) found this shim still rendering the generic
+    // `received number` for the seven `custom-tool-types.ts` call sites.
+    const received = Number.isNaN(input) ? 'NaN' : String(input);
+    return resHard(`Invalid input: expected ${FINITE_EXPECTED}, received ${received}`);
+  }
   return resOk(input);
 }
 

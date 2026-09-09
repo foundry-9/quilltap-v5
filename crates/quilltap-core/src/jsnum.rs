@@ -240,3 +240,33 @@ fn take_digits(b: &[u8], i: &mut usize) -> usize {
     }
     *i - start
 }
+
+/// JS `Math.round`: half UP toward +∞ (`Math.round(-2.5) === -2`), i.e.
+/// `floor(x + 0.5)` — not Rust's `f64::round`, which is half AWAY from zero
+/// (`(-2.5f64).round() == -3.0`). The two disagree only on negative halves,
+/// which a heartbeat age reaches whenever a clock skew dates the stamp into
+/// the future. Non-finite input passes through unchanged, as in V8.
+pub fn math_round(x: f64) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    (x + 0.5).floor()
+}
+
+#[cfg(test)]
+mod math_round_tests {
+    use super::math_round;
+
+    /// `Math.round` is half-up toward +∞, `f64::round` half-away-from-zero; a
+    /// heartbeat age dated into the future by clock skew is where they part.
+    #[test]
+    fn math_round_is_js_half_up() {
+        assert_eq!(math_round(2.5), 3.0);
+        assert_eq!(math_round(-2.5), -2.0);
+        assert_eq!((-2.5f64).round(), -3.0, "the Rust rounding this replaces");
+        assert_eq!(math_round(-2.6), -3.0);
+        assert_eq!(math_round(0.49999), 0.0);
+        assert!(math_round(f64::NAN).is_nan());
+        assert_eq!(math_round(f64::INFINITY), f64::INFINITY);
+    }
+}

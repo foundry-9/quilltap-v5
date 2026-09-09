@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — fix(unify): the `25f534c0b` round's §3 review findings — the refine-after-abort gate, `shift_remove` in the progress applier, the CLI's `Math.round` twin, the memoised read's retry, the SPA shim's `received Infinity`
+
+_Versions: core 0.0.857, harness 0.0.749, host 0.0.117, cli 0.0.20, SPA 0.5.689._
+
+The unification review of the progressions + bug-126 round (four parallel
+readers over the whole combined diff against v4 at the `25f534c0b` pin, plus
+the unifier's own reads) found no blocking issue and a set of should-fixes,
+all landed here before the gate.
+
+`parse_progression` ran the `endTime` cross-field refine after an
+`invalid_type` / `invalid_option` issue where Zod 4.5.4 skips it — measured at
+the pin: a wrong-typed `name`, a string `quantity`, a numeric `timeIncrement`
+or a fractional `precision` each produce ONE issue and no refine, while
+`too_small`, `invalid_format`, `custom` and `unrecognized_keys` continue and
+the refine still speaks. The corpus was structurally blind (every abort row
+carried a valid span); six abort-and-bad-order rows added, the mutation
+reddens exactly them, the family runs 555 rows. In the progress applier the
+three `delete` twins used `IndexMap::remove`, which is swap-remove — removing
+the middle of three progressions would move the last into the hole, and
+dropping the emptied reserved key would reorder the character's other
+metadata keys — invisible to every family because they compare `Value`s;
+`shift_remove` at all three sites with two serialized-order unit tests. The
+CLI's five heartbeat-age renderings used Rust's half-away-from-zero `round`
+where v4 uses `Math.round` (they differ on negative halves, reachable under
+clock skew); a shared `jsnum::math_round` now serves the CLI and the lock.
+`CadenceEvents` memoised a FAILED read where v4's `??=` never assigns on a
+rejection, so the next cadence retries — matched, and the test that pinned
+the opposite flipped. The `pascal_build_tools_roster` test compared a
+wall-clock slate against the frozen-clock roster — a 2026-10-28 time bomb
+(the fixture's gestation end) — now like with like. The fold debug line
+rendered `previous`/`next` as Rust `Debug` (`String("…")`); now the JSON
+value. The workbench-route family gained the preview's gate-before-progress
+order pin (its comparand is order-blind) and a progress-sheet floor. The
+engine family's header claimed a 1e-12 float tolerance that was never in
+force (the subtrees compare exactly first) — stated honestly. Doc comments
+corrected in the lock (a snapshot site that does not exist; the two readers
+of `HEARTBEAT_FRESH_MS`). The side-effects corpus `note` misattributed the two
+lane-added truthy-`remove` rows to v4.
+
+SPA: the extracted Zod shim still rendered `received number` for `Infinity` /
+`NaN` at the seven `custom-tool-types.ts` call sites (Zod 4.5.4 names the
+value; the progressions twin had the rule, the shim did not) — fixed and
+spec-pinned; `ajv` declared as the devDependency the mirror spec already
+imported transitively; the fixtures README's stale counts corrected and the
+missing `pascal-progress.oracle.ndjson` section written.
+
 #### 2026-09-09 — docs(drift): nine commits arrived during the progressions round — the route trail moves the schema, the chat gallery lands whole
 
 _Docs-only change._
@@ -50,6 +96,7 @@ Vendored obligations: `help/**` is now 123 files against v5's 122; the export
 schema as above; the two SPA-served schemas P4.D170 just guarded are unmoved.
 `zod` stays at 4.5.4. Regen rule: PIN REQUIRED at `25f534c0b`, which is both
 the round's catch-up target and the baseline once this unification lands.
+
 #### 2026-09-08 — fix(cli): `db --lock-status` / `--lock-clean` share one `assess_lock` (bug 126)
 
 _Versions: cli 0.0.19, web 0.0.132._
@@ -116,6 +163,7 @@ databases open `journal_mode = TRUNCATE`, never WAL, with no checkpoint to run.
 The CLI write-lock and both status classifiers keep their hostname comparisons:
 v4's `packages/quilltap/lib/lock-helpers.js` is untouched by `25f534c0b`, so
 matching it is the faithful outcome.
+
 #### 2026-09-08 — docs(progressions): the P4.D168 lane record
 
 _Docs-only change._
@@ -307,6 +355,7 @@ integration test only `cargo test --workspace` reaches, so they surfaced one
 full gate run at a time. The `quilltap-web` site now derives the count from the
 embedded table; the two remaining literals are deliberate independent pins and
 cross-reference each other.
+
 #### 2026-09-09 — test(pascal): progressions at both entrances, over a real vault
 
 _Versions: harness 0.0.740._
@@ -526,6 +575,7 @@ no-break space; Zod reports `Unrecognized keys: "a", "b"` in the plural for
 more than one; and a non-finite `quantity.total` is unreachable through the
 JSON door on both sides — `serde_json` refuses `1e400` outright where
 `JSON.parse` yields `Infinity`.
+
 #### 2026-09-08 — test(e2e): the progressions card walk, and the Workbench's progress affordances
 
 _Versions: SPA 0.5.688._
@@ -1042,6 +1092,7 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+
 #### 2026-09-07 — docs(p4.85): the lane gate record
 
 _No crate versions bumped._
@@ -1274,6 +1325,7 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+
 #### 2026-09-07 — docs(P4.86): the lane's two refusal-arm no-counterparts, and the order headers
 
 _Versions: core 0.0.840._
@@ -1478,6 +1530,7 @@ pure Rust, no network and no C (`ahash`, `allocator-api2`,
 
 No source consumes it yet — the module and its differentials arrive in the
 next commits.
+
 #### 2026-09-07 — feat(prompt-templates): the Import-from-Template catalogue on both character hosts
 
 _Versions: SPA 0.5.674._
@@ -1575,6 +1628,7 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+
 #### 2026-09-07 — test(e2e): scope the wizard beats' locators, repairing a standing red
 
 _Versions: SPA 0.5.680._
@@ -2139,6 +2193,7 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+
 #### 2026-09-07 — docs(orders): P4.9K1-resumed ∥ P4.9K2-resumed lane close — both orders LANE COMPLETE, the lane-close record with the final §B wire spellings, the pinned eleven-family sweep
 
 _Docs only — no crate bumped._
@@ -2441,6 +2496,7 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+
 #### 2026-09-07 — chore(subprompts): strip the prettier churn a directory-wide --write dragged into the lane's diff
 
 _Versions: SPA 0.5.673._
@@ -2829,6 +2885,7 @@ nullish instead of JS-falsy, at both the prompt's count and the context's skip.
 That last pair only reddens because the mutation pass first found the corpus
 BLIND to it — the two spellings differ only on a falsy-but-not-nullish
 `archivedAt`, so a `""` row was added and the oracle regenerated.
+
 #### 2026-09-07 — docs(porting): the P4.9K2 lane record — the wizard's prompt half landed, the rest open
 
 _Docs-only change._
@@ -2983,6 +3040,7 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+
 #### 2026-09-07 — fix(web): the composer's hasActiveCharacters binding is the WIDE twin (P4.81 item 8, dogfood standing note)
 
 _Versions: SPA 0.5.658._
@@ -3105,6 +3163,7 @@ and returns the mapped refusal before constructing it. Pinned by a new
 wire test, `p4_81_refused_create_emits_no_progress_frame`, which drives a
 real `ChatCreateSpine::create` over an invalid body and asserts the
 engine's `Event` broadcast received nothing.
+
 #### 2026-09-07 — fix(workspace): a click on a button inside a card's link is not a link click (P4.80 follow-up)
 
 _Versions: SPA 0.5.659._
@@ -3199,6 +3258,7 @@ because capture runs before the button's own handler. v4 needs no guard there
 anchor-wrapped card does. `interpretWorkspaceLinkClick` now passes through a
 click on a button the anchor contains — widening only, spec-pinned in both
 directions, mutation-proven.
+
 #### 2026-09-07 — feat(characters): the AI Wizard modal, Rename & Replace tab, and the system-prompts preview/import modals (P4.9K3)
 
 _Versions: SPA 0.5.658._
@@ -3226,6 +3286,7 @@ proven end-to-end by a jsdom integration spec that drives the whole
 four-step flow over a fake `CoreClient`, plus new unit tests wired into
 `character-edit.spec.ts` and `new-character.spec.ts` for the two hosts' own
 apply/stage-until-creation flows.
+
 #### 2026-09-07 — test(e2e): three p4.9k4 generator beats (two gated, one live)
 
 _Versions: SPA 0.5.660._
@@ -3519,6 +3580,7 @@ The P4.D160 lane record also carries the `git show --stat` file lists for the
 eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
 `02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
 unifier ratifies them by file list rather than by subject line.
+
 #### 2026-09-06 — docs(porting): P4.D162 closed whole — bugs 124 and 125 ported with the coverage they lacked
 
 _Docs-only change._
@@ -3623,6 +3685,7 @@ A unit pin mirrors v4's new `google-schema-sanitizer.test.ts` over v5's REAL
 catalog definitions — measured byte-equal to v4's converter output — so a fix
 applied in the wrong home (stripping the key from the schemas instead of adding
 it to the list) is caught.
+
 #### 2026-09-06 — fix(chat-create): parse the whole create body v4's way — `createChatSchema` as one validation stage, with the Zod `details` envelope (dogfood finding #115)
 
 _Versions: core 0.0.807, harness 0.0.696._
@@ -3677,6 +3740,7 @@ and that crate is outside this lane's ownership; a `chatCreate` refusal reaches
 an HTTP/Tauri caller with v4's sentence and without v4's issue array. The gap is
 held by an executable tripwire (`p4_78_host_wire_details_carry_is_deferred`)
 that fails the day a host-owning lane closes it.
+
 #### 2026-09-06 — fix(brahma): the console's streamed turns write their `llm_logs` row, and a mid-stream provider error stops the turn instead of persisting a half reply
 
 _Versions: core 0.0.807, harness 0.0.696._
@@ -3706,6 +3770,7 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+
 #### 2026-09-06 — test(spa): the two live beats for the Skip banner and the pause toast (v4 bug 123)
 
 _Versions: SPA 0.5.656._

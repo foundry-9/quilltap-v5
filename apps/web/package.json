@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.688",
+  "version": "0.5.689",
   "scripts": {
     "ng": "ng",
     "lint": "node scripts/check-qt-classes.mjs --self-test && node scripts/check-qt-classes.mjs",
@@ -70,6 +70,7 @@
     "@angular/compiler-cli": "^21.0.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.1.12",
+    "ajv": "^8.18.0",
     "jsdom": "^27.1.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.12",

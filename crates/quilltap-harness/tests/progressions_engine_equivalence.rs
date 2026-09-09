@@ -8,8 +8,14 @@
 //! NDJSON row per (op, label), and this family recomputes each row in Rust and
 //! compares field for field. Strings are byte-exact; the integer-valued JS
 //! numbers (`startMs`, `endMs`, `nowMs`, `elapsedMs`, `remainingMs`, the sheet's
-//! epoch times) compare EXACTLY; the two genuine floats (`percent`,
-//! `percentClamped`, `quantityCurrent`) at 1e-12.
+//! epoch times) compare EXACTLY — and so, in effect, do the three genuine
+//! floats (`percent`, `percentClamped`, `quantityCurrent`): the `derived` /
+//! `sheet` subtrees are compared whole by `assert_row` BEFORE the 1e-12
+//! re-comparison below them runs, so the tolerance is not in force (the
+//! unification review of 2026-09-09 measured this). Both sides do the same
+//! IEEE operations and have agreed exactly through every regen; the day a
+//! last-ULP difference appears, this family reds and the tolerance path is
+//! the fix — until then the claim is "exact", stated honestly.
 //!
 //! What only a differential can answer here: Zod 4.5.4's issue sentences AND
 //! their order, its code-point string lengths on astral text, `Date.parse`'s V8

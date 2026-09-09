@@ -53,8 +53,11 @@ use crate::env::{detect_environment_type, EnvironmentType};
 /// v4 `HEARTBEAT_INTERVAL_MS` — how often the owner refreshes `lastHeartbeat`.
 pub const HEARTBEAT_INTERVAL_MS: u64 = 60_000;
 
-/// v4's different-host freshness window: a container lock with a heartbeat
-/// younger than this is treated as live.
+/// v4's different-host freshness window. TWO readers, deliberately different
+/// since bug 126 (`25f534c0b`): the acquire cascade applies it to a foreign
+/// lock in EVERY environment (a fresh heartbeat refuses, a stale one is
+/// claimed), while `classify_lock_content` — mirroring the launcher's
+/// UNTOUCHED `lock-helpers.js` — still applies it to container locks only.
 pub const HEARTBEAT_FRESH_MS: i64 = 5 * 60 * 1000;
 
 /// v4 `MAX_HISTORY_ENTRIES`.
@@ -236,8 +239,11 @@ fn get_lock_owner(lock_path: &Path) -> Option<LockOwnership> {
 }
 
 /// v4 `rememberLockOwner(content)` — called at every write of THIS process
-/// into the file (fresh create, re-entrant, stale claim, the heartbeat
-/// rewrite, and the CLI write-lock's own claims).
+/// into the INSTANCE lock (fresh create, re-entrant, stale claim, the
+/// heartbeat rewrite). NOT the write lock: `25f534c0b` left
+/// `packages/quilltap/lib/lock-helpers.js` untouched, so the write lock's
+/// claims and its release still compare PID + hostname as v4's launcher does
+/// (the P4.D166 lane record's six-site table).
 fn remember_lock_owner(lock_path: &Path, content: &LockFileContent) {
     lock_owners().lock().unwrap().insert(
         lock_path.to_path_buf(),
@@ -429,12 +435,13 @@ fn env_label(env: &EnvironmentType) -> &'static str {
     }
 }
 
-/// JS `Math.round`: half UP toward +∞ (`Math.round(-2.5) === -2`), which is
-/// `floor(x + 0.5)` — not Rust's `f64::round`, which is half AWAY from zero.
-/// Reachable with a negative age whenever a clock skews the heartbeat into the
-/// future, which is exactly when the two disagree.
+/// JS `Math.round` — the shared twin in `quilltap_core::jsnum`, since the CLI's
+/// `db --lock-status` renders the same age terms (the unification review of
+/// 2026-09-09 found the two crates rounding differently). Reachable with a
+/// negative age whenever a clock skews the heartbeat into the future, which is
+/// exactly when the two roundings disagree.
 fn js_round(x: f64) -> f64 {
-    (x + 0.5).floor()
+    quilltap_core::jsnum::math_round(x)
 }
 
 /// `${n}` for a JS number: the age terms below are `Infinity` when the record

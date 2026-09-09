@@ -1397,15 +1397,22 @@ struct CadenceEvents<'a> {
 
 impl CadenceEvents<'_> {
     fn load(&mut self) -> Result<&[crate::core_whisper::WhisperEvent], String> {
+        // v4's `chatEventsForCadence ??= await getMessages(...)`: a REJECTED
+        // read never assigns, so the next caller retries — only a successful
+        // read is memoised. Caching the `Err` too would be one read fewer on a
+        // broken table and a read-count divergence from v4; the unification
+        // review (2026-09-09) put it back to v4's shape.
         if self.cached.is_none() {
             self.reads += 1;
             let cid = self.chat_id.clone();
-            let loaded = self
+            match self
                 .db
                 .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
                 .map(|rows| rows.iter().map(whisper_event_from_row).collect())
-                .map_err(|e| e.to_string());
-            self.cached = Some(loaded);
+            {
+                Ok(events) => self.cached = Some(Ok(events)),
+                Err(e) => return Err(e.to_string()),
+            }
         }
         match self.cached.as_ref().expect("just populated") {
             Ok(events) => Ok(events.as_slice()),
@@ -4777,10 +4784,12 @@ mod cadence_memo_tests {
         assert_eq!(cadence.reads, 1, "still one read after four asks");
     }
 
-    /// A failed read is cached too, so a broken table costs one attempt rather
-    /// than one per cadence — and both callers see the same `Err`.
+    /// A failed read is NOT memoised — v4's `??=` never assigns on a rejected
+    /// promise, so the next cadence retries the read and sees its own `Err`.
+    /// (The first shape of this test pinned the opposite; the unification
+    /// review restored v4's.)
     #[test]
-    fn a_failed_cadence_read_is_cached_as_well() {
+    fn a_failed_cadence_read_is_retried_by_the_next_caller() {
         let dir = tempfile::tempdir().expect("tempdir");
         // No provisioning: `chat_messages` does not exist, so the read fails.
         let path = dir.path().join("quilltap.db");
@@ -4800,8 +4809,8 @@ mod cadence_memo_tests {
         assert!(cadence.load().is_err(), "no such table");
         assert!(cadence.load().is_err(), "and again");
         assert_eq!(
-            cadence.reads, 1,
-            "a failure is cached, not retried per caller"
+            cadence.reads, 2,
+            "a failure is retried by the next caller, as v4's `??=` retries it"
         );
     }
 }

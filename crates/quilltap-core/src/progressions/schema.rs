@@ -57,7 +57,9 @@
 //! **The measured ISSUE ORDER** (v4 joins in Zod's own check order, and the
 //! order is a comparand): field issues in **schema declaration order**, then
 //! the single `(root)` unrecognized-key(s) issue, then the `superRefine`
-//! issue. A non-object entry aborts: one issue, and the refine never runs.
+//! issue. A non-object entry aborts: one issue, and the refine never runs —
+//! and so does any `invalid_type` / `invalid_option` field issue (the refine
+//! is skipped, the other field issues are not; see `parse_progression`).
 //! Every length bound is Zod 4.5's **code-point** length
 //! ([`crate::jsstr::zod_len_min_ok`] / [`crate::jsstr::zod_len_max_ok`]) —
 //! measured: 500 astral characters (1,000 UTF-16 units) PASS `.max(500)`.
@@ -779,12 +781,26 @@ pub fn parse_progression(entry: &Value) -> Result<Progression, Vec<ZodIssue>> {
         issues.push(ZodIssue::root(unrecognized(&unknown)));
     }
 
-    // v4's `superRefine`, which runs after the object checks (measured: it fires
-    // even when a sibling field already failed) and guards on both instants
-    // parsing, so an unparseable `startTime` silences it.
+    // v4's `superRefine`, which runs after the object checks and guards on
+    // both instants parsing, so an unparseable `startTime` silences it.
+    //
+    // MEASURED at `25f534c0b` on Zod 4.5.4 (the unification review, 2026-09-09
+    // — the first shape of this port ran the refine unconditionally, and the
+    // corpus was blind to it because every abort row carried a valid span):
+    // Zod skips an object-level refine once the payload carries a
+    // NON-CONTINUABLE issue. Non-continuable here means `invalid_type` (the
+    // `Invalid input: expected …` family — wrong type, missing required,
+    // `NaN`/`Infinity`, a fractional `int`) and `invalid_value` (the two
+    // enums' `Invalid option: …`). `too_small`, `too_big`, `invalid_format`,
+    // `custom` (a bad instant) and — since 4.5 — `unrecognized_keys` all
+    // CONTINUE, and the refine still speaks beside them. Every field check
+    // still runs either way; only this refine is gated.
+    let aborted = issues.iter().any(|i| {
+        i.message.starts_with("Invalid input: expected") || i.message.starts_with("Invalid option:")
+    });
     let start_ms = object.get("startTime").and_then(parse_iso_instant);
     let end_ms = object.get("endTime").and_then(parse_iso_instant);
-    if let (Some(start), Some(end)) = (start_ms, end_ms) {
+    if let (false, Some(start), Some(end)) = (aborted, start_ms, end_ms) {
         if end <= start {
             issues.push(ZodIssue::at(
                 &["endTime"],

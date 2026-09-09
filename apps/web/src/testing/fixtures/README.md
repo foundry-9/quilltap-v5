@@ -6,12 +6,19 @@ and investigate the diff — do not patch the fixture.
 
 ## `pascal-custom-tool-definition.oracle.ndjson`
 
+_Refreshed 2026-09-09 at v4 `25f534c0b` (the progressions round's unification,
+from a pinned worktree): the Pascal lane (P4.D169) grew the shared generator by
+40 `definition` + 21 `gate` rows for the `progress` family, and the round's
+widened refusal sentences moved twelve pre-existing rows; 301 → 362 rows
+(10 `title` + 300 `definition` + 52 `gate`). The SPA lane (P4.D170) had
+re-recorded the un-extended generator at the same pin; this copy supersedes it._
+
 _Refreshed 2026-09-05 at v4 `d883a5ee1` (Zod 4.5.4): thirteen rows moved — the
 unrecognized-key shapes, now continuable inside unions/refines — and two
 astral-title rows added for Zod's code-point length windows (v4 `6e1a64ea6`);
 299 → 301 rows._
 
-**299 rows** — 10 `title` + 258 `definition` + 31 `gate`. Drives
+**362 rows** — 10 `title` + 300 `definition` + 52 `gate`. Drives
 `app/pascal/custom-tool-types.corpus.spec.ts`, which replays
 every row through the SPA's hand-ported schema module and byte-compares the
 verdict, the parsed data (`JSON.stringify`), the unknown-key report, and the
@@ -52,8 +59,36 @@ file.
   ```
 
   If the v4 tree is dirty, generate from a pinned detached worktree at the
-  baseline instead. Expect 175 lines; a shorter file means the generator errored
+  baseline instead. Expect 362 lines (10 `title` + 300 `definition` + 52 `gate` since the `25f534c0b` round); a shorter file means the generator errored
   and left the old one in place.
+
+## `pascal-progress.oracle.ndjson`
+
+**71 rows** — 38 `definition` + 16 `parseEffectTarget` + 10 `classifyPlaceholder`
++ 7 `evaluateToolGate`. Drives `app/pascal/progress-arms.oracle.spec.ts`: the
+`progress` family's arms as the SPA's Pascal twins see them — both gate subjects
+with the empty/absent combinations, the four bad-key shapes, `when.progress`,
+all ten effect-target arms (the reserved-key pair with `metadata.progressionsNotes`
+as the near-miss control), the two new placeholders inside an expression, the
+raw `parseEffectTarget` results compared as whole serialized objects, the
+`classifyPlaceholder` refs, and gate verdicts against a sheet the spec DERIVES
+with `flattenProgressions` and byte-compares to v4's before the gate sees it.
+
+Recorded by the P4.D170 lane from v4's REAL `lib/pascal/*` at `25f534c0b` before
+the Pascal lane had extended the shared generator; since the `25f534c0b` round's
+unification the shared corpus above carries the same family (its 40 new
+definition + 21 gate rows), so this file is the overlapping half — kept because
+its `parseEffectTarget` / `classifyPlaceholder` / derived-sheet comparands are
+shapes the shared corpus does not record. Folding it into the shared generator
+is a named follow-up (`apps/web/oracle/pascal-progress.recorder.ts` header).
+
+- **Provenance:** v4 `25f534c0b`, recorded 2026-09-08 at the P4.D170 lane from
+  a detached worktree pinned there, under `zod` 4.5.4.
+- **Owner of the generator:** `apps/web/oracle/pascal-progress.recorder.ts`
+  (outside `src/` — it imports v4's `@/lib/…`).
+- **Regenerate:** the `progressions-schema.oracle.ndjson` recipe below with
+  `pascal-progress.recorder.ts` in place of the schema recorder, into
+  `src/testing/fixtures/pascal-progress.oracle.ndjson`. Expect 71 lines.
 
 ## `progressions-schema.oracle.ndjson`
 

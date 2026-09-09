@@ -385,6 +385,7 @@ fn workbench_route_matches_oracle() {
     let cases = corpus["cases"].as_array().expect("cases array");
 
     let mut checked = 0usize;
+    let mut progress_sheets = 0usize;
     let mut gate_verdicts: Vec<serde_json::Value> = Vec::new();
     let mut statuses: Vec<u16> = Vec::new();
 
@@ -486,9 +487,41 @@ fn workbench_route_matches_oracle() {
         if let Some(gate) = body.get("data").unwrap_or(&body).get("gate") {
             gate_verdicts.push(gate.clone());
         }
+        // P4.D169 §C.4: the preview's `progress` key — the flattened sheet,
+        // present ONLY when non-empty, spread AFTER `gate`. `canon` compares
+        // `Value`s, whose equality is order-independent, so the ORDER is pinned
+        // here on the serialized bytes (the unification review, 2026-09-09,
+        // found the wire shape handed to the SPA lane with nothing pinning it).
+        {
+            let data = body.get("data").unwrap_or(&body);
+            if let Some(progress) = data.get("progress") {
+                assert!(
+                    progress.as_object().is_some_and(|m| !m.is_empty()),
+                    "case '{name}': a present `progress` key is never empty"
+                );
+                let bytes = serde_json::to_string(data).unwrap();
+                if data.get("gate").is_some() {
+                    let g = bytes.find("\"gate\":").unwrap();
+                    // The top-level sheet is the LAST key; `rfind` skips any
+                    // `progress` record inside the echoed definition.
+                    let p = bytes.rfind("\"progress\":").unwrap();
+                    assert!(
+                        g < p,
+                        "case '{name}': `progress` must be spread AFTER `gate`"
+                    );
+                }
+                progress_sheets += 1;
+            }
+        }
         statuses.push(status);
         checked += 1;
     }
+    // The §C.4 floor: a corpus that stopped posing a progressions-carrying
+    // bench body would leave the arms above vacuous.
+    assert!(
+        progress_sheets >= 2,
+        "at least two previews carrying a non-empty progress sheet (saw {progress_sheets})"
+    );
 
     // Coverage the corpus was built for: a thinner corpus (or one whose arms
     // stopped firing) must fail loudly rather than pass on fewer branches.

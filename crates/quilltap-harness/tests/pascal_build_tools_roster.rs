@@ -140,6 +140,28 @@ fn build_tools_resolves_and_offers_run_custom() {
         })
         .unwrap();
     let expected_roster: Vec<_> = roster.tools.iter().map(|(_, t)| t.clone()).collect();
+    // `build_tools` reads the WALL clock (`tool_build.rs` — the slate's own
+    // reading, as v4's `resolveCustomToolRoster` takes `Date.now()`), so the
+    // description it built is compared against a roster resolved at the wall
+    // clock too. The FROZEN `PASCAL_NOW_MS` roster above carries the two named
+    // progression arms (`recharged` offered, `gestating` withheld) — the fixture's
+    // `gestation` span ends 2026-10-28T12:00:00Z, and the unification review
+    // (2026-09-09) found the first shape of this test comparing the wall-clock
+    // description against the frozen roster, which would have gone red on that
+    // date for no reason of the code's.
+    let wall_roster = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                Ok(resolve_custom_tool_roster(
+                    &ctx,
+                    main,
+                    mount,
+                    quilltap_core::clock::now_unix_ms(),
+                ))
+            })
+        })
+        .unwrap();
+    let wall_expected: Vec<_> = wall_roster.tools.iter().map(|(_, t)| t.clone()).collect();
     // The handler oracle's `unknown-tool` case pins this order to v4: CHAR_A's
     // own vault in stored order — ansible, coin, whispered, oracle, stateful,
     // then P4.D35's two effects tools (`ledger`, `sealed_tally`) — then the two
@@ -194,7 +216,7 @@ fn build_tools_resolves_and_offers_run_custom() {
     );
     assert_eq!(
         run_custom["function"]["description"].as_str().unwrap(),
-        build_run_custom_description(&expected_roster)
+        build_run_custom_description(&wall_expected)
     );
 
     // P4.d19 tier-2 item 12: a WITHHELD tool must be absent from the built
