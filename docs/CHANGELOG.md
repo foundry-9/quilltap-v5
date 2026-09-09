@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(chat): the `memories` realtime topic un-stales the Salon list's memory badge; bug 127's client-fidelity note retires to a convergence record (P4.D177 units 3–4)
+
+_Versions: SPA 0.5.693._
+
+v4's `4a9be9878` (bugs 127–128) added a `memories` realtime topic
+(`REALTIME_TOPICS`, 7th and last) published on memory extraction/housekeeping
+completing or a memory delete, so a chat left open no longer shows a memory
+count stuck at zero after its own extraction finished. v5 has no per-chat
+memory count reader at all (`chat/sidebar/edit-section.ts`'s Delete Memories
+affordance is a loud tier-3 deferral), so `queryKeysForTopic('memories', id?)`
+resolves to the Salon LIST's `chatKeys.all` in both the scoped and
+collection-wide arms — the one v5 surface a memory hint un-stales
+(`screens/salon/chat-card.ts`'s memory badge) — a measured mapping
+divergence recorded at the map and pinned by new specs in
+`realtime-topic-map.spec.ts` and `realtime.service.spec.ts`. The existing
+`realtime-topic-map.spec.ts` exemplar that used `'memories'` as its
+stand-in "unknown topic" went RED the moment the topic became real, by
+design; re-spelled to `'a-topic-from-a-newer-server'`. `edit-section.ts`'s
+doc comment now records v4's `useMemoryActions.handleDeleteChatMemories`
+shape in full (disabled-at-zero, the server re-read before confirming, the
+toast on every outcome) for whoever lands Delete Memories against a future
+v5 memory-count key.
+
+Separately: P4.D170's transcription of `ProgressionsSection.tsx` had filed
+v4 bug 127 (a JSX string-join escaped by React, producing literal
+`</code>, <code>` in a user-facing sentence) and recorded v5's
+map-with-separator rendering as a divergence. v4 fixed it at `4a9be9878` by
+adopting v5's shape outright — the divergence note in
+`progressions-section.ts`'s template comment and the matching note in
+`progressions-section.spec.ts` are rewritten as CONVERGENCE records; the
+spec's assertion is unchanged, since it was already the correct equality.
+
 #### 2026-09-09 — feat(chat): the participants list draws its rotation from the cycle order, not a talkativeness guess (P4.D177 unit 2)
 
 _Versions: SPA 0.5.692._

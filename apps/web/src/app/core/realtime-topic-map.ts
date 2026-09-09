@@ -42,8 +42,9 @@ export const AUTONOMOUS_ROOMS_KEY: QueryKeyPrefix = ['systemAutonomousRooms'];
  * catch-up sweep — a client that was offline has no idea what it missed, so it
  * re-reads everything the stream could have told it about.
  *
- * v4's list has seven entries; v5's has six, because the `mountPoints` row has
- * nothing to target (below).
+ * v4's list has eight entries (P4.D177 §C.4 added `memories`, v4 `4a9be9878`,
+ * bug 128); v5's has seven, because the `mountPoints` row has nothing to
+ * target (below) — the standing difference.
  */
 export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   systemJobsKeys.all,
@@ -52,6 +53,11 @@ export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   chatKeys.all,
   projectKeys.all,
   characterKeys.all,
+  // `memories` (below): v5 has no per-chat memory count reader, so its ONLY
+  // target is the Salon LIST's memory badge — the same `chatKeys.all` prefix
+  // the `chats` row above already sweeps. Listed again anyway (matching v4's
+  // own topic-per-row shape) rather than folding it into the `chats` row.
+  chatKeys.all,
 ];
 
 /**
@@ -107,6 +113,18 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // rather than logged as unknown; it resolves to nothing until a document
       // store vertical grows a query key.
       return [];
+
+    case 'memories':
+      // v4 narrows to a per-chat memory count (`queryKeys.memories.chatCount
+      // (id)` when scoped, `queryKeys.memories.all` collection-wide). v5 has
+      // NO per-chat memory count reader (`chat/sidebar/edit-section.ts`'s
+      // Delete Memories affordance is a loud tier-3 deferral with no query
+      // key of its own) — the one v5 surface a memory-extraction/-deletion
+      // hint un-stales is the Salon LIST card's memory badge
+      // (`screens/salon/chat-card.ts:198`), which lives under `chatKeys.all`
+      // whether the hint carried a chat id or not (P4.D177 §C.4, a
+      // measured mapping divergence from v4's).
+      return [chatKeys.all];
 
     default:
       return [];

@@ -117826,3 +117826,57 @@ cycle order|turn-order-rotation"` — 22/22 passed; `--filter="v4 SalonView:1171
 turn|Turn|applyTurnResponse|the sidebar's display-only"` (turn-order.spec,
 turn-order-rotation.oracle.spec, chat-sidebar.spec, salon-conversation.spec,
 message-list.spec's turn-related cases) — 377/377 passed, zero weakened.
+
+### Unit 3 — the `memories` realtime topic (bug 128)
+
+`core/realtime.types.ts`'s `REALTIME_TOPICS` gains `'memories'`, appended
+LAST (7th) matching v4's own append order. `core/realtime-topic-map.ts`'s
+`queryKeysForTopic('memories', id?)` returns `[chatKeys.all]` in BOTH arms —
+the measured v5 surface: v5 has no per-chat memory count reader at all
+(`chat/sidebar/edit-section.ts`'s Delete Memories affordance is a loud
+tier-3 deferral with no query key of its own), so the one thing a
+`memories` hint un-stales is the Salon LIST card's memory badge
+(`screens/salon/chat-card.ts:198`, fed by `salon-list.ts`'s `[...chatKeys.
+all, {...}]` query), whether the hint carried a chat id or not — a recorded
+mapping divergence from v4's `chatCount(id)`/`all` split.
+`ALL_REALTIME_PREFIXES` gains one more `chatKeys.all` entry (6 → 7,
+matching v4's 8 minus the target-less `mountPoints` row, the standing
+difference) — deliberately NOT deduped against the `chats` row's own entry,
+matching v4's one-row-per-topic shape.
+
+The existing `realtime-topic-map.spec.ts` used `'memories'` as its
+stand-in example of an unrecognised topic (`expect(queryKeysForTopic(
+'memories')).toEqual([])`) — this went RED the moment the topic became
+real, exactly as the order predicted; re-spelled to
+`'a-topic-from-a-newer-server'` (already used elsewhere in the same file
+for the no-throw check). New specs: a `memories` describe block asserting
+both arms resolve to `[chatKeys.all]`; a length/membership pin
+(`REALTIME_TOPICS` 7 with `'memories'` last, `ALL_REALTIME_PREFIXES` 7); and
+in `realtime.service.spec.ts`, a hint → invalidation case proving a
+`memories` hint (chat-scoped or not) reaches the Salon list's subscribers
+through the unchanged `onTopic` filter (`realtime.service.ts:155`).
+
+`edit-section.ts`'s doc comment records v4's `useMemoryActions.
+handleDeleteChatMemories` shape in full (disabled-at-zero, the server
+re-read before confirming since a dropped socket can leave a stale zero on
+screen, the toast on every outcome, the confirm dialog quoting the RE-READ
+count) — a doc note only, no code, for whoever lands a v5 memory-count key.
+
+### Unit 4 — bug 127's convergence
+
+`progressions-section.ts`'s template comment and `progressions-section.spec.ts`'s
+matching doc comment, both written by P4.D170 as a RECORDED DIVERGENCE (v4's
+`invalidIds.join('</code>, <code>')` inside a JSX expression, escaped by
+React into literal markup on screen for two-or-more unreadable ids), are
+rewritten as CONVERGENCE records: v4 fixed its own bug 127 at `4a9be9878`
+by adopting v5's map-with-separator shape outright, filed FROM this port's
+own transcription finding it. The spec's assertion
+(`not.toContain('</code>')`) is unchanged — it was already the correct
+equality between the two apps, only described as a divergence before v4's
+fix landed. No oracle compares this line, so nothing trips on the
+retirement; done by hand per the order's instruction.
+
+**Gate for these two units:** `npm run build` clean; `--filter="memories|
+memory hint|RealtimeService|queryKeysForTopic|realtime"` — 40/40 passed;
+`--filter="unparseable|ProgressionsSection|progressions-section"` — 36/36
+passed, zero weakened.
