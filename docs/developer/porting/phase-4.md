@@ -6660,8 +6660,12 @@ four gesture defects in the two activated beats' first runs.
 
 **Next — in this order:**
 
-1. **The nine-commit drift catch-up (ledger §3, all UNPROCESSED).** Three
-   features: `5841a8c62` the message route trail — **a SCHEMA MOVE**
+1. **The TEN-commit drift catch-up (ledger §3, all UNPROCESSED — read the
+   ledger, not this count).** Four features — the tenth, `2aca73ad6`, landed
+   during this round's gate: the turn manager draws a cycle's speaking order
+   up front with a SECOND schema move (`chats.cycleOrderParticipantIds`), on
+   the whole ported turn chain, and a bug-131 commit was in flight behind it
+   at the cleanup check. The nine before it: `5841a8c62` the message route trail — **a SCHEMA MOVE**
    (`chat_messages.routeTrail` via the migration AND the repository Zod shape
    `generateDDL` reads → D23 re-dump + boot ensure, the P4.D78 bug-68
    precedent; the failover/finalizer/streaming-state chokepoint, the SSE

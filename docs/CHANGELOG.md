@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(phase-4): the next round's first item counts ten drift commits, not nine
+
+_Docs-only change._
+
+The `25f534c0b` round's UNIFIED section was written before the cleanup check
+found `2aca73ad6`; its "Next" now names the tenth commit and its second
+schema move, and defers the count to the ledger.
+
 #### 2026-09-09 — docs(drift): a tenth commit landed during the unification's gate — the turn manager draws a cycle's speaking order up front, with a second `chats` column
 
 _Docs-only change._
