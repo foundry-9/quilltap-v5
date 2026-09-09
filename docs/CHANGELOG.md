@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — docs(status-log): the five P4.D177 mutation proofs, run and restored
+
+_Docs-only change._
+
+The order's five named mutation proofs run against the committed P4.D177
+tree, each reverted with `git checkout -- <file>` after confirming the
+predicted tests (and only those) went red: breaking the route-trail
+collapse, swapping the two glyphs, breaking the rotation comparator's
+"only a in rotation" branch, mapping the `memories` topic to `[]`, and
+re-adding `</code>` to the progressions render. The rotation mutation's
+actual blast radius (one test pair, not four) corrects the order's own
+prose — the other three rotation scenarios never reach the mutated branch.
+The progressions mutation needed a different concrete form than the order's
+literal wording: Angular's HTML tokenizer refuses to compile a raw
+`</code>` inside an interpolated string at all (NG5002), which is itself
+evidence the original escaping bug is structurally unreachable here; the
+proof used the equivalent HTML-entity form instead, producing the same
+visible text v4's bug did.
+
 #### 2026-09-09 — test(e2e): three ACTIVATE-AT-UNIFY beats for the route trail, the drawn rotation, and the memories topic (P4.D177 unit 5)
 
 _Versions: SPA 0.5.694._

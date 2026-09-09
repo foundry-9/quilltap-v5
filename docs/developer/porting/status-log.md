@@ -117954,3 +117954,46 @@ avatar-template regions + the badge import touched, not the save-image
 construct sites; `salon-conversation.ts`: only the turn-state signal +
 `applyTurnResponse` + the one required-field-ripple literal outside either
 named region) verified against `git diff main`.
+
+### Mutation proofs (run and restored by string edit, after unit 5)
+
+All five named in the order, run against the committed tree and reverted
+with `git checkout -- <file>` (the tree was clean before each, so the
+checkout could only discard the mutation itself):
+
+1. **Break the collapse** (`route-trail-display.ts`: guard the merge branch
+   with an unreachable id comparison) — reddened the two adjacent-collapse
+   cases in `route-trail-display.spec.ts` and the matching
+   `route-trail-display.oracle.spec.ts` rows (4 tests total).
+2. **Swap the two glyphs** (`ROUTE_OUTCOME_GLYPH.failed`/`.refused`) —
+   reddened both the hand-transcribed glyph/label spec and the recorded-
+   vector glyph rows (4 tests).
+3. **Comparator "only a in rotation" → `1`** (`turn-order.ts`'s step-4 sort)
+   — reddened the ONE transcribed case + its oracle-corpus twin where
+   exactly one of three seats is excluded from the rotation
+   ("latecomer-behind-dealt-in"/"puts a seat the rotation never dealt in
+   behind those it did"); **a measured correction to this order's own
+   prose**, which predicted "the four cases red" — the other three
+   scenarios never reach the `aRank !== undefined` branch at all (two have
+   every seat in rotation, so `aRank`/`bRank` are both defined; the
+   no-rotation fallback has neither), so only the ONE case that isolates
+   this exact branch is sensitive to it. Both proofs are still exact
+   reddenings of the tests that exercise the mutated line — the "four
+   cases" describes the whole rotation test group, not this mutation's
+   blast radius specifically.
+4. **Map `memories` to `[]`** (`realtime-topic-map.ts`'s `case 'memories'`)
+   — reddened the reach specs in both `realtime-topic-map.spec.ts` and
+   `realtime.service.spec.ts` (2 tests) — not the length/membership pin,
+   which only counts topics and targets and does not distinguish WHICH
+   prefix each resolves to.
+5. **Re-add `</code>` to the progressions render** — the literal v4-shaped
+   mutation (`invalidIds().join('</code>, <code>')` inside one interpolated
+   `<code>` element) does not COMPILE in Angular: its HTML tokenizer parses
+   `</code>` as a real closing tag before the JS expression inside `{{ }}`
+   is ever evaluated (NG5002, "Unexpected closing block"), which is itself
+   evidence the escaping bug is structurally unreachable in Angular, not
+   only fixed in v4. The proof was run with the equivalent HTML-entity form
+   (`&lt;/code&gt;, &lt;code&gt;` split across two interpolated ids inside
+   one `<code>` element — the same literal VISIBLE text v4's bug produced,
+   reached through a path Angular will actually compile) — reddened exactly
+   the "lists several unparseable ids..." equality assertion (1 test).
