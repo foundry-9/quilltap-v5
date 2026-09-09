@@ -118244,3 +118244,27 @@ this order remains OPEN.**
   a cache. Expect a burst; it is not a defect.
 - The Salon list card's memory badge un-staling on a real extraction — the v5
   surface P4.D177 maps the `memories` topic to.
+
+#### Two gate incidents, both recorded because they cost real time
+
+1. **The fixture shield dropped the `.db.meta.json` sidecars.** Per
+   `tmp-fixtures-collide-across-parallel-lanes` this lane copied its four
+   fixture PAIRS into `/tmp/qt-p4d175-fixtures/` before the workspace gate, so
+   a sibling could not clobber them mid-run — and copied only `*.db`.
+   `photo_tools_equivalence` reads a `<main>.db.meta.json` sidecar beside its
+   main fixture, so the gate died at binary 308 with `read meta sidecar: No
+   such file or directory (os error 2)` — which reads exactly like a broken
+   fixture and is nothing of the kind. **This is the same trap the `p4.9i2`
+   round recorded against the sweep driver's own shield**; it applies to a
+   hand-rolled copy just as much. Four of the eight pairs have sidecars
+   (`qt-photo-main`, `qt-avatar-main`, `qt-story-main`, `qt-imggen-main`).
+   Copy `*.db*`, not `*.db`.
+2. **A lane's own `target/debug/deps` grew to 27 GB and nearly wedged the
+   machine.** `cargo` never GCs: every version bump this lane made produced a
+   fresh full set of ~500 test binaries, and the sets accumulate. With two
+   sibling lanes building concurrently the volume went from 17 GB free at lane
+   start to **393 MB**. Deleting THIS lane's `target/debug/deps` (nobody
+   else's) returned **27 GB** in one command and cost one rebuild. Worth doing
+   proactively before the final gate of any lane that bumps several crates
+   several times — the alternative is an `os error 28` that reads like a port
+   defect.
