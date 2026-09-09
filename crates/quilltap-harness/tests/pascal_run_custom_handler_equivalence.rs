@@ -5,6 +5,12 @@
 //! posted `chat_messages` system rows are diffed. Rolls are `min === max` (no
 //! draw), so the FixedBytes source is never consumed.
 //!
+//! P4.D169: a case may pin the run's ONE clock reading with `nowMs`, which the
+//! jest oracle freezes `Date.now()` to and RECORDS on the row — this side then
+//! reads the instant off the row rather than a constant, so the two cannot be
+//! edited out of step. Required for any case that gates on, renders or WRITES a
+//! progression; omitted (and unchanged) on every clock-independent case.
+//!
 //! P4.6bd: the `llm-consult-resolved` case is PROFILE-BEARING — both sides
 //! insert the same connection profile through their real repos, the consult
 //! RESOLVES through a recorded canned completion (the `tier3-completion-oracle`
@@ -55,6 +61,14 @@ use serde_json::{json, Map, Value};
 /// P4.D169: Pascal's run entrance now takes its clock from the caller.
 /// 2026-08-29T12:00:00Z.
 const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
+/// The instant one case runs at: its own `nowMs` when it pins one, otherwise
+/// the shared default. See `PASCAL_NOW_MS`.
+fn case_now_ms(row: &Value) -> i64 {
+    row.get("nowMs")
+        .and_then(Value::as_i64)
+        .unwrap_or(PASCAL_NOW_MS)
+}
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
@@ -546,6 +560,45 @@ fn run_custom_handler_matches_oracle() {
             input: json!({ "tool": "sealed_tally" }),
             profile: false,
         },
+        // ---- P4.D169: progressions, end to end through the LLM entrance ----
+        // The clock each of these runs at is taken from its ORACLE row, which
+        // is the value the jest side froze `Date.now()` to — so the two sides
+        // cannot disagree about the instant by construction.
+        Case {
+            name: "progress-gate-finished-span-runs",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "recharged" }),
+            profile: false,
+        },
+        Case {
+            name: "progress-gate-running-span-unrunnable",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "gestating" }),
+            profile: false,
+        },
+        Case {
+            name: "progress-effect-writes-the-span",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "recharge" }),
+            profile: false,
+        },
+        Case {
+            name: "progress-effect-creates-a-progression",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "kindle" }),
+            profile: false,
+        },
+        Case {
+            name: "progress-effect-writes-under-a-different-clock",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "recharge" }),
+            profile: false,
+        },
     ];
 
     // The corpus is declared on BOTH sides, so a case added to the oracle and
@@ -559,6 +612,12 @@ fn run_custom_handler_matches_oracle() {
     );
 
     let mut checked = 0usize;
+    // P4.D169's floors. Each was ZERO before this lane widened the corpus, and
+    // the family was green at zero: the entrance threaded a clock and a sheet
+    // that no case read.
+    let mut saw_progress_gate_withheld = false;
+    let mut saw_progress_write = false;
+    let mut saw_progress_create = false;
     for case in &cases {
         let want = oracle
             .get(case.name)
@@ -602,10 +661,11 @@ fn run_custom_handler_matches_oracle() {
             ]),
             project_id: None,
             caller_participant_id: Some(P_A.to_string()),
-            // P4.D169: the run's frozen clock. The corpus carries no
-            // progression yet — item 4 widens it — so no row reads this, but a
-            // fixed instant keeps the run reproducible.
-            now_ms: PASCAL_NOW_MS,
+            // P4.D169: a case may pin its own instant (`nowMs`), and the jest
+            // oracle freezes `Date.now()` to the same value for it. Every
+            // clock-independent case takes the shared default, which is what
+            // the pre-progression rows have always run against.
+            now_ms: case_now_ms(want),
         };
         let mut rng = FixedBytes::new(vec![]);
         // The REAL consult invoker, exactly as v4's handler builds one. For the
@@ -666,9 +726,44 @@ fn run_custom_handler_matches_oracle() {
             "case '{}' state tiers + fact sheets after the run",
             case.name
         );
+        // `updatedAt` is stamped only by the applier, and `kettle` exists in no
+        // fixture — so each is the signature of a write that actually landed in
+        // a real vault rather than merely being reported in `applied`.
+        let vault_a = want["stores"]["metadata"]["A"]
+            .get("progressions")
+            .cloned()
+            .unwrap_or(Value::Null);
+        if vault_a
+            .get("cannon")
+            .and_then(|c| c.get("updatedAt"))
+            .is_some()
+        {
+            saw_progress_write = true;
+        }
+        if vault_a.get("kettle").is_some() {
+            saw_progress_create = true;
+        }
+        if want["output"]["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("gestating"))
+        {
+            saw_progress_gate_withheld = true;
+        }
         checked += 1;
     }
 
     assert_eq!(checked, cases.len());
+    assert!(
+        saw_progress_gate_withheld,
+        "no case was refused a tool gated on a span still RUNNING"
+    );
+    assert!(
+        saw_progress_write,
+        "no case's progress effect actually landed in the character's vault"
+    );
+    assert!(
+        saw_progress_create,
+        "no case CREATED a progression nobody had authored"
+    );
     eprintln!("OK: run_custom handler matched oracle ({checked} cases).");
 }

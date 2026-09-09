@@ -116743,3 +116743,186 @@ in this round's ownership table and the re-vendor belongs to whoever moves the
 baseline. Also newly past the baseline: `5841a8c62` ("Message route trail: every
 model tried, in order, under avatar"), which is a lib change on a ported surface.
 This lane wrote nothing to the drift ledger.
+
+### Unit 4 — the two entrances, over a real vault
+
+The corpus table in unit 3 closed six families. Two remained, and they are the
+two that matter most, because they are the only place a progression's WRITE
+reaches a real character's `metadata.json` through the real applier, the real
+repositories and a real encrypted database. `pascal_side_effects_equivalence`
+(unit 2) proves the planning pass with the repositories mocked to recorders;
+these two prove where the bytes land.
+
+#### The fixture moved, which is the expensive part
+
+`pascal-run-custom-{main,mount}.db` is read by FOUR families, and its own
+builder's header records the obligation: a rebuild mints fresh vault ids, so
+every one of them must be regenerated and re-run. It was rebuilt through that
+committed builder (never by hand), at this lane's pin, and all four went green:
+
+| family | cases before | after |
+|---|---|---|
+| `pascal_run_custom_handler_equivalence` | 27 | 32 |
+| `pascal_custom_tools_route_equivalence` | 36 | 42 |
+| `pascal_definition_reader_equivalence` | 6 | 6 (fixture-only move) |
+| `pascal_build_tools_roster` | — | the roster list widened + two named arms |
+
+CHAR_A's vault gained four progression tools and two spans anchored to the
+frozen instant: a `cannon` that finished ten minutes before it, and a
+`gestation` with two months to run. Both gates sit on the same character in the
+same roster at the same instant, so nothing but the span distinguishes them.
+
+#### What the entrances now prove
+
+- **The gate answers before the deal.** `recharged` is dealt; `gestating` is not
+  in the roster at all, so the handler answers the same `No custom tool named …`
+  it gives an invented name. `pascal_build_tools_roster` asserts both by name,
+  because an absence is easy to lose in a list.
+- **The write lands, inside the one character write.** `recharge` writes three
+  `progress.cannon.*` fields; the dumped vault shows the new `startTime`,
+  `endTime`, `name` and the applier's `updatedAt` stamp beside an UNTOUCHED
+  `gestation`, `hasAnsibleAccess` and `clearanceLevel`.
+- **Create-on-write.** `kindle` mints a `kettle` nobody authored, with the
+  format's defaults under the two authored fields.
+- **The manual entrance's asymmetry, both halves.** `progress` is
+  `body.asCharacterId ? perspective.metadata : {}`, so a run nobody made rolls
+  against an empty sheet: the outcome takes its catch-all,
+  `{{progress.cannon.percent}}` renders VERBATIM, and nothing is written. The
+  empty-string seat matches it exactly, through the same four truthiness gates.
+
+**A v4 behaviour worth pinning rather than rediscovering.** At the manual
+entrance the GATE and the run-time sheet come from different places: the roster
+resolved through the perspective's vault tier and answered the gate from that
+character's progressions, so a progression-gated tool IS dealt on a run naming
+nobody — and then rolls against an empty sheet. v4's own comment says as much
+(`route.ts` — "consistent with the roster itself, which already resolved through
+that character's vault tier"). Both rows are 200s; what differs is what the run
+could see.
+
+#### A surviving mutation that bought a fixture change
+
+The manual route's `flatten_progressions` clock was mutated to a fresh
+`now_unix_ms()` and the family stayed GREEN. The reason was measurable, not
+mysterious: the only progression field the corpus rendered was `state`, and a
+span that finished in the past reads `complete` at any later instant. So
+`recharge`'s success message gained `{{progress.cannon.percent}}` — the one
+rendered field that moves with the clock the sheet was flattened against — the
+fixture was rebuilt, and the mutation now reddens `run-progress-effect-as-a`.
+The same mutation on the LLM entrance reddens `progress-effect-writes-the-span`.
+
+That is the difference between a mutation that fails and a mutation that
+teaches: it located a real hole in what the corpus could see, and the hole was
+closed rather than the mutation retired.
+
+#### The clocks
+
+Both entrance oracles now freeze `Date.now()` PER CASE, and each row RECORDS the
+instant it ran at. The Rust side reads the clock off the oracle row rather than
+from a constant, so the two sides cannot drift apart by hand-editing one and not
+the other. Every clock-independent case omits the field and runs exactly as it
+always has. The handler's `progress-effect-writes-under-a-different-clock` row
+exists to make that machinery visible: it is the same tool an hour later, and
+every stamped field moves.
+
+#### Three mutation proofs (unit 4)
+
+| mutation | reddens |
+|---|---|
+| the manual sheet borrows the perspective with nobody named | `run-progress-effect-no-character` |
+| the manual route re-reads the clock for its sheet | `run-progress-effect-as-a` |
+| the LLM entrance re-reads the clock for its sheet | `progress-effect-writes-the-span` |
+
+#### Recorded
+
+Two empty `*.db-journal` files appear beside the fixture after every rebuild —
+this is the fourth time (`58d47ecf9`, `2e89a3ac3` dropped them before). They are
+deleted here, and `.gitignore` gains the one line that stops the fifth. That
+file is in nobody's ownership row; the edit is a single append and is recorded
+here rather than made silently.
+
+#### The FINAL wire shapes, for the unifier's §C diff
+
+Both measured from the regenerated oracles rather than read off the source:
+
+- **`ToolVocabulary`** (the `references` object on every listing row), twelve
+  keys in v4's declaration order:
+  `value, roll, dice, llm, params, metadata, state, stateWrites, metadataWrites, progress, progressWrites, now`.
+- **The preview response** (`POST /api/v1/custom-tools?action=preview`):
+  `progress` is spread AFTER `gate` and present only when the sheet is
+  non-empty. Gated row —
+  `tool, params, rollForm, raw, value, state, outcomeIndex, message, diceBreakdown, visibility, gate, progress`;
+  ungated row, the same without `gate`; a body carrying no `progressions` at
+  all carries no `progress` key rather than an empty object.
+
+#### Two order caveats, measured
+
+- Item 3 warned that "any listing family that pins the `references` object
+  moves: regenerate". Measured: **none does.**
+  `p4_6ay_workbench_wire_contract` — the family the order names — mentions
+  neither `references` nor the vocabulary at all, and no other test in the tree
+  pins that object. `pascal_tool_vocabulary_equivalence` is its only consumer,
+  and it compares the whole serialized shape by design.
+- Item 3's other half — that the listing projection needs no change because it
+  is `serde_json::to_value` of the widened struct — held: the three new keys
+  reach the wire without a line of projection code.
+
+#### Why the fixture had to move at all
+
+The order said to prefer expressing the arm in the JSON corpus and to rebuild
+the committed pair only if it could not be. Measured: it could not.
+`harness/oracle/fixtures/pascal-run-custom.json` carries exactly three keys —
+`testPepperBase64`, `userId`, `seedTimestamp`. It holds no case list, no
+characters and no tool definitions; those live in the builder and in each
+side's own case list. A character carrying progressions and a tool that reads
+one are both baked-instance facts, so the pair had to move.
+
+#### The gate's own catch: a workspace run is fail-fast, and one tripwire was aimed at the wrong tree
+
+The first definitive `cargo test --workspace` stopped at binary **340 of ~530**
+with a single failure — `qtap_schema_embed_guard`, which compares the vendored
+`qtap-export.schema.json` against `~/source/quilltap-server`, the LIVE v4
+checkout. v4 has moved past this lane's pin and changed that file (92,797 bytes
+against the vendored 89,769), so the guard was right to fire and wrong to be
+asked: the vendored copy is byte-identical to the PIN
+(md5 `430bb227c7029550f773134f42a0c6eb`), and this lane runs under PIN REQUIRED.
+
+Because `cargo test --workspace` is fail-fast per BINARY, that one red hid
+roughly 190 binaries. The gate of record therefore runs with
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d169-25f534c0b` — not a workaround but the correct
+invocation for a pinned lane, and the guard passes against the pin (2 passed).
+**Any lane in this round running a full workspace gate while v4 sits past the
+baseline needs that variable, or it will lose the tail of the suite to a
+tripwire aimed at a tree it is not being measured against.**
+
+The re-vendor obligation itself is real and stays open; it belongs to whoever
+moves the baseline, since `generators/**` is nobody's in this round's ownership
+table.
+
+#### Gate (unit 4, the definitive run)
+
+`cargo fmt --all --check` clean; clippy clean on BOTH feature sets; release
+build clean. `cargo test --workspace` with the round's twelve Pascal oracle
+variables plus `QT_V4_ROOT` at the pin: **539 test binaries / 3,039 passed /
+0 failed / 1 ignored, ZERO `SKIP:` lines, cargo exit 0.**
+
+Because cargo captures a passing test's output, that silence is the capture and
+not a claim — so every Pascal family was ALSO run by name with `--nocapture`,
+and each printed its own count:
+
+| family | cases |
+|---|---|
+| `pascal_tool_vocabulary_equivalence` | 60 definitions |
+| `pascal_custom_tool_definition_equivalence` | 10 titles, 300 definitions, 52 gate verdicts |
+| `pascal_custom_tools_execution_equivalence` | 65 run / 132 when / 68 render / 33 params / 29 format |
+| `pascal_roster_equivalence` | 46 scenarios |
+| `pascal_workbench_route_equivalence` | 71 cases |
+| `pascal_run_custom_handler_equivalence` | 32 cases |
+| `pascal_custom_tools_route_equivalence` | 42 cases |
+| `pascal_run_custom_equivalence` | 18 rows |
+| `pascal_simulate_equivalence` | 12 rows |
+| `pascal_expressions_equivalence`, `pascal_side_effects_equivalence`, `pascal_definition_reader_equivalence`, `pascal_build_tools_roster` | green, no count printed |
+
+Ownership fences verified empty: `git diff main --` over `apps/web/`, `help/`,
+`build_context.rs`, `core_whisper.rs`, `chat_initialize.rs`, `carina_query.rs`
+and `quilltap-host/src` shows nothing, and `progressions/{schema,engine}.rs` is
+byte-identical to P4.D167's tip.

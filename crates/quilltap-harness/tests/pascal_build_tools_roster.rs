@@ -149,6 +149,13 @@ fn build_tools_resolves_and_offers_run_custom() {
     // the participant tier, which that case sees and this context does not:
     // it resolves for CHAR_A ALONE, so CHAR_C's `beacon`/`mangled` are absent
     // here and present there. CHAR_A's fact sheet qualifies for BOTH gates.
+    //
+    // P4.D169 added four progression tools to that vault, and only THREE of
+    // them are here: `gestating` gates on `gestation.complete`, whose span is
+    // still running at the frozen instant, so it is withheld before the deal
+    // and never reaches the string the model reads. That absence is the
+    // feature, so it is asserted by name below rather than left to the reader
+    // to notice.
     assert_eq!(
         expected_roster
             .iter()
@@ -162,9 +169,28 @@ fn build_tools_resolves_and_offers_run_custom() {
             "stateful",
             "ledger",
             "sealed_tally",
+            "recharged",
+            "recharge",
+            "kindle",
             "secure_line",
             "novice_aid"
         ]
+    );
+    // The progression gate, at the entrance where it matters: a tool whose span
+    // has FINISHED is offered, and one whose span is still running is not. Both
+    // gates sit on the same character, in the same roster, at the same instant,
+    // so nothing but the span distinguishes them.
+    let offered: Vec<&str> = expected_roster
+        .iter()
+        .map(|t| t.definition.name.as_str())
+        .collect();
+    assert!(
+        offered.contains(&"recharged"),
+        "a tool gated on a FINISHED span must be offered"
+    );
+    assert!(
+        !offered.contains(&"gestating"),
+        "a tool gated on a span still RUNNING must be withheld before the deal"
     );
     assert_eq!(
         run_custom["function"]["description"].as_str().unwrap(),

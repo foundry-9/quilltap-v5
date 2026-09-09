@@ -23,6 +23,10 @@ apps/web/e2e/.artifacts
 
 # Real instance data — NEVER commit a database or a pepper
 fixtures/*.db
+# A fixture rebuild leaves an empty SQLite journal beside each database it
+# wrote. Three commits have dropped them by hand (58d47ecf9, 2e89a3ac3, and
+# P4.D169's); this is the line that stops the fourth.
+*.db-journal
 *.pepper
 .env
 .env.*

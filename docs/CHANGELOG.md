@@ -307,6 +307,58 @@ integration test only `cargo test --workspace` reaches, so they surfaced one
 full gate run at a time. The `quilltap-web` site now derives the count from the
 embedded table; the two remaining literals are deliberate independent pins and
 cross-reference each other.
+#### 2026-09-09 — test(pascal): progressions at both entrances, over a real vault
+
+_Versions: harness 0.0.740._
+
+The last two families in P4.D169's coverage table. They are the only place a
+progression's WRITE reaches a real character's `metadata.json` through the real
+applier, the real repositories and a real encrypted database — unit 2's applier
+differential proves the planning pass with the repositories mocked to recorders,
+and these prove where the bytes land.
+
+`pascal-run-custom-{main,mount}.db` is read by four families, so the rebuild was
+the expensive part: it was done through the committed builder at the lane's pin,
+and all four were regenerated and re-run. CHAR_A's vault gained four progression
+tools and two spans anchored to the frozen instant — a `cannon` that finished
+ten minutes before it and a `gestation` with two months to run — so both gate
+arms sit on the same character, in the same roster, at the same instant.
+
+Handler 27 → 32 cases, route 36 → 42. What they now prove: the gate answers
+before the deal (`gestating` is not in the roster at all, so the entrance
+answers the same "No custom tool named …" it gives an invented name); the write
+lands inside the one character write, with `gestation`, `hasAnsibleAccess` and
+`clearanceLevel` untouched beside it; create-on-write mints a progression nobody
+authored; and the manual entrance's asymmetry in both halves — a run naming
+nobody rolls against an empty sheet, renders `{{progress.cannon.percent}}`
+verbatim and writes nothing.
+
+Both entrance oracles now freeze `Date.now()` per case and RECORD the instant on
+the row; the Rust side reads its clock off that row rather than a constant, so
+the two sides cannot be edited out of step. Clock-independent cases omit the
+field and run exactly as before.
+
+**A surviving mutation bought a fixture change.** Mutating the manual route's
+sheet clock to a fresh reading left the family green, because the only rendered
+progression field was `state` and a finished span reads `complete` at any later
+instant. `recharge`'s message gained `{{progress.cannon.percent}}` — the one
+rendered field that moves with the clock the sheet was flattened against — and
+the mutation now reddens `run-progress-effect-as-a`, its LLM-entrance twin
+reddening `progress-effect-writes-the-span`.
+
+Also here: the two empty `*.db-journal` files a fixture rebuild leaves behind
+are deleted, and `.gitignore` gains the line that stops the next ones. Three
+earlier commits dropped them by hand.
+
+The gate itself caught one thing worth carrying forward. `cargo test
+--workspace` is fail-fast per binary, and `qtap_schema_embed_guard` compares the
+vendored export schema against the LIVE v4 checkout — which has moved past this
+lane's pin and changed that file. One red hid roughly 190 binaries. The gate of
+record runs with `QT_V4_ROOT` pointed at the pin, which is the correct
+invocation for a lane under PIN REQUIRED; the vendored copy is byte-identical to
+the pin and the guard passes against it. The re-vendor obligation belongs to the
+baseline move.
+
 #### 2026-09-09 — test(pascal): the progression corpora — six families that were green at zero coverage
 
 _Versions: core 0.0.850, harness 0.0.739._

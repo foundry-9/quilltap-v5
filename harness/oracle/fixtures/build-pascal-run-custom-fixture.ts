@@ -7,7 +7,12 @@
  * Three characters, each with a provisioned vault carrying a `Tools/` roster and
  * a `metadata.json` fact sheet:
  *   - CHAR_A: ansible (metadata-gated) + coin (public) + whispered (private) tools;
- *             metadata { hasAnsibleAccess: true, clearanceLevel: 3 }.
+ *             metadata { hasAnsibleAccess: true, clearanceLevel: 3 }. Since
+ *             P4.D169 also four PROGRESSION tools (`recharged` and `gestating`
+ *             gated on a span, `recharge` and `kindle` writing one through the
+ *             `progress.` effect door) and two spans in the sheet — `cannon`,
+ *             long finished, and `gestation`, still running — both pinned to
+ *             the frozen instant both sides run these cases at.
  *   - CHAR_B: ansible; metadata { faction: "Ordo Ferrum" } (lacks the key).
  *   - CHAR_C: ansible; metadata {} (empty sheet). Since P4.D30 also `beacon`
  *             and `mangled`, both stored as database BLOBS rather than document
@@ -25,10 +30,10 @@
  * to the `.meta.json` sidecar (the Rust side reads them to pass
  * `character_mount_point_id`).
  *
- * Regenerate (v4 @ ff12f491, Node 24; run it from a worktree PINNED at the
- * baseline — `oracle-regen-pinned-v4-worktree` — whenever v4's checkout has
- * moved past it or is dirty):
- *   cd /private/tmp/qt-v4-pin-p4d30-ff12f491
+ * Regenerate (last rebuilt by P4.D169 at v4 `25f534c0b`, Node 24; run it from a
+ * worktree PINNED at the baseline — `oracle-regen-pinned-v4-worktree` —
+ * whenever v4's checkout has moved past it or is dirty):
+ *   cd /tmp/qt-v4-pin-p4d169-25f534c0b
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
@@ -125,6 +130,81 @@ const ANSIBLE = {
     },
     { when: true, message: 'The panel stays dark.', state: 'failure' },
   ],
+};
+
+/**
+ * P4.D169: the progression family, at the LLM run entrance.
+ *
+ * The fixture's spans are pinned to `PASCAL_NOW_MS` (2026-08-29T12:00:00Z) —
+ * the instant BOTH sides run these cases at, the Rust side by passing it and
+ * the jest oracle by freezing `Date.now()` for a case that asks. Without that
+ * agreement none of this is comparable: a derived field is a function of the
+ * clock, and two implementations reading two wall clocks read two sheets.
+ */
+const PASCAL_NOW_MS = 1_788_004_800_000;
+const atOffset = (ms: number) => new Date(PASCAL_NOW_MS + ms).toISOString();
+
+/** Gated on a FINISHED span: the cannon has recharged, so the tool is dealt. */
+const RECHARGED = {
+  name: 'recharged',
+  description: 'Fire the cannon, which must have finished charging.',
+  availableWhen: { progress: { 'cannon.complete': { eq: true } } },
+  roll: { min: 0.7, max: 0.7 },
+  outcomes: [{ when: true, message: 'The cannon speaks.', state: 'success' }],
+};
+
+/** Gated on a span still RUNNING: withheld, so the roster never offers it. */
+const GESTATING = {
+  name: 'gestating',
+  description: 'Deliver, which the gestation must have finished.',
+  availableWhen: { progress: { 'gestation.complete': { eq: true } } },
+  roll: { min: 0.7, max: 0.7 },
+  outcomes: [{ when: true, message: 'It is born.', state: 'success' }],
+};
+
+/**
+ * Reads the sheet and the run clock in its outcomes, and WRITES the cannon's
+ * span through the `progress.` effect door — the one path that proves a
+ * progress effect reaches a real character's vault through the real applier,
+ * inside the ONE character write the metadata replace already makes.
+ */
+const RECHARGE = {
+  name: 'recharge',
+  description: 'Re-arm the cannon for another ten minutes.',
+  roll: { min: 0.7, max: 0.7 },
+  effects: [
+    { target: 'progress.cannon.startTime', value: '{{now}}' },
+    { target: 'progress.cannon.endTime', value: '{{now}} + 600000' },
+    { target: 'progress.cannon.name', value: "'Cannon recharge (re-armed)'" },
+  ],
+  outcomes: [
+    {
+      when: { progress: { 'cannon.complete': { eq: true } } },
+      // The percent is here on purpose: it is the one rendered field that
+      // moves with the CLOCK the sheet was flattened against, so a port that
+      // took a fresh reading for the sheet instead of the run's own would
+      // render a different number. `state` alone would not tell them apart —
+      // a finished span reads `complete` at any later instant.
+      message: 'Re-arming from {{progress.cannon.state}} at {{progress.cannon.percent}}% at {{now}}.',
+      state: 'success',
+    },
+    { when: true, message: 'Still {{progress.cannon.percent}}% charged.', state: 'partial' },
+  ],
+};
+
+/**
+ * Writes a progression the character does not carry, which CREATES it with the
+ * format's defaults — the create-on-write arm, through a real vault.
+ */
+const KINDLE = {
+  name: 'kindle',
+  description: 'Start a kettle nobody was carrying.',
+  roll: { min: 0.7, max: 0.7 },
+  effects: [
+    { target: 'progress.kettle.name', value: "'The kettle'" },
+    { target: 'progress.kettle.endTime', value: '{{now}} + 300000' },
+  ],
+  outcomes: [{ when: true, message: 'The kettle is on.', state: 'success' }],
 };
 
 const COIN = {
@@ -490,7 +570,33 @@ async function main(): Promise<void> {
   await writeVaultFile(vaultA, 'Tools/stateful.tool.json', STATEFUL);
   await writeVaultFile(vaultA, 'Tools/ledger.tool.json', LEDGER);
   await writeVaultFile(vaultA, 'Tools/sealed_tally.tool.json', SEALED_TALLY);
-  await writeVaultFile(vaultA, 'metadata.json', { hasAnsibleAccess: true, clearanceLevel: 3 });
+  // P4.D169: four progression tools and a sheet carrying two spans — one long
+  // FINISHED (so a gate on it holds and a `{{progress.…}}` render has something
+  // to say) and one still RUNNING (so the withheld arm is reachable on the same
+  // character, in the same run).
+  await writeVaultFile(vaultA, 'Tools/recharged.tool.json', RECHARGED);
+  await writeVaultFile(vaultA, 'Tools/gestating.tool.json', GESTATING);
+  await writeVaultFile(vaultA, 'Tools/recharge.tool.json', RECHARGE);
+  await writeVaultFile(vaultA, 'Tools/kindle.tool.json', KINDLE);
+  await writeVaultFile(vaultA, 'metadata.json', {
+    hasAnsibleAccess: true,
+    clearanceLevel: 3,
+    progressions: {
+      cannon: {
+        name: 'Cannon recharge',
+        startTime: atOffset(-20 * 60_000),
+        endTime: atOffset(-10 * 60_000),
+        timeIncrement: 'minute',
+        quantity: { total: 1, unit: 'MJ', precision: 1 },
+      },
+      gestation: {
+        name: 'The gestation',
+        startTime: atOffset(-30 * 24 * 60 * 60_000),
+        endTime: atOffset(60 * 24 * 60 * 60_000),
+        timeIncrement: 'day',
+      },
+    },
+  });
 
   await writeVaultFile(vaultB, 'Tools/ansible.tool.json', ANSIBLE);
   await writeVaultFile(vaultB, 'Tools/stateful.tool.json', STATEFUL);

@@ -20,7 +20,13 @@
  *
  * `content` in a mount's file list is the file's TEXT; the stub hands it back as
  * the reader's `bytes`, so both sides parse the same bytes — a malformed-JSON
- * case ships the broken text verbatim. (The real storage dispatch below this
+ * case ships the broken text verbatim.
+ *
+ * P4.D169: `Date.now()` is FROZEN for the whole run (see `ROSTER_NOW_MS`),
+ * because `resolveCustomToolRoster` takes one reading and derives the
+ * progression sheet from it — a progression-gated verdict is not comparable
+ * against a moving clock. No pre-existing scenario reads a clock, so freezing
+ * it moved none of their recorded bytes. (The real storage dispatch below this
  * stub is the subject of `pascal-definition-reader`, over a real store.)
  *
  * Run (v4 @ ff12f491, Node 24; cp to a /tmp mirror, jest ignores .claude/):

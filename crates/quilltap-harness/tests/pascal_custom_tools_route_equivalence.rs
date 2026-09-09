@@ -19,6 +19,13 @@
 //! Regenerating this family at `e8a49597` over the old fixture stayed green; the
 //! corpus, not the port, was the thing that had to move.
 //!
+//! P4.D169: a case may pin the run's ONE clock reading with `nowMs` (see the
+//! handler family's header for the mechanism). The rows that use it are the
+//! progression ones, which also pin this entrance's own asymmetry: `progress`
+//! is `body.asCharacterId ? perspective.metadata : {}`, so a run nobody made
+//! rolls against an EMPTY sheet even though the roster's gate already answered
+//! from the perspective's vault tier.
+//!
 //! Generate the oracle (v4 @ e8a49597, Node 24 — mirror to /tmp; jest ignores
 //! `.claude/`):
 //!   cd ~/source/quilltap-server
@@ -56,6 +63,15 @@ use serde_json::{json, Map, Value};
 /// progression, no row reads the value; a fixed instant keeps the run
 /// reproducible. 2026-08-29T12:00:00Z.
 const PASCAL_NOW_MS: i64 = 1_788_004_800_000;
+
+/// The instant one case runs at: its own recorded `nowMs` when it pins one,
+/// otherwise the shared default. Taking it from the ORACLE row is what keeps
+/// the two sides' clocks in step without a constant to maintain by hand.
+fn case_now_ms(row: &Value) -> i64 {
+    row.get("nowMs")
+        .and_then(Value::as_i64)
+        .unwrap_or(PASCAL_NOW_MS)
+}
 
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 /// P4.d24 — the five operator-perspective rooms (see the fixture builder).
@@ -707,6 +723,51 @@ async fn custom_tools_route_matches_oracle() {
             ),
             false,
         ),
+        // ---- P4.D169: progressions at the MANUAL run entrance -------------
+        // The clock each of these runs at comes from its ORACLE row, which is
+        // what the jest side froze `Date.now()` to.
+        (
+            "run-progress-gate-as-a",
+            CHAT,
+            Some(
+                json!({ "tool": "recharged", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-progress-gate-no-character",
+            CHAT,
+            Some(json!({ "tool": "recharged" })),
+            false,
+        ),
+        (
+            "run-progress-gate-running-span-as-a",
+            CHAT,
+            Some(
+                json!({ "tool": "gestating", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-progress-effect-as-a",
+            CHAT,
+            Some(
+                json!({ "tool": "recharge", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-progress-effect-no-character",
+            CHAT,
+            Some(json!({ "tool": "recharge" })),
+            false,
+        ),
+        (
+            "run-progress-effect-as-empty-string",
+            CHAT,
+            Some(json!({ "tool": "recharge", "asCharacterId": "" })),
+            false,
+        ),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
@@ -722,6 +783,11 @@ async fn custom_tools_route_matches_oracle() {
     assert_perspective_witnesses(&oracle);
 
     let mut checked = 0usize;
+    // P4.D169's floors, each ZERO before this lane widened the corpus. The
+    // manual entrance's own claim is the ASYMMETRY, so both halves are asserted
+    // rather than one: a named seat writes, and an unnamed one does not.
+    let mut saw_progress_write = false;
+    let mut saw_unnamed_seat_wrote_nothing = false;
     for (name, chat, body, profile) in &cases {
         let want = oracle
             .get(*name)
@@ -730,7 +796,8 @@ async fn custom_tools_route_matches_oracle() {
 
         let (status, resp_body, sys) = match body {
             None => {
-                let (s, b) = status_body(chat_custom_tools_list(&db, USER, chat, PASCAL_NOW_MS));
+                let (s, b) =
+                    status_body(chat_custom_tools_list(&db, USER, chat, case_now_ms(want)));
                 (s, b, Vec::new())
             }
             Some(b) => {
@@ -764,7 +831,7 @@ async fn custom_tools_route_matches_oracle() {
                                 parsed.private,
                                 parsed.as_character_id,
                                 Some(&runner),
-                                PASCAL_NOW_MS,
+                                case_now_ms(want),
                             )
                             .await,
                         );
@@ -810,9 +877,34 @@ async fn custom_tools_route_matches_oracle() {
             canon(&want["stores"]),
             "case '{name}' state tiers + fact sheets after the run"
         );
+        // `updatedAt` is stamped only by the applier, so it is the signature of
+        // a write that landed. The unnamed-seat row must render its
+        // `{{progress.…}}` VERBATIM — an empty sheet resolves nothing — and
+        // leave the vault untouched.
+        if name.starts_with("run-progress-effect-") {
+            let stamped = want["stores"]["metadata"]["A"]["progressions"]["cannon"]
+                .get("updatedAt")
+                .is_some();
+            let rendered_verbatim = serde_json::to_string(&want["body"])
+                .is_ok_and(|b| b.contains("{{progress.cannon.percent}}"));
+            if *name == "run-progress-effect-as-a" && stamped {
+                saw_progress_write = true;
+            }
+            if name.ends_with("no-character") && !stamped && rendered_verbatim {
+                saw_unnamed_seat_wrote_nothing = true;
+            }
+        }
         checked += 1;
     }
 
     assert_eq!(checked, cases.len());
+    assert!(
+        saw_progress_write,
+        "no NAMED-seat run landed a progress effect in the character's vault"
+    );
+    assert!(
+        saw_unnamed_seat_wrote_nothing,
+        "no UNNAMED-seat run exercised the empty-sheet asymmetry (render verbatim, write nothing)"
+    );
     eprintln!("OK: custom-tools route matched oracle ({checked} cases).");
 }

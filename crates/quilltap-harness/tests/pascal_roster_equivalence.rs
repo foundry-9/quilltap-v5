@@ -7,6 +7,12 @@
 //! `resolve_roster_from_pool` + `load_definitions` — the same real parse path via
 //! `safe_parse`. The DB/disk IO wrappers are thin and are what v4 mocks here too.
 //!
+//! P4.D169: the oracle FREEZES `Date.now()` for the whole run, because
+//! `resolveCustomToolRoster` takes one reading and derives the progression
+//! sheet from it. The scenarios that gate on `progress` are not comparable
+//! against a moving clock; no pre-existing scenario reads one, so freezing it
+//! moved none of their bytes.
+//!
 //! The malformed-JSON `reason` differs one layer below this format (serde_json's
 //! message vs V8's), a documented cross-language seam, so that one reason is
 //! compared by its `is not valid JSON:` prefix; every other reason (the schema

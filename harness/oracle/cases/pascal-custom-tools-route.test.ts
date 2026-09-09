@@ -64,7 +64,18 @@ interface CaseSpec {
    * itself stays profile-free — the no-profiles case depends on that.
    */
   profile?: boolean;
+  /**
+   * P4.D169: freeze the manual run's ONE clock reading for this case, to the
+   * same instant the Rust side takes from the recorded row. Required for any
+   * case that gates on, renders or writes a progression — a derived field is a
+   * function of the clock. Omitted on every clock-independent case, so their
+   * recorded bytes stay exactly where they were.
+   */
+  nowMs?: number;
 }
+
+/** See `CaseSpec.nowMs`. 2026-08-29T12:00:00Z, the fixture's spans' anchor. */
+const PASCAL_NOW_MS = 1_788_004_800_000;
 
 /** The same profile the handler oracle inserts (see its CONSULT_PROFILE). */
 const CONSULT_PROFILE = {
@@ -289,15 +300,22 @@ async function runCase(
     const params = { params: Promise.resolve({ id: chatId }) };
     const base = `http://localhost/api/v1/chats/${chatId}/custom-tools`;
     let response: { status: number; json: () => Promise<unknown> };
-    if (c.method === 'GET') {
-      const { GET } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
-      response = (await GET(mockRequest(base) as never, params as never)) as never;
-    } else {
-      const { POST } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
-      response = (await POST(
-        mockRequest(`${base}?action=run`, c.body) as never,
-        params as never,
-      )) as never;
+    // P4.D169: see `CaseSpec.nowMs`.
+    const realNow = Date.now;
+    if (c.nowMs !== undefined) Date.now = () => c.nowMs as number;
+    try {
+      if (c.method === 'GET') {
+        const { GET } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
+        response = (await GET(mockRequest(base) as never, params as never)) as never;
+      } else {
+        const { POST } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
+        response = (await POST(
+          mockRequest(`${base}?action=run`, c.body) as never,
+          params as never,
+        )) as never;
+      }
+    } finally {
+      Date.now = realNow;
     }
     const status = response.status;
     const body = await response.json();
@@ -364,6 +382,9 @@ async function runCase(
 
     return {
       name: c.name,
+      // P4.D169: recorded so the Rust side takes its clock FROM the row rather
+      // than from a constant the two sides would have to keep in step by hand.
+      ...(c.nowMs === undefined ? {} : { nowMs: c.nowMs }),
       status,
       body,
       systemRows,
@@ -495,6 +516,38 @@ async function main(): Promise<void> {
     { name: 'run-ledger-as-empty-string', method: 'POST', body: { tool: 'ledger', asCharacterId: '' } },
     // z.object is non-strict: an unknown key is STRIPPED, not refused.
     { name: 'run-unknown-key', method: 'POST', body: { tool: 'coin', asCharacterId: CHAR_A, bogus: 1 } },
+
+    // ---- P4.D169: progressions at the MANUAL run entrance ----------------
+    //
+    // The asymmetry this entrance owns: `progress` is
+    // `body.asCharacterId ? perspective.metadata : {}`, so a run NOBODY made
+    // rolls against an EMPTY sheet. The same tool, the same clock, the same
+    // fixture — and the only difference is whether a character was named.
+    //
+    // A consequence worth pinning rather than discovering later: the GATE and
+    // the run-time sheet come from different places here. The roster resolved
+    // through the perspective's vault tier and answered the gate from that
+    // character's progressions, so `recharged` IS dealt on a run naming
+    // nobody — and then rolls against an empty sheet. Both rows below are
+    // 200s that read "The cannon speaks."; what differs is what the run could
+    // SEE, which the effect rows further down make visible.
+    { name: 'run-progress-gate-as-a', method: 'POST', body: { tool: 'recharged', asCharacterId: CHAR_A }, nowMs: PASCAL_NOW_MS },
+    { name: 'run-progress-gate-no-character', method: 'POST', body: { tool: 'recharged' }, nowMs: PASCAL_NOW_MS },
+    // The withheld half, from the same seat: `gestating`'s span is still
+    // running, so the roster does not carry it and the route answers the same
+    // "No custom tool named …" it gives an invented name.
+    { name: 'run-progress-gate-running-span-as-a', method: 'POST', body: { tool: 'gestating', asCharacterId: CHAR_A }, nowMs: PASCAL_NOW_MS },
+    // The WRITE, through this entrance: the effect lands in the named
+    // character's vault and the store dump reads it back.
+    { name: 'run-progress-effect-as-a', method: 'POST', body: { tool: 'recharge', asCharacterId: CHAR_A }, nowMs: PASCAL_NOW_MS },
+    // ...and the same tool with nobody named: the sheet is empty, so the
+    // outcome takes its catch-all and `{{progress.cannon.percent}}` renders as
+    // WRITTEN — and there is no rolling character, so the effects skip rather
+    // than writing anywhere. The store dump is what proves the second half.
+    { name: 'run-progress-effect-no-character', method: 'POST', body: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS },
+    // The empty-string seat, which the four truthiness gates read as "nobody
+    // named" — this must match `run-progress-effect-no-character` exactly.
+    { name: 'run-progress-effect-as-empty-string', method: 'POST', body: { tool: 'recharge', asCharacterId: '' }, nowMs: PASCAL_NOW_MS },
   ];
 
   const out = fs.createWriteStream(outPath);

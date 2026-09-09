@@ -63,7 +63,19 @@ interface CaseSpec {
    * profile-free — the no-profiles cases depend on that.
    */
   profile?: boolean;
+  /**
+   * P4.D169: freeze the handler's ONE clock reading for this case, to the same
+   * instant the Rust side passes as `PASCAL_NOW_MS`. Required for any case that
+   * gates on, renders or WRITES a progression — a derived field is a function
+   * of the clock, and two implementations reading two wall clocks read two
+   * sheets. Omitted on every clock-independent case, so their recorded bytes
+   * stay exactly where they were.
+   */
+  nowMs?: number;
 }
+
+/** See `CaseSpec.nowMs`. 2026-08-29T12:00:00Z, the fixture's spans' anchor. */
+const PASCAL_NOW_MS = 1_788_004_800_000;
 
 /**
  * The one profile a `profile: true` case inserts (both sides insert the SAME
@@ -269,7 +281,14 @@ async function runCase(
       projectId: null,
       callerParticipantId: P_A,
     };
-    const output = await executeRunCustomTool(c.input, context as never);
+    const realNow = Date.now;
+    if (c.nowMs !== undefined) Date.now = () => c.nowMs as number;
+    let output: unknown;
+    try {
+      output = await executeRunCustomTool(c.input, context as never);
+    } finally {
+      Date.now = realNow;
+    }
 
     // Let the fire-and-forget logLLMCall settle before dumping (the
     // oracle-fire-and-forget-tail rule: stray promises poison the NEXT case).
@@ -326,6 +345,10 @@ async function runCase(
 
     return {
       name: c.name,
+      // P4.D169: the instant this case ran at, recorded so the Rust side takes
+      // its clock FROM the row rather than from a constant the two sides would
+      // have to keep in step by hand. Absent on a case that pins none.
+      ...(c.nowMs === undefined ? {} : { nowMs: c.nowMs }),
       output,
       columns,
       rows,
@@ -441,6 +464,40 @@ async function main(): Promise<void> {
     // first and wins, and the expression reads the merged view (6, not 9).
     // Also the `revealOdds: false` arm — the write happens, the odds do not.
     { name: 'effects-precedence-under-sealed-odds', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'sealed_tally' } },
+
+    // ---- P4.D169: progressions, end-to-end through the LLM entrance ------
+    //
+    // Every row here pins the clock, because a derived field is a function of
+    // it. CHAR_A's sheet carries two spans anchored to that same instant: a
+    // `cannon` that finished ten minutes ago and a `gestation` with two months
+    // to run.
+    //
+    // The gate, at the door. `recharged` is dealt because its span finished;
+    // `gestating` is NOT in the roster at all, so the handler answers the same
+    // "No custom tool named …" it gives an invented name — which is the whole
+    // point of answering a gate before the deal.
+    { name: 'progress-gate-finished-span-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharged' }, nowMs: PASCAL_NOW_MS },
+    { name: 'progress-gate-running-span-unrunnable', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'gestating' }, nowMs: PASCAL_NOW_MS },
+    // The READ and the WRITE in one run. `recharge` chooses its outcome on
+    // `when.progress`, renders `{{progress.cannon.state}}`,
+    // `{{progress.cannon.percent}}` and `{{now}}` into the message, and writes
+    // three `progress.cannon.*` fields — which must land in ONE character write
+    // that keeps `hasAnsibleAccess`, `clearanceLevel` and the untouched
+    // `gestation` beside them. The dumped vault is what proves that last part.
+    // (`pascalMeta.effects` here is the `{target, previous, next}` projection;
+    // the `applied` list's store label is the applier family's comparand, not
+    // this one's.)
+    { name: 'progress-effect-writes-the-span', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS },
+    // Create-on-write: `kettle` is a progression nobody authored, so the
+    // applier mints it with the format's defaults (a one-hour span from the run
+    // clock, `timeIncrement` inferred, `percentageReport`, `reportFrequency`,
+    // `onComplete`) before the two authored fields land on top.
+    { name: 'progress-effect-creates-a-progression', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'kindle' }, nowMs: PASCAL_NOW_MS },
+    // The same writer an hour later. Every stamped field moves with the clock,
+    // and the cannon's `complete` is still true — so this row differs from the
+    // one above in exactly the values the run clock touches, which is what says
+    // the write takes the caller's instant rather than one of its own.
+    { name: 'progress-effect-writes-under-a-different-clock', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS + 3_600_000 },
   ];
 
   const out = fs.createWriteStream(outPath);
