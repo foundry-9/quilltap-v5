@@ -121225,3 +121225,237 @@ worktrees (1.3 GB — every lane had already cleared its `target/`) and
 branches + the unify branch deleted after the fast-forward. Memory:
 `78b381a96-round-unification` (the finding shapes) and
 `a-parked-lane-session-looks-like-a-running-one` (the survey lesson).
+
+## P4.D178 — bug 133: a moderated chat's story background never escalates (the `cc65d6bfc` catch-up)
+
+Lane branch `claude/p4-d178-bug-133-cc65d6bf`, eight commits, from `main` at
+`04c33722`. v4 pins: `/tmp/qt-v4-pin-p4d178-cc65d6bfc` (every family this lane
+moves) and `/tmp/qt-v4-pin-p4d178-78b381a96` (the neutrality regen). The §2
+freshness probe passed at lane start and again before the gate's regen batch:
+branch `main`, tree clean, both logs empty, HEAD `cc65d6bfc`. Both pins verified
+by marker — `routesDangerousToUncensored` 5 + 2 hits in the tip worktree and 0 +
+0 in the baseline one, `rerouteAllowed` 3 and 0, and v5's `help/dangerous-
+content.md` byte-identical to the baseline pin's and different from the tip's.
+
+### The red-first measurement (Tier 1 item 1)
+
+Run against the UNEDITED tree before the first source commit.
+
+| family | pin | result |
+| --- | --- | --- |
+| `story_background_job_tier3` | `cc65d6bfc` | **RED** — `moderation_recraft`'s `threw` diverged (v4 `Image generation failed: content policy violation on this prompt`; v5 rerouted, re-crafted and died on a canned-key miss) |
+| `story_background_job_tier3` | `78b381a96` | GREEN, all 15 cases — so the pre-edit tree matched v4-at-the-baseline exactly |
+| `avatar_job_tier3` | `cc65d6bfc` | GREEN (neutral — v4's avatar handler is untouched by the commit) |
+| `image_generation_tier3` | `cc65d6bfc` | GREEN (neutral, and blind — see item 10) |
+| `help_tree_equivalence` | `cc65d6bfc` | **RED** — `docs[42] differs` / `chunks[306] differs`, the stale vendor |
+
+The story family asserts per case and stops at the first divergence, so "and
+NOTHING else" was **measured, not inferred**, three ways:
+
+1. A subset run: the two flipped labels removed from the corpus, regenerated and
+   re-run at the tip pin against the unedited tree → **13/13 GREEN**. (Corpus
+   restored immediately; `git diff` empty.)
+2. A normalized diff of the two pins' NDJSONs (uuids and timestamps folded — the
+   fixture is rebuilt per regen, so raw ids and the id-keyed dump sort order move
+   legitimately): exactly **two** result rows differ, both in `threw` and both
+   `moderation_*`; exactly **four** non-result rows vanish (2 re-craft
+   completions + 2 reroute image calls, all belonging to those two cases); **zero**
+   rows are added.
+3. After the gate fix, the whole 15-case family is green at the tip pin.
+
+### What landed
+
+**Item 2 — the callee rename** (`2d9944ab`). `sanitize_appearances_if_needed`'s
+eighth parameter `has_uncensored_image_provider` → `routes_dangerous_to_uncensored`,
+with v4's new doc block (the five-rule list plus the paragraph on why existence is
+the wrong question) and the rule 2 / 4 / 5 comments carried. **Zero behaviour
+change inside the function** — both call sites still passed exactly the value they
+had passed before, which is why this is a separate commit.
+
+**Measured, contra the order's survey:** v5 emits **no** tracing line anywhere in
+`appearance_resolution.rs`, so v4's two `[AppearanceResolution]` info lines (the
+classified-dangerous bag whose key the commit renames, and the sanitizing line)
+have no v5 counterpart and no bag key moved. That gap is **pre-existing and
+out of this lane's mandate** — recorded below as a banked finding rather than
+ported unordered.
+
+**Item 3 — the two callers' derivations** (`44550b9d`). The story job passes
+`uncensored_image_target` (its existing `is_dangerous_chat &&
+has_uncensored_image_provider` local) with v4's comment; the image tool passes
+`mode == "AUTO_ROUTE" && <non-empty uncensored profile id>`. The tool's derivation
+is extracted as `tool_routes_dangerous_to_uncensored` so a test can reach it —
+five arms (DETECT_ONLY + profile → false; AUTO_ROUTE + profile → true; AUTO_ROUTE
++ empty-string id → false, v4's `Boolean('')`; AUTO_ROUTE + no id → false; OFF +
+profile → false).
+
+**Item 4 — the reroute gate + the re-craft deletion** (`f69da9a5`).
+`moderation_rejection` and `reroute_allowed` computed once, as v4's locals are;
+the resolver called only when allowed; `reroute_base_prompt = final_prompt`. The
+`RerouteRecraft` trait, `NoRerouteRecraft`, the story's `CandidRecraft` impl and
+the `recraft` parameter are **deleted** — v4 re-crafts nowhere at the tip, and
+P4.D94's lane record already named this as the seam's retirement path. In its
+argument position `generate_with_reroute` now takes a `RerouteHandler` enum
+carrying each handler's second conjunct (the story's `is_dangerous_chat`, the
+avatar's `true`).
+
+**Measured on the story-side locals the deleted block used:** `uncensored_selection`
+is NOT dead — v4 keeps `uncensoredLLMSelection` for the appearance retry and the
+crafter selection at `:270-292`, `:364-375` and `:507-523`, and so does v5.
+Nothing was removed beyond the block itself.
+
+**Item 5 — the six reroute-path log lines** (`40b1f7af`). v5's whole reroute path
+was silent; v4 announces at all three points of both catch blocks. This is the
+finding #103 / #110 class. `tracing`'s callsite metadata is static, so `target:`
+cannot be a runtime value — the per-handler lines are spelled out in a match
+rather than parameterised through a names struct, which is what the order
+proposed.
+
+⚠ **A measured deviation from the order's survey, recorded as it stands:** the
+order says the avatar failure bag is `{…, moderationRejection,
+hasUncensoredImageProvider}`. It is not — v4's `character-avatar.ts:278-286`
+carries `{context, jobId, error, moderationRejection}`, and the identifier
+`hasUncensoredImageProvider` does not appear anywhere in that file (`ggrep -c`
+→ 0). The port follows the code. A test arm asserts the key's ABSENCE, and a
+mutation adding it reddens exactly that arm.
+
+**Item 6 — the new family** (`e866ce98`). `appearance_sanitize_gate_tier3_equivalence`,
+27 cases, driving v4's REAL `sanitizeAppearancesIfNeeded`. The survey's claim was
+confirmed: no harness family and no oracle case drove that function directly.
+Comparands are the returned appearances field-for-field AND the completion-call
+count, which is what says WHICH rule fired — 0 calls for rules 1 and 2, 1 for
+rule 3-safe and rule 4, 2 for rule 5. The measured grid came out exactly as the
+five rules predict, first run.
+
+Two design decisions recorded in the corpus's own `$comment` so neither is an
+oversight:
+- **Per-case tokens are load-bearing.** The classification cache is keyed by a
+  sha256 of the content and is process-global on BOTH sides; two rows sharing
+  appearance text would make the second one's call count measure the cache
+  instead of the gate.
+- **`llm_logs` is NOT compared.** That projection is already diffed by
+  `danger_gatekeeper_tier3` and `story_background_job_tier3`; un-mocking the
+  logger here would mean provisioning a whole instance for it.
+
+**Item 7 — the story corpus's bug-133 arms** (`c1ae9d24`).
+`moderated_sanitize_profile_configured` (the sanitizer half — a moderated chat
+with an uncensored profile configured, on the ordinary OpenAI profile) and
+`flagged_no_profile_moderation` (v4's second regression test). The oracle's
+completion mock gains the classify and sanitize branches; the sanitize branch
+REWRITES rather than echoes, because v4's merge only sets `wasSanitized` when
+the text actually changed. The two flipped cases keep their now-historical
+`_recraft` labels with a note OUTSIDE the case map.
+
+**Corrected while writing it:** the order's claim that `flagged_no_profile_moderation`
+"distinguishes `rerouteAllowed` from `reroute !== null`" is not true of the row's
+OUTCOME — with no profile configured the resolver answers `None` either way. What
+separates them is the failure bag (`rerouteAllowed: true` here, `false` for the two
+moderated rows), which the capture arms pin. The corpus comment says so.
+
+**Item 8 — the help re-vendor** (`5fc07e0b`). `cp` from the tip pin, `cmp`-verified
+against `git show cc65d6bfc:help/dangerous-content.md`. The tree stays at **123**
+files, so no count literal moved. `help_tree_equivalence` red → green; the changed
+bytes grepped in the oracle (`He has been spoken to` ×1, `A moderated chat is never
+carried through that door` ×1, the retired `If no uncensored image profile is
+configured` ×0).
+
+**Item 10 (Tier 2) — LANDED.** `image_generation_tier3`'s header said the corpus
+keeps the Concierge OFF "so no classify/resolve/sanitize" — a scope statement that
+was really a blind spot with a live divergence behind it. `detect_only_sanitizes_appearance`
+closes it. The gate turned out to be much cheaper than feared: v4 runs
+`resolveAppearances` on `parsePlaceholders(prompt).length > 0`, **not** on
+messages, so a `{{Aurora}}` placeholder plus a per-case danger bag is the whole
+setup. The sanitized text is visible in the recorded craft prompt (`a woman with
+silver hair, in a high-necked woollen dress` where the raw appearance reads `a
+tall elegant woman with flowing silver hair…`), so it reaches the image key, the
+result JSON and every `llm_logs` projection. A mutation reverting the tool's
+derivation reddens exactly this case, so the corpus-blind half now has a
+production-call-site proof alongside its unit pin. The corpus gains a per-case
+`dangerousContentSettings` applied identically on both sides (the story family's
+shape).
+
+**Item 11 (Tier 2) — CONFIRMED by measurement, no code change.** The family
+already diffs `llm_logs` (the result row's `llmLogs` field). Both flipped cases
+write exactly **3** rows — one `IMAGE_GENERATION` for the refused attempt plus the
+craft and derive rows — and nothing after: no second `IMAGE_GENERATION` for a
+reroute and no second `IMAGE_PROMPT_CRAFTING` for a re-craft. Green means v5's
+`log_image_gen_job` count matches. `moderated_sanitize_profile_configured` writes
+6, including the `DANGER_CLASSIFICATION` row that proves the classify path ran.
+
+**Item 9 — the riders, ratified with evidence.** The two `__tests__` files are
+oracle-side (v4's own suites; this lane's differentials are its equivalent).
+`docs/CHANGELOG.md`, `docs/developer/bugs.md` and
+`docs/developer/bugs/fixed/bug-133-moderated-chat-image-escalation.md` are v4
+documentation — the `docs/v4/` mirror refresh is a **unifier wire** (item 13).
+The four version-bump files are `4.10.0-dev.21` → `-dev.22` only, verified by
+diffing them: the README badge, `package.json`, `packages/quilltap/package.json`
+and the lock's two lines, no other content. All NO-PORT.
+
+**Item 12 — recorded.** v4's own note that "the concealment prompting itself is
+unchanged and remains permissive enough that a cheap model may satisfy it by
+naming an undressed state rather than concealing it; that is tracked separately"
+is a v4-side item. Nothing to port.
+
+### Mutation proofs
+
+| # | mutation | reddened |
+| --- | --- | --- |
+| M1 | drop `reroute_allowed` from the story failure bag | `moderated_story_failure_logs_the_bug_133_keys_and_never_reroutes` |
+| M2 | delete the `log_failure` call from `reroute_or_fail` | the three arms that read a failure line |
+| M3 | delete the `log_rerouting` call | the two arms that read a rerouting line |
+| M4 | add `has_uncensored_image_provider` to the AVATAR bag (the survey's claim) | `the_avatar_handler_logs_its_own_three_sentences` |
+| M5 | `chat_reroute_allowed` always `true` (the pre-fix gate) | `moderated_story_failure_…_never_reroutes` |
+| M6 | the story caller passes mere existence again | `story_background_job_tier3` → `moderated_sanitize_profile_configured` |
+| M7 | `reroute_allowed = moderation_rejection` (drop the chat conjunct) | `story_background_job_tier3` → `moderation_recraft` |
+| M8 | `reroute_allowed = handler.chat_reroute_allowed()` (drop the moderation conjunct) | `a_non_moderation_failure_reports_it_and_never_opens_the_second_door` |
+| M9 | the tool derivation's `AUTO_ROUTE` widened to `!= "OFF"` | the five-arm unit pin |
+| MA | rule 2's `&&` → `\|\|` | `appearance_sanitize_gate_tier3` → `detect_only_moderated_routes_safe` |
+| MB | rule 4 inverted | `…` → `detect_only_moderated_stays_dangerous` |
+| MC | rule 5's sanitize skipped | `…` → `detect_only_moderated_stays_dangerous` |
+| MD | the tool derivation reverted to mere existence | `image_generation_tier3` → `detect_only_sanitizes_appearance` |
+
+⚠ **M8 SURVIVED its first run, and that is the round's methodological find.**
+Every capture arm had been arranged so the reroute would be refused *downstream*
+anyway — mode OFF, or no uncensored profile — which made the gate's FIRST
+conjunct structurally invisible: dropping `moderationRejection` changed nothing
+any test could see. The silence arm was rewritten around a **flagged** chat under
+**AUTO_ROUTE** with a profile **configured** and a plain (non-moderation) provider
+error, so the door is one conjunct away from opening and only "this was not a
+moderation rejection" keeps it shut. The mutation then reddened exactly that arm.
+The general shape: *a guard whose other conjuncts are false in every test arm is
+not tested at all* — pin each conjunct with the others held open.
+
+### Banked findings (not in this lane's mandate)
+
+- **v4's two `[AppearanceResolution]` info lines have no v5 counterpart.**
+  `appearance_resolution.rs` emits nothing at all: not the classified-dangerous
+  bag (whose key `cc65d6bfc` renames) and not `Sanitizing dangerous appearance
+  descriptions`. Same class as findings #103 / #110 / #116. A small
+  handler-logging order; the file is P4.D178-owned so a future lane can take it
+  cleanly.
+- **`public_schemas_vendor_guard` carries a stale `/tmp` pin path**
+  (`/tmp/qt-v4-pin-p4d170-25f534c0b`) — the sweep driver's `--list` flags it as
+  `stale_v4_pin_path`. Pre-existing, another lane's leftover, untouched here.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace`; the
+release build. `cargo test --workspace` with the lane's 14-variable env block and
+`QT_V4_ROOT` set to the `cc65d6bfc` pin. Every family this lane moves regenerated
+FRESH from that pin through `harness/tools/recipe_sweep.py --v4 <pin> --run
+<family>`, re-run by name, zero unexplained SKIP, the changed bytes grepped in
+each NDJSON, every NDJSON non-empty. Fixture copies isolated under
+`/tmp/p4d178-fixtures` for the gate so a sibling lane's regen could not move them
+mid-run.
+
+Versions: core 0.0.880, harness 0.0.769, host 0.0.124 (its `build.rs` embeds
+`help/**`); web / cli / tauri / SPA unchanged. `git diff main -- apps/web/` empty;
+`git diff main -- help/` is `help/dangerous-content.md` alone.
+
+### Spotted, not mine (for the unifier)
+
+- The `docs/v4/` mirror refresh for bug 133 — the `bugs/fixed/` file, the
+  `bugs.md` row and the two moved help paragraphs (Tier 3 item 13).
+- The baseline move to `cc65d6bfc` and the ledger's §3 row → ABSORBED.
+- `public_schemas_vendor_guard`'s stale pin path (above).

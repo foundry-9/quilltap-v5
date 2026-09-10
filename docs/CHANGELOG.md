@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(status-log): the P4.D178 lane record (bug 133, the `cc65d6bfc` catch-up)
+
+_Docs-only change._
+
+The lane's record: the four red-first measurements and the three independent ways "and nothing else moved" was measured rather than inferred; the eight commits; three places the order's survey was corrected by measurement (v4's avatar failure bag has no `hasUncensoredImageProvider`; v5 emits no `[AppearanceResolution]` tracing line at all, so no bag key moved; `flagged_no_profile_moderation`'s outcome cannot separate `rerouteAllowed` from `reroute !== null`); the thirteen mutation proofs, including M8 surviving its first run because every arm had the gate's other conjuncts false — the silence arm was rebuilt so only the moderation conjunct keeps the door shut; both Tier-2 items landed (the image-gen corpus's blind spot closed, the `llm_logs` projection confirmed); item 9's rider ratifications with evidence; and two banked findings for future lanes.
+
 #### 2026-09-10 — test(image-gen): the corpus can finally see the tool's `routesDangerousToUncensored` derivation
 
 _Versions: core 0.0.880, harness 0.0.769._
