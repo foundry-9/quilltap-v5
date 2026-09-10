@@ -848,6 +848,7 @@ where
 
         let effective = EffectiveProfile {
             id: understudy.id.clone(),
+            name: understudy.name.clone(),
             provider: understudy.provider.clone(),
             model_name: understudy.model_name.clone(),
             base_url: understudy.base_url.clone(),
@@ -1073,6 +1074,7 @@ mod tests {
     fn profile(id: &str, provider: &str) -> EffectiveProfile {
         EffectiveProfile {
             id: id.into(),
+            name: format!("{id} profile"),
             provider: provider.into(),
             model_name: "m".into(),
             base_url: None,
@@ -1638,6 +1640,7 @@ mod tests {
         let params = base_params();
         let uncensored = EffectiveProfile {
             id: "p2".into(),
+            name: "Uncensored".into(),
             provider: "OPENROUTER".into(),
             model_name: "dolphin".into(),
             base_url: None,

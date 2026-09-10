@@ -283,6 +283,14 @@ pub struct ReasoningSegment {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EffectiveProfile {
     pub id: String,
+    /// The profile's display name (v4 `ConnectionProfile.name`).
+    ///
+    /// Carried since P4.D173: every route-trail entry names the profile it was
+    /// made against (`RouteAttempt.profileName`), and a trail entry is composed
+    /// from whatever `EffectiveProfile` the failover held at the time — so the
+    /// name has to ride the same struct rather than be re-read by id at
+    /// composition, when the row may already be gone.
+    pub name: String,
     pub provider: String,
     pub model_name: String,
     pub base_url: Option<String>,

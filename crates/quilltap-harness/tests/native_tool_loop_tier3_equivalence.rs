@@ -378,6 +378,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
             full_response: c.initial_full_response.clone(),
             effective_profile: Some(EffectiveProfile {
                 id: "prof-1".into(),
+                name: "prof-1 profile".into(),
                 provider: c.provider.clone(),
                 model_name: c.model.clone(),
                 base_url: None,

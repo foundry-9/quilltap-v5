@@ -188,6 +188,7 @@ async fn captured_body_opts(
         full_response: "Let me roll.".into(),
         effective_profile: Some(EffectiveProfile {
             id: "prof-1".into(),
+            name: "prof-1 profile".into(),
             provider: provider.to_string(),
             model_name: model.to_string(),
             base_url: None,

@@ -772,6 +772,7 @@ mod tests {
             full_response: full.into(),
             effective_profile: Some(EffectiveProfile {
                 id: "prof-1".into(),
+                name: "prof-1 profile".into(),
                 provider: "ANTHROPIC".into(),
                 model_name: "m".into(),
                 base_url: None,

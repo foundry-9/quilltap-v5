@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(route-trail): P4.D173 unit 1 — `EffectiveProfile` carries the profile name at all twelve construct sites
+
+_Versions: core 0.0.863, harness 0.0.753._
+
+Groundwork for the message route trail (v4 `5841a8c62`): every trail entry
+names the connection profile it was made against (`RouteAttempt.profileName`),
+and the entries are composed from whatever `EffectiveProfile` the failover held
+at the time — so the name has to ride that struct rather than be re-read by id
+at composition, when the row may already be gone.
+
+`EffectiveProfile` gains `name: String`, filled at every construct site: the
+central `to_effective_profile(&Value)` reads v4's `name` key; the Concierge's
+`DangerContentRouter` stops blanking the name on the way into `RouteProfile`
+and carries it back out on the `RouteResult` (the uncensored seat is recorded
+from that result, so the blank would have reached the persisted trail); the
+chain walk's understudy swap takes `understudy.name`; the three one-shot
+log-context sites (help chat, both Brahma engines) read `name` off the profile
+row already in scope; the test helpers and the four harness literals carry a
+name. `primary_stream_tier3_equivalence`'s `ProfileW` gains a defaulted `name`
+so the existing corpus rows stay readable.
+
+Behaviourally neutral on its own — nothing reads the field yet. Pinned by a new
+`to_effective_profile_carries_the_profile_name` unit test (mutation-proven:
+blanking the read reddens it, and no shape differential would have caught it
+because the empty string is a legal name).
+
 #### 2026-09-09 — docs(schema): P4.D171 unit 5 — Tier-2 doc notes (the agreeing-shape exception, the re-dump register)
 
 _Versions: core 0.0.862._

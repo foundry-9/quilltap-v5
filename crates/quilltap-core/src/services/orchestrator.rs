@@ -4304,6 +4304,8 @@ pub(crate) fn json_str_array(v: &Value, k: &str) -> Vec<String> {
 pub(crate) fn to_effective_profile(profile: &Value) -> EffectiveProfile {
     EffectiveProfile {
         id: json_str(profile, "id").unwrap_or_default(),
+        // v4's `ConnectionProfile.name` — what a route-trail entry calls the seat.
+        name: json_str(profile, "name").unwrap_or_default(),
         provider: json_str(profile, "provider").unwrap_or_default(),
         model_name: json_str(profile, "modelName").unwrap_or_default(),
         base_url: json_str(profile, "baseUrl"),
@@ -5025,5 +5027,34 @@ mod tests {
         assert_eq!(cheap.user_defined_profile_id, None);
         assert_eq!(cheap.default_cheap_profile_id, None);
         assert!(!cheap.fallback_to_local);
+    }
+    /// P4.D173: `to_effective_profile` reads v4's `name` key onto the struct.
+    ///
+    /// Every route-trail entry names the seat it was made against
+    /// (`RouteAttempt.profileName`), and this is the central of the twelve
+    /// construct sites — an absent read here would name every entry `""` and no
+    /// differential over the trail's SHAPE would notice, because the empty
+    /// string is a legal name.
+    #[test]
+    fn to_effective_profile_carries_the_profile_name() {
+        let row = serde_json::json!({
+            "id": "cp-1",
+            "name": "Understudy — Sonnet",
+            "provider": "ANTHROPIC",
+            "modelName": "claude-sonnet-5",
+            "baseUrl": null,
+        });
+        let p = to_effective_profile(&row);
+        assert_eq!(p.id, "cp-1");
+        assert_eq!(p.name, "Understudy — Sonnet");
+        assert_eq!(p.provider, "ANTHROPIC");
+        assert_eq!(p.model_name, "claude-sonnet-5");
+        assert_eq!(p.base_url, None);
+
+        // v4's reader is `profile.name` off a plain object — a row without the
+        // key answers the empty string (JS `undefined` → v5 `unwrap_or_default`),
+        // never a panic.
+        let nameless = serde_json::json!({ "id": "cp-2", "provider": "OPENAI", "modelName": "m" });
+        assert_eq!(to_effective_profile(&nameless).name, "");
     }
 }

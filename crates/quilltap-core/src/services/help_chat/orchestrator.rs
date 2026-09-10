@@ -862,6 +862,7 @@ where
         character_id: &character_id,
         profile: crate::services::primary_stream::EffectiveProfile {
             id: profile_id.clone(),
+            name: s(&profile, "name").unwrap_or_default(),
             provider: provider.clone(),
             model_name: model.clone(),
             base_url: base_url.clone(),

@@ -462,9 +462,10 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
     ) -> RouteResult {
         let original = RouteProfile {
             id: original_profile.id.clone(),
-            // The failover doesn't consume the profile name; only reason strings
-            // do, and those aren't surfaced through the trait.
-            name: String::new(),
+            // The route trail names every seat it records (P4.D173), and the
+            // Concierge's uncensored profile is recorded from THIS result — so
+            // the name has to make the round trip rather than be blanked here.
+            name: original_profile.name.clone(),
             provider: original_profile.provider.clone(),
             model_name: original_profile.model_name.clone(),
             base_url: original_profile.base_url.clone(),
@@ -495,6 +496,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             rerouted: result.rerouted,
             connection_profile: EffectiveProfile {
                 id: result.connection_profile.id,
+                name: result.connection_profile.name,
                 provider: result.connection_profile.provider,
                 model_name: result.connection_profile.model_name,
                 base_url: result.connection_profile.base_url,

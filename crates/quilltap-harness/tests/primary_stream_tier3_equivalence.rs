@@ -126,6 +126,10 @@ mod common;
 #[serde(rename_all = "camelCase")]
 struct ProfileW {
     id: String,
+    /// The profile's display name — what a route-trail entry calls this seat
+    /// (P4.D173). Defaulted so the pre-trail corpus rows stay readable.
+    #[serde(default)]
+    name: String,
     provider: String,
     model_name: String,
     #[serde(default)]
@@ -162,6 +166,7 @@ impl ProfileW {
     fn to_effective(&self) -> EffectiveProfile {
         EffectiveProfile {
             id: self.id.clone(),
+            name: self.name.clone(),
             provider: self.provider.clone(),
             model_name: self.model_name.clone(),
             base_url: self.base_url.clone(),

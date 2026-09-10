@@ -118150,3 +118150,83 @@ through `78b381a96` (P4.D171).
 Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core
 --all-targets -- -D warnings` clean; `cargo build --workspace` clean.
 Version: core 0.0.861 → 0.0.862.
+
+## Lane record — P4.D173 (the message route trail — the server half)
+
+Branch `claude/p4-route-trail-server-port-cb9fdf`, stacked on P4.D171's lane
+tip `f6379983` (never from `main`, per §R.4).
+
+**Drift probe at lane start (ledger §2), and the pre-authorized exception
+TAKEN.** v4 checkout on `main`, tree CLEAN, `1a2b2164c..bugfix` EMPTY — but
+`78b381a96..main` carried ONE commit: **`cc65d6bfc` "Fix bug 133: a moderated
+chat's story background could escalate to the uncensored provider"**, exactly
+the commit the ledger's §1 predicted, over exactly the recorded nine files
+(`lib/background-jobs/handlers/story-background.ts`,
+`lib/image-gen/appearance-resolution.ts`,
+`lib/tools/handlers/image-generation-handler.ts`, `help/dangerous-content.md`,
+two unit tests, the CHANGELOG, `bugs.md`, the new
+`bugs/fixed/bug-133-moderated-chat-image-escalation.md`) plus four
+version-only lines (`README.md` badge + the two `package.json`s + the lock,
+all `4.10.0-dev.21` → `.22`, verified by diffing those four files to their
+non-context hunks). The ledger's written exception applies, so this lane
+PROCEEDED on its `78b381a96` pin. **`cc65d6bfc` is next-round drift** — the
+next `/driftcheck` tables it, and it re-opens exactly P4.D175's
+`story_background_job.rs` + `help/dangerous-content.md` surfaces and the
+P4.9a/W4.7f image-gen families.
+
+Pins (§R.3, lane-unique, all three symlink classes):
+`/tmp/qt-v4-pin-p4d173-78b381a96` and `/tmp/qt-v4-pin-p4d173-25f534c0b`.
+Markers verified: `lib/services/chat-message/route-trail.ts` exists ONLY in the
+tip pin; `help/` is 123 files at the tip vs 122 at the baseline;
+`public/schemas/qtap-export.schema.json` is 92,797 bytes at the tip vs 89,769.
+
+**Unit 1 — `EffectiveProfile.name` at all twelve construct sites (Tier 1
+item 1).**
+
+Every route-trail entry names the connection profile it was made against
+(`RouteAttempt.profileName`), and the entries are composed from whatever
+`EffectiveProfile` the failover held at the time — so the name has to ride
+that struct rather than be re-read by id at composition, when the row may
+already be gone. The order's decision (add the field, touch every construct
+site in one commit) taken as written.
+
+Sites, and what each now reads:
+
+* `services/orchestrator.rs::to_effective_profile` — the central one; reads
+  v4's `name` key off the profile `Value`.
+* `services/dangerous_content/provider_routing.rs` — **the load-bearing one.**
+  Its `RouteProfile` build carried `name: String::new()` with a comment saying
+  the failover never consumes the name. That stopped being true: the
+  Concierge's uncensored seat is recorded on the trail FROM this result, so
+  the blank would have reached the persisted column. Now `original_profile
+  .name.clone()` in, `result.connection_profile.name` back out.
+* `services/provider_failover.rs:849` — the chain walk's understudy swap takes
+  `understudy.name` (the `FallbackProfile` already carries it).
+* the three one-shot log-context sites — `services/help_chat/orchestrator.rs`,
+  `services/brahma_console/mod.rs`, `services/brahma_console/orchestrator.rs`
+  — read `name` off the profile row already in scope.
+* `services/text_tool_loop.rs`'s test helper and `provider_failover.rs`'s two
+  test literals (`profile()` now names itself `"<id> profile"`, the uncensored
+  literal `"Uncensored"`).
+* the four harness literals — `primary_stream_tier3_equivalence.rs`'s
+  `ProfileW` gains a `#[serde(default)] name` (the corpus's four profile rows
+  ALREADY carry real `name` values, so the tier-3 arms get real names for
+  free), plus `tool_wire_call_site.rs`, `text_tool_loop_tier3_equivalence.rs`,
+  `native_tool_loop_tier3_equivalence.rs`.
+
+Behaviourally neutral on its own — nothing reads the field yet.
+
+**Pin + mutation proof.** New
+`services::orchestrator::tests::to_effective_profile_carries_the_profile_name`
+asserts the read and the missing-key default. Mutation: `name: json_str(
+profile, "name").unwrap_or_default()` → `name: String::new()` reddens exactly
+that test (`left: ""  right: "Understudy — Sonnet"`); reverted by file backup.
+The pin matters because **no shape differential would have caught a blank
+name** — the empty string is a legal `profileName`.
+
+Gate for this unit: `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean and again with
+`--features quilltap-core/native-transport` clean; `cargo test --workspace`
+(`CARGO_INCREMENTAL=0`, full log + sentinel, exit code read directly) **541
+test binaries / 3,075 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines**.
+Versions: core 0.0.862 → 0.0.863, harness 0.0.752 → 0.0.753.
