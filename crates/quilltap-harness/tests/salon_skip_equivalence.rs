@@ -25,6 +25,7 @@ use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -254,7 +255,7 @@ fn salon_skip_matches_oracle() {
             GROUP,
             "skipUserTurn",
             Some(USER_P),
-            0.42,
+            &DrawSource::sequence(vec![0.42]),
         )));
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))

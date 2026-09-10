@@ -44,6 +44,7 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::turn_orchestrator::{
     handle_turn_action, should_chain_next, ChainConfig, ChainGuards, TurnAction,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -178,7 +179,8 @@ async fn turn_orchestrator_tier2_matches_oracle() {
                     *chain_start_time_ms,
                     &config,
                     guards,
-                    *random01,
+                    // P4.D172: a one-element sequence is exactly the per-op constant.
+                    &DrawSource::sequence(vec![*random01]),
                 )
                 .await
                 .unwrap_or_else(|e| panic!("shouldChainNext {chat_id}: {e:?}"));
@@ -203,7 +205,8 @@ async fn turn_orchestrator_tier2_matches_oracle() {
                     chat_id,
                     parse_action(action),
                     participant_id.as_deref(),
-                    *random01,
+                    // P4.D172: a one-element sequence is exactly the per-op constant.
+                    &DrawSource::sequence(vec![*random01]),
                 )
                 .await
                 .unwrap_or_else(|e| panic!("turnAction {action} {chat_id}: {e:?}"));

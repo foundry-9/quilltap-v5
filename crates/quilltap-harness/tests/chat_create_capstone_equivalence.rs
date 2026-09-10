@@ -73,6 +73,7 @@ use quilltap_core::services::chat_create::{
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
 use quilltap_core::services::dangerous_content::provider_routing::ConnApiKeys;
+use quilltap_core::weighted_random::DrawSource;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -621,7 +622,9 @@ fn chat_create_capstone_matches_oracle() {
             api_keys: &api_keys,
             tz: c.tz.clone(),
             now_ms: c.now_ms,
-            random01: c.random01,
+            // P4.D172: the opener pick takes ONE draw off an ordered source; a
+            // one-element sequence is exactly the constant this corpus pins.
+            random01: DrawSource::sequence(vec![c.random01]),
             lifecycle: &lifecycle,
             greeting_log: true,
         };

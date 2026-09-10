@@ -101,6 +101,7 @@ use crate::services::turn_orchestrator::{
     to_speaker_participant,
 };
 use crate::turn_state::calculate_turn_state_from_history;
+use crate::weighted_random::DrawSource;
 
 // v4 `WEDGE_GRACE_MS` (autonomous-room-schedule-tick.ts:30) — a `running` room
 // is only treated as wedged once untouched this long (a freshly-started run has
@@ -152,7 +153,7 @@ pub struct StepDeps<'a> {
     /// instance-local midnight (v4 uses the host process's local zone).
     pub tz: &'a str,
     /// `Math.random()` for the weighted next-speaker pick.
-    pub random01: f64,
+    pub random01: DrawSource,
     /// The UNTAGGED cheap-LLM executor for the 9c summary fold. v4 runs the
     /// fold OUTSIDE the `runWithAutonomousRunId` scope — `getAutonomousRunId()`
     /// is null there, so the fold's cheap-LLM tokens are housekeeping, not turn
@@ -642,7 +643,7 @@ where
         &turn_state.queue,
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
-        sdeps.random01,
+        &sdeps.random01,
         // Autonomous rooms never impersonate (v4 passes no overlay here).
         None,
     );
@@ -694,7 +695,7 @@ where
         clock: ProcessClock {
             now_ms: now,
             local_offset_minutes: sdeps.local_offset_minutes,
-            random01: sdeps.random01,
+            random01: sdeps.random01.clone(),
         },
         model_context_limit: sdeps.model_context_limit,
         timestamp_config: sdeps.timestamp_config.clone(),
@@ -1857,7 +1858,7 @@ mod tests {
                 now_ms: &now_ms,
                 mint_uuid: &mint,
                 tz: "UTC",
-                random01: 0.0,
+                random01: DrawSource::constant(0.0),
                 fold_executor: &fold_executor,
                 model_context_limit: 200_000,
                 timestamp_config: None,

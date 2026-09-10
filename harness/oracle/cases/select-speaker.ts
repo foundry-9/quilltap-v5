@@ -49,11 +49,32 @@ const asChars = (c: WireChars): Map<string, Character> => {
 const mkState = (queue: string[], spoken: string[], last: string | null): TurnState =>
   ({ spokenSinceUserTurn: spoken, currentTurnParticipantId: null, queue, lastSpeakerId: last } as TurnState);
 
-function withRandom<T>(r: number, fn: () => T): T {
+/**
+ * Pins `Math.random` to an ORDERED SEQUENCE and reports the draws actually
+ * consumed (P4.D172).
+ *
+ * v4 `2aca73ad6`'s `drawCycleOrder` calls `Math.random()` once per remaining
+ * candidate, so a single pinned scalar can no longer describe a turn. The
+ * sequence REPEATS ITS LAST VALUE once exhausted, which makes a one-element
+ * array `[r]` behave exactly like the old `Math.random = () => r` pin — that is
+ * what keeps every pre-rotation row in this corpus byte-identical.
+ *
+ * `consumed` is emitted on the row so the Rust port's replay can be compared on
+ * the COUNT as well as the values: a port that draws where v4 does not (or skips
+ * a draw) diverges here even when the pick happens to agree.
+ */
+function withRandom<T>(draws: number[], fn: () => T): { out: T; consumed: number[] } {
   const orig = Math.random;
-  Math.random = () => r;
+  const consumed: number[] = [];
+  let i = 0;
+  Math.random = () => {
+    const v = draws.length === 0 ? 0 : draws[Math.min(i, draws.length - 1)];
+    i += 1;
+    consumed.push(v);
+    return v;
+  };
   try {
-    return fn();
+    return { out: fn(), consumed };
   } finally {
     Math.random = orig;
   }
@@ -66,7 +87,10 @@ type Scenario = {
   queue: string[];
   spoken: string[];
   lastSpeakerId: string | null;
+  /** The old single pin. Read as the one-element sequence `[random01]`. */
   random01: number;
+  /** An explicit draw SEQUENCE, when one value cannot describe the case. */
+  draws?: number[];
   impersonating?: string[];
 };
 
@@ -149,6 +173,7 @@ type AfterScenario = {
   turnQueueJson: string | null;
   userParticipantId: string | null;
   random01: number;
+  draws?: number[];
   impersonating?: string[];
 };
 
@@ -183,19 +208,19 @@ const afterScenarios: AfterScenario[] = [
   { id: 'after-no-overlay-llm-answers', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.5 },
 ];
 
-type SelectRow = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult };
-type AfterRow = { kind: 'select-after'; id: string; scenario: AfterScenario; out: TurnSelectionResult };
+type SelectRow = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult; consumedDraws: number[] };
+type AfterRow = { kind: 'select-after'; id: string; scenario: AfterScenario; out: TurnSelectionResult; consumedDraws: number[] };
 const rows: Array<SelectRow | AfterRow> = [];
 
 for (const s of scenarios) {
-  const result = withRandom(s.random01, () =>
+  const { out, consumed } = withRandom(s.draws ?? [s.random01], () =>
     selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId), null, s.impersonating),
   );
-  rows.push({ kind: 'select', id: s.id, scenario: s, out: result });
+  rows.push({ kind: 'select', id: s.id, scenario: s, out, consumedDraws: consumed });
 }
 
 for (const s of afterScenarios) {
-  const result = withRandom(s.random01, () =>
+  const { out, consumed } = withRandom(s.draws ?? [s.random01], () =>
     selectNextSpeakerAfterUserMessage(
       asParts(s.participants),
       asChars(s.characters),
@@ -206,7 +231,7 @@ for (const s of afterScenarios) {
       s.impersonating,
     ),
   );
-  rows.push({ kind: 'select-after', id: s.id, scenario: s, out: result });
+  rows.push({ kind: 'select-after', id: s.id, scenario: s, out, consumedDraws: consumed });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

@@ -118150,3 +118150,135 @@ through `78b381a96` (P4.D171).
 Gate: `cargo fmt --all --check` clean; `cargo clippy -p quilltap-core
 --all-targets -- -D warnings` clean; `cargo build --workspace` clean.
 Version: core 0.0.861 → 0.0.862.
+
+## Lane record — P4.D172 (the turn manager from the tip: the drawn rotation + bug 131)
+
+**Base and probe.** Branch `claude/turn-manager-tip-server-port-ff197e`, reset
+onto P4.D171's finished tip `f6379983` (the worktree had been created from
+`main`; P4.D171's lane was clean, five units committed, its `target/` already
+removed). The drift ledger's §2 probe at lane start: checkout on `main`, tree
+CLEAN, `1a2b2164c..bugfix` EMPTY, and `78b381a96..main` showing **exactly one
+commit** — `cc65d6bfc` "Fix bug 133: a moderated chat's story background could
+escalate to the uncensored provider", over the nine files §R.2 predicted plus
+the four version-bump riders that always accompany them. That is the
+**pre-authorized exception** written into §R.2 at ordering, so the lane
+PROCEEDS on its `78b381a96` pin and records `cc65d6bfc` as next-round drift.
+None of bug 133's files touch this lane's surfaces. Pins:
+`/tmp/qt-v4-pin-p4d172-78b381a96` and `/tmp/qt-v4-pin-p4d172-25f534c0b`, both
+verified by marker (`lib/chat/turn-manager/{cycle-order,room-characters,
+weighted-random}.ts` exist ONLY in the tip worktree).
+
+### Unit 1 — the ordered draw source (the API decision), and unit 2 — one weighted pick
+
+**The recorded deviation from the order's shape, and why.** Tier-1 item 1 names
+`&mut dyn FnMut() -> f64`. That cannot travel v5's carriers: the value lives in
+`ProcessClock` (cloned into the chain loop), in `StepDeps`, and in
+`RegenerateSwipeOptions`, and it crosses `.await` points inside `Send` futures.
+The draw source is therefore `weighted_random::DrawSource` — an
+`Arc<dyn Fn() -> f64 + Send + Sync>` newtype: `Clone`, `Send + Sync`,
+interior-mutable, delivering draws in order to every holder of a clone (pinned
+by `a_clone_shares_the_cursor`, without which a chained turn would silently
+re-draw the first value). `ProcessClock` loses `Copy` and keeps `Clone`; eleven
+sites, all mechanical.
+
+`DrawSource::sequence` REPEATS ITS LAST VALUE once exhausted. That is the
+neutrality property the order asks for: `[0.5]` and the old scalar `0.5` are the
+same pin, so every pre-rotation corpus row is byte-identical.
+
+**Neutrality, measured — and the one thing that could not be measured the way
+the order describes.** The order asks for "every existing family green with
+single-element arrays equal to today's constants (the pre-rotation tree)". The
+tier-1 pure families were run exactly that way, from a worktree pinned at the
+BASELINE `25f534c0b`: `select_speaker_equivalence`, `turn_state_equivalence`,
+`turn_order_equivalence` and `turn_pause_filters_equivalence` all **ok**. The
+DB-backed families **cannot be regenerated at the baseline pin on this lane's
+base at all** — P4.D171's `chats_read.rs` selects `cycleOrderParticipantIds`,
+and a fixture built from a baseline-pinned v4 has no such column
+(`no such column: cycleOrderParticipantIds` from the first read). Their
+neutrality is therefore established by consequence at the TIP pin instead: every
+diff they show is attributable, key by key, to the two features the tip carries
+(see the red-first table below) and not one is a `randomValue`, a weight, or a
+draw count.
+
+**RED-FIRST evidence, captured against the pre-edit tree at the `78b381a96`
+pin** (these are the reds units 3–6 close, recorded here because the order asks
+for them before the first source commit):
+
+| family | the one thing that diverged | owner |
+|---|---|---|
+| `turn_orchestrator_tier2` | `cycleOrderParticipantIds` on 3 of 8 chats: v5 `'[]'`, v4 e.g. `["eeee0001…","eeee0000…"]` | P4.D172 |
+| `participant_resolver_tier2` | same key, on "Multi with user (isMultiCharacter, weighted)" | P4.D172 |
+| `message_finalizer_tier3` | `turn.reason` `weighted_selection` (v5) vs `cycle_order` (v4) on `multi-hijack` | P4.D172 |
+| `message_finalizer_tier3` | `routeTrail: null` on the SSE `done` frame | **P4.D173** |
+| `answer_confirmation_tier3` | regen dies v4-side: `state.routeFailures.length` of `undefined` | **P4.D173** |
+| `salon_skip` | regen dies v4-side: the fixture builder writes a chat without the new column | P4.D172 (unit 5) |
+
+**Two cross-lane wires this lane could not avoid**, both narrow and both flagged
+for the unifier:
+
+1. `harness/oracle/cases/message-finalizer-tier3.test.ts` gained
+   `routeFailures: []` + `routeVia: 'primary'` on its synthetic `StreamingState`.
+   Without them the family's oracle cannot RUN at the tip — v4's
+   `buildRouteTrail` dereferences `routeFailures.length` unconditionally. The
+   trail's own comparands stay P4.D173's.
+2. `message_finalizer_tier3_equivalence.rs` gained
+   `strip_pending_route_trail`, which subtracts the `routeTrail` key from the
+   oracle's `done` frame **and asserts the key is present**, so the subtraction
+   cannot go quietly dead. P4.D173 (or the unifier) deletes the function and its
+   call site; the assertion is what makes a forgotten deletion loud.
+
+**One line outside the Ownership table.** `crates/quilltap-core/src/api/engine.rs`
+is on this lane's must-not-touch list, and it is `?action=turn`'s only
+production caller. Item 1's mandated signature change forced the argument
+`random_f64()` → `&quilltap_draw_source()` (plus the four-line helper beside
+`random_f64`). No `Request`/`Response` variant moved and no P4.D174 fence was
+opened; the unifier reconciles.
+
+**What landed.** `weighted_random.rs` (the `DrawSource` + `pick_weighted_random`,
+v4's `weighted-random.ts` 1:1 including the `weights` array being PARALLEL to
+`items`); the three copies folded onto it — `select_speaker::pick_weighted` keeps
+v4's own wrapper (the `p.talkativeness ?? character.talkativeness ?? 0.5` chain,
+the equal-weights warn, the id-keyed debug record) and `chat_create::
+pick_weighted_by_talkativeness` becomes one line, its hand-rolled
+`floor(r * len)` uniform branch deleted rather than kept as a dead twin.
+
+**Two fidelity gaps closed at the fold, both measured:**
+* the equal-weights gate is v4's `totalWeight <= 0`, where v5's per-turn copy
+  tested `== 0.0` — a negative total would have scanned off the bottom onto the
+  last candidate whatever the draw (`a_nonpositive_total_resets_to_equal_weights`);
+* `[Turn Manager] Total talkativeness is 0, using equal weights` — v4's warn at
+  `selection.ts:262`, which v5 never had — now fires from the per-turn pick,
+  pinned by a capture-layer test with a silence arm, and pinned NOT to fire from
+  the cycle draw (v4 discards `equalWeights` there).
+
+**A pre-existing v5 divergence closed:** `message_finalizer::calculate_next_speaker`
+passed a hard-coded `random01 = 0.0`, documented as harmless because "the
+finalizer only surfaces `isUsersTurn` + the ids". v4 has always called the real
+`Math.random` there, and `2aca73ad6` retired the reasoning outright by making
+that call the site that draws AND PERSISTS a whole cycle's rotation — a frozen
+draw would have decided every seat's position and written it to the row. It now
+takes the caller's source via `FinalizeOptions.draws`.
+
+**The differential.** `select_speaker_equivalence`'s oracle `withRandom` became
+an array-consuming closure emitting `consumedDraws`; the Rust side replays the
+same array through a counting `DrawSource` and compares the COUNT and the values
+at 1e-12. The comparand discriminates rather than decorates: 12 of the 28 rows
+consume ZERO draws (`queue-wins`, `only-character`, the three archived arms, the
+impersonation pair, `after-queue-honored`, …) and 16 consume exactly one.
+Green at the tip pin, and green at the baseline pin.
+
+Regen (both pins, through the sweep driver, never two concurrently):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run select_speaker_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run chat_create_capstone_equivalence --force
+```
+
+Gate: `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace` clean;
+`cargo test --workspace` with `QT_ORACLE_SELECT_SPEAKER` + the capstone's env
+block. Versions: core 0.0.862 → 0.0.863, harness 0.0.752 → 0.0.753,
+host 0.0.118 → 0.0.119.

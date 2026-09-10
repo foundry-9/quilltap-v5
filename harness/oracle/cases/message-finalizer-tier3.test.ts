@@ -354,6 +354,14 @@ async function main(): Promise<void> {
       reasoningSegments:
         call.reasoningSegments.length > 0 ? call.reasoningSegments : undefined,
       hasStartedStreaming: true,
+      // v4 `5841a8c62` (the route trail) added these two to `StreamingState`, and
+      // `buildRouteTrail` dereferences `routeFailures.length` unconditionally —
+      // so the oracle cannot even RUN without them. Seeded empty here, which is
+      // the "nothing failed" shape every case in this corpus has: the trail's own
+      // comparands are P4.D173's, not P4.D172's. (P4.D172 unblock — the whole
+      // family's regen dies v4-side otherwise.)
+      routeFailures: [],
+      routeVia: 'primary',
     };
 
     const compression = {

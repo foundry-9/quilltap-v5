@@ -75,6 +75,7 @@ use crate::participant_filters::{
 use crate::select_speaker::{select_next_speaker, SpeakerCharacter, SpeakerParticipant};
 use crate::turn_state::{calculate_turn_state_from_history, MessageView};
 
+use crate::weighted_random::DrawSource;
 use std::collections::HashMap;
 
 /// Error variants that mirror v4's thrown `Error`s (message strings preserved).
@@ -303,7 +304,7 @@ pub async fn resolve_responding_participant(
     requested_responding_participant_id: Option<&str>,
     is_continue_mode: bool,
     active_user_participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<ParticipantResolution, ResolveError> {
     let chat_id = str_field(chat, "id").unwrap_or_default().to_string();
     let participants = participants_of(chat);
@@ -411,7 +412,7 @@ pub async fn resolve_responding_participant(
                 &[], // v4 passes turnState.queue; the resolver's turn state has none
                 &turn_state.spoken_since_user_turn,
                 turn_state.last_speaker_id.as_deref(),
-                random01,
+                draws,
                 Some(&impersonating),
             );
 

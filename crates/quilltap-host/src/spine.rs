@@ -70,7 +70,7 @@
 //!   ([`ChatSpine::preresolve_provider_model`]): the ported spine takes both as
 //!   inputs "resolved above the seam", so the driver runs the SAME
 //!   deterministic participant→profile resolution `process_message` runs
-//!   internally (same `random01`) and reads `(provider, model)` off it. The
+//!   internally (same draw source) and reads `(provider, model)` off it. The
 //!   autonomous step's pre-resolve is best-effort (the step picks its own
 //!   speaker) — a wrong guess only mis-sizes the context budget.
 //! - **`MEMORY_HOUSEKEEPING`** ([`MemoryHousekeepingHandler`]): the v4 job
@@ -193,6 +193,7 @@ use crate::providers::{LivePricingFetch, ProviderIo};
 use crate::terminal::scrollback::PtyScrollbackSource;
 use crate::terminal::TerminalManager;
 use crate::wire::{ReqwestImageBytes, ReqwestWireTransport};
+use quilltap_core::weighted_random::DrawSource;
 
 // ===========================================================================
 // Provider→key resolution (documented seam — module header)
@@ -1054,7 +1055,7 @@ where
 
     /// Pre-resolve the effective connection profile's `(provider, model)` for
     /// the registry-sourced per-request inputs (module header). Deterministic
-    /// given the same `random01` `process_message` receives.
+    /// given the same draw source `process_message` receives.
     async fn preresolve_provider_model(
         &self,
         chat_id: &str,
@@ -1062,7 +1063,7 @@ where
         target_participant_ids: Option<&[String]>,
         speaking_as_participant_id: Option<&str>,
         continue_mode: bool,
-        random01: f64,
+        random01: &DrawSource,
     ) -> Option<(String, String)> {
         let cid = chat_id.to_string();
         let chat = self
@@ -1177,7 +1178,7 @@ where
             .to_string();
 
         let now_ms = now_unix_ms();
-        let random01 = os_random01();
+        let random01 = os_draw_source();
 
         // The responder in continue mode is the target message's own participant.
         let target_pid = req
@@ -1192,7 +1193,7 @@ where
                 None,
                 req.active_user_participant_id.as_deref(),
                 true,
-                random01,
+                &random01,
             )
             .await;
         let (model_context_limit, _web) = self.registry_inputs(resolved);
@@ -1221,7 +1222,7 @@ where
             server_tz: Some(self.tz.clone()),
             now_ms,
             local_offset_minutes: self.local_offset_minutes(now_ms),
-            random01,
+            random01: random01.clone(),
         };
 
         regenerate_message_as_swipe(
@@ -1271,11 +1272,11 @@ where
 
         // Per-call clock + RNG (v4 Date.now() / Math.random()).
         let now_ms = now_unix_ms();
-        let random01 = os_random01();
+        let random01 = os_draw_source();
         let clock = ProcessClock {
             now_ms,
             local_offset_minutes: self.local_offset_minutes(now_ms),
-            random01,
+            random01: random01.clone(),
         };
 
         let resolved = self
@@ -1285,7 +1286,7 @@ where
                 req.target_participant_ids.as_deref(),
                 req.speaking_as_participant_id.as_deref(),
                 req.continue_mode,
-                random01,
+                &random01,
             )
             .await;
         let (model_context_limit, provider_supports_web_search) = self.registry_inputs(resolved);
@@ -1491,7 +1492,7 @@ where
                 clock: ProcessClock {
                     now_ms: now,
                     local_offset_minutes: offset,
-                    random01: os_random01(),
+                    random01: os_draw_source(),
                 },
                 model_context_limit,
                 timestamp_config: chain_tcfg.clone(),
@@ -1522,7 +1523,7 @@ where
                 config: ChainConfig::default(),
             },
             now_ms,
-            random01,
+            &random01,
             make_chain_input,
         )
         .await;
@@ -1751,9 +1752,9 @@ where
         };
 
         let now_ms = now_unix_ms();
-        let random01 = os_random01();
+        let random01 = os_draw_source();
         let resolved = self
-            .preresolve_provider_model(&chat_id, None, None, None, true, random01)
+            .preresolve_provider_model(&chat_id, None, None, None, true, &random01)
             .await;
         let (model_context_limit, provider_supports_web_search) = self.registry_inputs(resolved);
         let timestamp_config = self.resolve_timestamp_config(&chat_id);
@@ -1867,7 +1868,7 @@ where
             now_ms: &now_fn,
             mint_uuid: &mint_fn,
             tz: &self.tz,
-            random01,
+            random01: random01.clone(),
             fold_executor: &fold_executor,
             model_context_limit,
             timestamp_config,
@@ -2015,7 +2016,7 @@ where
 
         let db = self.db.clone();
         let now_ms = now_unix_ms();
-        let random01 = os_random01();
+        let random01 = os_draw_source();
 
         // The outfit `llm_choose` executor (per-call llm-logs logging).
         let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
@@ -2162,6 +2163,13 @@ fn js_local_offset_minutes(tz_name: &str, now_ms: i64) -> i64 {
     Timestamp::from_millisecond(now_ms)
         .map(|ts| -(tz.to_offset(ts).seconds() as i64) / 60)
         .unwrap_or(0)
+}
+
+/// The production draw source: one fresh `Math.random()` off the OS CSPRNG per
+/// call, so a turn that draws a whole cycle's rotation (v4 `2aca73ad6`) consumes
+/// N independent values rather than repeating one (P4.D172).
+fn os_draw_source() -> DrawSource {
+    DrawSource::from_fn(os_random01)
 }
 
 /// `Math.random()` off the OS CSPRNG (via the ported `RandomBytes` source).

@@ -62,6 +62,7 @@ use quilltap_core::services::message_context::NoopMessageContextSeams;
 use quilltap_core::services::regenerate_swipe::{
     regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -366,7 +367,8 @@ fn regenerate_swipe_tier3_matches_oracle() {
                 server_tz: Some("UTC".to_string()),
                 now_ms: spec.frozen_now_ms,
                 local_offset_minutes: spec.local_offset_minutes,
-                random01: 0.0,
+                // P4.D172: `[0]` reproduces the frozen-zero pin.
+                random01: DrawSource::sequence(vec![0.0]),
             },
         ));
 

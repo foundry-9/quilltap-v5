@@ -23,6 +23,7 @@ use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -258,12 +259,26 @@ fn salon_mutations_match_oracle() {
         ),
         (
             "turn_query",
-            Box::new(|db: &Db| rt.block_on(salon::turn_action(db, GROUP, "query", None, 0.42))),
+            Box::new(|db: &Db| {
+                rt.block_on(salon::turn_action(
+                    db,
+                    GROUP,
+                    "query",
+                    None,
+                    &DrawSource::sequence(vec![0.42]),
+                ))
+            }),
         ),
         (
             "turn_nudge",
             Box::new(|db: &Db| {
-                rt.block_on(salon::turn_action(db, GROUP, "nudge", Some(LLM_P), 0.42))
+                rt.block_on(salon::turn_action(
+                    db,
+                    GROUP,
+                    "nudge",
+                    Some(LLM_P),
+                    &DrawSource::sequence(vec![0.42]),
+                ))
             }),
         ),
         (

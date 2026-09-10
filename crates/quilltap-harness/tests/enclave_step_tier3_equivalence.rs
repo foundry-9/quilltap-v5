@@ -83,6 +83,7 @@ use quilltap_core::services::message_finalizer::{
 use quilltap_core::services::orchestrator::{OrchestratorChatSettings, OrchestratorDeps};
 use quilltap_core::services::pricing_fetcher::PricingFetcher;
 use quilltap_core::tools::ask_carina::ErasedAskCarina;
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -578,7 +579,8 @@ fn enclave_step_tier3_matches_oracle() {
             now_ms: &now_ms,
             mint_uuid: &mint,
             tz: "UTC",
-            random01: 0.0,
+            // P4.D172: `[0]` reproduces this family's long-standing frozen zero.
+            random01: DrawSource::sequence(vec![0.0]),
             fold_executor: &fold_executor,
             model_context_limit: 200_000,
             timestamp_config: None,

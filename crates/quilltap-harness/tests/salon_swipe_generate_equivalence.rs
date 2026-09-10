@@ -38,6 +38,7 @@ use quilltap_core::services::message_context::NoopMessageContextSeams;
 use quilltap_core::services::regenerate_swipe::{
     regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -140,7 +141,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 server_tz: Some("UTC".to_string()),
                 now_ms: FROZEN_NOW_MS,
                 local_offset_minutes: 0,
-                random01: 0.0,
+                random01: DrawSource::sequence(vec![0.0]),
             };
             regenerate_message_as_swipe(db, embedding, completion, executor, &bc, &mc, opts)
                 .await

@@ -40,6 +40,7 @@ use crate::services::host_notifications::{
     post_host_remove_announcement, HostAddAnnouncement, HostCharacter,
     HostJoinScenarioAnnouncement, HostRemoveAnnouncement,
 };
+use crate::weighted_random::DrawSource;
 
 /// Map the participant service layer's `{status, message}` onto the envelope
 /// (v4's `errorResponse(msg, 404)` / `badRequest(msg)` / `serverError(msg)`).
@@ -851,7 +852,7 @@ pub async fn turn_action(
     chat_id: &str,
     action_str: &str,
     participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Response {
     use crate::services::turn_orchestrator::{handle_turn_action, TurnAction};
 
@@ -977,7 +978,7 @@ pub async fn turn_action(
     }
 
     // The ported core: RMW + persist + selection.
-    let result = match handle_turn_action(db, chat_id, action, participant_id, random01).await {
+    let result = match handle_turn_action(db, chat_id, action, participant_id, draws).await {
         Ok(r) => r,
         Err(e) => return internal(e),
     };

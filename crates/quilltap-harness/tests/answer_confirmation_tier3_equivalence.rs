@@ -65,6 +65,7 @@ use quilltap_core::services::message_finalizer::{
 };
 use quilltap_core::services::tool_execution::ToolMessage;
 use quilltap_core::tools::rng::FixedBytes;
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -680,6 +681,8 @@ fn answer_confirmation_tier3_matches_oracle() {
             is_dangerous_chat: call.dangerous,
             connection_profile_id: spec.connection_profile.id.clone(),
             confirmation: confirmation_inputs,
+            // P4.D172: `[0]` reproduces the frozen 0.0 this family always pinned.
+            draws: DrawSource::sequence(vec![0.0]),
         };
 
         let sink = RecordingSink::new();

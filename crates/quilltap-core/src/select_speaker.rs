@@ -2,13 +2,15 @@
 //! next-speaker selection for multi-character chats.
 //!
 //! The sole impurity in v4 is `Math.random()` inside `pickWeighted`; here it is
-//! injected as `random01` (the value `Math.random()` would return, in [0, 1)),
-//! so selection is a pure function of its inputs. A user-controlled pick keeps
+//! injected as a [`DrawSource`] (the ordered sequence of values `Math.random()`
+//! would return, each in [0, 1)), so selection is a pure function of its inputs. A user-controlled pick keeps
 //! the participant's id as `next_speaker_id` but reports reason `user_turn`
 //! (the orchestrator then pauses for the human).
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+
+use crate::weighted_random::{pick_weighted_random, DrawSource};
 
 use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 use crate::turn_state::{compute_spoken_this_cycle_after_message, MessageView, ParticipantView};
@@ -75,47 +77,48 @@ struct WeightedPick {
     random_value: f64,
 }
 
-/// Weighted-random pick over `candidates`. `talkativeness` is the participant
-/// override, else the character's value, else 0.5; if all weights are zero they
-/// reset to 1 (equal). `random01` is the injected `Math.random()` value.
+/// Weighted-random pick over `candidates` (v4 `pickWeighted`, selection.ts:252).
+///
+/// The draw itself is [`crate::weighted_random::pick_weighted_random`] — the ONE
+/// copy v4 `2aca73ad6` split out so the per-turn pick, the cycle draw and the
+/// opening-character pick can never drift apart. This wrapper is v4's: it
+/// supplies the `p.talkativeness ?? character.talkativeness ?? 0.5` weight
+/// function, WARNS on `equalWeights`, and re-keys the parallel weight array by
+/// participant id for the debug block.
+///
+/// The warn is v4's and belongs HERE, not in the shared module: the cycle draw
+/// calls the same primitive and deliberately discards `equalWeights` (a whole
+/// silent room would otherwise log once per seat, per cycle).
 fn pick_weighted(
     candidates: &[&SpeakerParticipant],
     characters: &HashMap<String, SpeakerCharacter>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> WeightedPick {
-    let mut weights: BTreeMap<String, f64> = BTreeMap::new();
-    let mut total_weight = 0.0;
-    for p in candidates {
-        let character_talk = p
-            .character_id
-            .as_deref()
-            .and_then(|cid| characters.get(cid).and_then(|c| c.talkativeness));
-        let talkativeness = p.talkativeness.or(character_talk).unwrap_or(0.5);
-        weights.insert(p.id.clone(), talkativeness);
-        total_weight += talkativeness;
+    let picked = pick_weighted_random(
+        candidates,
+        |p| {
+            // Per-chat override (participant.talkativeness) wins; fall back to
+            // the character's value; final default is 0.5.
+            let character_talk = p
+                .character_id
+                .as_deref()
+                .and_then(|cid| characters.get(cid).and_then(|c| c.talkativeness));
+            p.talkativeness.or(character_talk).unwrap_or(0.5)
+        },
+        draws,
+    );
+    if picked.equal_weights {
+        tracing::warn!("[Turn Manager] Total talkativeness is 0, using equal weights");
     }
-    if total_weight == 0.0 {
-        for p in candidates {
-            weights.insert(p.id.clone(), 1.0);
-            total_weight += 1.0;
-        }
-    }
-    let random_value = random01 * total_weight;
-    let mut cumulative = 0.0;
-    for p in candidates {
-        cumulative += weights[&p.id];
-        if random_value < cumulative {
-            return WeightedPick {
-                participant_id: p.id.clone(),
-                weights,
-                random_value,
-            };
-        }
-    }
+    let weights: BTreeMap<String, f64> = candidates
+        .iter()
+        .zip(picked.weights.iter())
+        .map(|(p, w)| (p.id.clone(), *w))
+        .collect();
     WeightedPick {
-        participant_id: candidates[candidates.len() - 1].id.clone(),
+        participant_id: picked.item.id.clone(),
         weights,
-        random_value,
+        random_value: picked.random_value,
     }
 }
 
@@ -188,7 +191,7 @@ pub fn get_selection_explanation(result: &SelectionResult) -> &'static str {
 }
 
 /// Select the next speaker. See module docs for the algorithm; `random01` is the
-/// injected `Math.random()` value used by the weighted picks.
+/// injected `Math.random()` source the weighted picks draw from.
 #[allow(clippy::too_many_arguments)]
 pub fn select_next_speaker(
     participants: &[SpeakerParticipant],
@@ -196,7 +199,7 @@ pub fn select_next_speaker(
     queue: &[String],
     spoken_since_user_turn: &[String],
     last_speaker_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
     impersonating_participant_ids: Option<&[String]>,
 ) -> SelectionResult {
     // Step 1: the manual queue wins.
@@ -261,7 +264,7 @@ pub fn select_next_speaker(
         .collect();
 
     if !eligible.is_empty() {
-        let pick = pick_weighted(&eligible, characters, random01);
+        let pick = pick_weighted(&eligible, characters, draws);
         let picked = eligible
             .iter()
             .find(|p| p.id == pick.participant_id)
@@ -296,7 +299,7 @@ pub fn select_next_speaker(
         };
     }
 
-    let pick = pick_weighted(&new_cycle, characters, random01);
+    let pick = pick_weighted(&new_cycle, characters, draws);
     let picked = new_cycle
         .iter()
         .find(|p| p.id == pick.participant_id)
@@ -350,8 +353,8 @@ fn parse_ids(json: Option<&str>) -> Vec<String> {
 /// for rooms where the human drives two or more seats alongside a single LLM).
 ///
 /// `user_participant_id` matches v4's parameter; like v4's `selectNextSpeaker` it
-/// is unused by the selection (kept for signature fidelity). `random01` is the
-/// injected `Math.random()` value threaded to the delegated weighted pick.
+/// is unused by the selection (kept for signature fidelity). `draws` is the
+/// injected `Math.random()` source threaded to the delegated weighted pick.
 #[allow(clippy::too_many_arguments)]
 pub fn select_next_speaker_after_user_message(
     participants: &[SpeakerParticipant],
@@ -360,7 +363,7 @@ pub fn select_next_speaker_after_user_message(
     persisted_spoken_this_cycle_json: Option<&str>,
     turn_queue_json: Option<&str>,
     _user_participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
     impersonating_participant_ids: Option<&[String]>,
 ) -> SelectionResult {
     // v4 builds a synthetic `{ type: 'message', role: 'USER', participantId:
@@ -402,7 +405,7 @@ pub fn select_next_speaker_after_user_message(
         &queue,
         &spoken_since_user_turn,
         Some(poster_participant_id),
-        random01,
+        draws,
         impersonating_participant_ids,
     )
 }
@@ -436,7 +439,7 @@ mod tests {
             &[],
             &[],
             None,
-            0.5,
+            &DrawSource::constant(0.5),
             None,
         );
         assert_eq!(llm_turn.next_speaker_id.as_deref(), Some("p1"));
@@ -450,7 +453,7 @@ mod tests {
             &[],
             &[],
             None,
-            0.5,
+            &DrawSource::constant(0.5),
             Some(&overlay),
         );
         assert_eq!(user_turn.next_speaker_id.as_deref(), Some("p1"));
@@ -498,7 +501,7 @@ mod tests {
             Some("[\"kumar\"]"),
             Some("[]"),
             Some("charlie"),
-            0.5,
+            &DrawSource::constant(0.5),
             Some(&impersonating),
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("lorian"));
@@ -518,7 +521,7 @@ mod tests {
             Some("[\"charlie\"]"),
             Some("[]"),
             Some("charlie"),
-            0.5,
+            &DrawSource::constant(0.5),
             Some(&impersonating),
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
@@ -538,7 +541,7 @@ mod tests {
             Some("[\"kumar\",\"lorian\"]"),
             Some("[]"),
             Some("charlie"),
-            0.1,
+            &DrawSource::constant(0.1),
             Some(&impersonating),
         );
         let next = result.next_speaker_id.as_deref();
@@ -557,11 +560,78 @@ mod tests {
             Some("[\"kumar\"]"),
             Some("[\"kumar\"]"), // Kumar explicitly queued
             Some("charlie"),
-            0.5,
+            &DrawSource::constant(0.5),
             Some(&impersonating),
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
         assert_eq!(result.reason, "queue");
+    }
+
+    // v4 `selection.ts:261-263` warns from the PER-TURN pick when the weights
+    // sum to nothing — a line v5 dropped when it hand-rolled `pick_weighted`.
+    // P4.D172 restored it at the fold. The cycle draw deliberately does NOT warn
+    // (it discards `equalWeights`), which its own test pins.
+    #[test]
+    fn zero_total_talkativeness_warns_on_the_per_turn_pick() {
+        let silent = |id: &str| SpeakerParticipant {
+            talkativeness: Some(0.0),
+            ..character(id)
+        };
+        let parts = vec![silent("A"), silent("B")];
+        let lines = crate::test_support::captured(|| {
+            let r = select_next_speaker(
+                &parts,
+                &HashMap::new(),
+                &[],
+                &[],
+                None,
+                &DrawSource::constant(0.6),
+                None,
+            );
+            // rv 1.2 over equal weights [1,1] → B.
+            assert_eq!(r.next_speaker_id.as_deref(), Some("B"));
+        });
+        assert_eq!(
+            lines
+                .iter()
+                .filter(
+                    |l| l.contains("[Turn Manager] Total talkativeness is 0, using equal weights")
+                )
+                .count(),
+            1,
+            "expected v4's equal-weights warn exactly once, got {lines:?}"
+        );
+    }
+
+    // The same room with real weights logs nothing — the silence arm, without
+    // which the assertion above passes on a subscriber that logs everything.
+    #[test]
+    fn nonzero_talkativeness_does_not_warn() {
+        let parts = vec![
+            SpeakerParticipant {
+                talkativeness: Some(0.9),
+                ..character("A")
+            },
+            SpeakerParticipant {
+                talkativeness: Some(0.3),
+                ..character("B")
+            },
+        ];
+        let lines = crate::test_support::captured(|| {
+            select_next_speaker(
+                &parts,
+                &HashMap::new(),
+                &[],
+                &[],
+                None,
+                &DrawSource::constant(0.1),
+                None,
+            );
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Total talkativeness is 0")),
+            "unexpected equal-weights warn: {lines:?}"
+        );
     }
 
     #[test]

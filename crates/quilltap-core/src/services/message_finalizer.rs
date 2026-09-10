@@ -605,6 +605,17 @@ pub struct FinalizeOptions {
     /// only when the gate is active AND there are checkable inputs; `None` inputs
     /// leave the runner returning `confirmed: null` (v4's `if (!cheapLLMSelection)`).
     pub confirmation: FinalizerConfirmationInputs,
+    /// `Math.random()`'s ordered draws for the post-turn next-speaker selection.
+    ///
+    /// v5 used to hard-code `0.0` here, documented as harmless because the
+    /// finalizer "only surfaces `isUsersTurn` + the ids". v4 has always called
+    /// the real `Math.random`, and v4 `2aca73ad6` made the difference visible:
+    /// `calculateNextSpeaker` now DRAWS AND PERSISTS the whole cycle's rotation,
+    /// so a frozen draw would decide every seat's position for a whole cycle
+    /// and write that decision to the chats row. Threaded from the caller
+    /// (`ProcessClock.random01`) instead — a pre-existing v5 divergence closed
+    /// by P4.D172.
+    pub draws: crate::weighted_random::DrawSource,
 }
 
 /// The answer-confirmation inputs the finalizer forwards to the runner (v4's
@@ -673,6 +684,7 @@ where
         is_dangerous_chat,
         connection_profile_id,
         confirmation: confirmation_inputs,
+        draws,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -1179,6 +1191,7 @@ where
         &character,
         &character_participant,
         user_participant_id.as_deref(),
+        &draws,
     )
     .await?;
 
@@ -1534,10 +1547,10 @@ pub struct NextSpeakerInfo {
 /// state, select the next speaker over the ported turn manager, and report whether
 /// it's the user's turn.
 ///
-/// `random01` is fixed at `0.0` (documented): the finalizer only surfaces
-/// `isUsersTurn` + the ids from this call (not a chained turn), and the corpus is
-/// built so the pick is deterministic (single character, or a cycle-complete /
-/// user-turn state), so the weighted RNG never affects the diffed output.
+/// `draws` is the caller's real draw source (v4 calls `Math.random`). It used to
+/// be a hard-coded `0.0` here, on the reasoning that the finalizer only surfaces
+/// `isUsersTurn` + the ids; v4 `2aca73ad6` retired that reasoning by making this
+/// call the site that DRAWS AND PERSISTS the cycle's rotation.
 async fn calculate_next_speaker(
     db: &Db,
     chat_id: &str,
@@ -1545,6 +1558,7 @@ async fn calculate_next_speaker(
     character: &FinalizerCharacter,
     character_participant: &FinalizerParticipant,
     user_participant_id: Option<&str>,
+    draws: &crate::weighted_random::DrawSource,
 ) -> Result<NextSpeakerInfo, DbError> {
     let chat_id_owned = chat_id.to_string();
     let messages =
@@ -1607,7 +1621,7 @@ async fn calculate_next_speaker(
         &[], // v4 passes turnState.queue; the corpus keeps it empty at finalize.
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
-        0.0,
+        draws,
         Some(&chat.impersonating_participant_ids),
     );
     let _ = (character_participant, user_participant_id);

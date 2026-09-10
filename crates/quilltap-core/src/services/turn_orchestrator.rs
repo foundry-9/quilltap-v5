@@ -68,6 +68,7 @@ use crate::turn_state::{
     get_queue_position, nudge_participant, remove_from_queue, MessageView, ParticipantView,
     TurnState,
 };
+use crate::weighted_random::DrawSource;
 
 // ---------------------------------------------------------------------------
 // Config + result types (v4 `ChainConfig` / `ChainDecision`).
@@ -387,7 +388,7 @@ pub async fn should_chain_next(
     chain_start_time_ms: i64,
     config: &ChainConfig,
     guards: ChainGuards,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<ChainDecision, DbError> {
     // Re-read chat for fresh state (isPaused may have been set by a stop button).
     let chat_id_owned = chat_id.to_string();
@@ -521,7 +522,7 @@ pub async fn should_chain_next(
             &[], // queue already consulted above; v4 passes turnState.queue which is empty here
             &turn_state.spoken_since_user_turn,
             turn_state.last_speaker_id.as_deref(),
-            random01,
+            draws,
             Some(&impersonating),
         );
 
@@ -654,7 +655,7 @@ pub async fn handle_turn_action(
     chat_id: &str,
     action: TurnAction,
     participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<TurnActionResult, DbError> {
     let chat_id_owned = chat_id.to_string();
     let chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))?;
@@ -747,7 +748,7 @@ pub async fn handle_turn_action(
         &turn_state.queue,
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
-        random01,
+        draws,
         Some(&crate::db::chats_impersonation::read_impersonating(&chat)),
     );
 

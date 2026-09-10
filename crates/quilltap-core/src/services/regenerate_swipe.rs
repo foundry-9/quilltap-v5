@@ -41,6 +41,7 @@ use crate::services::message_context::{
 use crate::services::orchestrator::{
     build_context_input, effective_profile_profile, json_f64, json_str, BuildContextArgs,
 };
+use crate::weighted_random::DrawSource;
 
 /// The inputs `regenerate_message_as_swipe` consumes (v4 `RegenerateSwipeOptions`
 /// + the injected wall-clock / model-limit the differential freezes).
@@ -74,7 +75,7 @@ pub struct RegenerateSwipeOptions {
     pub local_offset_minutes: i64,
     /// `Math.random()`'s value for the weighted responder fallback (only read when
     /// the target message carries no participant id — a legacy single-char row).
-    pub random01: f64,
+    pub random01: DrawSource,
 }
 
 /// Error from a regenerate-swipe (v4 throws for a non-regenerable target).
@@ -170,7 +171,7 @@ where
         requested_participant_id.as_deref(),
         requested_participant_id.is_some(),
         None,
-        random01,
+        &random01,
     )
     .await
     .map_err(|e| DbError::Internal(format!("participant resolution failed: {e:?}")))?;

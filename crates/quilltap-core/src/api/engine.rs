@@ -1048,7 +1048,9 @@ impl CoreEngine {
                         &chat_id,
                         &action,
                         participant_id.as_deref(),
-                        random_f64(),
+                        // P4.D172: `?action=turn` draws a whole cycle's rotation, so the
+                        // injection is an ordered SOURCE, not one value.
+                        &quilltap_draw_source(),
                     )
                     .await
                 }
@@ -6522,6 +6524,12 @@ impl CoreEngine {
 /// A uniform random `f64` in `[0, 1)` (v4 `Math.random()`), sourced from the OS
 /// CSPRNG. Used by the turn-action next-speaker selection (the engine's real
 /// clock/RNG; the differential harness injects a pinned value).
+/// A production draw source over [`random_f64`] — one fresh OS draw per call, so
+/// a rotation of N seats consumes N independent values (P4.D172).
+fn quilltap_draw_source() -> crate::weighted_random::DrawSource {
+    crate::weighted_random::DrawSource::from_fn(random_f64)
+}
+
 fn random_f64() -> f64 {
     let mut bytes = [0u8; 8];
     getrandom::getrandom(&mut bytes).expect("getrandom");

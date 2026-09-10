@@ -254,6 +254,12 @@ pub mod tools;
 pub mod turn_order;
 pub mod turn_state;
 pub mod vault_overlay;
+// === P4.D172 ===
+// The turn manager from v4 `78b381a96`: the one weighted pick and its ordered
+// draw source (the cycle's drawn rotation and the batched room-characters read
+// join this fence in the units that land them).
+pub mod weighted_random;
+// === end P4.D172 ===
 pub mod wardrobe;
 pub mod wardrobe_instructions;
 pub mod wardrobe_tiers;

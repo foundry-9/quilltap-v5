@@ -79,6 +79,7 @@ use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -1006,7 +1007,8 @@ fn orchestrator_tier3_matches_oracle() {
                 clock: ProcessClock {
                     now_ms: spec.frozen_now_ms,
                     local_offset_minutes: spec.local_offset_minutes,
-                    random01: 0.0,
+                    // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
+                    random01: DrawSource::sequence(vec![0.0]),
                 },
                 model_context_limit: 200_000,
                 timestamp_config: None,
@@ -1054,7 +1056,8 @@ fn orchestrator_tier3_matches_oracle() {
                         clock: ProcessClock {
                             now_ms: frozen,
                             local_offset_minutes: offset,
-                            random01: 0.0,
+                            // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
+                            random01: DrawSource::sequence(vec![0.0]),
                         },
                         model_context_limit: 200_000,
                         timestamp_config: None,
@@ -1080,7 +1083,7 @@ fn orchestrator_tier3_matches_oracle() {
                                 config: ChainConfig::default(),
                             },
                             frozen,
-                            0.0,
+                            &DrawSource::sequence(vec![0.0]),
                             make_chain_input,
                         ))
                         .expect("chain");

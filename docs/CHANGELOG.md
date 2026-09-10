@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 units 1–2 — the ordered draw source, and one weighted pick for all three consumers
+
+_Versions: core 0.0.863, harness 0.0.753, host 0.0.119._
+
+v4 `2aca73ad6` draws a whole cycle's speaking order up front, calling
+`Math.random()` once per remaining candidate. A single injected `random01: f64`
+— the shape every earlier v5 port of a `Math.random` site used — cannot describe
+that: one pinned value makes every position of the permutation land on the same
+relative offset. So the injection becomes an ordered sequence.
+
+`quilltap_core::weighted_random::DrawSource` is that source: a cloneable,
+`Send + Sync`, interior-mutable handle with `constant`, `sequence` (ordered, then
+repeating its last value) and `from_fn` constructors. It replaces `random01: f64`
+at every carrier — `ProcessClock`, `StepDeps`, `RegenerateSwipeOptions`,
+`ChatCreateDeps`, `handle_turn_action`, `should_chain_next`,
+`resolve_responding_participant`, `select_next_speaker` and its after-user twin —
+and the host's `os_random01` becomes `os_draw_source()`, one fresh OS draw per
+call. A ONE-element sequence is exactly the old constant pin, which is what keeps
+every pre-rotation corpus row byte-identical.
+
+The same module now owns `pick_weighted_random`, v4's `weighted-random.ts`. Three
+copies fold onto it: `select_speaker::pick_weighted` (which keeps v4's wrapper —
+the `?? ?? 0.5` weight chain, the equal-weights warn, the id-keyed debug block),
+`chat_create::pick_weighted_by_talkativeness` (v4's opening-character pick, whose
+hand-rolled `floor(r * len)` uniform branch agreed with v4's all-ones cumulative
+scan only by arithmetic), and the cycle draw that lands next. Two fidelity gaps
+close on the way: the equal-weights gate is v4's `<= 0`, not v5's `== 0.0`, so a
+negative total no longer scans off the bottom; and `[Turn Manager] Total
+talkativeness is 0, using equal weights` — a v4 warn v5 never had — now fires from
+the per-turn pick, with a silence arm and the cycle draw pinned NOT to log it.
+
+`message_finalizer::calculate_next_speaker` stops passing a hard-coded `0.0`. The
+comment justifying it ("the finalizer only surfaces `isUsersTurn` + the ids") was
+retired by v4 `2aca73ad6`, which made that call the site that draws AND persists
+the whole rotation; it now takes the caller's real source through
+`FinalizeOptions.draws`. A pre-existing v5 divergence closed.
+
+`select_speaker_equivalence`'s oracle pins an ARRAY per case and emits the draws
+v4 actually consumed; the Rust side replays the same array through a counting
+source and compares the count and the values at 1e-12. Twelve of the twenty-eight
+rows consume ZERO draws, so the new comparand discriminates rather than decorates.
+
 #### 2026-09-09 — docs(schema): P4.D171 unit 5 — Tier-2 doc notes (the agreeing-shape exception, the re-dump register)
 
 _Versions: core 0.0.862._
