@@ -16,7 +16,7 @@ const PROJECTION_ROUNDTRIP_SERVER_LANDED = true;
  * P4.D177 §C.2 — the drawn rotation, live (v4 `2aca73ad6`). ACTIVATE-AT-UNIFY:
  * named constant per §C.6, never a capability probe.
  */
-const P4D172_SERVER_LANDED = false;
+const P4D172_SERVER_LANDED = true;
 
 /**
  * P4.9H1 — the Salon chat sidebar (v4 `components/chat/ChatSidebar.tsx`), and

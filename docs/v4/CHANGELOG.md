@@ -4,6 +4,297 @@
 
 ### 4.10-dev
 
+#### Fixed: `describe_image` on a generated picture returned its label, not a description
+
+The story-background job stored `Story background for: <scene or chat title>` and the
+wardrobe-portrait job stored `<Name> — wardrobe portrait` in the `description` column of every
+image they produced, on both the `files` row and its Scriptorium link. `describe_image` served
+whatever sat in that column before it would read the generation prompt or spend a vision call, so
+a character asking what a backdrop showed was told the chat title. Bug 132.
+
+Three changes:
+
+- Neither job writes the label any more. `description` is left null; the generation prompt and
+  revised prompt were already stored beside it and are the account of record.
+- `describe_image` now prefers the generation prompt over a stored description, the same order
+  `runGenerateImageDescription` (the blind-model attachment fallback) has always used. When both
+  exist the stored description is returned too, as `stored_description` and an `On file:` line in
+  the formatted text, so a human-written or vision-written description is never hidden behind the
+  prompt. This also covers a `.qtap` import from an older export that still carries a label.
+- A new migration, `clear-generated-image-placeholder-descriptions-v1`, clears the two label
+  shapes already on disk: `files.description` to NULL on `source = 'GENERATED'` rows, and
+  `doc_mount_file_links.description` to its `''` default on image links. Real descriptions,
+  uploads, and non-image links are untouched. An unreadable mount index degrades the link sweep
+  to a warning rather than failing the migration.
+
+Files: `lib/tools/handlers/doc-edit/photo-handlers.ts`, `lib/tools/describe-image-tool.ts`,
+`lib/background-jobs/handlers/story-background.ts`,
+`lib/background-jobs/handlers/character-avatar.ts`,
+`migrations/scripts/clear-generated-image-placeholder-descriptions.ts`, `help/keep-image-tools.md`.
+
+#### Fixed: a user-controlled character's talkativeness now counts in the speaking order
+
+Talkativeness on a character you drive yourself had no effect on the rotation. The six server paths
+that pick a speaker each built their own `characterId -> Character` map first, and four of them
+built it from `getActiveCharacterParticipants`, which returns LLM-controlled seats only. A seat you
+control was therefore missing from the map, so the draw fell back to the 0.5 default for it unless
+the seat carried a per-chat talkativeness override, and an archived character on such a seat was
+never filtered out of the rotation. The help text has always said talkativeness applies to user
+characters; now it does. This predates the cycle-order change — the old one-at-a-time pick had the
+same blind spot — but it matters more now that the whole rotation is drawn from those weights at
+once.
+
+The six hand-rolled loops are replaced by one helper, `loadRoomCharacters`
+(`lib/chat/turn-manager/room-characters.ts`), which builds the map over `getPresentCharacterSeats`
+— every present character seat, whoever drives it. `loadAllParticipantData`, which builds the same
+map for prompt construction rather than for selection, now uses it too.
+
+It is also fewer queries. The loops called `repos.characters.findById` per seat, and each of those
+overlays one character's vault with eleven queries plus the row read; the helper calls `findByIds`
+once, which overlays the whole room in a single batch whatever the seat count. A four-seat room
+goes from roughly 48 queries per selection to 12.
+
+Failure handling changes with it. `findById` throws `CharacterVaultUnavailableError` when a
+character's vault is unreadable, which used to throw straight out of speaker selection and take the
+turn — and the read-only `?action=turn` request behind the participant sidebar — with it. The
+batched read logs and drops such a character instead, which is what the consumers were already
+written for: a seat whose character is missing from the map stays in the rotation at the default
+weight rather than silently vanishing from the room. On the prompt path the same change means a
+shelved vault costs the prompt that character's contribution rather than failing the whole reply,
+which is the policy `findNamesByIds` already applied there.
+
+`GET /api/v1/chats/[id]?action=turn` also stops reporting a user-driven seat as `nextSpeakerName:
+null` and `participant.name: "Unknown"`, since that seat's character is now in the map it reads
+names from. Filed as bug 131.
+
+#### Changed: a multi-character chat draws its speaking order once per cycle
+
+The rotation for a cycle is now decided up front and kept. When a cycle begins, the turn manager
+draws the whole order — a talkativeness-weighted permutation of the present character seats,
+sampled without replacement — stores it on the chat, and follows it seat by seat until the cycle
+wraps, at which point it draws a new one. Previously each turn made its own weighted pick from
+whoever had not yet spoken, so the order could not be known before it happened.
+
+The distribution of rotations is unchanged: drawing the permutation up front and drawing it one
+element at a time are the same successive-sampling procedure. What changes is that the order is
+knowable in advance, so the sidebar's Participants list shows the real sequence instead of the
+talkativeness-sorted guess it used to display below the queue. Position 3 now means third.
+
+Stored as `chats.cycleOrderParticipantIds` (added by `add-cycle-order-column-v1`): the participants
+who have yet to speak this cycle, in order. It is consumed at the same write chokepoints that
+advance `spokenThisCycleParticipantIds` — a message landing, a skipped user turn, an LLM's "nothing
+to add" pass — and drawn by `resolveCycleOrder` (`lib/chat/turn-manager/cycle-order.ts`), the single
+writer, which every server path that asks "who is next" now calls first: the chain loop, the
+first-responder resolver, the message finalizer, `?action=turn`, and the autonomous-room handler.
+The client reads the stored order and never draws one.
+
+Mid-cycle cast changes are repaired rather than redrawn: a departed seat or archived character is
+skipped when the order is read, and a character who joins mid-cycle is appended to the back and
+dealt in properly at the next draw. A one-character chat stores no rotation. Selection keeps the old
+one-at-a-time weighted pick as its fallback for any chat with no rotation on file yet, so existing
+conversations carry on without a migration of their turn state. The manual queue still jumps the
+line, and a summoned character is struck from the remaining order so they do not speak twice.
+
+#### Added: the Salon chat gallery
+
+The **Gallery** button in a chat's Organize drawer now opens a grid of every image in the
+conversation, whatever produced it: uploads and library links, `generate_image` output, images from
+either Generate Image entry point, story backgrounds the Lantern painted (including superseded
+ones), Aurora avatar repaints (likewise), pictures re-shown from a photo album, files the Librarian
+attached from a document store, the cast's standing portraits, and images referenced only by a
+Markdown link in message prose. Previously the listing covered the first six and the button never
+appeared at all (bug 129).
+
+One server-side enumerator, `lib/photos/chat-gallery.ts`, is the single place that knows all nine
+sources; the `/chats/[id]/files` listing now shares its message-attachment walk rather than keeping
+a second copy. It answers on `GET /api/v1/chats/[id]?action=gallery` with entries, per-source
+counts, and a total. Each entry carries whether its id is a `files.id` or a
+`doc_mount_file_links.id`, which source it came from, whether it is the background the chat is
+currently showing or the avatar a character is currently wearing, and whether the chat owns the
+record well enough to delete it. Entries are deduped by content hash and sorted newest first, with
+standing portraits at the end.
+
+The grid has a filter chip per source with its count (chips for empty sources are hidden, and the
+row disappears entirely when everything came from one place), a `current` badge on the background
+and avatars presently in play, and Save / Download / Delete on hover. Delete appears only where the
+chat minted the record — never a portrait, a kept album image, an inline reference, or the
+background and avatar currently on display. The modal now renders through a portal to the document
+body, so it is not trapped under the toolbar inside the tabbed workspace.
+
+Save opens the same album dialog the message toolbar's bookmark opens — the full album list, the
+caption field, the duplicate notice. Because half the gallery has no message to be attached to, it
+posts to a new chat-scoped `POST /api/v1/chats/[id]?action=save-image` whose guard is gallery
+membership rather than message attachment; both routes share one Zod body schema, one attribution
+resolver (`lib/photos/save-attribution.ts`), and one album service. The message route's behaviour is
+unchanged except that `ALREADY_SAVED` now reads as a duplicate notice in the dialog. The detail
+view's two hard-wired "first character" album buttons are removed in favour of that dialog, and it
+gains a provenance line and a Jump-to-message link.
+
+The sidebar's `Gallery (N)` count and the grid are now one TanStack Query read
+(`queryKeys.chats.gallery`), which rides the existing `chats` realtime topic — so a Lantern backdrop
+or an Aurora repaint landing from a background job updates the number with no poll. `chatPhotoCount`
+and `fetchChatPhotoCount` are gone from `useChatData`.
+
+New help page `help/chat-gallery.md`; `chat-participants.md`, `chat-message-actions.md` and
+`photo-gallery.md` updated to point at it.
+
+#### Changed: image routes accept `?download=1`
+
+`GET /api/v1/files/[id]`, `GET /api/v1/files/proxy/[...key]` and
+`GET /api/v1/mount-points/[id]/blobs/[...path]` now honour `?download=1` (or `download=true`) by
+serving `Content-Disposition: attachment` instead of `inline`. Nothing else about the response
+changes — content type, length, cache headers and `X-Blob-Sha256` are all as before, and a
+non-ASCII filename still carries its RFC 5987 `filename*`.
+
+The client helpers `downloadImageUrl` / `downloadGalleryEntry` in `lib/download-utils.ts` append the
+flag and hand the URL to `triggerUrlDownload` rather than fetching the bytes into a Blob first. In
+the Electron shell that streams a 4K story background straight to disk through `will-download`
+instead of through renderer memory. `ImageModal` and the gallery's detail view both use it;
+`downloadFetchedFile` remains for the copy-to-clipboard path, which genuinely needs the bytes.
+
+#### Fixed: the Salon sidebar's Gallery button appears (bug 129)
+
+It never had. `fetchChatPhotoCount` fetched `/api/v1/chats/{id}?action=files`, and the chat GET does
+not dispatch a `files` action — an unrecognised action is not rejected, it falls through to the
+whole-chat payload, so the request answered `200`, `data.files` was `undefined`, and the count that
+gated the button was zero on every read. The working listing was one path segment away at
+`/api/v1/chats/[id]/files`, which the gallery modal itself called correctly once something managed
+to open it. The counter is deleted rather than repaired: the number now comes from the chat-gallery
+query, and the button has no gate at all. This supersedes step 5 of bug 128, which would have
+re-read the same dead action.
+
+#### Fixed: `POST /api/v1/images?action=generate` can be told which chat asked (bug 130)
+
+The route built `linkedTo` from tags alone and had no `chatId` in its schema, so an image made
+through it was linked to its tags and to no conversation, and invisible to every
+`files.findByLinkedTo(chatId)` read. It now accepts an optional `chatId` and folds it into `linkedTo`
+beside the tag ids, deduped so a caller passing both a `CHAT` tag and `chatId` does not link it
+twice. Latent rather than live: the Salon's Generate Image dialogs post to
+`/api/v1/image-profiles/[id]?action=generate`, which has always passed the chat through, and no
+caller in the app used the collection route.
+#### Message route trail: every model tried, in order, under the avatar
+
+An assistant message now keeps the route trail — every connection profile tried for the turn, in
+the order tried, with why each one stepped aside — and renders it as a list under the avatar,
+first tried at the top, the one that answered at the bottom. Before this, the badge showed only
+the profile that answered, so a turn the primary timed out on, was rate-limited on, or was
+refused on looked exactly like a turn that went through on the first ask.
+
+- **Stored** in a new nullable JSON column `routeTrail` on `chat_messages`
+  (`add-route-trail-message-column-v1`). Each entry records the profile's id, name, provider and
+  model, how it came to be asked (`primary`, `retry`, `concierge`, `understudy`, `tier-pick`),
+  what became of it (`answered`, `failed`, `refused`), the fallback engine's trigger class, how a
+  refusal was established (`finish-reason` or `inferred`), and a short reason capped at 200
+  characters. `provider` and `modelName` stay authoritative for who answered; the trail's last
+  entry always agrees with them.
+- **NULL when nothing failed**, which is nearly every message. A one-entry trail would say nothing
+  the existing columns already say, and assistant rows are the largest table in the instance. There
+  is no backfill: an old message has no trail, and its badge renders exactly as before.
+- **Shown** as one row per profile. A row that fell over on its own — timeout, network, auth, rate
+  limit, missing model, 5xx, an empty body with no stated reason, no usable API key — is struck
+  through and marked ❌. A row the provider refused on content grounds is struck through and marked
+  🚫. The row that answered has no mark and no strike, so a single-row trail is
+  pixel-identical to the old badge. Hovering a row names the profile, the provider and model, how
+  it came to be asked, and what happened. Adjacent rows for the same profile collapse into one
+  ("answered on the second try").
+- **Rides the `.qtap` export** with the message; `qtap-export.schema.json` carries the shape. An
+  imported trail's `profileId` is deliberately not remapped — a stale id in a historical record is
+  the truth of what happened, and nothing dereferences it.
+- **Theme authors:** the list has no `qt-*` hook of its own yet. Target it through
+  `[aria-label="Models tried for this reply"]`.
+
+Mobile has no avatar badge, so it has no trail either. Tool-only turns write no provider
+attribution today and get none here.
+
+#### Fixed bug 128: the Salon's memory count went stale and disarmed its own delete button
+
+The sidebar's Delete Memories count was read once, by a mount-only effect, and nothing ever read it
+again. Memories are written afterwards by background jobs in the forked child, turn after turn, and
+the tabbed workspace keeps a hidden Salon pane mounted for the life of the session — so a chat opened
+before its first memory landed read `Delete Memories (0)` indefinitely, over a chat holding dozens.
+`handleDeleteChatMemories` then early-returned on that false zero, absorbing the click with no
+confirmation, no toast and no log line.
+
+Added a `memories` realtime topic: declared in `realtime.types.ts`, keyed by
+`queryKeys.memories.chatCount(chatId)`, mapped in `topic-map.ts` and added to
+`ALL_REALTIME_PREFIXES`, and published from `topicsForCompletedJob` for the five memory job types
+plus `publishRealtime` at the `memory-gate` deletion chokepoint, which every delete path runs
+through. It is the first topic whose `id` is not the changed row's own primary key — it is scoped by `chatId` — which is why `memories` is deliberately
+absent from `REPOSITORY_TOPICS`: `firstIdArg` would publish a memory id under a chat-scoped topic and
+every subscriber would filter it out.
+
+The subscription lives in `useChatData`, the hook that owns the count, rather than at the Salon call
+site, so a future consumer cannot forget it; `useRealtimeTopic` also fires on socket open, so a
+reconnect re-reads for free and no poll is added. The count fetch gained `cache: 'no-store'`, matching
+its siblings. The button is now `disabled` at zero, and the confirmation re-reads the count from the
+server immediately before it opens, so the dialog can never quote a stale number and a socket that was
+down does not cost the user the action. Step 5 of the bug's plan (the identical `chatPhotoCount`
+shape) stays superseded by the Salon chat gallery plan.
+
+#### Fixed bug 127: the progressions card printed raw markup when two entries were unreadable
+
+`ProgressionsSection` built its list of unreadable progression ids by joining them with a literal
+`</code>, <code>` inside a JSX expression. The join produces a string, React escapes it, and the
+sentence telling a user their vault is damaged handed them raw markup instead. One bad entry rendered
+perfectly — the join had nothing to join — which is why the suite never saw it. The ids are now
+rendered as elements, the same map-with-separator shape `CustomToolRunDialog` already uses. Output for
+a single id is unchanged character for character.
+
+#### Docs: retired twelve shipped feature specs to `features/complete/`
+
+Moved twelve feature documents from `docs/developer/features/` into
+`docs/developer/features/complete/` after verifying each against the code: character
+progressions, Pascal custom tools, custom-tool enhancements, custom-tool run presets, the tabbed
+workspace, archived scenarios and wardrobe items, the character archive spec and its parent
+export-fidelity design, the DB size-reduction spec, the four-tier state cascade, Scriptorium
+per-document policy frontmatter, and the Z.AI `reasoning_effort` plan. Relative links inside the
+moved files were re-anchored one directory deeper, and inbound references were repointed: 29 source
+comments plus `API.md` for the tabbed workspace, `CLAUDE.md`, `PROMPT_ARCHITECTURE.md` and the
+update-documentation index for progressions, `bugs.md` and bug 52 for the archive spec, the
+quantize-embeddings migration for the DB spec, and the Z.AI plugin test. Two stale status lines were
+corrected in place: the Scriptorium policy spec still said "not yet implemented", and the character
+archive design still said its surfaces and rehydration remained. Three implemented specs were left
+in place because their own completion gates ask for manual verification first: composer smart
+typography (two manual matrices), the episodic recall overhaul (constant tuning via
+`quilltap recall-replay`), and the Commonplace Book relevance fix (empirical tuning).
+
+#### Docs: plan for the Salon chat gallery
+
+Added `docs/developer/features/salon-chat-gallery.md`, a plan for a Gallery in the Salon sidebar's
+Organize drawer that lists every image in a conversation — uploads, tool-generated images,
+dialog-generated images, story backgrounds, Aurora avatar repaints, the cast's portraits, images
+re-shown from an album, and images referenced in message text — with Save (through the same album
+picker the message toolbar's bookmark uses) and Download on each. Covers a single server-side
+enumerator, a `?action=gallery` read, a chat-scoped `?action=save-image` twin of the message-scoped
+one, `?download=1` on the image routes, a realtime-gated query key, the UI, tests, and help. Records
+two defects found while mapping: the sidebar's existing Gallery button never appears because its
+count reads a `?action=files` action that does not exist, and images generated from the Generate
+Image dialogs are never linked to their chat. Bug 128's step 5 is marked superseded by this plan.
+Not yet implemented.
+
+#### Docs: filed bug 128 — the Salon's memory count goes stale and disarms its own delete button
+
+The sidebar's `Delete Memories (n)` count is read once, when the chat mounts, and nothing refreshes
+it. Memories are written afterwards by background extraction jobs, so a chat opened before its first
+memory exists — which is every new chat — reads `(0)` for as long as the tab stays open. The tabbed
+workspace hides an inactive pane with CSS instead of unmounting it, which is what lets a streaming
+Salon survive a tab switch and also removes the reload that used to correct the number by accident.
+The delete handler then returns early on a count of zero and the button carries no disabled state,
+so clicking it does nothing at all: no confirmation, no toast, no log line. Measured on a chat
+holding 59 memories that the sidebar reported as none. The filed plan adds a `memories` realtime
+topic published from the memory job types, subscribes the sidebar to it, and disables the button at
+zero rather than letting it absorb the click. Not yet implemented.
+
+#### Docs: plan for the message route trail
+
+Added `docs/developer/features/message-route-trail.md`, a plan for recording every connection
+profile tried for an assistant reply and showing the list under the avatar in the Salon: first
+tried at the top, failures struck through and marked with an X emoji when the provider fell over
+on its own or with a no-entry emoji when it refused on content grounds, and the answering model
+last. Covers the nullable `routeTrail` JSON column on `chat_messages` (NULL when nothing failed),
+the single recording chokepoint at the existing failover and Concierge reroute sites, the SSE
+`done` payload, rendering, export schema, migration, tests, and help. Not yet implemented.
+
 #### Fixed: a hostname change no longer makes the app shut its own database down (bug 126)
 
 The instance lock's heartbeat checked every 60 seconds whether it still owned the lock by comparing

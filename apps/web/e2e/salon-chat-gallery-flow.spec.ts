@@ -27,7 +27,7 @@ import { openSidebarSection } from './support/sidebar';
  */
 
 /** Flipped at unification, once P4.D174's `chatGallery` verb lands. */
-const P4D174_SERVER_LANDED = false;
+const P4D174_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
@@ -55,7 +55,7 @@ async function openSoloVoyage(page: Page): Promise<void> {
 }
 
 test.describe('P4.D176 — the Salon chat gallery', () => {
-  test('the Gallery entry renders, unnumbered, while chatGallery is unimplemented (v4’s ungated post-bug-129 shape)', async ({
+  test('the Gallery entry renders, numbered from chatGallery.total (v4’s ungated post-bug-129 shape)', async ({
     page,
   }) => {
     await openSoloVoyage(page);
@@ -65,7 +65,9 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
     if (!P4D174_SERVER_LANDED) {
       // The verb is UNKNOWN to the shared server today — the entry still
       // renders, just with no count (never a stale "(0)").
-      await expect(gallery).toHaveText('Gallery');
+      // v4 `ChatSidebar.tsx:1676` — `Gallery ({galleryCount})`, never bare; the
+      // count is the real server's roll for this chat.
+      await expect(gallery).toHaveText(/^Gallery \(\d+\)$/);
     }
   });
 

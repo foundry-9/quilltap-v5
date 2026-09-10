@@ -389,47 +389,6 @@ struct OracleLine {
     rest: Value,
 }
 
-/// **CROSS-LANE, RETIRE AT UNIFICATION.** v4 `5841a8c62` (the message route
-/// trail) put a `routeTrail` key on the SSE `done` frame. That frame is
-/// P4.D173's by the round's function fence (`finalize_message_response`'s done
-/// frame), not P4.D172's — but this family regenerates at the same
-/// `78b381a96` pin, so its oracle already carries the key while v5's frame does
-/// not. Subtracted here rather than left red, with a tripwire: the key MUST be
-/// present on the oracle side, so this subtraction can never go quietly dead.
-///
-/// P4.D173 (or the unifier, after it lands) deletes this function and its call
-/// site; the assertion below is what makes that deletion loud if it is forgotten.
-fn strip_pending_route_trail(events: &Value) -> Value {
-    let Value::Array(items) = events else {
-        return events.clone();
-    };
-    let mut saw_done_frame = false;
-    let mut saw_route_trail = false;
-    let stripped: Vec<Value> = items
-        .iter()
-        .map(|e| {
-            let Value::Object(map) = e else {
-                return e.clone();
-            };
-            if map.get("done") != Some(&Value::Bool(true)) {
-                return e.clone();
-            }
-            saw_done_frame = true;
-            let mut m = map.clone();
-            if m.shift_remove("routeTrail").is_some() {
-                saw_route_trail = true;
-            }
-            Value::Object(m)
-        })
-        .collect();
-    assert!(
-        !saw_done_frame || saw_route_trail,
-        "the oracle's `done` frame no longer carries `routeTrail` — P4.D173 has \
-         landed (or the pin moved back); delete `strip_pending_route_trail` and \
-         compare the frame whole"
-    );
-    Value::Array(stripped)
-}
 #[test]
 fn answer_confirmation_tier3_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_ANSWER_CONFIRMATION") else {
@@ -620,6 +579,11 @@ fn answer_confirmation_tier3_matches_oracle() {
                         .collect()
                 })
                 .unwrap_or_default(),
+            talkativeness: character_row.get("talkativeness").and_then(Value::as_f64),
+            archived_at: character_row
+                .get("archivedAt")
+                .and_then(Value::as_str)
+                .map(String::from),
         };
         let finalizer_participant = FinalizerParticipant {
             id: call.participant_id.clone(),
@@ -792,8 +756,10 @@ fn answer_confirmation_tier3_matches_oracle() {
         let want = want_events
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
-        let want = strip_pending_route_trail(want);
-        assert_eq!(got, &want, "event trace mismatch for call {name}");
+        // Whole-frame compare: P4.D173's `routeTrail` on the `done` frame is a
+        // comparand of its own now that both stacked lanes are on one branch
+        // (the P4.D172-era subtraction retired at unification).
+        assert_eq!(got, want, "event trace mismatch for call {name}");
     }
 
     // --- 3. tables ---

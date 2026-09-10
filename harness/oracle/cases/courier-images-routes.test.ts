@@ -34,6 +34,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/courier-images-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/courier-images-web.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib" && cp "$V5W/harness/oracle/lib/p4d171-columns.ts" "$TMPO/lib/"
  *   cp "$V5W/crates/quilltap-web/tests/fixtures/courier-images-main.db.meta.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CI_MAIN=$V5W/crates/quilltap-web/tests/fixtures/courier-images-main.db \
@@ -50,6 +51,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { ensureP4D171Columns } from '../lib/p4d171-columns';
 
 interface Spec {
   testPepperBase64: string;
@@ -510,6 +512,14 @@ async function runCase(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  // P4.D171 (v4 `78b381a96`): the committed pair predates `chat_messages.routeTrail`
+  // and `chats.cycleOrderParticipantIds`, and v4's own handlers WRITE both — five of
+  // this family's cases 500'd at the tip before this heal of the working copy
+  // (the `78b381a96` round's unification wire; the salon families' idiom).
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    ensureP4D171Columns(getRawDatabase() as never);
+  }
 
   const RealDate = Date;
   if (c.freezeClock) {

@@ -1436,16 +1436,6 @@ fn orchestrator_tier3_matches_oracle() {
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
 
-    // The cross-lane tripwire, run-scoped: at least one `done` frame must have
-    // carried v4's `routeTrail` key for the subtraction above to be doing
-    // anything. When P4.D173 lands the key on v5's frame too, the oracle keeps
-    // emitting it and this still passes — the SUBTRACTION is what must then be
-    // deleted, and the comment on `strip_pending_route_trail_slice` says so.
-    assert!(
-        ROUTE_TRAIL_STRIPS.load(std::sync::atomic::Ordering::Relaxed) > 0,
-        "no `done` frame carried `routeTrail` — the P4.D173 subtraction is dead \
-         code; delete `strip_pending_route_trail_slice` and compare frames whole"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,51 +1632,11 @@ fn wire_tool_names(tools: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// **CROSS-LANE, RETIRE AT UNIFICATION.** v4 `5841a8c62` (the message route
-/// trail) put a `routeTrail` key on the SSE `done` frame. That frame is
-/// P4.D173's by the round's function fence (`finalize_message_response`'s done
-/// frame), not P4.D172's — but this family regenerates at the same
-/// `78b381a96` pin, so its oracle already carries the key while v5's frame does
-/// not. Subtracted here rather than left red, with a tripwire: the key MUST be
-/// present on the oracle side, so this subtraction can never go quietly dead.
-///
-/// P4.D173 (or the unifier, after it lands) deletes this function and its call
-/// site; the assertion below is what makes that deletion loud if it is forgotten.
-fn strip_pending_route_trail_slice(items: &[Value]) -> Vec<Value> {
-    let mut saw_done_frame = false;
-    let mut saw_route_trail = false;
-    let stripped: Vec<Value> = items
-        .iter()
-        .map(|e| {
-            let Value::Object(map) = e else {
-                return e.clone();
-            };
-            if map.get("done") != Some(&Value::Bool(true)) {
-                return e.clone();
-            }
-            saw_done_frame = true;
-            let mut m = map.clone();
-            if m.shift_remove("routeTrail").is_some() {
-                saw_route_trail = true;
-            }
-            Value::Object(m)
-        })
-        .collect();
-    let _ = saw_done_frame;
-    if saw_route_trail {
-        ROUTE_TRAIL_STRIPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-    stripped
-}
 
-/// How many `done` frames this run actually stripped. Counted across the whole
-/// run rather than asserted per call, because not every trace here carries a
-/// `done` frame (an error path can end without one), so a per-call assertion
-/// fires on traces that were never in scope.
-static ROUTE_TRAIL_STRIPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-
+/// Whole-frame compare — P4.D173's `routeTrail` on the `done` frame is a
+/// comparand of its own now that both stacked lanes are on one branch (the
+/// P4.D172-era subtraction and its run-scoped tripwire retired at unification).
 fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
-    let want: &[Value] = &strip_pending_route_trail_slice(want);
     if got != want {
         let g = serde_json::to_string_pretty(got).unwrap();
         let w = serde_json::to_string_pretty(want).unwrap();

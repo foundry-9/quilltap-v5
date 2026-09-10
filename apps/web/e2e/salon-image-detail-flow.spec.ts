@@ -28,7 +28,7 @@ import { openSidebarSection } from './support/sidebar';
  */
 
 /** Flipped at unification, once P4.D174's `chatGallery` verb lands. */
-const P4D174_SERVER_LANDED = false;
+const P4D174_SERVER_LANDED = true;
 
 /** A 1×1 transparent PNG; a distinct trailing tail keeps the sha unique. */
 /**

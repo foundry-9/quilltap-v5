@@ -263,6 +263,14 @@ fn fresh_db_inner(spec: &Spec, tag: &str, llm_logs: bool) -> Db {
     } else {
         None
     };
+    // P4.D171 (v4 `78b381a96`): the committed pair predates the two new columns
+    // and the message INSERT now always names `routeTrail` — heal the scratch
+    // copy the way the boot ensures heal a real instance (the `salon_reads`
+    // idiom; the oracle side heals its copy with `p4d171-columns.ts`).
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

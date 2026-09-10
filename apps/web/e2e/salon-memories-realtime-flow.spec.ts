@@ -26,7 +26,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * beat proves the REFETCH happened rather than a badge number changing.
  */
 
-const P4D175_SERVER_LANDED = false;
+const P4D175_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');

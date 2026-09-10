@@ -90,6 +90,15 @@ fn find_librarian_summary_anchor(message_events: &[&Value]) -> Option<usize> {
 /// strip lifecycle fields, remap participant / target / hostEvent ids. Returns
 /// `None` when the author (or every whisper target, or a hostEvent participant)
 /// isn't in the new chat.
+///
+/// This is an ALLOW-LIST, and what it leaves out is deliberate (v4
+/// `apply-chat-continuation.ts:166-174`): the LLM-call telemetry, the per-message
+/// debug/recovery state, the provider/model pair and — since v4 `5841a8c62` — the
+/// message's route trail, "the old turn's call sheet is the old turn's business";
+/// the new chat may be on a different connection. The harness pins the trail's
+/// absence two ways (`route_trail_continuation_guard`: a behavioural replay
+/// plus a source census that this file never names the column), so a future
+/// copy here reddens by name. The unifier's wire for the `78b381a96` round.
 fn project_message_for_new_chat(
     source: &Value,
     participant_map: &std::collections::HashMap<String, String>,

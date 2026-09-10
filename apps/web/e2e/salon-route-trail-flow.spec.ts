@@ -31,7 +31,7 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * own picker only ever auto-seeds a character's OWN default profile.
  */
 
-const P4D173_SERVER_LANDED = false;
+const P4D173_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
