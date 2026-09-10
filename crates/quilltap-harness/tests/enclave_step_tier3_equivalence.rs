@@ -110,6 +110,11 @@ struct CallW {
     #[allow(dead_code)]
     stream_label: Option<String>,
     anchor_ms: i64,
+    /// P4.87: this case's ordered `Math.random()` pin, mirroring the oracle's
+    /// per-case `pinned.reset(call.draws ?? [0])`. Absent → `[0]`, the frozen
+    /// zero every pre-rotation row was written against.
+    #[serde(default)]
+    draws: Option<Vec<f64>>,
 }
 
 #[derive(Deserialize)]
@@ -580,8 +585,10 @@ fn enclave_step_tier3_matches_oracle() {
             now_ms: &now_ms,
             mint_uuid: &mint,
             tz: "UTC",
-            // P4.D172: `[0]` reproduces this family's long-standing frozen zero.
-            random01: DrawSource::sequence(vec![0.0]),
+            // P4.87: this case's own sequence — `[0]` (the default) reproduces
+            // the family's long-standing frozen zero. One source per case, as
+            // the oracle rewinds its pin once per case.
+            random01: DrawSource::sequence(call.draws.clone().unwrap_or_else(|| vec![0.0])),
             fold_executor: &fold_executor,
             model_context_limit: 200_000,
             timestamp_config: None,

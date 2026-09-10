@@ -111,6 +111,14 @@ interface CallSpec {
   /** P4.6c: user-initiated tool results pre-inserted as TOOL messages before the
    * user message (orchestrator.service.ts:601–624). */
   pendingToolResults?: unknown[];
+  /**
+   * P4.87: this case's ordered `Math.random()` pin. Absent → `[0]`, which is
+   * byte-identical to the file-wide frozen zero every pre-rotation row was
+   * written against (a one-element sequence repeats its last value). A row that
+   * wants to SEE a reordered rotation gives a real sequence here — the same
+   * array the Rust side feeds `DrawSource::sequence`.
+   */
+  draws?: number[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -712,6 +720,9 @@ async function main(): Promise<void> {
   // is byte-identical to the `Math.random = () => 0` it replaces; an arm that
   // needs a real sequence later changes this array and nothing else.
   const pinned = pinDraws([0]);
+  // P4.87: rewound per case below (`pinned.reset(call.draws ?? [0])`), so a row
+  // with its own sequence starts at index 0 rather than wherever the previous
+  // case left the cursor.
 
   const decoder = new TextDecoder();
   function decodeFrames(bytes: Uint8Array, sink: unknown[]): void {
@@ -731,6 +742,8 @@ async function main(): Promise<void> {
     currentLabel = call.streamLabel;
     currentRngBytes = call.rngBytes ?? [];
     rngCursor = 0;
+    // P4.87: this case's draws, from index 0. `[0]` is the pre-rotation freeze.
+    pinned.reset(call.draws ?? [0]);
 
     const events: unknown[] = [];
     let threw = false;

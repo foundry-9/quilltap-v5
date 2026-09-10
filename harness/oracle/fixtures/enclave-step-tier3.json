@@ -29,6 +29,13 @@
    "description": "A romantic conversationalist.",
    "talkativeness": 0.5,
    "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "cbbbbbbb-0000-4000-8000-00000000c1e0",
+   "name": "Cleo",
+   "description": "A brisk archivist.",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
   }
  ],
  "chats": [
@@ -727,6 +734,78 @@
     "runState": "running",
     "currentRunId": "aaaaaaa4-0000-4000-8000-000000000024"
    }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000018",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Rotation frozen",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000018",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000018",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb3-0000-4000-8000-000000000018",
+     "character": "cbbbbbbb-0000-4000-8000-00000000c1e0",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000018000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 18.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000018"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa8-0000-4000-8000-000000000018",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
+  },
+  {
+   "id": "dddddddd-0000-4000-8000-000000000019",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "title": "Rotation sequenced",
+   "participants": [
+    {
+     "id": "bbbbbbb1-0000-4000-8000-000000000019",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb2-0000-4000-8000-000000000019",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "status": "active"
+    },
+    {
+     "id": "bbbbbbb3-0000-4000-8000-000000000019",
+     "character": "cbbbbbbb-0000-4000-8000-00000000c1e0",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ccccccc0-0000-4000-8000-000019000001",
+     "role": "ASSISTANT",
+     "content": "Opening remark 19.",
+     "participantId": "bbbbbbb1-0000-4000-8000-000000000019"
+    }
+   ],
+   "columns": {
+    "chatType": "autonomous",
+    "runState": "running",
+    "currentRunId": "aaaaaaa9-0000-4000-8000-000000000019",
+    "runStartedAt": "2026-01-01T00:00:00.000Z"
+   }
   }
  ],
  "siblingJob": {
@@ -989,6 +1068,32 @@
    "kind": "tick",
    "userId": "f2222222-2222-4222-8222-222222222222",
    "anchorMs": 1767338045000
+  },
+  {
+   "name": "rotation_draw_frozen",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000018",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa8-0000-4000-8000-000000000018",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000020",
+   "jobCreatedAt": "2026-01-02T07:24:00.000Z",
+   "streamLabel": "rotation_draw_frozen",
+   "anchorMs": 1767338645000
+  },
+  {
+   "name": "rotation_draw_sequenced",
+   "kind": "turn",
+   "chatId": "dddddddd-0000-4000-8000-000000000019",
+   "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+   "runId": "aaaaaaa9-0000-4000-8000-000000000019",
+   "jobId": "eeeeeeee-0000-4000-8000-000000000021",
+   "jobCreatedAt": "2026-01-02T07:34:00.000Z",
+   "streamLabel": "rotation_draw_sequenced",
+   "anchorMs": 1767339245000,
+   "draws": [
+    0.9,
+    0.1
+   ]
   }
  ],
  "streams": {
@@ -1145,6 +1250,36 @@
       "promptTokens": 28,
       "completionTokens": 4,
       "totalTokens": 32
+     }
+    }
+   ]
+  ],
+  "rotation_draw_frozen": [
+   [
+    {
+     "content": "The frozen draw speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 6,
+      "totalTokens": 36
+     }
+    }
+   ]
+  ],
+  "rotation_draw_sequenced": [
+   [
+    {
+     "content": "The sequenced draw speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 6,
+      "totalTokens": 36
      }
     }
    ]

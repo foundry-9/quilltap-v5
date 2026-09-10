@@ -122,6 +122,11 @@ struct CallW {
     /// the user message (orchestrator.service.ts:601–624).
     #[serde(default)]
     pending_tool_results: Vec<PtrW>,
+    /// P4.87: this case's ordered `Math.random()` pin, mirroring the oracle's
+    /// per-case `pinned.reset(call.draws ?? [0])`. Absent → `[0]`, which is the
+    /// frozen zero every pre-rotation row was written against.
+    #[serde(default)]
+    draws: Option<Vec<f64>>,
 }
 
 /// A corpus `pendingToolResults` element.
@@ -971,6 +976,15 @@ fn orchestrator_tier3_matches_oracle() {
         // assertion. A native tool CALL end-to-end is proven separately by
         // `native_tool_loop_tier3` (v4's REAL `runNativeToolLoop` + threading).
 
+        // P4.87: ONE draw source per case, cloned into every carrier this case
+        // reaches — the initial `ProcessClock`, each chained turn's, and
+        // `execute_turn_chain`'s own. Clones share the cursor (the `Arc`'d
+        // closure holds it), so the draws arrive in one order exactly as v4's
+        // single pinned `Math.random` delivers them across `handleSendMessage`.
+        // Building a fresh sequence per carrier restarted at index 0, which was
+        // invisible only while the array had one element.
+        let case_draws = DrawSource::sequence(call.draws.clone().unwrap_or_else(|| vec![0.0]));
+
         let call_nudge = call.nudge;
         let call_ptrs: Vec<orchestrator::PendingToolResult> = call
             .pending_tool_results
@@ -1008,8 +1022,8 @@ fn orchestrator_tier3_matches_oracle() {
                 clock: ProcessClock {
                     now_ms: spec.frozen_now_ms,
                     local_offset_minutes: spec.local_offset_minutes,
-                    // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
-                    random01: DrawSource::sequence(vec![0.0]),
+                    // P4.87: the case's own sequence, shared with the chain.
+                    random01: case_draws.clone(),
                 },
                 model_context_limit: 200_000,
                 timestamp_config: None,
@@ -1044,6 +1058,7 @@ fn orchestrator_tier3_matches_oracle() {
                     let user_id = spec.user_id.clone();
                     let frozen = spec.frozen_now_ms;
                     let offset = spec.local_offset_minutes;
+                    let chain_draws = case_draws.clone();
                     let make_chain_input = move |pid: String| ProcessMessageInput {
                         log_context: LogContext::none(),
                         chat_id: chat_id.clone(),
@@ -1057,8 +1072,9 @@ fn orchestrator_tier3_matches_oracle() {
                         clock: ProcessClock {
                             now_ms: frozen,
                             local_offset_minutes: offset,
-                            // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
-                            random01: DrawSource::sequence(vec![0.0]),
+                            // P4.87: the case's own sequence, shared with the
+                            // initial turn and the chain's own carrier.
+                            random01: chain_draws.clone(),
                         },
                         model_context_limit: 200_000,
                         timestamp_config: None,
@@ -1084,7 +1100,9 @@ fn orchestrator_tier3_matches_oracle() {
                                 config: ChainConfig::default(),
                             },
                             frozen,
-                            &DrawSource::sequence(vec![0.0]),
+                            // P4.87: the case's own sequence, shared with both
+                            // input carriers above.
+                            &case_draws,
                             make_chain_input,
                         ))
                         .expect("chain");

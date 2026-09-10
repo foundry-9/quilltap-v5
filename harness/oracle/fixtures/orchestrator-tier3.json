@@ -1325,6 +1325,74 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "70710001-0000-4000-8000-000000000701",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "7071000a-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "7071000b-0000-4000-8000-0000000000b1",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "7071000c-0000-4000-8000-0000000000c1",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "70710101-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "Friday opens the frozen-draw room.",
+     "participantId": "7071000a-0000-4000-8000-0000000000a1"
+    }
+   ]
+  },
+  {
+   "id": "70720002-0000-4000-8000-000000000702",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "7072000a-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "7072000b-0000-4000-8000-0000000000b1",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "7072000c-0000-4000-8000-0000000000c1",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "70720102-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "Friday opens the sequenced-draw room.",
+     "participantId": "7072000a-0000-4000-8000-0000000000a1"
+    }
+   ]
   }
  ],
  "calls": [
@@ -1759,6 +1827,32 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "9c8a000a-0000-4000-8000-0000000000e2"
+  },
+  {
+   "name": "rotation_draw_frozen",
+   "kind": "chain",
+   "chatId": "70710001-0000-4000-8000-000000000701",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "rotation_frozen",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "7071000a-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "rotation_draw_sequenced",
+   "kind": "chain",
+   "chatId": "70720002-0000-4000-8000-000000000702",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "rotation_sequenced",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "7072000a-0000-4000-8000-0000000000a1",
+   "draws": [
+    0.9,
+    0.1
+   ]
   }
  ],
  "streams": {
@@ -2703,6 +2797,36 @@
    [
     {
      "error": "upstream connection reset"
+    }
+   ]
+  ],
+  "rotation_frozen": [
+   [
+    {
+     "content": "The frozen draw speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 6,
+      "totalTokens": 36
+     }
+    }
+   ]
+  ],
+  "rotation_sequenced": [
+   [
+    {
+     "content": "The sequenced draw speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 6,
+      "totalTokens": 36
+     }
     }
    ]
   ]

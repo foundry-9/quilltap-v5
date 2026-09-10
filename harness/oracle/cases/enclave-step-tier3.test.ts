@@ -107,6 +107,13 @@ interface CallSpec {
   jobCreatedAt?: string;
   streamLabel?: string | null;
   anchorMs: number;
+  /**
+   * P4.87: this case's ordered `Math.random()` pin. Absent → `[0]`, which is
+   * byte-identical to the file-wide frozen zero every pre-rotation row was
+   * written against (a one-element sequence repeats its last value). The same
+   * array the Rust side feeds `DrawSource::sequence`.
+   */
+  draws?: number[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -454,12 +461,17 @@ async function main(): Promise<void> {
   // is byte-identical to the `Math.random = () => 0` it replaces; an arm that
   // needs a real sequence later changes this array and nothing else.
   const pinned = pinDraws([0]);
+  // P4.87: rewound per case below (`pinned.reset(call.draws ?? [0])`), so a row
+  // with its own sequence starts at index 0 rather than wherever the previous
+  // case left the cursor.
 
   const lines: string[] = [];
 
   for (const call of spec.calls) {
     mockClock = call.anchorMs;
     currentLabel = call.streamLabel ?? null;
+    // P4.87: this case's draws, from index 0. `[0]` is the pre-rotation freeze.
+    pinned.reset(call.draws ?? [0]);
     let threw: string | null = null;
     try {
       if (call.kind === 'turn') {

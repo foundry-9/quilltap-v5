@@ -22,6 +22,11 @@ USER2 = "f2222222-2222-4222-8222-222222222222"
 PROFILE = "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
 ADA = "969a21df-73ad-465f-8f6c-2bc52d90ddc6"
 BYRON = "a990117b-2f44-466f-a853-6b4d4c2db52d"
+# P4.87: a THIRD seat, used only by the rotation-draw pair (cases 18/19). A
+# two-seat room cannot show a reordered rotation: `drawCycleOrder` holds the
+# previous speaker out of position 1, so with two candidates the permutation is
+# forced whatever the draws are.
+CLEO = "cbbbbbbb-0000-4000-8000-00000000c1e0"
 
 def run_id(n):
     return f"00000000-0000-4000-8000-0000000run{n:02d}"[:22] + f"{n:014d}"
@@ -45,6 +50,12 @@ def participants(n, status="active"):
         {"id": pid(chat_n=n, which=2), "character": BYRON, "status": status},
     ]
 
+def participants3(n, status="active"):
+    """P4.87: three seats — the smallest room whose rotation the draws can reorder."""
+    return participants(n, status) + [
+        {"id": pid(chat_n=n, which=3), "character": CLEO, "status": status},
+    ]
+
 def opener(n):
     # One seeded assistant message from pA so the selection picks pB.
     return [{
@@ -57,16 +68,22 @@ calls = []
 streams = {}
 
 def add_turn_call(name, chat, run, stream_chunks, job_id=None, job_created_at=None,
-                  anchor_ms=None):
+                  anchor_ms=None, draws=None):
     i = len(calls)
     label = name if stream_chunks is not None else None
     anchor = a(i) if anchor_ms is None else anchor_ms
-    calls.append({
+    call = {
         "name": name, "kind": "turn", "chatId": chat, "userId": USER1,
         "runId": run, "jobId": job_id or f"eeeeeeee-0000-4000-8000-{i:012d}",
         "jobCreatedAt": job_created_at or iso(anchor - 5000),
         "streamLabel": label, "anchorMs": anchor,
-    })
+    }
+    # P4.87: only the rotation pair carries a sequence. Absent means `[0]` on both
+    # sides — byte-identical to the file-wide frozen zero every other case was
+    # written against — so no pre-existing row gains a key.
+    if draws is not None:
+        call["draws"] = draws
+    calls.append(call)
     if stream_chunks is not None:
         streams[label] = stream_chunks
 
@@ -317,6 +334,46 @@ calls.append({"name": "tick_first", "kind": "tick", "userId": USER2,
 calls.append({"name": "tick_second", "kind": "tick", "userId": USER2,
               "anchorMs": a(len(calls))})
 
+# --- Cases 18/19 (P4.87): the rotation the draws decide -------------------------
+# Appended AFTER the tick calls on purpose: `add_turn_call` derives its anchor and
+# job id from `len(calls)`, so inserting anywhere earlier would renumber every
+# later call and move rows this pair has no business moving.
+#
+# Two rooms of identical shape — three seats at equal talkativeness, one seeded
+# opener from seat 1 — differing ONLY in the draw sequence. `drawCycleOrder` calls
+# `pickWeightedRandom` once per REMAINING candidate over a shrinking pool, and
+# holds the previous speaker out of position 1, so with candidates [p1, p2, p3]
+# and `excludeFirst = p1`:
+#
+#   draws [0]        → position 1 from [p2, p3] at r=0            → p2
+#                      position 2 from [p1, p3] at r=0            → p1
+#                      position 3 from [p3]                       → p3   ⇒ [p2, p1, p3]
+#   draws [0.9, 0.1] → position 1 from [p2, p3] at r=0.9*1.0=0.9  → p3
+#                      position 2 from [p1, p2] at r=0.1*1.0=0.1  → p1
+#                      position 3 from [p2] (0.1 repeats)         → p2   ⇒ [p3, p1, p2]
+#
+# So the pair differs in BOTH comparands the dump carries: the stored rotation
+# (minus whoever spoke) and the assistant row's `participantId`. Until this pair
+# existed, `pinDraws([0])` made a reordered rotation pass this family in silence.
+n = 18
+c = {"id": chat_id(n), "userId": USER1, "title": "Rotation frozen",
+     "participants": participants3(n), "messages": opener(n),
+     "columns": {"chatType": "autonomous", "runState": "running",
+                  "currentRunId": rid(n), "runStartedAt": SEED_TS}}
+chats.append(c)
+add_turn_call("rotation_draw_frozen", chat_id(n), rid(n),
+              turn_stream("The frozen draw speaks first.", (30, 6, 36)))
+
+n = 19
+c = {"id": chat_id(n), "userId": USER1, "title": "Rotation sequenced",
+     "participants": participants3(n), "messages": opener(n),
+     "columns": {"chatType": "autonomous", "runState": "running",
+                  "currentRunId": rid(n), "runStartedAt": SEED_TS}}
+chats.append(c)
+add_turn_call("rotation_draw_sequenced", chat_id(n), rid(n),
+              turn_stream("The sequenced draw speaks first.", (30, 6, 36)),
+              draws=[0.9, 0.1])
+
 # --- Seeded llm_logs rows --------------------------------------------------------
 llm_log_rows = [
     # Tagged spend for budget_tokens_end (run 3): 100 total.
@@ -358,6 +415,11 @@ spec = {
         {"id": ADA, "name": "Ada", "description": "A methodical analyst.",
          "talkativeness": 0.5, "connectionProfileId": PROFILE},
         {"id": BYRON, "name": "Byron", "description": "A romantic conversationalist.",
+         "talkativeness": 0.5, "connectionProfileId": PROFILE},
+        # P4.87: the third seat of the rotation pair (cases 18/19) — same
+        # talkativeness as the other two, so the permutation is decided by the
+        # draws alone and nothing else.
+        {"id": CLEO, "name": "Cleo", "description": "A brisk archivist.",
          "talkativeness": 0.5, "connectionProfileId": PROFILE},
     ],
     "chats": chats,
