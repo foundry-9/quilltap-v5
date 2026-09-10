@@ -121442,7 +121442,15 @@ not tested at all* — pin each conjunct with the others held open.
 -D warnings` clean in BOTH feature sets (default and
 `--features quilltap-core/native-transport`); `cargo build --workspace`; the
 release build. `cargo test --workspace` with the lane's 14-variable env block and
-`QT_V4_ROOT` set to the `cc65d6bfc` pin. Every family this lane moves regenerated
+`QT_V4_ROOT` set to the `cc65d6bfc` pin: **551 test binaries / 3,143 passed /
+0 failed / 2 ignored, ZERO `SKIP:` lines anywhere in the log, exit 0** (+1
+binary — exactly this lane's new family). All nine families it moves confirmed
+RUN by name in that log:
+`appearance_sanitize_gate_tier3` 1/0 (0.02 s), `story_background_job_tier3`
+2/0 (0.40 s), `avatar_job_tier3` 2/0 (0.24 s), `image_generation_tier3` 1/0
+(0.22 s), `help_tree_equivalence` 1/0 (1.24 s), `help_tree_embed_guard` 1/0,
+`help_docs_tier2` 1/0, `help_doc_sync` 1/0, `help_doc_chunking` 1/0. Exit codes
+read directly from each stage, never after a pipe. Every family this lane moves regenerated
 FRESH from that pin through `harness/tools/recipe_sweep.py --v4 <pin> --run
 <family>`, re-run by name, zero unexplained SKIP, the changed bytes grepped in
 each NDJSON, every NDJSON non-empty. Fixture copies isolated under
