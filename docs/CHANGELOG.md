@@ -670,6 +670,127 @@ real route. Five mutations red exactly the right cases; a sixth — dropping
 pass 3's `hasSha` skip — survives CORRECTLY and is recorded: v4's guard is
 behaviourally redundant with the collector's own sha dedup for the entry list.
 `courier_images_routes_equivalence` regenerated as a neutrality check, green.
+#### 2026-09-09 — chore(help): re-vendor the help tree at v4 `78b381a96` (122 → 123)
+
+_Versions: harness 0.0.753, host 0.0.119._
+
+`help/**` is a vendored v5 artifact, so every v4 commit that touches it is a
+re-vendor obligation. Across the round's twelve commits eleven files moved:
+`help/chat-gallery.md` is new (the Salon chat gallery's page, which rides this
+lane rather than the gallery lanes — one sha, one regen, one count bump), and
+ten were edited by the route trail, the turn manager's drawn rotation, the
+`memories` topic, bug 132 and the progressions fix.
+
+Copied byte-for-byte from a worktree pinned at `78b381a96`; the whole tree is
+`diff -rq`-identical to that pin. The count literals moved to 123 in
+`help_tree_embed_guard` and `host_help_docs_boot`, and `help_content.rs`'s doc
+comment — which had carried a stale `120` from `d883a5ee1` through three
+re-vendors, exactly the failure mode
+`a-vendored-count-is-hard-coded-in-several-crates` names — now says the count
+is derived and points at the one literal instead of restating it.
+
+#### 2026-09-09 — fix(boot): clear the placeholder descriptions bug 132 already wrote (v4 `78b381a96`)
+
+_Versions: core 0.0.860, harness 0.0.752, host 0.0.118._
+
+The forward half of bug 132 governs images written from now on. For every
+image already on disk the caption still sits in `description`, and
+`auto_describe_precheck` answers `already-described` on the strength of it —
+so the vision tier stays unreachable until the column is cleared. This is that
+pass, and it is the fix's user-visible half rather than a tidy-up.
+
+`db::generated_image_placeholder_heal` clears `files.description` to NULL
+where `source = 'GENERATED'` and the description carries one of the two label
+shapes, and `doc_mount_file_links.description` to its `''` default under the
+same predicate gated on an image MIME type (the link side has no source
+column). It runs from the host's mount-aware boot block, once per instance,
+guarded by v4's own `migrations_state` ledger: a row from either app is
+honoured, and a pass that clears nothing writes none. That last part agrees
+with v4 exactly here — unlike the sha256 realign beside it, this migration's
+`shouldRun()` counts placeholders rather than testing presence.
+
+⚠ Two things are named rather than fixed. `api/chat_media`'s
+`ensure_image_description` treats the LINK description as a cache, so clearing
+these rows makes the next attach of one of these images spend a real vision
+call — once, per image, faithful to v4 whose migration clears the same rows. And
+a THIRD v4 writer (`wardrobe/preview-avatar`, `<Name> — outfit preview`, v5's
+`api/wardrobe.rs:1112`) stamps a caption v4's own fix misses: this port
+reproduces v4 exactly and files it upstream instead of widening the predicate,
+with a corpus arm asserting that row SURVIVES on both sides as the convergence
+tripwire.
+
+The new `generated_image_placeholder_heal_equivalence` drives v4's REAL
+migration and its REAL ledger write over eleven planted scenarios; two host
+tests pin the boot wiring, one of which found — on its first run — that
+planting `migrations_state` without `migrations_metadata` fails the boot,
+because every heal gates its CREATE batch on the first table alone.
+
+#### 2026-09-09 — fix(images): a generated image's label is not its description — bug 132's writers and reader (v4 `78b381a96`)
+
+_Versions: core 0.0.859, harness 0.0.751._
+
+Two writers put a CAPTION in the column every reader treats as "what this
+picture shows". The Lantern's story-background job stored `Story background
+for: <scene or title>` on the `files` row and passed the same string to the
+Scriptorium link; Aurora's avatar job did the same with `<name> — wardrobe
+portrait` through the character vault. `describe_image` then served
+`description` FIRST, ahead of the generation prompt and the vision call — so a
+character asking what a backdrop showed was told the chat title, with
+`source: "stored-description"` and every appearance of success.
+
+Both writers now write `null` and omit the label from the storage-write
+options. `describe_image` reorders to prompt → stored → vision, matching the
+blind-model fallback in `services/file_fallback.rs`, which already had it that
+way. When the prompt is the answer and a non-blank stored description exists,
+the stored text is not thrown away: it rides along as a new optional
+`stored_description` on the result row (absent, never null) and tails the
+formatted text after `On file: `. The log line gains
+`has_stored_description`.
+
+`photo_tools_equivalence`'s `describe_stored` — a row carrying both generation
+prompts AND a stored description — is v4's own new case and flipped red
+against the unedited tree at the `78b381a96` pin. The reorder also left arm 2
+unreachable by that corpus (every described row there carries a prompt), so
+the fixture gained a `storedonly` image: a stored description and no prompt of
+either kind. `describe_whitespace_stored` now measures the negative arm of the
+ride-along — a column that trims to empty produces no key and no tail. The
+two job families flipped red on `doc_mount_file_links` before the edit and are
+green after; `image_generation_tier3` was regenerated and does not reach either
+writer.
+
+#### 2026-09-09 — fix(realtime): announce the Commonplace Book — bug 128's `memories` topic (v4 `4a9be9878`)
+
+_Versions: core 0.0.858, harness 0.0.750._
+
+Nothing announced a memory landing, so a Salon's memory count — and the
+destructive button it labels — sat at whatever was true when the tab opened.
+v4 fixes it with a seventh realtime topic; this is its server half.
+
+`memories` joins `REALTIME_TOPICS` last (v4's declaration order). The four
+chat-scoped memory job types — `MEMORY_EXTRACTION`, `INTER_CHARACTER_MEMORY`,
+`CARINA_MEMORY_EXTRACTION`, `MEMORY_REGENERATE_CHAT` — publish it scoped to
+the `chatId` on their payload, degrading to a collection-wide hint when that
+id cannot be read; `MEMORY_HOUSEKEEPING` is character-scoped and so publishes
+collection-wide by necessity; `MEMORY_REGENERATE_ALL` gets no arm.
+
+Two things stay deliberately absent. `REPOSITORY_TOPICS` gains no `memories`
+row, because `extract_topic_id` takes a positional first argument whenever it
+is a string and would hand back `memories.delete(memoryId)`'s MEMORY id under
+a topic every subscriber filters by CHAT id — a hint that reaches nobody. And
+the by-chat delete route publishes nothing of its own: v4's PR added that
+publish in its first commit and removed it in its second, since the gate
+already announces collection-wide and a second hint would fire on the one
+case the gate is right to stay silent for.
+
+The deletes announce from the repository twins of v4's memory gate
+(`delete_with_unlink` / `delete_many_with_unlink`) under v4's silence guards,
+which covers all eight callers by construction. Held by the existing
+`realtime_topics_equivalence` tier-1 differential — ten rows flipped red
+against the unedited tree at the `78b381a96` pin, plus a new negative row for
+the write-batch leg — by two `realtime_publish_sites_guard` census rows, and
+by six wiring pins driving the real route over a provisioned partition.
+`HintCapture` grew `arm_writer_thread`, because a repository publish only ever
+runs on the write pool's own OS thread.
 
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 

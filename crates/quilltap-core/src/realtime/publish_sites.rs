@@ -36,6 +36,9 @@ static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Arms the bus onto a fresh channel, holds the serialization lock, and
 /// disarms on drop.
 pub struct HintCapture {
+    tx: broadcast::Sender<Event>,
+    spawner: BusSpawner,
+    now_ms: fn() -> i64,
     rx: broadcast::Receiver<Event>,
     _guard: std::sync::MutexGuard<'static, ()>,
 }
@@ -58,8 +61,38 @@ impl HintCapture {
         let spawner: BusSpawner = Arc::new(move |fut| {
             handle.spawn(fut);
         });
-        arm_realtime_bus_for_current_thread(tx, spawner, crate::clock::now_unix_ms);
-        Self { rx, _guard: guard }
+        arm_realtime_bus_for_current_thread(tx.clone(), spawner.clone(), crate::clock::now_unix_ms);
+        Self {
+            tx,
+            spawner,
+            now_ms: crate::clock::now_unix_ms,
+            rx,
+            _guard: guard,
+        }
+    }
+
+    /// Arm this capture's channel on `db`'s **writer thread** as well.
+    ///
+    /// The write pool is a dedicated OS thread (`db::runtime`'s
+    /// `thread::Builder::spawn`), not a tokio task, so a publish made from
+    /// inside a `db.write(…)` closure — bug 128's memory-gate twins live in the
+    /// repository layer, which only ever runs there — is invisible to a bus
+    /// armed on the test thread alone. Sending one no-op write job that arms
+    /// the thread-local *there* is precise and race-free: that thread belongs
+    /// to this test's own `Db` and dies with it, so there is nothing to disarm
+    /// and nobody else to collect from. (The `BusSpawner` is already a captured
+    /// `Handle` rather than bare `tokio::spawn` for exactly this reason — see
+    /// [`HintCapture::start`].)
+    pub async fn arm_writer_thread(&self, db: &crate::db::runtime::Db) {
+        let tx = self.tx.clone();
+        let spawner = self.spawner.clone();
+        let now_ms = self.now_ms;
+        db.write(move |_| {
+            arm_realtime_bus_for_current_thread(tx, spawner, now_ms);
+            Ok(())
+        })
+        .await
+        .expect("arming the writer thread's bus");
     }
 
     /// Let every coalescing window close, then drain the hints as
@@ -544,6 +577,277 @@ mod tests {
         crate::services::job_runner::JobRunner::new(db.clone(), reg)
             .pump_claim()
             .await;
+        assert_eq!(cap.drain().await, vec![]);
+    }
+}
+
+// ── bug 128: the memory gate's two delete chokepoints ────────────────────────
+//
+// v4 (`4a9be9878`) publishes `memories` from `lib/memory/memory-gate.ts`'s
+// `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`, whose v5 twins are
+// `db::memories::MemoriesRepository::{delete_with_unlink, delete_many_with_unlink}`.
+// Publishing from the repository is what makes all EIGHT callers correct by
+// construction, and it is also why these pins need
+// [`HintCapture::arm_writer_thread`]: a repository method only ever runs on the
+// write pool's dedicated OS thread.
+//
+// The route's NON-publish (`api::memories::memory_delete_by_chat`) is held two
+// ways: behaviourally below — a chat with nothing to delete produces ZERO hints,
+// which is the exact case v4's PR removed its own route publish for — and
+// structurally by `realtime_publish_sites_guard`'s `api/memories.rs` row, whose
+// expected count is 0.
+#[cfg(test)]
+mod memory_gate_tests {
+    use super::*;
+    use crate::db::memories::{CreateOptions, MemCreate};
+    use crate::db::runtime::Db;
+    use crate::db::Writer;
+    use crate::realtime::types::RealtimeTopic;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const SENTINEL: &str = "2020-01-01T00:00:00.000Z";
+
+    const DDL: &str = "
+        CREATE TABLE memories (
+            id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
+            projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
+            importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
+            kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
+            reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
+            reinforcedImportance REAL, createdAt TEXT, updatedAt TEXT);
+        CREATE TABLE vector_indices (
+            id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
+            createdAt TEXT, updatedAt TEXT);
+        CREATE TABLE vector_entries (
+            id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
+    ";
+
+    fn memories() -> (String, Option<String>) {
+        (RealtimeTopic::Memories.as_str().to_string(), None)
+    }
+
+    /// A fresh encrypted DB seeded with `(id, characterId, chatId)` memories.
+    fn make_db(tag: &str, rows: &[(&str, &str, &str)]) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(format!("{tag}.db"));
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection().execute_batch(DDL).unwrap();
+            seed_memories(&w, rows);
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
+    /// Seed `(id, characterId, chatId)` memories into an open writer.
+    fn seed_memories(w: &Writer, rows: &[(&str, &str, &str)]) {
+        for (id, character_id, chat_id) in rows {
+            w.memories()
+                .create(
+                    &MemCreate {
+                        character_id: (*character_id).to_string(),
+                        about_character_id: None,
+                        chat_id: Some((*chat_id).to_string()),
+                        project_id: None,
+                        content: format!("content {id}"),
+                        summary: format!("summary {id}"),
+                        keywords: vec![],
+                        tags: vec![],
+                        importance: 0.5,
+                        embedding: None,
+                        source: "AUTO".to_string(),
+                        witnessed_context: None,
+                        occurred_at: None,
+                        narrative_time: None,
+                        entities: Vec::new(),
+                        kind: "semantic".to_string(),
+                        source_message_id: None,
+                        last_accessed_at: None,
+                        reinforcement_count: 1.0,
+                        last_reinforced_at: None,
+                        related_memory_ids: vec![],
+                        reinforced_importance: 0.5,
+                    },
+                    &CreateOptions {
+                        id: (*id).to_string(),
+                        created_at: SENTINEL.to_string(),
+                        updated_at: SENTINEL.to_string(),
+                    },
+                )
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn deleting_one_memory_announces_the_namespace() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = make_db("gate1", &[("m-1", "ch-1", "chat-1")]);
+        cap.arm_writer_thread(&db).await;
+
+        let deleted = db
+            .write(|w| w.main().memories().delete_with_unlink("m-1"))
+            .await
+            .unwrap();
+        assert!(
+            deleted,
+            "the delete must land for this pin to mean anything"
+        );
+        assert_eq!(cap.drain().await, vec![memories()]);
+    }
+
+    /// v4's `if (deleted)` guard: an already-gone memory is a no-op, and a
+    /// no-op announces nothing.
+    #[tokio::test]
+    async fn deleting_an_already_gone_memory_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = make_db("gate2", &[("m-1", "ch-1", "chat-1")]);
+        cap.arm_writer_thread(&db).await;
+
+        let deleted = db
+            .write(|w| w.main().memories().delete_with_unlink("m-nope"))
+            .await
+            .unwrap();
+        assert!(!deleted);
+        assert_eq!(cap.drain().await, vec![]);
+    }
+
+    /// The batch twin, and the coalescing that makes a cascade one hint.
+    #[tokio::test]
+    async fn a_batch_delete_announces_the_namespace_once() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = make_db(
+            "gate3",
+            &[
+                ("m-1", "ch-1", "chat-1"),
+                ("m-2", "ch-1", "chat-1"),
+                ("m-3", "ch-2", "chat-2"),
+            ],
+        );
+        cap.arm_writer_thread(&db).await;
+
+        let n = db
+            .write(|w| {
+                w.main().memories().delete_many_with_unlink(&[
+                    "m-1".into(),
+                    "m-2".into(),
+                    "m-3".into(),
+                ])
+            })
+            .await
+            .unwrap();
+        assert_eq!(n, 3);
+        assert_eq!(cap.drain().await, vec![memories()]);
+    }
+
+    /// v4's `if (deleted > 0)`, both ways in: an EMPTY id list returns before
+    /// the scan, and a list of ids that match nothing deletes nothing.
+    #[tokio::test]
+    async fn a_batch_that_deletes_nothing_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = make_db("gate4", &[("m-1", "ch-1", "chat-1")]);
+        cap.arm_writer_thread(&db).await;
+
+        let empty = db
+            .write(|w| w.main().memories().delete_many_with_unlink(&[]))
+            .await
+            .unwrap();
+        assert_eq!(empty, 0);
+        assert_eq!(cap.drain().await, vec![], "the empty-list early return");
+
+        let missing = db
+            .write(|w| {
+                w.main()
+                    .memories()
+                    .delete_many_with_unlink(&["m-nope".into()])
+            })
+            .await
+            .unwrap();
+        assert_eq!(missing, 0);
+        assert_eq!(
+            cap.drain().await,
+            vec![],
+            "nothing matched, nothing changed"
+        );
+    }
+
+    /// The REAL by-chat delete route, over a REAL provisioned main partition —
+    /// the ownership check needs the whole `chats` table, so this seeds through
+    /// `provision_fresh_instance` rather than a reduced hand-rolled DDL (which
+    /// would also collide with the `chats` DDL this round is moving elsewhere).
+    ///
+    /// ONE collection-wide hint, published by the gate; the route contributes
+    /// none of its own.
+    async fn provisioned(tag: &str, rows: &[(&str, &str, &str)]) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join(tag);
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let path = data.join("quilltap.db");
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let mut chats: Vec<&str> = rows.iter().map(|(_, _, c)| *c).collect();
+            chats.sort_unstable();
+            chats.dedup();
+            for chat in chats {
+                w.connection()
+                    .execute(
+                        "INSERT INTO chats (id, userId, title, createdAt, updatedAt)                          VALUES (?1, 'u-1', 'T', ?2, ?2)",
+                        rusqlite::params![chat, SENTINEL],
+                    )
+                    .unwrap();
+            }
+            seed_memories(&w, rows);
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
+    #[tokio::test]
+    async fn the_by_chat_delete_route_announces_once_from_the_gate() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = provisioned(
+            "bychat",
+            &[("m-1", "ch-1", "chat-1"), ("m-2", "ch-1", "chat-1")],
+        )
+        .await;
+        cap.arm_writer_thread(&db).await;
+
+        let resp = crate::api::memories::memory_delete_by_chat(&db, "chat-1").await;
+        let crate::api::types::Response::Memory(body) = resp else {
+            panic!("the route must succeed for this pin to mean anything");
+        };
+        assert_eq!(body["deletedCount"], 2);
+        assert_eq!(cap.drain().await, vec![memories()]);
+    }
+
+    /// **Commit 2's exact edge** (v4 `ba89e0caa` removed the route's own publish
+    /// for this): a chat with no memories returns before the gate is ever
+    /// called, so nothing was deleted, nothing changed, and nothing is
+    /// announced. A route-level publish would fire here.
+    #[tokio::test]
+    async fn the_route_announces_nothing_for_a_chat_with_no_memories() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = provisioned("bychatempty", &[("m-1", "ch-1", "chat-1")]).await;
+        cap.arm_writer_thread(&db).await;
+        db.write(|w| {
+            w.main()
+                .connection()
+                .execute(
+                    "INSERT INTO chats (id, userId, title, createdAt, updatedAt)                      VALUES ('chat-empty', 'u-1', 'T', '2020-01-01T00:00:00.000Z',                      '2020-01-01T00:00:00.000Z')",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(Into::into)
+        })
+        .await
+        .unwrap();
+
+        let resp = crate::api::memories::memory_delete_by_chat(&db, "chat-empty").await;
+        let crate::api::types::Response::Memory(body) = resp else {
+            panic!("the route must succeed — a 404 would make this vacuous");
+        };
+        assert_eq!(body["deletedCount"], 0);
         assert_eq!(cap.drain().await, vec![]);
     }
 }

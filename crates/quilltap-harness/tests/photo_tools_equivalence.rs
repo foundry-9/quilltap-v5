@@ -563,6 +563,11 @@ struct DescribeOp {
 
 fn describe_corpus() -> Vec<DescribeOp> {
     vec![
+        // v4 `78b381a96` bug 132's own new case: this row carries BOTH
+        // generation prompts AND a stored description, so after the reorder it
+        // serves the REVISED PROMPT with the stored text riding along as
+        // `stored_description` and tailing `formattedText` after `On file: `.
+        // It is the row that flips red on an un-reordered ladder.
         DescribeOp {
             label: "describe_stored",
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["described"] }),
@@ -616,12 +621,23 @@ fn describe_corpus() -> Vec<DescribeOp> {
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["dimensionless"] }),
             mode: "throws",
         },
-        // P4.58: a WHITESPACE-ONLY stored description is truthy but trims
-        // empty, so tier 1 must NOT serve it — the row falls through to the
-        // generation-prompt tier.
+        // P4.58 / P4.D175: a WHITESPACE-ONLY stored description trims empty, so
+        // `stored` is `None` — this row serves its generation prompt with NO
+        // `stored_description` key and NO `On file: ` tail. The negative arm of
+        // bug 132's ride-along.
         DescribeOp {
             label: "describe_whitespace_stored",
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["blankdesc"] }),
+            mode: "throws",
+        },
+        // P4.D175: a stored description and NO prompt of either kind — the ONLY
+        // shape that reaches bug 132's reordered arm 2. Without this row the
+        // stored tier is unreachable by this corpus and its deletion would go
+        // unnoticed (`a-union-is-blind-unless-one-half-is-the-only-path`).
+        // `throws` also proves the tier is served free, with no vision call.
+        DescribeOp {
+            label: "describe_stored_only",
+            build_args: |m| json!({ "uuid": m.real_file_id_by_key["storedonly"] }),
             mode: "throws",
         },
     ]

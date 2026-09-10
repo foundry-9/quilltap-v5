@@ -203,6 +203,15 @@ function batchCases(): BatchCase[] {
       name: 'batch_number_first_arg',
       writes: [{ method: 'chats.update', args: [7] }],
     },
+    // Bug 128's negative row. `firstIdArg` returns a positional first argument
+    // whenever it is a string, so a `memories` row in REPOSITORY_TOPICS would
+    // publish `memories.delete(memoryId)`'s MEMORY id under a topic every
+    // subscriber filters by CHAT id. A hint that reaches nobody looks like
+    // coverage, so the namespace stays out of the table on purpose.
+    {
+      name: 'batch_memories_delete_derives_no_hint',
+      writes: [{ method: 'memories.delete', args: ['memory-1'] }],
+    },
     // Unmapped namespaces are skipped entirely.
     {
       name: 'batch_unmapped_namespaces_skipped',

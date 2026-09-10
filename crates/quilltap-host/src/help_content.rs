@@ -14,8 +14,11 @@
 
 include!(concat!(env!("OUT_DIR"), "/help_embedded.rs"));
 
-/// The number of embedded help documents (the shipped tree is 120 files at v4
-/// `d883a5ee1`; the guard test pins the exact set against disk).
+/// The number of embedded help documents. The count itself is DERIVED — the
+/// only literal lives in `help_tree_embed_guard`, which pins the exact set
+/// against disk (this doc comment carried a stale `120` from v4 `d883a5ee1`
+/// through three re-vendors, which is exactly the failure mode
+/// `a-vendored-count-is-hard-coded-in-several-crates` describes).
 pub fn embedded_help_count() -> usize {
     EMBEDDED_HELP.len()
 }

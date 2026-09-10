@@ -87,6 +87,22 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
             str_field(payload, "chatId"),
         )],
 
+        Some("MEMORY_EXTRACTION")
+        | Some("INTER_CHARACTER_MEMORY")
+        | Some("CARINA_MEMORY_EXTRACTION")
+        | Some("MEMORY_REGENERATE_CHAT") => {
+            // Every one of these carries `chatId` on its payload, which is what
+            // the Salon sidebar's count is scoped by.
+            vec![TopicHint::scoped(
+                RealtimeTopic::Memories,
+                str_field(payload, "chatId"),
+            )]
+        }
+
+        // Character-scoped: prunes across every chat that character was in, so
+        // the hint is collection-wide by necessity.
+        Some("MEMORY_HOUSEKEEPING") => vec![TopicHint::collection(RealtimeTopic::Memories)],
+
         // A rendered conversation lands in a document store; the Scriptorium
         // and the character conversations tab both watch that.
         Some("CONVERSATION_RENDER") => vec![
@@ -127,6 +143,12 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         RealtimeTopic::Projects => &["projectId", "id"],
         RealtimeTopic::MountPoints => &["mountPointId", "id"],
         RealtimeTopic::AutonomousRooms | RealtimeTopic::Jobs => &[],
+        // Deliberately empty, and `memories` is deliberately absent from
+        // REPOSITORY_TOPICS: a memories hint is scoped by *chat* id, while
+        // `firstIdArg` would hand back `memories.delete(memoryId)`'s positional
+        // memory id. Every chat-scoped subscriber would then filter that hint
+        // out — coverage that reaches nobody, which is worse than none.
+        RealtimeTopic::Memories => &[],
     }
 }
 

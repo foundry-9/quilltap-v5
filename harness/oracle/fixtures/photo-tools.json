@@ -141,6 +141,19 @@
       "width": 320,
       "height": 240,
       "description": " \t \n  "
+    },
+    {
+      "key": "storedonly",
+      "fileId": "c0000000-0000-4000-8000-000000000017",
+      "bytes": [137, 80, 78, 71, 13, 10, 26, 10, 71, 72, 73, 74, 75, 76],
+      "mimeType": "image/webp",
+      "originalFilename": "copper-kettle.webp",
+      "generationPrompt": "",
+      "generationRevisedPrompt": "",
+      "generationModel": "",
+      "width": 400,
+      "height": 300,
+      "description": "A dented copper kettle steaming on a cast-iron stove."
     }
   ],
   "bakedPhotos": [

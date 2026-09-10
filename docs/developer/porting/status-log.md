@@ -119726,3 +119726,642 @@ the verification, named here as the order asks).
   the browser (the Electron `will-download` half is only reachable in the
   shell), and a chat-scoped `generate_image` whose output then appears in the
   same chat's `files` listing (bug 130's user-visible half).
+---
+
+## P4.D175 — bugs 128/132, the `help/**` re-vendor, and the six rider ratifications (v4 `78b381a96`)
+
+Lane branch `claude/p4-d175-vendor-riders-bugs-f3a764`, opened 2026-09-09 from
+`main`. Pins: `/tmp/qt-v4-pin-p4d175-78b381a96` (the catch-up target) and
+`/tmp/qt-v4-pin-p4d175-25f534c0b` (neutrality). Both verified by marker
+(`lib/photos/chat-gallery.ts`, `lib/chat/turn-manager/cycle-order.ts` and
+`help/chat-gallery.md` present only at the tip; `'memories'` in
+`lib/schemas/realtime.types.ts` only at the tip; `help/` 123 vs 122).
+
+### §0 The lane-start freshness probe — PASSED under §R.2's pre-authorized exception, with one measured deviation
+
+The probe found the checkout on `main`, tree **CLEAN**, `1a2b2164c..bugfix`
+EMPTY, and **exactly one** commit past `78b381a96`: **`cc65d6bfc`** "Fix bug
+133: a moderated chat's story background could escalate to the uncensored
+provider" (2026-09-09 15:51 -0500) — the commit §R.2 pre-authorized by name.
+
+**Deviation, measured not assumed:** the exception's wording says "the
+recorded nine files"; `cc65d6bfc --stat` is **thirteen**. The nine predicted
+files are all present (`story-background.ts`, `appearance-resolution.ts`,
+`image-generation-handler.ts`, `help/dangerous-content.md`, the two unit
+tests, the CHANGELOG, `bugs.md`, and `bugs/fixed/bug-133-moderated-chat-image-
+escalation.md` — at the `fixed/` path, as predicted). The extra four were
+measured before proceeding and are **version-bump-only**, `4.10.0-dev.21` →
+`4.10.0-dev.22`, across the README badge, `package.json`,
+`packages/quilltap/package.json` and the lock's two lines — the `d3f0ed133`
+rider class exactly, with no ported comparand. The lane therefore PROCEEDED on
+its `78b381a96` pin.
+
+**For the next `/driftcheck`: `cc65d6bfc` is the next round's first drift row,
+class PORT.** It re-opens `services/story_background_job.rs` (this lane's
+bug-132 writer 1) and **`help/dangerous-content.md` — one of this lane's
+eleven re-vendored files, edited again**. This lane re-vendors at
+`78b381a96`; the bug-133 help edit is unabsorbed by design.
+
+### Unit 1 — bug 128's server half (v4 `4a9be9878`, the NET of a two-commit squash)
+
+**RED FIRST, before any source edit.** The oracle was regenerated from the tip
+pin against the unedited tree and `realtime_topics_equivalence` failed on
+**exactly ten rows** — the five chat-scoped/housekeeping job types × the
+full-payload and no-payload legs:
+
+```
+completed_full_MEMORY_EXTRACTION        completed_nopayload_MEMORY_EXTRACTION
+completed_full_INTER_CHARACTER_MEMORY   completed_nopayload_INTER_CHARACTER_MEMORY
+completed_full_MEMORY_HOUSEKEEPING      completed_nopayload_MEMORY_HOUSEKEEPING
+completed_full_MEMORY_REGENERATE_CHAT   completed_nopayload_MEMORY_REGENERATE_CHAT
+completed_full_CARINA_MEMORY_EXTRACTION completed_nopayload_CARINA_MEMORY_EXTRACTION
+```
+
+Every one `rust: []` against `oracle: [{"topic":"memories",…}]`. The order
+predicted ten with zero corpus edits; ten is what the pin produced.
+
+What landed: `RealtimeTopic::Memories` LAST in the enum, `REALTIME_TOPICS`
+`[; 6]` → `[; 7]`, the `as_str` arm, and the types test renamed
+`topics_are_v4s_six_in_order` → `…seven…`; the two
+`topics_for_completed_job` arms placed BETWEEN the five-way `chats` arm and
+`CONVERSATION_RENDER`, exactly v4's slot, sharing ONE return for the four
+chat-scoped types so a missing `chatId` degrades collection-wide through
+`str_field`; the `topic_id_fields` `Memories => &[]` arm carrying v4's comment
+verbatim; **no** `REPOSITORY_TOPICS` row; the two publishes in
+`db/memories.rs` under v4's `if deleted` / `if deleted > 0` guards.
+
+**The publish HOME was the order's design choice and the repository won it.**
+v4 publishes from the gate (`lib/memory/memory-gate.ts`), whose v5 twin is the
+repository method, and that placement makes all EIGHT callers correct by
+construction — `api/memories.rs:663`, `memory_service.rs:108`/`:203`,
+`character_archive/service.rs:1242`, `cascade_delete.rs:352`,
+`memory_dedup.rs:399`, `delete_all.rs:354`, `housekeeping.rs:504` (verified by
+grep, all eight reach one of the two twins).
+
+VERIFY-ONLY, both confirmed unmoved: `api/memories.rs::memory_delete_by_chat`
+publishes nothing, and `memory_service.rs:180-182`
+(`delete_memories_by_chat_id_with_vectors`) returns `Default` without calling
+the gate on an empty list — v4's `memory-service.ts:1619` twin, which is
+precisely the case commit 2 (`ba89e0caa`) removed the route publish for.
+
+**A new test seam, and why it was needed.** The repository layer only ever
+runs on the write pool's dedicated OS thread (`db/runtime.rs`'s
+`thread::Builder::spawn`), so a publish made there is invisible to
+`HintCapture`, which arms a THREAD-scoped bus by design (the global one is
+racy across ~1,800 concurrent tests and can panic a plain `#[test]` sibling —
+see `bus.rs`). `HintCapture::arm_writer_thread(&db)` sends one no-op write job
+that arms the same capture channel on that thread; the thread belongs to the
+test's own `Db` and dies with it, so nothing else can collect from it. The
+`BusSpawner` was already a captured `Handle` rather than bare `tokio::spawn`
+for exactly this scenario.
+
+Six wiring pins in `realtime::publish_sites::memory_gate_tests`, the last two
+driving the REAL route over a REAL `provision_fresh_instance` main partition
+(the ownership check needs the whole `chats` table, and a reduced hand-rolled
+one would also collide with the `chats` DDL P4.D171 is moving this round):
+one delete announces; an already-gone memory announces nothing; a batch
+announces once; an empty list and a list matching nothing announce nothing;
+the route announces exactly once from the gate; and a chat with no memories
+announces nothing at all.
+
+Corpus: `harness/oracle/cases/realtime-topics.ts` gained v4's own negative row
+(`batch_memories_delete_derives_no_hint`, `memories.delete` with a positional
+memory id → `[]`), 73 → 74 rows. Census:
+`realtime_publish_sites_guard` gained two rows — `db/memories.rs` at **2** and
+`api/memories.rs` at **0**.
+
+**Mutations (four, each reddening exactly its pin, reverted by file backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| A | a `("memories", RealtimeTopic::Memories)` row in `REPOSITORY_TOPICS` | `realtime_topics_equivalence` → `batch_memories_delete_derives_no_hint` ONLY |
+| B | re-add the route's publish in `memory_delete_by_chat` | the `api/memories.rs` census row (1 ≠ 0) AND both route wiring pins |
+| C | drop both silence guards (`if deleted` / `if deleted > 0`) | `a_batch_that_deletes_nothing_announces_nothing` |
+| D | publish before `delete_with_unlink`'s already-gone early return | `deleting_an_already_gone_memory_announces_nothing` |
+
+**Measured, and recorded rather than chased:** mutation C did NOT red the
+single-delete pin, because `if deleted` at the end of `delete_with_unlink` is
+**unreachable in v4 as in v5** — both return early when the row is missing
+(`findById` / `row_exists`), so the only way past it is a `delete` that
+returns false for a row that exists. The guard is kept for fidelity; what
+actually holds the single-delete silence is the early return, which mutation D
+pins.
+
+**Deferred loud (not this order's mandate, recorded in the source at
+`db/memories.rs`):** `4a9be9878` also adds `logger.debug('[MemoryGate]
+deleteMemoryWithUnlink complete', logFields)`, its batch twin, and
+`handleDeleteByChatId`'s `[Memories API] Deleted every memory for a chat`.
+**v5 carries none of them — nor the two `…touched an unusually large
+neighbour set` WARNS that predate this commit, nor v4's `logFields`**
+(`memoryId`, `neighbourCount`, `charactersAffected`, `durationMs`). That is a
+PRE-EXISTING four-line gap in the memory-gate port which this commit widens to
+five — the finding-#103/#110/#116 class. Closing it wants its own unit: a
+clock inside a repository method plus a capture-layer pin per line. **Spotted,
+not mine.**
+
+Regen recipe (unchanged from the family's committed header; run through the
+sweep driver at the pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run realtime_topics_equivalence
+```
+
+Markers after the regen: `grep -c '"topic":"memories"'` = **10**;
+`grep -c batch_memories_delete_derives_no_hint` = **1**; 74 lines.
+
+### Units 2 + 3 — bug 132's two writers and the `describe_image` ladder (v4 `78b381a96`)
+
+**RED FIRST, before any source edit**, both job families regenerated from the
+tip pin against the unedited tree:
+
+- `avatar_job_tier3_equivalence` — FAILED (exit 101), first diverging case
+  `aesthetic_preamble: doc_mount_file_links rows diverged`, v5 writing
+  `"description":"Aurora — wardrobe portrait"` where the pinned oracle writes
+  `""`.
+- `story_background_job_tier3_equivalence` — FAILED (exit 101), first
+  diverging case `appearance_retry: doc_mount_file_links rows diverged`, v5
+  writing `"description":"Story background for: STORYCASE:appearance_retry"`.
+- `photo_tools_equivalence` — FAILED, `resultJson diverged for
+  describe_stored`. That row is v4's own new case.
+
+Neither caption string appears in any regenerated NDJSON afterwards
+(`grep -c` = 0 on both), which is the fix stated as a measurement.
+
+**Writers.** `story_background_job.rs` drops the `format!` entirely (the local
+`description` is gone, not merely unused), `StoryWriteInput::description` is
+gone, `write_lantern_background_to_mount_store` takes `None`, and the `files`
+row takes `description: None` with v4's why-comment. `character_avatar_job.rs`
+is the same shape through `write_character_avatar_to_vault`. The four
+`Option<&str>` bridge parameters in `image_job_storage.rs` and
+`db/doc_mount_file_links.rs` are unchanged (VERIFY-ONLY) — `None` lands as the
+column's `''` default exactly as before.
+
+**Reader.** v5 has no single `handle_describe_image`; it is split at the async
+vision seam, and the whole edit surface is `describe_respond`, which gained a
+fifth parameter. The key goes in at v4's position (after `source`) and is
+ABSENT rather than null when nothing rode along, matching v4's
+`...(storedDescription ? { stored_description } : {})` spread. The ladder in
+`handle_describe_image_precheck` is now prompt → stored → vision with `stored`
+computed ONCE at the top (`description?.trim() || undefined`, so a
+whitespace-only column never triggers the tail); the race arm in
+`handle_describe_image_after_vision` passes no fifth argument, as v4 passes no
+third. Catalog `tools/definitions/data.rs` is input-only and unchanged, as is
+`tools_inventory.rs`.
+
+**Corpus.** The order's diagnosis was right and is now measured: after the
+reorder every described row in the fixture also carries a generation prompt,
+so arm 2 was unreachable. `photo-tools.json` gained `storedonly`
+(`copper-kettle.webp`: a stored description, no prompt of either kind, file id
+`…017`), with the mirrored op on both sides and the completeness assert
+following the corpus length automatically. `describe_whitespace_stored` was
+re-purposed in place — same label, same fixture row — and now measures the
+NEGATIVE arm of the ride-along.
+
+The three arms, from the regenerated oracle (v5 byte-identical):
+
+| case | `source` | `stored_description` | `formattedText` tail |
+|---|---|---|---|
+| `describe_stored` | `generation-prompt` | present | `\n\nOn file: A sepia ink sketch…` |
+| `describe_whitespace_stored` | `generation-prompt` | ABSENT | none |
+| `describe_stored_only` | `stored-description` | ABSENT | none |
+
+**The log field is LOG-ONLY** and no differential compares it, so
+`has_stored_description` is pinned by a capture-layer test in `tools::photo`
+driving `describe_respond` both ways
+(`differential-blind-to-a-log-only-fix`). Note for anyone writing a log pin
+here: `source` is a bare `&str` tracing field and renders UNQUOTED
+(`source=generation-prompt`), not `source="generation-prompt"`.
+
+**Mutations (six, each reddening exactly the named case, reverted by file
+backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| M1 | swap the ladder back (stored before prompt) | `photo_tools` → `describe_stored` |
+| M2 | delete the stored tier (arm 2) whole | `photo_tools` → `describe_stored_only`, on the `throws` mock: *"reached the vision tier — tiers 1/2 must serve without a vision call"* — the new row is load-bearing |
+| M3 | drop the `stored_description` key and the `On file: ` tail | `photo_tools` → `describe_stored` |
+| M4 | drop the non-empty filter on `stored` | `photo_tools` → `describe_whitespace_stored` |
+| M5 | restore the caption on the story `files` row only (link kept `None`) | `story_background_job_tier3` → `appearance_retry: files rows diverged` |
+| M6 | restore the caption on the avatar `files` row only | `avatar_job_tier3` → `aesthetic_preamble: files rows diverged` |
+
+M5/M6 exist because the red-first run is fail-fast and panicked on the LINK
+leg first — they prove the `files` leg independently.
+
+**Tier 2, item 8 — `image_generation_tier3` answered by measurement.**
+Regenerated at the pin and GREEN with the writers already edited; `grep -c` for
+either caption in `/tmp/oracle-image-generation.ndjson` is **0**. Its
+`avatar_fire` / `avatar_autonomous` cases exercise the tool-level generate
+handler, not the job handlers' storage write, so they never reach either
+writer. Recorded either way, as the order asked.
+
+**VERIFY-ONLY, both confirmed:** `services/file_fallback.rs:1097-1132`
+(`run_generate_image_description`) was ALREADY prompt-first — revised prompt,
+then prompt, then description — with v4's nested-ternary `source`;
+`photos/auto_describe_attachment.rs:130-155` (`auto_describe_precheck`) is the
+four-arm gate and correct as is.
+
+Regen recipes (both through the sweep driver at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run photo_tools_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run avatar_job_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run story_background_job_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 --run image_generation_tier3_equivalence
+```
+
+⚠ **`photo-tools.json` and `build-photo-tools-fixture.ts` are TRACKED and this
+lane changed both** (the sweep driver warned, correctly). Any other family
+built from that pair must be re-run; the survey found none — the pair is
+`photo_tools_equivalence`'s alone.
+
+### Unit 4 — bug 132's boot heal, its ledger row, and the new differential
+
+NEW `crates/quilltap-core/src/db/generated_image_placeholder_heal.rs`, wired in
+`host.rs`'s mount-aware block inside a `// === P4.D175 ===` fence immediately
+after the P4.D152 block, and registered in `db/mod.rs` in its own fence — the
+two shared-file appends the order's §R.5 allots this lane.
+
+**v4's control flow, ported exactly rather than approximated.** The order's
+survey described the predicates; the implementation also had to carry v4's
+*shape*, which the first draft did not:
+
+- `shouldRun()` **short-circuits** on the files count — a positive count
+  returns true WITHOUT the mount partition being opened, so a mount that cannot
+  be read is invisible whenever the main side already has work. Only a clean
+  files side reaches the link probe, and a failure THERE is warned about and
+  read as "nothing to do".
+- The link leg's failure is **swallowed**, not propagated. v4 wraps it in
+  try/catch because a link that keeps its label is a stale caption on a search
+  hit, not a wrong answer from `describe_image` (which reads the FileEntry).
+  The first draft let a `DbError` escape, which would have failed the BOOT on
+  an unreadable mount partition — caught by reading v4's `run()` rather than
+  its predicates.
+- The plain absent/unusable arm is v4's `else`, which sets `linksSkipped` and
+  stays **SILENT**. Only the catch warns. The first draft warned in both, and
+  the corpus reddens that (mutation H5).
+
+**No ledger divergence here, and that is a measurement.** The sibling
+`files_sha256_realign_heal` records one because v4's `shouldRun()` for THAT
+migration tests PRESENCE, so v4 stamps a zero-affected pass. This migration's
+`shouldRun()` counts placeholders on both sides, so a pass that clears nothing
+means v4 never ran and stamped nothing either — the ledger is a plain equality
+on every arm of the new family.
+
+**NEW `generated_image_placeholder_heal_equivalence`** (+
+`harness/oracle/cases/generated-image-placeholder-heal.test.ts` +
+`harness/oracle/fixtures/generated-image-placeholder-heal.json`), modelled on
+`files_sha256_realign_heal_equivalence` and driving v4's REAL migration `run()`
+and its REAL `recordCompletedMigration` over eleven planted scenarios:
+`both-labels-cleared`, `uploaded-file-survives`, `non-image-link-survives`,
+**`outfit-preview-survives-the-narrow-predicate`**, `near-misses-survive`,
+`singular-sentence`, `links-only-files-clean`,
+`no-mount-index-skips-the-links`, `links-table-missing-a-column`,
+`nothing-matches-anywhere`, `ledger-row-present-leaves-everything`. Comparands:
+both whole tables, the `MigrationResult`, the info line's three counts, the
+warns, idempotence, and the ledger. `files.updatedAt` is the one normalized
+field (`<now>` when it moved), which keeps the real discriminator — only a
+CLEARED row's `updatedAt` moves.
+
+**⚠ Recorded limit, not an oversight: both warn arms are UNREACHABLE by this
+corpus on BOTH sides.** v4 warns only from its `catch`, which needs a
+driver-level I/O failure neither side has a seam to inject. What the comparand
+asserts is SILENCE on the two `else`-reached scenarios — which is the
+load-bearing half, and which mutation H5 reddens.
+
+**Mutations (eight, each reddening exactly the named arm, reverted by file
+backup):**
+
+| # | mutation | reds |
+|---|---|---|
+| H1 | widen the predicate to include `% — outfit preview` | `outfit-preview-survives-the-narrow-predicate` and ONLY it — 7 fields (files, links, result, info, both second-run dumps, ledger). **The convergence tripwire, proven live.** |
+| H2 | drop the `source = 'GENERATED'` conjunct | `uploaded-file-survives` (5 fields) |
+| H3 | drop the `originalMimeType LIKE 'image/%'` gate | `non-image-link-survives` (5 fields) |
+| H4 | drop the `AlreadyCompleted` ledger check | `ledger-row-present-leaves-everything` at the outcome assert |
+| H5 | warn from the plain `else` | `no-mount-index-skips-the-links` + `links-table-missing-a-column`, both on `warns` |
+| H6 | stamp the ledger on a `NotApplicable` pass | the `honoured_ledger` / equality arm |
+| H7 | stop moving `updatedAt` on a cleared row | 14 mismatches across five scenarios |
+| H8 | delete the `host.rs` boot call | `the_boot_clears_planted_placeholder_descriptions` times out |
+
+**The boot wiring is pinned** by NEW
+`crates/quilltap-host/tests/host_generated_image_placeholder_heal.rs` — two
+tests over a COPY of the committed `files-{main,mount}.db` pair with the labels
+PLANTED (the pair carries none naturally; a test that planted nothing would
+pass against a deleted call). One proves the GENERATED label cleared and the
+UPLOADED one surviving and the ledger row stamped; the other proves a
+v4-written ledger row leaves everything alone — the cross-app leg in the
+direction that actually happens. Neither sibling heal has such a test; this is
+the P4.82 precedent and the class the §3 reviews keep catching.
+
+**⚠ Spotted, not mine — a latent fragility the THREE sibling heals share.**
+The boot-wiring test's FIRST run failed with `built-in seed failed: no such
+table: migrations_metadata`, because it had planted `migrations_state` alone.
+Every heal (`chat_activity_recompute_heal:176`,
+`files_sha256_realign_heal:316`, `thinking_prefill_retire_heal:195`, and this
+one) gates its `CREATE TABLE IF NOT EXISTS` batch on `migrations_state`'s
+existence and then upserts into `migrations_metadata` — so a partition
+carrying the first table without the second fails the BOOT, not just the pass.
+v4's `migrations/state.ts` always creates both together, so it is not reachable
+from v4 and this lane did NOT unilaterally change the hand-duplicated shape;
+the test now plants both, as v4 does. A one-word hardening (drop the guard, let
+`IF NOT EXISTS` do its job) across all four is a clean follow-up for whoever
+owns those modules next.
+
+**The blast radius is NAMED in the module header and the changelog**, per the
+order: `api/chat_media.rs:1465` (`ensure_image_description`) treats the LINK
+description as a CACHE, so clearing `''` onto those links makes the next attach
+of one of these images run a real vision call. Faithful — v4's migration clears
+the same rows and its own reader has the same shape — and recorded so the first
+dogfood pass after this lands is not surprised by a burst of describe calls.
+`chat_media.rs` was NOT edited (VERIFY-ONLY per the Ownership table).
+
+Regen recipe (the sweep driver, at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run generated_image_placeholder_heal_equivalence
+```
+
+Markers after the regen: 11 lines; `grep -c 'outfit preview'` = 1;
+`grep -c 'mount index not inspected'` = 2.
+
+### Unit 5 — the `help/**` re-vendor at `78b381a96` (122 → 123)
+
+Taken by `cp` from `/tmp/qt-v4-pin-p4d175-78b381a96/help/`, never by hand.
+Before: `diff -rq help/ <25f534c0b pin>/help/` reported IDENTICAL, so the tree
+was provably at the old pin. After the eleven copies:
+`diff -rq help/ <78b381a96 pin>/help/` reports IDENTICAL, 123 files.
+
+The eleven: `chat-gallery.md` (**NEW** — the Salon chat gallery's page, riding
+this lane rather than P4.D174/P4.D176 per §R.7: one lane, one sha, one
+`help_tree_equivalence` regen, one count bump), plus
+`character-progressions.md`, `chat-message-actions.md`,
+`chat-multi-character.md`, `chat-participants.md`, `chat-turn-manager.md`,
+`chats.md`, `connection-profiles.md`, `dangerous-content.md`,
+`keep-image-tools.md`, `photo-gallery.md`.
+
+**Both halves recorded, as the order asks:**
+
+- `help_tree_equivalence` RED against the `25f534c0b` pin — exit 101,
+  `assertion left == right failed: embedded file count vs the oracle's synced
+  count`. The re-vendor is therefore measured, not asserted.
+- GREEN against the `78b381a96` pin, with `chat-gallery` present in the fresh
+  NDJSON.
+
+Count literals: `help_tree_embed_guard.rs:29` 122 → **123** (its docblock now
+carries the four-pin history), `host_help_docs_boot.rs:88` likewise (the SECOND
+home, in another crate — only a `--workspace` run reaches it). Also fixed:
+`quilltap-host/src/help_content.rs`'s doc comment, which had said **120** since
+`d883a5ee1` and survived THREE re-vendors — it now states that the count is
+derived and names `help_tree_embed_guard` as the only literal, rather than
+restating a number that will go stale again.
+
+Re-vendor-SENSITIVE families, all green after the bump: `help_tree_equivalence`
+(regenerated at the tip), `help_tree_embed_guard` (disk/compile pin),
+`help_web_routes` (derives the count — unmoved, by design). The
+re-vendor-INSENSITIVE families (`help_doc_ensure`, `help_doc_sync`,
+`help_doc_sync_guards`, `embedding_remainder`) build synthetic trees and are
+unaffected; they carry no count literal.
+
+The host embed is a build-script `include!`, so `quilltap-host` is bumped for
+the rebuild even though no host source line changed.
+
+Regen recipe (the sweep driver, at the tip pin):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d175-78b381a96 \
+  --run help_tree_equivalence
+```
+
+### Unit 6 — the six rider ratifications (NO-PORT, with the evidence)
+
+All six re-verified against the pinned worktree at lane time, not taken from
+the ledger's prose (`work-order-facts-need-the-same-verification-as-commit-prose`).
+
+| sha | stat | evidence | verdict |
+|---|---|---|---|
+| `07eee4f4c` | 2 files, +99 | `git show --name-only` minus `docs/` is **EMPTY**. The filing of a defect THIS PORT found (P4.D170's `ProgressionsSection` transcription); v4's fix is `4a9be9878`'s bug-127 half, which is P4.D177's convergence record. At the tip the file has MOVED to `docs/developer/bugs/fixed/bug-127-progressions-invalid-ids-escaped.md` — the unifier's `docs/v4/` mirror wants the NEW path. | **NO-PORT** |
+| `9fc664c94` | 3 files, +297 | Non-`docs/` files: **`.claude/commands/update-documentation.md` only** — v4's own agent tooling, which v5 has its own copy of. The route trail's design of record, read at ordering by P4.D171/P4.D173/P4.D177. Later MOVED to `features/complete/` by `5841a8c62`. | **NO-PORT** |
+| `5fb6bedd6` | 3 files, +245 | Non-`docs/` minus `docs/`: **EMPTY**. Bug 128's plan (231 lines), including the argument for keeping `memories` out of `REPOSITORY_TOPICS` — which unit 1 ports as code and as a negative corpus row. | **NO-PORT** |
+| `df1a075e8` | 4 files, +241 | Non-`docs/` files: **`.claude/commands/update-documentation.md` only**. The gallery's design of record + the first filing of bugs 129/130. Later MOVED. | **NO-PORT** |
+| `c0f9232af` | 56 files, +132/−110 | **The re-run grep, quoted verbatim:** `git show c0f9232af -- app components lib migrations __tests__ \| grep -E '^[+-]' \| grep -vE '^(\+\+\+\|---)' \| grep -vE '^[+-]\s*(//\|\*\|/\*)' \| grep -v 'version'` → **no output**. Every non-doc hunk is a comment-only `See docs/…` path rewrite. Plus **12 renames**, `git show c0f9232af --name-status -M --format= \| grep '^R'`: archived-scenarios-and-wardrobe, character-archive-and-export-fidelity, character-archive-spec, character-progressions, custom-tool-presets, db-size-reduction-spec, pascal-custom-tool-enhancements, pascal-custom-tools, scriptorium-document-policy-frontmatter, state-cascade, tabbed-workspace, z-ai-reasoning-effort-plan — all `docs/developer/features/*.md` → `features/complete/*.md`. | **NO-PORT** |
+| `d3f0ed133` | 4 files, +5/−5 | The whole diff is five version lines, `4.10.0-claude-salon-chat-gallery-6a5awy.19` → `4.10.0-dev.18`, across the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two. No ported comparand; both version fields agree on `main`, so ledger hazard 6 stays closed. | **NO-PORT** |
+
+**Unifier wire, named here because this lane does not touch `docs/v4/`:** all
+twelve retired specs currently sit at the TOP LEVEL of v5's
+`docs/v4/developer/features/` and none in `complete/`. The mirror refresh must
+MOVE them (the twelve above), and mirror the two new bug files at their
+`bugs/fixed/` paths.
+
+### Tier 2, item 7 — the 2026-08-24 walk row A2, annotated
+
+`dogfood-walks/2026-08-24-vision-round-pass.md:75` recorded a PASS of the WRONG
+BEHAVIOUR: A2 exercised `describe_image`'s tier 1 on a **story background**, so
+what it proved "already described" with was the Lantern job's caption — bug 132
+itself, live and green. The row now carries a `⚠ PASS OF THE WRONG
+BEHAVIOUR — annotated 2026-09-09 (P4.D175)` status and a block quote naming the
+cause, the fix, and what that image answers today (`generation-prompt`). The
+row is annotated rather than deleted: the MECHANISM it proved (tier 1 serves
+free; `IMAGE_DESCRIPTION` does not move) is real — the choice of image is what
+hid the defect. **A3 and A5 stand unchanged** (an uploaded PNG with no
+description; a generated image with a prompt and none).
+
+💸 **The replacement item, re-banked:** `describe_image` on a genuinely
+*upload-described* image — one whose `description` a vision call or the
+Librarian wrote — which after the reorder is the only shape that still reaches
+`source: "stored-description"`; plus a story background answering
+`generation-prompt` with the old caption gone from the column, which is also
+the heal's live proof.
+
+### The upstream filing — OWED, and deliberately NOT written from this lane
+
+The order's ruling: keep v5's third writer, keep the predicate narrow, file it
+upstream. **The filing itself is a write into `~/source/quilltap-server`, which
+would DIRTY the v4 checkout — and every sibling lane's §R.2 freshness probe
+treats any dirt beyond the recorded bug-133 edit as a STOP.** With six lanes
+in flight that is not a defensible thing for a lane to do, so the filing is
+recorded here in full, for the unifier or the human to land:
+
+> **v4 bug 134 — the wardrobe preview-avatar writer still stamps a caption
+> into `description` (bug 132's third writer)**
+>
+> - **Symptom.** `78b381a96` fixed two of the three writers that put a label
+>   in the column every reader treats as "what this picture shows". The third
+>   is untouched: `app/api/v1/wardrobe/preview-avatar/route.ts:160` and
+>   `:185` write `` `${character.name} — outfit preview` `` with
+>   `source: 'GENERATED'`.
+> - **Measured, not inferred.** `git show --stat 78b381a96 --
+>   app/api/v1/wardrobe/preview-avatar/route.ts` is EMPTY, and the migration's
+>   `PLACEHOLDER_PREDICATE` (`LIKE 'Story background for: %'` /
+>   `LIKE '% — wardrobe portrait'`) does not match `% — outfit preview`, so
+>   neither the forward fix nor the data heal reaches these rows.
+> - **Residual harm, honestly bounded.** `handleDescribeImage`'s reorder masks
+>   the worst of it: outfit previews carry a `generationPrompt`, so tier 1 now
+>   answers the prompt. What survives is (a) a stale `On file: <Name> — outfit
+>   preview` tail on every such answer, which is the ride-along presenting a
+>   label as a description, and (b) `autoDescribeChatImageAttachment`'s
+>   already-described gate, which still refuses to look at these images.
+> - **The fix**, mirroring `78b381a96`: `description: null` on the `files` row
+>   and the label omitted from `writeCharacterAvatarToVault`'s options at both
+>   sites; and either widen `PLACEHOLDER_PREDICATE` with
+>   `OR "description" LIKE '% — outfit preview'` or add a second migration.
+> - **v5 status: FAITHFUL by ruling.** v5 has the identical writer at
+>   `crates/quilltap-core/src/api/wardrobe.rs:1112` and reproduces v4 exactly
+>   rather than fixing unilaterally. The convergence tripwire is already
+>   armed: `generated_image_placeholder_heal_equivalence`'s
+>   `outfit-preview-survives-the-narrow-predicate` scenario asserts the row
+>   SURVIVES on BOTH sides, and mutation H1 (widening v5's predicate) reddens
+>   exactly that scenario and only that scenario. The day v4 widens its own,
+>   the arm goes red by design and v5 follows.
+
+### P4.D175 — the lane record's close
+
+**Branch** `claude/p4-d175-vendor-riders-bugs-f3a764`, six commits:
+
+| sha | subject |
+|---|---|
+| `824a7cb5` | fix(realtime): announce the Commonplace Book — bug 128's `memories` topic |
+| `0ba9e2e6` | fix(images): a generated image's label is not its description — bug 132's writers and reader |
+| `f64000ae` | fix(boot): clear the placeholder descriptions bug 132 already wrote |
+| `e26b99c8` | chore(help): re-vendor the help tree at v4 `78b381a96` (122 → 123) |
+| `dcead11c` | docs(p4.d175): ratify the six riders, annotate the walk's bug-132 PASS, record the owed filing |
+| (this one) | the lane record's close |
+
+**Every Tier-1 item (1–6) and both Tier-2 items (7–8) LANDED. Nothing under
+this order remains OPEN.**
+
+#### Measured deviations from the order (recorded, per `work-order-facts-need-the-same-verification-as-commit-prose`)
+
+1. **The §R.2 probe passed under its pre-authorized exception with a
+   thirteen-file, not nine-file, `--stat`** — the extra four measured as
+   version-bump-only. See §0 above. `cc65d6bfc` is next-round drift and it
+   re-opens `story_background_job.rs` and `help/dangerous-content.md`, both of
+   which this lane touched.
+2. **The order's bug-128 wiring shape ("a counting bus seam") needed a new
+   seam to exist at all.** `HintCapture` arms a THREAD-scoped bus by design,
+   and the repository layer only ever runs on the write pool's dedicated OS
+   thread, so the publishes were invisible to it. `HintCapture::arm_writer_
+   thread` sends one no-op write job that arms the same channel there. Without
+   it the order's prescribed pin was not buildable.
+3. **`realtime/publish_sites.rs` and `realtime/mod.rs` were edited**, and the
+   Ownership row names only `realtime/{types,job_topics}.rs` in its owns
+   column. Both are inside `realtime/**`, which every other lane's must-not-
+   touch column forbids, so there is no collision — but it is a widening of
+   the named list and is recorded rather than assumed. (`mod.rs` is one word:
+   "the six topics" → "the seven topics".)
+4. **The heal needed v4's control FLOW, not just its predicates** — the
+   short-circuiting `shouldRun`, the swallowed link-leg error, the silent
+   `else`. See unit 4; the first draft got all three wrong and the corpus
+   reddened two of them.
+5. **The upstream filing is recorded, not written.** Writing into
+   `~/source/quilltap-server` would dirty the checkout, and six sibling lanes'
+   §R.2 probes treat unrecorded dirt as a STOP. Full text in unit 6.
+
+#### Spotted, not mine — for the unifier and the next round
+
+- **The memory-gate logging family is absent from v5 entirely.** `4a9be9878`
+  adds two `logger.debug` lines and the route's `[Memories API] Deleted every
+  memory for a chat`; v5 has none of them, nor the TWO
+  `…touched an unusually large neighbour set` WARNS that predate this commit,
+  nor v4's `logFields` (`memoryId`, `neighbourCount`, `charactersAffected`,
+  `durationMs`). A pre-existing four-line gap this commit widens to five —
+  finding #103/#110/#116's class. Needs its own unit (a clock inside a
+  repository method + a capture-layer pin per line). Named in the source at
+  `db/memories.rs`.
+- **Four heals share a latent boot-failure shape.** Each gates its
+  `CREATE TABLE IF NOT EXISTS migrations_state/migrations_metadata` batch on
+  `migrations_state`'s existence alone, then upserts into
+  `migrations_metadata` — so a partition carrying the first table without the
+  second fails the BOOT. Found by the new host test's first run. Not reachable
+  from v4 (its `state.ts` creates both together), so this lane did not change
+  the hand-duplicated shape; a one-word hardening across
+  `chat_activity_recompute_heal:176`, `files_sha256_realign_heal:316`,
+  `thinking_prefill_retire_heal:195` and this lane's module is a clean
+  follow-up.
+- **The `docs/v4/` mirror wire** (unit 6): twelve retired specs to MOVE into
+  `features/complete/`, two new bug files to mirror at their `bugs/fixed/`
+  paths.
+- **`photo-tools.json` and `build-photo-tools-fixture.ts` are TRACKED and this
+  lane changed both.** No other family builds from that pair (surveyed), but
+  the sweep driver's warning is correct and worth a second look at unification.
+
+#### 💸 owed to the next dogfood pass
+
+- `describe_image` on a genuinely **upload-described** image — after the
+  reorder the only shape that still reaches `source: "stored-description"`.
+- A story background answering `generation-prompt` with the caption GONE from
+  the column — which is also the boot heal's live proof, and the replacement
+  for the 2026-08-24 walk's mis-recorded A2.
+- The heal's real-instance run on the Friday copy. ⚠ **Measure the population
+  FIRST** — v4 will very likely have run its own migration there before the
+  copy is taken, in which case the cross-app leg (v5 honours v4's ledger row
+  and writes nothing) is the free proof and the positive leg needs a plant.
+- ⚠ **The blast radius**: the first attach of a cleared image runs a real
+  vision call, because `api/chat_media.rs:1465` treats the link description as
+  a cache. Expect a burst; it is not a defect.
+- The Salon list card's memory badge un-staling on a real extraction — the v5
+  surface P4.D177 maps the `memories` topic to.
+
+#### Two gate incidents, both recorded because they cost real time
+
+1. **The fixture shield dropped the `.db.meta.json` sidecars.** Per
+   `tmp-fixtures-collide-across-parallel-lanes` this lane copied its four
+   fixture PAIRS into `/tmp/qt-p4d175-fixtures/` before the workspace gate, so
+   a sibling could not clobber them mid-run — and copied only `*.db`.
+   `photo_tools_equivalence` reads a `<main>.db.meta.json` sidecar beside its
+   main fixture, so the gate died at binary 308 with `read meta sidecar: No
+   such file or directory (os error 2)` — which reads exactly like a broken
+   fixture and is nothing of the kind. **This is the same trap the `p4.9i2`
+   round recorded against the sweep driver's own shield**; it applies to a
+   hand-rolled copy just as much. Four of the eight pairs have sidecars
+   (`qt-photo-main`, `qt-avatar-main`, `qt-story-main`, `qt-imggen-main`).
+   Copy `*.db*`, not `*.db`.
+2. **A lane's own `target/debug/deps` grew to 27 GB and nearly wedged the
+   machine.** `cargo` never GCs: every version bump this lane made produced a
+   fresh full set of ~500 test binaries, and the sets accumulate. With two
+   sibling lanes building concurrently the volume went from 17 GB free at lane
+   start to **393 MB**. Deleting THIS lane's `target/debug/deps` (nobody
+   else's) returned **27 GB** in one command and cost one rebuild. Worth doing
+   proactively before the final gate of any lane that bumps several crates
+   several times — the alternative is an `os error 28` that reads like a port
+   defect.
+
+#### The lane's verification gate — GREEN
+
+- `cargo fmt --all --check` → **0**.
+- `cargo clippy --workspace --all-targets -- -D warnings` → **0**;
+  with `--features quilltap-core/native-transport` → **0**. (Exit codes read
+  directly, never after a pipe — `gate-exit-code-after-a-pipe`.)
+- `cargo build --workspace --release` → **0**.
+- `cargo test --workspace` with the lane's fourteen-variable env block and
+  `QT_V4_ROOT` at the `25f534c0b` pin (per §R.3 — `qtap_schema_embed_guard` is
+  red against anything newer until P4.D171 lands its re-vendor):
+  **543 test binaries / 3,075 passed / 0 failed / 1 ignored, exit 0, and ZERO
+  `SKIP:` lines in the whole log.**
+- **Every family this lane moves confirmed RUN by name and duration**, not
+  inferred from silence:
+
+  | family | result |
+  |---|---|
+  | `realtime_topics_equivalence` | ok, 1 passed |
+  | `realtime_publish_sites_guard` | ok, 1 passed |
+  | `photo_tools_equivalence` | ok, 1 passed (0.13 s) |
+  | `avatar_job_tier3_equivalence` | ok, 2 passed (0.30 s) |
+  | `story_background_job_tier3_equivalence` | ok, 2 passed (0.49 s) |
+  | `image_generation_tier3_equivalence` | ok, 1 passed (0.24 s) |
+  | `generated_image_placeholder_heal_equivalence` | ok, 1 passed |
+  | `help_tree_equivalence` | ok, 1 passed (1.21 s) |
+  | `help_tree_embed_guard` | ok, 1 passed |
+  | `help_web_routes` | ok, 1 passed (2.09 s) |
+  | `host_help_docs_boot` | ok, 2 passed (3.07 s) |
+  | `host_generated_image_placeholder_heal` | ok, 2 passed (1.58 s) |
+
+- Ownership honoured: `git diff main -- apps/web/` EMPTY, `git diff main --
+  docs/v4/` EMPTY, and every file on the "must not touch" list measured at
+  **zero** changed lines (`api/chat_media.rs`, `api/memories.rs`,
+  `api/wardrobe.rs`, `photos/auto_describe_attachment.rs`,
+  `services/file_fallback.rs`, `services/image_job_storage.rs`,
+  `db/doc_mount_file_links.rs`, `tools/definitions/data.rs`).
+- Final versions: **core 0.0.860, harness 0.0.753, host 0.0.119**;
+  `quilltap-web` untouched (the order predicted it might move — measured, it
+  did not: `help_web_routes` DERIVES its count and no web test moved).

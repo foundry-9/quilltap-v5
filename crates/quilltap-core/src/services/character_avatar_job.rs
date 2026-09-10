@@ -362,7 +362,6 @@ where
     });
     let now_iso = iso_from_unix_ms(deps.now_ms);
     let file_id = uuid::Uuid::new_v4().to_string();
-    let description = format!("{character_name} — wardrobe portrait");
 
     // Storage branch key: chat.projectId. An upload Err is v4 uploadFile's
     // throw inside the save try-block — the job fails HERE (v4's catch wrap),
@@ -398,7 +397,6 @@ where
         prompt: prompt.clone(),
         generation_model,
         revised_prompt: image_data.revised_prompt.clone(),
-        description: description.clone(),
         project_id: project_id_opt.clone(),
         project_upload,
     };
@@ -561,7 +559,6 @@ struct AvatarWriteInput {
     prompt: String,
     generation_model: String,
     revised_prompt: Option<String>,
-    description: String,
     project_id: Option<String>,
     project_upload: Option<common::ProjectUploadResult>,
 }
@@ -600,7 +597,9 @@ fn write_avatar_file(
                 &input.converted_filename,
                 &input.converted_bytes,
                 &input.converted_mime,
-                Some(&input.description),
+                // Bug 132: no label on the vault link either — see the note on
+                // the `files` row below.
+                None,
             )?;
             (
                 written.storage_key,
@@ -652,7 +651,9 @@ fn write_avatar_file(
             generation_prompt: Some(input.prompt.clone()),
             generation_model: Some(input.generation_model.clone()),
             generation_revised_prompt: input.revised_prompt.clone(),
-            description: Some(input.description.clone()),
+            // No label here — see the matching note in `story_background_job.rs`
+            // (bug 132).
+            description: None,
             tags: vec![input.character_id.clone()],
             project_id: file_project_id,
             folder_path: file_folder_path,

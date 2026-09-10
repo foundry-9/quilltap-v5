@@ -68,7 +68,11 @@ interface ImageSpec {
   /** P4.D108: a stored description (the describe_image stored-description
    * tier). Absent = the row stays undescribed. P4.58 adds a WHITESPACE-ONLY
    * value, which is truthy but trims to empty — the quirk both the
-   * already-described precheck and the describe_image stored tier turn on. */
+   * already-described precheck and the describe_image stored tier turn on.
+   * P4.D175 adds `storedonly`: a stored description and NO generation prompt
+   * of either kind, which is the ONLY shape that reaches bug 132's reordered
+   * arm 2 — every other described row here carries a prompt, so after the
+   * reorder the stored tier would otherwise be unreachable by this corpus. */
   description?: string;
 }
 interface BakedPhoto {
