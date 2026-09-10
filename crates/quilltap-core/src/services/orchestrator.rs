@@ -798,38 +798,15 @@ where
         return Ok(None);
     }
 
-    // Talkativeness lives on the character record — build the weight map
-    // (characterId → talkativeness), vault-overlaid like v4's `findById`.
-    let mut characters_map: HashMap<String, crate::select_speaker::SpeakerCharacter> =
-        HashMap::new();
-    for p in &active_chars {
-        let Some(cid) = p
-            .get("characterId")
-            .and_then(Value::as_str)
-            .filter(|c| !c.is_empty())
-        else {
-            continue;
-        };
-        let cid_owned = cid.to_string();
-        if let Some(ch) = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                crate::db::characters_read::find_by_id(main, mount, &cid_owned)
-            })
-        })? {
-            // Insert unconditionally: the map now also carries the archived
-            // flag (v4 `d553f72a`), which a talkativeness-gated insert drops.
-            characters_map.insert(
-                cid.to_string(),
-                crate::select_speaker::SpeakerCharacter {
-                    talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
-                    archived: crate::api::characters::is_archived(&ch),
-                },
-            );
-        }
-    }
-
+    // Talkativeness lives on the character record. This was already v5's ONE
+    // whole-room site (v4's one correct one), so bug 131 changes nothing about
+    // its WIDTH here — only that the read is now the shared batched one
+    // (v4 `d14da3a56:1818`), which is one vault overlay for the cast instead of
+    // one per seat.
     let speaker_parts: Vec<crate::select_speaker::SpeakerParticipant> =
         participants.iter().map(to_speaker_participant).collect();
+    let room = crate::room_characters::load_room_characters_from_db(db, &speaker_parts, &[])?;
+    let characters_map = crate::room_characters::to_speaker_characters(&room);
     let next = crate::select_speaker::select_next_speaker_after_user_message(
         &speaker_parts,
         &characters_map,
@@ -3485,6 +3462,16 @@ async fn handle_turn_skip(
             &ts_participants,
             spoken_json,
         );
+        // A pass spends the turn: the character leaves this cycle's rotation
+        // exactly as a spoken line would have taken them out of it
+        // (v4 `orchestrator.service.ts:1976-1988`). `None` means the id was not
+        // in the rotation — a no-op, and the key is then absent from the update.
+        let order_update = crate::turn_state::compute_cycle_order_after_skip(
+            params.character_participant_id,
+            fresh_chat
+                .get("cycleOrderParticipantIds")
+                .and_then(Value::as_str),
+        );
         let chat_id_owned = params.chat_id.to_string();
         let now = crate::clock::now_iso();
         let _ = db
@@ -3496,6 +3483,7 @@ async fn handle_turn_skip(
                         &crate::db::chats::ChatUpdate {
                             updated_at: Some(now),
                             spoken_this_cycle_participant_ids: cycle_update,
+                            cycle_order_participant_ids: order_update,
                             ..Default::default()
                         },
                     )
@@ -4377,6 +4365,7 @@ fn to_finalizer_chat(chat: &Value) -> FinalizerChat {
             .cloned()
             .unwrap_or_default(),
         spoken_this_cycle_participant_ids: json_str(chat, "spokenThisCycleParticipantIds"),
+        cycle_order_participant_ids: json_str(chat, "cycleOrderParticipantIds"),
         allow_cross_character_vault_reads: chat
             .get("allowCrossCharacterVaultReads")
             .and_then(Value::as_bool)

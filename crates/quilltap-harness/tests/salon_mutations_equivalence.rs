@@ -230,6 +230,14 @@ fn salon_mutations_match_oracle() {
             &spec.test_pepper_base64,
         )
         .expect("open db");
+        // P4.D172: the committed salon fixture predates the two `78b381a96` schema
+        // moves, and these paths now write both columns. P4.D171's
+        // repaired-at-boot heal, as the other committed-fixture families use it.
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
         let body = response_data(&f(&db));
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))

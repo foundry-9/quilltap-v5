@@ -327,6 +327,59 @@ pub fn log_cycle_order_persist_failed(chat_id: &str, how: CyclePersistHow, error
     );
 }
 
+/// v4 `resolveCycleOrder` (`cycle-order.ts:174-211`) whole — the pure decision
+/// plus the write and its two log lines.
+///
+/// The single writer of `chats.cycleOrderParticipantIds`. Every server path that
+/// is about to ask "who speaks next" calls this first and threads the result into
+/// the turn state, so all of them read ONE rotation instead of each drawing their
+/// own.
+///
+/// A failed write is logged and SWALLOWED: the caller still has the order in
+/// memory and this turn proceeds on it, and the next selection simply draws
+/// again. A bookkeeping column is never worth failing a turn over.
+pub async fn resolve_cycle_order(
+    db: &crate::db::runtime::Db,
+    chat_id: &str,
+    participants: &[SpeakerParticipant],
+    characters: &HashMap<String, SpeakerCharacter>,
+    turn_state: &crate::turn_state::TurnState,
+    draws: &DrawSource,
+) -> Vec<String> {
+    let decision = resolve_cycle_order_pure(
+        participants,
+        characters,
+        &turn_state.cycle_order,
+        &turn_state.spoken_since_user_turn,
+        turn_state.last_speaker_id.as_deref(),
+        draws,
+    );
+
+    let Some(how) = decision.persist else {
+        return decision.order;
+    };
+
+    let json = stringify_cycle_order(&decision.order);
+    let chat_id_owned = chat_id.to_string();
+    let write = db
+        .write(move |writers| {
+            writers.main().chats().update(
+                &chat_id_owned,
+                &crate::db::chats::ChatUpdate {
+                    cycle_order_participant_ids: Some(json),
+                    ..Default::default()
+                },
+            )
+        })
+        .await;
+
+    match write {
+        Ok(_) => log_cycle_order_persisted(chat_id, how, &decision.order),
+        Err(e) => log_cycle_order_persist_failed(chat_id, how, &e.to_string()),
+    }
+    decision.order
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

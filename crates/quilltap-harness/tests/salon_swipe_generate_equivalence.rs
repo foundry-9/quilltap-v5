@@ -341,6 +341,14 @@ fn salon_swipe_generate_matches_oracle() {
             &spec.test_pepper_base64,
         )
         .expect("open db");
+        // P4.D172: the committed salon fixture predates the two `78b381a96` schema
+        // moves, and these paths now write both columns. P4.D171's
+        // repaired-at-boot heal, as the other committed-fixture families use it.
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
 
         let driver = TestSwipeDriver {
             db: &db,

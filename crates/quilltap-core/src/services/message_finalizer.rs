@@ -82,7 +82,7 @@ use crate::select_speaker::{
     is_users_turn as selection_is_users_turn, select_next_speaker, SelectionResult,
     SpeakerParticipant,
 };
-use crate::turn_state::{calculate_turn_state_from_history, MessageView};
+use crate::turn_state::MessageView;
 
 use super::answer_confirmation::{self, AnswerConfirmationOutcome, ReaffirmationProfile};
 use super::carina_runner::{
@@ -444,6 +444,9 @@ pub struct FinalizerChat {
     /// `spokenThisCycleParticipantIds` (JSON text) — the fallback when a fresh
     /// re-read yields nothing (v4 `freshChat?.spoken… ?? chat.spoken…`).
     pub spoken_this_cycle_participant_ids: Option<String>,
+    /// The chat row's `cycleOrderParticipantIds`, the fallback when the
+    /// re-read misses (v4 `?? chat.cycleOrderParticipantIds`, `:673`).
+    pub cycle_order_participant_ids: Option<String>,
     /// `allowCrossCharacterVaultReads === true` — feeds the tool-message whisper
     /// context (a VAULT_READ tool's result is public only when this is on).
     pub allow_cross_character_vault_reads: bool,
@@ -1576,44 +1579,51 @@ async fn calculate_next_speaker(
         .map(String::from)
         .or_else(|| chat.spoken_this_cycle_participant_ids.clone());
 
-    let turn_state = calculate_turn_state_from_history(&message_views, spoken_json.as_deref());
-
-    // Talkativeness map keyed by characterId for the active-character participants
-    // (v4 reads `getActiveCharacterParticipants` then a `findById` each; the
-    // responder reuses the passed character, whose talkativeness is on the overlaid
-    // row — read the same way here).
-    let mut talkativeness: std::collections::HashMap<
-        String,
-        crate::select_speaker::SpeakerCharacter,
-    > = std::collections::HashMap::new();
-    let _ = character; // responder read below via the DB, same as others.
-    for p in &chat.participants {
-        if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-            continue;
-        }
-        let status = p.get("status").and_then(Value::as_str).unwrap_or("active");
-        // getActiveCharacterParticipants keeps present statuses (active/silent);
-        // removed / unknown are dropped.
-        if status == "removed" {
-            continue;
-        }
-        let Some(cid) = p
-            .get("characterId")
+    let mut turn_state = crate::turn_state::calculate_turn_state_from_history_with_cycle(
+        &message_views,
+        spoken_json.as_deref(),
+        fresh_chat
+            .as_ref()
+            .and_then(|c| c.get("cycleOrderParticipantIds"))
             .and_then(Value::as_str)
-            .filter(|c| !c.is_empty())
-        else {
-            continue;
-        };
-        if let Some(sc) = read_speaker_character(db, cid)? {
-            talkativeness.insert(cid.to_string(), sc);
-        }
-    }
+            .or(chat.cycle_order_participant_ids.as_deref()),
+    );
 
+    // Every present seat, user-driven ones included — the rotation is drawn from
+    // their talkativeness (v4 `d14da3a56`). The character who just spoke is
+    // seeded from the copy already in hand rather than re-read, which is what
+    // `preloaded` is for.
+    //
+    // This replaces an inline walk that dropped only `removed`, and therefore
+    // KEPT `absent` seats v4's `getPresentCharacterSeats` excludes — a latent
+    // divergence closed by routing through the one predicate (P4.D172 unit 3).
     let speaker_participants: Vec<SpeakerParticipant> = chat
         .participants
         .iter()
         .map(to_speaker_participant)
         .collect();
+    let preloaded = vec![serde_json::json!({
+        "id": character.id,
+        "name": character.name,
+    })];
+    let room = crate::room_characters::load_room_characters_from_db(
+        db,
+        &speaker_participants,
+        &preloaded,
+    )?;
+    let talkativeness = crate::room_characters::to_speaker_characters(&room);
+
+    // Draw the cycle's rotation if this answer spent the last one, so the "who is
+    // next" this reports is the same seat the chain will actually call on.
+    turn_state.cycle_order = crate::cycle_order::resolve_cycle_order(
+        db,
+        chat_id,
+        &speaker_participants,
+        &talkativeness,
+        &turn_state,
+        draws,
+    )
+    .await;
 
     let result: SelectionResult = select_next_speaker(
         &speaker_participants,
@@ -1633,23 +1643,6 @@ async fn calculate_next_speaker(
         cycle_complete: result.cycle_complete,
         is_users_turn: selection_is_users_turn(&result),
     })
-}
-
-/// Read a character's `talkativeness` off the vault-overlaid row.
-/// The character facts the selection reads (talkativeness + the archived
-/// tombstone, v4 `d553f72a`). `None` when the character does not resolve.
-fn read_speaker_character(
-    db: &Db,
-    id: &str,
-) -> Result<Option<crate::select_speaker::SpeakerCharacter>, DbError> {
-    let id = id.to_string();
-    let ch = db.read_main(|main| {
-        db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &id))
-    })?;
-    Ok(ch.map(|c| crate::select_speaker::SpeakerCharacter {
-        talkativeness: c.get("talkativeness").and_then(Value::as_f64),
-        archived: crate::api::characters::is_archived(&c),
-    }))
 }
 
 // ===========================================================================

@@ -318,6 +318,7 @@ fn to_finalizer_chat(row: &Value) -> FinalizerChat {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default(),
+        cycle_order_participant_ids: None,
         spoken_this_cycle_participant_ids: str_of(row, "spokenThisCycleParticipantIds"),
         allow_cross_character_vault_reads: row
             .get("allowCrossCharacterVaultReads")

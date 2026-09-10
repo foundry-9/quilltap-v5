@@ -344,6 +344,13 @@ async function main(): Promise<void> {
       reasoningContent: undefined,
       reasoningSegments: undefined,
       hasStartedStreaming: true,
+      // v4 `5841a8c62` (the route trail) added these two to `StreamingState`, and
+      // `buildRouteTrail` dereferences `routeFailures.length` unconditionally —
+      // so the oracle cannot even RUN without them. Seeded empty: the "nothing
+      // failed" shape every case here has. The trail's own comparands are
+      // P4.D173's, not P4.D172's. (P4.D172 unblock.)
+      routeFailures: [],
+      routeVia: 'primary',
     };
 
     const compression = {

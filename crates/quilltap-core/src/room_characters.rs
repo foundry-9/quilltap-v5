@@ -162,6 +162,25 @@ pub fn room_character_name<'a>(
         .and_then(Value::as_str)
 }
 
+/// [`load_room_characters`] over the real repositories — the shape every server
+/// selection site uses (v4's `loadRoomCharacters(repos, participants, …)`).
+///
+/// The nested `read_main(read_mount_index(…))` is what
+/// `characters_read::find_by_ids` needs for its vault overlay; keeping it here
+/// means the six call sites do not each re-derive it.
+pub fn load_room_characters_from_db(
+    db: &crate::db::runtime::Db,
+    participants: &[SpeakerParticipant],
+    preloaded: &[Value],
+) -> Result<HashMap<String, Value>, DbError> {
+    let mut find_by_ids = |ids: &[String]| -> Result<Vec<Value>, DbError> {
+        db.read_main(|main| {
+            db.read_mount_index(|mount| crate::db::characters_read::find_by_ids(main, mount, ids))
+        })
+    };
+    load_room_characters(participants, preloaded, &mut find_by_ids)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -803,42 +803,6 @@ fn character_name(
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
-/// v4 `handleTurnAction`'s participant-name resolution: names come only from the
-/// ACTIVE LLM character map (`getActiveLLMParticipants` → `findById`), so a
-/// user-controlled participant (never in that map) resolves to `"Unknown"`. The
-/// lookup is by characterId, matching v4's `charactersMap.get(characterId)`.
-fn resolve_active_llm_name(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    chat: &Value,
-    participant_id: &str,
-) -> String {
-    let unknown = || "Unknown".to_string();
-    let Some(participants) = chat.get("participants").and_then(Value::as_array) else {
-        return unknown();
-    };
-    let Some(char_id) = participants
-        .iter()
-        .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))
-        .and_then(|p| s(p, "characterId"))
-    else {
-        return unknown();
-    };
-    let in_active_llm = participants.iter().any(|p| {
-        participant_present(p.get("status").and_then(Value::as_str))
-            && p.get("controlledBy").and_then(Value::as_str) == Some("llm")
-            && p.get("characterId").and_then(Value::as_str) == Some(char_id.as_str())
-    });
-    if !in_active_llm {
-        return unknown();
-    }
-    crate::db::characters_read::find_by_id(main, mount, &char_id)
-        .ok()
-        .flatten()
-        .and_then(|c| s(&c, "name"))
-        .unwrap_or_else(unknown)
-}
-
 // ===========================================================================
 // The turn action (v4 handleTurnAction)
 // ===========================================================================
@@ -1018,15 +982,23 @@ pub async fn turn_action(
             "isUsersTurn": result.is_users_turn,
         }),
     );
-    resp.insert("state".into(), json!({ "queue": result.queue }));
+    resp.insert(
+        "state".into(),
+        json!({ "queue": result.queue, "cycleOrder": result.cycle_order }),
+    );
     if let Some(pid) = participant_id {
         // v4 resolves the affected participant's name from the ACTIVE LLM character
         // map (`getActiveLLMParticipants` → findById), so a user-controlled
         // participant (never in that map) resolves to "Unknown".
-        let name = read_main_mount(db, |main, mount| {
-            Ok(resolve_active_llm_name(main, mount, &chat, pid))
-        })
-        .unwrap_or_else(|_| "Unknown".to_string());
+        // v4 `turn.ts:240-248` resolves this from the WHOLE-ROOM map the handler
+        // already built, so a user-driven seat is NAMED. The old
+        // `resolve_active_llm_name` here reproduced the pre-bug-131 shape — an
+        // LLM-only lookup that reported the human's own character as "Unknown" —
+        // and is retired with it.
+        let name = result
+            .participant_name
+            .clone()
+            .unwrap_or_else(|| "Unknown".to_string());
         resp.insert(
             "participant".into(),
             json!({

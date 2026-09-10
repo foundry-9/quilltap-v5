@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 units 5–6 — the six selection sites, the strike, the skip, and `?action=turn`'s rotation
+
+_Versions: core 0.0.866, harness 0.0.756._
+
+Every site that asks "who speaks next" now builds its talkativeness map from the
+batched whole-room read and resolves the cycle's rotation before selecting:
+`turn_orchestrator`'s `should_chain_next` (the map moved above the `if`, as v4's
+did, so it also serves the two chain-decision name lookups) and
+`handle_turn_action`; `message_finalizer::calculate_next_speaker` (with the
+just-spoken character seeded as `preloaded`); `participant_resolver`'s
+multiple-candidate branch (drawn over the WHOLE room, picked LLM-only via the
+argument, exactly as v4 splits it); `orchestrator`'s `maybe_pause_for_user_seat_turn`
+(already whole-room — it gains only the batched read); and the autonomous room in
+`enclave/step.rs`.
+
+Every per-seat reader those sites used is now dead and deleted:
+`load_talkativeness_map`, `read_character`, `character_name_for`, the finalizer's
+`read_speaker_character` and its inline participant walk. The deprecated LLM-only
+alias is no longer imported by `turn_orchestrator.rs` or `enclave/step.rs` — it
+survives only where v4 still calls it.
+
+`load_all_participant_data` (prompt construction) folds onto the same batched
+read, which carries v4's deliberate behaviour change with it: the old per-seat
+`find_by_id` failed the whole turn on an unreadable vault, where the batched list
+overlay logs and drops.
+
+Consumption: the strike lands in `db/chats_messages.rs`'s `update_chat_metadata`,
+folded through the same loop as `spokenThisCycleParticipantIds` and written once
+after it (v4's batch shape); `orchestrator`'s turn-skip twin strikes the seat;
+Continue Elsewhere carries the rotation with ids remapped, beside `turnQueue`'s.
+
+`?action=turn` answers `state: { queue, cycleOrder }`, and `resolve_active_llm_name`
+is RETIRED: the affected participant's name comes from the whole-room map, so a
+user-driven seat is named instead of reported as `"Unknown"` — bug 131's third
+symptom. A `query` may now write the chats row, because v4's resolve there is
+deliberately unconditional.
+
+Eleven families green at the `78b381a96` pin. Three of them needed the oracle
+repaired first, and one of those was the interesting one: `turn_orchestrator_tier2`
+REIMPLEMENTS `handleTurnAction` inline rather than importing it, and that
+transcription predated `2aca73ad6` — so the corpus was describing a v4 that no
+longer exists, and its diff (`weighted_selection` where v5 said `cycle_order`)
+read exactly like a v5 defect. The three salon families needed the committed
+fixture healed on the v4 side, through a new shared
+`harness/oracle/lib/p4d171-columns.ts` mirroring v5's `ensure_p4d171_columns`.
+
 #### 2026-09-09 — feat(turn-manager): P4.D172 unit 4 — the batched room-characters read, and the drop lines v5 was swallowing
 
 _Versions: core 0.0.865, harness 0.0.755, host 0.0.120._

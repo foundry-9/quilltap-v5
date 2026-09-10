@@ -17,8 +17,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-salon-mutations-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp $V5W/harness/oracle/cases/salon-mutations.test.ts "$TMPO/cases/"
+ *   cp $V5W/harness/oracle/lib/p4d171-columns.ts "$TMPO/lib/"
  *   cp $V5W/harness/oracle/fixtures/salon.json           "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db \
@@ -33,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { ensureP4D171Columns } from '../lib/p4d171-columns';
 
 interface Spec {
   testPepperBase64: string;
@@ -138,6 +140,9 @@ async function runCase(
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
 
   await initializeDatabase();
+
+  // P4.D172: heal the fixture copy — see the helper's own note.
+  ensureP4D171Columns(getRawDatabase() as never);
 
   try {
     const params = { params: Promise.resolve({ id: c.paramId }) };
