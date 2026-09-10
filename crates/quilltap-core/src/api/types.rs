@@ -4720,7 +4720,10 @@ impl CoreError {
             body.insert("code".to_string(), serde_json::Value::String(code.clone()));
         }
         if let Some(p) = &riders.relative_path {
-            body.insert("relativePath".to_string(), serde_json::Value::String(p.clone()));
+            body.insert(
+                "relativePath".to_string(),
+                serde_json::Value::String(p.clone()),
+            );
         }
         if let Some(k) = &riders.kept_at {
             body.insert("keptAt".to_string(), serde_json::Value::String(k.clone()));

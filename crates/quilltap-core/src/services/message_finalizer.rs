@@ -1816,7 +1816,10 @@ mod tests {
         assert_eq!(row["archivedAt"], "2026-09-01T00:00:00.000Z");
 
         let bare = preloaded_room_character(&responder(None, None));
-        assert!(bare.get("talkativeness").is_none(), "absent stays absent, not null");
+        assert!(
+            bare.get("talkativeness").is_none(),
+            "absent stays absent, not null"
+        );
         assert!(bare.get("archivedAt").is_none());
     }
 
@@ -1838,7 +1841,9 @@ mod tests {
         };
         let mut find_by_ids = |ids: &[String]| -> Result<Vec<Value>, DbError> {
             assert_eq!(ids, ["char-1".to_string()]);
-            Ok(vec![json!({ "id": "char-1", "name": "Stale", "talkativeness": 0.9 })])
+            Ok(vec![
+                json!({ "id": "char-1", "name": "Stale", "talkativeness": 0.9 }),
+            ])
         };
         let preloaded = vec![preloaded_room_character(&responder(
             Some(0.2),
@@ -1849,8 +1854,15 @@ mod tests {
                 .expect("room loads");
         let speakers = crate::room_characters::to_speaker_characters(&room);
         let me = &speakers["char-1"];
-        assert_eq!(me.talkativeness, Some(0.2), "the in-hand copy wins, as v4's does");
-        assert!(me.archived, "the in-hand archivedAt reaches the tombstone exclusion");
+        assert_eq!(
+            me.talkativeness,
+            Some(0.2),
+            "the in-hand copy wins, as v4's does"
+        );
+        assert!(
+            me.archived,
+            "the in-hand archivedAt reaches the tombstone exclusion"
+        );
         assert_eq!(
             crate::room_characters::room_character_name(&room, Some("char-1")),
             Some("Marchpane")

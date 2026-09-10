@@ -376,7 +376,9 @@ mod unify_review_tests {
             )
             .unwrap();
         let mount = rusqlite::Connection::open(&mount_path).unwrap();
-        mount.busy_timeout(std::time::Duration::from_millis(0)).unwrap();
+        mount
+            .busy_timeout(std::time::Duration::from_millis(0))
+            .unwrap();
         let main = rusqlite::Connection::open_in_memory().unwrap();
         main.execute_batch(
             "CREATE TABLE files (id TEXT PRIMARY KEY, source TEXT, description TEXT, updatedAt TEXT);
@@ -396,7 +398,11 @@ mod unify_review_tests {
         )
         .expect("an unreadable mount index must not fail the pass");
         match outcome {
-            PlaceholderHealOutcome::Ran { files_cleared, links_cleared, links_skipped } => {
+            PlaceholderHealOutcome::Ran {
+                files_cleared,
+                links_cleared,
+                links_skipped,
+            } => {
                 assert_eq!(files_cleared, 1);
                 assert_eq!(links_cleared, 0);
                 assert!(links_skipped, "the link leg is skipped, as v4's catch does");

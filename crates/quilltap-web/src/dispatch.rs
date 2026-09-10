@@ -142,6 +142,11 @@ fn merge_already_saved_riders(e: &quilltap_core::api::CoreError, body: &mut Valu
     }
 }
 
+pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {
+    let (status, body) = dispatch_body(&state, &body).await;
+    json_response(status, &body)
+}
+
 #[cfg(test)]
 mod already_saved_wire_tests {
     use super::*;
@@ -161,29 +166,34 @@ mod already_saved_wire_tests {
             }));
         }
         let mut body = serde_json::to_value(&resp).unwrap();
-        let Response::Error(e) = &resp else { unreachable!() };
+        let Response::Error(e) = &resp else {
+            unreachable!()
+        };
         merge_already_saved_riders(e, &mut body);
         assert_eq!(body["error"], "already in this album");
         assert_eq!(body["code"], "ALREADY_SAVED");
         assert_eq!(body["relativePath"], "Photos/marchpane.webp");
         assert_eq!(body["keptAt"], "2026-09-01T00:00:00.000Z");
-        assert!(body.get("details").is_none(), "v4's 409 has no `details` key");
+        assert!(
+            body.get("details").is_none(),
+            "v4's 409 has no `details` key"
+        );
         // The typed envelope still carries the riders for the SPA's reader.
-        assert_eq!(body["data"]["alreadySaved"]["keptAt"], "2026-09-01T00:00:00.000Z");
+        assert_eq!(
+            body["data"]["alreadySaved"]["keptAt"],
+            "2026-09-01T00:00:00.000Z"
+        );
     }
 
     #[test]
     fn a_plain_error_merges_nothing() {
         let resp = Response::error(ErrorKind::BadRequest, "no");
-        let Response::Error(e) = &resp else { unreachable!() };
+        let Response::Error(e) = &resp else {
+            unreachable!()
+        };
         let mut body = serde_json::to_value(&resp).unwrap();
         let before = body.clone();
         merge_already_saved_riders(e, &mut body);
         assert_eq!(body, before);
     }
-}
-
-pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {
-    let (status, body) = dispatch_body(&state, &body).await;
-    json_response(status, &body)
 }

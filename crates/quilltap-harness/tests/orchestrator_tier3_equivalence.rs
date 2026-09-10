@@ -1435,7 +1435,6 @@ fn orchestrator_tier3_matches_oracle() {
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
-
 }
 
 // ---------------------------------------------------------------------------
@@ -1631,7 +1630,6 @@ fn wire_tool_names(tools: &Value) -> Vec<String> {
         })
         .unwrap_or_default()
 }
-
 
 /// Whole-frame compare — P4.D173's `routeTrail` on the `done` frame is a
 /// comparand of its own now that both stacked lanes are on one branch (the
