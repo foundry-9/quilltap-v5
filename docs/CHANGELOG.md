@@ -12,6 +12,54 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — test(e2e): the rotation beat draws on a FRESH chat — on a spent cycle every query re-draws (v4's read-or-draw rule), so its draw and the page's refresh never agreed
+
+_No version bump._
+
+The activated P4.D177 beat's first live runs skipped inside the full suite (sibling specs had left Group Expedition too few active seats) and failed alone with the sidebar order reversed against the draw. Measured: the fixture chat's cycle is SPENT (every seat in `spokenThisCycleParticipantIds`), so each `?action=turn` query re-draws a NEW rotation — the stored list holds nobody who can still speak — exactly as v4's resolver does. The beat now builds a two-seat chat through New Chat + Add Character, whose unspent cycle the first query draws AND persists and the reload's refresh reads back.
+
+#### 2026-09-10 — fix(orchestrator): re-read the effective profile from the streaming state after a recovery — the row and the trail's answering entry named the seat that fell over (the activated route-trail beat's first live run)
+
+_No version bump (the round's bumps were recounted at the reconcile)._
+
+`provider_failover.rs` swaps `state.effective_profile` to the understudy at both recovery sites, but `orchestrator.rs` carried a LOCAL from before the stream and never re-read it: after ANY understudy recovery the persisted row's `provider`/`modelName` and the trail's answering entry named the original seat (pre-existing since P4.D135's chain port; the route trail made it visible — the badge collapsed the two same-profile rows to one). v4 reads `streamingState.effectiveProfile` downstream; the local is now re-read after the primary stream and after the empty-response recovery. The four activated beats' first-run gesture fixes ride along: the gallery beats read the `Chat Images` chat (the fixture's only two-source roll; its generated row and one attachment have no stored bytes — v4's "Image Deleted"), the save dialog is asserted by its heading (the host element is zero-size), the jump lands on `#message-<id>` (v4's `getElementById` idiom), and the understudy select renders `name — PROVIDER model`. The trail beat now asserts the answering row's hover title names the Understudy — the pin for the fix.
+
+#### 2026-09-10 — fix(unify): the continuation comment wire named the guard by an identifier carrying the census's own needle
+
+_No version bump._
+
+`chat_continuation.rs`'s comment named `route_trail_continuation_guard` — an identifier containing `route_trail`, the very needle that file's zero-occurrence census asserts. Reworded; the first full-workspace gate run had stopped fail-fast on it at binary 368.
+
+#### 2026-09-10 — fix(harness): files_routes_equivalence heals its scratch copy with the P4.D171 ensures — the unified sweep's one run_failed (the vintage-gap class the substrate lane named)
+
+_No version bump._
+
+The committed `files-{main,mount}.db` pair predates `chat_messages.routeTrail` / `chats.cycleOrderParticipantIds`, and the chat-upload arms now write a `chats` row through `ChatUpdate` — the family's v5 side died on `no such column`. The scratch copy takes `test_support::ensure_p4d171_columns` (the `salon_reads` idiom); the union's one blast-radius red, green by name.
+
+#### 2026-09-10 — docs(unify): the `78b381a96` twelve-commit drift catch-up round — seven orders unified, the baseline moves to `78b381a96`, the mid-round bug-133 commit recorded
+
+_Docs-only change._
+
+The round record, the ledger's baseline move (§1 rewritten; the twelve ordered rows retired to §6; `cc65d6bfc` — bug 133, the commit the previous §1 predicted and pre-authorized as the lanes' probe exception — tabled UNPROCESSED under PIN REQUIRED), the phase-4 UNIFIED section with the next round's order of work, the seven order status headers (every lane CLOSED, with the OPEN items named per order), and CLAUDE.md's Status bullet. Gate of record on the unify branch (`46cb04c2` for the Rust chain, `22fee59a` for Playwright): 550 test binaries / 3,136 / 0 / 2 ignored with the 91-variable env block, zero SKIP; the 48-family pinned sweep 46 ok + the two exceptions run to ground and green by name (the corpus-rebuilding recipe by hand with the corpus byte-identical; the one run_failed the union's own vintage-gap, healed); clippy both feature sets; release build; ng 423 files / 7,030; full Playwright 310 / 2 / 1 (the two reds the documented P4.D161 pause-toast intermittent, 2/2 green alone; the skip the gallery Delete beat's honest park). The §3 review's six blocking findings — four would have shipped, the fourth caught by an activated beat's first live run — are in the round record. Versions: core 0.0.874, harness 0.0.766, host 0.0.123, web 0.0.136, SPA 0.5.695; cli/tauri unchanged.
+
+#### 2026-09-10 — chore(unify): rustfmt over the review fixes, and the dispatch wire test module moved past the last item (clippy's items_after_test_module)
+
+_Docs-free source change; no version bump (the round's bumps were recounted at the reconcile)._
+
+Formatting only, plus the new `already_saved_wire_tests` module moved to the end of `dispatch.rs` where clippy allows a test module.
+
+#### 2026-09-10 — feat(unify): the `78b381a96` round's wires — the four gate constants flipped, the P4.D172-era route-trail subtraction retired, the continuation comment, the courier fixture heal, and the docs/v4 mirror at the pin
+
+_No version bump (the round's bumps were recounted at the reconcile)._
+
+The cross-lane obligations no single lane could discharge. `P4D172_SERVER_LANDED`, `P4D173_SERVER_LANDED`, `P4D174_SERVER_LANDED` (both spec files) and `P4D175_SERVER_LANDED` flipped to `true` — six gated beats go live, and the ungated gallery beat now expects v4's always-numbered label. The three `strip_pending_route_trail*` helpers and the run-scoped tripwire P4.D172 carried so its tier-3 oracles could run beside an absent P4.D173 are deleted: both stacked lanes are on one branch and the `done` frame's `routeTrail` is a comparand of its own. `chat_continuation.rs` carries v4's "intentionally NOT copied" note as a comment naming the harness pin (worded without the census's literal needle). `courier_images_routes_equivalence` is healed for the new baseline: the committed pair predates the two P4.D171 columns and v4's own handlers 500'd on it at the tip, so the jest case heals its working copy with `p4d171-columns.ts` (the salon families' idiom) and the v5 side heals its scratch copy with the boot ensures. The `docs/v4/` mirror refreshed from the `78b381a96` pin — 12 modified, 8 added, the twelve retired specs MOVED into `features/complete/`, the two new bug files at `bugs/fixed/`.
+
+#### 2026-09-10 — fix(unify): the §3 review's findings for the `78b381a96` round — the finalizer's preloaded responder, the flat ALREADY_SAVED 409, the rotation seed that clobbered itself, and the should-fixes
+
+_No version bump (the round's bumps were recounted at the reconcile: core 0.0.874, harness 0.0.766, host 0.0.123, web 0.0.136, SPA 0.5.695)._
+
+Three would-have-shipped defects, each pinned by a test that reddens under the reverted code. **P4.D172:** `calculate_next_speaker` seeded `loadRoomCharacters`'s `preloaded` entry as `{id, name}`; v4 seeds the WHOLE responding record and the preloaded copy WINS over the batch read, so the character who just spoke drew at the 0.5 default on every assistant turn — the primary production draw site. `FinalizerCharacter` now carries `talkativeness` + `archived_at` at all three construct sites; `preloaded_room_character` is the one home, with two unit tests. **P4.D174:** the 409's `relativePath`/`keptAt` rode `CoreError::details`, which every transport renders NESTED; v4 answers four FLAT siblings and the dialog reads them off the top level. A typed `already_saved` carrier + `already_saved_wire_body()` — ONE home used by dispatch, the REST edge and the `chat_gallery_equivalence` family (whose local renderer had flattened `details`, a shape no transport had); the dispatch merge is unit-pinned. **P4.D177:** `_turnEffect` re-seeded `turnState.cycleOrder` from a chat-GET key neither v4's nor v5's GET sends, on every `chat()`/`busy()` emission, wiping the rotation the turn response had just set. Gated on presence; two salon-conversation specs model the production sequence; three docs corrected. **P4.D176:** the detail view confirmed a delete the host also confirms; the gallery door's save was silent; the ALREADY_SAVED sentence was gated on the chat leg alone and undated; `??` where v4 uses `||`; the clipboard copy through the faithful helper; the Gallery label is ALWAYS numbered. **Should-fixes:** the dropped `[EmptyResponse] … retrying same provider` warn; the heal's `links_table_usable` probe swallowed on BOTH legs as v4's `try` does (an unreadable mount index no longer fails the boot — unit-tested under an exclusive lock); the heal family compares `migrations_metadata`; the route-trail serializers cannot panic; the `utf16_truncate` doc; the P4.D173 fence; five stale help counts; the walk table; the `?100` splice comment; the `generateddl` typo; the engine's doc comment; the badge renders nothing for an empty trail; the enum sweep exhaustive; a display rule for the new host element.
+
 #### 2026-09-09 — feat(turn-manager): P4.D172 items 7–9 — the alias caller census, the ordered oracle pin, and the draw-count proof
 
 _Versions: core 0.0.867, harness 0.0.757, host 0.0.121._
@@ -234,6 +282,7 @@ the whole rotation; it now takes the caller's real source through
 v4 actually consumed; the Rust side replays the same array through a counting
 source and compares the count and the values at 1e-12. Twelve of the twenty-eight
 rows consume ZERO draws, so the new comparand discriminates rather than decorates.
+
 #### 2026-09-09 — feat(route-trail): P4.D173 units 2–5 — the recording chokepoint, every failover record site, persistence on the INSERT, the `done` frame and the seeding
 
 _Versions: core 0.0.864, harness 0.0.754._
@@ -510,6 +559,7 @@ post-boot, with the rotation column reading `'[]'` for the pre-existing chat.
 
 This unit carries no behavior — nothing writes a non-null `routeTrail` or a
 non-`'[]'` rotation yet (P4.D173 and P4.D172, stacked on this lane's tip).
+
 #### 2026-09-09 — docs(p4.d174): the lane's gate of record, the twelve per-family regens, and the two findings that belong to sibling lanes
 
 _Docs-only change._
@@ -670,6 +720,7 @@ real route. Five mutations red exactly the right cases; a sixth — dropping
 pass 3's `hasSha` skip — survives CORRECTLY and is recorded: v4's guard is
 behaviourally redundant with the collector's own sha dedup for the entry list.
 `courier_images_routes_equivalence` regenerated as a neutrality check, green.
+
 #### 2026-09-09 — chore(help): re-vendor the help tree at v4 `78b381a96` (122 → 123)
 
 _Versions: harness 0.0.753, host 0.0.119._
@@ -791,6 +842,7 @@ the write-batch leg — by two `realtime_publish_sites_guard` census rows, and
 by six wiring pins driving the real route over a provisioned partition.
 `HintCapture` grew `arm_writer_thread`, because a repository publish only ever
 runs on the write pool's own OS thread.
+
 #### 2026-09-09 — docs(status-log): the five P4.D177 mutation proofs, run and restored
 
 _Docs-only change._
@@ -940,6 +992,7 @@ identity check (v4 `MessageRow.tsx:560`) is recorded NO-COUNTERPART — Angular
 per-field comparator to extend.
 
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
+
 #### 2026-09-09 — feat(spa): the Salon chat gallery, SPA half — the `chatGallery`-backed grid, provenance + Jump-to-message, the retired bug-129 divergence (P4.D176, v4 `86d59660c`)
 
 _Versions: SPA 0.5.691._

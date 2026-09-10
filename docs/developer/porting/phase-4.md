@@ -6628,7 +6628,70 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
-## The `78b381a96` twelve-commit drift catch-up round (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177) — ORDERED 2026-09-09
+## The `78b381a96` twelve-commit drift catch-up round (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177) — UNIFIED 2026-09-10
+
+**ALL SEVEN ORDERS CLOSED; the oracle baseline MOVES `25f534c0b` →
+`78b381a96`; the twelve ordered drift rows are ABSORBED / NO-PORT-RATIFIED
+(ledger §6). ⚠ v4 landed ONE commit during the round — `cc65d6bfc`, bug 133,
+the commit the ledger predicted and pre-authorized as the lanes' probe
+exception — left `UNPROCESSED` in §3, so the regen rule stays PIN REQUIRED at
+`78b381a96`.** Round record: `status-log.md` → "Round record — the
+`78b381a96` twelve-commit drift catch-up round unification" (the gate numbers,
+the §3 review's six blocking findings — three of them would have shipped —
+and the wires). CHANGELOG: the unification entries of 2026-09-10.
+
+**What is next, in order:**
+
+1. **The bug-133 drift catch-up** (`cc65d6bfc` — the moderated chat's story
+   background must not escalate to the uncensored provider): ONE PORT row,
+   re-opening `services/story_background_job.rs` (P4.D175's file), the
+   P4.9a/W4.7f image-gen surfaces (`image_generation` + the appearance
+   resolver, both with tier-3 families) and `help/dangerous-content.md` (the
+   re-vendor; `help_tree_equivalence` reds past the baseline by design). One
+   lane.
+2. **The round's OPEN items, each named in its order's status header:**
+   P4.D172's non-trivial draw arm for the two frozen-zero tier-3 families
+   (Tier-1 item 5's requirement, unmet — `enclave_step_tier3` /
+   `orchestrator_tier3` still pin `pinDraws([0])`) and the ordered
+   `chat_continuation` family that does not exist; P4.D173's corpus pin for the stale-effective-profile fix (an
+   `orchestrator_tier3` failover case with a DIFFERENT-provider understudy —
+   the fourth §3 catch, found by the activated beat), Tier-2 item 7 (the
+   three failover log bags capture-pinned), the `routeVia` seeding arm
+   `route_trail_compose` transcribes on both sides, and the two unguarded
+   classify-before-reset sites; P4.D175's memory-gate logging family (five
+   lines; the `[Memories API] Deleted every memory for a chat` debug needs no
+   clock and is the cheap first unit) and the four heals' shared
+   `migrations_state`-without-`migrations_metadata` boot shape; P4.D174's
+   `safeQuery`-degrade-vs-500 on the gallery reads; P4.D171's three
+   measurement gaps (no export/import family plants a non-default column
+   value; no `marshal_row` alignment census; seven hand-rolled ensure sites).
+   A small maintenance lane, or folded into the next drift round.
+3. **The owed dogfood pass** over this round's live surfaces on the Friday
+   copy: a real failover showing the persisted trail and the badge (the
+   whole route-trail feature is invisible until something fails); the drawn
+   rotation on a real three-seat chat (does position 3 mean third, and does
+   the responder's OWN talkativeness reach the draw — the §3 fix); the
+   gallery roll at scale over the nine sources, a Save from the gallery into
+   a vault and the dated 409 sentence on a repeat, `?download=1` from the
+   browser; `describe_image` on an upload-described image and a story
+   background answering `generation-prompt` with the caption gone (the boot
+   heal's live proof — measure the population FIRST, v4 will likely have run
+   its own migration); the Salon list's memory badge un-staling on a real
+   extraction; a chat-scoped `generate_image` showing up in the same chat's
+   files (bug 130). The standing human-only 💸 items stand.
+4. **Three v4-side filing candidates** recorded this round: the
+   `summary_fold` `lastTurnParticipantId` the chain-complete frame announces
+   and the row then loses (a partial patch from a stale in-memory snapshot;
+   `orchestrator_tier3` pins it both directions); `docs/developer/API.md`'s
+   gallery example showing three optional keys as explicit `null` the wire
+   omits; the archived-seat sidebar badge (standing since P4.D62). Plus the
+   OWED upstream filing from P4.D175: the third generated-image label writer
+   (`— outfit preview`) bug 132's fix misses.
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
+
 
 **Baseline `25f534c0b`; v4 `main` HEAD `78b381a96` (TWELVE past — the
 ledger's twelve §3 rows, all now `ORDERED(…)`), v4 `bugfix` tip `1a2b2164c`

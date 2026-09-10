@@ -118632,6 +118632,7 @@ accumulation) with two sibling lanes building concurrently, and free space fell
 to 11 GiB mid-gate. Cleared THIS lane's own `target/` only (never a sibling's),
 which freed 69 GB, and re-ran the whole gate from cold with
 `CARGO_INCREMENTAL=0`.
+
 ## Lane record — P4.D172 (the turn manager from the tip: the drawn rotation + bug 131)
 
 **Base and probe.** Branch `claude/turn-manager-tip-server-port-ff197e`, reset
@@ -119260,6 +119261,7 @@ test with the 41-variable env block. The four re-spelled families re-run through
 the sweep driver at the `78b381a96` pin, all green.
 
 Versions: core 0.0.866 → 0.0.867, harness 0.0.756 → 0.0.757, host 0.0.120 → 0.0.121.
+
 ## Lane record — P4.D174 (the Salon chat gallery, server half), units 1–3
 
 **Branch** `claude/chat-gallery-server-porting-99d71e`, from `main` at
@@ -120365,6 +120367,7 @@ this order remains OPEN.**
 - Final versions: **core 0.0.860, harness 0.0.753, host 0.0.119**;
   `quilltap-web` untouched (the order predicted it might move — measured, it
   did not: `help_web_routes` DERIVES its count and no web test moved).
+
 ## P4.D176 — the Salon chat gallery, SPA half (the `78b381a96` twelve-commit drift catch-up round)
 
 Lane branch `claude/p4-d176-chat-gallery-spa-porting-d1ac52`, from `main`.
@@ -120938,3 +120941,287 @@ checkout could only discard the mutation itself):
    one `<code>` element — the same literal VISIBLE text v4's bug produced,
    reached through a path Angular will actually compile) — reddened exactly
    the "lists several unparseable ids..." equality assertion (1 test).
+
+## Round record — the `78b381a96` twelve-commit drift catch-up round unification (2026-09-10)
+
+**Seven orders — P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥
+P4.D177 — unified onto `unify/78b381a96-round` and fast-forwarded to main. ALL
+SEVEN CLOSED; the oracle baseline MOVES `25f534c0b` → `78b381a96`; the twelve
+ordered drift rows are ABSORBED / NO-PORT-RATIFIED (ledger §6).**
+
+### §1 Survey
+
+- The first `/unify` (2026-09-09, 22:54) found P4.D172 PARKED mid-unit-5:
+  units 1–4 committed at 21:13, 27 dirty files last written 22:14, its session
+  alive but idle since a reflective summary at 22:14, no lane record for
+  unit 5, no gate. Every one of the seven worktrees carried a live `claude`
+  process with that worktree as its cwd — six finished lanes and the parked
+  one look identical in `ps`; the transcript's last entry is what tells them
+  apart. **The human ruled: WAIT.** D172 closed at 23:46 (five commits,
+  544 binaries / 3,106 / 0, twenty families fresh at its pin); the second
+  `/unify` (2026-09-10, 06:28) found seven clean lanes. Banked as
+  `a-parked-lane-session-looks-like-a-running-one`.
+- The ledger's §2 probe, both times: v4 `main` exactly ONE commit past the
+  pin — `cc65d6bfc` (bug 133), the commit §1 had predicted and pre-authorized
+  as the lanes' exception (thirteen files: the nine recorded plus four
+  version-bump-only); tree clean; `bugfix`/`release` unmoved. Every lane's
+  record shows the same reading. Regen rule PIN REQUIRED; the unifier's own
+  three pins: `/tmp/qt-v4-pin-unify-{78b381a96,5841a8c62,25f534c0b}`.
+- Delivered scope verified lane by lane against the tier lists (the reviewers'
+  scorecards are in the lane-review section below); the load-bearing
+  deferrals: P4.D173's Tier-2 item 7 (log bags unpinned) and the
+  `salon_mutations` done-frame arm withheld from its gate; P4.D172's Tier-1
+  item 5 draw arm unmet in the two frozen-zero tier-3 families and the
+  `chat_continuation` family that does not exist; P4.D171's chat-GET
+  correction (v4 never projects `cycleOrderParticipantIds` — §C.2 struck).
+
+### §2 Reconcile
+
+`git merge --ff-only` to P4.D173's tip (P4.D171's five commits + P4.D173's
+two keep their shas), then `git merge --no-ff` for P4.D172, P4.D174, P4.D175,
+P4.D176, P4.D177 (the cherry-pick form was refused by the session's
+auto-mode classifier in every spelling; a true merge preserves every lane's
+shas, which is strictly better provenance). Conflicts: the version files
+(recounted as base + every lane's bumps: core 0.0.857 → **0.0.874**, harness
+0.0.749 → **0.0.766**, host 0.0.117 → **0.0.123**, web **0.0.136**, SPA 0.5.690
+→ **0.5.695**; cli/tauri unchanged), `Cargo.lock`, the SPA lock (resynced to
+0.5.695 — it had lagged at 0.5.691 through the merge), `CHANGELOG.md` and
+`status-log.md` (both-sides unions; five CHANGELOG headers and three lane
+headings the union had glued to the previous block's last line given their
+blank line back — the last round's trap), and — the ONE source-level
+conflict, understood before resolving — the two oracle cases
+`answer-confirmation-tier3.test.ts` / `message-finalizer-tier3.test.ts`, where
+P4.D172's `routeFailures: []` scaffolding (so its oracles could run beside an
+absent P4.D173) met P4.D173's real fields; P4.D173's side taken. Every other
+shared file (`message_finalizer.rs`, `orchestrator.rs`, `api/engine.rs`,
+`host.rs`, `db/mod.rs`, the five SPA files the two SPA lanes split by
+region) auto-merged, and each was verified to be an EXACT union: the diff of
+the result against either lane equals the other lane's own hunks.
+
+### §3 The review — six blocking findings across five lanes, three of them would have shipped
+
+Seven parallel read-only reviewers (one per lane, each against v4's real code
+at the `78b381a96` pin and the order's tier list), the verdict owned at the
+unify. Every finding below was re-verified in the source before it was acted
+on.
+
+**Would have shipped — fixed red-first on the unify branch (`5207caa7`):**
+
+1. **P4.D172 — the finalizer's preloaded responder drew at the default
+   weight.** `calculate_next_speaker` seeded `loadRoomCharacters`'s
+   `preloaded` entry as `{id, name}`; v4 seeds the WHOLE responding
+   `Character` record (`message-finalizer.service.ts:676-678`), and the
+   preloaded copy WINS over the batch read (`room-characters.ts:96-98`, v5
+   mirrors it) — so `to_speaker_characters` yielded `talkativeness: None`
+   for the character who just spoke, `weight_of` fell to 0.5, and the wrong
+   permutation was PERSISTED to `chats.cycleOrderParticipantIds` on every
+   assistant turn (the primary production draw site). Corpus-blind by
+   construction: the turn fixtures seed characters slim at the constant 0.5.
+   Fix: `FinalizerCharacter` carries `talkativeness` + `archived_at`,
+   populated at all three construct sites; `preloaded_room_character` is the
+   one home. Pins: two unit tests in `message_finalizer.rs`, the second
+   driving the REAL loader with a batch row that disagrees; mutation (drop
+   both fields from the stub) reds both.
+2. **P4.D174 — the 409's riders reached no client.** `relativePath`/`keptAt`
+   rode `CoreError::details`, which the dispatch transport renders NESTED
+   (`{error, details: {…}}`) and the REST edge ignores; v4 answers four FLAT
+   siblings `{error, code, relativePath, keptAt}` (`actions/save-image.ts:
+   118-125`) and the dialog reads them off the top level. The family could
+   not see it: `chat_gallery_equivalence`'s `status_body` was a hand-built
+   local renderer that flat-spread `details` — a shape no transport had (the
+   Taboo §3 class). Fix: a typed `already_saved` carrier on `CoreError` +
+   `already_saved_wire_body()` — ONE home rendered by dispatch, the REST edge
+   AND the family; unit-pinned on the dispatch merge (nested → red).
+3. **P4.D177 — the rotation seed wiped itself.** `_turnEffect` re-seeded
+   `turnState.cycleOrder` from `chat.cycleOrderParticipantIds` on EVERY
+   `chat()`/`busy()` emission — a key neither v4's nor v5's chat GET sends
+   (P4.D171 measured the whitelist) — so `parseCycleOrder(undefined)` = `[]`
+   overwrote the rotation `applyTurnResponse` had just set, on every send
+   and every refetch (incl. the ones this round's own `memories` topic now
+   fires). Activation would have caught nothing: every beat asserts the
+   post-turn state. Fix: gated on presence; two `salon-conversation` specs
+   model the production sequence (refresh adopts the draw, `busy` flips);
+   mutation (drop the gate) reds the first.
+
+4. **P4.D173 / P4.D135 — the row and the trail's answering entry named the
+   seat that fell over, not the understudy that answered.** Found by the
+   activated route-trail beat's first live run (the review had flagged the
+   corpus blind spot: no failover case gives the answering profile a
+   different id from the primary's, and the orchestrator corpus has no
+   failover case at all). The persisted trail read `[{Primary, via:
+   primary, failed, provider-error}, {Primary, via: understudy, answered}]`
+   — the badge then collapsed the two adjacent same-profile rows to ONE.
+   Mechanism: `provider_failover.rs` correctly swaps `state.effective_profile`
+   to the understudy at both recovery sites, but `orchestrator.rs` carried a
+   LOCAL `effective_profile` from before the stream and never re-read it —
+   v4 reads `streamingState.effectiveProfile` everywhere downstream
+   (`orchestrator.service.ts:1112`, the finalizer's
+   `streaming.effectiveProfile`). So after ANY understudy recovery the row's
+   `provider`/`modelName` and the trail's answering entry named the original
+   seat — a pre-existing defect from the P4.D135 chain port that the trail
+   made visible. Fix: the local is re-read from the streaming state after
+   the primary stream returns and after the empty-response recovery
+   (`orchestrator.rs`, two sites, one comment); pinned by the beat's new
+   assertion that the answering row's hover title names the UNDERSTUDY. The
+   corpus pin — an `orchestrator_tier3` failover case whose understudy is a
+   DIFFERENT provider, so the `chat_messages` dump discriminates — is a
+   named follow-up (the D173 header's S2/#9 items, now one).
+
+**Blocking as filed, resolved otherwise:** P4.D176's double delete confirm
+(the child confirmed and the rewritten host confirmed too; v4's child calls
+`onDelete()` bare — fixed, spec-pinned with `confirm` deliberately unstubbed,
+mutation-proven); P4.D176's ownership crossing on `chat/message-list.ts`
+(P4.D177's file — the union merged as an exact interleave; recorded in both
+headers); P4.D171's "CHANGELOG lost the setupphase heading" — true on the
+lane branch, self-healed by the union (present at unification, nothing from
+main dropped).
+
+**Should-fixes landed (same commit):** the `[EmptyResponse] Empty response
+from provider that passed moderation, retrying same provider` warn v4
+`:162` emits and the port still dropped; the heal's `links_table_usable`
+probe swallowed on BOTH legs as v4's `try` does — an unreadable mount index
+DEGRADED the sweep in v4 and FAILED THE BOOT in v5 (unit-tested by holding
+an exclusive lock so the probe itself errors); the heal family compares
+`migrations_metadata` (deleting v5's upsert had left it green); the two
+save-ladder arms that leaked `DbError` text now answer v4's fixed
+`Failed to save image`; the gallery door's `Saved to <mount>` toast; the
+ALREADY_SAVED sentence on BOTH doors with v4's dated wording (`code` +
+`keptAt` declared on the SPA's `CoreError`); `||` for v4's `||`; the
+clipboard copy through the faithful helper (the hand-rolled `ClipboardItem`
+threw on the WebP the host codec stores); the Gallery label ALWAYS numbered
+(v4 defaults `galleryCount` to 0); the badge renders nothing for an empty
+trail (v4 `:34`); the enum sweep exhaustive both ways; `qt-route-trail-badge
+{ display: block }` (the #97/#107 inline-host family); the route-trail
+serializers cannot panic; the `utf16_truncate` doc told the opposite of the
+pin; the P4.D173 fence un-nested; five stale help counts; the walk table
+un-broken; the `?100` splice explained at the SQL; `generateddl`; the
+engine's doc comment restored to `random_f64`; three docs naming
+`state.cycleOrder` the ONE live rotation source.
+
+**Measured and left standing (recorded, not changed):** the host heal test's
+600 ms sleep is not a vacuous sync — `seed_built_ins` JOINS its thread, so
+the heal completes inside `Host::start`; the empty-string `blob.sha256`
+nullish divergence (no fixture stores one; noted in source); v4's
+`safeQuery` degrade on the gallery reads; the Jump button's presence rule;
+the `summary_fold` `lastTurnParticipantId` v4-side filing candidate; the two
+frozen-zero families' `pinDraws([0])`; the absent `chat_continuation`
+family; P4.D173's items 7/S2/S3. All named in the order headers and
+`phase-4.md`.
+
+### §4 The wires (`7de9e381`)
+
+The four gate constants flipped (`P4D172/P4D173/P4D174/P4D175_SERVER_LANDED`,
+six beats live; the ungated gallery beat now expects v4's numbered label);
+the three `strip_pending_route_trail*` helpers and the run-scoped tripwire
+retired — both stacked lanes on one branch, the `done` frame's `routeTrail`
+a comparand of its own; `chat_continuation.rs`'s comment wire (v4's
+"intentionally NOT copied" note, worded without the census's literal needle);
+the courier family healed for the tip (the jest case applies
+`p4d171-columns.ts` to its working copy, the v5 side the boot ensures — v4's
+own handlers 500'd on the vintage columns for five of fourteen cases, as
+P4.D174 predicted); the `docs/v4/` mirror at the pin (12 modified, 8 added,
+the twelve retired specs MOVED into `features/complete/`, the two bug files
+at `bugs/fixed/`). The §C name-for-name diff: C.1 (the `RouteAttempt` shape,
+key presence and order), C.2 (`state: {queue, cycleOrder}`), C.3 (every
+gallery field; `linkSummary` narrowed to `{count}` — documented), C.4
+(`memories` seventh) all MATCH; C.2's chat-GET key STRUCK (see §1); C.3's
+409 body now matches through the fix above.
+
+### §5 Gate (the tree of record: the unify branch's tip before the docs commit — the Rust chain on `46cb04c2`, Playwright on the spec-only commit above it)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (an earlier clippy run reddened
+  on the review's own dispatch test module sitting before the file's last
+  item — `items_after_test_module` — moved and re-run); `cargo build
+  --workspace --release` clean (the chain resumed across a machine sleep;
+  the sentinel wrote on exit).
+- **The pinned sweep** (`recipe_sweep.py --run-all` over the round's 48
+  families, `--v4 /tmp/qt-v4-pin-unify-78b381a96`, from the main checkout):
+  **46 ok, 1 refused, 1 run_failed** — both run to ground. The refusal:
+  `backup_uuid_remap_equivalence`'s recipe rebuilds its COMMITTED corpus in
+  place (`QT_CORPUS_OUT=$V5W/…`), policy 1 by design; run by hand from the
+  pin with the corpus written to `/tmp`, which came back **byte-identical**
+  (`cmp`) to the committed file — the freshness proof — and the family green
+  by name at 22 cases. The run_failed: `files_routes_equivalence`'s v5 side
+  opened the committed `files-{main,mount}.db` without the P4.D171 ensures
+  and its chat-upload arm died on `no such column: cycleOrderParticipantIds`
+  — the union's blast radius (P4.D174 ran it green on a branch without
+  P4.D171's code), exactly the vintage-gap class the substrate lane's record
+  predicted; the scratch copy now takes `test_support::ensure_p4d171_columns`
+  (`7720934a`), green by name. Changed bytes grepped in the fresh NDJSONs:
+  `cycleOrder` ×2 in salon-mutations, `routeTrail` ×22 in message-finalizer,
+  `cycle_order` ×7/×3 in orchestrator/message-finalizer, `stored_description`
+  in photo-tools, `"memories"` ×10 in realtime-topics, `ALREADY_SAVED` in
+  chat-gallery, the courier oracle at 14,261 bytes with all fourteen cases.
+- **`cargo test --workspace` with the round's 91-variable env block** (the
+  88 `QT_*` pairs the recipes' run stages name, plus `QT_V4_ROOT`/
+  `QT_V4_CHECKOUT` at the pin and `QT_NODE` the BINARY), on `46cb04c2`:
+  **550 test binaries / 3,136 passed / 0 failed / 2 ignored, exit 0, zero
+  `SKIP:` lines** (the first run, on `7720934a`, stopped fail-fast at binary
+  368 on the wire's own comment naming `route_trail_continuation_guard` — an
+  identifier carrying the census's needle; reworded, re-run whole on
+  `da28e602`, identical numbers; re-run whole again on `46cb04c2` after the
+  orchestrator fix). Every round family confirmed RUN by its exact `Running
+  tests/<family>.rs` line and duration (orchestrator_tier3 2.81 s,
+  provisioning 13.35 s, cli_differential 316 s — a loose grep had first
+  matched `help_chat_orchestrator_tier3`'s 0.00 s and read as a SKIP; matched
+  by path before believing it).
+- **Mutation proofs at the wire:** the finalizer stub with both fields
+  dropped reds BOTH new unit tests; the rotation-seed gate removed reds the
+  first salon-conversation spec (1 of 7,030); the child confirm re-added reds
+  the detail modal's no-confirm spec (1 of 7,030); the dispatch merge's
+  nested shape reds its unit pin by construction; the stale-profile fix is
+  pinned by the route-trail beat's understudy assertion (RED on the pre-fix
+  binary — measured, see the activation notes below). Each restored via
+  `git checkout` on a clean, committed tree.
+- SPA: `npm run lint` (950 `qt-*` classes, no new one — the qt guard
+  clean); `npm test` **423 spec files / 7,030 tests / 0 failed**; `npm run
+  build` clean.
+- **The six activated beats' first live runs — every red run to ground:**
+  three gallery beats presumed a background + a portrait on Solo Voyage;
+  measured, its roll is ONE portrait whose `files` row has no stored bytes
+  (v4's "Image Deleted"), and `Chat Images` is the fixture's only two-source
+  roll — re-pointed there; the save dialog's Angular host is zero-size (the
+  dialog is body-reparented) — asserted by heading; the jump landed on
+  `[data-message-id]`, which no v5 row carries — `#message-<id>` is v4's
+  own `getElementById` idiom on both sides. The route-trail beat's label
+  used the Add-Character picker's `name (PROVIDER: model)` where the
+  understudy select renders `name — PROVIDER model`; once past that it
+  measured the fourth §3 finding (above). The rotation beat SKIPPED in-suite
+  (siblings left Group Expedition too few seats) and FAILED alone with the
+  order reversed — measured: the fixture chat's cycle is SPENT, so every
+  `query` re-draws (v4's read-or-draw rule); rebuilt on a fresh two-seat
+  chat. ⚠ **`webBinary()` prefers `target/release/quilltap-web` when it
+  exists** — the gate's release build predates a later source fix, and two
+  runs served a stale binary until the release pair was rebuilt; a standing
+  trap for any unifier who builds release before the review's last fix.
+- Full Playwright against the fresh build (release binaries rebuilt at the
+  final tree): **310 passed / 2 failed / 1
+  skipped (8.8 m)** on `22fee59a` (the suite grew 305 → 313 with the six
+  activated beats). The skip is the gallery Delete beat's honest park (the
+  fixture has no generated entry with stored bytes). The two reds are the
+  P4.D161 pause-toast pair — the documented full-suite intermittent, red the
+  same way in the `2f4254b42` round's gate — **2/2 green alone**, re-run once;
+  the P4.d17 quill intermittent reddened in the previous full run and was
+  likewise green alone.
+### §6 Docs
+
+CHANGELOG: every unify commit carries its entry (the review fixes, the wires,
+the rustfmt chore, the files-routes heal, the continuation comment, the
+orchestrator fix + beat gestures, the rotation beat) plus the docs entry;
+this round record; the seven order status headers (all CLOSED, the OPEN
+items named per order); the ledger's baseline move (§1 rewritten to
+`78b381a96` with `cc65d6bfc` tabled UNPROCESSED; the twelve rows retired to
+§6); the phase-4 UNIFIED section with the next round's order of work;
+CLAUDE.md's Status bullet + baseline bullet. `check_spelling.py` clean.
+
+### §7 Cleanup + memory
+
+The three unifier pins removed from the v4 repo (`worktree remove --force`;
+P4.D172's two stale lane pins were already gone); 289 `/tmp` oracle
+artifacts, fixture copies and jest mirrors removed (43 MB — the lanes had
+cleared their own); `apps/web/test-results` removed; the seven lane
+worktrees (1.3 GB — every lane had already cleared its `target/`) and
+branches + the unify branch deleted after the fast-forward. Memory:
+`78b381a96-round-unification` (the finding shapes) and
+`a-parked-lane-session-looks-like-a-running-one` (the survey lesson).

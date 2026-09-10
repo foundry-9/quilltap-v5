@@ -19,220 +19,51 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `25f534c0b`** — "fix: a hostname change no longer makes
-  the app kill its own database (bug 126)" (v4 main, 2026-09-08 11:29 -0500,
-  `4.10.0-dev.9`), adopted at the `25f534c0b` progressions + bug-126 drift
-  catch-up round unification (P4.D166 ∥ P4.D167 → {P4.D168 ∥ P4.D169} ∥
-  P4.D170, 2026-09-09). CLAUDE.md's Status bullet agrees. UNMOVED by this
-  check — no round has run since.
-- **Checked:** 2026-09-09 (a standalone `/driftcheck` from a main checkout,
-  ~09:40, hours after the `25f534c0b` unification landed). The §2 probe
-  FAILED: two commits arrived on `main` after that unification's cleanup
-  check, and the checkout's in-flight bug-131 edits — recorded as dirt last
-  time — are now one of them.
-- **v4 `main` HEAD at check:** `78b381a96` (2026-09-09 09:26 -0500,
-  `4.10.0-dev.21`, "Fix bug 132: describe_image returned a generated image's
-  label, not a description") — **TWELVE commits past the baseline**: the ten
-  already tabled below plus `d14da3a56` (bug 131) and `78b381a96` (bug 132),
-  both landed this morning, both PORT.
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (measured by content
-  per §4 step 2: its delta against `main` is still the subprompts commit
-  reversed plus everything since; it is simply behind, and nothing
-  unabsorbed lives on it).
+- **Oracle baseline: `78b381a96`** — "Fix bug 132: describe_image returned a
+  generated image's label, not a description" (v4 main, 2026-09-09 09:26
+  -0500, `4.10.0-dev.21`), adopted at the `78b381a96` twelve-commit drift
+  catch-up round unification (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥
+  P4.D175 ∥ P4.D176 ∥ P4.D177, 2026-09-10). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-10 at the round's unification (the §2 probe at the
+  opening survey, re-run at the gate — identical both times).
+- **v4 `main` HEAD at check:** `cc65d6bfc` (2026-09-09 15:51 -0500,
+  `4.10.0-dev.22`, "Fix bug 133: a moderated chat's story background could
+  escalate to the uncensored provider") — **ONE commit past the baseline**,
+  the commit the previous §1 predicted and pre-authorized as the seven
+  lanes' probe exception. It landed during the round (every lane's probe
+  found exactly it; every regen ran from a pinned worktree regardless).
+  Thirteen files, not the predicted nine: the nine recorded plus four
+  version-bump-only files (the README badge, `package.json`,
+  `packages/quilltap/package.json`, the lock's two lines — the `d3f0ed133`
+  rider class). Tabled in §3 as `UNPROCESSED`, class PORT.
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. The 14 modified
-  + 3 untracked files the last check recorded were the human mid-edit on
-  bug 131; they committed as `d14da3a56` (and `bugs/bug-131-…md` moved to
-  `bugs/fixed/`). The last check's prediction — "expect a bug-131 commit on
-  top" — held. Nothing is in flight now.
-- **Re-probed 2026-09-09 ~15:00 at `/setupphase` (the `78b381a96` round's
-  ordering; the four surveys had run against a CLEAN tree ~09:50):** HEAD
-  UNMOVED at `78b381a96`, `bugfix`/`release` UNMOVED — but the checkout is
-  **DIRTY again: 8 modified + 1 untracked, the human mid-edit on v4 bug
-  133** ("moderated chat image escalation"):
-  `lib/background-jobs/handlers/story-background.ts` (+77/−?),
-  `lib/image-gen/appearance-resolution.ts`,
-  `lib/tools/handlers/image-generation-handler.ts`,
-  `help/dangerous-content.md` (+8/−?), two unit tests, `docs/CHANGELOG.md`,
-  `docs/developer/bugs.md`, and the new
-  `docs/developer/bugs/fixed/bug-133-moderated-chat-image-escalation.md`.
-  **This dirt is the EXPECTED state in the round's §R.2** (recorded so the
-  seven lanes' probes do not re-alarm on it; any OTHER dirt, or a HEAD
-  move, is a STOP). It cannot poison a lane: every regen this round runs
-  from a detached worktree pinned at `78b381a96` (§5.1), and the lanes
-  port the PIN. Intersection, for the NEXT round: `story-background.ts` is
-  the file P4.D175's bug-132 writer edit lands in (`services/story_
-  background_job.rs`), `help/dangerous-content.md` is one of P4.D175's
-  eleven re-vendored files, and the two image-gen files are P4.9a/W4.7f
-  surfaces (`image_generation`, the appearance resolver family) —
-  **prediction: a bug-133 commit on top of `78b381a96`, class PORT,
-  becomes the next round's first row** and re-opens exactly those v5
-  files. Do not fold it into this round.
-  **Pre-authorized exception for the seven lanes (written here at
-  ordering, mirrored in every order's §R.2):** if the ONLY change a lane's
-  probe finds is that predicted bug-133 commit having LANDED — tree CLEAN,
-  `78b381a96..main` exactly ONE commit naming bug 133 over the recorded
-  nine files — the lane proceeds on its `78b381a96` pin and records the
-  sha; anything else is a STOP. The next `/driftcheck` tables it.
-- **Verdict: DRIFT PENDING — 12 commits** (all `UNPROCESSED`). Six shipped
-  features/fixes and six riders. The two new rows are both **PORT on
-  already-ported surfaces, and v5 measurably HAS both defects** (measured
-  at this check, not inferred — see the §3 rows):
-  - `d14da3a56` **bug 131** — a user-driven seat's talkativeness never
-    reached the speaking-order draw, because four of six map-building sites
-    read the `@deprecated` LLM-only accessor. v5 carries that alias
-    faithfully (`crates/quilltap-core/src/participant_filters.rs:127`) and
-    calls it at `services/turn_orchestrator.rs:512` and `:739` to build the
-    talkativeness map — the same blind spot, same shape.
-  - `78b381a96` **bug 132** — generated images stored a caption in the
-    `description` column and `describe_image` served it ahead of the
-    generation prompt. v5 writes both labels
-    (`services/story_background_job.rs:839`,
-    `services/character_avatar_job.rs:365`) and serves
-    `stored-description` first (`tools/photo.rs:970`, before the
-    `generation-prompt` arm at `:989`).
-- **⚠ TWO schema moves are owed, both still unabsorbed** (unchanged by this
-  check): `chat_messages.routeTrail` (`5841a8c62`) and
-  `chats.cycleOrderParticipantIds` (`2aca73ad6`) — each arrives BOTH as a
-  migration and in the shape `generateDDL` reads, so each owes a D23 re-dump
-  **and** a boot ensure, and the P4.D78 (bug 68) precedent applies: the two
-  DDL shapes may disagree and both are carried. **Bug 132 adds a THIRD
-  migration but NO schema move** —
-  `clear-generated-image-placeholder-descriptions-v1` is a pure DATA heal
-  (`files.description` → NULL where `source = 'GENERATED'` and the label
-  matches; `doc_mount_file_links.description` → `''` where the MIME type is
-  an image), so it wants the P4.D140/P4.D152 boot-heal + ledger-row shape,
-  not a re-dump. No cache-version bump anywhere in the twelve.
-- **⚠ Porting-order fact for the catch-up round: `d14da3a56` REWRITES the
-  call sites `2aca73ad6` added** (the `charactersMap` build in
-  `turn-orchestrator.service.ts` moves above the `if`; `?action=turn`'s
-  hand-rolled loop, which `2aca73ad6` had just touched, is deleted whole).
-  Port the turn-manager family from the TIP, not from `2aca73ad6` — a lane
-  transcribing the intermediate lands code the very next commit removes.
-  The same holds for the four chat-message services and the autonomous-room
-  handler.
-- **Vendored-artifact obligations the twelve create (re-read hazards 4, 9,
-  10 below):**
-  - **`help/**` — v4 is at 123 files, v5's re-vendored tree (P4.D168, at
-    `25f534c0b`) at 122.** The count is unchanged by the two new commits
-    (`78b381a96` EDITS `help/keep-image-tools.md`, adds nothing;
-    `d14da3a56` touches no help file — its `chat-turn-manager.md` edits
-    rode `2aca73ad6`). The file that ADDS one is still `86d59660c`
-    (`help/chat-gallery.md`). Edited across the twelve:
-    `chat-gallery.md` (new), `chat-message-actions.md`,
-    `chat-participants.md`, `photo-gallery.md`, `chats.md`,
-    `connection-profiles.md`, `dangerous-content.md`,
-    `character-progressions.md`, `chat-multi-character.md`,
-    `chat-turn-manager.md`, `keep-image-tools.md`.
-    `help_tree_equivalence` goes RED against any oracle regenerated past
-    `25f534c0b`, by design.
-  - **`public/schemas/qtap-export.schema.json` moved by +19 lines**
-    (`5841a8c62`, the `routeTrail` message field) and is UNMOVED by the two
-    new commits. **`qtap_schema_embed_guard` is RED against the live
-    checkout** (measured by P4.D169: 92,797 bytes at HEAD against the
-    vendored 89,769; the vendored copy is byte-identical to `25f534c0b`,
-    md5 `430bb227c7029550f773134f42a0c6eb`). The re-vendor rides the
-    route-trail port — vendoring a schema field for a column v5 does not
-    yet carry would be wrong — so **until that round lands, every full
-    workspace gate needs `QT_V4_ROOT=<a 25f534c0b pin>`** or the fail-fast
-    run loses its tail to this tripwire. The two SPA-served schemas
-    (`qtap-custom-tool`, `qtap-progression`) are UNMOVED past `25f534c0b`;
-    P4.D170's `public_schemas_vendor_guard` stays green.
-  - Unmoved: the 21-file sample-prompt source directory, and v4's installed
-    `zod` at `4.5.4` (re-measured at this check — hazard (1) stays closed).
-    **The two new commits change no dependency at all**: every
-    `package.json`/`package-lock.json` hunk in them is the identity-version
-    lines (`4.10.0-dev.18` → `-dev.21` across the twelve).
-- **CONVERGENCE row: bug 127 (`4a9be9878`).** Filed by v4 (`07eee4f4c`)
-  from THIS PORT's P4.D170 lane finding it while transcribing
-  `ProgressionsSection.tsx` — v4's `invalidIds.join('</code>, <code>')`
-  inside a JSX expression is escaped by React. v4 adopted v5's
-  map-with-separator shape. **No oracle compares the line**, so no pin
-  trips at any baseline move; the retirement site is the divergence note in
-  `apps/web/src/app/progressions/progressions-section.spec.ts` (P4.D170),
-  which the absorbing lane rewrites as a convergence record. Bugs 128, 129
-  and 130 were filed by v4 from its own code map — NOT convergences.
-- **Regen rule in force: PIN REQUIRED at `25f534c0b`** — v4 `main` HEAD is
-  twelve commits past the baseline (the checkout is clean, but HEAD alone
-  settles it). Every oracle regen and fixture build runs from a detached
-  worktree pinned at `25f534c0b` per §5.1 until a round absorbs the twelve
-  and moves the baseline. **`qtap_schema_embed_guard` is RED against the
-  live checkout** (hazard 9) — a full workspace gate needs
-  `QT_V4_ROOT=<a 25f534c0b pin>` until the route-trail port re-vendors the
-  export schema.
-- **Standing hazards that SURVIVE every baseline move (re-read before any
-  regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
-  never a pin's — a v4 dependency bump is a regen event for every
-  Zod-transcribing family whatever sha the source pin names; since the
-  `p4.9i2` round `crates/quilltap-harness/tests/zod_version_guard.rs`
-  (recorded `4.5.4`) FAILS the gate when v4's installed `zod` moves; (2)
-  `harness/oracle/cases/memory-injector.ts` passes a REAL
-  `MemorySubjectContext` positionally (P4.D153) — a future v4 arity change
-  fails SILENTLY under `tsx`; (3) the seven families `d4138b96b` took dark
-  were SPLIT (P4.D157) — a regen of `cheap-model`/`model-selection`/
-  `llm-errors`/`message-formatter`/`post-office-host`/`chat-timestamp`/
-  `token-estimation` at any sha BEFORE `d4138b96b` would not match;
-  (4) **`help/**` is a VENDORED v5 ARTIFACT since P4.9I2A** — any v4 commit
-  touching `help/**` is a re-vendor obligation and `help_tree_equivalence`
-  goes RED the moment an oracle is regenerated past it, by design; the
-  vendored COUNT is a literal in several crates (`a-vendored-count-is-hard-
-  coded-in-several-crates`; P4.D168 derived one of the four); (5) **since
-  `8fbf2afe0`, v4's `jest.config.ts` maps `'^@google/genai$'` →
-  `__mocks__/@google/genai.ts`** (a manual mock; the SDK is ESM-only).
-  Fourteen committed jest-run oracle cases load the plugin tree
-  (`orchestrator-tier3`, `help-chat-orchestrator-tier3`,
-  `brahma-orchestrator-tier3`, `brahma-console-tier3`, `enclave-step-tier3`,
-  `embedding-provider-tier3`, `avatar-job`, `danger-routing`,
-  `danger-gatekeeper`, `image-gen-leaves`, `image-profiles-routes`,
-  `image-generation`, `image-generate-route`, `settings-routes`); the mock is
-  never reached by the four proven at the last round's pin (those oracles mock
-  `streamMessage` above the plugin layer); the `tsx`/`node` recorders are
-  unaffected; (6) **the CLI-package version nit is CLOSED on `main`** — at
-  `78b381a96` `package.json` and `packages/quilltap/package.json` both read
-  `4.10.0-dev.21` (re-measured 2026-09-09); the lag survives only on
-  `bugfix`. Still no `--version`
-  comparand, Tier R unaffected; re-watch it after the next merge-back; (7)
-  **the generator runners (`character_optimizer_tier3`,
-  `character_wizard_tier3`, `ai_import_tier3`, `external_prompt_tier3`)
-  drive v4's REAL runners with a canned `createLLMProvider`** — a v4 change
-  to the provider factory's signature breaks their oracles at LINK time, not
-  at diff time; (8) **the sample-prompt catalogue is a VENDORED v5 ARTIFACT
-  since P4.83** (`crates/quilltap-core/src/services/
-  builtin_prompt_templates.json`, the 21 `.md` files under
-  `plugins/dist/qtap-plugin-default-system-prompts/prompts/` at
-  `2f4254b42`) — any v4 commit touching that directory is a re-vendor
-  obligation, and `builtin_prompt_templates_guard` goes RED against the
-  checkout the moment one lands, by design; (9) **`public/schemas/
-  qtap-export.schema.json` is a VENDORED v5 ARTIFACT since P4.86**
-  (`crates/quilltap-core/src/generators/qtap-export.schema.json`, 89,769
-  bytes at `25f534c0b`) — a v4 commit touching it is a re-vendor obligation
-  and `qtap_schema_embed_guard` goes RED against the checkout, by design
-  (**it IS red now — see above**); (10) **`public/schemas/
-  qtap-custom-tool.schema.json` and `qtap-progression.schema.json` are the
-  fifth and sixth vendored artifacts, served by the SPA from
-  `apps/web/public/schemas/` and GUARDED since P4.D170** by
-  `crates/quilltap-harness/tests/public_schemas_vendor_guard.rs` (byte
-  equality against `QT_V4_ROOT`, plus a checkout-free self-consistency
-  half) — the standing hazard recorded 2026-09-08 (the custom-tool schema
-  sat 529 lines behind with nothing red) is DISCHARGED; (11) **the progress
-  corpora freeze v4's `Date.now()` per case** (P4.D169) — the discovery,
-  workbench-route and both run-tool oracles carry a `nowMs` the Rust side
-  reads OFF THE ROW; a v4 change that adds a clock read at a new site
-  (roster, bench, run) shows as a per-case drift, not a recipe failure.
-- **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
-  `bugfix` fork; the fork → fix → `release: X` squash → merge-back cycle has
-  run twice. `bugfix` is currently idle at its branch-start commit while main
-  takes feature work — three merged PRs (#58, #59, #60) landed on `main` in
-  one evening, and two direct-to-main bug fixes (131, 132) the next morning. §4 step 2's two-branch rule stays load-bearing — measure
-  `bugfix` by CONTENT, never its commit list, and remember a content diff
-  can be non-empty simply because `bugfix` is behind.
-- _Superseded (2026-09-09, at the `25f534c0b` unification's cleanup check):
-  DRIFT PENDING — 10 commits, checkout DIRTY on the in-flight bug 131.
-  Before that (2026-09-09, the same unification's opening check): DRIFT
-  PENDING — 13 commits against baseline `2f4254b42` (4 ORDERED + 9
-  UNPROCESSED). Before that (2026-09-08 afternoon): DRIFT PENDING — 4
-  commits, all ORDERED, PIN REQUIRED at `2f4254b42`; (2026-09-08 midday): 3
-  commits; (2026-09-08 morning): CLEAR._
+- **Checkout at check:** branch **`main`**, tree **CLEAN**.
+- **Verdict: DRIFT PENDING — 1 commit** (`cc65d6bfc`, bug 133, PORT). It
+  re-opens `services/story_background_job.rs` (P4.D175's bug-132 writer),
+  the P4.9a/W4.7f image-gen surfaces (`image_generation`, the appearance
+  resolver family), and `help/dangerous-content.md` (one of P4.D175's eleven
+  re-vendored files, edited again — `help_tree_equivalence` goes RED against
+  any oracle regenerated past `78b381a96`, by design). **Regen rule: PIN
+  REQUIRED** — v4 HEAD is past the baseline; every regen from a detached
+  worktree at `78b381a96` (§5.1) until the bug-133 catch-up moves the
+  baseline.
+- **Schema state at the baseline:** both schema moves the previous §1 owed
+  are ABSORBED — `chat_messages.routeTrail` (`TEXT` in `generateDDL`,
+  `TEXT DEFAULT NULL` in the migration; both carried, the P4.D78 class) and
+  `chats.cycleOrderParticipantIds` (`TEXT DEFAULT '[]'` in BOTH — the one
+  agreeing shape this round, documented as the exception in
+  `db/chats_read.rs`); `fresh_schema.json` re-dumped from the tip;
+  `qtap-export.schema.json` re-vendored (92,797 bytes, md5
+  `a347c46b802b3c195d2ab2a21f7e43f4`) — `qtap_schema_embed_guard` is GREEN
+  against the baseline and needs no `QT_V4_ROOT` pin for the full gate.
+  `help/**` at 123 files, byte-identical to the baseline's tree. Bug 133
+  adds no schema move.
+- **⚠ For the next round (bug 133):** `cc65d6bfc` is a PORT on ported
+  surfaces — the moderated chat's story background must not escalate to
+  the uncensored provider (`story-background.ts` +77/−?,
+  `appearance-resolution.ts`, `image-generation-handler.ts`, the help page,
+  two unit tests). Read the hunks, never the message (§5.3).
 
 ## §2 The freshness probe
 
@@ -271,18 +102,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `07eee4f4c` | 2026-09-08 | docs: file bug 127 — the progressions card escapes its own markup | NO-PORT? | Docs only (`bugs.md` + `bugs/bug-127-…md`). The filing of a defect THIS PORT found: P4.D170's transcription of `ProgressionsSection.tsx` measured v4's `invalidIds.join('</code>, <code>')` inside a JSX expression rendering raw markup for two or more unreadable ids, and recorded v5's map-with-separator rendering as a divergence (`progressions-section.spec.ts`). The fix is `4a9be9878` below. | ORDERED(P4.D175 — NO-PORT ratification; the bug-127 file mirrors at its `bugs/fixed/` path) |
-| `9fc664c94` | 2026-09-08 | docs: plan for the message route trail — every model tried, in order, under the avatar | NO-PORT? | Docs only — `docs/developer/features/message-route-trail.md` (286 lines; MOVED to `features/complete/` with an "As built" section by `5841a8c62`), the changelog, the docs index. **The design of record for `5841a8c62`** — read at ordering time. Mirror candidate for `docs/v4/` at the next baseline move. | ORDERED(P4.D175 — NO-PORT ratification; design of record read by P4.D171/P4.D173/P4.D177) |
-| `5fb6bedd6` | 2026-09-08 | docs: file bug 128 — the Salon's memory count goes stale and disarms its own delete button | NO-PORT? | Docs only (`bugs/bug-128-stale-chat-memory-count.md`, 231 lines — the plan `4a9be9878` carries out, incl. WHY `memories` must stay out of `REPOSITORY_TOPICS`). Filed by v4 from its own live Friday instance (chat `27961b14`: 59 rows, `(0)` on a long-lived tab) — NOT a convergence. | ORDERED(P4.D175 — NO-PORT ratification) |
-| `df1a075e8` | 2026-09-08 | docs: plan for the Salon chat gallery (every image in a conversation, savable and downloadable) | NO-PORT? | Docs only — `docs/developer/features/salon-chat-gallery.md` (224 lines; MOVED to `features/complete/` by `86d59660c`), the index, the changelog, a bug-128 cross-note. **The design of record for `86d59660c`**, and the commit that FIRST FILED bugs 129 and 130 (the never-rendered Gallery button; the images route ignoring `chatId`). Mirror candidate. | ORDERED(P4.D175 — NO-PORT ratification; design of record read by P4.D174/P4.D176) |
-| `c0f9232af` | 2026-09-08 | docs: retire twelve shipped feature specs to features/complete/ | NO-PORT? | 56 files, but every non-doc hunk is a comment-only `See docs/…` path rewrite (29 source files, one line each: `app/**`, `components/**`, `lib/services/home-data.service.ts`, `lib/workspace/types.ts`, `migrations/scripts/quantize-embeddings.ts`, one plugin test) plus the lockfile's two version lines — VERIFIED by grepping the non-doc hunks for any non-comment line (only the two version lines remain). **Fact the round wants: `character-progressions.md`, the design of record P4.D167 ratified, now lives at `docs/developer/features/complete/character-progressions.md`** — the unifier's `docs/v4/` mirror wire should mirror it at the path the NEW baseline (`25f534c0b`) has, `docs/v4/developer/features/character-progressions.md`, since the mirror is a snapshot at the baseline. Ratify with the file list; nothing to port. | ORDERED(P4.D175 — NO-PORT ratification with the re-run grep; the twelve MOVES are a unifier `docs/v4/` wire) |
-| `4a9be9878` | 2026-09-08 | Fix bugs 127–128: stale memory count and escaped markup (#58) | PORT (bug 128) + CONVERGENCE (bug 127) | **Bug 128 — PORT onto the P4.D123–D125 realtime subsystem.** v4 adds a `memories` realtime topic: declared in `lib/schemas/realtime.types.ts` (`REALTIME_TOPICS` + `ALL_REALTIME_PREFIXES`), keyed `queryKeys.memories.chatCount(chatId)` in `lib/query/keys.ts`, mapped in `lib/realtime/topic-map.ts` (`queryKeysForTopic`; `TOPIC_ID_FIELDS.memories = []` — the emptiness is load-bearing, and `memories` is deliberately NOT in `REPOSITORY_TOPICS` because `firstIdArg` would publish a memory id under a chat-scoped topic), published from `lib/realtime/job-topics.ts`'s `topicsForCompletedJob` for the four chat-scoped memory job types (each reading `chatId` off its payload) + collection-wide for `MEMORY_HOUSEKEEPING`, and from ONE parent-side delete chokepoint (`lib/memory/memory-gate.ts` — `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`, collection-wide; the route's own publish was REMOVED in the PR's second commit as redundant-and-wrong, since the gate stays silent for a chat with nothing to delete). Client: `useChatData.ts` subscribes `useRealtimeTopic('memories', chatId)` three lines from its fetcher (`cache: 'no-store'` added); `useMemoryActions.ts` disables the button at zero (`.qt-tool-palette-button:disabled` already styled), replaces the bare `return` with a toast, and re-reads the count from the server before the confirmation; `ChatSidebar.tsx` (+7). v5 surfaces: `crates/quilltap-core/src/realtime/{types.rs,job_topics.rs,publish_sites.rs}` + the 73-case `realtime_topics_equivalence` tier-1 family (P4.D123) — the topic ENUM, the prefix list and the job→topic map are all comparands there and MOVE; `crates/quilltap-core/src/db/memories.rs::{delete_with_unlink,delete_many_with_unlink}` (the gate twin's publish site); the SPA's `core/realtime-topic-map.ts` + `core/realtime.types.ts` (P4.D125), `chat/sidebar/edit-section.ts` (**Delete Memories (n)** — MEASURE whether v5 reads the count once at mount and gates the click on a stale zero before calling it inherited; the bugs.md v5 column says "Not yet assessed"), and `chat/memory-cascade-dialog.ts`. Also two `help/**` edits (`character-progressions.md` +6/−?, `chat-participants.md` +11) — re-vendor obligation. **Bug 127 — CONVERGENCE onto P4.D170:** `ProgressionsSection.tsx` now renders `invalidIds.map((id, i) => <span key={id}>{i > 0 && ', '}<code>{id}</code></span>)`, v5's shape; v4's two new pins in `progressions.test.tsx` (the two-id case asserts no `</code>` in the text + a `<code>` per id; the one-id sentence unchanged). Retire P4.D170's divergence note in `apps/web/src/app/progressions/progressions-section.spec.ts` to a convergence record; no oracle compares the line, nothing trips. | ORDERED(P4.D175 server ∥ P4.D177 client — bug 128; P4.D177 — bug 127 convergence record) |
-| `5841a8c62` | 2026-09-08 | Message route trail: every model tried, in order, under avatar (#59) | PORT-NEW (with a SCHEMA MOVE) | **The feature, 2,112 insertions / 45 files, incl. a NEW `chat_messages.routeTrail` column (D23 re-dump + boot ensure — see §1).** Storage: nullable JSON `routeTrail` (`migrations/scripts/add-route-trail-message-column-v1.ts` + `migrations/scripts/index.ts`; the repository Zod shape in `lib/database/repositories/chats-messages.ops.ts` +26 — the source `generateDDL` reads; `docs/developer/DDL.md`; `lib/startup/prettify.ts` +1); each entry `{profileId, profileName, provider, modelName, via: primary|retry|concierge|understudy|tier-pick, outcome: answered|failed|refused, trigger?, evidence: finish-reason|inferred, detail? (≤200 chars)}`; NULL whenever nothing failed (nearly every message), no backfill; the last entry always agrees with `provider`/`modelName` (asserted by test). Recording: ONE chokepoint `lib/services/chat-message/route-trail.ts` (198 lines, NEW) is the only writer of two new `StreamingState` fields (`routeFailures`, `routeVia` — `lib/services/chat-message/types.ts` +14); `provider-failover.service.ts` (+66) calls it at every site that already logs a failure (the hard-error opener, the chain walk's key-less / thrown / empty candidates, the empty-response opener, the same-profile retry, the Concierge's uncensored reroute — recorded from `routeResult.connectionProfile`; every empty-body classification runs BEFORE `resetStreamingBuffersForSwap` clears `rawResponse`; the pre-call Concierge reroute gets no row but seeds `routeVia = 'concierge'`); `FallbackChainResult.attempts` / `summarizeFallbackAttempts` UNTOUCHED. Persistence: `message-finalizer.service.ts` (+18), `orchestrator.service.ts` (+7), `primary-stream.service.ts` (+7), `streaming.service.ts` (+5). Transport: the SSE `done` event carries it; the chat-GET projection lists it (`app/api/v1/chats/[id]/handlers/get.ts` +4); `.qtap` export carries it with the message (`public/schemas/qtap-export.schema.json` +19 — hazard (9), the re-vendor rides this port; an imported `profileId` is deliberately NOT remapped); `apply-chat-continuation.ts` does NOT copy it. Display: `lib/chat/route-trail-display.ts` (144 lines, pure — collapse adjacent same-profile rows, the ❌/🚫 marks, hover text; `lib/chat/__tests__/route-trail-display.test.ts` 139 lines is a tier-1 seed) + `components/ui/RouteTrailBadge.tsx` (replaces `ProviderModelBadge` when a trail is present; theme hook `[aria-label="Models tried for this reply"]`, no new qt-* class); `MessageRow.tsx` (memo comparator gained an O(1) identity check on `routeTrail`, normalised undefined≡null), `MessageDesktopAvatar.tsx`, `useSSEStreaming.ts` (+9), `app/salon/[id]/types.ts`; a compile-time + runtime parity assertion tying the client-safe trigger enum to the engine's `FallbackTrigger`. Help: `chats.md` (+35), `connection-profiles.md` (+7), `dangerous-content.md` (+8) — re-vendor. Twelve v4 test files as seeds (the finalizer's 160-line and the failover chain's 150-line suites carry the persistence pins). v5 surfaces: `services/provider_failover.rs` + `services/message_finalizer.rs` + `services/primary_stream.rs` + the streaming state (P4.D135 / P4.68 / P4.72 — the failover `llm_logs` rows and the `auth` chain arm landed there), the SSE `done`/chain-complete event on the `Event` channel (P4.D160's `paused` key precedent), `api/salon.rs`'s chat-GET five-field projection (P4.D51/P4.D60), `generators/**` + the import remap (P4.D46/P4.D87 — the deliberate NON-remap needs its own pin), `chat_continuation` (Continue Elsewhere), and the SPA's provider/model badge under the avatar. `IDENTITY_STACK_BUILDER_VERSION` / `PROMPT_CACHE_STRUCTURE_VERSION` untouched. The commit message's "manual V4test pass … still outstanding" is v4's own owed proof. | ORDERED(P4.D171 substrate → P4.D173 server ∥ P4.D177 SPA; help → P4.D175) |
-| `86d59660c` | 2026-09-09 | Add the Salon chat gallery — every image in a conversation (#60) | PORT-NEW + PORT (bugs 129, 130) | **The feature, 4,306 insertions / 51 files — all six phases of `salon-chat-gallery.md`.** ONE server-side enumerator `lib/photos/chat-gallery.ts` (962 lines, NEW — nine sources: uploads + library links, `generate_image` output, both Generate Image entry points, `attach_image` re-shows, Librarian attaches, Lantern story backgrounds incl. superseded, Aurora avatar repaints likewise, the cast's standing portraits, Markdown-referenced images in message prose; over BOTH id species — `files.id` and `doc_mount_file_links.id`; deduped by content hash, newest first, portraits last; each entry carries source, species, is-current-background / is-worn-avatar, deletability; `__tests__/unit/lib/photos/chat-gallery.test.ts` 620 lines is the seed) — NO v5 counterpart; `GET /api/v1/chats/[id]?action=gallery` (`handlers/get.ts` +25 — entries + per-source counts + total); `POST /api/v1/chats/[id]?action=save-image` (`actions/save-image.ts` 137 lines NEW, `actions/index.ts`, `handlers/post.ts`) — the chat-scoped twin of the message-scoped save, guarded by GALLERY MEMBERSHIP rather than message attachment, sharing one Zod body schema, one attribution resolver (`lib/photos/save-attribution.ts` 93 lines NEW) and `lib/photos/save-image-to-album.ts` (+18) with `messages/[messageId]/route.ts` (−…); the `/chats/[id]/files` listing (`files/route.ts` 85 lines moved) now SHARES the enumerator's message-attachment walk instead of a second copy; **`?download=1`** on the three image byte routes (`files/[id]/actions/download.ts`, `files/proxy/[...key]/route.ts`, `mount-points/[id]/blobs/[...path]/route.ts`) answering `attachment` instead of `inline` through NEW `lib/api/content-disposition.ts` (26 lines); `lib/download-utils.ts` (+49 — `downloadImageUrl`/`downloadGalleryEntry` hand the URL, not the bytes, to `triggerUrlDownload` so Electron streams); realtime: `queryKeys.chats.gallery(id)` on the EXISTING `chats` topic (`lib/query/keys.ts` +6, `topic-map.ts` +4). **Bug 130** — `app/api/v1/images/route.ts` (+26): optional `chatId` on `generateImageSchema`, folded into `linkedTo` beside the tag ids through a `Set`. **Bug 129** — the Gallery button's `chatPhotoCount` gate read `?action=files`, an action `handleGet` never dispatched (fell through to the whole-chat 200, `data.files` undefined → 0 forever); counter DELETED, `chatPhotoCount`/`fetchChatPhotoCount` leave `useChatData`, the button loses its gate. SPA: `PhotoGalleryModal.tsx` (521-line rewrite — the grid), `ChatGalleryImageViewModal.tsx` (384-line rewrite — the detail view; the two hard-wired "first character" album buttons REMOVED for the shared album dialog, + provenance line + Jump-to-message), `SaveImageDialog.tsx` (+80), `ChatSidebar.tsx`, `ImageModal.tsx`, `useChatGallery.ts` (85 lines NEW), `ChatModals.tsx`, `SalonView.tsx`. Help: `help/chat-gallery.md` NEW (122 → **123**), `chat-message-actions.md`, `chat-participants.md`, `photo-gallery.md`; `docs/developer/API.md` (+142, both actions + the download parameter). v5 surfaces: `api/chat_media.rs` (the message-scoped save over `photos::save_image_to_album` — W4.9b/P4.6ab), `quilltap-web`'s `?action=` dispatch tables (P4.67/P4.72 — the chat GET/POST action lists are CENSUSED there and the new actions move them), the files listing family, `api/images.rs` + `images_routes.rs` (P4.73 — the `?action=generate` Zod parse gains `chatId`), the P4.D114 `Content-Disposition` header work (`inline` today — the `attachment` arm is new), the P4.D114 download surfaces + transcribed `clipboard-utils`, and the SPA's `images/photo-gallery-modal` + `chat/sidebar/organize-section.ts` — where **v5 ALREADY diverged from bug 129's shape**: its Gallery entry is ungated ("v5 has no per-chat photo count on the chat read, so the entry …" — a recorded divergence), so v5 never had bug 129 and that divergence now RETIRES to v4's post-fix shape (an ungated button whose label count comes from the gallery query). The 2026-08-25 dogfood note "`qt-image-gallery` still has no v5 host" is the same surface. **Bug 129 needs the invariant carried, not assessed away: a control gated on a fetched count needs a test that the fetch reaches an endpoint that exists.** | ORDERED(P4.D174 server ∥ P4.D176 SPA; `help/chat-gallery.md` → P4.D175) |
-| `2aca73ad6` | 2026-09-09 | Draw a multi-character chat's speaking order once per cycle | PORT (with a SCHEMA MOVE) | **1,277 insertions / 38 files, landed while the `25f534c0b` unification was in its gate.** The rotation for a cycle is drawn UP FRONT — a talkativeness-weighted permutation of the present character seats, sampled without replacement — stored on the chat and followed seat by seat; previously each turn made its own weighted pick (the distribution is unchanged: successive sampling either way, so the weighted-random family's expectations should survive, the SEQUENCE machinery does not). **Schema:** NEW `chats.cycleOrderParticipantIds TEXT DEFAULT '[]'` via `migrations/scripts/add-cycle-order-column-v1.ts` (+ `index.ts`, `introducedInVersion: '4.10.0'`, `dependsOn: sqlite-initial-schema-v1`, no backfill — `'[]'` reads as "no rotation on file") AND in the schema shape (`lib/schemas/chat.types.ts` +16, `docs/developer/DDL.md` +1, `lib/startup/prettify.ts` +1) → **a second D23 re-dump + boot ensure owed** beside the route trail's. Engine: NEW `lib/chat/turn-manager/cycle-order.ts` (232 lines — `resolveCycleOrder`, the SINGLE writer, called first by every "who is next" path: the chain loop, the first-responder resolver, the message finalizer, `?action=turn`, the autonomous-room handler; `computeCycleOrderAfterMessage` at the same write chokepoints that advance `spokenThisCycleParticipantIds` — a message landing, a skipped user turn, an LLM's "nothing to add" pass; mid-cycle cast changes REPAIRED not redrawn — a departed/archived seat skipped on read, a joiner appended; a one-character chat stores no rotation; the manual queue still jumps the line; a summoned character is struck from the remaining order), `weighted-random.ts` NEW (`pickWeightedRandom` moved out of `selection.ts`, still re-exported), `selection.ts` (+83/−… — the old one-at-a-time pick kept as the FALLBACK for a chat with no rotation on file), `turn-order.ts` (+63), `state.ts` (+55), `types.ts`, `queue.ts`, `utils.ts`, `index.ts`; `lib/database/repositories/chats-messages.ops.ts` (+26 — the strike at the message-landing chokepoint), `message-finalizer.service.ts` (+11), `orchestrator.service.ts` (+11), `participant-resolver.service.ts` (+12), `turn-orchestrator.service.ts` (+6), `lib/background-jobs/handlers/autonomous-room-turn.ts` (+11), `lib/chat/apply-chat-continuation.ts` (+7 — the column is NOT copied, presumably; measure), `app/api/v1/chats/[id]/actions/turn.ts` (+31). Client: `SalonView.tsx`, `app/salon/[id]/types.ts` — the sidebar's Participants list shows the STORED order ("position 3 now means third") instead of the talkativeness-sorted guess. Help: `chat-multi-character.md`, `chat-participants.md`, `chat-turn-manager.md` (+35) — re-vendor obligation (the count stays 123). Seeds: `cycle-order.test.ts` (444 lines), `turn-order.test.ts` (+87). v5 surfaces: the whole Phase-3 turn chain (`services/turn_manager/*` — selection, turn order, state, the weighted pick), `services/message_finalizer.rs`, `services/orchestrator.rs`, `services/participant_resolver.rs`, the turn-orchestrator, `chat_activity`/`chat_continuation`, the autonomous enclave `step()`, `api/salon.rs`'s `?action=turn`, the SPA's `chat/sidebar` participants list (P4.9h1) and the seed-once `impersonationSync`; the `turn_manager_equivalence` / `orchestrator_tier3` / `enclave_step_tier3` families MOVE; the weighted-random fidelity (`Math.random` sequence) is the port hazard — v4's tests will say how the permutation is drawn. **Not a convergence** (no bug number; the in-flight bug 131 that follows it was found by v4's own inspection of this commit's call sites). | ORDERED(P4.D171 substrate → P4.D172 server, read at the TIP with `d14da3a56` ∥ P4.D177 SPA; help → P4.D175) |
-| `d3f0ed133` | 2026-09-09 | doc: version update after feature changes merged in | NO-PORT? | `4.10.0-dev.16` → `4.10.0-dev.18` in the README badge, `package.json`, `packages/quilltap/package.json` and the lock's two version lines (the intermediate `-dev.10…17` steps rode the three PRs' own bumps). No ported comparand; both version fields agree on `main`, hazard (6) stays closed. | ORDERED(P4.D175 — NO-PORT ratification) |
-| `d14da3a56` | 2026-09-09 | Count a user-driven seat's talkativeness in the speaking order (bug 131) | PORT | **758 insertions / 21 files; the in-flight edit the last check recorded as dirt, now committed.** Six server paths each built their own `characterId → Character` map immediately before asking who speaks next, and **four built it from `getActiveCharacterParticipants` — a `@deprecated` alias for `getActiveLLMParticipants` that returns `controlledBy === 'llm'` seats only**, under a name that reads as the general case. A seat the human drives was therefore absent from the map: its talkativeness fell through to the 0.5 default (a per-chat override still worked), an archived character on it was never dropped from the rotation, and `?action=turn` reported it as `nextSpeakerName: null` / `"Unknown"`. No error, no log line, no missing turn — only a wrong probability. **Fix:** NEW `lib/chat/turn-manager/room-characters.ts` (103 lines — `loadRoomCharacters(repos, participants, {preloaded})` over `getPresentCharacterSeats` through ONE batched `repos.characters.findByIds`; seats whose character cannot be read are simply ABSENT from the map, which is `cycleCandidates`' documented contract; two log lines — a `debug` "[Turn Manager] Room characters loaded" `{seats, requested, resolved}` and a `warn` "[Turn Manager] Room seats with no readable character" `{requested, missing}`) exported from `turn-manager/index.ts`; all six selection sites call it — `turn-orchestrator.service.ts` (`shouldChainNext`; the map moves ABOVE the `if` and now also serves the two name lookups after it, replacing two more `findById` calls), `message-finalizer.service.ts` (`preloaded: [character]` — the seat that just spoke is seeded from the copy in hand, never re-read), `participant-resolver.service.ts` (built from `llmCandidates` before — correct for the pick, wrong for the room-wide draw it feeds first; the pick stays LLM-only via `selectNextSpeaker`'s argument), `orchestrator.service.ts` (`maybePauseForUserSeatTurn` — the ONE site that was already whole-room), `app/api/v1/chats/[id]/actions/turn.ts`, `lib/background-jobs/handlers/autonomous-room-turn.ts`; plus `loadAllParticipantData` (`participant-resolver.service.ts`), which built the same map by hand for PROMPT construction — **a behaviour change beyond the map's width: it used to throw `CharacterVaultUnavailableError` out of speaker selection (and out of the read-only `?action=turn` behind the participant sidebar) on an unreadable vault; the batched list overlay logs and DROPS instead**. `cycle-order.ts` gains a docblock saying why the narrow accessor is the wrong input. Eleven cases in `room-characters.test.ts` (254 lines) are the tier-1 seed; the talkativeness case measures a DIFFERENCE (300 draws loud vs 300 quiet) because at the 0.5 default the seat already leads a fifth of cycles. **v5 measurably HAS the bug** (measured at this check): `crates/quilltap-core/src/participant_filters.rs:127` carries the deprecated alias faithfully, and `services/turn_orchestrator.rs:512` + `:739` build the talkativeness map from it; `services/message_finalizer.rs:1632` and `services/participant_resolver.rs:247` run per-seat `characters_read::find_by_id` loops; `services/orchestrator.rs:800` is v5's already-whole-room site, matching v4's one correct one. The batched seam EXISTS — `db/characters_read.rs:346 find_by_ids` (P4.65) — so the port is a consolidation, not new plumbing. v5 surfaces: `select_speaker.rs`, `turn_order.rs`, the four services, `enclave/step.rs:623` + `enclave/announce.rs:284` (two more alias readers to assess), `api/salon.rs`'s `?action=turn`; families that MOVE: `turn_manager_equivalence`, `turn_pause_filters_equivalence` (which compares BOTH accessors by name), `orchestrator_tier3`, `enclave_step_tier3`. **Not a convergence** — v4's bug doc records it Found 2026-09-09 by inspection while reviewing `2aca73ad6`'s call sites; "v5 status: Not investigated". **Stacks on `2aca73ad6` and REWRITES its hunks — port from the tip (see §1).** | ORDERED(P4.D172 — with `2aca73ad6`, from the TIP ∥ P4.D177 SPA) |
-| `78b381a96` | 2026-09-09 | Fix bug 132: describe_image returned a generated image's label, not a description | PORT | **664 insertions / 17 files.** Two writers put a CAPTION in the column every reader treats as "what this picture shows": `lib/background-jobs/handlers/story-background.ts` stored ``Story background for: ${payload.sceneContext \|\| chat.title}`` on the `files` row AND passed the same string to `writeLanternBackgroundToMountStore` (the Scriptorium link), and `lib/background-jobs/handlers/character-avatar.ts` did the same with ``${character.name} — wardrobe portrait`` through `writeCharacterAvatarToVault`. `handleDescribeImage` (`lib/tools/handlers/doc-edit/photo-handlers.ts`) served `entry.description` FIRST, ahead of the generation prompt and the vision call — so a character asking what a backdrop showed was told the chat title, with `source: "stored-description"` and `Success`. **Fix, three parts:** (a) both jobs write `description: null` and OMIT it from the bridge call (the storage-write options), each with a why-comment naming bug 132; (b) `handleDescribeImage` reorders to prompt → stored → vision (`generationRevisedPrompt \|\| generationPrompt` first, matching `runGenerateImageDescription` in `lib/chat/file-attachment-fallback.ts`, which already had it that way), and when the answer is the prompt AND a stored description exists it rides along as a NEW optional output field `stored_description` with the formatted text gaining a `\n\nOn file: <stored>` tail; the log line gains `hasStoredDescription`; the `DescribeImageOutput` docblock and the source-order comments are rewritten; (c) NEW `migrations/scripts/clear-generated-image-placeholder-descriptions.ts` (199 lines, id `clear-generated-image-placeholder-descriptions-v1`, registered in `migrations/scripts/index.ts` + a `prettify.ts` PRETTY_LABEL) clears the two label shapes already on disk — `files.description` → NULL where `"source" = 'GENERATED'` AND `description LIKE 'Story background for: %' OR LIKE '% — wardrobe portrait'`; `doc_mount_file_links.description` → its `''` default under the same predicate gated on `originalMimeType LIKE 'image/%'` (the link side has no source column). **NO schema move** — a pure data heal, so the v5 shape is a boot ensure + ledger row (P4.D140/P4.D152), not a D23 re-dump. **v5 measurably HAS the bug** (measured at this check): `crates/quilltap-core/src/services/story_background_job.rs:839` formats `Story background for: {}` and `services/character_avatar_job.rs:365` formats `{character_name} — wardrobe portrait`; `tools/photo.rs` responds `stored-description` at `:970`, BEFORE the `generation-prompt` arm at `:989` and the `vision-call` arm at `:1009`. v5 surfaces: those two job modules, `tools/photo.rs`'s `handle_describe_image` + the `DescribeImageOutput` contract (P4.D106/P4.D107 — the tool's own tier-3/tool-wire families and the `describe_image` catalog entry move), `photos/auto_describe_attachment.rs`, `services/file_fallback.rs` (the sibling reader that already had the right order — verify v5's), the Scriptorium link writers, and the boot-heal ledger. `help/keep-image-tools.md` edited (+5/−3) — re-vendor obligation, count stays 123. Seeds: `doc-edit-handler-photos.test.ts` (+23) and a 202-line migration test. **Not a convergence** — v4's bug doc records it reported 2026-09-09 from v4's own Salon transcript (`story_background_1789958023065.webp` answering `"Story background for: Bite Order and Kisses"`); "v5 status: Not investigated". ⚠ **The 2026-08-24 dogfood pass proved v5's `stored-description` arm LIVE and green** — that proof was of the wrong behaviour, and the walk row should be re-read when this lands. | ORDERED(P4.D175; help → P4.D175) |
+| `cc65d6bfc` | 2026-09-09 | Fix bug 133: a moderated chat's story background could escalate to the uncensored provider | PORT | **The commit the previous §1 predicted from the dirty tree and pre-authorized as the `78b381a96` round's probe exception; it landed mid-round (15:51) and every lane proceeded on its pin.** Thirteen files: `lib/background-jobs/handlers/story-background.ts` (+77/−?), `lib/image-gen/appearance-resolution.ts`, `lib/tools/handlers/image-generation-handler.ts`, `help/dangerous-content.md` (+8/−?), `__tests__/unit/image-gen/appearance-resolution.test.ts`, `__tests__/…/story-background-uncensored-target.test.ts` (+124), `docs/CHANGELOG.md`, `docs/developer/bugs.md`, `docs/developer/bugs/fixed/bug-133-moderated-chat-image-escalation.md` (186 lines) + the four version-bump files (`4.10.0-dev.21` → `-dev.22`). v5 surfaces: `services/story_background_job.rs` (P4.D175's bug-132 writer 1 — the same file, edited again), the P4.9a/W4.7f image-gen surfaces (`image_generation` + the appearance-resolver family, both with tier-3 families), `help/dangerous-content.md` (re-vendor obligation — `help_tree_equivalence` reds against any oracle past `78b381a96`). Not a convergence. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -436,6 +256,29 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `78b381a96` twelve-commit drift catch-up round (2026-09-10, baseline
+  `25f534c0b` → `78b381a96`):** `5841a8c62` ABSORBED(P4.D171 substrate →
+  P4.D173 server ∥ P4.D177 SPA — the message route trail: the column through
+  every surface, the ONE recording chokepoint + twelve record sites + the
+  three empty-response arms v5 lacked, persistence + the `done` frame, the
+  64-row compose family, the badge under the avatar); `2aca73ad6` +
+  `d14da3a56` ABSORBED(P4.D171 substrate → P4.D172 server ∥ P4.D177 SPA — the
+  cycle's drawn rotation as an ORDERED draw source, the six selection sites
+  over the whole-room batched map [bug 131 — v5 measurably had it], the
+  strike, `?action=turn`'s `state.cycleOrder`, the participants-list
+  rotation; the §3 review fixed the finalizer's `{id,name}` preloaded stub);
+  `86d59660c` ABSORBED(P4.D174 server ∥ P4.D176 SPA — the Salon chat gallery
+  whole, `?download=1`, bugs 129/130; the §3 review flattened the 409's
+  riders); `4a9be9878` ABSORBED(P4.D175 server ∥ P4.D177 client — bug 128's
+  `memories` topic; bug 127 a convergence record); `78b381a96`
+  ABSORBED(P4.D175 — bug 132's writers, the prompt-first ladder, the boot
+  heal + ledger row, `help/**` at 123); `07eee4f4c`, `9fc664c94`,
+  `5fb6bedd6`, `df1a075e8`, `c0f9232af`, `d3f0ed133` NO-PORT-RATIFIED(P4.D175
+  — docs/version-only, with the evidence in the lane record; the twelve
+  retired specs MOVED in the `docs/v4/` mirror at unification). Round
+  record: `status-log.md` → "Round record — the `78b381a96` twelve-commit
+  drift catch-up round unification". The mid-round `cc65d6bfc` (bug 133)
+  stays in §3 UNPROCESSED.
 - **The `25f534c0b` progressions + bug-126 drift catch-up round (2026-09-09,
   baseline `2f4254b42` → `25f534c0b`):** `0587d1e96` ABSORBED(p4.d167 +
   p4.d168 + p4.d169 + p4.d170 — the whole character-progressions feature:

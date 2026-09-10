@@ -3316,10 +3316,59 @@ records THERE. Update this summary only when a phase or round completes.
   the activated beats' first runs. Gate: 541 test binaries / 3,065 / 0 / 1 ignored with the 38-variable env block, zero SKIP; the 24-family sweep 24/24 fresh from the pin (+ the engine family re-regenerated after the refine fix); Tier R 223 cases inside; clippy both feature sets; release build; ng 417 files / 6,887; full Playwright 302 / 3 / 0 (the three reds the documented P4.D161 / P4.d17 intermittents, 3/3 green by file in isolation; suite 300 → 305). Versions: core 0.0.857, harness 0.0.749, host 0.0.117, cli 0.0.20, web 0.0.132, SPA 0.5.690; tauri unchanged. 💸 the dogfood queue gains the
   whole feature on the Friday copy + a live hostname flip (human). Round
   record: `status-log.md`.
-- **Oracle baseline: `25f534c0b` (2026-09-08, v4 main — "fix: a hostname
-  change no longer makes the app kill its own database (bug 126)",
-  `4.10.0-dev.9`), adopted at the `25f534c0b` progressions + bug-126 drift
-  catch-up round unification (2026-09-09).**
+- **The `78b381a96` twelve-commit drift catch-up round (P4.D171 → {P4.D172
+  ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177): UNIFIED on main
+  (2026-09-10) — ALL SEVEN CLOSED; the oracle baseline MOVES to `78b381a96`
+  and the twelve-row drift debt is CLEARED** (the mid-round `cc65d6bfc`, bug
+  133, stays UNPROCESSED — the next round's one row; PIN REQUIRED until it
+  lands). Absorbed whole: the two schema moves as ONE D23 re-dump + both boot
+  ensures (P4.D171 — the substrate lane the stacked pair built on; its survey
+  correction STRUCK §C.2's chat-GET key: v4 never projects
+  `cycleOrderParticipantIds`, pinned both directions); the turn manager from
+  the TIP (P4.D172 — the ordered `DrawSource`, the six selection sites over
+  the whole-room batched map [bug 131, v5 measurably had it], the strike,
+  `?action=turn`'s `state.cycleOrder`, the alias census made executable);
+  the message route trail (P4.D173 — the ONE recording chokepoint, twelve
+  record sites + the three empty-response arms v5 lacked, persistence + the
+  `done` frame, a 64-row tier-1 compose family, the stacked lanes' fixture-
+  at-tip/oracle-at-`5841a8c62` split re-regenerated whole at unification);
+  the Salon chat gallery server half (P4.D174 — the nine-source enumerator
+  over a new committed `chat-gallery-{main,mount}.db`, the two dispatch-only
+  verbs, `?download=1` on all three byte routes, bug 130); bug 128's
+  `memories` topic + bug 132's writers/ladder/boot heal + `help/**` at 123
+  byte-identical + six NO-PORT ratifications (P4.D175); the gallery SPA
+  (P4.D176) and the Salon smalls SPA — the route-trail badge NET-NEW under
+  the avatar, the drawn rotation in the participants list, the `memories`
+  topic (P4.D177). **The §3 unification review (seven parallel readers, the
+  verdict owned at the unify) caught SIX blocking findings; THREE would have
+  shipped, all fixed red-first on the unify branch:** the finalizer seeded
+  `loadRoomCharacters` with `{id, name}` where v4 seeds the WHOLE responding
+  record and the preloaded copy WINS — so the character who just spoke drew
+  at the 0.5 default on every assistant turn, the primary production draw
+  site; the gallery 409's `relativePath`/`keptAt` rode `CoreError::details`,
+  which every transport renders NESTED where v4 answers four FLAT siblings —
+  and the family's own local renderer had flattened `details`, a shape no
+  transport had (the Taboo §3 class again); the SPA's turn effect re-seeded
+  the rotation from a chat-GET key neither app sends, on every send and
+  refetch, wiping the rotation the turn response had just set (activation
+  would have caught nothing — every beat asserts the post-turn state); and
+  a FOURTH, caught by the activated route-trail beat's first live run: the
+  orchestrator finalized from a pre-failover profile local, so after any
+  understudy recovery the row and the trail's answering entry named the seat
+  that fell over (pre-existing since P4.D135; v4 reads the streaming state's
+  copy — now re-read at both recovery sites). Also
+  fixed: the detail view's double delete confirm, the silent gallery-door
+  save, the undated/mis-gated ALREADY_SAVED sentence, the bare `Gallery`
+  label (v4 always numbers), the `[EmptyResponse] … retrying same provider`
+  warn the port dropped, the heal's usability probe that failed the BOOT
+  where v4 degrades, and a dozen smalls. Gate + versions: the round record
+  in `status-log.md` (core 0.0.874, harness 0.0.766, host 0.0.123, web
+  0.0.136, SPA 0.5.695). **Next: the bug-133 catch-up, then the round's
+  named OPEN items, then the owed dogfood pass** — `phase-4.md`.
+- **Oracle baseline: `78b381a96` (2026-09-09, v4 main — "Fix bug 132:
+  describe_image returned a generated image's label, not a description",
+  `4.10.0-dev.21`), adopted at the `78b381a96` twelve-commit drift catch-up
+  round unification (2026-09-10).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
