@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(help): re-vendor `dangerous-content.md` at v4 `cc65d6bfc` (bug 133)
+
+_Versions: host 0.0.124._
+
+A byte copy from the `cc65d6bfc` pin, verified against `git show cc65d6bfc:help/dangerous-content.md`. The reroute paragraph is rewritten ("but only for a chat already marked … with the prompt exactly as drafted"), and three paragraphs are new: that a moderated chat is never carried through that door and why, the remedy (set the chat Flagged or Uncensored rather than leaving the decision with a provider's safety filter), and the distinction between whether *this* picture goes through the uncensored door and whether such a door exists somewhere in settings.
+
+An edit, not an addition: the tree stays at 123 files, so no count literal moves. `quilltap-host`'s `build.rs` embeds `help/**`, hence its bump. `help_tree_equivalence` was red against the stale vendor at the tip pin and is green now; `help_docs_tier2`, `help_doc_sync`, `help_doc_chunking` and `help_tree_embed_guard` are all green.
+
 #### 2026-09-10 — feat(image-jobs): the six reroute-path log lines both handlers were missing (v4 `cc65d6bfc`, bug 133)
 
 _Versions: core 0.0.878._
