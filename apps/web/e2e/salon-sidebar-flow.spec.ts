@@ -269,13 +269,48 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
       'awaits P4.D171/P4.D172: cycleOrderParticipantIds + resolveCycleOrder + the ?action=turn state.cycleOrder carry.',
     );
 
+    // A FRESH chat, never the shared fixture rows: the first live run at
+    // unification measured that on a chat whose cycle is SPENT (every seat in
+    // `spokenThisCycleParticipantIds` — Group Expedition's fixture state) every
+    // `query` re-draws a NEW rotation (v4's own read-or-draw rule — the stored
+    // list holds nobody who can still speak), so the beat's draw and the
+    // page's own refresh never agreed, and in the full suite sibling specs
+    // had left too few active seats to draw over. A fresh two-seat chat has an
+    // unspent cycle: the first query draws AND persists, and the reload's
+    // refresh reads the same list back. The wire `chatUpdate` carries no cycle
+    // fields, so a reset through the API was not an option.
     const chatId = await (async () => {
       await page.goto('/salon');
       await maybeUnlock(page);
-      const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
-      await expect(card).toBeVisible({ timeout: 15_000 });
-      await card.click();
-      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('link', { name: 'New Chat' }).first().click();
+      await expect(page.getByRole('heading', { name: 'New Chat', exact: true })).toBeVisible();
+      await page.locator('.new-chat-character-picker button').first().click();
+      await expect(page.getByText('Speaks First')).toBeVisible();
+      const create = page.getByRole('button', { name: 'Create Chat' });
+      await expect(create).toBeEnabled();
+      await create.click();
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 20_000 });
+
+      // A second LLM seat through the Add-Character dialog (its picker is the
+      // one place a profile can be forced onto a seat).
+      await openSidebarSection(page, 'Participants');
+      await page.getByRole('button', { name: 'Add Character', exact: true }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByText('Add Character to Chat')).toBeVisible();
+      const tiles = dialog
+        .locator('.grid button')
+        .filter({ hasNotText: 'Create New NPC' })
+        .filter({ hasNotText: 'Summon from Lore' });
+      await expect(tiles.first()).toBeVisible({ timeout: 15_000 });
+      await tiles.first().click();
+      const picker = dialog.locator('#qt-add-character-profile');
+      await expect(picker).toBeVisible();
+      const firstLlm = await picker.locator('optgroup option').first().getAttribute('value');
+      await picker.selectOption(firstLlm!);
+      const add = dialog.getByRole('button', { name: 'Add Character', exact: true });
+      await expect(add).toBeEnabled();
+      await add.click();
+      await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
       return new URL(page.url()).pathname.split('/').pop()!;
     })();
 
@@ -298,7 +333,7 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     const activeLlmSeats = (getBody.data?.chat?.participants ?? []).filter(
       (p) => p.controlledBy === 'llm' && p.status === 'active',
     );
-    test.skip(activeLlmSeats.length < 2, 'Group Expedition needs at least two active LLM seats to draw a rotation over.');
+    test.skip(activeLlmSeats.length < 2, 'the fresh chat needs at least two active LLM seats to draw a rotation over.');
 
     // Distinct, descending talkativeness in roster order — the order a stale
     // client would draw if it ignored the rotation entirely.
