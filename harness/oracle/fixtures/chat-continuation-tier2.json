@@ -1,0 +1,333 @@
+{
+ "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+ "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+ "seedTimestamp": "2026-01-02T03:04:05.000Z",
+ "characterA": "aa000000-0000-4000-8000-0000000000ca",
+ "characterB": "bb000000-0000-4000-8000-0000000000cb",
+ "chats": [
+  {
+   "id": "51000001-0000-4000-8000-000000000001",
+   "title": "The previous chapter",
+   "participants": [
+    {
+     "id": "51aa0001-0000-4000-8000-0000000000a1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "51bb0001-0000-4000-8000-0000000000b1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [
+    {
+     "id": "51d00001-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "Where were we?",
+     "participantId": null
+    },
+    {
+     "id": "51d00002-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "At the archive door.",
+     "participantId": "51aa0001-0000-4000-8000-0000000000a1"
+    },
+    {
+     "id": "51d00003-0000-4000-8000-000000000103",
+     "role": "ASSISTANT",
+     "content": "A word in your ear.",
+     "participantId": "51aa0001-0000-4000-8000-0000000000a1",
+     "targetParticipantIds": [
+      "51bb0001-0000-4000-8000-0000000000b1"
+     ]
+    },
+    {
+     "id": "51d00004-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "The Host notes a change.",
+     "participantId": null,
+     "systemSender": "host",
+     "systemKind": "scenario-change",
+     "opaqueContent": "the opaque form",
+     "hostEvent": {
+      "kind": "scenario-change",
+      "participantId": "51bb0001-0000-4000-8000-0000000000b1"
+     }
+    },
+    {
+     "id": "51d00005-0000-4000-8000-000000000105",
+     "role": "ASSISTANT",
+     "content": "The understudy carried it.",
+     "participantId": "51bb0001-0000-4000-8000-0000000000b1",
+     "provider": "OPENAI",
+     "modelName": "gpt-stands-in",
+     "tokenCount": 42,
+     "promptTokens": 30,
+     "completionTokens": 12,
+     "routeTrail": [
+      {
+       "profileId": "51f00001-0000-4000-8000-0000000000f1",
+       "profileName": "Primary",
+       "provider": "ANTHROPIC",
+       "modelName": "m",
+       "via": "primary",
+       "outcome": "failed",
+       "trigger": "empty-response"
+      },
+      {
+       "profileId": "51f00002-0000-4000-8000-0000000000f2",
+       "profileName": "Understudy",
+       "provider": "OPENAI",
+       "modelName": "gpt-stands-in",
+       "via": "understudy",
+       "outcome": "answered"
+      }
+     ]
+    }
+   ],
+   "columns": {
+    "isPaused": true,
+    "lastTurnParticipantId": "51aa0001-0000-4000-8000-0000000000a1",
+    "activeTypingParticipantId": "51bb0001-0000-4000-8000-0000000000b1",
+    "impersonatingParticipantIds": "[\"51bb0001-0000-4000-8000-0000000000b1\"]",
+    "allLLMPauseTurnCount": 3,
+    "turnQueue": "[\"51bb0001-0000-4000-8000-0000000000b1\",\"51aa0001-0000-4000-8000-0000000000a1\"]",
+    "spokenThisCycleParticipantIds": "[\"51aa0001-0000-4000-8000-0000000000a1\"]",
+    "cycleOrderParticipantIds": "[\"51bb0001-0000-4000-8000-0000000000b1\",\"51aa0001-0000-4000-8000-0000000000a1\"]"
+   }
+  },
+  {
+   "id": "52000002-0000-4000-8000-000000000002",
+   "title": "The Librarian chapter",
+   "participants": [
+    {
+     "id": "52aa0002-0000-4000-8000-0000000000a2",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "52bb0002-0000-4000-8000-0000000000b2",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [
+    {
+     "id": "52d00001-0000-4000-8000-000000000201",
+     "role": "ASSISTANT",
+     "content": "Before the summary, one.",
+     "participantId": "52aa0002-0000-4000-8000-0000000000a2"
+    },
+    {
+     "id": "52d00002-0000-4000-8000-000000000202",
+     "role": "ASSISTANT",
+     "content": "Before the summary, two.",
+     "participantId": "52bb0002-0000-4000-8000-0000000000b2"
+    },
+    {
+     "id": "52d00003-0000-4000-8000-000000000203",
+     "role": "ASSISTANT",
+     "content": "An earlier Librarian summary.",
+     "participantId": null,
+     "systemSender": "librarian",
+     "systemKind": "summary"
+    },
+    {
+     "id": "52d00004-0000-4000-8000-000000000204",
+     "role": "ASSISTANT",
+     "content": "Between the summaries.",
+     "participantId": "52aa0002-0000-4000-8000-0000000000a2"
+    },
+    {
+     "id": "52d00005-0000-4000-8000-000000000205",
+     "role": "ASSISTANT",
+     "content": "The LATEST Librarian summary.",
+     "participantId": null,
+     "systemSender": "librarian",
+     "systemKind": "summary"
+    },
+    {
+     "id": "52d00006-0000-4000-8000-000000000206",
+     "role": "ASSISTANT",
+     "content": "After the summary.",
+     "participantId": "52bb0002-0000-4000-8000-0000000000b2"
+    }
+   ],
+   "columns": {}
+  },
+  {
+   "id": "53000003-0000-4000-8000-000000000003",
+   "title": "The half-cast chapter",
+   "participants": [
+    {
+     "id": "53aa0003-0000-4000-8000-0000000000a3",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "53bb0003-0000-4000-8000-0000000000b3",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [
+    {
+     "id": "53d00001-0000-4000-8000-000000000301",
+     "role": "ASSISTANT",
+     "content": "A stays.",
+     "participantId": "53aa0003-0000-4000-8000-0000000000a3"
+    },
+    {
+     "id": "53d00002-0000-4000-8000-000000000302",
+     "role": "ASSISTANT",
+     "content": "B goes.",
+     "participantId": "53bb0003-0000-4000-8000-0000000000b3"
+    },
+    {
+     "id": "53d00003-0000-4000-8000-000000000303",
+     "role": "ASSISTANT",
+     "content": "A whisper to B alone.",
+     "participantId": "53aa0003-0000-4000-8000-0000000000a3",
+     "targetParticipantIds": [
+      "53bb0003-0000-4000-8000-0000000000b3"
+     ]
+    },
+    {
+     "id": "53d00004-0000-4000-8000-000000000304",
+     "role": "ASSISTANT",
+     "content": "A whisper to both.",
+     "participantId": "53aa0003-0000-4000-8000-0000000000a3",
+     "targetParticipantIds": [
+      "53aa0003-0000-4000-8000-0000000000a3",
+      "53bb0003-0000-4000-8000-0000000000b3"
+     ]
+    },
+    {
+     "id": "53d00005-0000-4000-8000-000000000305",
+     "role": "ASSISTANT",
+     "content": "A Host event naming B.",
+     "participantId": null,
+     "systemSender": "host",
+     "systemKind": "scenario-change",
+     "hostEvent": {
+      "kind": "scenario-change",
+      "participantId": "53bb0003-0000-4000-8000-0000000000b3"
+     }
+    }
+   ],
+   "columns": {
+    "turnQueue": "[\"53bb0003-0000-4000-8000-0000000000b3\",\"53aa0003-0000-4000-8000-0000000000a3\"]",
+    "spokenThisCycleParticipantIds": "[\"53bb0003-0000-4000-8000-0000000000b3\"]",
+    "cycleOrderParticipantIds": "[\"53bb0003-0000-4000-8000-0000000000b3\",\"53aa0003-0000-4000-8000-0000000000a3\"]",
+    "lastTurnParticipantId": "53bb0003-0000-4000-8000-0000000000b3"
+   }
+  },
+  {
+   "id": "54000004-0000-4000-8000-000000000004",
+   "title": "The malformed chapter",
+   "participants": [
+    {
+     "id": "54aa0004-0000-4000-8000-0000000000a4",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [
+    {
+     "id": "54d00001-0000-4000-8000-000000000401",
+     "role": "ASSISTANT",
+     "content": "One line only.",
+     "participantId": "54aa0004-0000-4000-8000-0000000000a4"
+    }
+   ],
+   "columns": {
+    "turnQueue": "",
+    "spokenThisCycleParticipantIds": "[\"54aa0004-0000-4000-8000-0000000000a4\",17,null]",
+    "cycleOrderParticipantIds": "{\"not\":\"an array\"}",
+    "lastTurnParticipantId": "5a000000-0000-4000-8000-00000000dead"
+   }
+  },
+  {
+   "id": "61000001-0000-4000-8000-0000000000d1",
+   "title": "The next chapter",
+   "participants": [
+    {
+     "id": "61aa0001-0000-4000-8000-0000000000e1",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "61bb0001-0000-4000-8000-0000000000f1",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "62000002-0000-4000-8000-0000000000d2",
+   "title": "The next Librarian chapter",
+   "participants": [
+    {
+     "id": "62aa0002-0000-4000-8000-0000000000e2",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    },
+    {
+     "id": "62bb0002-0000-4000-8000-0000000000f2",
+     "character": "bb000000-0000-4000-8000-0000000000cb"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "63000003-0000-4000-8000-0000000000d3",
+   "title": "The half-cast next chapter",
+   "participants": [
+    {
+     "id": "63aa0003-0000-4000-8000-0000000000e3",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  },
+  {
+   "id": "64000004-0000-4000-8000-0000000000d4",
+   "title": "The malformed next chapter",
+   "participants": [
+    {
+     "id": "64aa0004-0000-4000-8000-0000000000e4",
+     "character": "aa000000-0000-4000-8000-0000000000ca"
+    }
+   ],
+   "messages": [],
+   "columns": {}
+  }
+ ],
+ "cases": [
+  {
+   "name": "basic_carryover",
+   "source": "51000001-0000-4000-8000-000000000001",
+   "destination": "61000001-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "librarian_anchor",
+   "source": "52000002-0000-4000-8000-000000000002",
+   "destination": "62000002-0000-4000-8000-0000000000d2"
+  },
+  {
+   "name": "half_cast_drops",
+   "source": "53000003-0000-4000-8000-000000000003",
+   "destination": "63000003-0000-4000-8000-0000000000d3"
+  },
+  {
+   "name": "malformed_turn_state",
+   "source": "54000004-0000-4000-8000-000000000004",
+   "destination": "64000004-0000-4000-8000-0000000000d4"
+  },
+  {
+   "name": "missing_source",
+   "source": "59999999-0000-4000-8000-000000009999",
+   "destination": "61000001-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "missing_destination",
+   "source": "51000001-0000-4000-8000-000000000001",
+   "destination": "69999999-0000-4000-8000-000000009999"
+  }
+ ]
+}
