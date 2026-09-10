@@ -62,7 +62,9 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 98 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT order).
+/// All 100 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
+/// order). The count, the order and `marshal_row`'s index table are pinned
+/// against the D23 dump by this module's `alignment_census` tests.
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
 /// `commonplaceRecallHistory` and `budgetMaxTurns` — its generateDDL/Zod-shape
 /// position.
@@ -455,4 +457,204 @@ pub fn find_core_whisper_overrides(
         rusqlite::Error::QueryReturnedNoRows => Ok(None),
         other => Err(other.into()),
     })
+}
+
+// ============================================================================
+// The index↔column alignment census (P4.88 — P4.D171's named OPEN item)
+// ============================================================================
+
+#[cfg(test)]
+mod alignment_census {
+    use super::ALL_COLUMNS;
+    use std::collections::BTreeSet;
+
+    /// This file's own source. [`super::marshal_row`] reads its row by POSITION
+    /// (`row.get(0)`, `row.get(1)`, …) into keys it names inline, so nothing but
+    /// the source itself relates an index to the column it is supposed to be.
+    /// The distinct-values fixture the read differential runs over can only
+    /// catch a swap between two columns whose seeded values happen to differ in
+    /// shape — two adjacent nullable TEXT columns, both NULL in the fixture,
+    /// swap silently.
+    const SOURCE: &str = include_str!("chats_read.rs");
+
+    /// The D23 dump — the single source of truth for the `chats` DDL.
+    const FRESH_SCHEMA: &str = include_str!("../services/provisioning/fresh_schema.json");
+
+    /// `marshal_row`'s body, by brace balance from its signature, with `//`
+    /// comment tails removed (a comment may carry a quoted word, and the pairing
+    /// below reads string literals).
+    fn marshal_row_body() -> String {
+        // First occurrence: the definition sits above this module. (The needle
+        // appears again in this function's own source, which is why the search
+        // is `find` rather than an exactly-once assert.)
+        let start = SOURCE
+            .find("fn marshal_row(row: &Row)")
+            .expect("marshal_row is defined in this file");
+        let open = start + SOURCE[start..].find('{').expect("marshal_row has a body");
+        let mut depth = 0usize;
+        let mut end = None;
+        for (offset, ch) in SOURCE[open..].char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = Some(open + offset);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let body = &SOURCE[open..end.expect("unbalanced braces in marshal_row")];
+        assert!(
+            !body.contains("#[cfg(test)]"),
+            "the scanned zone must be production code only"
+        );
+        body.lines()
+            .map(|line| match line.find("//") {
+                Some(at) => &line[..at],
+                None => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Every `("key", …row.get(N)…)` pairing in `marshal_row`, in source order.
+    ///
+    /// Every statement in that function names its JSON key BEFORE it reads the
+    /// row (`put_opt_string(&mut obj, "contextSummary", row.get(4)?)`,
+    /// `obj.insert("tags".into(), array_or_empty(row.get(6)?))`), so pairing each
+    /// `row.get` with the most recent quoted identifier is exact. A statement
+    /// written the other way round would show up as a mismatch, not as silence.
+    fn key_index_pairs() -> Vec<(usize, String)> {
+        let body = marshal_row_body();
+        let mut pairs: Vec<(usize, String)> = Vec::new();
+        let mut pending: Option<String> = None;
+        // `match_indices` yields char boundaries, and `marshal_row` carries no
+        // escaped quotes (asserted by the pairing below going even).
+        let quotes: Vec<usize> = body.match_indices('"').map(|(i, _)| i).collect();
+        assert_eq!(quotes.len() % 2, 0, "unbalanced string literals");
+        let mut literals: Vec<(usize, String)> = Vec::new();
+        for pair in quotes.chunks(2) {
+            literals.push((pair[0], body[pair[0] + 1..pair[1]].to_string()));
+        }
+        let reads: Vec<(usize, usize)> = body
+            .match_indices("row.get")
+            .filter_map(|(at, _)| {
+                let rest = &body[at + "row.get".len()..];
+                let paren = rest.find('(')?;
+                let close = paren + rest[paren..].find(')')?;
+                rest[paren + 1..close]
+                    .parse::<usize>()
+                    .ok()
+                    .map(|n| (at, n))
+            })
+            .collect();
+        let mut events: Vec<(usize, Option<String>, Option<usize>)> = Vec::new();
+        events.extend(literals.into_iter().map(|(at, s)| (at, Some(s), None)));
+        events.extend(reads.into_iter().map(|(at, n)| (at, None, Some(n))));
+        events.sort_by_key(|(at, _, _)| *at);
+        for (_, literal, index) in events {
+            match (literal, index) {
+                (Some(lit), _) => {
+                    if !lit.is_empty()
+                        && lit.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                        && lit.chars().all(|c| c.is_ascii_alphanumeric())
+                    {
+                        pending = Some(lit);
+                    }
+                }
+                (None, Some(n)) => {
+                    let key = pending
+                        .take()
+                        .unwrap_or_else(|| panic!("row.get({n}) with no key before it"));
+                    pairs.push((n, key));
+                }
+                _ => unreachable!(),
+            }
+        }
+        pairs
+    }
+
+    /// The `chats` column names from the D23 dump's `CREATE TABLE`.
+    fn schema_columns() -> Vec<String> {
+        let schema: serde_json::Value =
+            serde_json::from_str(FRESH_SCHEMA).expect("fresh_schema.json parses");
+        let ddl = schema["main"]
+            .as_array()
+            .expect("fresh_schema.json has a main partition")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .expect("the dump carries the chats DDL");
+        let inner = &ddl[ddl.find('(').unwrap() + 1..ddl.rfind(')').unwrap()];
+        inner
+            .lines()
+            .filter_map(|line| {
+                let t = line.trim();
+                t.strip_prefix('"')
+                    .and_then(|r| r.find('"').map(|e| r[..e].to_string()))
+            })
+            .collect()
+    }
+
+    fn selected_columns() -> Vec<String> {
+        ALL_COLUMNS
+            .split(',')
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty())
+            .collect()
+    }
+
+    /// The SELECT list names every column the D23 dump declares, and nothing
+    /// else. ORDER deliberately differs: `ALL_COLUMNS` follows the Zod field
+    /// order this port transcribed, which puts `answerConfirmationOverride` and
+    /// `turnSkippingEnabled` at the end where `generateDDL` interleaves them —
+    /// harmless, because an explicit SELECT list fixes the positions
+    /// `marshal_row` reads. What must never happen is a column in one and not
+    /// the other: a D23 re-dump that adds a column lands HERE first.
+    #[test]
+    fn all_columns_names_exactly_the_d23_dump_chats_columns() {
+        let selected: BTreeSet<String> = selected_columns().into_iter().collect();
+        let declared: BTreeSet<String> = schema_columns().into_iter().collect();
+        let missing: Vec<&String> = declared.difference(&selected).collect();
+        let extra: Vec<&String> = selected.difference(&declared).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "declared-but-unselected {missing:?}; selected-but-undeclared {extra:?}"
+        );
+        assert_eq!(selected_columns().len(), schema_columns().len());
+    }
+
+    /// …and every `row.get(N)` in `marshal_row` marshals the column at position
+    /// N of that SELECT list. Swapping two indices reddens this.
+    #[test]
+    fn marshal_row_reads_each_column_at_its_own_index() {
+        let cols = selected_columns();
+        let pairs = key_index_pairs();
+        assert_eq!(
+            pairs.len(),
+            cols.len(),
+            "one `row.get` per selected column ({} columns, {} reads)",
+            cols.len(),
+            pairs.len()
+        );
+        let mut indices: Vec<usize> = pairs.iter().map(|(i, _)| *i).collect();
+        indices.sort_unstable();
+        assert_eq!(
+            indices,
+            (0..cols.len()).collect::<Vec<_>>(),
+            "every index 0..{} read exactly once",
+            cols.len()
+        );
+        for (index, key) in &pairs {
+            assert_eq!(
+                key, &cols[*index],
+                "row.get({index}) is marshalled as {key:?} but SELECT position \
+                 {index} is {:?}",
+                cols[*index]
+            );
+        }
+    }
 }

@@ -347,6 +347,10 @@ mod tests {
     /// stores INTEGER 1/0 cells where a fresh-`generateDDL` table stores numeric
     /// TEXT. The first Friday dogfood run surfaced this: a strictly-`String`
     /// read errors with "Invalid column type Integer … isSilentMessage".
+    /// P4.88: `routeTrail` is NOT listed — every fixture in the tree gets the
+    /// two `78b381a96` columns from the ONE home,
+    /// [`crate::test_support::ensure_p4d171_columns`], so a re-dump moves them
+    /// in one place instead of seven.
     const MIGRATED_DDL: &str = "CREATE TABLE chat_messages (\
         id TEXT PRIMARY KEY, chatId TEXT, type TEXT, role TEXT, content TEXT, \
         rawResponse TEXT, tokenCount REAL, promptTokens REAL, completionTokens REAL, \
@@ -355,7 +359,7 @@ mod tests {
         reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
         dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage INTEGER, systemSender TEXT, \
         systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-        carinaMeta TEXT, pascalMeta TEXT, routeTrail TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
         pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \
@@ -366,6 +370,7 @@ mod tests {
     fn is_silent_reads_integer_cells_from_a_migrated_instance() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
         let insert = |id: &str, silent: Option<i64>, at: &str| {
             conn.execute(
                 "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
@@ -393,6 +398,7 @@ mod tests {
             &MIGRATED_DDL.replace("isSilentMessage INTEGER", "isSilentMessage TEXT"),
         )
         .unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
         conn.execute(
             "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
              isSilentMessage) VALUES ('m1', 'c1', 'message', 'ASSISTANT', 'hi', \

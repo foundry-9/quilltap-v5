@@ -121935,3 +121935,46 @@ the ledger row and BOTH metadata keys landed.
 its new test with `shape state: sqlite error: no such table:
 migrations_metadata` — the exact sentence P4.D175's boot-wiring test hit — while
 the other three stay green (they carry their own copies of the fix).
+
+### Unit A — the P4.D171 measurement gaps (Tier 1 item 3)
+
+**A2 — the `marshal_row` alignment census.** `db/chats_read.rs` gains a
+`#[cfg(test)] mod alignment_census` that reads `marshal_row`'s body out of the
+file's own source (brace-balanced from the signature, `//` tails stripped,
+asserted free of `#[cfg(test)]`) and pairs each `row.get(N)` with the JSON key
+named before it. Two tests: `ALL_COLUMNS` names exactly the `chats` columns
+`fresh_schema.json` declares, and every `row.get(N)` marshals the column at
+SELECT position N. Mutations: swapping indices 4 and 5 reddens the alignment
+test with `row.get(5) is marshalled as "contextSummary" but SELECT position 5 is
+"sillyTavernMetadata"`; dropping `cycleOrderParticipantIds` from `ALL_COLUMNS`
+reddens BOTH (`declared-but-unselected ["cycleOrderParticipantIds"]`).
+
+**⚠ An order premise corrected by measurement.** The order asked the census to
+assert `marshal_row`'s indices against "the `chats` column list from
+`fresh_schema.json` … the single source of truth". They do not agree, and need
+not: `ALL_COLUMNS` follows the Zod field order this port transcribed, which puts
+`answerConfirmationOverride` (dump position 58) and `turnSkippingEnabled` at the
+END of the SELECT. An explicit SELECT list fixes the positions `marshal_row`
+reads, so the ORDER difference is harmless — the census therefore compares the
+two as SETS (which catches a D23 re-dump adding a column v5 forgot to select)
+and pins the index table against `ALL_COLUMNS`. The `ALL_COLUMNS` doc comment
+said "All 98 columns"; the real count is 100, now stated and asserted.
+
+**A3 — the ensure sites folded.** The census turns up **four files, seven DDL
+strings** — not the seven files the order's list implies. `tests/common/mod.rs`
+and the web test venue (`crates/quilltap-web/tests/**`) carry NO `chats` /
+`chat_messages` DDL at all: grepped both for either column name and for `CREATE
+TABLE`, zero hits. The seven are `host_boot.rs` (the chats column array + two
+`chat_messages` strings), `enclave/lifecycle.rs` (chats), `enclave/step.rs`
+(chats + `CHAT_MESSAGES_DDL`), and `db/chats_messages_read.rs`
+(`MIGRATED_DDL`). Every one now builds the LEGACY shape and calls
+`test_support::ensure_p4d171_columns`; the tree-wide grep for `routeTrail TEXT`
+/ `cycleOrderParticipantIds TEXT` outside the two repair modules is now EMPTY.
+
+**A trap the fold removed.** `host_boot.rs`'s legacy-vintage builder derived its
+DDL as `chats_ddl().replace("cycleOrderParticipantIds TEXT, ", "")` — a
+`.replace` that silently becomes a no-op the moment that column's spelling or
+spacing moves, leaving `boot_heals_the_two_p4d171_columns_on_a_legacy_instance`
+passing against a fixture that never needed healing. The legacy shape is now the
+shared one, and that test opens the fixture and asserts BOTH columns are ABSENT
+before the boot.

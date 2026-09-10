@@ -1491,7 +1491,6 @@ mod tests {
             "allLLMPauseTurnCount REAL",
             "turnQueue TEXT",
             "spokenThisCycleParticipantIds TEXT",
-            "cycleOrderParticipantIds TEXT",
             "documentEditingMode INTEGER",
             "documentMode TEXT",
             "dividerPosition REAL",
@@ -1567,6 +1566,10 @@ mod tests {
             "answerConfirmationOverride TEXT",
             "turnSkippingEnabled INTEGER",
         ];
+        // P4.88: the two `78b381a96` columns are NOT listed here — every
+        // fixture gets them from the ONE home,
+        // `crate::test_support::ensure_p4d171_columns`, so a re-dump moves
+        // them in one place instead of seven.
         format!("CREATE TABLE chats ({});", cols.join(", "))
     }
 
@@ -1580,7 +1583,7 @@ mod tests {
         reasoningSegments TEXT, participantId TEXT, recoveryType TEXT, renderedHtml TEXT, \
         dangerFlags TEXT, targetParticipantIds TEXT, isSilentMessage TEXT, systemSender TEXT, \
         systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-        carinaMeta TEXT, pascalMeta TEXT, routeTrail TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+        carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
         pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, \
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \
@@ -1627,6 +1630,7 @@ mod tests {
             w.connection().execute_batch(CHAT_MESSAGES_DDL).unwrap();
             w.connection().execute_batch(BACKGROUND_JOBS_DDL).unwrap();
             w.connection().execute_batch(CHARACTERS_DDL).unwrap();
+            crate::test_support::ensure_p4d171_columns(w.connection());
         }
         {
             let _w = Writer::open_writable(&mount, PEPPER).unwrap();

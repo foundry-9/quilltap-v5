@@ -979,7 +979,6 @@ mod tests {
             "allLLMPauseTurnCount REAL",
             "turnQueue TEXT",
             "spokenThisCycleParticipantIds TEXT",
-            "cycleOrderParticipantIds TEXT",
             "documentEditingMode INTEGER",
             "documentMode TEXT",
             "dividerPosition REAL",
@@ -1055,6 +1054,10 @@ mod tests {
             "answerConfirmationOverride TEXT",
             "turnSkippingEnabled INTEGER",
         ];
+        // P4.88: the two `78b381a96` columns are NOT listed here — every
+        // fixture gets them from the ONE home,
+        // `crate::test_support::ensure_p4d171_columns`, so a re-dump moves
+        // them in one place instead of seven.
         format!("CREATE TABLE chats ({});", cols.join(", "))
     }
 
@@ -1067,6 +1070,7 @@ mod tests {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.connection().execute_batch(&chats_ddl()).unwrap();
+            crate::test_support::ensure_p4d171_columns(w.connection());
             w.connection()
                 .execute(
                     "INSERT INTO chats (id, userId, participants, title, chatType, runState, \

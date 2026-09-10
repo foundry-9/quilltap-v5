@@ -31,7 +31,33 @@ const BACKGROUND_JOBS_DDL: &str = "CREATE TABLE background_jobs (\
     maxAttempts REAL NOT NULL, lastError TEXT, scheduledAt TEXT NOT NULL, \
     startedAt TEXT, completedAt TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);";
 
-/// The full `chats` column set, loose types (the enclave self-tests' shape).
+/// The `chat_messages` + `memories` tables the enriched chat-list read (P4.6a)
+/// counts from, in the LEGACY shape — no `routeTrail`. `make_instance` adds it
+/// (with `chats.cycleOrderParticipantIds`) through the shared ensure; the legacy
+/// builder deliberately does not.
+const LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL: &str =
+    "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
+     content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
+     swipeGroupId TEXT, swipeIndex TEXT, attachments TEXT, debugMemoryLogs TEXT, \
+     thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
+     recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
+     systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
+     carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
+     pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
+     description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
+     createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
+     confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
+     CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);";
+
+/// The full `chats` column set, loose types (the enclave self-tests' shape) —
+/// **minus** the two `78b381a96` columns, which
+/// [`quilltap_core::test_support::ensure_p4d171_columns`] adds (P4.88: ONE home
+/// for those two, so a re-dump moves them in one place). This is therefore the
+/// LEGACY shape, which is what
+/// [`make_legacy_instance_missing_the_two_p4d171_columns`] wants verbatim; it
+/// used to derive that shape by `.replace`-ing the column back out of a modern
+/// DDL, which would have gone silently vacuous the moment the column's spelling
+/// or spacing moved.
 fn chats_ddl() -> String {
     let cols = [
         "id TEXT PRIMARY KEY",
@@ -59,7 +85,6 @@ fn chats_ddl() -> String {
         "allLLMPauseTurnCount REAL",
         "turnQueue TEXT",
         "spokenThisCycleParticipantIds TEXT",
-        "cycleOrderParticipantIds TEXT",
         "documentEditingMode INTEGER",
         "documentMode TEXT",
         "dividerPosition REAL",
@@ -149,21 +174,11 @@ fn make_instance(base: &Path) {
     // The enriched chat-list read (P4.6a) computes `_count` from these tables
     // (the full chat_messages column set the event marshaling SELECTs; empty here).
     w.connection()
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
-             content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
-             swipeGroupId TEXT, swipeIndex TEXT, attachments TEXT, debugMemoryLogs TEXT, \
-             thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
-             recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
-             systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-             carinaMeta TEXT, pascalMeta TEXT, routeTrail TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
-             pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
-             description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
-             createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
-             confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
-             CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);",
-        )
+        .execute_batch(LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL)
         .unwrap();
+    // P4.88: the modern shape is the legacy one plus the two `78b381a96`
+    // columns, added by the ONE helper every fixture uses.
+    quilltap_core::test_support::ensure_p4d171_columns(w.connection());
     w.connection()
         .execute(
             "INSERT INTO chats (id, userId, title, chatType, messageCount, createdAt, updatedAt) \
@@ -422,23 +437,9 @@ fn make_legacy_instance_missing_the_two_p4d171_columns(base: &Path) {
     std::fs::create_dir_all(&data).unwrap();
     let w = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
     w.connection().execute_batch(BACKGROUND_JOBS_DDL).unwrap();
-    let legacy_chats_ddl = chats_ddl().replace("cycleOrderParticipantIds TEXT, ", "");
-    w.connection().execute_batch(&legacy_chats_ddl).unwrap();
+    w.connection().execute_batch(&chats_ddl()).unwrap();
     w.connection()
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
-             content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
-             swipeGroupId TEXT, swipeIndex TEXT, attachments TEXT, debugMemoryLogs TEXT, \
-             thoughtSignature TEXT, reasoningContent TEXT, reasoningSegments TEXT, participantId TEXT, \
-             recoveryType TEXT, renderedHtml TEXT, dangerFlags TEXT, targetParticipantIds TEXT, \
-             systemSender TEXT, systemKind TEXT, opaqueContent TEXT, hostEvent TEXT, customAnnouncer TEXT, \
-             carinaMeta TEXT, pascalMeta TEXT, pendingExternalPrompt TEXT, pendingExternalPromptFull TEXT, \
-             pendingExternalAttachments TEXT, summaryAnchor TEXT, context TEXT, systemEventType TEXT, \
-             description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
-             createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
-             confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
-             CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);",
-        )
+        .execute_batch(LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL)
         .unwrap();
     w.connection()
         .execute(
@@ -472,6 +473,25 @@ fn column_names(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
 async fn boot_heals_the_two_p4d171_columns_on_a_legacy_instance() {
     let dir = tempfile::tempdir().unwrap();
     make_legacy_instance_missing_the_two_p4d171_columns(dir.path());
+    // P4.88: the legacy builder shares its DDL with `make_instance`, which adds
+    // the two columns through the shared ensure. Prove they are ABSENT before
+    // the boot, or the assertions below could pass on a fixture that never
+    // needed healing (the shape the old `.replace` derivation risked silently).
+    {
+        let w = Writer::open_writable(&dir.path().join("data/quilltap.db"), PEPPER).unwrap();
+        assert!(
+            !column_names(w.connection(), "chats")
+                .iter()
+                .any(|c| c == "cycleOrderParticipantIds"),
+            "the legacy fixture must not already carry the rotation column"
+        );
+        assert!(
+            !column_names(w.connection(), "chat_messages")
+                .iter()
+                .any(|c| c == "routeTrail"),
+            "the legacy fixture must not already carry the route-trail column"
+        );
+    }
 
     let mut config = base_config(dir.path());
     config.env_pepper = Some(PEPPER.to_string());

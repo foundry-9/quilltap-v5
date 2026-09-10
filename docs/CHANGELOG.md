@@ -265,6 +265,38 @@ cases that reach the room-character load — measured by withholding the two roo
 and re-running, which left the counter at its new value; it is the character, not
 the rooms, and both sides move together. No prompt byte, no DB row and no event
 of any pre-existing enclave case changed.
+#### 2026-09-10 — test(db): pin `marshal_row`'s index table against the D23 dump, and fold the seven hand-rolled P4.D171 ensure sites
+
+_Versions: core 0.0.876, host 0.0.124._
+
+P4.88 (A), P4.D171's two named OPEN measurement gaps.
+
+`chats_read` gains an `alignment_census`: one test asserts `ALL_COLUMNS` names
+exactly the `chats` columns `fresh_schema.json` declares (a D23 re-dump that
+adds a column lands there first), and one reads `marshal_row`'s body out of the
+file's own source and asserts every `row.get(N)` marshals the column at SELECT
+position N. Nothing else in the tree relates an index to its column: the
+distinct-values fixture can only catch a swap between two columns whose seeded
+values differ in shape, so two adjacent nullable TEXT columns, both NULL, swap
+silently. Mutations: swapping indices 4 and 5 reddens the alignment test;
+dropping a column from `ALL_COLUMNS` reddens both.
+
+Measured on the way, and recorded rather than "fixed": `ALL_COLUMNS` is NOT in
+D23-dump order. `answerConfirmationOverride` and `turnSkippingEnabled` sit at
+the end of the SELECT where `generateDDL` interleaves them. That is harmless —
+an explicit SELECT list fixes the positions `marshal_row` reads — so the census
+compares the two as SETS and says why.
+
+The seven hand-rolled test DDLs that carried the two `78b381a96` columns
+(`host_boot.rs` ×3, `enclave/lifecycle.rs`, `enclave/step.rs` ×2,
+`chats_messages_read.rs`) now build the LEGACY shape and call
+`test_support::ensure_p4d171_columns`, so a future column move has one home
+instead of seven. `host_boot.rs` gains the most: its legacy-vintage builder used
+to derive its DDL by `.replace`-ing the column back out of the modern one, which
+would have gone silently vacuous the moment that column's spelling or spacing
+moved — the legacy shape is now the shared one, and the vintage test asserts
+both columns are ABSENT before the boot that heals them.
+
 #### 2026-09-10 — fix(db): one home for the migrations-ledger tables, and drop the guard that could not heal a half-built one
 
 _Versions: core 0.0.876._
