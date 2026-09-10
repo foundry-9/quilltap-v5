@@ -244,8 +244,12 @@ fn first_diff(got: &str, want: &str) -> String {
 }
 
 /// The web-edge `(status, body)` for a `Response`. The error arm renders
-/// v4's body: `{error}` plus the `code` carrier and the `details` riders
-/// spread beside it — the shape §C.3 pins for the 409.
+/// v4's body: `{error}` plus the `code` carrier and — for the one refusal that
+/// carries them — the `ALREADY_SAVED` riders through the PRODUCTION home of
+/// that shape, `CoreError::already_saved_wire_body` (the same call the dispatch
+/// transport and the REST edge make), so this family measures what the wire
+/// sends. The §3 unification review of the `78b381a96` round found the
+/// previous local renderer flattening `details`, a shape no transport had.
 fn status_body(r: &Response) -> (u16, Value) {
     match r {
         Response::ChatMedia(v) => (200, v.clone()),
@@ -266,11 +270,9 @@ fn status_body(r: &Response) -> (u16, Value) {
             if let Some(code) = &e.code {
                 body.insert("code".into(), json!(code));
             }
-            if let Some(details) = &e.details {
-                if let Some(obj) = details.as_object() {
-                    for (k, v) in obj {
-                        body.insert(k.clone(), v.clone());
-                    }
+            if let Some(Value::Object(wire)) = e.already_saved_wire_body() {
+                for (k, v) in wire {
+                    body.insert(k, v);
                 }
             }
             (status, Value::Object(body))

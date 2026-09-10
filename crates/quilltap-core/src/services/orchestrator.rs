@@ -3099,6 +3099,8 @@ where
             id: character_id.clone(),
             name: character_name.clone(),
             aliases: character_aliases.clone(),
+            talkativeness: character.get("talkativeness").and_then(Value::as_f64),
+            archived_at: json_str(&character, "archivedAt"),
         };
         let finalizer_participant = FinalizerParticipant {
             id: character_participant_id.clone(),

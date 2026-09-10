@@ -1913,17 +1913,22 @@ export class SalonConversation {
 
   /**
    * Re-query the next speaker whenever the chat settles and no turn is
-   * running. Also seeds `turnState.cycleOrder` synchronously off the chat
-   * GET's raw `cycleOrderParticipantIds` (P4.D177 §C.2) so the sidebar shows
-   * the drawn rotation the instant the chat loads, ahead of the async
-   * `?action=turn` query below — which then refines it from `state.cycleOrder`
-   * once it resolves (the two sources named in the ruling; v5 has no
-   * `calculateTurnStateFromHistory` to recompute either one from scratch).
+   * running. The rotation's ONE live source is `state.cycleOrder` on every
+   * `?action=turn` response (`applyTurnResponse` below — the `query` action
+   * resolves and persists a cycle, so a fresh load gets it from the refresh).
+   * The chat-GET leg §C.2 named is DORMANT by design: P4.D171 measured that
+   * v4's chat GET never projects `cycleOrderParticipantIds` (its server
+   * whitelist was never written — `handlers/get.ts:572-629`), so v5's does
+   * not either, and this seed runs only if a server ever sends the key. It is
+   * gated on PRESENCE because this effect re-runs on every `chat()` and
+   * `busy()` emission: unconditionally seeding `parseCycleOrder(undefined)`
+   * (= `[]`) wiped the rotation the turn response had just set, on every send
+   * and every refetch — the §3 unification review of the `78b381a96` round.
    */
   private readonly _turnEffect = effect(() => {
     const chat = this.chat();
     const busy = this.busy();
-    if (chat) {
+    if (chat && chat.cycleOrderParticipantIds !== undefined) {
       const cycleOrder = parseCycleOrder(chat.cycleOrderParticipantIds);
       this.turnState.update((prev) => ({ ...prev, cycleOrder }));
     }

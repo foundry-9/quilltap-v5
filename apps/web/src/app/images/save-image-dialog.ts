@@ -193,7 +193,9 @@ export class SaveImageDialog {
   private readonly attachmentOverride = signal<string | null>(null);
   /** v4 `:82-84` — `target.fileId || imageAttachments[0]?.id || ''`. */
   protected readonly selectedAttachmentId = computed(
-    () => this.attachmentOverride() ?? this.target().fileId ?? this.imageAttachments()[0]?.id ?? '',
+    // v4 `:82-84` is `target.fileId || imageAttachments[0]?.id || ''` — an EMPTY
+    // `fileId` is falsy and falls through to the first image (JS `||`, not `??`).
+    () => this.attachmentOverride() ?? (this.target().fileId || this.imageAttachments()[0]?.id || ''),
   );
 
   protected readonly selectedAttachment = computed(
@@ -292,20 +294,22 @@ export class SaveImageDialog {
   /**
    * v4 `:157-168` — the album already holds these bytes is an ANSWER, not a
    * failure, and deserves to be said in those words. v4 detects it off the
-   * fetch response directly (`res.status === 409 || body.code ===
-   * 'ALREADY_SAVED'`) and formats `body.keptAt` into the sentence when
-   * present; v5's dispatch envelope exposes the refusal as `kind: 'conflict'`
-   * (409) on the CHAT leg (the message leg still answers 400 with the SAME
-   * `ALREADY_SAVED` code, per §C.3 — indistinguishable from any other 400 on
-   * the wire this dialog reads, so it falls to the server's own sentence).
-   * The keptAt-dated wording is NOT reproduced here — `CoreError` carries no
-   * `keptAt` field — so a conflict with no server message falls back to v4's
-   * undated sentence rather than inventing a date.
+   * response directly — `res.status === 409 || body.code === 'ALREADY_SAVED'`,
+   * so BOTH doors (the chat leg's 409 and the message leg's 400 carrying the
+   * same code, §C.3) — and formats `body.keptAt` into the sentence when the
+   * server sent one: `That picture is already in this album — it was filed
+   * there on <toLocaleDateString()>.` The dispatch envelope carries `code`
+   * and the `keptAt` rider on `CoreError` (the §3 unification review of the
+   * `78b381a96` round: the riders used to be nested where no client could
+   * read them, and this arm was gated on the chat leg alone).
    */
   private errorMessage(err: unknown): string {
     if (err instanceof CoreDispatchError) {
-      if (this.target().kind === 'chat' && err.kind === 'conflict') {
-        return err.message || 'That picture is already in this album.';
+      if (err.kind === 'conflict' || err.code === 'ALREADY_SAVED') {
+        const when = err.keptAt ? new Date(err.keptAt).toLocaleDateString() : null;
+        return when
+          ? `That picture is already in this album — it was filed there on ${when}.`
+          : 'That picture is already in this album.';
       }
       return err.message;
     }

@@ -118,8 +118,69 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
                 obj.insert(k, v);
             }
         }
+        // v4's ALREADY_SAVED 409 (`actions/save-image.ts:118-125`) answers four
+        // FLAT siblings — `{error, code, relativePath, keptAt}` — and the save
+        // dialog reads `body.code` / `body.keptAt` off the top level, so the
+        // riders merge beside the typed envelope the same way (P4.D174 §C.3;
+        // the §3 unification review of the `78b381a96` round caught them
+        // nested under `details`, unreachable by any client).
+        merge_already_saved_riders(e, &mut body);
     }
     (status, body)
+}
+
+/// The one place the dispatch wire flattens [`CoreError::already_saved`]:
+/// `CoreError::already_saved_wire_body`'s keys land beside the typed envelope.
+/// A no-op for every other error.
+fn merge_already_saved_riders(e: &quilltap_core::api::CoreError, body: &mut Value) {
+    if let (Some(obj), Some(Value::Object(wire))) =
+        (body.as_object_mut(), e.already_saved_wire_body())
+    {
+        for (k, v) in wire {
+            obj.insert(k, v);
+        }
+    }
+}
+
+#[cfg(test)]
+mod already_saved_wire_tests {
+    use super::*;
+    use quilltap_core::api::types::AlreadySavedRiders;
+
+    /// The §3 unification catch of the `78b381a96` round: the riders MUST be
+    /// flat siblings of `error`, never nested. Mutation: move them back onto
+    /// `details` (or drop the merge) and both assertions redden.
+    #[test]
+    fn the_already_saved_riders_land_flat_beside_error_and_code() {
+        let mut resp = Response::error(ErrorKind::Conflict, "already in this album");
+        if let Response::Error(e) = &mut resp {
+            e.code = Some("ALREADY_SAVED".into());
+            e.already_saved = Some(Box::new(AlreadySavedRiders {
+                relative_path: Some("Photos/marchpane.webp".into()),
+                kept_at: Some("2026-09-01T00:00:00.000Z".into()),
+            }));
+        }
+        let mut body = serde_json::to_value(&resp).unwrap();
+        let Response::Error(e) = &resp else { unreachable!() };
+        merge_already_saved_riders(e, &mut body);
+        assert_eq!(body["error"], "already in this album");
+        assert_eq!(body["code"], "ALREADY_SAVED");
+        assert_eq!(body["relativePath"], "Photos/marchpane.webp");
+        assert_eq!(body["keptAt"], "2026-09-01T00:00:00.000Z");
+        assert!(body.get("details").is_none(), "v4's 409 has no `details` key");
+        // The typed envelope still carries the riders for the SPA's reader.
+        assert_eq!(body["data"]["alreadySaved"]["keptAt"], "2026-09-01T00:00:00.000Z");
+    }
+
+    #[test]
+    fn a_plain_error_merges_nothing() {
+        let resp = Response::error(ErrorKind::BadRequest, "no");
+        let Response::Error(e) = &resp else { unreachable!() };
+        let mut body = serde_json::to_value(&resp).unwrap();
+        let before = body.clone();
+        merge_already_saved_riders(e, &mut body);
+        assert_eq!(body, before);
+    }
 }
 
 pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {

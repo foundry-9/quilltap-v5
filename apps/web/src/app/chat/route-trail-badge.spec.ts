@@ -111,13 +111,14 @@ describe('RouteTrailBadge', () => {
     ).not.toBeNull();
   });
 
-  // v4's component returns `null` for an empty trail; an Angular component
-  // always renders its own host, so the caller (`message-row.ts`) is the one
-  // that never mounts this component on an empty array — here we can only
-  // measure that an empty trail produces an empty list.
-  it('renders an empty list for an empty trail', () => {
+  // v4 `:34` — `if (rows.length === 0) return null`: no list, no aria-label,
+  // nothing for a screen reader to announce. (The host element itself is
+  // Angular's; the caller in `message-row.ts` never mounts this on an empty
+  // array anyway.) The §3 unification review of the `78b381a96` round restored
+  // v4's case from a weakened "renders an empty list" transcription.
+  it('renders nothing for an empty trail', () => {
     const fixture = render([]);
-    const list = fixture.nativeElement.querySelector('[aria-label="Models tried for this reply"]') as HTMLElement;
-    expect(list.querySelectorAll('li')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelector('[aria-label="Models tried for this reply"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('ul')).toBeNull();
   });
 });

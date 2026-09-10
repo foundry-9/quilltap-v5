@@ -225,9 +225,9 @@ pub mod headshoulders_backfill_job;
 // === end P4.82 ===
 // === P4.83: the built-in prompt-template (Sample Prompts) seeder ===
 pub mod builtin_prompt_templates;
+// === end P4.83 ===
 // === P4.D173 ===
 /// The route trail — the only writer of `StreamingState.route_failures` /
 /// `route_via` and the only composer of the persisted `routeTrail` column.
 pub mod route_trail;
 // === end P4.D173 ===
-// === end P4.83 ===

@@ -240,6 +240,13 @@ fn walk_message_attachments(
                         mount_point_id: mount_link.mount_point_id.clone(),
                         relative_path: mount_link.relative_path.clone(),
                         has_blob: true,
+                        // v4 `:198` is `blob.sha256 ?? mountLink.sha256 ?? null` —
+                        // NULLISH, so a stored empty-string blob hash would survive
+                        // as `''` there where this filter falls through to the
+                        // link's. Recorded, not matched: no fixture stores `''`
+                        // (the column is written from a real digest), and the
+                        // walk is shared with the chat files listing whose bytes
+                        // this round proved unchanged.
                         sha256: Some(blob.sha256).filter(|s| !s.is_empty()).or(link_sha),
                     });
                     seen.insert(mount_link.id);
@@ -820,9 +827,13 @@ fn pass_cast_portraits(
             .get("name")
             .and_then(Value::as_str)
             .unwrap_or_default();
+        // v4 `chat-gallery.ts:591`: `(relativePath ? basename(relativePath) :
+        // null) ?? \`${name}.webp\`` — an EMPTY path is falsy and takes the
+        // fallback (the §3 unification review of the `78b381a96` round).
         let filename = resolved
             .relative_path
             .as_deref()
+            .filter(|p| !p.is_empty())
             .map(posix_basename)
             .unwrap_or_else(|| format!("{character_name}.webp"));
 

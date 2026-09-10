@@ -291,6 +291,18 @@ where
         if let Some(p) = state.effective_profile.as_ref() {
             tried_profile_ids.push(p.id.clone());
         }
+        // v4 `provider-failover.service.ts:162` — the retry is announced BEFORE
+        // the status frame, with the seat about to be asked again. The one
+        // `[EmptyResponse]` line the port still dropped (the §3 unification
+        // review of the `78b381a96` round; the finding-#103/#110 class).
+        if let Some(p) = state.effective_profile.as_ref() {
+            tracing::warn!(
+                chat_id = %chat_id,
+                provider = %p.provider,
+                model = %p.model_name,
+                "[EmptyResponse] Empty response from provider that passed moderation, retrying same provider"
+            );
+        }
 
         sink.emit(ChatEvent::status(StatusPayload {
             stage: "retrying".into(),

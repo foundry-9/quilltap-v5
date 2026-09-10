@@ -31,6 +31,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ProviderModelBadge],
   template: `
+    @if (rows().length) {
     <ul class="flex flex-col items-center gap-0.5" aria-label="Models tried for this reply">
       @for (row of rows(); track row.profileId + '-' + $index) {
         <li class="inline-flex items-center gap-1">
@@ -57,6 +58,7 @@ import {
         </li>
       }
     </ul>
+    }
   `,
 })
 export class RouteTrailBadge {

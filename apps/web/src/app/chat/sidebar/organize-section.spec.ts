@@ -89,7 +89,7 @@ describe('OrganizeSection', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows Copy ID, State and Gallery (unnumbered, chatGallery unimplemented) — and Edit Enclave only for an autonomous room', async () => {
+  it('shows Copy ID, State and Gallery (numbered from the first paint — v4 ChatSidebar.tsx:1676) — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
     expect(labels(fixture)).toEqual([
       'Copy ID',
@@ -98,7 +98,7 @@ describe('OrganizeSection', () => {
       'Merge In…',
       'Export',
       'Export Markdown',
-      'Gallery',
+      'Gallery (0)',
     ]);
 
     fixture.componentInstance.isAutonomousRoom.set(true);
@@ -111,7 +111,7 @@ describe('OrganizeSection', () => {
       'State…',
       'Export',
       'Export Markdown',
-      'Gallery',
+      'Gallery (0)',
     ]);
   });
 
@@ -120,7 +120,7 @@ describe('OrganizeSection', () => {
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
 
-    for (const label of ['Edit Enclave', 'Rename', 'State…', 'Gallery']) {
+    for (const label of ['Edit Enclave', 'Rename', 'State…', 'Gallery (0)']) {
       const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
         (b) => (b as HTMLButtonElement).textContent!.trim() === label,
       ) as HTMLButtonElement;
@@ -208,12 +208,12 @@ describe('OrganizeSection', () => {
       expect(labels(fixture)).toContain('Gallery (0)');
     });
 
-    it('an UNKNOWN verb (chatGallery not yet implemented) renders the entry unnumbered, not gated away', async () => {
+    it('a FAILED chatGallery read still renders the entry, numbered 0 — v4 ChatSidebar.tsx:1563 defaults galleryCount to 0, never gates', async () => {
       const fixture = await render(stubClient('error'));
-      // The entry still renders — v4's ungated post-bug-129 shape — just with
-      // no number, rather than claiming a count it does not have.
-      expect(labels(fixture)).toContain('Gallery');
-      expect(labels(fixture)).not.toContain('Gallery (0)');
+      // The entry still renders — v4's ungated post-bug-129 shape — with v4's
+      // default count rather than a bare label (the §3 unification review of
+      // the `78b381a96` round retired the bare `Gallery` fallback).
+      expect(labels(fixture)).toContain('Gallery (0)');
     });
   });
 });

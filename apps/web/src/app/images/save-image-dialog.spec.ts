@@ -127,6 +127,65 @@ describe('SaveImageDialog', () => {
     });
   });
 
+  // v4 `:157-168` — `res.status === 409 || body.code === 'ALREADY_SAVED'`: BOTH
+  // doors, and `body.keptAt` formatted into the sentence when present. The §3
+  // unification review of the `78b381a96` round: the arm was gated on the chat
+  // leg alone and the riders were unreachable, so neither sentence could show.
+  it('says "already in this album", dated, when the chat leg answers 409 with keptAt', async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: {
+          kind: 'conflict',
+          message: 'Image already saved to this album',
+          code: 'ALREADY_SAVED',
+          alreadySaved: { relativePath: 'photos/x.webp', keptAt: '2026-09-01T12:00:00.000Z' },
+        },
+      }),
+      { kind: 'chat', fileId: 'file-1' },
+    );
+    (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const when = new Date('2026-09-01T12:00:00.000Z').toLocaleDateString();
+    expect(fixture.nativeElement.textContent).toContain(
+      `That picture is already in this album — it was filed there on ${when}.`,
+    );
+  });
+
+  it('says "already in this album" (undated) when the MESSAGE leg answers 400 with the same code', async () => {
+    const fixture = await render(
+      stubClient({ requests: [] }, albums(), {
+        type: 'error',
+        data: { kind: 'badRequest', message: 'Image already saved to this album', code: 'ALREADY_SAVED' },
+      }),
+    );
+    (fixture.nativeElement.querySelector('.qt-dialog-footer button:last-child') as HTMLButtonElement).click();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(fixture.nativeElement.textContent).toContain('That picture is already in this album.');
+    expect(fixture.nativeElement.textContent).not.toContain('filed there on');
+  });
+
+  // v4 `:82-84` is `target.fileId || imageAttachments[0]?.id || ''` — JS `||`,
+  // so an EMPTY fileId falls through to the first image.
+  it('falls through to the first attachment when target.fileId is an empty string', async () => {
+    // Two attachments so the picker renders (a single one hides it); the FIRST
+    // must be the selected one, not "nothing" — a `??` would have kept ''.
+    const two: MessageAttachment = { ...IMG, id: 'file-2', filename: 'two.png' };
+    const fixture = await render(
+      stubClient({ requests: [] }, albums()),
+      { kind: 'chat', fileId: '' },
+      [IMG, two],
+    );
+    const selected = fixture.nativeElement.querySelector('.qt-chat-attachment-button.ring-2');
+    expect(selected?.getAttribute('title')).toBe(IMG.filename);
+  });
+
   it('pre-selects the attachment from target.fileId (v4 :82-84)', async () => {
     const two: MessageAttachment = { ...IMG, id: 'file-2', filename: 'two.png' };
     const fixture = await render(

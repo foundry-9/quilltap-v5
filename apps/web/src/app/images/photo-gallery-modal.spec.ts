@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { coreStreamStub } from '../core/core-client.testing';
 import type { ChatGalleryEntry, ChatGallerySource, ChatGalleryResult } from '../core/core-contract';
+import { ToastService } from '../ui/toast.service';
 import { PhotoGalleryModal } from './photo-gallery-modal';
 
 function entry(over: Partial<ChatGalleryEntry> = {}): ChatGalleryEntry {
@@ -283,7 +284,28 @@ describe('PhotoGalleryModal', () => {
         expect(document.querySelector('qt-save-image-dialog')).toBeTruthy();
       });
 
+      // v4 `PhotoGalleryModal.tsx:566-568` — `onSaved` flashes `Saved to ${mountPoint}`
+      // and invalidates (the message door already had it; the gallery door's was
+      // silent — the §3 unification review of the `78b381a96` round).
+      it("flashes `Saved to <mount>` when the gallery door's dialog reports a save", async () => {
+        const fixture = await render(stubClient({ entries: [entry({ id: 'f-1' })] }));
+        (document.querySelector('[title="Save to a photo album"]') as HTMLButtonElement).click();
+        await flush(fixture);
+        const comp = fixture.componentInstance as unknown as {
+          handleSaved: (info: { mountPoint: string; relativePath: string }) => void;
+        };
+        comp.handleSaved({ mountPoint: 'Quilltap General', relativePath: 'photos/x.webp' });
+        await flush(fixture);
+        const toasts = TestBed.inject(ToastService).toasts().map((t) => t.message);
+        expect(toasts).toContain('Saved to Quilltap General');
+        expect(document.querySelector('qt-save-image-dialog')).toBeNull();
+      });
+
       it("delete double-guard: a non-deletable OR link-kind entry sends NO request even if forced", async () => {
+        // Confirm answers YES so the guard, not the dialog, is what stops the
+        // request (jsdom's unstubbed `confirm` is falsy and would make the
+        // `idKind` half of the mutation vacuous — the §3 unification review).
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
         const seen: { type: string }[] = [];
         const fixture = await render(
           stubClient({

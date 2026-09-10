@@ -174,19 +174,31 @@ pub fn clear_generated_image_placeholder_descriptions(
     // and an error THERE is warned about and read as "nothing to do".
     let files_to_clear = count_where(main, "files", &files_where())?;
     if files_to_clear == 0 {
-        let links_present = match (mount, links_table_usable(mount)?) {
-            (Some(mount), true) => match count_where(mount, "doc_mount_file_links", &links_where())
-            {
-                Ok(n) => n > 0,
-                Err(e) => {
-                    tracing::warn!(
-                        context = %context,
-                        error = %e,
-                        "Could not inspect mount-index links for placeholder descriptions"
-                    );
-                    false
+        // v4 puts the usability probe AND the count inside ONE `try`
+        // (`clear-generated-image-placeholder-descriptions.ts:96-108`), so a
+        // throw from either reads as "nothing to do" — never a failed boot.
+        let links_present = match (mount, links_table_usable(mount)) {
+            (Some(mount), Ok(true)) => {
+                match count_where(mount, "doc_mount_file_links", &links_where()) {
+                    Ok(n) => n > 0,
+                    Err(e) => {
+                        tracing::warn!(
+                            context = %context,
+                            error = %e,
+                            "Could not inspect mount-index links for placeholder descriptions"
+                        );
+                        false
+                    }
                 }
-            },
+            }
+            (Some(_), Err(e)) => {
+                tracing::warn!(
+                    context = %context,
+                    error = %e,
+                    "Could not inspect mount-index links for placeholder descriptions"
+                );
+                false
+            }
             _ => false,
         };
         if !links_present {
@@ -220,7 +232,21 @@ pub fn clear_generated_image_placeholder_descriptions(
     // SILENT; only a genuine failure warns.
     let mut links_cleared = 0usize;
     let mut links_skipped = false;
-    match (mount, links_table_usable(mount)?) {
+    // The probe sits INSIDE v4's `try` (`:150-172`) with the count and the
+    // UPDATE, so its failure is the same swallowed, warned, `linksSkipped` arm.
+    let usable = match links_table_usable(mount) {
+        Ok(u) => u,
+        Err(e) => {
+            links_skipped = true;
+            tracing::warn!(
+                context = %context,
+                error = %e,
+                "Could not clear placeholder descriptions on mount-index links"
+            );
+            false
+        }
+    };
+    match (mount, usable) {
         (Some(mount), true) => {
             match count_where(mount, "doc_mount_file_links", &links_where()).and_then(|n| {
                 if n == 0 {
@@ -325,4 +351,57 @@ fn links_table_usable(mount: Option<&Connection>) -> Result<bool, DbError> {
 fn count_where(conn: &Connection, table: &str, whr: &str) -> Result<usize, DbError> {
     let sql = format!("SELECT COUNT(*) AS n FROM \"{table}\" WHERE {whr}");
     Ok(conn.query_row(&sql, [], |r| r.get::<_, i64>(0))? as usize)
+}
+
+#[cfg(test)]
+mod unify_review_tests {
+    use super::*;
+
+    /// The §3 unification review of the `78b381a96` round: `links_table_usable`
+    /// used to propagate with `?` on both legs while v4 keeps the probe inside
+    /// the same `try` as the count (`clear-generated-image-placeholder-
+    /// descriptions.ts:96-108`, `:150-172`) — so an unreadable mount index
+    /// DEGRADED the sweep in v4 and FAILED THE BOOT in v5. Forced here with a
+    /// mount whose schema read is refused (an exclusive lock held by a sibling
+    /// connection with a zero busy timeout), the only way to make the probe
+    /// itself error rather than the count it guards.
+    #[test]
+    fn an_unreadable_mount_index_degrades_the_sweep_instead_of_failing_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount_path = dir.path().join("mount.db");
+        let holder = rusqlite::Connection::open(&mount_path).unwrap();
+        holder
+            .execute_batch(
+                "CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY, description TEXT, originalMimeType TEXT);",
+            )
+            .unwrap();
+        let mount = rusqlite::Connection::open(&mount_path).unwrap();
+        mount.busy_timeout(std::time::Duration::from_millis(0)).unwrap();
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, source TEXT, description TEXT, updatedAt TEXT);
+             INSERT INTO files VALUES ('f1', 'GENERATED', 'Story background for: X', '2026-01-01T00:00:00.000Z');",
+        )
+        .unwrap();
+        // Hold the file exclusively so the second connection's schema read fails.
+        holder.execute_batch("BEGIN EXCLUSIVE").unwrap();
+        assert!(
+            links_table_usable(Some(&mount)).is_err(),
+            "the probe itself must error under the lock for this test to mean anything"
+        );
+        let outcome = clear_generated_image_placeholder_descriptions(
+            &main,
+            Some(&mount),
+            "2026-09-10T00:00:00.000Z",
+        )
+        .expect("an unreadable mount index must not fail the pass");
+        match outcome {
+            PlaceholderHealOutcome::Ran { files_cleared, links_cleared, links_skipped } => {
+                assert_eq!(files_cleared, 1);
+                assert_eq!(links_cleared, 0);
+                assert!(links_skipped, "the link leg is skipped, as v4's catch does");
+            }
+            other => panic!("expected Ran, got {other:?}"),
+        }
+    }
 }

@@ -195,9 +195,9 @@ pub fn materialize_characters_instance() -> tempfile::TempDir {
 /// `FIXTURE_USER` is rewritten to the engine's single user). Used by the
 /// help-docs / help-chats
 /// web-edge tests. NOTE: booting a host over it runs the boot-time help-docs
-/// ensure, which syncs the EMBEDDED 121-file tree into `help_docs` — the
+/// ensure, which syncs the EMBEDDED 123-file tree into `help_docs` — the
 /// fixture's 17 rows are all shipped files, so they survive (content hashes
-/// agree) and 103 more are created.
+/// agree) and 106 more are created.
 #[allow(dead_code)]
 pub fn materialize_help_chat_instance() -> tempfile::TempDir {
     let base = tempfile::tempdir().expect("tempdir");

@@ -611,6 +611,16 @@ fn core_response_to_http(resp: CoreResponse, success_status: StatusCode) -> Axum
             if let Some(character_id) = e.character_id {
                 body.insert("characterId".to_string(), json!(character_id));
             }
+            // v4's ALREADY_SAVED riders (P4.D174 §C.3) — `{relativePath, keptAt}`
+            // flat beside `error`/`code`, absent keys absent.
+            if let Some(riders) = e.already_saved {
+                if let Some(p) = riders.relative_path {
+                    body.insert("relativePath".to_string(), json!(p));
+                }
+                if let Some(k) = riders.kept_at {
+                    body.insert("keptAt".to_string(), json!(k));
+                }
+            }
             (
                 status,
                 [("content-type", "application/json")],

@@ -121,11 +121,18 @@ fn ser_outcome<S: Serializer>(v: &RouteAttemptOutcome, s: S) -> Result<S::Ok, S:
     s.serialize_str(v.as_str())
 }
 fn ser_trigger<S: Serializer>(v: &Option<FallbackTrigger>, s: S) -> Result<S::Ok, S::Error> {
-    // Only reached when the key is present (`skip_serializing_if`).
-    s.serialize_str(v.expect("serialized only when present").as_str())
+    // Only reached when the key is present (`skip_serializing_if`) — but a
+    // persistence-path serializer must not be one attribute away from a panic.
+    match v {
+        Some(t) => s.serialize_str(t.as_str()),
+        None => s.serialize_none(),
+    }
 }
 fn ser_evidence<S: Serializer>(v: &Option<RouteAttemptEvidence>, s: S) -> Result<S::Ok, S::Error> {
-    s.serialize_str(v.expect("serialized only when present").as_str())
+    match v {
+        Some(e) => s.serialize_str(e.as_str()),
+        None => s.serialize_none(),
+    }
 }
 
 /// One call (or one skipped-before-calling candidate) against one connection
@@ -212,8 +219,8 @@ impl<'a> From<&'a crate::llm_fallback::FallbackProfile> for RouteSeat<'a> {
 ///
 /// `String.prototype.slice` counts UTF-16 units, so an astral character
 /// straddling the boundary is split into a lone surrogate in v4. `utf16_truncate`
-/// is the ported twin (it stops at the last whole code point rather than
-/// emitting an unpaired surrogate, which is the only representable choice in
+/// is the ported twin: it takes the same UTF-16 prefix and answers U+FFFD for
+/// the split pair (`String::from_utf16_lossy`), which is the only representable
 /// Rust — the corpus carries an astral-boundary row so the divergence, if any,
 /// is measured rather than assumed).
 pub fn truncate_detail(detail: Option<&str>) -> Option<String> {

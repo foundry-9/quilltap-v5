@@ -4,15 +4,15 @@
 //! Three pins over a REAL fresh-provisioned instance:
 //!
 //!   1. **The boot ensure runs.** `Host::start` alone leaves `help_docs` at the
-//!      shipped tree's 122 rows with their section chunks — the
+//!      shipped tree's 123 rows with their section chunks — the
 //!      `ensure_help_docs_synced` call in `assemble` (v4's LAZY
 //!      `HelpSearch.loadFromDatabase()` path, run EAGERLY here). Removing that
 //!      call reads 0 (the lane record's mutation).
 //!   2. **A second boot writes nothing.** The `contentHash` short-circuit: every
-//!      row keeps its `updatedAt`, and the count stays 122.
+//!      row keeps its `updatedAt`, and the count stays 123.
 //!   3. **`EMBEDDING_REINDEX_ALL` re-syncs from the EMBEDDED table.** With the
 //!      table emptied by hand, one reindex-all job pumped through the host's
-//!      registry restores all 122 rows. Tests run with cwd = the crate dir,
+//!      registry restores all 123 rows. Tests run with cwd = the crate dir,
 //!      which has NO `help/` — so restoring the retired `current_dir()` walk in
 //!      the registration reads an empty tree and leaves 0 rows (the lane
 //!      record's second mutation).

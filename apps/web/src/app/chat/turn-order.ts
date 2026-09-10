@@ -45,10 +45,13 @@ export interface TurnState {
   /**
    * The whole cycle's speaking order, drawn once up front and followed seat by
    * seat (v4 `TurnState.cycleOrder`, P4.D177 — the client mechanism divergence:
-   * v5's SPA has no `calculateTurnStateFromHistory`, so this is set from the
-   * chat GET's raw `cycleOrderParticipantIds` string (see
-   * {@link parseCycleOrder}) and from `?action=turn`'s `state.cycleOrder` on
-   * every turn response, never recomputed client-side. Empty when the current
+   * v5's SPA has no `calculateTurnStateFromHistory`, so this is set from
+   * `?action=turn`'s `state.cycleOrder` on every turn response (the ONE live
+   * source — a fresh load's `query` refresh resolves and returns it) and
+   * never recomputed client-side. The chat-GET leg ({@link parseCycleOrder}
+   * over the raw `cycleOrderParticipantIds` string) is DORMANT: P4.D171
+   * measured that v4's chat GET never projects the key, so neither does v5's,
+   * and the seed fires only if a server ever sends it. Empty when the current
    * cycle has not drawn a rotation yet, in which case step 4 below falls back
    * to the old talkativeness-descending guess.
    */

@@ -2521,6 +2521,14 @@
     z-index: 0;
   }
 
+  /* The route-trail list mounts under the avatar through an Angular host
+     element v4 does not have (v4 renders the <ul> bare). A custom element is
+     `display: inline` by default and would wrap a block-level <ul> — the
+     inline-host family (#97 `qt-tab-view`, #107 `qt-markdown-field`). */
+  qt-route-trail-badge {
+    display: block;
+  }
+
   /**
    * Chat message body wrapper
    */

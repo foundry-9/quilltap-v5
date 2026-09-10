@@ -462,6 +462,17 @@ pub struct FinalizerCharacter {
     pub id: String,
     pub name: String,
     pub aliases: Vec<String>,
+    /// The character's own talkativeness, exactly as the row carries it (absent
+    /// when the row has none). v4 seeds `loadRoomCharacters` with the WHOLE
+    /// responding `Character` record (`message-finalizer.service.ts:676`), and
+    /// because a preloaded entry WINS over the batch read, a stub that carried
+    /// only `id`/`name` would replace the responder's real weight with the 0.5
+    /// default on every assistant turn — the primary production draw site. The
+    /// §3 unification review of the `78b381a96` round caught exactly that.
+    pub talkativeness: Option<f64>,
+    /// The row's `archivedAt`, for the same reason: the room map is also what
+    /// `select_next_speaker` reads to exclude a tombstoned seat.
+    pub archived_at: Option<String>,
 }
 
 /// The responding participant (v4 `characterParticipant`).
@@ -1581,6 +1592,27 @@ pub struct NextSpeakerInfo {
     pub is_users_turn: bool,
 }
 
+/// The responding character as the room map's `preloaded` entry — v4 hands
+/// `loadRoomCharacters` the whole `Character` record it already has in hand
+/// (`message-finalizer.service.ts:676-678`), and the preloaded copy WINS over the
+/// batch read (`room-characters.ts:96-98`). So the entry must carry every field
+/// the two readers of that map consult: `talkativeness` for the draw and
+/// `archivedAt` for the tombstone exclusion, plus `name` for the chain decision.
+/// A key is emitted only when the row had it, so an absent value reads back as
+/// absent (`None`), never as JSON `null` masquerading as a stored value.
+fn preloaded_room_character(character: &FinalizerCharacter) -> Value {
+    let mut row = serde_json::Map::new();
+    row.insert("id".into(), Value::String(character.id.clone()));
+    row.insert("name".into(), Value::String(character.name.clone()));
+    if let Some(t) = character.talkativeness {
+        row.insert("talkativeness".into(), json!(t));
+    }
+    if let Some(a) = &character.archived_at {
+        row.insert("archivedAt".into(), Value::String(a.clone()));
+    }
+    Value::Object(row)
+}
+
 /// v4 `calculateNextSpeaker`: re-read messages + the fresh chat, compute the turn
 /// state, select the next speaker over the ported turn manager, and report whether
 /// it's the user's turn.
@@ -1637,10 +1669,7 @@ async fn calculate_next_speaker(
         .iter()
         .map(to_speaker_participant)
         .collect();
-    let preloaded = vec![serde_json::json!({
-        "id": character.id,
-        "name": character.name,
-    })];
+    let preloaded = vec![preloaded_room_character(character)];
     let room = crate::room_characters::load_room_characters_from_db(
         db,
         &speaker_participants,
@@ -1765,6 +1794,68 @@ fn to_done_cache_usage(c: StreamCacheUsage) -> DoneCacheUsage {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn responder(talkativeness: Option<f64>, archived_at: Option<&str>) -> FinalizerCharacter {
+        FinalizerCharacter {
+            id: "char-1".into(),
+            name: "Marchpane".into(),
+            aliases: vec![],
+            talkativeness,
+            archived_at: archived_at.map(String::from),
+        }
+    }
+
+    /// The preloaded entry carries the two fields the room map's readers consult,
+    /// and only when the row had them (absent, never `null`).
+    #[test]
+    fn preloaded_room_character_carries_talkativeness_and_archived_at() {
+        let row = preloaded_room_character(&responder(Some(0.2), Some("2026-09-01T00:00:00.000Z")));
+        assert_eq!(row["id"], "char-1");
+        assert_eq!(row["name"], "Marchpane");
+        assert_eq!(row["talkativeness"], 0.2);
+        assert_eq!(row["archivedAt"], "2026-09-01T00:00:00.000Z");
+
+        let bare = preloaded_room_character(&responder(None, None));
+        assert!(bare.get("talkativeness").is_none(), "absent stays absent, not null");
+        assert!(bare.get("archivedAt").is_none());
+    }
+
+    /// The §3 unification catch of the `78b381a96` round: v4 seeds the WHOLE
+    /// responding record and the preloaded copy WINS over the batch read
+    /// (`room-characters.ts:96-98`), so a stub that carried only `id`/`name`
+    /// replaced the responder's real weight with the 0.5 default on every
+    /// assistant turn. Driven through the real loader with a batch row that
+    /// disagrees, so the in-hand copy must be the one the draw sees.
+    #[test]
+    fn the_preloaded_responder_keeps_its_own_weight_over_the_batch_row() {
+        let seat = SpeakerParticipant {
+            id: "p-1".into(),
+            participant_type: "CHARACTER".into(),
+            status: crate::chat_predicates::participant_status_from_str(Some("ACTIVE")),
+            character_id: Some("char-1".into()),
+            controlled_by: "LLM".into(),
+            talkativeness: None,
+        };
+        let mut find_by_ids = |ids: &[String]| -> Result<Vec<Value>, DbError> {
+            assert_eq!(ids, ["char-1".to_string()]);
+            Ok(vec![json!({ "id": "char-1", "name": "Stale", "talkativeness": 0.9 })])
+        };
+        let preloaded = vec![preloaded_room_character(&responder(
+            Some(0.2),
+            Some("2026-09-01T00:00:00.000Z"),
+        ))];
+        let room =
+            crate::room_characters::load_room_characters(&[seat], &preloaded, &mut find_by_ids)
+                .expect("room loads");
+        let speakers = crate::room_characters::to_speaker_characters(&room);
+        let me = &speakers["char-1"];
+        assert_eq!(me.talkativeness, Some(0.2), "the in-hand copy wins, as v4's does");
+        assert!(me.archived, "the in-hand archivedAt reaches the tombstone exclusion");
+        assert_eq!(
+            crate::room_characters::room_character_name(&room, Some("char-1")),
+            Some("Marchpane")
+        );
+    }
 
     #[test]
     fn rebase_offset_shifts_and_clamps() {

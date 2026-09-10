@@ -80,7 +80,7 @@ function applyMocks(userId: string): void {
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
   // The fixture's help_docs ARE the corpus; v4's lazy ensure would otherwise
-  // walk cwd/help (the full shipped tree) and re-sync 120 docs over them.
+  // walk cwd/help (the full shipped tree) and re-sync 123 docs over them.
   jest.doMock('@/lib/help/help-doc-sync', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/help/help-doc-sync'),

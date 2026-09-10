@@ -10,8 +10,8 @@
 //! against the checkout (an edited or added help file the build did not see)
 //! cannot pass a gate.
 //!
-//! It also pins the tree's SIZE against the vendored v4 count (120 files at
-//! v4 `d883a5ee1`): a checkout without `help/` embeds an EMPTY table rather
+//! It also pins the tree's SIZE against the vendored v4 count (123 files at
+//! v4 `78b381a96`): a checkout without `help/` embeds an EMPTY table rather
 //! than failing the build, and this is the assertion that refuses it.
 //!
 //! Run standalone:

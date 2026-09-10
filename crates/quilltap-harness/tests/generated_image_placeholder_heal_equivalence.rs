@@ -362,6 +362,28 @@ fn shape_warns(events: &[CapturedEvent]) -> Value {
     )
 }
 
+/// v4's `migrations_metadata` rows, `[{key}]` in key order. The oracle dumps
+/// them and this family used to ignore them — the §3 unification review of the
+/// `78b381a96` round: deleting v5's metadata upsert left every arm green.
+fn metadata(main: &Connection) -> Value {
+    let exists = main
+        .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='migrations_metadata'")
+        .and_then(|mut s| s.exists([]))
+        .unwrap_or(false);
+    if !exists {
+        return json!([]);
+    }
+    let mut stmt = main
+        .prepare("SELECT key FROM migrations_metadata ORDER BY key")
+        .expect("prepare metadata");
+    let rows = stmt
+        .query_map([], |r| Ok(json!({ "key": r.get::<_, String>(0)? })))
+        .expect("metadata")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("metadata rows");
+    Value::Array(rows)
+}
+
 fn ledger(main: &Connection) -> Value {
     let exists = main
         .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='migrations_state'")
@@ -608,6 +630,13 @@ fn generated_image_placeholder_heal_equivalence() {
             "ledger",
             &ledger(&main),
             &o["ledger"],
+        );
+        cmp(
+            &mut failed,
+            &scenario.name,
+            "metadata",
+            &metadata(&main),
+            &o["metadata"],
         );
     }
 

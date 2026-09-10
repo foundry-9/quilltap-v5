@@ -157,8 +157,14 @@ describe('ChatGalleryImageViewModal', () => {
     ).toBeNull();
   });
 
-  it('confirms before emitting deleteFile — the host performs the actual delete', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  // v4 `:195-197` — the bin calls `onDelete()` with NO confirmation; the ONE
+  // `showConfirmation` is the host's (`PhotoGalleryModal.tsx:258`). The §3
+  // unification review of the `78b381a96` round found this modal confirming
+  // too — two identical dialogs for one delete. `window.confirm` is NOT
+  // stubbed here on purpose: jsdom's answers `undefined` (falsy), so a
+  // re-introduced confirm would swallow the emit and redden this case.
+  it('emits deleteFile WITHOUT confirming — the host confirms and performs the delete', async () => {
+    const confirm = vi.spyOn(window, 'confirm');
     const fixture = await render();
     const deletes: number[] = [];
     fixture.componentInstance.deleteFile.subscribe(() => deletes.push(1));
@@ -167,21 +173,8 @@ describe('ChatGalleryImageViewModal', () => {
         'button[title="Delete image permanently"]',
       ) as HTMLButtonElement
     ).click();
-    expect(confirm).toHaveBeenCalledWith('Permanently delete this photo? This cannot be undone.');
+    expect(confirm).not.toHaveBeenCalled();
     expect(deletes.length).toBe(1);
-  });
-
-  it('does not emit deleteFile when the confirmation is declined', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const fixture = await render();
-    const deletes: number[] = [];
-    fixture.componentInstance.deleteFile.subscribe(() => deletes.push(1));
-    (
-      fixture.nativeElement.querySelector(
-        'button[title="Delete image permanently"]',
-      ) as HTMLButtonElement
-    ).click();
-    expect(deletes.length).toBe(0);
   });
 
   // :208 — the overlay is z-[60]; :214-238 — the conditional arrows.

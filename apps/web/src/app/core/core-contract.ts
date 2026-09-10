@@ -2154,6 +2154,7 @@ export interface ChatGalleryEntry {
   /** = `!isCurrent && source ∈ {attachment, generated, story-background, avatar}`. */
   deletable: boolean;
   /** How many albums already hold these bytes. */
+  /** Narrowed from the server's `PhotoLinkSummary` (`{count, linkers[]}`): v4's client reads only `.count` (P4.D176). */
   linkSummary?: { count: number };
 }
 
@@ -4056,6 +4057,19 @@ export interface CoreError {
    * typed envelope.
    */
   entity?: { label: string; id: string };
+  /**
+   * v4's machine-readable error code where a refusal carries one (`ALREADY_SAVED`,
+   * `FILE_HAS_ASSOCIATIONS`, …) — the key v4's clients switch on FIRST.
+   */
+  code?: string;
+  /**
+   * The two riders v4's `ALREADY_SAVED` 409 carries beside `error`/`code`
+   * (`actions/save-image.ts:118-125`: `relativePath`, `keptAt`). The dispatch
+   * wire ALSO spreads them flat beside the envelope, as v4's body has them;
+   * this is the typed copy the SPA reads. Present ONLY on that refusal
+   * (P4.D174 §C.3 — the §3 unification review found them unreachable before).
+   */
+  alreadySaved?: { relativePath?: string; keptAt?: string };
 }
 
 // ===========================================================================
@@ -4253,11 +4267,17 @@ export interface AutonomousRoomUpdateResult {
 export class CoreDispatchError extends Error {
   readonly kind: ErrorKind;
   readonly pepperState?: PepperState;
+  /** v4's `body.code` (see {@link CoreError.code}). */
+  readonly code?: string;
+  /** v4's `body.keptAt` on the `ALREADY_SAVED` 409 (see {@link CoreError.alreadySaved}). */
+  readonly keptAt?: string;
   constructor(error: CoreError) {
     super(error.message);
     this.name = 'CoreDispatchError';
     this.kind = error.kind;
     this.pepperState = error.pepperState;
+    this.code = error.code;
+    this.keptAt = error.alreadySaved?.keptAt;
   }
 }
 

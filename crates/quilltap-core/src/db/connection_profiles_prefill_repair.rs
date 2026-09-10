@@ -246,7 +246,7 @@ mod tests {
     /// from the D23 re-dump; the ensure must recognise it as present and leave
     /// it — including the rows, which the create route has already resolved.
     #[test]
-    fn the_generatedll_shape_is_recognised_and_left_alone() {
+    fn the_generateddl_shape_is_recognised_and_left_alone() {
         let db = Connection::open_in_memory().expect("open");
         db.execute_batch(
             "CREATE TABLE \"connection_profiles\" (\"id\" TEXT PRIMARY KEY, \

@@ -152,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn the_generatedll_shape_is_recognised_and_left_alone() {
+    fn the_generateddl_shape_is_recognised_and_left_alone() {
         let conn = Connection::open_in_memory().unwrap();
         // A FRESH instance: the column sits mid-table, in the Zod slot.
         conn.execute_batch(

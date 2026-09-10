@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { Subject, of } from 'rxjs';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 /**
  * The message list is virtualized (`@tanstack/angular-virtual`). The virtualizer
@@ -318,6 +318,66 @@ describe('SalonConversation (workspace-tab mode)', () => {
       fixture.detectChanges();
     }
     expect(cleared).toContain('tab-1');
+  });
+});
+
+describe('SalonConversation — the drawn rotation (P4.D177 §C.2, the §3 unification catch)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /**
+   * `applyTurnResponse` adopts `state.cycleOrder`; the `_turnEffect` re-runs on
+   * every `chat()` / `busy()` emission and used to re-seed the rotation from
+   * the chat GET's `cycleOrderParticipantIds` unconditionally — a key neither
+   * v4's nor v5's GET sends (P4.D171 measured it), so `parseCycleOrder(undefined)`
+   * = `[]` wiped the rotation on every send and every refetch. Modelled here as
+   * production does it: the refresh adopts the server's draw, then `busy` flips
+   * (a send starts). The rotation must survive.
+   */
+  it('keeps the rotation the turn response set when busy flips and the chat GET carries no key', async () => {
+    const chat = chatDetail();
+    delete (chat as { cycleOrderParticipantIds?: string }).cycleOrderParticipantIds;
+    const client = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatch = client.dispatch as ReturnType<typeof vi.fn>;
+    const base = dispatch.getMockImplementation() as (req: CoreRequest) => Promise<CoreResponse>;
+    dispatch.mockImplementation(async (req: CoreRequest) => {
+      if (req.type === 'chatTurnAction') {
+        return {
+          type: 'turnAction',
+          data: {
+            turn: { nextSpeakerId: 'p-b', reason: 'cycle_order', cycleComplete: false },
+            state: { queue: ['p-b', 'p-a'], cycleOrder: ['p-b', 'p-a'] },
+          },
+        } as unknown as CoreResponse;
+      }
+      return base(req);
+    });
+    const fixture = await render(client);
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[] };
+      stream: { set: (v: unknown) => void };
+    };
+    expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
+
+    // A send starts: `busy` flips and the effect re-runs.
+    comp.stream.set({ messageId: 'streaming-1' });
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
+  });
+
+  it('adopts state.cycleOrder from a turn response and keeps the previous list when a response omits it', async () => {
+    const chat = chatDetail();
+    const client = stubClient(chat, new Subject<ScopedEvent>());
+    const fixture = await render(client);
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; queue: string[] };
+      applyTurnResponse: (data: unknown) => void;
+    };
+    comp.applyTurnResponse({ turn: { nextSpeakerId: 'p-a' }, state: { queue: ['p-a'], cycleOrder: ['p-a', 'p-c'] } });
+    expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-c']);
+    comp.applyTurnResponse({ turn: { nextSpeakerId: 'p-a' }, state: { queue: ['p-a'] } });
+    expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-c']);
   });
 });
 

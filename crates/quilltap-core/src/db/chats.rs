@@ -822,6 +822,13 @@ impl<'c> ChatsRepository<'c> {
         let commonplace_scene_json = opt_json_text(&data.commonplace_scene_cache)?;
         let commonplace_recall_json = opt_json_text(&data.commonplace_recall_history)?;
 
+        // `?NNN` binds `params![]` by its LITERAL number wherever it sits in the SQL
+        // text: `?100` is `cycleOrderParticipantIds` (P4.D171), spliced mid-list at
+        // its column's position while its VALUE is appended 100th, so the ~74
+        // placeholders after it never had to renumber. The next column append
+        // writes `?101` at the END of both lists. Never "tidy" this sequence — a
+        // renumbering pass mis-binds every later column with no compile error;
+        // `chats_tier2_equivalence`'s create arm is what catches it.
         self.conn.execute(
             "INSERT INTO chats (\
                id, userId, participants, title, contextSummary, sillyTavernMetadata, tags, \

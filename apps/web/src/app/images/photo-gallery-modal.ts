@@ -319,7 +319,7 @@ interface AlbumImage {
           { id: target.id, filename: target.filename, filepath: target.url, mimeType: target.mimeType },
         ]"
         (close)="saveTargetId.set(null)"
-        (saved)="handleSaved()"
+        (saved)="handleSaved($event)"
       />
     }
   `,
@@ -509,8 +509,10 @@ export class PhotoGalleryModal {
     }
   }
 
-  protected handleSaved(): void {
+  /** v4 `PhotoGalleryModal.tsx:566-568` — `showSuccessToast(\`Saved to ${info.mountPoint}\`)` then invalidate. */
+  protected handleSaved(info: { mountPoint: string; relativePath: string }): void {
     this.saveTargetId.set(null);
+    this.toasts.showSuccess(`Saved to ${info.mountPoint}`);
     this.gallery.invalidate();
   }
 

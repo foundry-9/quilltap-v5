@@ -101,17 +101,31 @@ describe('route-trail-display agrees with v4 row for row', () => {
  * v4 doesn't have.
  */
 describe("the trigger/via/outcome unions agree with v4's zod enums", () => {
-  const VIA: RouteAttemptVia[] = ['primary', 'retry', 'concierge', 'understudy', 'tier-pick'];
-  const OUTCOME: RouteAttemptOutcome[] = ['answered', 'failed', 'refused'];
-  const TRIGGER: RouteAttemptTrigger[] = [
-    'auth',
-    'rate-limit',
-    'network',
-    'model-missing',
-    'provider-error',
-    'empty-response',
-    'moderation-refusal',
-  ];
+  // Exhaustive maps, not arrays: `Record<Union, true>` fails to COMPILE when a
+  // v5 literal is missing from the map, and the runtime sort-compare below
+  // fails when the map names one v4 does not have — identity both ways, as
+  // v4's own parity assertion is (the §3 unification review of the `78b381a96`
+  // round: a bare array only ever proved array ⊆ union).
+  const VIA_ALL: Record<RouteAttemptVia, true> = {
+    primary: true,
+    retry: true,
+    concierge: true,
+    understudy: true,
+    'tier-pick': true,
+  };
+  const OUTCOME_ALL: Record<RouteAttemptOutcome, true> = { answered: true, failed: true, refused: true };
+  const TRIGGER_ALL: Record<RouteAttemptTrigger, true> = {
+    auth: true,
+    'rate-limit': true,
+    network: true,
+    'model-missing': true,
+    'provider-error': true,
+    'empty-response': true,
+    'moderation-refusal': true,
+  };
+  const VIA = Object.keys(VIA_ALL) as RouteAttemptVia[];
+  const OUTCOME = Object.keys(OUTCOME_ALL) as RouteAttemptOutcome[];
+  const TRIGGER = Object.keys(TRIGGER_ALL) as RouteAttemptTrigger[];
 
   it('via — five literals, both directions', () => {
     const recorded = JSON.parse(of('enum').find((r) => r.id === 'via')!.out) as string[];

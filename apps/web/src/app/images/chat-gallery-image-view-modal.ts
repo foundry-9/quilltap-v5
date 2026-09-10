@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 
 import { downloadGalleryEntry } from '../core/download-utils';
+import { copyImageToClipboard } from '../core/clipboard-utils';
 import type { ChatGalleryEntry, ChatGallerySource } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
@@ -259,22 +260,30 @@ export class ChatGalleryImageViewModal {
     }
   }
 
-  /** v4 `:73-81`. */
+  /**
+   * v4 `:73-81` — through `copyImageToClipboard` (v5's faithful twin in
+   * `core/clipboard-utils.ts`), which converts a non-PNG blob to PNG first: a
+   * bare `ClipboardItem({[blob.type]: blob})` throws for the WebP the host
+   * pixel codec stores, so every copy used to fail (the §3 unification review
+   * of the `78b381a96` round).
+   */
   protected async handleCopyToClipboard(): Promise<void> {
-    try {
-      const response = await fetch(this.entry().url);
-      const blob = await response.blob();
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    if (await copyImageToClipboard(this.entry().url)) {
       this.toasts.showSuccess('Image copied to clipboard');
-    } catch {
+    } else {
       this.toasts.showError('Failed to copy image to clipboard');
     }
   }
 
-  /** v4 `handleDeleteEntry`'s confirmation half — the host performs the delete. */
+  /**
+   * v4 `:195-197` — the bin calls `onDelete()` with NO confirmation of its own;
+   * the single `showConfirmation(…)` lives in the host (`PhotoGalleryModal.tsx:
+   * 258`, v5 `photo-gallery-modal.ts`'s `handleDeleteEntry`, which also carries
+   * the `idKind` half of the guard). The §3 unification review of the
+   * `78b381a96` round found this modal confirming TOO — two identical dialogs
+   * for one delete.
+   */
   protected handleDeleteClick(): void {
-    if (window.confirm('Permanently delete this photo? This cannot be undone.')) {
-      this.deleteFile.emit();
-    }
+    this.deleteFile.emit();
   }
 }

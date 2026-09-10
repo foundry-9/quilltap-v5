@@ -169,8 +169,11 @@ export class OrganizeSection {
    * or still loading), which is when the label stays unnumbered.
    */
   private readonly gallery = injectChatGallery(() => this.chatId());
-  protected readonly galleryLabel = computed(() =>
-    this.gallery.hasData() ? `Gallery (${this.gallery.total()})` : 'Gallery',
+  // v4 `ChatSidebar.tsx:1563,1676`: `galleryCount = 0` by default and the label
+  // is ALWAYS `Gallery ({galleryCount})` — there is no unnumbered state, loading
+  // included (the §3 unification review of the `78b381a96` round; the bare
+  // `Gallery` fallback was a v5 invention).
+  protected readonly galleryLabel = computed(() => `Gallery (${this.gallery.total()})`,
   );
 
   /**

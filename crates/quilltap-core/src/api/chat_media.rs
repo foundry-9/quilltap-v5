@@ -366,10 +366,8 @@ pub fn chat_gallery(db: &Db, chat_id: &str) -> Response {
         }
     }
     let cid = chat_id.to_string();
-    let gallery = db.read_main(|main| {
-        db.read_mount_index(|mount| {
-            crate::photos::chat_gallery::get_chat_gallery(main, mount, &cid)
-        })
+    let gallery = read_main_mount(db, |main, mount| {
+        crate::photos::chat_gallery::get_chat_gallery(main, mount, &cid)
     });
     match gallery {
         Ok(gallery) => {
@@ -426,20 +424,27 @@ pub async fn chat_save_gallery_image(
     let chat = match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
         Ok(Some(c)) => c,
         Ok(None) => return not_found("Chat"),
-        Err(e) => return internal(e),
+        // v4 wraps the WHOLE handler in one `try` (`actions/save-image.ts:43,
+        // 126-131`): anything that is not a `SaveImageToAlbumError` answers the
+        // fixed `serverError('Failed to save image')`, never the DB's own text.
+        Err(e) => {
+            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            return Response::error(ErrorKind::Internal, "Failed to save image");
+        }
     };
 
     // The guard: the id must name a picture this conversation actually holds.
     // Without it the action would save any image in the instance into any album
     // on the strength of a chat id.
     let cid = chat_id.to_string();
-    let entries = match db.read_main(|main| {
-        db.read_mount_index(|mount| {
-            crate::photos::chat_gallery::list_chat_gallery(main, mount, &cid)
-        })
+    let entries = match read_main_mount(db, |main, mount| {
+        crate::photos::chat_gallery::list_chat_gallery(main, mount, &cid)
     }) {
         Ok(e) => e,
-        Err(e) => return internal(e),
+        Err(e) => {
+            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            return Response::error(ErrorKind::Internal, "Failed to save image");
+        }
     };
     let Some(entry) = entries
         .iter()
@@ -540,18 +545,20 @@ pub async fn chat_save_gallery_image(
             // answer to it, and the dialog says so in those words.
             if err.code == SaveImageErrorCode::AlreadySaved {
                 // v4's 409 body is `{error, code, relativePath, keptAt}` — four
-                // siblings. `code` rides the existing flat carrier (its
+                // FLAT siblings. `code` rides the existing flat carrier (its
                 // documented purpose: "the SPA error translation keys on this
-                // first"); the two riders ride `details`, which a transport
-                // spreads beside `error` exactly as the files-delete refusal
-                // spreads `characterId`. §C.3 of the round contract.
+                // first"); the two riders ride `already_saved`, which every
+                // transport spreads beside `error` through
+                // `CoreError::already_saved_wire_body` (§C.3 of the round
+                // contract; the §3 unification review found them nested under
+                // `details`, which no transport flattens).
                 let mut resp = Response::error(ErrorKind::Conflict, err.message);
                 if let Response::Error(e) = &mut resp {
                     e.code = Some("ALREADY_SAVED".to_string());
-                    e.details = Some(Box::new(json!({
-                        "relativePath": err.existing_relative_path,
-                        "keptAt": err.existing_created_at,
-                    })));
+                    e.already_saved = Some(Box::new(crate::api::types::AlreadySavedRiders {
+                        relative_path: err.existing_relative_path,
+                        kept_at: err.existing_created_at,
+                    }));
                 }
                 return resp;
             }

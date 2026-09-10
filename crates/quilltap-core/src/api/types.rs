@@ -4243,6 +4243,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: None,
+            already_saved: None,
         })
     }
 
@@ -4259,6 +4260,7 @@ impl Response {
             associations: None,
             character_id: None,
             details: None,
+            already_saved: None,
             entity: Some(Box::new(UnavailableEntity {
                 label: label.to_string(),
                 id: id.to_string(),
@@ -4283,6 +4285,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: Some(Box::new(details)),
+            already_saved: None,
         })
     }
 
@@ -4309,6 +4312,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: Some(Box::new(details)),
+            already_saved: None,
         })
     }
 
@@ -4326,6 +4330,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: None,
+            already_saved: None,
         })
     }
 
@@ -4347,6 +4352,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: None,
+            already_saved: None,
         })
     }
 
@@ -4369,6 +4375,7 @@ impl Response {
             character_id: Some(Box::new(character_id.into())),
             entity: None,
             details: None,
+            already_saved: None,
         })
     }
 
@@ -4385,6 +4392,7 @@ impl Response {
             character_id: None,
             entity: None,
             details: None,
+            already_saved: None,
         })
     }
 }
@@ -4599,6 +4607,30 @@ pub struct CoreError {
     /// here pushes `CoreError` over clippy's `result_large_err` threshold.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<Box<serde_json::Value>>,
+    /// v4's `ALREADY_SAVED` 409 (`app/api/v1/chats/[id]/actions/save-image.ts:
+    /// 118-125`) answers FOUR FLAT SIBLINGS — `{error, code, relativePath,
+    /// keptAt}` — and the save dialog reads `body.code` / `body.keptAt` off the
+    /// top level. `code` already rides its own carrier; the two riders ride
+    /// this one, and every transport spreads them beside the typed envelope
+    /// through [`Self::already_saved_wire_body`]. Present ONLY on that refusal
+    /// (P4.D174, §C.3). NOT `details`: that slot is v4's Zod issue ARRAY, and
+    /// the transports render it NESTED — the §3 unification review of the
+    /// `78b381a96` round caught the riders there, unreachable by any client.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub already_saved: Option<Box<AlreadySavedRiders>>,
+}
+
+/// The two riders v4's `ALREADY_SAVED` 409 carries beside `error`/`code`
+/// (`SaveImageToAlbumError.existingRelativePath` / `.existingCreatedAt`). Each
+/// is optional because v4 spreads `undefined` away: an absent value is an
+/// ABSENT key on the wire, never `null`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlreadySavedRiders {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kept_at: Option<String>,
 }
 
 /// The broken store's entity, carried on [`ErrorKind::Unavailable`] errors.
@@ -4667,6 +4699,32 @@ impl CoreError {
             serde_json::Value::String(self.message.clone()),
         );
         body.insert("details".to_string(), (**details).clone());
+        Some(serde_json::Value::Object(body))
+    }
+
+    /// v4's `ALREADY_SAVED` 409 body — `{error, code, relativePath, keptAt}`,
+    /// four FLAT siblings (`actions/save-image.ts:118-125`) — for the one
+    /// refusal that carries [`CoreError::already_saved`]. `None` for every
+    /// other error, so a transport merges it unconditionally. The ONE home of
+    /// the shape: the dispatch transport, the REST edge and the
+    /// `chat_gallery_equivalence` family all render through it, so a corpus
+    /// that measures it measures what the wire sends.
+    pub fn already_saved_wire_body(&self) -> Option<serde_json::Value> {
+        let riders = self.already_saved.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "error".to_string(),
+            serde_json::Value::String(self.message.clone()),
+        );
+        if let Some(code) = &self.code {
+            body.insert("code".to_string(), serde_json::Value::String(code.clone()));
+        }
+        if let Some(p) = &riders.relative_path {
+            body.insert("relativePath".to_string(), serde_json::Value::String(p.clone()));
+        }
+        if let Some(k) = &riders.kept_at {
+            body.insert("keptAt".to_string(), serde_json::Value::String(k.clone()));
+        }
         Some(serde_json::Value::Object(body))
     }
 }

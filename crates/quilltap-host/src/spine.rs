@@ -1245,6 +1245,7 @@ where
                 character_id: None,
                 entity: None,
                 details: None,
+                already_saved: None,
             },
             RegenError::Db(_) => CoreError {
                 kind: ErrorKind::Internal,
@@ -1255,6 +1256,7 @@ where
                 character_id: None,
                 entity: None,
                 details: None,
+                already_saved: None,
             },
         })
     }
@@ -1456,6 +1458,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 });
             }
         };
@@ -1639,6 +1642,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             }
         }
@@ -1728,6 +1732,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             }
         }
@@ -1907,6 +1912,7 @@ pub fn map_create_error(e: HandleCreateError) -> CoreError {
         character_id: None,
         entity: None,
         details,
+        already_saved: None,
     }
 }
 
@@ -1975,6 +1981,7 @@ where
                 character_id: None,
                 entity: None,
                 details: None,
+                already_saved: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -1992,6 +1999,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
@@ -2003,6 +2011,7 @@ where
                 character_id: None,
                 entity: None,
                 details: None,
+                already_saved: None,
             })?;
             Ok(w)
         };
@@ -2128,6 +2137,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2142,6 +2152,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             })
         })
@@ -2209,6 +2220,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2223,6 +2235,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             })
         })
@@ -2261,6 +2274,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2275,6 +2289,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             })
         })
@@ -2313,6 +2328,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2327,6 +2343,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             })
         })
@@ -2366,6 +2383,7 @@ where
                         character_id: None,
                         entity: None,
                         details: None,
+                        already_saved: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2380,6 +2398,7 @@ where
                     character_id: None,
                     entity: None,
                     details: None,
+                    already_saved: None,
                 })
             })
         })
