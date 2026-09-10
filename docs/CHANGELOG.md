@@ -265,6 +265,58 @@ cases that reach the room-character load — measured by withholding the two roo
 and re-running, which left the counter at its new value; it is the character, not
 the rooms, and both sides move together. No prompt byte, no DB row and no event
 of any pre-existing enclave case changed.
+#### 2026-09-10 — fix(gallery): degrade a failed repository read the way v4's `safeQuery` does, and plant the two P4.D171 columns through export/import
+
+_Versions: core 0.0.877, harness 0.0.768._
+
+P4.88 (B) + (A1) — P4.D174's two named OPEN items and P4.D171's third.
+
+**The gallery.** Measured site by site against v4's repositories at the pin:
+`repos.chats.findById` is `_findById`'s `safeQuery(…, null)` in FALLBACK mode
+(`base.repository.ts:236`), and every mount-index repository the
+message-attachment walk calls answers `null`/`[]` on failure
+(`doc-mount-file-links.repository.ts:487`/`:499`,
+`doc-mount-blobs.repository.ts:158`,
+`doc-mount-documents.repository.ts:113`). So in v4 a broken chats table is an
+EMPTY roll, and a broken mount index costs one attachment its entry and
+nothing else — the walk carries on. v5 propagated at all five sites, which
+turned a short roll into a 500 and aborted the whole walk at the first
+failure, silently dropping every later attachment. Each site now degrades to
+v4's fallback with v4's own repository log line.
+
+`get_photo_link_summary_by_sha256` never fails now either: v4 wraps its whole
+body in one try/catch that warns and answers `EMPTY_SUMMARY`
+(`photo-link-summary.ts:111`), so an entry keeps its `linkSummary` key even
+from a broken mount index. The `Result` stays in the signature for the callers
+that `?` on it; the `Err` arm is unreachable, as v4's is.
+
+**The empty-`sha256` arm, measured rather than assumed.** The P4.D174 note read
+v4's `blob.sha256 ?? mountLink.sha256` as keeping an empty blob digest. It
+cannot: `DocMountBlobMetadataSchema.sha256` is `z.string().length(64)`, so
+`rowToMetadata` THROWS on any other length, the repo's catch answers `null`,
+and the blob reads as ABSENT — the walk falls through to the native-text
+document branch and never reaches the `??` at all. v5 now reproduces the
+64-character refusal with v4's warn. The LINK's own sha is the opposite case:
+`queryJoined` maps its rows with no Zod parse, so an empty digest SURVIVES v4's
+nullish `mountLink.sha256 ?? null` and becomes a dedupe key — v5's
+non-empty filter is gone.
+
+Six new oracle arms plant the damage in the per-case COPY (the committed
+`chat-gallery-{main,mount}.db` pair is read-only and is not rebuilt): the blobs
+and links tables dropped, a renamed column in each, an empty blob digest, and
+an empty mount-file digest. A DROPPED table turned out not to raise a read
+error at all — both engines create those tables lazily — so the renamed-column
+arms are the ones that tell an abort from a degrade at the route level, and
+three unit tests pin the rest directly.
+
+**The plants.** `system_export_equivalence` and `system_import_state` now start
+from NON-DEFAULT values in both `78b381a96` columns: a two-id rotation on chat
+1 and a two-attempt route trail with distinct `profileId`s on its assistant
+message, planted identically on both engines. Until now every export/import
+family exercised those columns only at their Zod defaults (`'[]'` and absent),
+which is the same bytes whether the carry works or not. Red-first: dropping
+either key from `schema-key-order.json` reddens the export family.
+
 #### 2026-09-10 — test(db): pin `marshal_row`'s index table against the D23 dump, and fold the seven hand-rolled P4.D171 ensure sites
 
 _Versions: core 0.0.876, host 0.0.124._

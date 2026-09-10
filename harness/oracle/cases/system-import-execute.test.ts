@@ -1067,6 +1067,44 @@ interface CaseOut {
   [k: string]: unknown;
 }
 
+
+/** [P4.88] A two-id drawn rotation — no default produces this. */
+const P4D171_ROTATION =
+  '["e1000000-0000-4000-8000-000000000001","e1000000-0000-4000-8000-0000000000e2"]';
+/** [P4.88] A two-attempt route trail with DISTINCT `profileId`s. */
+const P4D171_ROUTE_TRAIL =
+  '[{"profileId":"c0000001-0000-4000-8000-000000000001","profileName":"Primary","provider":"OPENAI","modelName":"gpt-4o","via":"primary","outcome":"failed","trigger":"rate-limit","detail":"429 slow down"},{"profileId":"c0000001-0000-4000-8000-0000000000f2","profileName":"Understudy","provider":"ANTHROPIC","modelName":"claude-x","via":"understudy","outcome":"answered"}]';
+const P4D171_CHAT_ID = 'c1000000-0000-4000-8000-000000000001';
+const P4D171_MESSAGE_ID = 'd1000000-0000-4000-8000-000000000002';
+
+/**
+ * [P4.88] Plant NON-DEFAULT values in the two `78b381a96` columns.
+ *
+ * The committed `system-data-*` fixture predates them, so the columns are added
+ * here exactly as v4's own migration adds them (`TEXT DEFAULT '[]'` /
+ * `TEXT DEFAULT NULL`), then given values no default could produce: a two-id
+ * rotation on chat 1, and a two-attempt route trail with DISTINCT `profileId`s
+ * on its assistant message. Without this, every export/import/restore family
+ * exercises those columns only at their Zod defaults (`'[]'` and absent), which
+ * is the same bytes whether the carry works or not.
+ *
+ * The Rust side plants the identical values through
+ * `test_support::ensure_p4d171_columns` + the same two UPDATEs, so the two
+ * engines provably start from the same cells.
+ */
+function plantP4d171Values(db: { exec(sql: string): unknown; prepare(sql: string): { run(...a: unknown[]): unknown } }): void {
+  db.exec(`ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT '[]'`);
+  db.exec(`ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT DEFAULT NULL`);
+  db.prepare(`UPDATE "chats" SET "cycleOrderParticipantIds" = ? WHERE "id" = ?`).run(
+    P4D171_ROTATION,
+    P4D171_CHAT_ID,
+  );
+  db.prepare(`UPDATE "chat_messages" SET "routeTrail" = ? WHERE "id" = ?`).run(
+    P4D171_ROUTE_TRAIL,
+    P4D171_MESSAGE_ID,
+  );
+}
+
 async function runCase(
   spec: Spec,
   name: string,
@@ -1098,6 +1136,7 @@ async function runCase(
   await initializeDatabase();
 
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  plantP4d171Values(getRawDatabase()!);
   const { getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );

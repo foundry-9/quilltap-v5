@@ -153,7 +153,19 @@ function applyMocks(spec: Spec): void {
 interface CaseSpec {
   name: string;
   freezeClock?: boolean;
+  /**
+   * [P4.88] Damage the per-case COPY before the roll — the P4.D91 `plantProbe`
+   * idiom. Never the committed fixture: `runCase` copies it per case and
+   * deletes the copy afterwards.
+   */
+  plant?: (main: RawDb, mount: RawDb) => void;
   run: () => Promise<{ status: number; body: unknown; extra?: unknown }>;
+}
+
+/** The `better-sqlite3` handle the raw-database getters hand back. */
+interface RawDb {
+  exec(sql: string): unknown;
+  prepare(sql: string): { run(...a: unknown[]): unknown };
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -192,6 +204,14 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+
+  if (c.plant) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    c.plant(getRawDatabase()! as unknown as RawDb, getRawMountIndexDatabase()! as unknown as RawDb);
+  }
 
   const RealDate = Date;
   if (c.freezeClock) {
@@ -280,6 +300,74 @@ async function main(): Promise<void> {
     { name: 'gallery', run: async () => galleryGet(CHAT) },
     { name: 'gallery_portrait_only', run: async () => galleryGet(PORTRAIT_CHAT) },
     { name: 'gallery_missing_chat', run: async () => galleryGet(NO_CHAT) },
+    // --- [P4.88] Plant-probe arms: what a REPOSITORY failure does to the roll ---
+    //
+    // Every mount-index repository the message-attachment walk calls is a
+    // `safeQuery(…, fallback)` or a private try/catch that answers `null`/`[]`
+    // (`doc-mount-file-links.repository.ts:487`/`:499`,
+    // `doc-mount-blobs.repository.ts:158`,
+    // `doc-mount-documents.repository.ts:113`), so a failed read reads as
+    // "nothing there" and the walk CONTINUES. v4's own try/catch around the
+    // whole walk is defensive. The Rust port used to propagate, which aborted
+    // the walk at the first failure and dropped every later attachment.
+    {
+      name: 'gallery_blobs_table_dropped',
+      plant: (_main, mount) => {
+        mount.exec('DROP TABLE "doc_mount_blobs"');
+      },
+      run: async () => galleryGet(CHAT),
+    },
+    // A DROPPED table is not enough to raise a read error on either side — both
+    // repositories create `doc_mount_blobs` lazily, so the walk simply finds no
+    // blob. A RENAMED column is: the table exists, the ensure is satisfied, and
+    // the SELECT names a column that is not there. THIS is what tells an abort
+    // from a degrade — v4 skips the blob-backed attachment and carries on to
+    // the native-text document behind the next one.
+    {
+      name: 'gallery_blobs_column_renamed',
+      plant: (_main, mount) => {
+        mount.exec('ALTER TABLE "doc_mount_blobs" RENAME COLUMN "storedMimeType" TO "storedMimeType_x"');
+      },
+      run: async () => galleryGet(CHAT),
+    },
+    {
+      name: 'gallery_links_column_renamed',
+      plant: (_main, mount) => {
+        mount.exec('ALTER TABLE "doc_mount_file_links" RENAME COLUMN "relativePath" TO "relativePath_x"');
+      },
+      run: async () => galleryGet(CHAT),
+    },
+    {
+      name: 'gallery_links_table_dropped',
+      plant: (_main, mount) => {
+        mount.exec('DROP TABLE "doc_mount_file_links"');
+      },
+      run: async () => galleryGet(CHAT),
+    },
+    // v4's `DocMountBlobMetadataSchema.sha256` is `z.string().length(64)`, so a
+    // stored empty digest makes `rowToMetadata` THROW — the blob reads as
+    // ABSENT and the walk falls through to the native-text document branch. It
+    // never reaches v4's `blob.sha256 ?? mountLink.sha256`. No committed fixture
+    // stores one (the column is written from a real digest), so plant it.
+    {
+      name: 'gallery_empty_blob_sha256',
+      plant: (_main, mount) => {
+        mount.exec(`UPDATE "doc_mount_blobs" SET "sha256" = ''`);
+      },
+      run: async () => galleryGet(CHAT),
+    },
+    // The LINK's own sha (joined from `doc_mount_files`) is a different matter:
+    // `queryJoined` maps its rows WITHOUT a Zod parse
+    // (`doc-mount-file-links.repository.ts:1347`), so an empty digest SURVIVES
+    // v4's NULLISH `mountLink.sha256 ?? null` and becomes a dedupe key on the
+    // native-text document branch. v5 used to filter it away.
+    {
+      name: 'gallery_empty_mount_file_sha256',
+      plant: (_main, mount) => {
+        mount.exec(`UPDATE "doc_mount_files" SET "sha256" = ''`);
+      },
+      run: async () => galleryGet(CHAT),
+    },
     // The RAW per-entry key sequence — the one comparand a key-sorting
     // normalizer cannot see. `messageId` appended after `deletable` is v4's
     // `noteMessage` mutating an entry an earlier pass already built.

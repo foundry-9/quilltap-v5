@@ -55,6 +55,7 @@ fn fresh_db(tag: &str) -> Db {
             w.connection(),
         )
         .expect("ensure the cycle-order column on the vintage fixture");
+        plant_p4d171_values(w.connection());
     }
     Db::open(
         DbPaths {
@@ -400,4 +401,27 @@ fn diff_lines(name: &str, got: &[Value], exp: &[Value]) -> Option<String> {
         ));
     }
     None
+}
+
+/// P4.88: the twin of the oracle's `plantP4d171Values` — NON-DEFAULT values in
+/// the two `78b381a96` columns, so this family measures the carry rather than
+/// two Zod defaults agreeing. The oracle plants the identical cells on v4's
+/// copy, so both engines provably start from the same bytes.
+fn plant_p4d171_values(conn: &rusqlite::Connection) {
+    conn.execute(
+        "UPDATE \"chats\" SET \"cycleOrderParticipantIds\" = ?1 WHERE \"id\" = ?2",
+        rusqlite::params![
+            r#"["e1000000-0000-4000-8000-000000000001","e1000000-0000-4000-8000-0000000000e2"]"#,
+            "c1000000-0000-4000-8000-000000000001"
+        ],
+    )
+    .expect("plant the drawn rotation");
+    conn.execute(
+        "UPDATE \"chat_messages\" SET \"routeTrail\" = ?1 WHERE \"id\" = ?2",
+        rusqlite::params![
+            r#"[{"profileId":"c0000001-0000-4000-8000-000000000001","profileName":"Primary","provider":"OPENAI","modelName":"gpt-4o","via":"primary","outcome":"failed","trigger":"rate-limit","detail":"429 slow down"},{"profileId":"c0000001-0000-4000-8000-0000000000f2","profileName":"Understudy","provider":"ANTHROPIC","modelName":"claude-x","via":"understudy","outcome":"answered"}]"#,
+            "d1000000-0000-4000-8000-000000000002"
+        ],
+    )
+    .expect("plant the route trail");
 }

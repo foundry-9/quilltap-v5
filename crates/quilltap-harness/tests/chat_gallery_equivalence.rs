@@ -282,6 +282,13 @@ fn status_body(r: &Response) -> (u16, Value) {
 }
 
 fn fresh_db(spec: &Spec, tag: &str) -> Db {
+    fresh_db_planted(spec, tag, None)
+}
+
+/// P4.88: the twin of the oracle's `plant` hook — damage the per-case COPY of
+/// the mount partition before the roll (the P4.D91 `plantProbe` idiom). The
+/// committed pair is READ-ONLY and is never rebuilt.
+fn fresh_db_planted(spec: &Spec, tag: &str, mount_plant: Option<&str>) -> Db {
     let scratch = std::env::temp_dir().join(format!("qt-cg-{}-{}", tag, std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
@@ -289,6 +296,11 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-gallery-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-gallery-mount.db"), &mount).unwrap();
+    if let Some(sql) = mount_plant {
+        let w = quilltap_core::db::Writer::open_writable(&mount, &spec.test_pepper_base64)
+            .expect("open the mount copy writable to plant");
+        w.connection().execute_batch(sql).expect("plant");
+    }
     Db::open(
         DbPaths {
             main,
@@ -476,6 +488,55 @@ fn chat_gallery_equivalence() {
             &oracle,
             "gallery_missing_chat",
             &chat_media::chat_gallery(&db, NO_CHAT),
+            Norm::Exact,
+        );
+    }
+    // --- [P4.88] The plant-probe arms: a repository failure DEGRADES ---
+    //
+    // Every mount-index repository the message-attachment walk calls answers
+    // `null`/`[]` on failure in v4 (`safeQuery(…, fallback)`, or a private
+    // try/catch for the blobs repo), so the walk continues to the next
+    // attachment rather than aborting. These three arms went RED before the
+    // port: v5 propagated the first failure out of the whole walk, and its
+    // blob reader had no counterpart to v4's `z.string().length(64)` refusal.
+    for (name, tag, sql) in [
+        (
+            "gallery_blobs_table_dropped",
+            "blobsdrop",
+            r#"DROP TABLE "doc_mount_blobs";"#,
+        ),
+        (
+            "gallery_blobs_column_renamed",
+            "blobscol",
+            r#"ALTER TABLE "doc_mount_blobs" RENAME COLUMN "storedMimeType" TO "storedMimeType_x";"#,
+        ),
+        (
+            "gallery_links_column_renamed",
+            "linkscol",
+            r#"ALTER TABLE "doc_mount_file_links" RENAME COLUMN "relativePath" TO "relativePath_x";"#,
+        ),
+        (
+            "gallery_links_table_dropped",
+            "linksdrop",
+            r#"DROP TABLE "doc_mount_file_links";"#,
+        ),
+        (
+            "gallery_empty_blob_sha256",
+            "emptysha",
+            r#"UPDATE "doc_mount_blobs" SET "sha256" = '';"#,
+        ),
+        (
+            "gallery_empty_mount_file_sha256",
+            "emptyfilesha",
+            r#"UPDATE "doc_mount_files" SET "sha256" = '';"#,
+        ),
+    ] {
+        let db = fresh_db_planted(&spec, tag, Some(sql));
+        check(
+            &mut failed,
+            &oracle,
+            name,
+            &chat_media::chat_gallery(&db, CHAT),
             Norm::Exact,
         );
     }

@@ -22,10 +22,34 @@ fn empty() -> Value {
 
 /// v4 `getPhotoLinkSummaryBySha256(sha256)` — resolve every mount-index hard link
 /// for an image by its content hash. `mount` is a mount-index connection.
+///
+/// **Never fails** (P4.88). v4 wraps its whole body in one try/catch that warns
+/// and answers `EMPTY_SUMMARY` (`photo-link-summary.ts:111-117`), so a caller
+/// like the gallery's `safeLinkSummary` gets a PRESENT empty summary from a
+/// broken mount index rather than `undefined` — and the entry keeps its
+/// `linkSummary` key. The `Result` stays in the signature for the callers that
+/// already `?` on it; the `Err` arm is now unreachable, exactly as v4's is.
 pub fn get_photo_link_summary_by_sha256(
     mount: &Connection,
     sha256: &str,
 ) -> Result<Value, DbError> {
+    match summarize(mount, sha256) {
+        Ok(v) => Ok(v),
+        Err(err) => {
+            tracing::warn!(
+                sha256 = %sha256,
+                error = %err,
+                "[photo-link-summary] Failed to resolve link summary"
+            );
+            Ok(empty())
+        }
+    }
+}
+
+/// The body v4 runs inside its `try`.
+fn summarize(mount: &Connection, sha256: &str) -> Result<Value, DbError> {
+    // v4's `if (!sha256) return EMPTY_SUMMARY` sits OUTSIDE the try; keeping it
+    // here is behaviour-identical (it cannot fail).
     if sha256.is_empty() {
         return Ok(empty());
     }

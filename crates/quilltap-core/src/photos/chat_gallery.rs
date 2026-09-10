@@ -167,6 +167,28 @@ pub fn resolve_message_attachment_entries_db(
     }
 }
 
+/// v4's `DocMountBlobMetadataSchema.sha256` is `z.string().length(64)`, so a
+/// stored digest of any other length makes `rowToMetadata` throw and the blob
+/// read as ABSENT. Length in CHARACTERS, as Zod counts them.
+const BLOB_SHA256_LENGTH: usize = 64;
+
+/// v4's `safeQuery(…, 'Error finding file link by id', {id}, null)` — log the
+/// repository's own error line and answer `None`.
+fn link_or_none<T>(
+    read: Result<Option<T>, DbError>,
+    message: &'static str,
+    collection: &'static str,
+    id: &str,
+) -> Option<T> {
+    match read {
+        Ok(found) => found,
+        Err(err) => {
+            tracing::error!(collection = collection, id = %id, error = %err, "{}", message);
+            None
+        }
+    }
+}
+
 fn walk_message_attachments(
     mount: &Connection,
     events: &[Value],
@@ -204,13 +226,45 @@ fn walk_message_attachments(
                 }
 
                 // Try as a link id (modern) or fall back to file id.
-                let mount_link = match links.find_by_id_with_content(&attachment_id)? {
+                //
+                // Each lookup DEGRADES rather than aborting the walk: v4's
+                // `docMountFileLinks.findByIdWithContent` / `findByFileId` are
+                // `safeQuery(…, fallback)` (`null` / `[]`,
+                // `doc-mount-file-links.repository.ts:499`/`:487`), so a failed
+                // read reads as "nothing there" and the loop moves to the NEXT
+                // attachment. v5 used to propagate, which aborted the whole walk
+                // at the first failure and silently dropped every later
+                // attachment that would have resolved. The outer `try` v4 keeps
+                // around the walk is defensive on both sides now.
+                let mount_link = match link_or_none(
+                    links.find_by_id_with_content(&attachment_id),
+                    "Error finding file link by id",
+                    "doc_mount_file_links",
+                    &attachment_id,
+                ) {
                     Some(l) => Some(l),
                     None => {
                         // v4's `findByFileId` returns the SAME joined shape, so
                         // re-read the winning row through the joined getter.
-                        match links.find_by_file_id(&attachment_id)?.into_iter().next() {
-                            Some(first) => links.find_by_id_with_content(&first.id)?,
+                        let first = match links.find_by_file_id(&attachment_id) {
+                            Ok(rows) => rows.into_iter().next(),
+                            Err(err) => {
+                                tracing::error!(
+                                    collection = "doc_mount_file_links",
+                                    fileId = %attachment_id,
+                                    error = %err,
+                                    "Error finding file links by file ID"
+                                );
+                                None
+                            }
+                        };
+                        match first {
+                            Some(first) => link_or_none(
+                                links.find_by_id_with_content(&first.id),
+                                "Error finding file link by id",
+                                "doc_mount_file_links",
+                                &first.id,
+                            ),
                             None => None,
                         }
                     }
@@ -226,9 +280,47 @@ fn walk_message_attachments(
                     .original_file_name
                     .clone()
                     .unwrap_or_else(|| mount_link.file_name.clone());
-                let link_sha = Some(mount_link.sha256.clone()).filter(|s| !s.is_empty());
+                // v4's `mountLink.sha256 ?? null` is NULLISH, and `queryJoined`
+                // maps its rows WITHOUT a Zod parse
+                // (`doc-mount-file-links.repository.ts:1347`) — so a stored
+                // empty string SURVIVES as `''` and becomes a dedupe key. v5's
+                // `doc_mount_files.sha256` is `NOT NULL`, so `''` is the only
+                // degenerate value and there is nothing to distinguish from
+                // SQL NULL: carry it through as v4 does.
+                let link_sha = Some(mount_link.sha256.clone());
 
-                if let Some(blob) = blobs.find_by_file_id(&mount_link.file_id)? {
+                // v4's `docMountBlobs.findByFileId` is a private try/catch that
+                // WARNS and answers `null` (`doc-mount-blobs.repository.ts:158`)
+                // — and its `rowToMetadata` runs
+                // `DocMountBlobMetadataSchema.parse`, whose
+                // `sha256: z.string().length(64)` REFUSES a stored empty string.
+                // So a blob whose digest is not exactly 64 characters reads as
+                // ABSENT on v4 and the walk falls through to the native-text
+                // document branch; it never reaches v4's
+                // `blob.sha256 ?? mountLink.sha256`.
+                let blob = match blobs.find_by_file_id(&mount_link.file_id) {
+                    Ok(Some(b)) if b.sha256.chars().count() != BLOB_SHA256_LENGTH => {
+                        tracing::warn!(
+                            fileId = %mount_link.file_id,
+                            error = %format!(
+                                "Invalid input: expected string to have {BLOB_SHA256_LENGTH} \
+                                 characters"
+                            ),
+                            "Failed to find blob by fileId"
+                        );
+                        None
+                    }
+                    Ok(found) => found,
+                    Err(err) => {
+                        tracing::warn!(
+                            fileId = %mount_link.file_id,
+                            error = %err,
+                            "Failed to find blob by fileId"
+                        );
+                        None
+                    }
+                };
+                if let Some(blob) = blob {
                     resolved.push(MountAttachmentEntry {
                         id: mount_link.id.clone(),
                         filename,
@@ -240,14 +332,11 @@ fn walk_message_attachments(
                         mount_point_id: mount_link.mount_point_id.clone(),
                         relative_path: mount_link.relative_path.clone(),
                         has_blob: true,
-                        // v4 `:198` is `blob.sha256 ?? mountLink.sha256 ?? null` —
-                        // NULLISH, so a stored empty-string blob hash would survive
-                        // as `''` there where this filter falls through to the
-                        // link's. Recorded, not matched: no fixture stores `''`
-                        // (the column is written from a real digest), and the
-                        // walk is shared with the chat files listing whose bytes
-                        // this round proved unchanged.
-                        sha256: Some(blob.sha256).filter(|s| !s.is_empty()).or(link_sha),
+                        // v4 `:198` is `blob.sha256 ?? mountLink.sha256 ?? null`.
+                        // NULLISH — but a present blob has ALREADY passed the
+                        // 64-character gate above (v4's Zod parse), so the
+                        // right-hand side is unreachable here on both sides.
+                        sha256: Some(blob.sha256),
                     });
                     seen.insert(mount_link.id);
                     continue;
@@ -259,10 +348,22 @@ fn walk_message_attachments(
                 let Some(text_mime) = native_text_attachment_mime(&mount_link.relative_path) else {
                     continue;
                 };
-                if documents
-                    .find_content_by_file_id(&mount_link.file_id)?
-                    .is_none()
-                {
+                // v4's `docMountDocuments.findByFileId` is `safeQuery(…, null)`
+                // (`doc-mount-documents.repository.ts:113`) — degrade, do not
+                // abort.
+                let document = match documents.find_content_by_file_id(&mount_link.file_id) {
+                    Ok(found) => found,
+                    Err(err) => {
+                        tracing::error!(
+                            collection = "doc_mount_documents",
+                            fileId = %mount_link.file_id,
+                            error = %err,
+                            "Error finding document by file ID"
+                        );
+                        None
+                    }
+                };
+                if document.is_none() {
                     continue;
                 }
                 resolved.push(MountAttachmentEntry {
@@ -303,7 +404,29 @@ pub fn list_chat_gallery(
     mount: &Connection,
     chat_id: &str,
 ) -> Result<Vec<Value>, DbError> {
-    let Some(chat) = chats_read::find_by_id(main, chat_id)? else {
+    // v4 `repos.chats.findById` is the base repository's `_findById`, whose
+    // `safeQuery(…, 'Error finding entity by ID', {id}, null)` is FALLBACK mode
+    // (`base.repository.ts:236`): a read failure logs and answers `null`, so
+    // v4's gallery takes the does-not-exist path and returns an EMPTY roll
+    // rather than throwing. P4.88 reproduces both lines, in v4's order.
+    //
+    // ⚠ The ROUTE has the same lookup and the same divergence, and it runs
+    // FIRST — see `api/chat_media.rs::chat_gallery`, which answers 500 where
+    // v4 answers `notFound('Chat')`. That file is not this order's to touch;
+    // the escalation is in P4.88's lane record.
+    let chat = match chats_read::find_by_id(main, chat_id) {
+        Ok(found) => found,
+        Err(err) => {
+            tracing::error!(
+                collection = "chats",
+                id = %chat_id,
+                error = %err,
+                "Error finding entity by ID"
+            );
+            None
+        }
+    };
+    let Some(chat) = chat else {
         tracing::debug!(
             chat_id = %chat_id,
             "Gallery requested for a chat that does not exist"
@@ -1605,5 +1728,148 @@ fn posix_extname(path: &str) -> String {
     match base.rfind('.') {
         Some(0) | None => String::new(),
         Some(i) => base[i..].to_string(),
+    }
+}
+
+// ============================================================================
+// The message-attachment walk's degrade contract (P4.88 — P4.D174's OPEN item)
+// ============================================================================
+
+#[cfg(test)]
+mod walk_degrade_tests {
+    use super::*;
+    use rusqlite::{params, Connection};
+
+    const LINK_IMG: &str = "11111111-1111-4111-8111-111111111111";
+    const LINK_DOC: &str = "22222222-2222-4222-8222-222222222222";
+    const SHA: &str = "0123456789012345678901234567890123456789012345678901234567890123";
+
+    /// A mount index with one blob-backed image link and one native-text
+    /// document link, in that order on one message.
+    fn mount(blob_column: &str) -> Connection {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(&format!(
+            "CREATE TABLE \"doc_mount_files\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"sha256\" TEXT NOT NULL, \"fileSizeBytes\" REAL, \"fileType\" TEXT, \
+               \"source\" TEXT);\
+             CREATE TABLE \"doc_mount_file_links\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"mountPointId\" TEXT NOT NULL, \
+               \"relativePath\" TEXT NOT NULL, \"fileName\" TEXT NOT NULL, \
+               \"folderId\" TEXT, \"originalFileName\" TEXT, \"originalMimeType\" TEXT, \
+               \"extractedText\" TEXT, \"description\" TEXT, \"conversionStatus\" TEXT, \
+               \"plainTextLength\" REAL, \"linkGroupId\" TEXT, \"lastModified\" TEXT, \
+               \"createdAt\" TEXT NOT NULL, \"updatedAt\" TEXT);\
+             CREATE TABLE \"doc_mount_blobs\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"sha256\" TEXT NOT NULL, \"sizeBytes\" INTEGER, \
+               \"{blob_column}\" TEXT, \"createdAt\" TEXT, \"updatedAt\" TEXT, \"data\" BLOB);\
+             CREATE TABLE \"doc_mount_documents\" (\"id\" TEXT PRIMARY KEY NOT NULL, \
+               \"fileId\" TEXT NOT NULL, \"content\" TEXT);"
+        ))
+        .unwrap();
+        for (link, file, path, mime) in [
+            (LINK_IMG, "file-img", "photos/one.webp", "image/webp"),
+            (LINK_DOC, "file-doc", "notes/two.md", "text/markdown"),
+        ] {
+            db.execute(
+                "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source) \
+                 VALUES (?1, ?2, 10, 'image', 'upload')",
+                params![file, SHA],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, \
+                 fileName, originalMimeType, conversionStatus, plainTextLength, createdAt) \
+                 VALUES (?1, ?2, 'mp-1', ?3, 'n', ?4, 'none', 0, '2026-01-01T00:00:00.000Z')",
+                params![link, file, path, mime],
+            )
+            .unwrap();
+        }
+        // Only the IMAGE link has a blob; the document link is native text.
+        db.execute(
+            &format!(
+                "INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, \"{blob_column}\", \
+                 createdAt, updatedAt) VALUES ('b1', 'file-img', ?1, 10, 'image/webp', \
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"
+            ),
+            params![SHA],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO doc_mount_documents (id, fileId, content) VALUES ('d1', 'file-doc', '# two')",
+            [],
+        )
+        .unwrap();
+        db
+    }
+
+    fn one_message() -> Vec<Value> {
+        vec![json!({
+            "type": "message",
+            "id": "m-1",
+            "createdAt": "2026-01-02T00:00:00.000Z",
+            "attachments": [LINK_IMG, LINK_DOC],
+        })]
+    }
+
+    /// The healthy shape, so the failing arm below is measured against something.
+    #[test]
+    fn a_readable_mount_resolves_both_attachments() {
+        let db = mount("storedMimeType");
+        let out = resolve_message_attachment_entries(&db, &one_message(), &HashSet::new());
+        assert_eq!(out.len(), 2, "{out:#?}");
+        assert!(out[0].has_blob);
+        assert!(!out[1].has_blob, "the .md resolves off the document row");
+    }
+
+    /// v4's `docMountBlobs.findByFileId` is a private try/catch answering `null`
+    /// (`doc-mount-blobs.repository.ts:158`), so a broken blob table costs the
+    /// blob-backed attachment its entry and NOTHING ELSE — the walk carries on
+    /// to the native-text document behind the next id. v5 used to propagate,
+    /// which aborted the whole walk at the first failure and silently dropped
+    /// every later attachment.
+    ///
+    /// A DROPPED table cannot show this (both engines create `doc_mount_blobs`
+    /// lazily, so the read simply finds nothing); a RENAMED column can.
+    #[test]
+    fn a_failed_blob_read_costs_one_attachment_not_the_walk() {
+        let db = mount("storedMimeType_x");
+        let out = resolve_message_attachment_entries(&db, &one_message(), &HashSet::new());
+        assert_eq!(
+            out.len(),
+            1,
+            "the walk must reach the second attachment: {out:#?}"
+        );
+        assert_eq!(out[0].id, LINK_DOC);
+        assert!(!out[0].has_blob);
+    }
+
+    /// v4's `repos.chats.findById` is `_findById`'s `safeQuery(…, null)` —
+    /// FALLBACK mode — so a broken `chats` table gives the gallery `null` and it
+    /// answers an EMPTY roll, not a throw. Driven directly, because the ROUTE
+    /// (`api::chat_media::chat_gallery`) has the same lookup, runs first, and
+    /// answers 500 where v4 answers `notFound('Chat')` — that file is not
+    /// P4.88's to touch, and the escalation is in its lane record.
+    #[test]
+    fn a_broken_chats_table_is_an_empty_roll_not_an_error() {
+        let main = Connection::open_in_memory().unwrap();
+        // No `chats` table at all: every read of it fails.
+        let mount = mount("storedMimeType");
+        let lines = crate::test_support::captured(|| {
+            let out = list_chat_gallery(&main, &mount, "c-1")
+                .expect("a failed chat read must not fail the roll");
+            assert!(out.is_empty(), "{out:#?}");
+        });
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Error finding entity by ID") && l.contains("collection=chats")),
+            "v4's repository error line: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Gallery requested for a chat that does not exist")),
+            "…and then v4's does-not-exist debug: {lines:?}"
+        );
     }
 }

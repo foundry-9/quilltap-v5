@@ -121978,3 +121978,140 @@ spacing moves, leaving `boot_heals_the_two_p4d171_columns_on_a_legacy_instance`
 passing against a fixture that never needed healing. The legacy shape is now the
 shared one, and that test opens the fixture and asserts BOTH columns are ABSENT
 before the boot.
+
+### Unit A1 — the non-default plant through export/import (Tier 1 item 3)
+
+**Families chosen and why.** `system_export_equivalence` (the writer) and
+`system_import_state` (the tier-2 whole-partition state diff over all four
+conflict strategies). Together they cover write → read-back with every row of
+all three partitions compared. `qtap_import_equivalence` was NOT chosen: its
+`/tmp` builder seeds characters and vaults, not chats. `system_restore_*` was
+NOT chosen: it replays committed archives, and widening one is a fixture change
+this order does not carry.
+
+**Where the plant lives.** Both families copy the committed `system-data-*`
+family per case, so the plant goes in the COPY, never the committed pair
+(§R.10). On the v4 side it runs through `rawQuery` right after
+`initializeDatabase()`; on the v5 side through
+`chat_messages_route_trail_repair` / `chats_cycle_order_repair` plus the same
+two UPDATEs. Values: `cycleOrderParticipantIds =
+["e1000000-…-000000000001","e1000000-…-0000000000e2"]` on chat 1, and a
+two-attempt `routeTrail` with distinct `profileId`s on its assistant message.
+
+⚠ **A measured correction to the order.** The order says to plant "in the `/tmp`
+builders". These two families have no `/tmp` builder — they consume the
+COMMITTED `system-data-*` pair, which §R.10 forbids rebuilding. The per-case
+copy is the only place the plant can go, and it is the P4.D91 `plantProbe`
+precedent the order names for (B) anyway.
+
+⚠ **A placement trap worth a memory note.** The first attempt put the ensure and
+the plant in `open_db`, and `system_import_state`'s route-validation arms went
+red with `a validation-failure arm MUTATED the database`: those arms read `pre`
+BEFORE opening the Db, so anything `open_db` writes reads as a mutation. Both
+moved into `fresh_fixture`, beside the file copies.
+
+**RED-FIRST:** dropping `cycleOrderParticipantIds` and `routeTrail` from
+`schema-key-order.json` reddens `system_export_equivalence` (restored by file
+backup; the replacement count asserted).
+
+**Tier 2 item 5 — the finding, measured not assumed.** v4's `importChats`
+passes `chatData` through verbatim and remaps NOTHING, so on the `skip` and
+every `preserve_ids` arm the planted rotation arrives byte-identical and
+`routeTrail[].profileId` survives on all 27 arms (the planted
+`c0000001-…-0000000000f2` appears in every one). **But on the arms where the
+chat is RE-CREATED it does not:** `execute_overwrite_all`'s chat comes back with
+`["e1000000-…-0000000000e2"]` — the entry naming a live participant is GONE,
+and the one left names no participant at all. The dropped id is exactly the
+chat's `spokenThisCycleParticipantIds` (`["e1000000-…-000000000001"]`), which
+names the mechanism: on the re-create path the stored rotation is normalized
+against the spoken set, where the skip path leaves the row alone. **v5
+reproduces this byte-for-byte on every arm — the family is green — so this is a
+FINDING for the round record, not a defect.** It is a different shape from
+`applyChatContinuation`'s remap, which the order predicted; the exact v4 call
+site doing the subtraction is NOT identified here (`chats.repository.ts` never
+names the column) and is handed on as an open question.
+
+### Unit B — the gallery's degrade contract (Tier 1 item 4)
+
+**The site-by-site measurement** (v4 at the pin, `Result` site → v4's
+repository call → verdict):
+
+| v5 site | v4 call | v4 on failure | v5 before | verdict |
+| --- | --- | --- | --- | --- |
+| `list_chat_gallery` `find_by_id` | `repos.chats.findById` → `_findById` `safeQuery(…, null)` | `null` → the does-not-exist path, EMPTY roll | `?` → 500 | **DIVERGENT — fixed** |
+| walk `find_by_id_with_content` | `safeQuery(…, null)` | `null`, loop continues | `?` → whole walk aborts | **DIVERGENT — fixed** |
+| walk `find_by_file_id` (links) | `safeQuery(…, [])` | `[]`, loop continues | `?` | **DIVERGENT — fixed** |
+| walk `blobs.find_by_file_id` | private try/catch → `null` + warn | `null`, falls to the document branch | `?` | **DIVERGENT — fixed** |
+| walk `documents.find_content_by_file_id` | `safeQuery(…, null)` | `null`, `continue` | `?` | **DIVERGENT — fixed** |
+| `get_photo_link_summary_by_sha256` | whole body in one try/catch | warn + `EMPTY_SUMMARY` | `Err` propagates | **DIVERGENT — fixed** |
+| `pass_linked_files` `find_files_linked_to` | `files.findByLinkedTo` `safeQuery(…)` with NO fallback | RETHROWS → 500 | `?` → 500 | FAITHFUL |
+| `load_cast`, `resolve_current_assets`, the three passes | try/catch at the call site | already degrade | already degrade | FAITHFUL |
+
+**The empty-`sha256` arm — the D174 note's premise REFUTED.** It reads v4's
+`blob.sha256 ?? mountLink.sha256` as keeping an empty blob digest. It cannot:
+`DocMountBlobMetadataSchema.sha256` is `z.string().length(64)`
+(`mount-index.types.ts:304`), so `rowToMetadata` throws on any other length,
+the repo's own catch answers `null`, and the blob reads ABSENT — the walk falls
+to the native-text document branch and the `??` is never reached. Ported as
+that refusal, with v4's warn. The LINK's sha is the opposite: `queryJoined`
+maps its rows with NO Zod parse (`doc-mount-file-links.repository.ts:1347`), so
+`''` survives v4's nullish `mountLink.sha256 ?? null` and becomes a dedupe key
+— v5's `.filter(|s| !s.is_empty())` is gone.
+
+**Six new oracle arms**, all planting in the per-case COPY: `..._blobs_table_
+dropped`, `..._links_table_dropped`, `..._blobs_column_renamed`,
+`..._links_column_renamed`, `..._empty_blob_sha256`,
+`..._empty_mount_file_sha256`. ⚠ **A DROPPED table raises no read error on
+either side** — both engines create those tables lazily, so the read simply
+finds nothing. A RENAMED column does. That is why the renamed-column arms
+exist, and it is worth a memory note.
+
+**Mutations** (file backup, replacement count asserted):
+
+| # | mutation | reddened |
+| --- | --- | --- |
+| MB1 | the blob read propagates again (the old whole-walk abort) | `a_failed_blob_read_costs_one_attachment_not_the_walk` |
+| MB2 | the 64-character Zod gate removed | `gallery_empty_blob_sha256` |
+| MB4 | the link-summary catch removed | `gallery_links_column_renamed` + `gallery_links_table_dropped` |
+| MB6 | the chat read propagates again | `a_broken_chats_table_is_an_empty_roll_not_an_error` |
+
+⚠ **Two changes the corpus cannot discriminate on the committed fixture** and
+which are therefore pinned at UNIT tier instead (`walk_degrade_tests`, three
+tests over a hand-built mount): the walk's per-call degrade, and the empty LINK
+sha surviving. On the committed pair every mount attachment that loses its blob
+also fails v4's native-text mime check, so v4's degrade and v5's abort produce
+the SAME roll. `MB5` (the link read propagating) survives every arm for the same
+reason and is recorded here rather than claimed as pinned.
+
+### ⚠ ESCALATION — the gallery ROUTE has the same divergence, and is not mine
+
+`api::chat_media::chat_gallery` (`api/chat_media.rs:358`) does its own
+`chats_read::find_by_id` and answers `Response::error(Internal, "Failed to list
+chat gallery")` on `Err`, where v4's route gets `null` from the same degrading
+repository call and answers `notFound('Chat')` — the "a 404" half of P4.D174's
+OPEN note. It runs BEFORE the enumerator, so the fix inside
+`list_chat_gallery` is invisible through the oracle and the route arm still
+shows 500-vs-404 in production. `api/**` (except `api/memories.rs`) is on
+P4.88's must-not-touch list (§R.5), so the ordered shape is left here: catch the
+`Err` from that lookup, log v4's `Error finding entity by ID`
+(`collection: "chats"`, `id`, `error`) at error level, and take the `not_found`
+branch. A one-arm change with an existing oracle arm to pin it
+(`gallery_missing_chat` plus a new broken-chats plant).
+
+### Out-of-listed-ownership edits, named loud
+
+- `crates/quilltap-core/src/photos/photo_link_summary.rs` — the never-fails
+  catch above. `photos/**` is not in P4.88's must-not-touch column and no
+  sibling lane owns it, but the Owns column names only `photos/chat_gallery.rs`
+  from that directory. The change is the `Err` path only; no green family
+  exercised it.
+- `crates/quilltap-harness/tests/memories_routes_equivalence.rs` — the
+  `ensure_p4d171_columns` heal recorded under unit C.
+
+### For the human / the unifier
+
+- P4.D175's owed `— outfit preview` third-writer upstream filing stays with the
+  human (Tier 3, §R.13). This lane neither drafted nor wrote it.
+- The escalation above wants an order (or a one-line unifier wire, if the
+  unifier is willing to own `api/chat_media.rs`).
+- The Tier-2 rotation finding above wants a sentence in the round record.
