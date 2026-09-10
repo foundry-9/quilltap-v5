@@ -136,6 +136,14 @@ interface Spec {
     apiKeyId?: string;
     isDangerousCompatible?: boolean;
     /**
+     * P4.87: the profile's named understudy (v4 `connection_profiles.
+     * fallbackProfileId`). The corpus had no profile with one, so no
+     * orchestrator case could reach `walkFallbackChain` at all — which is why
+     * the §3-review fix (the orchestrator re-reading its effective profile after
+     * a recovery) was invisible to every Rust differential.
+     */
+    fallbackProfileId?: string;
+    /**
      * P4.D79: the provider-parameters bag. v4's orchestrator reads it through
      * `profileParams()` into `modelParams`, which supplies the request's
      * temperature / maxTokens / topP AND the forwarded `profileParameters`.
@@ -272,6 +280,9 @@ async function main(): Promise<void> {
         ...(cp.apiKeyId !== undefined ? { apiKeyId: cp.apiKeyId } : {}),
         ...(cp.isDangerousCompatible !== undefined
           ? { isDangerousCompatible: cp.isDangerousCompatible }
+          : {}),
+        ...(cp.fallbackProfileId !== undefined
+          ? { fallbackProfileId: cp.fallbackProfileId }
           : {}),
         ...(cp.parameters !== undefined ? { parameters: cp.parameters } : {}),
         ...(cp.maxContext !== undefined ? { maxContext: cp.maxContext } : {}),
