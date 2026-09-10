@@ -220,6 +220,16 @@ fn salon_mutations_match_oracle() {
         let mount = scratch.join("mount.db");
         std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
         std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
+        // P4.D171: the committed `salon-{main,mount}.db` predates the two
+        // `78b381a96`-round schema moves; on a real instance the boot ensures
+        // have already added both columns before any Salon write runs (the
+        // `salon_reads_equivalence` precedent). Without this the message INSERT
+        // — which now always NAMES `routeTrail` — dies on the vintage table.
+        {
+            let w =
+                quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+            quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        }
         let db = Db::open(
             DbPaths {
                 main,

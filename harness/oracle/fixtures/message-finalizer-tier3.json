@@ -800,6 +800,258 @@
       "participantCharacters": [
         "ee695fae-b7e4-4fad-a992-343214b5b4d5"
       ]
+    },
+    {
+      "name": "route-trail-null-no-failures",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d001",
+      "fullResponse": "[Ada] The common turn: nothing failed, so buil",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [],
+      "routeVia": "primary",
+      "$comment": "The common turn: nothing failed, so buildRouteTrail answers NULL and the column stays empty \u2014 even though routeVia is set.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "route-trail-null-concierge-via",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d002",
+      "fullResponse": "[Ada] The Concierge's PRE-CALL reroute: the se",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [],
+      "routeVia": "concierge",
+      "$comment": "The Concierge's PRE-CALL reroute: the seat answered first time, so there is no failure row and the trail is still NULL \u2014 routeVia alone writes nothing.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "route-trail-retry-answered",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d003",
+      "fullResponse": "[Ada] One empty body, then the same seat answe",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [
+        {
+          "profileId": "a1b2c3d4-0000-4000-8000-000000000001",
+          "profileName": "House Anthropic",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet",
+          "via": "primary",
+          "outcome": "failed",
+          "trigger": "empty-response"
+        }
+      ],
+      "routeVia": "retry",
+      "$comment": "One empty body, then the same seat answered on retry: two entries, the second the answering one with no trigger/evidence/detail.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "route-trail-concierge-answered-refusal",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d004",
+      "fullResponse": "[Ada] A stated moderation refusal (finish-reas",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [
+        {
+          "profileId": "a1b2c3d4-0000-4000-8000-000000000001",
+          "profileName": "House Anthropic",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet",
+          "via": "primary",
+          "outcome": "refused",
+          "trigger": "moderation-refusal",
+          "evidence": "finish-reason",
+          "detail": "finish_reason: content_filter"
+        }
+      ],
+      "routeVia": "concierge",
+      "$comment": "A stated moderation refusal (finish-reason evidence), answered by the uncensored desk \u2014 but the ANSWERING entry is state.effectiveProfile, which is still the finalizer's profile here.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "route-trail-understudy-after-auth-and-network",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d005",
+      "fullResponse": "[Ada] A hard-error opener, an understudy that ",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [
+        {
+          "profileId": "a1b2c3d4-0000-4000-8000-000000000001",
+          "profileName": "House Anthropic",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-sonnet",
+          "via": "primary",
+          "outcome": "failed",
+          "trigger": "auth",
+          "detail": "401 Unauthorized"
+        },
+        {
+          "profileId": "a1b2c3d4-0000-4000-8000-000000000003",
+          "profileName": "Understudy \u2014 Haiku",
+          "provider": "ANTHROPIC",
+          "modelName": "claude-haiku-4-5",
+          "via": "understudy",
+          "outcome": "failed",
+          "trigger": "network",
+          "detail": "fetch failed"
+        }
+      ],
+      "routeVia": "tier-pick",
+      "$comment": "A hard-error opener, an understudy that fell over, then a tier pick answered: three entries, every via spelled.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "route-trail-detail-truncated",
+      "chatId": "92d23640-a9dc-4369-86b4-6df30f66ce9c",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "417f7e33-91a2-418e-8011-28cf4d268ab8",
+      "userParticipantId": "6acf282f-8117-4f40-80e5-df4fb1094cd6",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "caff90b9-64b4-442f-a1c0-d2707d59d006",
+      "fullResponse": "[Ada] A detail already truncated to its 200-un",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "routeFailures": [
+        {
+          "profileId": "a1b2c3d4-0000-4000-8000-000000000002",
+          "profileName": "The Back Room",
+          "provider": "OPENROUTER",
+          "modelName": "dolphin-mixtral",
+          "via": "concierge",
+          "outcome": "failed",
+          "trigger": "provider-error",
+          "detail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2026"
+        }
+      ],
+      "routeVia": "understudy",
+      "$comment": "A detail already truncated to its 200-unit ceiling (199 + U+2026) survives the round trip through the column byte-for-byte.",
+      "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
+      "effectiveProfileName": "House Anthropic"
     }
   ],
   "randomBytes": [

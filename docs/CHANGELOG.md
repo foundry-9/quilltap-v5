@@ -12,6 +12,55 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(route-trail): P4.D173 units 2–5 — the recording chokepoint, every failover record site, persistence on the INSERT, the `done` frame and the seeding
+
+_Versions: core 0.0.864, harness 0.0.754._
+
+The message route trail (v4 `5841a8c62`), server half. A v5 assistant message
+whose reply was reached through ANY failover now persists `routeTrail` on its
+INSERT as v4's exact entry list — NULL whenever nothing failed, the last entry
+always agreeing with the row's `provider`/`modelName` — and the SSE `done` frame
+carries the same value.
+
+**The chokepoint.** New `services/route_trail.rs`: `via_of`,
+`record_route_failure`, `set_route_via`, `classify_empty_body`,
+`compose_route_trail` / `build_route_trail`, plus `truncate_detail` (trim, drop
+empty, cut at 199 UTF-16 units + U+2026). `StreamingState` gains `route_failures`
+/ `route_via`; nothing else writes them. `RouteAttempt` serializes with absent
+optionals ABSENT, never null — key presence is part of the contract. Tier-1
+exact over the NEW `route_trail_compose_equivalence` (64 rows), with ONE recorded
+divergence pinned in both directions: a `detail` cut that lands inside a
+surrogate pair leaves v4 holding a lone surrogate, which Rust answers as U+FFFD.
+
+**The record sites (red first).** Twelve calls in `provider_failover.rs` at the
+positions v4 records them, every `classify_empty_body` before the buffers reset.
+Three of v4's arms did not exist in v5 at all — the same-provider retry's
+success/empty/throw discrimination was a `let _ = restream_into(…)` that
+discarded the error, and so was the uncensored reroute's — so those arms landed
+with them, and with the seven `[EmptyResponse]` / `[DangerousContent]` log lines
+the port had silently dropped (the finding-#103/#110 class).
+
+**Persistence + transport.** `save_assistant_message` takes the trail as a
+trailing argument and writes it on the INSERT between `modelName` and
+`isSilentMessage`; `finalize_message_response` composes it after the whisper
+context and before the save, and puts it on the done payload (the key is EMITTED
+as `null` there, as v4's unconditional `routeTrail,` does, and stays ABSENT on
+every other frame); `make_preserve_partial_on_error` carries it too;
+`processMessage`'s state literal seeds `route_via` from the pre-call Concierge
+reroute's id comparison. `EffectiveProfile` / `FinalizerProfile` /
+`FinalizerStreaming` carry what the composition needs.
+
+Differentials: `route_trail_compose_equivalence` (new, 64 rows),
+`primary_stream_tier3_equivalence` (+2 corpus cases for the two throwing arms;
+`routeFailures`/`routeVia` are now comparands — the only direct view of the
+twelve record sites), `message_finalizer_tier3_equivalence` (+6 corpus calls
+covering every reachable via × outcome, the NULL rule and a truncated detail),
+`qtap_schema_validate_equivalence` (+4 arms — a 201-character `detail` is
+REFUSED on import), plus a new `route_trail_continuation_guard` proving Continue
+Elsewhere does not copy the trail. `orchestrator_tier3`, `enclave_step_tier3`,
+`regenerate_swipe_tier3`, `answer_confirmation_tier3` and
+`salon_swipe_generate` re-run green over freshly pinned oracles.
+
 #### 2026-09-09 — feat(route-trail): P4.D173 unit 1 — `EffectiveProfile` carries the profile name at all twelve construct sites
 
 _Versions: core 0.0.863, harness 0.0.753._

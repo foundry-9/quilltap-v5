@@ -201,6 +201,20 @@ pub struct DonePayload {
     /// pendingExternalTurn }` order.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_external_turn: Option<bool>,
+    /// The turn's route trail — every profile tried, in order — so the client's
+    /// optimistic assistant push carries it without a refetch (v4 `5841a8c62`).
+    ///
+    /// v4 sets `routeTrail,` UNCONDITIONALLY on the finalizer's done payload, so
+    /// the key is EMITTED as `null` when nothing failed; the recovery and
+    /// Courier frames are different object literals that never mention it. The
+    /// double `Option` is that distinction: outer `None` = the key is absent
+    /// (every non-finalizer frame), `Some(None)` = `"routeTrail": null`,
+    /// `Some(v)` = the array. Declared after `pending_external_turn` so the
+    /// finalizer frame reads `provider, modelName, routeTrail, isSilentMessage`
+    /// exactly as v4's does (the Courier frame, which sets
+    /// `pendingExternalTurn` and no trail, is unaffected).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_trail: Option<Option<Vec<crate::services::route_trail::RouteAttempt>>>,
     /// `true` when the responding participant is silent, else ABSENT — v4's
     /// `isSilentMessage: … === 'silent' || undefined` (never `false`). Absent on
     /// recovery.
@@ -741,6 +755,9 @@ mod tests {
             provider: Some("ANTHROPIC".into()),
             model_name: Some("claude".into()),
             pending_external_turn: None,
+            // v4 sets `routeTrail,` unconditionally on the finalizer's payload,
+            // so the key is EMITTED as null on the common (nothing-failed) turn.
+            route_trail: Some(None),
             is_silent_message: Some(true),
             empty_response: None,
             empty_response_reason: None,
@@ -764,6 +781,7 @@ mod tests {
                 "turn": { "nextSpeakerId": null, "reason": "user_turn", "cycleComplete": true, "isUsersTurn": true },
                 "provider": "ANTHROPIC",
                 "modelName": "claude",
+                "routeTrail": null,
                 "isSilentMessage": true,
                 "reasoningContent": null,
                 "reasoningSegments": [ { "anchorOffset": 5, "content": "thinking", "seq": 0 } ]

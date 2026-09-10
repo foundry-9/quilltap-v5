@@ -403,6 +403,10 @@ async function main(): Promise<void> {
     reasoningFlushedLen: 0,
     nextTurnSeq: 0,
     hasStartedStreaming: false,
+    // P4.D173: the route trail's two state fields. `processMessage` seeds them
+    // for a real turn; a bare failover harness starts them at v4's defaults.
+    routeFailures: [],
+    routeVia: 'primary',
   });
 
   // P4.D136 (v4 `a1d88aa3a`, bug 106): a call may plant attachments ON THE
@@ -534,6 +538,12 @@ async function main(): Promise<void> {
         })),
         fullResponse: streaming.fullResponse,
         effectiveProfileId: streaming.effectiveProfile.id,
+        // P4.D173: WHICH seats the failover recorded, in order, and how the
+        // answering one came to hold the turn. This is the only direct view of
+        // the twelve `recordRouteFailure` / `setRouteVia` sites — the persisted
+        // column and the `done` frame are the finalizer's, one layer up.
+        routeFailures: streaming.routeFailures,
+        routeVia: streaming.routeVia,
       };
     } else if (call.kind === 'hardFailover') {
       // P4.D135: `runPrimaryStream`'s catch-all, which since `65f5021c8` walks
@@ -586,6 +596,8 @@ async function main(): Promise<void> {
           earlyReturn: psResult.earlyReturn ?? null,
           fullResponse: streaming.fullResponse,
           effectiveProfileId: streaming.effectiveProfile.id,
+          routeFailures: streaming.routeFailures,
+          routeVia: streaming.routeVia,
           // The swap's buffer reset is only measurable against a DIRTY state:
           // a failed attempt that left reasoning behind before it died.
           reasoningContent: streaming.reasoningContent ?? null,
@@ -597,6 +609,8 @@ async function main(): Promise<void> {
           threw,
           fullResponse: streaming.fullResponse,
           effectiveProfileId: streaming.effectiveProfile.id,
+          routeFailures: streaming.routeFailures,
+          routeVia: streaming.routeVia,
           reasoningContent: streaming.reasoningContent ?? null,
           reasoningSegmentCount: (streaming.reasoningSegments ?? []).length,
         };

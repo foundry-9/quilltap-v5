@@ -118230,3 +118230,405 @@ Gate for this unit: `cargo fmt --all --check` clean; `cargo clippy --workspace
 (`CARGO_INCREMENTAL=0`, full log + sentinel, exit code read directly) **541
 test binaries / 3,075 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines**.
 Versions: core 0.0.862 → 0.0.863, harness 0.0.752 → 0.0.753.
+
+**Units 2–5 — the chokepoint, the twelve record sites, persistence + the `done`
+frame + the seeding, and the harness pins.** Landed as one commit: the record
+sites are the chokepoint's only callers, and the persistence is what makes them
+observable.
+
+### Unit 2 — `services/route_trail.rs` + the two `StreamingState` fields
+
+v4's `route-trail.ts` ported whole: `via_of`, `record_route_failure`,
+`set_route_via`, `classify_empty_body`, `build_route_trail`, and the
+module-private `truncate_detail` (public here because the differential drives it
+through its only caller, exactly as v4's tests do). `RouteAttempt` /
+`RouteAttemptVia` (`Default = Primary`) / `RouteAttemptOutcome` /
+`RouteAttemptEvidence` / `EmptyBodyVerdict`, with the three optionals
+`skip_serializing_if = "Option::is_none"` — **absent keys are ABSENT, not null**,
+which a `Value`-level compare cannot see, so the family compares the serialized
+STRING.
+
+**Two shape divergences from v4, both structural and both documented at the
+module head:**
+
+1. v4's writer takes a whole `ConnectionProfile`; v5's callers hold two species
+   (`EffectiveProfile` and the chain engine's `FallbackProfile`), so the four
+   fields an entry needs travel as a borrowed `RouteSeat` view with a `From` for
+   each. Nothing is read that v4 does not read.
+2. v4's `buildRouteTrail(state)` reads the answering seat off a NON-optional
+   `state.effectiveProfile`; v5's is an `Option`, and the finalizer holds a
+   narrower projection than the whole state. So the composition is SPLIT:
+   `compose_route_trail(failures, via, seat, ctx)` carries v4's debug line, and
+   `build_route_trail(&StreamingState, ctx)` is the one-line adapter the
+   preserve-partial path and the differential drive. An unset seat composes an
+   empty-string answering entry rather than dropping the failures on the floor.
+
+**NEW `route_trail_compose_equivalence` — 64 rows, tier-1 exact** over v4's REAL
+`route-trail.ts` (`harness/oracle/cases/route-trail-compose.ts`, a pure `tsx`
+case in the `skip-signal` shape). Kinds: `viaOf` ×3, `classify` ×28 (the
+moderation arm through every provider shape `extractFinishReason` knows, its
+trim/case folding, its precedence over the flagged inference; the inferred arm;
+the plain empty-response arm INCLUDING the JS-truthiness omission of `detail`
+for an EMPTY finish-reason string; the four-probe precedence order),
+`record` ×18 (the pushed entry's exact JSON — key order AND presence — plus
+`truncateDetail`'s whole matrix: undefined / empty / whitespace / NBSP-only /
+trimmed / 199 / 200 / 201 / an outer trim landing exactly on 200 / astral at the
+200-unit boundary), `setVia` ×5, `compose` ×8 (the NULL rule both ways, the
+answering entry's key set, order preservation), `seed` ×2.
+
+**ONE RECORDED DIVERGENCE, pinned in BOTH directions** (`detail-astral-splits-a-surrogate`
+and `detail-201-bmp-astral-tail`): v4's `truncateDetail` cuts with
+`String.prototype.slice(0, 199)`, which counts UTF-16 units, so a cut landing
+INSIDE a surrogate pair leaves v4 holding a LONE HIGH SURROGATE — an ill-formed
+string `JSON.stringify` emits as `\ud83d`. Rust has no representation for one;
+`String::from_utf16_lossy` answers U+FFFD. The arms assert v4 STILL emits the
+lone surrogate (so a v4 fix trips the arm and it retires to a plain equality),
+that v5 answers U+FFFD, and that rewriting v4's escapes to U+FFFD yields v5's
+bytes EXACTLY — nothing else may differ. The family asserts `divergences == 2`.
+
+Mutation proofs (each reverted by file backup, the file confirmed identical
+after):
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | `evidence` serialized as `null` instead of omitted | the key-presence compare (`record` rows) |
+| M2 | truncate at 200 instead of `DETAIL_MAX - 1` | the `detail-201*` rows (the ellipsis budget) |
+| M3 | the flagged-inference arm ahead of the moderation arm | `classify` `mod-beats-flagged` |
+| M4 | `buildRouteTrail` returns the failures WITHOUT the answered entry | every `compose` row |
+
+### Unit 3 — the twelve record sites (RED FIRST)
+
+**The red-first proof**: `primary_stream_tier3_equivalence` grew
+`routeFailures` / `routeVia` as comparands on the `failover` and `hardFailover`
+results (the only direct view of the recording sites — the persisted column and
+the `done` frame are the finalizer's, one layer up). Against the PRE-EDIT tree
+it failed on the first case: `empty_same_provider_retry` got
+`routeFailures: []` / `routeVia: "primary"` where v4 had one `primary`/`failed`/
+`empty-response` entry and `"retry"`.
+
+Sites, at v4's exact positions. **Two order facts corrected by measurement** (the
+order's table said `'primary'`/`viaOf` for both openers): the empty-response
+opener and the hard-error opener BOTH pass `state.routeVia`, not a literal — a
+turn the Concierge pre-empted is recorded as `concierge`, not `primary`.
+
+Three of v4's arms **did not exist in v5 at all**: the same-provider retry's
+success / empty / throw discrimination was `let _ = restream_into(…)` (the error
+DISCARDED), and so was the uncensored reroute's. They landed with the twelve
+calls, and with **seven `[EmptyResponse]` / `[DangerousContent]` log lines the
+port had silently dropped** — the finding-#103/#110 class. Six of the seven sit
+in the arms this order adds; the seventh
+(`[DangerousContent] Empty response detected, attempting uncensored retry`) sits
+at the head of the same block and was ported with them rather than left as the
+only silent step in a newly-legible sequence — **recorded here as a deliberate
+one-line extension beyond the order's letter.**
+
+One shape divergence recorded at the site: v4 hoists `rerouteProfile` outside
+its try so a throw can be attributed; v5 needs no hoist because the only thing
+that can fail is the restream, and it is INSIDE the branch where v4's
+`rerouteProfile` is non-null. v4's router can also throw with `rerouteProfile`
+still null (log, record nothing); v5's `router.resolve` answers a `RouteResult`
+instead of throwing, so that arm has no counterpart.
+
+After the port, `primary_stream_tier3_equivalence` was GREEN on its first run —
+all twelve sites byte-identical to v4, including two NEW corpus cases built for
+the arms the corpus had never had: `empty_retry_throws_then_chain` and
+`empty_reroute_throws_then_chain` (with `retry_throws_then_understudy_ok` /
+`reroute_throws_then_understudy_ok` stream labels). Coverage across the family:
+opener (every case), retry-success (`empty_same_provider_retry`), retry-empty
+(`both_empty`), retry-threw (new), reroute-success
+(`empty_uncensored_failover`), reroute-empty (`both_empty`), reroute-threw
+(new), chain key-less (`empty_walk_auth_refusals`), chain-threw
+(`empty_walk_understudy_errors_then_tier_ok`), chain-empty
+(`empty_walk_exhausts_on_empty`), chain-answered (`empty_chain_fallback`,
+`hard_error_understudy_answers`), hard-error opener (every `hard_error_*`).
+
+**The ORDERING invariant needed its own pins.** Not one canned stream in that
+corpus carries a `raw_response`, so every recorded verdict there is the plain
+`empty-response` arm with no detail — a classify moved AFTER a reset would stay
+green across the whole family. Two unit tests in `provider_failover.rs` plant a
+moderation finish reason and read the recorded entry back:
+`the_opening_record_classifies_from_the_raw_response` and
+`the_retry_record_classifies_the_retrys_own_raw_response` (the latter also pins
+that the OPENER, which saw nothing, is the detail-less arm — a contrast, so
+neither row can pass by accident).
+
+Mutation proofs:
+
+| # | mutation | reddens |
+|---|---|---|
+| M5 | the opening classify moved AFTER a buffer reset | `the_opening_record_classifies_from_the_raw_response` (`Failed` vs `Refused`) |
+| M6 | the chain-empty record dropped | `primary_stream_tier3_equivalence` |
+| M7 | `set_route_via(Retry)` dropped on the retry-success arm | `primary_stream_tier3_equivalence` |
+| M8 | the reroute-threw record attributed to `state.effective_profile` instead of the rerouted seat | `primary_stream_tier3_equivalence` |
+
+### Unit 4 — persistence, the `done` frame, the seeding
+
+`save_assistant_message` gains a trailing `route_trail: Option<&[RouteAttempt]>`
+and inserts `routeTrail` between `modelName` and `isSilentMessage` (omitted when
+None — an omitted key and an explicit `null` are the same row on disk, since the
+insert marshaling drops SQL-NULL columns). `finalize_message_response` composes
+the trail after the whisper context and before the save, exactly where v4's
+`buildRouteTrail(streaming, {chatId, messageId})` sits, and puts it on the done
+payload. `make_preserve_partial_on_error` carries it too.
+`orchestrator.rs`'s `StreamingState` literal seeds `route_failures: vec![]` and
+`route_via` from **v4's id comparison** (`dangerState.effectiveProfile.id !==
+connectionProfile.id`) rather than v5's `did_reroute` flag — measured narrower:
+the router can answer `rerouted` with the SAME profile, and that is not a change
+of seat.
+
+`DonePayload.route_trail` is `Option<Option<Vec<RouteAttempt>>>` behind
+`skip_serializing_if`: outer `None` = the key is ABSENT (every non-finalizer
+frame — recovery, skip, Courier), `Some(None)` = `"routeTrail": null`,
+`Some(v)` = the array. v4 sets `routeTrail,` unconditionally on the FINALIZER's
+literal only, and its other done literals never mention it — measured, and pinned
+by `chat_events`'s existing key-ORDER tests (`finalizer_done_carries_the_full_
+payload_in_v4_field_order` now asserts `"routeTrail": null` between `modelName`
+and `isSilentMessage`; the skip / recovery / Courier frames assert its absence).
+
+**A structural fork recorded:** `FinalizerProfile` gains `name` and
+`FinalizerStreaming` gains `route_failures` / `route_via` — the finalizer holds a
+projection, not the whole `StreamingState`, so the pieces have to reach it. The
+construction site is `process_message` (`orchestrator.rs`), the SAME function as
+this order's fenced `StreamingState` literal, and P4.D172's two fenced regions
+are different functions entirely (`maybe_pause_for_user_seat_turn`,
+`handle_turn_skip`) — no collision, recorded here because the order named the
+literal by line rather than the function.
+
+`message_finalizer_tier3_equivalence` gained SIX corpus calls covering every
+reachable `via` × `outcome`: the NULL rule with `routeVia primary` AND with
+`concierge` (the pre-call reroute that answered first time writes nothing), a
+retry-then-answered pair, a stated moderation refusal answered by the Concierge,
+a hard-error opener → understudy → tier-pick three-entry trail, and a `detail`
+already at its 200-unit ceiling surviving the round trip. Both the persisted
+column and the `done` frame's key are compared by the family's existing
+comparands. **The seat is now per-call**: `RouteAttemptSchema.profileId` is
+`UUIDSchema`, and this family's historical `profile-mf-…` literal is not a UUID —
+the ANSWERING entry is built from it, so the message INSERT threw a ZodError on
+the oracle side until the route-trail calls got a real UUID of their own. Every
+other case keeps the historical values.
+
+### Unit 5 — the harness pins
+
+* `qtap_schema_validate_equivalence` +4 arms:
+  `chat_message_route_trail_well_formed` (adds NO error path of its own),
+  `chat_message_route_trail_detail_over_200` (**REFUSED** — the 201-character
+  `detail`), `…_via_off_enum`, `…_missing_required`. The seed is itself invalid
+  (two pre-existing `participantId` errors), so the comparand is the
+  instance-path SET, not the boolean — named in the corpus comment so no one
+  reads the row as claiming validity.
+* NEW `route_trail_continuation_guard` — **Continue Elsewhere drops the trail**,
+  two legs so neither can rot: the REAL `apply_chat_continuation` driven over a
+  provisioned instance whose source message carries a trail (the replayed row's
+  `routeTrail` is NULL while its content is copied and its author remapped — the
+  contrast is what makes the absence a measurement), plus a source census over
+  `chat_continuation.rs` (an allow-list projection: a `routeTrail` there could
+  only be a copy). **No edit to that file — it is P4.D172's this round.**
+  MEASURED on the way: v4's projection carries neither `provider` nor
+  `modelName`, so a continued message shows no provider badge at all and the
+  trail's absence is consistent with that, not an exception to it.
+* The trigger-union parity assertion: v5 has ONE `FallbackTrigger` reused by both
+  the engine and the trail, so v4's compile-time half is free; the runtime half
+  is `trigger_union_matches_v4_route_attempt_schema` in `route_trail.rs`.
+
+### The cross-lane pin split (a measured finding, not a workaround)
+
+`message_finalizer_tier3`, `orchestrator_tier3`, `enclave_step_tier3`,
+`regenerate_swipe_tier3`, `answer_confirmation_tier3`, `salon_mutations` and
+`salon_swipe_generate` are **shared with P4.D172** — the round's Ownership table
+lists several of them under both stacked lanes. Regenerated at the round's
+`78b381a96` target they carry P4.D172's cycle-order feature, which this lane
+does not have, and `message_finalizer_tier3` reds on
+`reason: weighted_selection` vs `cycle_order` plus a written
+`chats.cycleOrderParticipantIds`.
+
+**`5841a8c62` (the route trail) PRECEDES `2aca73ad6` (the cycle order)**, so this
+lane regenerates those ORACLES from a THIRD lane-unique pin,
+`/tmp/qt-v4-pin-p4d173-5841a8c62`, where this lane's half is fully present and
+P4.D172's is not (`lib/chat/turn-manager/cycle-order.ts` is ABSENT there —
+verified). **The FIXTURES still come from the `78b381a96` pin**, because
+P4.D171's readers need `cycleOrderParticipantIds` and a `5841a8c62`-built
+`generateDDL` has not got it (measured: `no such column:
+cycleOrderParticipantIds` from every one of those families on the first try).
+Fixture at the tip, oracle at the route-trail commit — that is the recipe below.
+**The unifier re-regenerates all of them at `78b381a96` once both stacked lanes
+are on one branch.**
+
+### DEFERRED LOUDLY
+
+* **Tier 2 item 6, `salon_mutations_equivalence` — the done-frame arm is
+  UNREACHABLE from this lane, measured both ways.** At the `5841a8c62` pin its
+  only reds are nine `chat_update*/body` sections, all of them P4.D171's
+  `cycleOrderParticipantIds` chat-payload projection (§C.2) against a v4 that
+  does not have the key yet. At the `78b381a96` tip those nine go green and
+  EXACTLY FOUR reds remain — `turn_query/body`, `turn_query/chats`,
+  `turn_nudge/body`, `turn_nudge/chats` — every one of them P4.D172's §C.2
+  contract (`state.cycleOrder` on `?action=turn`; the written
+  `chats.cycleOrderParticipantIds`, v5 `"[]"` vs v4's three-seat list). So this
+  lane's done-frame change is PROVEN neutral there and the residue is named
+  field-for-field. **`QT_ORACLE_SALON_MUTATIONS` is deliberately WITHHELD from
+  this lane's gate env block** — the family then takes its `env_or_skip` path and
+  reports `ok. 1 passed` in **0.00 s**, which is the tell: cargo CAPTURES a
+  passing test's stderr, so its `SKIP:` line never reaches the log and a
+  `grep -c 'SKIP:'` of ZERO is NOT evidence that nothing skipped. Recorded here
+  so the gate's clean SKIP count is not read as coverage this family did not
+  give (it did the same, unremarked, in P4.D171's gate);
+  the unifier supplies it at `78b381a96` once P4.D172 is on the branch.
+  `salon_swipe_generate_equivalence` — the other half of Tier 2 item 6 — DID
+  land, green at the `5841a8c62` pin.
+* **Tier 2 item 7** (the three previously-missing failover log lines' BAGS diffed
+  against v4's, capture-pinned rather than presence-pinned): NOT landed. The
+  lines' text and level are ported byte-faithfully and their bags are transcribed
+  from v4's object literals, but no capture layer asserts the field VALUES. A
+  small follow-up in the `[CheapLLM] Task failed` idiom.
+* **Tier 3 (as the order directs):** `MessageRow.tsx:560`'s memo comparator is a
+  NO-COUNTERPART in Angular (P4.D177 records it); v4's own outstanding manual
+  `V4test` pass has no automated coverage on either side — 💸 dogfood items: the
+  three-row trail layout in three themes, and a `.qtap` export → fresh-import
+  round trip carrying a trail.
+* 💸 **Owed to the next dogfood pass:** a real failover on the Friday copy
+  showing the persisted trail and the badge — the whole feature is invisible
+  until something actually fails, and no test can show what the list looks like
+  under a real avatar.
+
+### Spotted, not mine (for the unifier)
+
+* **`salon_skip_equivalence` is RED on this base the moment its oracle is
+  supplied** — `table chat_messages has no column named routeTrail`, because
+  P4.D171's INSERT always names the column and the committed `salon-*.db` pair
+  predates it. That file is P4.D172's this round. The one-line fix is the same
+  `test_support::ensure_p4d171_columns(w.connection())` call on its fixture copy
+  that `salon_reads` (P4.D171) and now `salon_mutations` /
+  `salon_swipe_generate` (this lane) carry. **P4.D171's own gate never saw it
+  because all three families SKIP without their oracle vars** — the vintage gap
+  was only exercised here.
+* New `crates/quilltap-harness/tests/salon_fixture_p4d171_ensure.rs`: an
+  `#[ignore]`d fixture STEP (not a check) that emits a P4.D171-healed COPY of the
+  committed `salon-{main,mount}.db` pair at
+  `/tmp/qt-salon-p4d171-{main,mount}.db`, so the ORACLE side of the salon
+  mutation families sees the same column set the v5 side does. The committed pair
+  is NOT touched.
+
+### Regen recipes (every one from a lane-unique pin)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+TIP=/tmp/qt-v4-pin-p4d173-78b381a96          # the round's catch-up target
+RT=/tmp/qt-v4-pin-p4d173-5841a8c62           # the route-trail commit — this lane's
+                                             # half present, P4.D172's ABSENT
+V5W=~/source/quilltap-v5/.claude/worktrees/p4-route-trail-server-port-cb9fdf
+
+# --- route_trail_compose_equivalence (NEW, pure tsx, from the TIP)
+cd "$TIP"
+$N/npx tsx "$V5W/harness/oracle/cases/route-trail-compose.ts" \
+  > /tmp/oracle-route-trail-compose-p4d173.ndjson
+cd "$V5W"
+QT_ORACLE_ROUTE_TRAIL=/tmp/oracle-route-trail-compose-p4d173.ndjson \
+  cargo test -p quilltap-harness --test route_trail_compose_equivalence -- --nocapture
+
+# --- primary_stream_tier3_equivalence (wholly from the TIP — no P4.D172 surface)
+TMPO=/tmp/qt-primary-stream-oracle-p4d173
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/primary-stream-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/primary-stream-tier3.json" "$TMPO/fixtures/"
+cd "$TIP"
+QT_FIXTURE_OUT=/tmp/qt-primary-stream-p4d173.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-primary-stream-fixture.ts"
+QT_FIXTURE_PRIMARY_STREAM=/tmp/qt-primary-stream-p4d173.db \
+QT_ORACLE_OUT=/tmp/oracle-primary-stream-p4d173.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- primary-stream-tier3
+
+# --- the FIXTURE-at-TIP / ORACLE-at-RT split (message_finalizer, orchestrator,
+#     enclave_step, regenerate_swipe, answer_confirmation)
+#     …build each fixture from "$TIP" with its recipe's QT_FIXTURE_* vars, then
+#     run its jest stage from "$RT" with the same vars. Worked example:
+TMPO=/tmp/qt-message-finalizer-oracle-p4d173
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/message-finalizer-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/message-finalizer-tier3.json" "$TMPO/fixtures/"
+cd "$TIP"
+QT_FIXTURE_OUT=/tmp/qt-mf-main-p4d173.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-mf-mount-p4d173.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-message-finalizer-fixture.ts"
+cd "$RT"
+QT_FIXTURE_MF_MAIN=/tmp/qt-mf-main-p4d173.db QT_FIXTURE_MF_MOUNT=/tmp/qt-mf-mount-p4d173.db \
+QT_ORACLE_OUT=/tmp/oracle-message-finalizer-p4d173.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- message-finalizer-tier3
+
+# --- the salon families: heal a COPY of the committed pair FIRST, then point the
+#     oracle at it (the committed pair is never written)
+cd "$V5W"
+cargo test -p quilltap-harness --test salon_fixture_p4d171_ensure -- --ignored
+cd "$RT"
+TZ=UTC QT_FIXTURE_SALON_MAIN=/tmp/qt-salon-p4d171-main.db \
+QT_FIXTURE_SALON_MOUNT=/tmp/qt-salon-p4d171-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-salon-swipe-p4d173.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- salon-swipe-generate
+
+# --- qtap_schema_validate_equivalence (from the TIP — the vendored schema's home)
+```
+
+### The gate
+
+`cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets --
+-D warnings` clean, and again with `--features
+quilltap-core/native-transport` clean. `cargo build --workspace` clean.
+`cargo build --workspace --release` clean. **`cargo test --workspace` — 544
+test binaries / 3,081 passed / 0 failed / 2 ignored, exit code 0** (read from
+a sentinel, never after a pipe), `CARGO_INCREMENTAL=0` throughout, full log,
+no `tail`, no `pgrep` loop.
+
+The lane's families, confirmed to have RUN inside that block by per-binary
+duration (the `0.00 s` on `salon_mutations` is the deliberate withheld-var
+skip described above):
+
+| family | result |
+|---|---|
+| `route_trail_compose_equivalence` | ok, 1 test, 0.01 s (64 rows, 2 recorded divergences) |
+| `route_trail_continuation_guard` | ok, 2 tests, 0.02 s |
+| `primary_stream_tier3_equivalence` | ok, 2 tests, 0.14 s |
+| `message_finalizer_tier3_equivalence` | ok, 1 test, 0.21 s |
+| `orchestrator_tier3_equivalence` | ok, 1 test, 3.12 s |
+| `enclave_step_tier3_equivalence` | ok, 1 test, 0.61 s |
+| `regenerate_swipe_tier3_equivalence` | ok, 1 test, 0.08 s |
+| `answer_confirmation_tier3_equivalence` | ok, 1 test, 0.22 s |
+| `salon_swipe_generate_equivalence` | ok, 1 test, 0.07 s |
+| `qtap_schema_validate_equivalence` | ok, 1 test, 0.44 s |
+| `salon_mutations_equivalence` | ok, 0.00 s — DELIBERATELY skipped (see above) |
+
+Versions: core 0.0.863 → 0.0.864, harness 0.0.753 → 0.0.754.
+`git diff main -- apps/web/` and `-- help/` both EMPTY; nothing in the
+Ownership table's "must not touch" column was opened (`db/**`, `api/salon.rs`,
+`chat_continuation.rs`, `select_speaker.rs`, `turn_state.rs`,
+`turn_orchestrator.rs`, `participant_resolver.rs`, `enclave/**`, `photos/**`,
+`tools/**`, `realtime/**`, `generators/**`, `host.rs` — all untouched).
+
+**One ownership note, measured rather than assumed.** `FinalizerProfile` gains
+`name` and `FinalizerStreaming` gains the two trail fields, so their
+CONSTRUCTION site in `orchestrator.rs` had to move too. The order fenced that
+file "BY FUNCTION" but named this lane's regions by LINE
+(`:1392-1396` + `to_effective_profile`). The construction site is at `:3092`,
+inside `process_message` — **the same function as the `StreamingState` literal
+this lane owns** — while P4.D172's two fenced regions are different functions
+entirely (`maybe_pause_for_user_seat_turn` `:740`, `handle_turn_skip` `:3442`).
+Verified by walking the enclosing `fn` of every touched line, so the edit
+cannot collide.
+
+**Two gate incidents worth the next lane's attention.** (1) An
+`answer-confirmation-tier3` oracle that had FAILED to write its NDJSON produced
+a `NotFound` panic 101 binaries into the first full run — its jest case builds
+its own `streaming` bag and needed the two new fields before v4's finalizer
+would run at all; the regen script reported a passing jest time while writing
+no file, so **check the oracle file EXISTS, not just that jest was happy**.
+(2) A structural edit anchored on quoted code silently DELETED the second test
+in `route_trail_continuation_guard.rs`; the file still compiled and the binary
+reported a green `1 passed`, so the loss was invisible in every summary —
+caught only by counting the tests against the source
+(`a-structural-edit-anchored-on-quoted-code`, a second sighting). The gate of
+record above is the re-run with both legs present.
+
+**Disk.** This lane's `target/` reached 69 GB (the per-version-bump `deps`
+accumulation) with two sibling lanes building concurrently, and free space fell
+to 11 GiB mid-gate. Cleared THIS lane's own `target/` only (never a sibling's),
+which freed 69 GB, and re-ran the whole gate from cold with
+`CARGO_INCREMENTAL=0`.

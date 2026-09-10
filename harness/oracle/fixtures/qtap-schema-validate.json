@@ -385,6 +385,119 @@
           "value": "puce"
         }
       ]
+    },
+    {
+      "name": "chat_message_route_trail_well_formed",
+      "from": "chats_all_memories",
+      "$comment": "P4.D173: a WELL-FORMED route trail on an imported message adds NO error path of its own \u2014 two entries, the answering one carrying none of the three optionals. (The `chats_all_memories` seed is itself invalid, two pre-existing `participantId` errors, so the comparand here is the instance-path SET, not the boolean: this row adds nothing, and each refusal row below adds exactly one path under `/routeTrail`.)",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/routeTrail",
+          "value": [
+            {
+              "profileId": "aa000001-0000-4000-8000-000000000001",
+              "profileName": "House Anthropic",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-5",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "finish_reason: content_filter"
+            },
+            {
+              "profileId": "aa000002-0000-4000-8000-000000000002",
+              "profileName": "The Back Room",
+              "provider": "OPENROUTER",
+              "modelName": "dolphin-mixtral",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chat_message_route_trail_detail_over_200",
+      "from": "chats_all_memories",
+      "$comment": "P4.D173: `RouteAttempt.detail` is capped at 200 characters, so an archive carrying 201 is REFUSED at import. v5's own writer truncates at 199 + U+2026, which is why this shape can only arrive from a hand-edited or foreign archive \u2014 and the vendored schema is what stops it.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/routeTrail",
+          "value": [
+            {
+              "profileId": "aa000001-0000-4000-8000-000000000001",
+              "profileName": "House Anthropic",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-5",
+              "via": "primary",
+              "outcome": "refused",
+              "trigger": "moderation-refusal",
+              "evidence": "finish-reason",
+              "detail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            },
+            {
+              "profileId": "aa000002-0000-4000-8000-000000000002",
+              "profileName": "The Back Room",
+              "provider": "OPENROUTER",
+              "modelName": "dolphin-mixtral",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chat_message_route_trail_via_off_enum",
+      "from": "chats_all_memories",
+      "$comment": "P4.D173: `via` is a closed enum; an unknown member is refused.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/routeTrail",
+          "value": [
+            {
+              "profileId": "aa000001-0000-4000-8000-000000000001",
+              "profileName": "House Anthropic",
+              "provider": "ANTHROPIC",
+              "modelName": "claude-sonnet-5",
+              "via": "sideways",
+              "outcome": "failed"
+            },
+            {
+              "profileId": "aa000002-0000-4000-8000-000000000002",
+              "profileName": "The Back Room",
+              "provider": "OPENROUTER",
+              "modelName": "dolphin-mixtral",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chat_message_route_trail_missing_required",
+      "from": "chats_all_memories",
+      "$comment": "P4.D173: `profileName` is required on every entry \u2014 an archive that omits it is refused rather than silently rendering a nameless seat.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/routeTrail",
+          "value": [
+            {
+              "profileId": "aa000002-0000-4000-8000-000000000002",
+              "provider": "OPENROUTER",
+              "modelName": "dolphin-mixtral",
+              "via": "concierge",
+              "outcome": "answered"
+            }
+          ]
+        }
+      ]
     }
   ],
   "literals": [

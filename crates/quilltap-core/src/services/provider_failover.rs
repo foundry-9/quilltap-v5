@@ -44,6 +44,10 @@ use super::primary_stream::{
     apply_reasoning_chunk, flush_reasoning_segment, log_chat_message_call, EffectiveProfile,
     StreamLogCtx, StreamingState,
 };
+use super::route_trail::{
+    classify_empty_body, record_route_failure, set_route_via, via_of, RouteAttemptOutcome,
+    RouteAttemptVia,
+};
 use crate::llm_fallback::{
     build_fallback_chain, classify_fallback_trigger, record_attempt, FallbackAttempt,
     FallbackCandidateKind, FallbackContext, FallbackError, FallbackProfile, FallbackPurpose,
@@ -252,6 +256,31 @@ where
         return flags;
     }
 
+    // The call that opened this recovery produced nothing. Record it on the
+    // turn's route trail once, here, while `state.raw_response` still holds the
+    // finish reason that tells a stated refusal from a plain empty body —
+    // `reset_streaming_buffers_for_swap` clears it further down the chain.
+    //
+    // `state.route_via` is whatever the effective profile already was: `Primary`
+    // normally, `Concierge` when the Concierge's *pre-call* reroute installed
+    // this profile before anything was tried. (v4 passes `state.routeVia` here,
+    // NOT a literal `'primary'`.)
+    let opening_verdict = classify_empty_body(state, content_was_flagged_dangerous);
+    let opening_seat = state
+        .effective_profile
+        .clone()
+        .unwrap_or_else(|| connection_profile.clone());
+    let opening_via = state.route_via;
+    record_route_failure(
+        state,
+        &opening_seat,
+        opening_via,
+        opening_verdict.outcome,
+        opening_verdict.trigger,
+        opening_verdict.detail.as_deref(),
+        opening_verdict.evidence,
+    );
+
     // --- Same-provider retry (only when not flagged dangerous) ---
     // Profiles this recovery has already spent. The chain walk at the bottom
     // reads it so a route that has already come back empty isn't asked twice.
@@ -276,8 +305,12 @@ where
             .effective_profile
             .clone()
             .unwrap_or_else(|| connection_profile.clone());
-        // Best-effort: a retry error is logged and swallowed (v4 catches it).
-        let _ = restream_into(
+        // v4 discriminates three outcomes here — answered, answered-empty, and
+        // threw — and each one both writes the trail and says so in the log.
+        // The port had collapsed all three into `let _ = …`: the retry error was
+        // discarded and none of v4's three lines existed (the finding-#103/#110
+        // class, closed with the route-trail arms they belong to).
+        match restream_into(
             provider,
             state,
             sink,
@@ -289,7 +322,67 @@ where
             &character_id,
             stream_log.as_ref(),
         )
-        .await;
+        .await
+        {
+            Ok(()) => {
+                if !crate::jsstr::js_trim(&state.full_response).is_empty() {
+                    set_route_via(state, RouteAttemptVia::Retry);
+                    tracing::info!(
+                        target: "quilltap::failover",
+                        chat_id = %chat_id,
+                        provider = %same_profile.provider,
+                        model = %same_profile.model_name,
+                        response_length = state.full_response.len(),
+                        "[EmptyResponse] Same-provider retry succeeded"
+                    );
+                } else {
+                    // Classify BEFORE anything downstream resets the buffers: the
+                    // finish reason that tells a refusal from a plain empty body
+                    // lives in `state.raw_response`, which
+                    // `reset_streaming_buffers_for_swap` clears.
+                    let retry_verdict = classify_empty_body(state, content_was_flagged_dangerous);
+                    record_route_failure(
+                        state,
+                        &same_profile,
+                        RouteAttemptVia::Retry,
+                        retry_verdict.outcome,
+                        retry_verdict.trigger,
+                        retry_verdict.detail.as_deref(),
+                        retry_verdict.evidence,
+                    );
+                    tracing::warn!(
+                        target: "quilltap::failover",
+                        chat_id = %chat_id,
+                        provider = %same_profile.provider,
+                        model = %same_profile.model_name,
+                        "[EmptyResponse] Same-provider retry also returned empty"
+                    );
+                }
+            }
+            Err(retry_error) => {
+                // v4 swallows the throw (it only logs); the trail is where it
+                // now leaves a trace.
+                let retry_message = retry_error.message;
+                let retry_trigger =
+                    classify_fallback_trigger(FallbackError::message(&retry_message))
+                        .unwrap_or(FallbackTrigger::ProviderError);
+                record_route_failure(
+                    state,
+                    &same_profile,
+                    RouteAttemptVia::Retry,
+                    RouteAttemptOutcome::Failed,
+                    retry_trigger,
+                    Some(&retry_message),
+                    None,
+                );
+                tracing::error!(
+                    target: "quilltap::failover",
+                    chat_id = %chat_id,
+                    error = %retry_message,
+                    "[EmptyResponse] Same-provider retry failed"
+                );
+            }
+        }
     }
 
     // --- Uncensored failover ---
@@ -298,6 +391,21 @@ where
         && danger_settings.uncensored_text_profile_id.is_some()
     {
         flags.uncensored_retry_attempted = true;
+
+        // v4 announces the attempt before resolving the route; the port had
+        // never carried this line (same class as the three retry arms above).
+        {
+            let seat = state.effective_profile.as_ref();
+            tracing::warn!(
+                target: "quilltap::failover",
+                chat_id = %chat_id,
+                original_provider = seat.map(|p| p.provider.as_str()).unwrap_or(""),
+                original_model = seat.map(|p| p.model_name.as_str()).unwrap_or(""),
+                content_was_flagged_dangerous,
+                same_provider_retry_attempted = flags.same_provider_retry_attempted,
+                "[DangerousContent] Empty response detected, attempting uncensored retry"
+            );
+        }
 
         let original_profile = state
             .effective_profile
@@ -361,7 +469,17 @@ where
                     re_params.messages = adapted;
                 }
             }
-            let _ = restream_into(
+            // v4 wraps the whole reroute in one try/catch and holds
+            // `rerouteProfile` outside it so a throw can still be attributed to
+            // the profile the call was made against. v5 needs no hoist: the only
+            // thing that can fail here is this restream, and it is INSIDE the
+            // branch where v4's `rerouteProfile` is non-null — the attribution is
+            // structural rather than a variable. (v4's router call can throw and
+            // reach the catch with `rerouteProfile` still null, logging the line
+            // and recording nothing; v5's `router.resolve` answers a
+            // `RouteResult` instead of throwing, so that arm has no counterpart.
+            // A SHAPE divergence, not a behaviour one.)
+            match restream_into(
                 provider,
                 state,
                 sink,
@@ -372,13 +490,74 @@ where
                 &character_id,
                 stream_log.as_ref(),
             )
-            .await;
-
-            if !crate::jsstr::js_trim(&state.full_response).is_empty() {
-                // The uncensored retry produced content — switch the effective
-                // profile/key so the finalizer records the reroute.
-                state.effective_profile = Some(route.connection_profile.clone());
-                state.effective_api_key = route.api_key.clone();
+            .await
+            {
+                Ok(()) => {
+                    if !crate::jsstr::js_trim(&state.full_response).is_empty() {
+                        // The uncensored retry produced content — switch the
+                        // effective profile/key so the finalizer records the
+                        // reroute.
+                        state.effective_profile = Some(route.connection_profile.clone());
+                        state.effective_api_key = route.api_key.clone();
+                        set_route_via(state, RouteAttemptVia::Concierge);
+                        tracing::info!(
+                            target: "quilltap::failover",
+                            chat_id = %chat_id,
+                            uncensored_provider = %route.connection_profile.provider,
+                            uncensored_model = %route.connection_profile.model_name,
+                            response_length = state.full_response.len(),
+                            "[DangerousContent] Uncensored retry succeeded"
+                        );
+                    } else {
+                        // Record it from `route.connection_profile`, NOT from
+                        // `state`: the swap above only happens on success, so an
+                        // uncensored profile that comes back empty is otherwise
+                        // absent from every record — and this row is precisely the
+                        // one the user asked for. Classified here, before the chain
+                        // walk below resets the buffers.
+                        let uncensored_verdict =
+                            classify_empty_body(state, content_was_flagged_dangerous);
+                        record_route_failure(
+                            state,
+                            &route.connection_profile,
+                            RouteAttemptVia::Concierge,
+                            uncensored_verdict.outcome,
+                            uncensored_verdict.trigger,
+                            uncensored_verdict.detail.as_deref(),
+                            uncensored_verdict.evidence,
+                        );
+                        tracing::error!(
+                            target: "quilltap::failover",
+                            chat_id = %chat_id,
+                            safe_provider = %connection_profile.provider,
+                            safe_model = %connection_profile.model_name,
+                            uncensored_provider = %route.connection_profile.provider,
+                            uncensored_model = %route.connection_profile.model_name,
+                            "[DangerousContent] Both safe and uncensored providers returned empty"
+                        );
+                    }
+                }
+                Err(reroute_error) => {
+                    let reroute_message = reroute_error.message;
+                    let reroute_trigger =
+                        classify_fallback_trigger(FallbackError::message(&reroute_message))
+                            .unwrap_or(FallbackTrigger::ProviderError);
+                    record_route_failure(
+                        state,
+                        &route.connection_profile,
+                        RouteAttemptVia::Concierge,
+                        RouteAttemptOutcome::Failed,
+                        reroute_trigger,
+                        Some(&reroute_message),
+                        None,
+                    );
+                    tracing::error!(
+                        target: "quilltap::failover",
+                        chat_id = %chat_id,
+                        error = %reroute_message,
+                        "[DangerousContent] Uncensored retry failed"
+                    );
+                }
             }
         }
     }
@@ -829,6 +1008,15 @@ where
                     FallbackTrigger::Auth,
                     Some(reason.as_str()),
                 ));
+                record_route_failure(
+                    state,
+                    understudy,
+                    via_of(candidate.kind),
+                    RouteAttemptOutcome::Failed,
+                    FallbackTrigger::Auth,
+                    Some(reason.as_str()),
+                    None,
+                );
                 continue;
             }
         };
@@ -879,6 +1067,15 @@ where
                 understudy_trigger,
                 Some(&understudy_error.message),
             ));
+            record_route_failure(
+                state,
+                understudy,
+                via_of(candidate.kind),
+                RouteAttemptOutcome::Failed,
+                understudy_trigger,
+                Some(&understudy_error.message),
+                None,
+            );
             tracing::warn!(
                 target: "quilltap::failover",
                 chat_id = %chat_id,
@@ -900,6 +1097,20 @@ where
                 FallbackTrigger::EmptyResponse,
                 Some("empty response"),
             ));
+            // Classified HERE, before the NEXT iteration's
+            // `reset_streaming_buffers_for_swap` wipes `state.raw_response` —
+            // that is where the finish reason lives, and it is the only thing
+            // that tells a stated refusal from a blank body.
+            let understudy_verdict = classify_empty_body(state, context.dangerous);
+            record_route_failure(
+                state,
+                understudy,
+                via_of(candidate.kind),
+                understudy_verdict.outcome,
+                understudy_verdict.trigger,
+                understudy_verdict.detail.as_deref(),
+                understudy_verdict.evidence,
+            );
             tracing::warn!(
                 target: "quilltap::failover",
                 chat_id = %chat_id,
@@ -913,6 +1124,7 @@ where
 
         state.effective_profile = Some(effective);
         state.effective_api_key = api_key;
+        set_route_via(state, via_of(candidate.kind));
 
         tracing::info!(
             target: "quilltap::failover",
@@ -1016,6 +1228,24 @@ where
         purpose = %opts.context.purpose,
         error = %error.message,
         "[Failover] Primary call failed; walking the fallback chain"
+    );
+
+    // The failure that opens the chain is the trail's first row. `route_via` is
+    // whatever the effective profile already was — `Primary` normally,
+    // `Concierge` when the Concierge's pre-call reroute had already swapped it.
+    //
+    // v4 records `state.effectiveProfile`; v5's whole function already stands
+    // `opts.failed` (the full row the caller holds) in for it — same seat, and
+    // the only one carrying a `name`.
+    let opening_via = opts.state.route_via;
+    record_route_failure(
+        opts.state,
+        &opts.failed,
+        opening_via,
+        RouteAttemptOutcome::Failed,
+        trigger,
+        Some(error.message),
+        None,
     );
 
     let opening = record_attempt(&opts.failed, trigger, Some(error.message));
@@ -1770,5 +2000,171 @@ mod tests {
                  `runWithAutonomousRunId` scope covers every retry"
             );
         }
+    }
+    // ========================================================================
+    // P4.D173 — the route trail's ORDERING invariant
+    //
+    // Every empty-body classification runs BEFORE the buffers are reset, because
+    // `reset_streaming_buffers_for_swap` clears `state.raw_response` and the
+    // finish reason lives in there. The tier-3 corpus proves the twelve record
+    // SITES (`primary_stream_tier3_equivalence`'s `routeFailures` comparand) but
+    // it is BLIND to this: not one of its canned streams carries a
+    // `raw_response`, so every recorded verdict there is the plain
+    // `empty-response` arm with no detail. A classify moved after a reset would
+    // stay green across the whole family. These tests are the ordering's only
+    // guard — plant a moderation finish reason and read the recorded entry.
+    // ========================================================================
+
+    /// A `done` chunk whose raw response names a moderation stop.
+    fn moderated_done() -> StreamChunk {
+        StreamChunk {
+            done: true,
+            raw_response: Some(serde_json::json!({
+                "choices": [{ "finish_reason": "content_filter" }]
+            })),
+            ..Default::default()
+        }
+    }
+
+    /// The OPENING record: the call that opened the recovery is classified from
+    /// the raw response it left behind, so a provider that named a refusal is
+    /// recorded as `refused` / `moderation-refusal` / `finish-reason` with the
+    /// reason quoted — not as a blank `empty-response`.
+    #[tokio::test]
+    async fn the_opening_record_classifies_from_the_raw_response() {
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_stream(
+            "ANTHROPIC",
+            "m",
+            Some(0.7),
+            &params.messages,
+            vec![Ok(StreamChunk::done(None))],
+        );
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            effective_api_key: "k".into(),
+            // What the primary call left behind before this recovery opened.
+            raw_response: Some(serde_json::json!({
+                "choices": [{ "finish_reason": "content_filter" }]
+            })),
+            ..Default::default()
+        };
+        let _ = attempt_empty_response_recovery::<
+            _,
+            _,
+            NoRouter,
+            crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
+        >(
+            &provider,
+            &sink,
+            &NoRouter,
+            None,
+            None,
+            AttemptEmptyResponseRecoveryOptions {
+                state: &mut state,
+                tool_messages_length: 0,
+                content_was_flagged_dangerous: false,
+                danger_settings: DangerSettings {
+                    mode: "OFF".into(),
+                    uncensored_text_profile_id: None,
+                },
+                connection_profile: profile("p1", "ANTHROPIC"),
+                params,
+                user_id: String::new(),
+                chat_id: "c".into(),
+                character_id: "ch".into(),
+                character_name: "Friday".into(),
+                fallback_context: None,
+            },
+            None,
+        )
+        .await;
+
+        let opening = &state.route_failures[0];
+        assert_eq!(opening.profile_id, "p1");
+        assert_eq!(opening.profile_name, "p1 profile");
+        assert_eq!(opening.via, RouteAttemptVia::Primary);
+        assert_eq!(opening.outcome, RouteAttemptOutcome::Refused);
+        assert_eq!(opening.trigger, Some(FallbackTrigger::ModerationRefusal));
+        assert_eq!(
+            opening.evidence,
+            Some(super::super::route_trail::RouteAttemptEvidence::FinishReason)
+        );
+        assert_eq!(
+            opening.detail.as_deref(),
+            Some("finish_reason: content_filter")
+        );
+    }
+
+    /// The RETRY record, same shape: the retry's OWN empty body is classified
+    /// from the raw response the retry left, before anything downstream resets
+    /// the buffers.
+    #[tokio::test]
+    async fn the_retry_record_classifies_the_retrys_own_raw_response() {
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_stream(
+            "ANTHROPIC",
+            "m",
+            Some(0.7),
+            &params.messages,
+            vec![Ok(moderated_done())],
+        );
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let _ = attempt_empty_response_recovery::<
+            _,
+            _,
+            NoRouter,
+            crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
+        >(
+            &provider,
+            &sink,
+            &NoRouter,
+            None,
+            None,
+            AttemptEmptyResponseRecoveryOptions {
+                state: &mut state,
+                tool_messages_length: 0,
+                content_was_flagged_dangerous: false,
+                danger_settings: DangerSettings {
+                    mode: "OFF".into(),
+                    uncensored_text_profile_id: None,
+                },
+                connection_profile: profile("p1", "ANTHROPIC"),
+                params,
+                user_id: String::new(),
+                chat_id: "c".into(),
+                character_id: "ch".into(),
+                character_name: "Friday".into(),
+                fallback_context: None,
+            },
+            None,
+        )
+        .await;
+
+        // The opener saw NO raw response (nothing had been streamed yet) — a
+        // plain empty-response with no detail; the retry's own body named the
+        // refusal.
+        assert_eq!(state.route_failures.len(), 2, "{:?}", state.route_failures);
+        let opening = &state.route_failures[0];
+        assert_eq!(opening.via, RouteAttemptVia::Primary);
+        assert_eq!(opening.trigger, Some(FallbackTrigger::EmptyResponse));
+        assert_eq!(opening.detail, None);
+
+        let retry = &state.route_failures[1];
+        assert_eq!(retry.via, RouteAttemptVia::Retry);
+        assert_eq!(retry.outcome, RouteAttemptOutcome::Refused);
+        assert_eq!(retry.trigger, Some(FallbackTrigger::ModerationRefusal));
+        assert_eq!(
+            retry.detail.as_deref(),
+            Some("finish_reason: content_filter")
+        );
     }
 }

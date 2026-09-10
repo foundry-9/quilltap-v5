@@ -331,6 +331,8 @@ async function main(): Promise<void> {
       fullResponse: call.reply,
       effectiveProfile: {
         id: spec.connectionProfile.id,
+        // P4.D173: the route trail's answering entry names the seat.
+        name: spec.connectionProfile.name ?? 'Answer Confirmation Primary',
         provider: spec.connectionProfile.provider,
         modelName: spec.connectionProfile.modelName,
         baseUrl: spec.connectionProfile.baseUrl,
@@ -344,6 +346,12 @@ async function main(): Promise<void> {
       reasoningContent: undefined,
       reasoningSegments: undefined,
       hasStartedStreaming: true,
+      // P4.D173: this family drives no failover, so the trail composes NULL on
+      // every call and the persisted `routeTrail` stays empty — but the two
+      // fields have to EXIST, because `buildRouteTrail` reads them
+      // unconditionally at the finalizer's one composition point.
+      routeFailures: [],
+      routeVia: 'primary',
     };
 
     const compression = {

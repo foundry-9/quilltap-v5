@@ -410,6 +410,10 @@ impl CostTracker for NoCostTracking {}
 pub struct FinalizerProfile {
     /// `effectiveProfile.id` (the token-tracking profile id).
     pub id: String,
+    /// `effectiveProfile.name` — what the route trail's answering entry calls
+    /// this seat (P4.D173). v4 reads it straight off `state.effectiveProfile`;
+    /// v5's finalizer holds this projection instead of the whole state.
+    pub name: String,
     pub provider: String,
     pub model_name: String,
 }
@@ -484,6 +488,12 @@ pub struct FinalizerStreaming {
     pub thought_signature: Option<String>,
     pub reasoning_content: Option<String>,
     pub reasoning_segments: Vec<ReasoningSegment>,
+    /// v4 `StreamingState.routeFailures` — every attempt for this turn that did
+    /// NOT answer, in the order tried. The finalizer composes the persisted
+    /// trail from these plus the answering seat (P4.D173).
+    pub route_failures: Vec<crate::services::route_trail::RouteAttempt>,
+    /// v4 `StreamingState.routeVia` — how `profile` came to hold the turn.
+    pub route_via: crate::services::route_trail::RouteAttemptVia,
 }
 
 /// The chat-settings-derived triggers gate (v4 `triggers.chatSettings` subset).
@@ -951,6 +961,26 @@ where
         allow_cross_character_vault_reads: chat.allow_cross_character_vault_reads,
     };
 
+    // The call sheet for this turn: null unless something stepped aside.
+    // Composed here, at the one place that knows the turn is over and who
+    // answered — after the whisper context, before the save, exactly as v4's
+    // `buildRouteTrail(streaming, {chatId, messageId})` sits.
+    let route_trail = crate::services::route_trail::compose_route_trail(
+        &streaming.route_failures,
+        streaming.route_via,
+        crate::services::route_trail::RouteSeat {
+            id: &profile.id,
+            name: &profile.name,
+            provider: &profile.provider,
+            model_name: &profile.model_name,
+        },
+        crate::services::route_trail::RouteTrailLogContext {
+            chat_id: Some(&chat_id),
+            message_id: Some(&assistant_message_id),
+        },
+    );
+    let write_route_trail = route_trail.clone();
+
     db.write(move |writers| {
         let ctx = AssistantMessageContext {
             character_id: &write_character_id,
@@ -975,6 +1005,7 @@ where
             &write_tool_messages,
             Some(&write_whisper),
             &write_confirmation,
+            write_route_trail.as_deref(),
         )
         .map(|_| ())
     })
@@ -1227,6 +1258,10 @@ where
         model_name: Some(profile.model_name.clone()),
         // The finalizer's done frame is never a Courier placeholder.
         pending_external_turn: None,
+        // Ride the done event so the client's optimistic message carries the
+        // trail without waiting for the post-turn fetchChat(). v4 sets the key
+        // unconditionally, so it is EMITTED as `null` on the common turn.
+        route_trail: Some(route_trail),
         is_silent_message,
         // Additive fields on the shared DonePayload (owned by chat_events); the
         // finalizer's done frame never sets an empty-response marker.

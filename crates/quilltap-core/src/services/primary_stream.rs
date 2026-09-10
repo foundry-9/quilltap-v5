@@ -317,6 +317,16 @@ pub struct StreamingState {
     /// anchors).
     pub next_turn_seq: u64,
     pub has_started_streaming: bool,
+    /// Every attempt for this turn that did NOT answer, in the order tried.
+    /// Written only by [`crate::services::route_trail`] — never push here
+    /// directly (v4 `StreamingState.routeFailures`).
+    pub route_failures: Vec<crate::services::route_trail::RouteAttempt>,
+    /// How `effective_profile` came to hold the turn. Set beside every
+    /// `effective_profile` swap (via `set_route_via`) so the composed trail
+    /// labels the answering row honestly. Initialised to `Primary` — or
+    /// `Concierge` when the Concierge's pre-call reroute installed the profile
+    /// before anything was tried (v4 `StreamingState.routeVia`).
+    pub route_via: crate::services::route_trail::RouteAttemptVia,
 }
 
 impl StreamingState {
@@ -498,6 +508,11 @@ pub fn save_assistant_message(
     tool_messages: &[ToolMessage],
     whisper_context: Option<&ToolWhisperContext>,
     confirmation: &ConfirmationFields,
+    // The turn's route trail — every profile tried, in order. NULL (the common
+    // case) when nothing failed; see `compose_route_trail` in
+    // `crate::services::route_trail`. v4 writes it on the INSERT, never as a
+    // follow-up UPDATE.
+    route_trail: Option<&[crate::services::route_trail::RouteAttempt]>,
 ) -> Result<String, DbError> {
     let assistant_message_id = pre_generated_message_id
         .map(str::to_string)
@@ -575,6 +590,14 @@ pub fn save_assistant_message(
     }
     if let Some(m) = model_name.filter(|s| !s.is_empty()) {
         msg.insert("modelName".into(), json!(m));
+    }
+    // v4 writes `routeTrail: routeTrail ?? null` unconditionally, between
+    // `modelName` and `isSilentMessage`. An omitted key and an explicit `null`
+    // are the same row on disk (the insert marshaling drops SQL-NULL columns),
+    // so the common no-failure turn writes nothing here — same as every other
+    // nullable field in this builder.
+    if let Some(trail) = route_trail {
+        msg.insert("routeTrail".into(), json!(trail));
     }
     if let Some(silent) = is_silent {
         msg.insert("isSilentMessage".into(), json!(silent));
@@ -714,6 +737,15 @@ impl PreservePartialOnError {
             .map(|p| p.model_name.clone());
         let reasoning_content = state.reasoning_content.clone();
         let reasoning_segments = state.reasoning_segments.clone();
+        // A preserved partial is still this turn's record: whoever fell over
+        // before it belongs on the call sheet. Null when nothing did.
+        let route_trail = crate::services::route_trail::build_route_trail(
+            state,
+            crate::services::route_trail::RouteTrailLogContext {
+                chat_id: Some(&self.chat_id),
+                message_id: Some(&self.pre_generated_assistant_message_id),
+            },
+        );
 
         let write = db
             .write(move |writers| {
@@ -743,6 +775,7 @@ impl PreservePartialOnError {
                     &[],
                     None,
                     &ConfirmationFields::default(),
+                    route_trail.as_deref(),
                 )
                 .map(|_| ())
             })

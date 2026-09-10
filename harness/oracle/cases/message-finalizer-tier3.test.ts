@@ -104,6 +104,14 @@ interface CallSpec {
   chatSettings: boolean;
   participantCharacters: string[];
   carina?: CarinaSpec;
+  /** P4.D173 — the turn's already-recorded route failures and the answering
+   *  seat's provenance, seeded straight onto the streaming state. */
+  routeFailures?: Array<Record<string, unknown>>;
+  routeVia?: string;
+  /** P4.D173 — override the seat the finalizer holds (its id has to be a real
+   *  UUID once a route trail is composed from it). */
+  effectiveProfileId?: string;
+  effectiveProfileName?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -339,7 +347,15 @@ async function main(): Promise<void> {
     const streaming = {
       fullResponse: call.fullResponse,
       effectiveProfile: {
-        id: 'profile-mf-0000-0000-000000000001',
+        // P4.D173: overridable per call. The route-trail cases need a seat whose
+        // id passes v4's `UUIDSchema` — `RouteAttemptSchema.profileId` is
+        // `UUIDSchema`, and the ANSWERING entry is built from this profile, so
+        // the historical non-UUID literal every other case uses would make the
+        // message INSERT throw a ZodError.
+        id: call.effectiveProfileId ?? 'profile-mf-0000-0000-000000000001',
+        // The answering entry of a route trail names the seat, so the profile
+        // the finalizer holds has to carry a name.
+        name: call.effectiveProfileName ?? 'House Anthropic',
         provider: 'ANTHROPIC',
         modelName: 'claude-sonnet',
         baseUrl: null,
@@ -354,6 +370,11 @@ async function main(): Promise<void> {
       reasoningSegments:
         call.reasoningSegments.length > 0 ? call.reasoningSegments : undefined,
       hasStartedStreaming: true,
+      // P4.D173: the trail the failover would have recorded on this turn. The
+      // finalizer is where it is COMPOSED and persisted — the recording sites
+      // live one layer down and are pinned by `primary-stream-tier3`.
+      routeFailures: call.routeFailures ?? [],
+      routeVia: call.routeVia ?? 'primary',
     };
 
     const compression = {

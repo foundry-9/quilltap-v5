@@ -1392,6 +1392,22 @@ where
     let mut streaming_state = StreamingState {
         effective_profile: Some(effective_profile.clone()),
         effective_api_key: effective_api_key.clone(),
+        // The route trail starts empty and is written only by `route_trail.rs`.
+        route_failures: vec![],
+        // The Concierge's *pre-call* reroute swapped the profile before anything
+        // was tried, so the original gets no row — but the profile now holding
+        // the turn was sent by the Concierge, and the trail should say so if it
+        // in turn fails and an understudy answers. v4's test is on the IDs
+        // (`dangerState.effectiveProfile.id !== connectionProfile.id`), which is
+        // narrower than `did_reroute`: the router may answer `rerouted` with the
+        // same profile, and that is not a change of seat.
+        route_via: if effective_profile.id
+            != json_str(&connection_profile, "id").unwrap_or_default()
+        {
+            crate::services::route_trail::RouteAttemptVia::Concierge
+        } else {
+            crate::services::route_trail::RouteAttemptVia::Primary
+        },
         ..Default::default()
     };
 
@@ -3091,6 +3107,7 @@ where
         // Finalize the successful response.
         let profile = FinalizerProfile {
             id: effective_profile.id.clone(),
+            name: effective_profile.name.clone(),
             provider: effective_profile.provider.clone(),
             model_name: effective_profile.model_name.clone(),
         };
@@ -3113,6 +3130,10 @@ where
             thought_signature: streaming_state.thought_signature.clone(),
             reasoning_content: streaming_state.reasoning_content.clone(),
             reasoning_segments: streaming_state.reasoning_segments.clone(),
+            // P4.D173: the trail the failover recorded on this turn, and the
+            // seat's provenance — the finalizer composes the persisted value.
+            route_failures: streaming_state.route_failures.clone(),
+            route_via: streaming_state.route_via,
         };
         // Round-3 Group 8: the resolved cheap-LLM selection now flows into the
         // finalizer's async-compression trigger (v4 `compression.cheapLLMSelection`).

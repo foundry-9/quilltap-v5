@@ -480,6 +480,46 @@
           "done": true
         }
       ]
+    ],
+    "retry_throws_then_understudy_ok": [
+      [
+        {
+          "error": "connection reset by peer"
+        }
+      ],
+      [
+        {
+          "content": "The understudy carries the scene."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 21,
+            "completionTokens": 6,
+            "totalTokens": 27
+          }
+        }
+      ]
+    ],
+    "reroute_throws_then_understudy_ok": [
+      [
+        {
+          "error": "uncensored gateway returned 502"
+        }
+      ],
+      [
+        {
+          "content": "The understudy answers instead."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 23,
+            "completionTokens": 5,
+            "totalTokens": 28
+          }
+        }
+      ]
     ]
   },
   "calls": [
@@ -772,6 +812,34 @@
       "dangerMode": "OFF",
       "contentWasFlaggedDangerous": false,
       "comment": "P4.74 \u2014 the credential-gate chain arm (v4 provider-failover.service.ts:583-591), the third blind spot P4.68 measured and deferred. Runs on its OWN primary (`profileKey`) so no existing case's tier pool moves: both candidates it offers are refused before a stream is ever opened, recording trigger `auth` with v4's two reason spellings \u2014 `no-api-key-configured` from the CONFIGURED understudy and `api-key-not-found` from the TIER PICK, whose dangling apiKeyId passes the picker's static credential check and only fails at the gate."
+    },
+    {
+      "name": "empty_retry_throws_then_chain",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000023-0000-4000-8000-000000000023",
+      "hasTools": false,
+      "streamLabel": "retry_throws_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "the retry itself falls over",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D173: the retry arm that THREW. v4 records a `retry`/`failed` row from the thrown error's message (trigger from classifyFallbackTrigger, else provider-error) and logs '[EmptyResponse] Same-provider retry failed'; the port had discarded the error with `let _ = restream_into(...)`. The chain then walks and the understudy answers, so the trail reads opener \u2192 retry \u2192 understudy-answered."
+    },
+    {
+      "name": "empty_reroute_throws_then_chain",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000024-0000-4000-8000-000000000024",
+      "hasTools": false,
+      "streamLabel": "reroute_throws_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "the uncensored desk falls over",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": true,
+      "comment": "P4.D173: the uncensored reroute arm that THREW. Flagged content skips the same-profile retry, so the opener is recorded with the INFERRED moderation verdict; the reroute's own call falls over and is recorded against `route.connection_profile` (the swap only happens on success, so nothing else would name it); the chain then answers."
     }
   ],
   "authPrimaryProfile": {

@@ -50,6 +50,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{characters_read, chats_read};
+use quilltap_core::llm_fallback::FallbackTrigger;
 use quilltap_core::model::stream::StreamUsage;
 use quilltap_core::services::carina_runner::{
     CarinaResult, CarinaRunError, ClosureProspero, PostedCarinaMessage, RunCarinaQuery,
@@ -63,6 +64,9 @@ use quilltap_core::services::message_finalizer::{
     FinalizerStreaming, NoAnswerConfirmation, ParticipantCharacter,
 };
 use quilltap_core::services::primary_stream::ReasoningSegment;
+use quilltap_core::services::route_trail::{
+    RouteAttempt, RouteAttemptEvidence, RouteAttemptOutcome, RouteAttemptVia,
+};
 use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
 use quilltap_core::tools::rng::FixedBytes;
 use serde::Deserialize;
@@ -129,6 +133,84 @@ struct CallW {
     carina: Option<CarinaW>,
     #[serde(default)]
     tool_messages: Vec<ToolMsgW>,
+    /// P4.D173 — the turn's already-recorded route failures, seeded straight
+    /// onto the streaming state (the RECORDING sites are pinned by
+    /// `primary_stream_tier3_equivalence`; this family pins what the finalizer
+    /// COMPOSES, PERSISTS and puts on the `done` frame).
+    #[serde(default)]
+    route_failures: Vec<Value>,
+    #[serde(default)]
+    route_via: Option<String>,
+    #[serde(default)]
+    effective_profile_id: Option<String>,
+    #[serde(default)]
+    effective_profile_name: Option<String>,
+}
+
+impl CallW {
+    /// The corpus's seeded failures as `RouteAttempt`s. `RouteAttempt` carries a
+    /// hand-written `Serialize` (absent optionals are ABSENT, never null) and no
+    /// `Deserialize`, so the harness reads the plain objects and rebuilds them —
+    /// the same shape `route_trail_compose_equivalence` uses.
+    fn route_failures_parsed(&self) -> Vec<RouteAttempt> {
+        self.route_failures
+            .iter()
+            .map(|v| {
+                let s = |k: &str| {
+                    v.get(k)
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                RouteAttempt {
+                    profile_id: s("profileId"),
+                    profile_name: s("profileName"),
+                    provider: s("provider"),
+                    model_name: s("modelName"),
+                    via: parse_via(v.get("via").and_then(Value::as_str).unwrap()),
+                    outcome: match v.get("outcome").and_then(Value::as_str).unwrap() {
+                        "answered" => RouteAttemptOutcome::Answered,
+                        "failed" => RouteAttemptOutcome::Failed,
+                        "refused" => RouteAttemptOutcome::Refused,
+                        other => panic!("unknown outcome {other:?}"),
+                    },
+                    trigger: v.get("trigger").and_then(Value::as_str).map(|t| match t {
+                        "auth" => FallbackTrigger::Auth,
+                        "rate-limit" => FallbackTrigger::RateLimit,
+                        "network" => FallbackTrigger::Network,
+                        "model-missing" => FallbackTrigger::ModelMissing,
+                        "provider-error" => FallbackTrigger::ProviderError,
+                        "empty-response" => FallbackTrigger::EmptyResponse,
+                        "moderation-refusal" => FallbackTrigger::ModerationRefusal,
+                        other => panic!("unknown trigger {other:?}"),
+                    }),
+                    evidence: v.get("evidence").and_then(Value::as_str).map(|e| match e {
+                        "finish-reason" => RouteAttemptEvidence::FinishReason,
+                        "inferred" => RouteAttemptEvidence::Inferred,
+                        other => panic!("unknown evidence {other:?}"),
+                    }),
+                    detail: v.get("detail").and_then(Value::as_str).map(str::to_string),
+                }
+            })
+            .collect()
+    }
+
+    fn route_via_parsed(&self) -> RouteAttemptVia {
+        self.route_via
+            .as_deref()
+            .map_or(RouteAttemptVia::Primary, parse_via)
+    }
+}
+
+fn parse_via(s: &str) -> RouteAttemptVia {
+    match s {
+        "primary" => RouteAttemptVia::Primary,
+        "retry" => RouteAttemptVia::Retry,
+        "concierge" => RouteAttemptVia::Concierge,
+        "understudy" => RouteAttemptVia::Understudy,
+        "tier-pick" => RouteAttemptVia::TierPick,
+        other => panic!("unknown routeVia {other:?}"),
+    }
 }
 
 /// The injected tool slate for the c.3 `tool-save` direct-drive case (empty for
@@ -602,12 +684,6 @@ fn message_finalizer_tier3_matches_oracle() {
         .build()
         .expect("tokio runtime");
 
-    let profile = FinalizerProfile {
-        id: "profile-mf-0000-0000-000000000001".into(),
-        provider: "ANTHROPIC".into(),
-        model_name: "claude-sonnet".into(),
-    };
-
     let compression_rec = RecordingCompression::default();
     let mut cost_rec = RecordingCost::default();
     // The RNG byte source is shared across the whole run (v4 mocks
@@ -662,7 +738,29 @@ fn message_finalizer_tier3_matches_oracle() {
             .map(|row| to_participant_character(&row))
             .collect();
 
+        // P4.D173: the seat is now per-call. The corpus overrides its id for the
+        // route-trail cases, because v4's `RouteAttemptSchema.profileId` is
+        // `UUIDSchema` and this family's historical literal is not a UUID — the
+        // ANSWERING entry is built from this profile, so the message INSERT
+        // would throw a ZodError on the oracle side. Every other case keeps the
+        // historical values and nothing about them moves.
+        let profile = FinalizerProfile {
+            id: call
+                .effective_profile_id
+                .clone()
+                .unwrap_or_else(|| "profile-mf-0000-0000-000000000001".into()),
+            name: call
+                .effective_profile_name
+                .clone()
+                .unwrap_or_else(|| "House Anthropic".into()),
+            provider: "ANTHROPIC".into(),
+            model_name: "claude-sonnet".into(),
+        };
+
         let streaming = FinalizerStreaming {
+            // P4.D173: the trail the failover would have recorded on this turn.
+            route_failures: call.route_failures_parsed(),
+            route_via: call.route_via_parsed(),
             full_response: call.full_response.clone(),
             usage: Some(StreamUsage {
                 prompt_tokens: call.usage.prompt_tokens,

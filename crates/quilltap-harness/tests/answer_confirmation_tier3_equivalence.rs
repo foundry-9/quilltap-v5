@@ -512,6 +512,8 @@ fn answer_confirmation_tier3_matches_oracle() {
     }];
 
     let profile = FinalizerProfile {
+        // P4.D173: the route trail's answering entry names the seat.
+        name: "Answer Confirmation Primary".into(),
         id: spec.connection_profile.id.clone(),
         provider: spec.connection_profile.provider.clone(),
         model_name: spec.connection_profile.model_name.clone(),
@@ -585,6 +587,10 @@ fn answer_confirmation_tier3_matches_oracle() {
         };
 
         let streaming = FinalizerStreaming {
+            // P4.D173: this family drives no failover, so the trail is empty and
+            // every persisted `routeTrail` here stays NULL (the common turn).
+            route_failures: vec![],
+            route_via: Default::default(),
             full_response: call.reply.clone(),
             usage: Some(quilltap_core::model::stream::StreamUsage {
                 prompt_tokens: 5,

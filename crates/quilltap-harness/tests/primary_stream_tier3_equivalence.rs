@@ -930,6 +930,16 @@ async fn primary_stream_tier3_matches_oracle() {
                         .collect::<Vec<_>>(),
                     "fullResponse": state.full_response,
                     "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
+                    // P4.D173: WHICH seats the failover recorded, in order, and
+                    // how the answering one came to hold the turn. The only
+                    // direct view of the twelve `record_route_failure` /
+                    // `set_route_via` sites (the persisted column and the `done`
+                    // frame are the finalizer's, one layer up). Serialized
+                    // through `RouteAttempt`'s own `Serialize`, so key PRESENCE
+                    // is a comparand: v4 omits an absent `evidence`/`detail`
+                    // rather than writing null.
+                    "routeFailures": state.route_failures,
+                    "routeVia": state.route_via.as_str(),
                 })
             }
             "hardFailover" => {
@@ -1004,6 +1014,8 @@ async fn primary_stream_tier3_matches_oracle() {
                         })),
                         "fullResponse": state.full_response,
                         "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
+                        "routeFailures": state.route_failures,
+                        "routeVia": state.route_via.as_str(),
                         // The swap's buffer reset is only measurable against a
                         // DIRTY state — a failed attempt that left reasoning
                         // behind before it died.
@@ -1014,6 +1026,8 @@ async fn primary_stream_tier3_matches_oracle() {
                         "threw": e.message,
                         "fullResponse": state.full_response,
                         "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
+                        "routeFailures": state.route_failures,
+                        "routeVia": state.route_via.as_str(),
                         "reasoningContent": state.reasoning_content,
                         "reasoningSegmentCount": state.reasoning_segments.len(),
                     }),
