@@ -190,6 +190,11 @@ fn participant_views(chat: &Value) -> Vec<ParticipantView> {
         .unwrap_or(&empty);
     arr.iter()
         .map(|p| ParticipantView {
+            participant_type: p
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             id: p
                 .get("id")
                 .and_then(Value::as_str)

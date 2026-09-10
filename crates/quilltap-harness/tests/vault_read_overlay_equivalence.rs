@@ -120,12 +120,54 @@ fn vault_read_overlay_matches_oracle() {
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
-    // The batched overlay over the same input characters.
-    let mut got = {
+    // The batched overlay over the same input characters, with the log captured:
+    // P4.D172 ported v4's two drop lines (`read-overlay.ts:346-362`), which v5
+    // had been swallowing under a bare `Err(_) => { /* drop */ }`. That silence
+    // mattered little while this was a list read; bug 131 puts it on the hot turn
+    // path, where a seat vanishing from the rotation now says why.
+    let (mut got, overlay_lines) = quilltap_core::test_support::captured_with(|| {
         let repo = writer.doc_mount_documents();
         apply_document_store_overlay(&repo, spec.characters.clone())
             .unwrap_or_else(|e| panic!("apply_document_store_overlay: {e:?}"))
-    };
+    });
+    {
+        let per_character: Vec<&String> = overlay_lines
+            .iter()
+            .filter(|l| l.contains("Dropping character from list — vault unavailable"))
+            .collect();
+        assert_eq!(
+            per_character.len(),
+            1,
+            "expected v4's per-character ERROR once, got {overlay_lines:?}"
+        );
+        // v4's bag: characterId, characterDocumentMountPointId, detail (the
+        // `CharacterVaultUnavailableError` message).
+        let line = per_character[0];
+        assert!(
+            line.contains("characterDocumentMountPointId=5700000e-0000-4000-8000-0000000000b2"),
+            "{line}"
+        );
+        assert!(line.contains("has no usable vault"), "{line}");
+        assert!(line.contains("properties.json missing"), "{line}");
+
+        let summary: Vec<&String> = overlay_lines
+            .iter()
+            .filter(|l| {
+                l.contains("applyDocumentStoreOverlay dropped characters with unavailable vaults")
+            })
+            .collect();
+        assert_eq!(
+            summary.len(),
+            1,
+            "expected v4's summary WARN once, got {overlay_lines:?}"
+        );
+        assert!(summary[0].contains("dropped=1"), "{}", summary[0]);
+        assert!(
+            summary[0].contains(&format!("total={}", spec.characters.len())),
+            "{}",
+            summary[0]
+        );
+    }
     let mut want = oracle.characters.clone();
 
     normalize_mint(&mut got, &mint_ids);
@@ -157,6 +199,31 @@ fn vault_read_overlay_matches_oracle() {
         Err(OverlayOneError::Unavailable(_)) => {}
         other => panic!("apply_…_one should be Unavailable on the broken vault, got {other:?}"),
     }
+
+    // The SILENCE arm: a list with nothing broken in it logs neither line. Without
+    // this the assertions above would pass on a logger that shouts about
+    // everything.
+    let clean: Vec<Value> = spec
+        .characters
+        .iter()
+        .filter(|c| {
+            c["characterDocumentMountPointId"].as_str()
+                != Some("5700000e-0000-4000-8000-0000000000b2")
+        })
+        .cloned()
+        .collect();
+    let (_, clean_lines) = quilltap_core::test_support::captured_with(|| {
+        let repo = writer.doc_mount_documents();
+        apply_document_store_overlay(&repo, clean.clone())
+            .unwrap_or_else(|e| panic!("apply_document_store_overlay (clean): {e:?}"))
+    });
+    assert!(
+        !clean_lines
+            .iter()
+            .any(|l| l.contains("Dropping character from list")
+                || l.contains("dropped characters with unavailable vaults")),
+        "a list with no broken vault must log neither drop line: {clean_lines:?}"
+    );
 
     let _ = std::fs::remove_file(&work);
     eprintln!(

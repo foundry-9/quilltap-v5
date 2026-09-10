@@ -11,6 +11,11 @@ use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 #[derive(Clone, Debug)]
 pub struct ParticipantView {
     pub id: String,
+    /// v4's `ChatParticipantBase.type` — `"CHARACTER"` for every seat the turn
+    /// manager reads. Carried since P4.D172 so
+    /// [`get_present_character_seats`] can spell v4's whole predicate here
+    /// rather than have each caller re-derive it.
+    pub participant_type: String,
     pub status: ParticipantStatus,
     pub controlled_by: String,
     pub character_id: Option<String>,
@@ -123,7 +128,52 @@ pub fn get_active_llm_participants(participants: &[ParticipantView]) -> Vec<&Par
         .collect()
 }
 
+/// The scalar predicate behind "is this a character seat present in the room?"
+/// — v4 `utils.ts:153-159`'s `getPresentCharacterSeats` filter, spelled once.
+///
+/// `type === 'CHARACTER' && isParticipantPresent(status) && !!characterId`.
+/// Present means `active` OR `silent`; `absent` and `removed` are not present.
+///
+/// Before P4.D172 v5 spelled this THREE ways — `SpeakerParticipant::
+/// is_active_character`, `services/orchestrator.rs`'s own `is_active_character`
+/// over a raw `Value`, and an inline walk in `message_finalizer.rs` that dropped
+/// only `removed` and therefore KEPT `absent` seats v4 excludes. The third was a
+/// live divergence; every caller now reaches this predicate.
+pub fn is_present_character_seat(
+    participant_type: &str,
+    status: ParticipantStatus,
+    character_id: Option<&str>,
+) -> bool {
+    participant_type == "CHARACTER"
+        && is_participant_present(status)
+        && character_id.is_some_and(|c| !c.is_empty())
+}
+
+/// The character seats present in the room this turn (v4
+/// `getPresentCharacterSeats`). The one predicate for "who is in the scene" —
+/// turn skipping, the cycle wrap, the cycle rotation, responder resolution and
+/// the multi-seat guard all read it.
+///
+/// NOT to be confused with [`get_active_character_participants`], which despite
+/// its name returns LLM-controlled seats only (v4 bug 131).
+pub fn get_present_character_seats(participants: &[ParticipantView]) -> Vec<&ParticipantView> {
+    participants
+        .iter()
+        .filter(|p| {
+            is_present_character_seat(&p.participant_type, p.status, p.character_id.as_deref())
+        })
+        .collect()
+}
+
 /// Deprecated alias of [`get_active_llm_participants`] (v4 kept the old name).
+///
+/// ⚠ Despite the name this is LLM-ONLY. v4 bug 131: four selection sites built
+/// their talkativeness map from it, so a seat the human drives was invisible —
+/// its talkativeness fell through to the 0.5 default and an archived character
+/// on it was never dropped. The whole-room reader is
+/// [`get_present_character_seats`] / [`crate::room_characters::load_room_characters`].
+/// v4 still calls the alias at `autonomous-room-announce.ts:129`, which is why
+/// it stays.
 pub fn get_active_character_participants(
     participants: &[ParticipantView],
 ) -> Vec<&ParticipantView> {
@@ -156,10 +206,52 @@ mod tests {
     fn part(id: &str, controlled_by: &str) -> ParticipantView {
         ParticipantView {
             id: id.to_string(),
+            participant_type: "CHARACTER".to_string(),
             status: ParticipantStatus::Active,
             controlled_by: controlled_by.to_string(),
             character_id: Some(format!("char-{id}")),
         }
+    }
+
+    // v4 `getPresentCharacterSeats`: present is active OR silent, and a
+    // user-driven seat is IN (bug 131's invariant).
+    #[test]
+    fn present_character_seats_is_v4s_predicate() {
+        let mut parts = vec![part("p1", "llm"), part("p2", "user")];
+        parts.push(ParticipantView {
+            status: ParticipantStatus::Silent,
+            ..part("p3", "llm")
+        });
+        parts.push(ParticipantView {
+            status: ParticipantStatus::Absent,
+            ..part("p4", "llm")
+        });
+        parts.push(ParticipantView {
+            status: ParticipantStatus::Removed,
+            ..part("p5", "llm")
+        });
+        parts.push(ParticipantView {
+            character_id: None,
+            ..part("p6", "llm")
+        });
+        parts.push(ParticipantView {
+            participant_type: "USER".to_string(),
+            ..part("p7", "llm")
+        });
+        let seats: Vec<&str> = get_present_character_seats(&parts)
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
+        assert_eq!(seats, vec!["p1", "p2", "p3"]);
+    }
+
+    // The alias is LLM-only and the whole-room reader is not — the bug-131
+    // difference, pinned so a future consolidation cannot quietly merge them.
+    #[test]
+    fn the_alias_is_narrower_than_the_room() {
+        let parts = vec![part("p1", "llm"), part("p2", "user")];
+        assert_eq!(get_active_character_participants(&parts).len(), 1);
+        assert_eq!(get_present_character_seats(&parts).len(), 2);
     }
 
     #[test]

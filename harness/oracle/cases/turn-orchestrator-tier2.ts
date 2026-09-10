@@ -98,10 +98,13 @@ async function main(): Promise<void> {
     addToQueue,
     removeFromQueue,
     getQueuePosition,
-    getActiveCharacterParticipants,
+    loadRoomCharacters,
     findUserParticipant,
     getSelectionExplanation,
     computeSpokenThisCycleAfterSkip,
+    computeCycleOrderAfterSkip,
+    parseCycleOrder,
+    resolveCycleOrder,
     isUsersTurn,
   } = await import('@/lib/chat/turn-manager');
 
@@ -132,9 +135,11 @@ async function main(): Promise<void> {
       participants: chat.participants,
       userParticipantId,
       spokenThisCycleParticipantIds: chat.spokenThisCycleParticipantIds,
+      cycleOrderParticipantIds: chat.cycleOrderParticipantIds,
     } as never);
 
     let skipCycleUpdate: string | null | undefined = undefined;
+    let skipOrderUpdate: string | null | undefined = undefined;
 
     switch (turnAction) {
       case 'nudge':
@@ -172,19 +177,28 @@ async function main(): Promise<void> {
             }
           }
         }
+        // v4 `turn.ts:153-158` (2aca73ad6): a skipped seat leaves the rotation.
+        skipOrderUpdate = computeCycleOrderAfterSkip(
+          participantId as string,
+          chat.cycleOrderParticipantIds,
+        );
+        if (skipOrderUpdate !== null && skipOrderUpdate !== undefined) {
+          turnState = { ...turnState, cycleOrder: parseCycleOrder(skipOrderUpdate) };
+        }
         turnState = { ...turnState, lastSpeakerId: participantId as string };
         break;
       }
     }
 
-    const activeCharacterParticipants = getActiveCharacterParticipants(chat.participants);
-    const charactersMap = new Map<string, unknown>();
-    for (const p of activeCharacterParticipants) {
-      if (p.characterId) {
-        const char = await repos.characters.findById(p.characterId);
-        if (char) charactersMap.set(p.characterId, char);
-      }
-    }
+    // v4 `turn.ts:176-189` (d14da3a56 + 2aca73ad6): the WHOLE-ROOM batched map,
+    // then an UNCONDITIONAL resolve — so even `action=query` may write the row.
+    const charactersMap = await loadRoomCharacters(repos, chat.participants);
+    turnState.cycleOrder = await resolveCycleOrder(
+      repos,
+      { id: chatId, participants: chat.participants },
+      charactersMap,
+      turnState,
+    );
 
     const nextSpeakerResult = selectNextSpeaker(
       chat.participants,
@@ -200,6 +214,12 @@ async function main(): Promise<void> {
       };
       if (turnAction === 'skipUserTurn' && skipCycleUpdate !== null && skipCycleUpdate !== undefined) {
         updatePayload.spokenThisCycleParticipantIds = skipCycleUpdate;
+      }
+      // v4 `turn.ts:202-208`: the POST-RESOLVE rotation, not `skipOrderUpdate` —
+      // a redraw triggered by the skip must not be overwritten by the emptied
+      // list. The gate is `!== undefined`, so a computed `null` still writes.
+      if (turnAction === 'skipUserTurn' && skipOrderUpdate !== undefined) {
+        updatePayload.cycleOrderParticipantIds = JSON.stringify(turnState.cycleOrder);
       }
       await repos.chats.update(chatId, updatePayload);
     }

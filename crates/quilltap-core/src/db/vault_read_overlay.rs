@@ -67,6 +67,18 @@ pub struct VaultUnavailable {
     pub mount_id: String,
 }
 
+impl VaultUnavailable {
+    /// v4 `CharacterVaultUnavailableError`'s `message`, byte-for-byte
+    /// (`vault-overlay/schema.ts:155-159`). v5 raises this only for the
+    /// missing-`properties.json` case, which is the `detail` v4 passes here.
+    pub fn message(&self) -> String {
+        format!(
+            "Character {} has no usable vault (characterDocumentMountPointId={}): properties.json missing",
+            self.character_id, self.mount_id
+        )
+    }
+}
+
 /// The loaded vault files for a set of mount points, keyed for hydration
 /// (v4 `VaultFileMaps`).
 pub struct VaultFileMaps {
@@ -371,11 +383,33 @@ pub fn apply_document_store_overlay(
 
     let maps = load_vault_file_maps(repo, &mount_ids)?;
     let mut out = Vec::with_capacity(characters.len());
+    let mut dropped = 0usize;
     for c in &characters {
         match hydrate_one(c, &maps) {
             Ok(h) => out.push(h),
-            Err(_) => { /* vault unavailable → drop */ }
+            Err(u) => {
+                // v4 `read-overlay.ts:346-353`. The DROP is deliberate — a list
+                // read must not fail over one shelved vault — but it was SILENT
+                // in v5, which is the divergence P4.D172 closes: bug 131 makes
+                // this the hot turn path (every selection site's room map comes
+                // through here), so a seat vanishing from the rotation because
+                // its vault is on the shelf now says so.
+                dropped += 1;
+                tracing::error!(
+                    characterId = u.character_id,
+                    characterDocumentMountPointId = u.mount_id,
+                    detail = u.message(),
+                    "Dropping character from list — vault unavailable"
+                );
+            }
         }
+    }
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            total = characters.len(),
+            "applyDocumentStoreOverlay dropped characters with unavailable vaults"
+        );
     }
     Ok(out)
 }

@@ -54,6 +54,7 @@ use quilltap_core::db::{chats_read, dump_table_json_conn};
 use quilltap_core::services::participant_resolver::{
     get_roleplay_template, load_all_participant_data, resolve_responding_participant,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -183,7 +184,7 @@ async fn participant_resolver_tier2_matches_oracle() {
                     requested.as_deref(),
                     *is_continue_mode,
                     active_user_participant_id.as_deref(),
-                    *random01,
+                    &DrawSource::sequence(vec![*random01]),
                 )
                 .await
                 {

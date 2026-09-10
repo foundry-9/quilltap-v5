@@ -32,8 +32,9 @@
 //! `.claude/` paths, so the case is staged in a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-orch-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-orch-mount.db \
@@ -79,6 +80,7 @@ use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
 use quilltap_core::tools::executor::BuiltInToolRunner;
 use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -1006,7 +1008,8 @@ fn orchestrator_tier3_matches_oracle() {
                 clock: ProcessClock {
                     now_ms: spec.frozen_now_ms,
                     local_offset_minutes: spec.local_offset_minutes,
-                    random01: 0.0,
+                    // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
+                    random01: DrawSource::sequence(vec![0.0]),
                 },
                 model_context_limit: 200_000,
                 timestamp_config: None,
@@ -1054,7 +1057,8 @@ fn orchestrator_tier3_matches_oracle() {
                         clock: ProcessClock {
                             now_ms: frozen,
                             local_offset_minutes: offset,
-                            random01: 0.0,
+                            // P4.D172: `[0]` reproduces v4's `Math.random = () => 0` pin.
+                            random01: DrawSource::sequence(vec![0.0]),
                         },
                         model_context_limit: 200_000,
                         timestamp_config: None,
@@ -1080,7 +1084,7 @@ fn orchestrator_tier3_matches_oracle() {
                                 config: ChainConfig::default(),
                             },
                             frozen,
-                            0.0,
+                            &DrawSource::sequence(vec![0.0]),
                             make_chain_input,
                         ))
                         .expect("chain");
@@ -1323,6 +1327,7 @@ fn orchestrator_tier3_matches_oracle() {
     ctx.normalize_jobs(&mut got_jobs, &idmap);
     ctx.normalize_jobs(&mut want_jobs, &idmap2);
 
+    pin_summary_fold_last_turn_divergence(&got_chats, &mut want_chats, &want_events);
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
@@ -1430,6 +1435,17 @@ fn orchestrator_tier3_matches_oracle() {
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
+
+    // The cross-lane tripwire, run-scoped: at least one `done` frame must have
+    // carried v4's `routeTrail` key for the subtraction above to be doing
+    // anything. When P4.D173 lands the key on v5's frame too, the oracle keeps
+    // emitting it and this still passes — the SUBTRACTION is what must then be
+    // deleted, and the comment on `strip_pending_route_trail_slice` says so.
+    assert!(
+        ROUTE_TRAIL_STRIPS.load(std::sync::atomic::Ordering::Relaxed) > 0,
+        "no `done` frame carried `routeTrail` — the P4.D173 subtraction is dead \
+         code; delete `strip_pending_route_trail_slice` and compare frames whole"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1626,11 +1642,135 @@ fn wire_tool_names(tools: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// **CROSS-LANE, RETIRE AT UNIFICATION.** v4 `5841a8c62` (the message route
+/// trail) put a `routeTrail` key on the SSE `done` frame. That frame is
+/// P4.D173's by the round's function fence (`finalize_message_response`'s done
+/// frame), not P4.D172's — but this family regenerates at the same
+/// `78b381a96` pin, so its oracle already carries the key while v5's frame does
+/// not. Subtracted here rather than left red, with a tripwire: the key MUST be
+/// present on the oracle side, so this subtraction can never go quietly dead.
+///
+/// P4.D173 (or the unifier, after it lands) deletes this function and its call
+/// site; the assertion below is what makes that deletion loud if it is forgotten.
+fn strip_pending_route_trail_slice(items: &[Value]) -> Vec<Value> {
+    let mut saw_done_frame = false;
+    let mut saw_route_trail = false;
+    let stripped: Vec<Value> = items
+        .iter()
+        .map(|e| {
+            let Value::Object(map) = e else {
+                return e.clone();
+            };
+            if map.get("done") != Some(&Value::Bool(true)) {
+                return e.clone();
+            }
+            saw_done_frame = true;
+            let mut m = map.clone();
+            if m.shift_remove("routeTrail").is_some() {
+                saw_route_trail = true;
+            }
+            Value::Object(m)
+        })
+        .collect();
+    let _ = saw_done_frame;
+    if saw_route_trail {
+        ROUTE_TRAIL_STRIPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    stripped
+}
+
+/// How many `done` frames this run actually stripped. Counted across the whole
+/// run rather than asserted per call, because not every trace here carries a
+/// `done` frame (an error path can end without one), so a per-call assertion
+/// fires on traces that were never in scope.
+static ROUTE_TRAIL_STRIPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
+    let want: &[Value] = &strip_pending_route_trail_slice(want);
     if got != want {
         let g = serde_json::to_string_pretty(got).unwrap();
         let w = serde_json::to_string_pretty(want).unwrap();
         panic!("event trace mismatch for {name}\n--- got ---\n{g}\n--- want ---\n{w}");
+    }
+}
+
+/// **A RECORDED DIVERGENCE — and v4 disagreeing with ITSELF (P4.D172).**
+///
+/// The `summary_fold` chat (`c860cf74`) ends with v5 holding
+/// `lastTurnParticipantId = c96713aa…` and v4 holding NULL — yet v4's OWN
+/// `chain_complete` frame for that call carries `nextSpeakerId: c96713aa…`,
+/// which is precisely the value its `persistTurnParticipant(finalNextSpeaker)`
+/// was handed (`turn-orchestrator.service.ts:370-372`). v4 writes the id and
+/// then loses it; every later `repos.chats.update` in the fold
+/// (`context-summary.ts:429`, `:566`, `:640`) is a PARTIAL patch that never
+/// names the column, so the loss is not an explicit overwrite.
+///
+/// v5 is self-consistent: the frame and the row agree. So this pin does NOT
+/// subtract the field and move on — it asserts, in both directions:
+///   * v5 persisted exactly what v4's own frame announced (a positive claim
+///     about the port, not a hole in the comparison), and
+///   * v4's row is still NULL (so when v4 stops losing the write, this trips and
+///     the pin is retired rather than quietly surviving).
+///
+/// This became visible only at P4.D172: before the rotation port the per-call
+/// event assertions failed first and the table comparison never ran. It is NOT
+/// caused by this lane — measured by reverting the whole-room map and the
+/// `cycleOrderParticipantIds` argument independently, each of which left the
+/// divergence in place. ⚠ Candidate v4 filing.
+fn pin_summary_fold_last_turn_divergence(
+    got: &Value,
+    want: &mut Value,
+    want_events: &HashMap<String, Vec<Value>>,
+) {
+    const CHAT: &str = "c860cf74-128f-4a81-9a5c-6c2275f24302";
+    const FIELD: &str = "lastTurnParticipantId";
+
+    // What v4's own chain_complete frame announced for this call.
+    let announced = want_events
+        .get("summary_fold")
+        .and_then(|evs| {
+            evs.iter()
+                .find(|e| e.get("chainComplete") == Some(&Value::Bool(true)))
+        })
+        .and_then(|e| e.get("nextSpeakerId"))
+        .and_then(Value::as_str)
+        .map(String::from);
+    let Some(announced) = announced else {
+        panic!(
+            "the `summary_fold` chain_complete frame no longer names a next \
+             speaker — re-measure the {FIELD} divergence and retire this pin"
+        );
+    };
+
+    let row_of = |v: &Value| -> Option<Value> {
+        v.get("rows")?
+            .as_array()?
+            .iter()
+            .find(|r| r.get("id").and_then(Value::as_str) == Some(CHAT))
+            .cloned()
+    };
+    let (Some(g), Some(w)) = (row_of(got), row_of(want)) else {
+        panic!("the `summary_fold` chat {CHAT} left the corpus — retire this pin");
+    };
+
+    assert_eq!(
+        g.get(FIELD).and_then(Value::as_str),
+        Some(announced.as_str()),
+        "v5's {FIELD} must equal what v4's OWN frame announced"
+    );
+    assert!(
+        w.get(FIELD).map(|v| v.is_null()).unwrap_or(false),
+        "v4 now PERSISTS {FIELD} for {CHAT} (it used to lose its own write) — \
+         the divergence has converged; delete this pin and compare the field"
+    );
+
+    // Both sides pinned; let the row-wise compare below see them as equal.
+    if let Some(rows) = want.get_mut("rows").and_then(Value::as_array_mut) {
+        for r in rows.iter_mut() {
+            if r.get("id").and_then(Value::as_str) == Some(CHAT) {
+                r[FIELD] = Value::String(announced.clone());
+            }
+        }
     }
 }
 

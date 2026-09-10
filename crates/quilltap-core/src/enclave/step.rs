@@ -79,7 +79,6 @@ use crate::enclave_budget::{
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::StreamingCompletionProvider;
-use crate::participant_filters::get_active_character_participants;
 use crate::select_speaker::select_next_speaker;
 use crate::services::build_context::BuildContextSeams;
 use crate::services::carina_runner::{PostProsperoCarinaError, RunCarinaQuery};
@@ -97,10 +96,9 @@ use crate::services::pricing_fetcher::PricingFetch;
 use crate::services::provider_failover::DangerousContentRouter;
 use crate::services::queue_service::enqueue_autonomous_room_turn;
 use crate::services::turn_orchestrator::{
-    load_talkativeness_map, participants_array, to_filter_participant, to_message_views,
-    to_speaker_participant,
+    participants_array, to_message_views, to_speaker_participant,
 };
-use crate::turn_state::calculate_turn_state_from_history;
+use crate::weighted_random::DrawSource;
 
 // v4 `WEDGE_GRACE_MS` (autonomous-room-schedule-tick.ts:30) — a `running` room
 // is only treated as wedged once untouched this long (a freshly-started run has
@@ -152,7 +150,7 @@ pub struct StepDeps<'a> {
     /// instance-local midnight (v4 uses the host process's local zone).
     pub tz: &'a str,
     /// `Math.random()` for the weighted next-speaker pick.
-    pub random01: f64,
+    pub random01: DrawSource,
     /// The UNTAGGED cheap-LLM executor for the 9c summary fold. v4 runs the
     /// fold OUTSIDE the `runWithAutonomousRunId` scope — `getAutonomousRunId()`
     /// is null there, so the fold's cheap-LLM tokens are housekeeping, not turn
@@ -619,11 +617,13 @@ where
 
     // --- 5. Speaker selection (v4 turn-manager over the ported leaves) ---
     let participants = participants_array(&chat);
-    let filter_participants: Vec<_> = participants.iter().map(to_filter_participant).collect();
-    let active = get_active_character_participants(&filter_participants);
-    // v4 builds a Map<characterId, Character> via `repos.characters.findById`
-    // per active participant (the vault-overlaid read).
-    let talkativeness = load_talkativeness_map(db, &active)?;
+    // Every present seat. An autonomous room is all-LLM by definition, so this is
+    // the same cast either way — but it is ONE batched read instead of one vault
+    // overlay per seat, on the hottest path the room has (v4 `d14da3a56:575`).
+    let speaker_participants: Vec<_> = participants.iter().map(to_speaker_participant).collect();
+    let room =
+        crate::room_characters::load_room_characters_from_db(db, &speaker_participants, &[])?;
+    let talkativeness = crate::room_characters::to_speaker_characters(&room);
     let cid = chat_id.clone();
     let messages = db.read_main(move |conn| chats_messages_read::get_messages(conn, &cid))?;
     // v4 filters `type === 'message'` before the turn manager (to_message_views
@@ -631,20 +631,34 @@ where
     let message_views = to_message_views(&messages);
     // Autonomous rooms have no user participant by definition
     // (`userParticipantId: null` — unused by the ported selection, as by v4's).
-    let turn_state = calculate_turn_state_from_history(
+    let mut turn_state = crate::turn_state::calculate_turn_state_from_history_with_cycle(
         &message_views,
         chat_str(&chat, "spokenThisCycleParticipantIds"),
+        chat_str(&chat, "cycleOrderParticipantIds"),
     );
-    let speaker_participants: Vec<_> = participants.iter().map(to_speaker_participant).collect();
+    // Draw this cycle's rotation if the last one is spent. In v4 the write buffers
+    // through IPC like every other write in a job child — the parent commits it,
+    // and this turn uses the returned order in memory regardless
+    // (v4 `autonomous-room-turn.ts:594-599`).
+    turn_state.cycle_order = crate::cycle_order::resolve_cycle_order(
+        db,
+        &chat_id,
+        &speaker_participants,
+        &talkativeness,
+        &turn_state,
+        &sdeps.random01,
+    )
+    .await;
     let selection = select_next_speaker(
         &speaker_participants,
         &talkativeness,
         &turn_state.queue,
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
-        sdeps.random01,
+        &sdeps.random01,
         // Autonomous rooms never impersonate (v4 passes no overlay here).
         None,
+        &turn_state.cycle_order,
     );
 
     let Some(responding_participant_id) = selection.next_speaker_id.clone() else {
@@ -694,7 +708,7 @@ where
         clock: ProcessClock {
             now_ms: now,
             local_offset_minutes: sdeps.local_offset_minutes,
-            random01: sdeps.random01,
+            random01: sdeps.random01.clone(),
         },
         model_context_limit: sdeps.model_context_limit,
         timestamp_config: sdeps.timestamp_config.clone(),
@@ -1857,7 +1871,7 @@ mod tests {
                 now_ms: &now_ms,
                 mint_uuid: &mint,
                 tz: "UTC",
-                random01: 0.0,
+                random01: DrawSource::constant(0.0),
                 fold_executor: &fold_executor,
                 model_context_limit: 200_000,
                 timestamp_config: None,

@@ -12,6 +12,228 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 items 7–9 — the alias caller census, the ordered oracle pin, and the draw-count proof
+
+_Versions: core 0.0.867, harness 0.0.757, host 0.0.121._
+
+**Item 7 — the deprecated alias, made executable rather than asserted in prose.**
+`get_active_character_participants` returns LLM-controlled seats only despite its
+name, which is what v4 bug 131 was. v4 KEPT it because one caller survives at the
+tip (`autonomous-room-announce.ts:129`), so v5's `enclave/announce.rs` keeps
+calling its port and the alias stays exported. Both directions of that decision
+can rot quietly — a lane could tidy the alias away (silently widening the
+autonomous-room announcement to seats the human drives), or a NEW selection site
+could reach for it by name and reintroduce the bug in a file no differential
+covers. `deprecated_alias_callers_guard` is the census that makes both loud; the
+allow-list IS the statement. Neither `enclave/announce.rs`'s call nor
+`turn_pause_filters_equivalence`'s by-name comparison moved — their only diff
+against `main` is the mandatory `participant_type` struct field.
+
+**Item 8 — the three frozen-zero oracle pins re-spelled as ordered sequences.**
+`Math.random = () => 0` became `pinDraws([0])` over a new shared
+`harness/oracle/lib/pinned-draws.ts`, which mirrors
+`DrawSource::sequence` exactly (repeating its last value once exhausted,
+answering `0` when empty). A one-element array behaves identically to the scalar
+freeze, so this is byte-neutral for `orchestrator_tier3`, `enclave_step_tier3`,
+`regenerate_swipe_tier3` and `salon_swipe_generate` — proven by all four passing
+against unchanged v5 code — and an arm that needs a real sequence later changes
+the array and nothing else. Three recipes now stage the lib alongside the case.
+
+**Item 9 — the draw COUNT, which is the only thing that can state "drawn once and
+then kept".** The engine half
+(`cycle_order::a_cycle_draws_once_per_seat_then_stops_drawing`) pins the shape a
+returned order cannot show: three seats draw three times on a fresh cycle, ZERO
+on the next turn of the same cycle, and three again once it is spent. That second
+assertion is the load-bearing one — six server paths call `resolve_cycle_order`
+before asking who speaks next, and a re-draw at each would burn draws and let
+them disagree while still returning a plausible permutation. The host half
+(`spine::the_production_draw_source_is_fresh_per_call`) pins that production
+draws from a per-call OS closure rather than one sampled value: 64 draws must
+yield more than 60 distinct bit patterns, which a `DrawSource::constant` reaching
+production would collapse to one.
+
+#### 2026-09-09 — feat(turn-manager): P4.D172 units 5–6 — the six selection sites, the strike, the skip, and `?action=turn`'s rotation
+
+_Versions: core 0.0.866, harness 0.0.756._
+
+Every site that asks "who speaks next" now builds its talkativeness map from the
+batched whole-room read and resolves the cycle's rotation before selecting:
+`turn_orchestrator`'s `should_chain_next` (the map moved above the `if`, as v4's
+did, so it also serves the two chain-decision name lookups) and
+`handle_turn_action`; `message_finalizer::calculate_next_speaker` (with the
+just-spoken character seeded as `preloaded`); `participant_resolver`'s
+multiple-candidate branch (drawn over the WHOLE room, picked LLM-only via the
+argument, exactly as v4 splits it); `orchestrator`'s `maybe_pause_for_user_seat_turn`
+(already whole-room — it gains only the batched read); and the autonomous room in
+`enclave/step.rs`.
+
+Every per-seat reader those sites used is now dead and deleted:
+`load_talkativeness_map`, `read_character`, `character_name_for`, the finalizer's
+`read_speaker_character` and its inline participant walk. The deprecated LLM-only
+alias is no longer imported by `turn_orchestrator.rs` or `enclave/step.rs` — it
+survives only where v4 still calls it.
+
+`load_all_participant_data` (prompt construction) folds onto the same batched
+read, which carries v4's deliberate behaviour change with it: the old per-seat
+`find_by_id` failed the whole turn on an unreadable vault, where the batched list
+overlay logs and drops.
+
+Consumption: the strike lands in `db/chats_messages.rs`'s `update_chat_metadata`,
+folded through the same loop as `spokenThisCycleParticipantIds` and written once
+after it (v4's batch shape); `orchestrator`'s turn-skip twin strikes the seat;
+Continue Elsewhere carries the rotation with ids remapped, beside `turnQueue`'s.
+
+`?action=turn` answers `state: { queue, cycleOrder }`, and `resolve_active_llm_name`
+is RETIRED: the affected participant's name comes from the whole-room map, so a
+user-driven seat is named instead of reported as `"Unknown"` — bug 131's third
+symptom. A `query` may now write the chats row, because v4's resolve there is
+deliberately unconditional.
+
+Eleven families green at the `78b381a96` pin. Three of them needed the oracle
+repaired first, and one of those was the interesting one: `turn_orchestrator_tier2`
+REIMPLEMENTS `handleTurnAction` inline rather than importing it, and that
+transcription predated `2aca73ad6` — so the corpus was describing a v4 that no
+longer exists, and its diff (`weighted_selection` where v5 said `cycle_order`)
+read exactly like a v5 defect. The three salon families needed the committed
+fixture healed on the v4 side, through a new shared
+`harness/oracle/lib/p4d171-columns.ts` mirroring v5's `ensure_p4d171_columns`.
+
+#### 2026-09-09 — feat(turn-manager): P4.D172 unit 4 — the batched room-characters read, and the drop lines v5 was swallowing
+
+_Versions: core 0.0.865, harness 0.0.755, host 0.0.120._
+
+`room_characters.rs` ports v4's `room-characters.ts` (`d14da3a56`, bug 131):
+`load_room_characters` builds the `characterId → Character` map over
+`get_present_character_seats` — user-driven seats included — through ONE batched
+read, with `preloaded` characters seeded AFTER the batch so the caller's copy
+wins. Seats whose character cannot be read are simply absent from the map, which
+is `cycle_candidates`' documented contract; `to_speaker_characters` projects the
+map to the talkativeness + archived pair the selection reads, and
+`room_character_name` serves the chain decision's `characterName`.
+
+The read is a closure seam rather than a trait so the differential can count calls
+exactly as v4's `jest.fn` does, and so the production caller can pass its nested
+`read_main(read_mount_index(…))` without a wrapper.
+
+`db/vault_read_overlay.rs` gains v4's two drop lines. `apply_document_store_overlay`
+had been dropping an unreadable character under a bare
+`Err(_) => { /* vault unavailable → drop */ }` — the DROP is v4's, but the silence
+was not: v4 logs `Dropping character from list — vault unavailable`
+`{characterId, characterDocumentMountPointId, detail}` per character and
+`applyDocumentStoreOverlay dropped characters with unavailable vaults`
+`{dropped, total}` once. That silence cost little while this was a list read; bug
+131 puts it on the hot turn path, where every selection site's room map comes
+through it. `VaultUnavailable::message()` now owns the byte-exact
+`CharacterVaultUnavailableError` string that `api/custom_tools.rs` had inlined, so
+the log's `detail` and the 422 body cannot drift.
+
+NEW `room_characters_equivalence`: 14 rows over v4's real module at the pin,
+driven through a counting stand-in for `findByIds` on both sides — the CALL COUNT
+and the ids each call asked for are comparands, because "reads the whole room in
+ONE call, not one per seat" is the point of the commit. v4's own talkativeness case
+is statistical; the two `bug131-*` rows make the same claim deterministically at a
+CHOSEN pin (0.8), where a whole-room map answers `p-user` / `p-llm-2` and an
+LLM-only map answers `p-user` for both — so the rows differing IS the fix.
+
+Riding the unit: `host_llm_log_cleanup`'s beat waited for the job's COMPLETED
+status and then read `llm_logs`. Those are different partitions — the handler
+marks the job on `main` and deletes the aged rows through a separate `llm_logs`
+write — so it was waiting on a proxy, and failed roughly one run in two. It is
+PRE-EXISTING (it reproduces 2-in-4 on the untouched base) and unrelated to this
+lane's surfaces; the fix waits for the prune on its own partition before the
+assertion, weakening nothing. 6/6 green after.
+
+#### 2026-09-09 — feat(turn-manager): P4.D172 unit 3 — the cycle's drawn rotation, tier-1 exact against v4's real modules
+
+_Versions: core 0.0.864, harness 0.0.754._
+
+`cycle_order.rs` ports v4's `lib/chat/turn-manager/cycle-order.ts` (`2aca73ad6`):
+`parse_cycle_order`, `cycle_candidates`, `draw_cycle_order`,
+`pick_from_cycle_order` and the resolver. The draw is a weighted permutation
+sampled WITHOUT replacement, one draw per remaining candidate over a shrinking
+pool — which is what the ordered `DrawSource` from unit 1 exists for. Its
+contracts carry v4's reasons: an unknown character KEEPS its seat (the map is a
+best-effort read), a lone candidate is seated even when it just spoke, a stale id
+is skipped rather than terminal, a one-seat room stores nothing rather than
+churning the row every turn, and a mid-cycle joiner goes to the BACK rather than
+triggering a redraw.
+
+v4's `resolveCycleOrder` is split: `resolve_cycle_order_pure` decides (the
+rotation, and whether to write), and the async shell performs the write and logs.
+v5's write path is a channel to the single writer, not an awaited repo call, and
+the decision is a pure function of the row and the room — which is also what makes
+it tier-1 comparable. `log_cycle_order_persisted` / `log_cycle_order_persist_failed`
+carry v4's two log lines byte-for-byte; the write failure is swallowed by contract.
+
+`turn_state.rs` gains `TurnState.cycle_order`, the strike in
+`update_turn_state_after_message`, `reset_cycle_for_user_skip` emptying it,
+`calculate_turn_state_from_history_with_cycle` (reads, never draws — v4's
+function is pure and runs on its client too), and
+`compute_cycle_order_after_message` / `_after_skip` behind the same four guards
+their spoken twins apply. `turn_order.rs` takes the rotation-rank comparator, with
+the talkativeness sort surviving only as the no-rotation fallback.
+`select_speaker.rs` gains step 2 — the rotation as an overlay, the `cycle_order`
+reason and explanation, `weights: {}` and NO `randomValue` (`SelectionDebug.
+random_value` becomes `Option<f64>`, and its ABSENCE is a comparand) — and the
+after-user twin takes v4's 8th parameter.
+
+`participant_filters.rs` gets `is_present_character_seat` /
+`get_present_character_seats`, the ONE home for v4's `getPresentCharacterSeats`.
+v5 had spelled that predicate three ways, and the third — an inline walk in
+`message_finalizer.rs` — dropped only `removed` and therefore KEPT `absent` seats
+v4 excludes. `ParticipantView` carries `participant_type` so the predicate can
+live in one place. The deprecated LLM-only alias stays (v4 still calls it at
+`autonomous-room-announce.ts:129`) with a docblock naming bug 131.
+
+NEW `cycle_order_equivalence`: 90 rows over v4's real modules at the `78b381a96`
+pin — every case name in v4's own `cycle-order.test.ts` plus the arms it leaves to
+statistics, with pinned draw arrays and a consumed-draw comparand. v4's two
+weighting cases ARE statistical (400 draws asserting `p1First > 240`) and are
+mirrored Rust-side over a fixed-seed stream. `turn_state_equivalence` gained a
+seeded-rotation row so its new `cycleOrder` assertion measures the strike rather
+than `[] === []`.
+
+#### 2026-09-09 — feat(turn-manager): P4.D172 units 1–2 — the ordered draw source, and one weighted pick for all three consumers
+
+_Versions: core 0.0.863, harness 0.0.753, host 0.0.119._
+
+v4 `2aca73ad6` draws a whole cycle's speaking order up front, calling
+`Math.random()` once per remaining candidate. A single injected `random01: f64`
+— the shape every earlier v5 port of a `Math.random` site used — cannot describe
+that: one pinned value makes every position of the permutation land on the same
+relative offset. So the injection becomes an ordered sequence.
+
+`quilltap_core::weighted_random::DrawSource` is that source: a cloneable,
+`Send + Sync`, interior-mutable handle with `constant`, `sequence` (ordered, then
+repeating its last value) and `from_fn` constructors. It replaces `random01: f64`
+at every carrier — `ProcessClock`, `StepDeps`, `RegenerateSwipeOptions`,
+`ChatCreateDeps`, `handle_turn_action`, `should_chain_next`,
+`resolve_responding_participant`, `select_next_speaker` and its after-user twin —
+and the host's `os_random01` becomes `os_draw_source()`, one fresh OS draw per
+call. A ONE-element sequence is exactly the old constant pin, which is what keeps
+every pre-rotation corpus row byte-identical.
+
+The same module now owns `pick_weighted_random`, v4's `weighted-random.ts`. Three
+copies fold onto it: `select_speaker::pick_weighted` (which keeps v4's wrapper —
+the `?? ?? 0.5` weight chain, the equal-weights warn, the id-keyed debug block),
+`chat_create::pick_weighted_by_talkativeness` (v4's opening-character pick, whose
+hand-rolled `floor(r * len)` uniform branch agreed with v4's all-ones cumulative
+scan only by arithmetic), and the cycle draw that lands next. Two fidelity gaps
+close on the way: the equal-weights gate is v4's `<= 0`, not v5's `== 0.0`, so a
+negative total no longer scans off the bottom; and `[Turn Manager] Total
+talkativeness is 0, using equal weights` — a v4 warn v5 never had — now fires from
+the per-turn pick, with a silence arm and the cycle draw pinned NOT to log it.
+
+`message_finalizer::calculate_next_speaker` stops passing a hard-coded `0.0`. The
+comment justifying it ("the finalizer only surfaces `isUsersTurn` + the ids") was
+retired by v4 `2aca73ad6`, which made that call the site that draws AND persists
+the whole rotation; it now takes the caller's real source through
+`FinalizeOptions.draws`. A pre-existing v5 divergence closed.
+
+`select_speaker_equivalence`'s oracle pins an ARRAY per case and emits the draws
+v4 actually consumed; the Rust side replays the same array through a counting
+source and compares the count and the values at 1e-12. Twelve of the twenty-eight
+rows consume ZERO draws, so the new comparand discriminates rather than decorates.
 #### 2026-09-09 — feat(route-trail): P4.D173 units 2–5 — the recording chokepoint, every failover record site, persistence on the INSERT, the `done` frame and the seeding
 
 _Versions: core 0.0.864, harness 0.0.754._

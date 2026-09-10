@@ -25,6 +25,7 @@ use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -245,6 +246,15 @@ fn salon_skip_matches_oracle() {
             &spec.test_pepper_base64,
         )
         .expect("open db");
+        // P4.D172: the committed salon fixture predates the two `78b381a96`
+        // schema moves, and this path now WRITES both columns. P4.D171's
+        // repaired-at-boot heal is what the many committed fixtures use; the v4
+        // side of this family gets the same ALTERs in its own jest setup.
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
         if seed {
             seed_turn_pass(&db, SEED_ID_1, ARIA_P, "2026-02-02T00:00:00.000Z");
             seed_turn_pass(&db, SEED_ID_2, BRAM_P, "2026-02-03T00:00:00.000Z");
@@ -254,7 +264,7 @@ fn salon_skip_matches_oracle() {
             GROUP,
             "skipUserTurn",
             Some(USER_P),
-            0.42,
+            &DrawSource::sequence(vec![0.42]),
         )));
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))

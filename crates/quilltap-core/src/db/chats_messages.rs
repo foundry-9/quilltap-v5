@@ -609,6 +609,19 @@ impl<'c> ChatMessagesRepository<'c> {
             .unwrap_or("[]")
             .to_string();
         let mut changed = false;
+        // The strike at the message-landing chokepoint (v4 `2aca73ad6`,
+        // `chats-messages.ops.ts:354-365` for `addMessage` and `:413-436` for
+        // `addMessages`, which v5 collapsed into this one helper). Pure
+        // bookkeeping: drawing the NEXT rotation needs talkativeness and happens
+        // lazily at the following selection (`resolve_cycle_order`), for which an
+        // emptied list is the signal. Folded in the SAME loop and written ONCE
+        // after it, exactly as v4's batch does.
+        let mut current_order = chat
+            .get("cycleOrderParticipantIds")
+            .and_then(Value::as_str)
+            .unwrap_or("[]")
+            .to_string();
+        let mut order_changed = false;
         for e in events {
             let view = message_view(e);
             if let Some(next) =
@@ -617,9 +630,18 @@ impl<'c> ChatMessagesRepository<'c> {
                 current = next;
                 changed = true;
             }
+            if let Some(next_order) =
+                crate::turn_state::compute_cycle_order_after_message(&view, Some(&current_order))
+            {
+                current_order = next_order;
+                order_changed = true;
+            }
         }
         if changed {
             update.spoken_this_cycle_participant_ids = Some(current);
+        }
+        if order_changed {
+            update.cycle_order_participant_ids = Some(current_order);
         }
 
         ChatsRepository::new(self.conn).update(chat_id, &update)?;

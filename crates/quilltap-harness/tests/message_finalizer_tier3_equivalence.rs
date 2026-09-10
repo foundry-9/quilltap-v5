@@ -69,6 +69,7 @@ use quilltap_core::services::route_trail::{
 };
 use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
 use quilltap_core::tools::rng::FixedBytes;
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -399,6 +400,7 @@ fn to_finalizer_chat(row: &Value) -> FinalizerChat {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default(),
+        cycle_order_participant_ids: None,
         spoken_this_cycle_participant_ids: str_of(row, "spokenThisCycleParticipantIds"),
         allow_cross_character_vault_reads: row
             .get("allowCrossCharacterVaultReads")
@@ -576,6 +578,48 @@ fn dump_table(db: &Db, table: &str, order_by: &str) -> Value {
 // ---------------------------------------------------------------------------
 // The test.
 // ---------------------------------------------------------------------------
+
+/// **CROSS-LANE, RETIRE AT UNIFICATION.** v4 `5841a8c62` (the message route
+/// trail) put a `routeTrail` key on the SSE `done` frame. That frame is
+/// P4.D173's by the round's function fence (`finalize_message_response`'s done
+/// frame), not P4.D172's — but this family regenerates at the same
+/// `78b381a96` pin, so its oracle already carries the key while v5's frame does
+/// not. Subtracted here rather than left red, with a tripwire: the key MUST be
+/// present on the oracle side, so this subtraction can never go quietly dead.
+///
+/// P4.D173 (or the unifier, after it lands) deletes this function and its call
+/// site; the assertion below is what makes that deletion loud if it is forgotten.
+fn strip_pending_route_trail(events: &Value) -> Value {
+    let Value::Array(items) = events else {
+        return events.clone();
+    };
+    let mut saw_done_frame = false;
+    let mut saw_route_trail = false;
+    let stripped: Vec<Value> = items
+        .iter()
+        .map(|e| {
+            let Value::Object(map) = e else {
+                return e.clone();
+            };
+            if map.get("done") != Some(&Value::Bool(true)) {
+                return e.clone();
+            }
+            saw_done_frame = true;
+            let mut m = map.clone();
+            if m.shift_remove("routeTrail").is_some() {
+                saw_route_trail = true;
+            }
+            Value::Object(m)
+        })
+        .collect();
+    assert!(
+        !saw_done_frame || saw_route_trail,
+        "the oracle's `done` frame no longer carries `routeTrail` — P4.D173 has \
+         landed (or the pin moved back); delete `strip_pending_route_trail` and \
+         compare the frame whole"
+    );
+    Value::Array(stripped)
+}
 
 #[test]
 fn message_finalizer_tier3_matches_oracle() {
@@ -888,6 +932,9 @@ fn message_finalizer_tier3_matches_oracle() {
             // W4.3: the answer-confirmation feature is OFF in this corpus, so the
             // runner is never invoked; the inputs are inert.
             confirmation: FinalizerConfirmationInputs::default(),
+            // P4.D172: the finalizer's next-speaker pick now takes an ordered draw
+            // source. `[0]` reproduces the frozen 0.0 this family always pinned.
+            draws: DrawSource::sequence(vec![0.0]),
         };
 
         let result = rt
@@ -922,7 +969,8 @@ fn message_finalizer_tier3_matches_oracle() {
         let want = want_events
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
-        assert_eq!(got, want, "event trace mismatch for call {name}");
+        let want = strip_pending_route_trail(want);
+        assert_eq!(got, &want, "event trace mismatch for call {name}");
     }
 
     // --- 3. seam records ---

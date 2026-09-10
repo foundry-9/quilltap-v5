@@ -48,8 +48,6 @@
 //! * The talkativeness map is keyed by `characterId`; a per-participant override
 //!   wins over the character value inside [`select_next_speaker`].
 
-use std::collections::HashMap;
-
 use serde_json::Value;
 
 use crate::all_llm_pause::should_pause_for_all_llm;
@@ -57,17 +55,15 @@ use crate::chat_predicates::participant_status_from_str;
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::participant_filters::{
-    find_user_participant, get_active_character_participants, is_all_llm_chat,
-    ParticipantView as FilterParticipant,
+    find_user_participant, is_all_llm_chat, ParticipantView as FilterParticipant,
 };
-use crate::select_speaker::{
-    select_next_speaker, SelectionResult, SpeakerCharacter, SpeakerParticipant,
-};
+use crate::select_speaker::{select_next_speaker, SelectionResult, SpeakerParticipant};
 use crate::turn_state::{
-    add_to_queue, calculate_turn_state_from_history, compute_spoken_this_cycle_after_skip,
-    get_queue_position, nudge_participant, remove_from_queue, MessageView, ParticipantView,
-    TurnState,
+    add_to_queue, calculate_turn_state_from_history_with_cycle,
+    compute_spoken_this_cycle_after_skip, get_queue_position, nudge_participant, remove_from_queue,
+    MessageView, ParticipantView, TurnState,
 };
+use crate::weighted_random::DrawSource;
 
 // ---------------------------------------------------------------------------
 // Config + result types (v4 `ChainConfig` / `ChainDecision`).
@@ -211,6 +207,7 @@ pub(crate) fn to_turnstate_participant(p: &Value) -> ParticipantView {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
+        participant_type: str_field(p, "type").unwrap_or_default().to_string(),
         status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
@@ -310,60 +307,6 @@ fn json_ids(ids: &[String]) -> String {
     serde_json::to_string(ids).expect("string array always serializes")
 }
 
-/// Load the talkativeness map keyed by characterId (v4 builds a `Map<string,
-/// Character>` and `selectNextSpeaker` reads `.talkativeness`; here we read the
-/// scalar directly). Only the given active-character participants' characters are
-/// fetched, one `findById` each (v4's per-participant read), dropping any that
-/// don't resolve.
-pub(crate) fn load_talkativeness_map(
-    db: &Db,
-    participants: &[&FilterParticipant],
-) -> Result<HashMap<String, SpeakerCharacter>, DbError> {
-    let mut map = HashMap::new();
-    for p in participants {
-        if let Some(cid) = &p.character_id {
-            if let Some(ch) = read_character(db, cid)? {
-                // v4 stores the whole character; the selection reads
-                // talkativeness AND (since `d553f72a`) `archivedAt`. Insert
-                // unconditionally so an archived character carrying no
-                // talkativeness still reaches the filter — the old
-                // `if let Some(t)` skipped exactly those rows.
-                map.insert(
-                    cid.clone(),
-                    SpeakerCharacter {
-                        talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
-                        archived: crate::api::characters::is_archived(&ch),
-                    },
-                );
-            }
-        }
-    }
-    Ok(map)
-}
-
-/// Read a character (vault-overlaid, v4 `repos.characters.findById`) — the nested
-/// main+mount read the vault overlay needs.
-pub(crate) fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
-    let id = id.to_string();
-    db.read_main(|main| {
-        db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &id))
-    })
-}
-
-/// The character name for a participant (v4 reads `char.name`), or `None` when the
-/// participant has no character id or the character doesn't resolve.
-fn character_name_for(db: &Db, participant: &Value) -> Result<Option<String>, DbError> {
-    let Some(cid) = nonempty_character_id(participant) else {
-        return Ok(None);
-    };
-    let ch = read_character(db, &cid)?;
-    Ok(ch
-        .as_ref()
-        .and_then(|c| c.get("name"))
-        .and_then(Value::as_str)
-        .map(String::from))
-}
-
 // ---------------------------------------------------------------------------
 // shouldChainNext (turn-orchestrator.service.ts:52–229)
 // ---------------------------------------------------------------------------
@@ -387,7 +330,7 @@ pub async fn should_chain_next(
     chain_start_time_ms: i64,
     config: &ChainConfig,
     guards: ChainGuards,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<ChainDecision, DbError> {
     // Re-read chat for fresh state (isPaused may have been set by a stop button).
     let chat_id_owned = chat_id.to_string();
@@ -432,7 +375,13 @@ pub async fn should_chain_next(
     let spoken_json = fresh_chat
         .get("spokenThisCycleParticipantIds")
         .and_then(Value::as_str);
-    let turn_state = calculate_turn_state_from_history(&message_views, spoken_json);
+    let mut turn_state = calculate_turn_state_from_history_with_cycle(
+        &message_views,
+        spoken_json,
+        fresh_chat
+            .get("cycleOrderParticipantIds")
+            .and_then(Value::as_str),
+    );
 
     // All-LLM pause check. A chat is only truly all-LLM if there is no
     // user-controlled participant AND no USER messages in history (a user typing
@@ -507,13 +456,29 @@ pub async fn should_chain_next(
         .await?;
     }
 
-    if next_participant_id.is_none() && selection_reason != "queue" {
-        // Weighted turn-selection algorithm.
-        let active_character_participants = get_active_character_participants(&filter_participants);
-        let talkativeness = load_talkativeness_map(db, &active_character_participants)?;
+    // v4 `d14da3a56` moved this map ABOVE the `if`: every present seat,
+    // user-driven ones included — their talkativeness has to reach the draw below,
+    // and their archived state has to reach the filter. ONE batched read serves
+    // both the selection and the two name lookups after it (which used to be two
+    // more `findById` calls).
+    let speaker_participants: Vec<SpeakerParticipant> =
+        participants.iter().map(to_speaker_participant).collect();
+    let room =
+        crate::room_characters::load_room_characters_from_db(db, &speaker_participants, &[])?;
+    let talkativeness = crate::room_characters::to_speaker_characters(&room);
 
-        let speaker_participants: Vec<SpeakerParticipant> =
-            participants.iter().map(to_speaker_participant).collect();
+    if next_participant_id.is_none() && selection_reason != "queue" {
+        // Draw the cycle's rotation if this turn starts one, so the whole chain —
+        // and every other reader — follows one order instead of each re-rolling.
+        turn_state.cycle_order = crate::cycle_order::resolve_cycle_order(
+            db,
+            chat_id,
+            &speaker_participants,
+            &talkativeness,
+            &turn_state,
+            draws,
+        )
+        .await;
 
         let result: SelectionResult = select_next_speaker(
             &speaker_participants,
@@ -521,8 +486,9 @@ pub async fn should_chain_next(
             &[], // queue already consulted above; v4 passes turnState.queue which is empty here
             &turn_state.spoken_since_user_turn,
             turn_state.last_speaker_id.as_deref(),
-            random01,
+            draws,
             Some(&impersonating),
+            &turn_state.cycle_order,
         );
 
         next_participant_id = result.next_speaker_id.clone();
@@ -557,7 +523,13 @@ pub async fn should_chain_next(
         // seat the human is impersonating (v4 Bug 44 overlay — `controlledBy`
         // still `'llm'`) pauses the chain just like a genuine user seat, so the
         // operator types the character's line instead of the model generating it.
-        let character_name = character_name_for(db, &next_participant)?;
+        // v4 `d14da3a56:212-214`: the room map already loaded serves this, in
+        // place of another per-participant `findById`.
+        let character_name = crate::room_characters::room_character_name(
+            &room,
+            nonempty_character_id(&next_participant).as_deref(),
+        )
+        .map(String::from);
         return Ok(ChainDecision {
             chain: false,
             participant_id: Some(next_participant_id),
@@ -568,8 +540,12 @@ pub async fn should_chain_next(
     }
 
     // Find the character name (v4 defaults to 'Unknown').
-    let character_name =
-        character_name_for(db, &next_participant)?.unwrap_or_else(|| "Unknown".to_string());
+    let character_name = crate::room_characters::room_character_name(
+        &room,
+        nonempty_character_id(&next_participant).as_deref(),
+    )
+    .map(String::from)
+    .unwrap_or_else(|| "Unknown".to_string());
 
     Ok(ChainDecision {
         chain: true,
@@ -639,6 +615,14 @@ pub struct TurnActionResult {
     pub cycle_complete: bool,
     pub is_users_turn: bool,
     pub queue: Vec<String>,
+    /// The parsed POST-RESOLVE rotation — `state.cycleOrder` on the wire (§C.2).
+    pub cycle_order: Vec<String>,
+    /// The affected participant's character name, resolved from the WHOLE-ROOM
+    /// map (v4 `turn.ts:240-248`). `None` when the participant has no character
+    /// or the room could not read it — the edge renders v4's `?? 'Unknown'`.
+    /// Before bug 131 this came from an LLM-ONLY lookup, so a user-driven seat
+    /// always reported "Unknown".
+    pub participant_name: Option<String>,
     pub queue_position: Option<i64>,
 }
 
@@ -654,7 +638,7 @@ pub async fn handle_turn_action(
     chat_id: &str,
     action: TurnAction,
     participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<TurnActionResult, DbError> {
     let chat_id_owned = chat_id.to_string();
     let chat = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))?;
@@ -678,10 +662,19 @@ pub async fn handle_turn_action(
     let spoken_json = chat
         .get("spokenThisCycleParticipantIds")
         .and_then(Value::as_str);
-    let mut turn_state = calculate_turn_state_from_history(&message_views, spoken_json);
+    let mut turn_state = calculate_turn_state_from_history_with_cycle(
+        &message_views,
+        spoken_json,
+        chat.get("cycleOrderParticipantIds").and_then(Value::as_str),
+    );
 
-    // Pre-computed cycle update for skipUserTurn (written below with the queue).
+    // Pre-computed cycle updates for skipUserTurn (written below with the queue).
     let mut skip_cycle_update: Option<Option<String>> = None; // None = not-a-skip; Some(x) = the computed value (None = null)
+                                                              // v4 `turn.ts:83-84`: `let skipOrderUpdate: string | null | undefined`. The
+                                                              // THREE states are load-bearing — `undefined` (not a skip) writes nothing,
+                                                              // while BOTH `null` (the seat was already out of the rotation) and a string
+                                                              // reach the write, which persists the POST-RESOLVE list either way.
+    let mut skip_order_update: Option<Option<String>> = None;
 
     match action {
         TurnAction::Nudge => {
@@ -728,6 +721,20 @@ pub async fn handle_turn_action(
                     };
                 }
             }
+            // A skipped seat leaves the cycle's rotation exactly as a posted
+            // message would take it out — the turn was theirs and it has been
+            // used (v4 `turn.ts:153-158`).
+            let order_update = crate::turn_state::compute_cycle_order_after_skip(
+                pid,
+                chat.get("cycleOrderParticipantIds").and_then(Value::as_str),
+            );
+            skip_order_update = Some(order_update.clone());
+            if let Some(update) = order_update {
+                turn_state = TurnState {
+                    cycle_order: crate::cycle_order::parse_cycle_order(Some(&update)),
+                    ..turn_state
+                };
+            }
             turn_state = TurnState {
                 last_speaker_id: Some(pid.to_string()),
                 ..turn_state
@@ -735,11 +742,30 @@ pub async fn handle_turn_action(
         }
     }
 
-    // Build the talkativeness map (v4 reads active-character participants).
-    let active_character_participants = get_active_character_participants(&filter_participants);
-    let talkativeness = load_talkativeness_map(db, &active_character_participants)?;
+    // Every present seat, user-driven ones included. Besides feeding the draw its
+    // talkativeness, this is what lets the response NAME a user seat instead of
+    // reporting the human's own character as `null` / "Unknown" (bug 131's third
+    // symptom).
     let speaker_participants: Vec<SpeakerParticipant> =
         participants.iter().map(to_speaker_participant).collect();
+    let room =
+        crate::room_characters::load_room_characters_from_db(db, &speaker_participants, &[])?;
+    let talkativeness = crate::room_characters::to_speaker_characters(&room);
+
+    // `query` is read-only in every other respect, but a spent rotation still has
+    // to be redrawn for the answer to mean anything — and drawing it here is what
+    // lets the sidebar show the cycle to come rather than a guess at it. So a
+    // "read-only" query MAY write the chats row (v4 `turn.ts:184-189`,
+    // deliberately unconditional).
+    turn_state.cycle_order = crate::cycle_order::resolve_cycle_order(
+        db,
+        chat_id,
+        &speaker_participants,
+        &talkativeness,
+        &turn_state,
+        draws,
+    )
+    .await;
 
     let next_speaker = select_next_speaker(
         &speaker_participants,
@@ -747,8 +773,9 @@ pub async fn handle_turn_action(
         &turn_state.queue,
         &turn_state.spoken_since_user_turn,
         turn_state.last_speaker_id.as_deref(),
-        random01,
+        draws,
         Some(&crate::db::chats_impersonation::read_impersonating(&chat)),
+        &turn_state.cycle_order,
     );
 
     // Persist turnQueue + lastTurnParticipantId for state-modifying actions.
@@ -760,6 +787,18 @@ pub async fn handle_turn_action(
             (TurnAction::SkipUserTurn, Some(Some(v))) => Some(v.clone()),
             _ => None,
         };
+        // v4 `turn.ts:202-208`: on a skip the persisted value is the POST-RESOLVE
+        // rotation, NOT `skipOrderUpdate` — if skipping this seat spent the cycle,
+        // `resolve_cycle_order` has already drawn the next one into
+        // `turn_state.cycle_order`, and writing the emptied list back over it would
+        // throw that draw away. The gate is `skipOrderUpdate !== undefined`, so a
+        // computed `null` (the seat was already out) still writes.
+        let order_write = match (action, &skip_order_update) {
+            (TurnAction::SkipUserTurn, Some(_)) => Some(crate::cycle_order::stringify_cycle_order(
+                &turn_state.cycle_order,
+            )),
+            _ => None,
+        };
         db.write(move |writers| {
             writers.main().chats().update(
                 &chat_id_owned,
@@ -767,6 +806,7 @@ pub async fn handle_turn_action(
                     turn_queue: Some(queue_json),
                     last_turn_participant_id: Some(next_id),
                     spoken_this_cycle_participant_ids: spoken_write,
+                    cycle_order_participant_ids: order_write,
                     ..Default::default()
                 },
             )
@@ -780,10 +820,12 @@ pub async fn handle_turn_action(
             .iter()
             .find(|p| str_field(p, "id") == Some(id.as_str()))
     });
-    let next_speaker_name = match next_speaker_participant {
-        Some(p) => character_name_for(db, p)?,
-        None => None,
-    };
+    // v4 `turn.ts:216-218` resolves from the WHOLE-ROOM map, so a user-driven seat
+    // is NAMED rather than reported as `null` (bug 131's third symptom).
+    let next_speaker_name = next_speaker_participant.and_then(|p| {
+        crate::room_characters::room_character_name(&room, nonempty_character_id(p).as_deref())
+            .map(String::from)
+    });
     let next_speaker_controlled_by = next_speaker_participant
         .and_then(|p| str_field(p, "controlledBy"))
         .map(String::from);
@@ -800,6 +842,17 @@ pub async fn handle_turn_action(
         cycle_complete: next_speaker.cycle_complete,
         is_users_turn: crate::select_speaker::is_users_turn(&next_speaker),
         queue: turn_state.queue.clone(),
+        cycle_order: turn_state.cycle_order.clone(),
+        participant_name: participant_id.and_then(|pid| {
+            let affected = participants
+                .iter()
+                .find(|p| str_field(p, "id") == Some(pid))?;
+            crate::room_characters::room_character_name(
+                &room,
+                nonempty_character_id(affected).as_deref(),
+            )
+            .map(String::from)
+        }),
         queue_position,
     })
 }

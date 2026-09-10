@@ -254,6 +254,14 @@ pub mod tools;
 pub mod turn_order;
 pub mod turn_state;
 pub mod vault_overlay;
+// === P4.D172 ===
+// The turn manager from v4 `78b381a96`: the cycle's drawn rotation, the one
+// weighted pick and its ordered draw source, and the batched room-characters
+// read every selection site builds its talkativeness map from (bug 131).
+pub mod cycle_order;
+pub mod room_characters;
+pub mod weighted_random;
+// === end P4.D172 ===
 pub mod wardrobe;
 pub mod wardrobe_instructions;
 pub mod wardrobe_tiers;

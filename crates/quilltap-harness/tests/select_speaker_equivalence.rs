@@ -1,10 +1,13 @@
 //! Tier-1 differential test #16 (Wave 2 / B7): weighted next-speaker selection.
 //!
 //! Covers selectNextSpeaker AND selectNextSpeakerAfterUserMessage (Bug 50 fair
-//! rotation, v4 f6eac168) with Math.random injected (the oracle pins it per case
-//! and emits the draw). Compares nextSpeakerId / reason / cycleComplete and the
-//! debug block (eligible list, weights within 1e-12, randomValue within 1e-12,
-//! allLLMNewCycle).
+//! rotation, v4 f6eac168) with Math.random injected. Since v4 `2aca73ad6` the
+//! injection is an ORDERED SEQUENCE (`drawCycleOrder` draws once per remaining
+//! candidate): the oracle pins an array per case and emits the draws it actually
+//! CONSUMED, and this side replays the same array and compares the consumed
+//! count and values at 1e-12. A one-element array is exactly the old scalar pin.
+//! Compares nextSpeakerId / reason / cycleComplete and the debug block (eligible
+//! list, weights within 1e-12, randomValue within 1e-12, allLLMNewCycle).
 //!
 //! Generate the oracle output (tsx imports the WORKTREE case file — point it at
 //! this lane's copy, not main):
@@ -22,6 +25,7 @@ use quilltap_core::select_speaker::{
     select_next_speaker, select_next_speaker_after_user_message, SpeakerCharacter,
     SpeakerParticipant,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -46,6 +50,11 @@ struct Scenario {
     #[serde(rename = "lastSpeakerId")]
     last_speaker_id: Option<String>,
     random01: f64,
+    /// P4.D172: an explicit draw SEQUENCE, when one value cannot describe the
+    /// case. Absent rows read as the one-element sequence `[random01]`, which is
+    /// exactly what the oracle's `withRandom` pins for them.
+    #[serde(default)]
+    draws: Option<Vec<f64>>,
     /// v4 Bug 44 overlay: the chat's `impersonatingParticipantIds` (absent on
     /// pre-Bug-44 scenarios, which pass no overlay).
     #[serde(default)]
@@ -57,8 +66,11 @@ struct WireDebug {
     #[serde(rename = "eligibleSpeakers")]
     eligible_speakers: Vec<String>,
     weights: HashMap<String, f64>,
-    #[serde(rename = "randomValue")]
-    random_value: f64,
+    /// P4.D172: v4 emits NO `randomValue` key on the `cycle_order` arm (the
+    /// weighting happened once, at the draw). Absent there, present everywhere
+    /// else — and the ABSENCE is a comparand, not a default.
+    #[serde(rename = "randomValue", default)]
+    random_value: Option<f64>,
     #[serde(rename = "allLLMNewCycle", default)]
     all_llm_new_cycle: bool,
 }
@@ -90,6 +102,8 @@ struct AfterScenario {
     user_participant_id: Option<String>,
     random01: f64,
     #[serde(default)]
+    draws: Option<Vec<f64>>,
+    #[serde(default)]
     impersonating: Option<Vec<String>>,
 }
 
@@ -101,13 +115,59 @@ enum OracleRow {
         id: String,
         scenario: Scenario,
         out: WireResult,
+        /// P4.D172: the draws v4 ACTUALLY consumed for this row — the count as
+        /// much as the values. A port that draws where v4 does not (or skips a
+        /// draw) diverges here even when the pick happens to agree.
+        #[serde(rename = "consumedDraws")]
+        consumed_draws: Vec<f64>,
     },
     #[serde(rename = "select-after")]
     SelectAfter {
         id: String,
         scenario: AfterScenario,
         out: WireResult,
+        #[serde(rename = "consumedDraws")]
+        consumed_draws: Vec<f64>,
     },
+}
+
+/// Replays a pinned draw sequence and RECORDS what the port consumed, so the
+/// count and the values can be compared against v4's own `consumedDraws`
+/// (P4.D172). Mirrors the oracle's `withRandom`: the last value repeats once the
+/// array is spent, so a one-element pin is the old constant.
+fn replay(pinned: &[f64]) -> (DrawSource, std::sync::Arc<std::sync::Mutex<Vec<f64>>>) {
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::<f64>::new()));
+    let sink = log.clone();
+    let values = pinned.to_vec();
+    let cursor = std::sync::atomic::AtomicUsize::new(0);
+    let src = DrawSource::from_fn(move || {
+        let v = if values.is_empty() {
+            0.0
+        } else {
+            let i = cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            values[i.min(values.len() - 1)]
+        };
+        sink.lock().unwrap().push(v);
+        v
+    });
+    (src, log)
+}
+
+/// The pinned sequence for a row: the explicit `draws` array, else the
+/// one-element `[random01]` the oracle pins for a scalar row.
+fn pinned_draws(draws: &Option<Vec<f64>>, random01: f64) -> Vec<f64> {
+    draws.clone().unwrap_or_else(|| vec![random01])
+}
+
+fn assert_draws(id: &str, got: &[f64], oracle: &[f64]) {
+    assert_eq!(
+        got.len(),
+        oracle.len(),
+        "{id}: draw COUNT rust={got:?} oracle={oracle:?}"
+    );
+    for (i, (g, o)) in got.iter().zip(oracle.iter()).enumerate() {
+        assert!((g - o).abs() < 1e-12, "{id}: draw[{i}] rust={g} oracle={o}");
+    }
 }
 
 /// Map the wire participants to [`SpeakerParticipant`] (shared by both scenario
@@ -185,12 +245,14 @@ fn assert_result(id: &str, got: &quilltap_core::select_speaker::SelectionResult,
                 g.all_llm_new_cycle, o.all_llm_new_cycle,
                 "{id} allLLMNewCycle"
             );
-            assert!(
-                (g.random_value - o.random_value).abs() < 1e-12,
-                "{id} randomValue: rust={} oracle={}",
-                g.random_value,
-                o.random_value
-            );
+            match (g.random_value, o.random_value) {
+                (Some(gv), Some(ov)) => assert!(
+                    (gv - ov).abs() < 1e-12,
+                    "{id} randomValue: rust={gv} oracle={ov}"
+                ),
+                (None, None) => {}
+                (gv, ov) => panic!("{id} randomValue presence mismatch: rust={gv:?} oracle={ov:?}"),
+            }
             assert_eq!(g.weights.len(), o.weights.len(), "{id} weights size");
             for (k, gv) in &g.weights {
                 let ov = o
@@ -226,24 +288,44 @@ fn select_speaker_matches_oracle() {
     let mut after_count = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
-            OracleRow::Select { id, scenario, out } => {
+            OracleRow::Select {
+                id,
+                scenario,
+                out,
+                consumed_draws,
+            } => {
                 let participants = to_speakers(&scenario.participants);
                 let characters = to_characters(&scenario.characters);
+                let (draws, log) = replay(&pinned_draws(&scenario.draws, scenario.random01));
                 let got = select_next_speaker(
                     &participants,
                     &characters,
                     &scenario.queue,
                     &scenario.spoken,
                     scenario.last_speaker_id.as_deref(),
-                    scenario.random01,
+                    &draws,
                     scenario.impersonating.as_deref(),
+                    // This corpus predates the rotation: every row's turn state
+                    // carries none, which is what keeps it byte-identical.
+                    &[],
                 );
                 assert_result(&format!("select '{id}'"), &got, &out);
+                assert_draws(
+                    &format!("select '{id}'"),
+                    &log.lock().unwrap(),
+                    &consumed_draws,
+                );
                 count += 1;
             }
-            OracleRow::SelectAfter { id, scenario, out } => {
+            OracleRow::SelectAfter {
+                id,
+                scenario,
+                out,
+                consumed_draws,
+            } => {
                 let participants = to_speakers(&scenario.participants);
                 let characters = to_characters(&scenario.characters);
+                let (draws, log) = replay(&pinned_draws(&scenario.draws, scenario.random01));
                 let got = select_next_speaker_after_user_message(
                     &participants,
                     &characters,
@@ -251,10 +333,16 @@ fn select_speaker_matches_oracle() {
                     scenario.persisted_spoken_json.as_deref(),
                     scenario.turn_queue_json.as_deref(),
                     scenario.user_participant_id.as_deref(),
-                    scenario.random01,
+                    &draws,
                     scenario.impersonating.as_deref(),
+                    None,
                 );
                 assert_result(&format!("select-after '{id}'"), &got, &out);
+                assert_draws(
+                    &format!("select-after '{id}'"),
+                    &log.lock().unwrap(),
+                    &consumed_draws,
+                );
                 after_count += 1;
             }
         }

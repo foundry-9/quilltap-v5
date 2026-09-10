@@ -31,6 +31,10 @@ struct WireState {
     queue: Vec<String>,
     #[serde(rename = "lastSpeakerId")]
     last_speaker_id: Option<String>,
+    /// P4.D172: absent on every pre-rotation row, which is exactly v4's
+    /// `createInitialTurnState()` seeding it to `[]`.
+    #[serde(rename = "cycleOrder", default)]
+    cycle_order: Vec<String>,
 }
 
 impl WireState {
@@ -40,11 +44,13 @@ impl WireState {
             current_turn_participant_id: self.current_turn_participant_id.clone(),
             queue: self.queue.clone(),
             last_speaker_id: self.last_speaker_id.clone(),
+            cycle_order: self.cycle_order.clone(),
         }
     }
 }
 
 fn assert_state(got: &TurnState, want: &WireState, ctx: &str) {
+    assert_eq!(got.cycle_order, want.cycle_order, "{ctx} cycleOrder");
     assert_eq!(
         got.spoken_since_user_turn, want.spoken_since_user_turn,
         "{ctx} spoken"

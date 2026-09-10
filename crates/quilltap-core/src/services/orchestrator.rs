@@ -91,7 +91,7 @@
 //!   `should_chain_next`'s time guard, and the assistant-message `createdAt`. The
 //!   caller injects them (the differential freezes the clock on both sides).
 //! * **`Math.random()`** — threaded into participant resolution + the chain's
-//!   `should_chain_next` selection. The caller passes `random01`; the corpus is
+//!   `should_chain_next` selection. The caller passes a [`DrawSource`]; the corpus is
 //!   shaped so the diffed pick is deterministic.
 
 use std::collections::HashMap;
@@ -160,6 +160,7 @@ use crate::tools::rng::{
     execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
 };
 use crate::tools::self_inventory::{ClientShell, SelfInventoryEnv};
+use crate::weighted_random::DrawSource;
 
 /// The TOOL-message `content` JSON for an auto-detected RNG execution (v4's
 /// `JSON.stringify({ tool, initiatedBy, success, result, prompt, arguments })`).
@@ -409,15 +410,17 @@ pub struct SendMessageOptions {
 
 /// The wall-clock + RNG values injected into one `process_message` call (v4's
 /// `Date.now()` / `crypto.randomUUID()` seed points + `Math.random()`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct ProcessClock {
     /// Milliseconds since epoch (v4 `Date.now()` — the timestamp base for
     /// buildContext + the message writes).
     pub now_ms: i64,
     /// The local UTC offset (minutes) buildContext's timestamp math reads.
     pub local_offset_minutes: i64,
-    /// `Math.random()`'s value for the participant / next-speaker selection.
-    pub random01: f64,
+    /// `Math.random()`'s ordered draws for the participant / next-speaker
+    /// selection. A whole cycle's rotation is drawn here (v4 `2aca73ad6`), so
+    /// this is a SEQUENCE, not one value — see [`DrawSource`].
+    pub random01: DrawSource,
 }
 
 /// Everything a `process_message` call needs beyond the injected providers /
@@ -745,7 +748,7 @@ async fn maybe_pause_for_user_seat_turn<SNK>(
     options: &SendMessageOptions,
     speaking_as: Option<&str>,
     now_ms: i64,
-    random01: f64,
+    draws: &crate::weighted_random::DrawSource,
 ) -> Result<Option<ProcessMessageResult>, DbError>
 where
     SNK: EventSink + Sync,
@@ -795,38 +798,15 @@ where
         return Ok(None);
     }
 
-    // Talkativeness lives on the character record — build the weight map
-    // (characterId → talkativeness), vault-overlaid like v4's `findById`.
-    let mut characters_map: HashMap<String, crate::select_speaker::SpeakerCharacter> =
-        HashMap::new();
-    for p in &active_chars {
-        let Some(cid) = p
-            .get("characterId")
-            .and_then(Value::as_str)
-            .filter(|c| !c.is_empty())
-        else {
-            continue;
-        };
-        let cid_owned = cid.to_string();
-        if let Some(ch) = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                crate::db::characters_read::find_by_id(main, mount, &cid_owned)
-            })
-        })? {
-            // Insert unconditionally: the map now also carries the archived
-            // flag (v4 `d553f72a`), which a talkativeness-gated insert drops.
-            characters_map.insert(
-                cid.to_string(),
-                crate::select_speaker::SpeakerCharacter {
-                    talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
-                    archived: crate::api::characters::is_archived(&ch),
-                },
-            );
-        }
-    }
-
+    // Talkativeness lives on the character record. This was already v5's ONE
+    // whole-room site (v4's one correct one), so bug 131 changes nothing about
+    // its WIDTH here — only that the read is now the shared batched one
+    // (v4 `d14da3a56:1818`), which is one vault overlay for the cast instead of
+    // one per seat.
     let speaker_parts: Vec<crate::select_speaker::SpeakerParticipant> =
         participants.iter().map(to_speaker_participant).collect();
+    let room = crate::room_characters::load_room_characters_from_db(db, &speaker_parts, &[])?;
+    let characters_map = crate::room_characters::to_speaker_characters(&room);
     let next = crate::select_speaker::select_next_speaker_after_user_message(
         &speaker_parts,
         &characters_map,
@@ -835,8 +815,11 @@ where
             .and_then(Value::as_str),
         chat.get("turnQueue").and_then(Value::as_str),
         Some(&poster_id),
-        random01,
+        draws,
         Some(&impersonating),
+        // v4 `orchestrator.service.ts:1828` — the projection reads the stored
+        // rotation and never draws one (P4.D172 unit 5 measures the write).
+        chat.get("cycleOrderParticipantIds").and_then(Value::as_str),
     );
     let next_seat = next.next_speaker_id.as_ref().and_then(|nid| {
         participants
@@ -1039,7 +1022,7 @@ where
             &input.options,
             speaking_as.as_deref(),
             input.clock.now_ms,
-            input.clock.random01,
+            &input.clock.random01,
         )
         .await?
         {
@@ -1054,7 +1037,7 @@ where
         responding_id.as_deref(),
         is_continue_mode,
         speaking_as.as_deref(),
-        input.clock.random01,
+        &input.clock.random01,
     )
     .await
     .map_err(|e| DbError::Internal(format!("participant resolution failed: {e:?}")))?;
@@ -3208,6 +3191,7 @@ where
                 // active path is proven by `answer_confirmation_tier3_equivalence`,
                 // which drives the finalizer directly with the feature ON.
                 confirmation: message_finalizer::FinalizerConfirmationInputs::default(),
+                draws: input.clock.random01.clone(),
             },
             deps.confirmation,
             deps.compression,
@@ -3499,6 +3483,16 @@ async fn handle_turn_skip(
             &ts_participants,
             spoken_json,
         );
+        // A pass spends the turn: the character leaves this cycle's rotation
+        // exactly as a spoken line would have taken them out of it
+        // (v4 `orchestrator.service.ts:1976-1988`). `None` means the id was not
+        // in the rotation — a no-op, and the key is then absent from the update.
+        let order_update = crate::turn_state::compute_cycle_order_after_skip(
+            params.character_participant_id,
+            fresh_chat
+                .get("cycleOrderParticipantIds")
+                .and_then(Value::as_str),
+        );
         let chat_id_owned = params.chat_id.to_string();
         let now = crate::clock::now_iso();
         let _ = db
@@ -3510,6 +3504,7 @@ async fn handle_turn_skip(
                         &crate::db::chats::ChatUpdate {
                             updated_at: Some(now),
                             spoken_this_cycle_participant_ids: cycle_update,
+                            cycle_order_participant_ids: order_update,
                             ..Default::default()
                         },
                     )
@@ -3756,7 +3751,7 @@ pub struct ExecuteTurnChainOptions {
 /// `processChainedMessage` builder (a continue-mode re-entry with the resolved
 /// next speaker); it returns an OWNED input so no borrow of `deps` escapes across
 /// the re-entry (the chain calls `process_message(deps, &input)` internally). The
-/// injected `now_ms` / `random01` (from `opts`) drive each step's time guard +
+/// injected `now_ms` / draw source (from `opts`) drive each step's time guard +
 /// selection; the corpus freezes both.
 #[allow(clippy::type_complexity)]
 pub async fn execute_turn_chain<
@@ -3793,7 +3788,7 @@ pub async fn execute_turn_chain<
     >,
     opts: ExecuteTurnChainOptions,
     now_ms: i64,
-    random01: f64,
+    draws: &DrawSource,
     mut make_chain_input: F,
 ) -> Result<(), DbError>
 where
@@ -3884,7 +3879,7 @@ where
             opts.chain_start_time_ms,
             &opts.config,
             guards,
-            random01,
+            draws,
         )
         .await?;
 
@@ -4393,6 +4388,7 @@ fn to_finalizer_chat(chat: &Value) -> FinalizerChat {
             .cloned()
             .unwrap_or_default(),
         spoken_this_cycle_participant_ids: json_str(chat, "spokenThisCycleParticipantIds"),
+        cycle_order_participant_ids: json_str(chat, "cycleOrderParticipantIds"),
         allow_cross_character_vault_reads: chat
             .get("allowCrossCharacterVaultReads")
             .and_then(Value::as_bool)
@@ -4552,7 +4548,7 @@ mod tests {
             clock: ProcessClock {
                 now_ms: 0,
                 local_offset_minutes: 0,
-                random01: 0.0,
+                random01: DrawSource::constant(0.0),
             },
             model_context_limit: 1000,
             timestamp_config: None,
@@ -4733,7 +4729,7 @@ mod tests {
                         config: ChainConfig::default(),
                     },
                     0,
-                    0.0,
+                    &DrawSource::constant(0.0),
                     chain_input,
                 )
                 .await

@@ -23,6 +23,7 @@ use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -239,6 +240,14 @@ fn salon_mutations_match_oracle() {
             &spec.test_pepper_base64,
         )
         .expect("open db");
+        // P4.D172: the committed salon fixture predates the two `78b381a96` schema
+        // moves, and these paths now write both columns. P4.D171's
+        // repaired-at-boot heal, as the other committed-fixture families use it.
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
         let body = response_data(&f(&db));
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
@@ -268,12 +277,26 @@ fn salon_mutations_match_oracle() {
         ),
         (
             "turn_query",
-            Box::new(|db: &Db| rt.block_on(salon::turn_action(db, GROUP, "query", None, 0.42))),
+            Box::new(|db: &Db| {
+                rt.block_on(salon::turn_action(
+                    db,
+                    GROUP,
+                    "query",
+                    None,
+                    &DrawSource::sequence(vec![0.42]),
+                ))
+            }),
         ),
         (
             "turn_nudge",
             Box::new(|db: &Db| {
-                rt.block_on(salon::turn_action(db, GROUP, "nudge", Some(LLM_P), 0.42))
+                rt.block_on(salon::turn_action(
+                    db,
+                    GROUP,
+                    "nudge",
+                    Some(LLM_P),
+                    &DrawSource::sequence(vec![0.42]),
+                ))
             }),
         ),
         (

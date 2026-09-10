@@ -34,8 +34,9 @@
 //! `.claude/` paths, so the case is staged in a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-enclave-step-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/enclave-step-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/fixtures/enclave-step-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-enclave-step-main.db \
@@ -83,6 +84,7 @@ use quilltap_core::services::message_finalizer::{
 use quilltap_core::services::orchestrator::{OrchestratorChatSettings, OrchestratorDeps};
 use quilltap_core::services::pricing_fetcher::PricingFetcher;
 use quilltap_core::tools::ask_carina::ErasedAskCarina;
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -578,7 +580,8 @@ fn enclave_step_tier3_matches_oracle() {
             now_ms: &now_ms,
             mint_uuid: &mint,
             tz: "UTC",
-            random01: 0.0,
+            // P4.D172: `[0]` reproduces this family's long-standing frozen zero.
+            random01: DrawSource::sequence(vec![0.0]),
             fold_executor: &fold_executor,
             model_context_limit: 200_000,
             timestamp_config: None,

@@ -30,8 +30,9 @@
 //! `.claude/` paths, so the case is staged in a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-regen-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/regenerate-swipe-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/fixtures/regenerate-swipe-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-regen-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-regen-mount.db \
@@ -62,6 +63,7 @@ use quilltap_core::services::message_context::NoopMessageContextSeams;
 use quilltap_core::services::regenerate_swipe::{
     regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -366,7 +368,8 @@ fn regenerate_swipe_tier3_matches_oracle() {
                 server_tz: Some("UTC".to_string()),
                 now_ms: spec.frozen_now_ms,
                 local_offset_minutes: spec.local_offset_minutes,
-                random01: 0.0,
+                // P4.D172: `[0]` reproduces the frozen-zero pin.
+                random01: DrawSource::sequence(vec![0.0]),
             },
         ));
 

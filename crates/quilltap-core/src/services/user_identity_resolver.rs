@@ -78,6 +78,11 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 
 fn to_filter_participant(p: &Value) -> ParticipantView {
     ParticipantView {
+        participant_type: p
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         id: str_field(p, "id").unwrap_or_default().to_string(),
         status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),

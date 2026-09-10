@@ -38,6 +38,7 @@ use quilltap_core::services::message_context::NoopMessageContextSeams;
 use quilltap_core::services::regenerate_swipe::{
     regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
 };
+use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -140,7 +141,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 server_tz: Some("UTC".to_string()),
                 now_ms: FROZEN_NOW_MS,
                 local_offset_minutes: 0,
-                random01: 0.0,
+                random01: DrawSource::sequence(vec![0.0]),
             };
             regenerate_message_as_swipe(db, embedding, completion, executor, &bc, &mc, opts)
                 .await
@@ -350,6 +351,14 @@ fn salon_swipe_generate_matches_oracle() {
             &spec.test_pepper_base64,
         )
         .expect("open db");
+        // P4.D172: the committed salon fixture predates the two `78b381a96` schema
+        // moves, and these paths now write both columns. P4.D171's
+        // repaired-at-boot heal, as the other committed-fixture families use it.
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
 
         let driver = TestSwipeDriver {
             db: &db,

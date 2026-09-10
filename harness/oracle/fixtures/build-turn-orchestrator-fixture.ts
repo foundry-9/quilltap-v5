@@ -43,6 +43,14 @@ interface CharSeed {
   id: string;
   name: string;
   controlledBy: 'llm' | 'user';
+  /**
+   * P4.D172: the CHARACTER-level weight. Every pre-existing seed omits it and
+   * takes the Zod default 0.5, because every pre-existing chat carries per-chat
+   * `talkativeness` overrides that win. The bug-131 room deliberately carries NO
+   * overrides, so the character map is the ONLY source of weight there — which is
+   * what makes narrowing that map to LLM seats observable.
+   */
+  talkativeness?: number;
 }
 interface ChatSeed {
   id: string;
@@ -50,6 +58,8 @@ interface ChatSeed {
   isPaused: boolean;
   turnQueue: string;
   spokenThisCycleParticipantIds: string;
+  /** P4.D172: a seeded rotation, so an op can START mid-cycle. */
+  cycleOrderParticipantIds?: string;
   participants: Array<Record<string, unknown>>;
   messages: Array<Record<string, unknown>>;
 }
@@ -163,6 +173,7 @@ async function main(): Promise<void> {
         userId: spec.userId,
         name: c.name,
         controlledBy: c.controlledBy,
+        ...(c.talkativeness === undefined ? {} : { talkativeness: c.talkativeness }),
       },
       { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
@@ -178,6 +189,9 @@ async function main(): Promise<void> {
         isPaused: c.isPaused,
         turnQueue: c.turnQueue,
         spokenThisCycleParticipantIds: c.spokenThisCycleParticipantIds,
+        ...(c.cycleOrderParticipantIds === undefined
+          ? {}
+          : { cycleOrderParticipantIds: c.cycleOrderParticipantIds }),
       } as never,
       { id: c.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
@@ -200,6 +214,7 @@ async function main(): Promise<void> {
     await repo.update(c.id, {
       turnQueue: c.turnQueue,
       spokenThisCycleParticipantIds: c.spokenThisCycleParticipantIds,
+      cycleOrderParticipantIds: c.cycleOrderParticipantIds ?? '[]',
       lastTurnParticipantId: null,
       lastMessageAt: null,
       isPaused: c.isPaused,

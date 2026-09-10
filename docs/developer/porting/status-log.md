@@ -118632,3 +118632,631 @@ accumulation) with two sibling lanes building concurrently, and free space fell
 to 11 GiB mid-gate. Cleared THIS lane's own `target/` only (never a sibling's),
 which freed 69 GB, and re-ran the whole gate from cold with
 `CARGO_INCREMENTAL=0`.
+## Lane record — P4.D172 (the turn manager from the tip: the drawn rotation + bug 131)
+
+**Base and probe.** Branch `claude/turn-manager-tip-server-port-ff197e`, reset
+onto P4.D171's finished tip `f6379983` (the worktree had been created from
+`main`; P4.D171's lane was clean, five units committed, its `target/` already
+removed). The drift ledger's §2 probe at lane start: checkout on `main`, tree
+CLEAN, `1a2b2164c..bugfix` EMPTY, and `78b381a96..main` showing **exactly one
+commit** — `cc65d6bfc` "Fix bug 133: a moderated chat's story background could
+escalate to the uncensored provider", over the nine files §R.2 predicted plus
+the four version-bump riders that always accompany them. That is the
+**pre-authorized exception** written into §R.2 at ordering, so the lane
+PROCEEDS on its `78b381a96` pin and records `cc65d6bfc` as next-round drift.
+None of bug 133's files touch this lane's surfaces. Pins:
+`/tmp/qt-v4-pin-p4d172-78b381a96` and `/tmp/qt-v4-pin-p4d172-25f534c0b`, both
+verified by marker (`lib/chat/turn-manager/{cycle-order,room-characters,
+weighted-random}.ts` exist ONLY in the tip worktree).
+
+### Unit 1 — the ordered draw source (the API decision), and unit 2 — one weighted pick
+
+**The recorded deviation from the order's shape, and why.** Tier-1 item 1 names
+`&mut dyn FnMut() -> f64`. That cannot travel v5's carriers: the value lives in
+`ProcessClock` (cloned into the chain loop), in `StepDeps`, and in
+`RegenerateSwipeOptions`, and it crosses `.await` points inside `Send` futures.
+The draw source is therefore `weighted_random::DrawSource` — an
+`Arc<dyn Fn() -> f64 + Send + Sync>` newtype: `Clone`, `Send + Sync`,
+interior-mutable, delivering draws in order to every holder of a clone (pinned
+by `a_clone_shares_the_cursor`, without which a chained turn would silently
+re-draw the first value). `ProcessClock` loses `Copy` and keeps `Clone`; eleven
+sites, all mechanical.
+
+`DrawSource::sequence` REPEATS ITS LAST VALUE once exhausted. That is the
+neutrality property the order asks for: `[0.5]` and the old scalar `0.5` are the
+same pin, so every pre-rotation corpus row is byte-identical.
+
+**Neutrality, measured — and the one thing that could not be measured the way
+the order describes.** The order asks for "every existing family green with
+single-element arrays equal to today's constants (the pre-rotation tree)". The
+tier-1 pure families were run exactly that way, from a worktree pinned at the
+BASELINE `25f534c0b`: `select_speaker_equivalence`, `turn_state_equivalence`,
+`turn_order_equivalence` and `turn_pause_filters_equivalence` all **ok**. The
+DB-backed families **cannot be regenerated at the baseline pin on this lane's
+base at all** — P4.D171's `chats_read.rs` selects `cycleOrderParticipantIds`,
+and a fixture built from a baseline-pinned v4 has no such column
+(`no such column: cycleOrderParticipantIds` from the first read). Their
+neutrality is therefore established by consequence at the TIP pin instead: every
+diff they show is attributable, key by key, to the two features the tip carries
+(see the red-first table below) and not one is a `randomValue`, a weight, or a
+draw count.
+
+**RED-FIRST evidence, captured against the pre-edit tree at the `78b381a96`
+pin** (these are the reds units 3–6 close, recorded here because the order asks
+for them before the first source commit):
+
+| family | the one thing that diverged | owner |
+|---|---|---|
+| `turn_orchestrator_tier2` | `cycleOrderParticipantIds` on 3 of 8 chats: v5 `'[]'`, v4 e.g. `["eeee0001…","eeee0000…"]` | P4.D172 |
+| `participant_resolver_tier2` | same key, on "Multi with user (isMultiCharacter, weighted)" | P4.D172 |
+| `message_finalizer_tier3` | `turn.reason` `weighted_selection` (v5) vs `cycle_order` (v4) on `multi-hijack` | P4.D172 |
+| `message_finalizer_tier3` | `routeTrail: null` on the SSE `done` frame | **P4.D173** |
+| `answer_confirmation_tier3` | regen dies v4-side: `state.routeFailures.length` of `undefined` | **P4.D173** |
+| `salon_skip` | regen dies v4-side: the fixture builder writes a chat without the new column | P4.D172 (unit 5) |
+
+**Two cross-lane wires this lane could not avoid**, both narrow and both flagged
+for the unifier:
+
+1. `harness/oracle/cases/message-finalizer-tier3.test.ts` gained
+   `routeFailures: []` + `routeVia: 'primary'` on its synthetic `StreamingState`.
+   Without them the family's oracle cannot RUN at the tip — v4's
+   `buildRouteTrail` dereferences `routeFailures.length` unconditionally. The
+   trail's own comparands stay P4.D173's.
+2. `message_finalizer_tier3_equivalence.rs` gained
+   `strip_pending_route_trail`, which subtracts the `routeTrail` key from the
+   oracle's `done` frame **and asserts the key is present**, so the subtraction
+   cannot go quietly dead. P4.D173 (or the unifier) deletes the function and its
+   call site; the assertion is what makes a forgotten deletion loud.
+
+**One line outside the Ownership table.** `crates/quilltap-core/src/api/engine.rs`
+is on this lane's must-not-touch list, and it is `?action=turn`'s only
+production caller. Item 1's mandated signature change forced the argument
+`random_f64()` → `&quilltap_draw_source()` (plus the four-line helper beside
+`random_f64`). No `Request`/`Response` variant moved and no P4.D174 fence was
+opened; the unifier reconciles.
+
+**What landed.** `weighted_random.rs` (the `DrawSource` + `pick_weighted_random`,
+v4's `weighted-random.ts` 1:1 including the `weights` array being PARALLEL to
+`items`); the three copies folded onto it — `select_speaker::pick_weighted` keeps
+v4's own wrapper (the `p.talkativeness ?? character.talkativeness ?? 0.5` chain,
+the equal-weights warn, the id-keyed debug record) and `chat_create::
+pick_weighted_by_talkativeness` becomes one line, its hand-rolled
+`floor(r * len)` uniform branch deleted rather than kept as a dead twin.
+
+**Two fidelity gaps closed at the fold, both measured:**
+* the equal-weights gate is v4's `totalWeight <= 0`, where v5's per-turn copy
+  tested `== 0.0` — a negative total would have scanned off the bottom onto the
+  last candidate whatever the draw (`a_nonpositive_total_resets_to_equal_weights`);
+* `[Turn Manager] Total talkativeness is 0, using equal weights` — v4's warn at
+  `selection.ts:262`, which v5 never had — now fires from the per-turn pick,
+  pinned by a capture-layer test with a silence arm, and pinned NOT to fire from
+  the cycle draw (v4 discards `equalWeights` there).
+
+**A pre-existing v5 divergence closed:** `message_finalizer::calculate_next_speaker`
+passed a hard-coded `random01 = 0.0`, documented as harmless because "the
+finalizer only surfaces `isUsersTurn` + the ids". v4 has always called the real
+`Math.random` there, and `2aca73ad6` retired the reasoning outright by making
+that call the site that draws AND PERSISTS a whole cycle's rotation — a frozen
+draw would have decided every seat's position and written it to the row. It now
+takes the caller's source via `FinalizeOptions.draws`.
+
+**The differential.** `select_speaker_equivalence`'s oracle `withRandom` became
+an array-consuming closure emitting `consumedDraws`; the Rust side replays the
+same array through a counting `DrawSource` and compares the COUNT and the values
+at 1e-12. The comparand discriminates rather than decorates: 12 of the 28 rows
+consume ZERO draws (`queue-wins`, `only-character`, the three archived arms, the
+impersonation pair, `after-queue-honored`, …) and 16 consume exactly one.
+Green at the tip pin, and green at the baseline pin.
+
+Regen (both pins, through the sweep driver, never two concurrently):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run select_speaker_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run chat_create_capstone_equivalence --force
+```
+
+Gate: `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace` clean;
+`cargo test --workspace` with `QT_ORACLE_SELECT_SPEAKER` + the capstone's env
+block. Versions: core 0.0.862 → 0.0.863, harness 0.0.752 → 0.0.753,
+host 0.0.118 → 0.0.119.
+
+### Unit 3 — the cycle's drawn rotation (`cycle_order.rs` + `turn_state` + `turn_order` + the present-seat home + selection step 2)
+
+**What landed.** `crates/quilltap-core/src/cycle_order.rs`, v4's
+`cycle-order.ts` at `78b381a96`: `parse_cycle_order` (v4's JS-truthy `!json`
+guard, so `null`/`undefined`/`""` all read as no rotation), `cycle_candidates`,
+`draw_cycle_order`, `pick_from_cycle_order`, `resolve_cycle_order_pure`, the
+`stringify_cycle_order` helper and v4's two persist log lines.
+
+**One recorded structural deviation.** v4's `resolveCycleOrder` awaits
+`repos.chats.update` inside itself. v5's write path is a channel to the single
+writer, so the port splits it: `resolve_cycle_order_pure` returns
+`CycleOrderResolution { order, persist: Option<CyclePersistHow> }` — the rotation
+to use AND the write to make — and the async shell (unit 5) performs the write and
+logs. That split is also what makes the decision tier-1 comparable: the corpus
+compares `persist.is_some()` against whether v4's repo double actually received a
+write, and the persisted BYTES against v4's `JSON.stringify`.
+
+**The four no-write arms all measured**, because three of them look identical
+from outside: no candidates → `[]`; exactly one candidate → `[]` (v4: "storing a
+one-entry order would churn the row every turn"); a usable stored rotation with no
+latecomer → the stored list, unwritten; and — the fourth, which is a write that
+FAILS — the rotation still returns while v4 records no write.
+
+**`turn_state.rs`**: `TurnState.cycle_order`; the strike in
+`update_turn_state_after_message`; `reset_cycle_for_user_skip` emptying it (v4
+`queue.ts:87-96` — "a cycle that starts over draws a fresh order rather than
+replaying the tail of the one it abandoned"); the new
+`calculate_turn_state_from_history_with_cycle` (READS, never draws — v4's function
+is pure and runs on its client too, so drawing there would be persisted by nobody);
+and `compute_cycle_order_after_message` / `_after_skip` behind the SAME four guards
+their spoken twins apply, both returning `None` when the id is absent.
+
+**`turn_order.rs`**: v4's step-4 comparator arm for arm — both in the rotation →
+rank order; only one → that one first; neither → the old `talkB - talkA`. Rust's
+`sort_by` is stable, as V8's `sort` is.
+
+**`select_speaker.rs`**: step 2, the rotation as an overlay ahead of the
+one-at-a-time pick, which survives as steps 3 and 4. The `cycle_order` reason,
+`getSelectionExplanation`'s `Next in this cycle's drawn rotation`, and the debug
+block v4 emits there: `weights: {}` and **no `randomValue` key at all**.
+`SelectionDebug.random_value` therefore becomes `Option<f64>`, and the harness
+compares its PRESENCE, not just its value. The after-user twin takes v4's 8th
+parameter (`cycleOrderJson`) and parses it — it never draws.
+
+**`participant_filters.rs` — the ONE present-seat home.** v5 spelled v4's
+`getPresentCharacterSeats` predicate three ways, and the third was a live
+divergence: `message_finalizer.rs`'s inline walk dropped only `removed`, so it
+KEPT `absent` seats v4 excludes. `is_present_character_seat` /
+`get_present_character_seats` are now the home; `ParticipantView` carries
+`participant_type` so the predicate can live in one place. The LLM-only alias
+STAYS, with a docblock naming bug 131 and v4's remaining caller.
+
+`turn_pause_filters_equivalence` is GREEN — the order's tripwire for "you widened
+the alias instead of its callers". Its corpus carries no `type` at all, so its
+`ParticipantView`s take `String::new()` deliberately rather than `"CHARACTER"`: v4
+reads `undefined === 'CHARACTER'` there, and a wrong literal would mask a future
+reader that starts consulting the field.
+
+**The differential — NEW `cycle_order_equivalence`, 90 rows, green on its first
+run** against v4's REAL `cycle-order.ts` / `state.ts` / `queue.ts` /
+`turn-order.ts` / `selection.ts` at the `78b381a96` pin:
+
+| kind | rows | kind | rows |
+|---|---|---|---|
+| `parse` | 9 | `draw` | 13 |
+| `candidates` | 6 | `pick-from` | 9 |
+| `resolve` | 10 | `after-message` | 11 |
+| `after-skip` | 4 | `history` | 4 |
+| `update-after-message` | 3 | `turn-order` | 8 |
+| `select` | 11 | `initial-state` / `reset` | 1 / 1 |
+
+Every case name in v4's own `cycle-order.test.ts` is a row. Per-kind FLOORS are
+asserted, so a corpus that silently loses a family fails rather than shrinking.
+
+**v4's two weighting cases could not be corpus rows** — they are statistical (400
+draws asserting `p1First > 240`; 300 loud vs 300 quiet asserting
+`loud > quiet * 5 && quiet < 15`). `weighting_matches_v4_statistical_bounds`
+mirrors both bounds Rust-side over a fixed-seed LCG, so the assertion is a real
+one and not a flake.
+
+**One oracle-authoring trap worth the note:** the case must import from the
+CONCRETE modules, not the `turn-manager` barrel. `state.ts` imports
+`cycle-order.ts` and `index.ts` re-exports both; under tsx's ESM loader that cycle
+makes the barrel report `does not provide an export named
+'calculateTurnStateFromHistory'`. v4's own jest suite (CJS) never sees it.
+`select-speaker.ts` already imported the concrete way.
+
+**Mutation proofs — five, each reddening exactly its row:**
+
+| mutation | reddens |
+|---|---|
+| draw WITH replacement (`pool.remove(0)`) | `draw-sequence-walks-the-shrinking-pool` (`["p3","p3","p3"]`) |
+| a one-seat room DOES store | `resolve-stores-nothing-for-a-one-character-room` |
+| an unknown character LOSES its seat | `candidates-drops-absent-and-removed-and-user-typed` (+ the statistical test) |
+| `exclude_first` ignores `pool.len() > 1` | `draw-seats-the-only-candidate-even-when-they-just-spoke` (an empty-pool panic — v4 gets `undefined` and throws too) |
+| a latecomer goes to the FRONT | `resolve-seats-a-mid-cycle-arrival-at-the-back` |
+
+A sixth, on `turn_state_equivalence`: deleting the `cycle_order.retain` strike
+reddens `seeded-rotation`. That row was ADDED for the purpose — without it the new
+`cycleOrder` assertion would have compared `[]` against `[]` on every row and
+measured nothing.
+
+Regen (all from the tip pin, through the sweep driver, never two concurrently):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run cycle_order_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_state_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_order_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_pause_filters_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run select_speaker_equivalence --force
+```
+
+Versions: core 0.0.863 → 0.0.864, harness 0.0.753 → 0.0.754.
+
+### Unit 4 — the batched room-characters read (bug 131's substrate) + the vault-overlay drop lines
+
+**What landed.** `crates/quilltap-core/src/room_characters.rs`, v4's
+`room-characters.ts` at `78b381a96`. `load_room_characters` builds the map over
+[`get_present_character_seats`] — **user-driven seats included**, which is the
+whole of bug 131 — deduped, through ONE batched read, with `preloaded` seeded
+AFTER the batch so the caller's copy WINS. `to_speaker_characters` projects to
+the talkativeness + archived pair; `room_character_name` serves the chain
+decision.
+
+**The read is a closure seam** (`FindCharactersByIds = &mut dyn FnMut(&[String])
+-> Result<Vec<Value>, DbError>`) rather than a trait, for two reasons: the
+differential counts calls on the Rust side exactly as v4's `jest.fn` counts them,
+and the production caller can pass its nested `read_main(read_mount_index(…))`
+without a wrapper type.
+
+**The map is `HashMap<String, Value>`, not the narrowed `SpeakerCharacter`.** v4's
+is `Map<string, Character>` and its consumers read three different things off it:
+talkativeness + `archivedAt` (the rotation and the seat filter), `name` (the two
+chain-decision lookups `d14da3a56` replaced), and the WHOLE character
+(`loadAllParticipantData`, for prompt construction). Narrowing at the loader
+would have forced a second read for the third consumer.
+
+**`db/vault_read_overlay.rs` — a silence closed.** `apply_document_store_overlay`
+dropped an unreadable character under a bare
+`Err(_) => { /* vault unavailable → drop */ }`. The DROP is v4's and stays; the
+SILENCE was the divergence. v4 logs, per dropped character,
+`Dropping character from list — vault unavailable` (ERROR) with
+`{characterId, characterDocumentMountPointId, detail}`, and once,
+`applyDocumentStoreOverlay dropped characters with unavailable vaults` (WARN)
+with `{dropped, total}`. That silence cost little while this was a list read;
+bug 131 makes it the hot turn path — every selection site's room map now comes
+through here, so a seat vanishing from the rotation because its vault is on the
+shelf says so. **This is the #103/#110/#116 class**: the drop was correct, the
+absence of the sentence was not.
+
+`VaultUnavailable::message()` now owns the byte-exact v4
+`CharacterVaultUnavailableError` string that `api/custom_tools.rs` had inlined, so
+the log's `detail` and the 422 body cannot drift apart. Verified: v5 raises that
+error only for the missing-`properties.json` case, which is the `detail` v4 passes.
+
+**One structural note recorded:** v5's `hydrate_one` returns
+`Result<_, VaultUnavailable>` — a single error type — so v5's `Err(_)` was NOT
+also swallowing other errors the way v4's `catch` would have if it did not
+re-throw. The two are structurally equivalent; only the logs were missing.
+
+**The differential — NEW `room_characters_equivalence`, 14 rows** (10 `load`, 2
+`candidates`, 2 `draw`), over v4's REAL `loadRoomCharacters` at the pin, driven
+through a counting stand-in for `repos.characters.findByIds` on BOTH sides. Every
+case name in v4's `room-characters.test.ts` is a row. The **call count and the ids
+each call asked for** are comparands — "reads the whole room in ONE call, not one
+per seat" is the point of the commit, and only the count can say it.
+
+**v4's talkativeness case is statistical** (300 loud vs 300 quiet) and cannot be a
+row. The two `bug131-*` rows make the same claim deterministically, at a **chosen**
+pin: at 0.8 a whole-room map answers `p-user` (loud) / `p-llm-2` (quiet), while an
+LLM-only map — which weights the human at the 0.5 default whatever their character
+says — answers `p-user` for BOTH. So the two rows DIFFERING is the fix, and an
+`assert_ne!` on their heads is what fires if the map ever narrows back. The first
+run of this family caught my own first pin (0.05) landing on `p-llm-1` in both
+rows — a discriminator that discriminated nothing, replaced by arithmetic rather
+than by trial.
+
+**Mutation proofs — four, each reddening exactly its row:**
+
+| mutation | reddens |
+|---|---|
+| the room map goes LLM-ONLY (bug 131 restored) | `includes-user-driven-seats-not-just-llm` (key set `{char-llm}` vs `{char-llm, char-user}`) |
+| `preloaded` seeded BEFORE the batch | `prefers-a-preloaded-character-over-the-copy-the-read-returned` (`Stale` vs `Fresh`) |
+| the empty room still calls `find_by_ids` | `skips-the-read-entirely-when-no-seat-is-present` (count 1 vs 0) |
+| duplicate ids are not deduped | `dedupes-two-seats-playing-the-same-character` (`["char-1","char-1"]`) |
+
+A fifth, on `vault_read_overlay_equivalence`: changing the drop sentence to
+`Dropping character from list` reddens the new per-character assertion, whose
+captured line shows v4's whole three-field bag. A **silence arm** re-runs the same
+overlay over a list with the broken vault removed and asserts NEITHER line fires —
+without it both assertions would pass on a logger that shouts about everything.
+
+Three log pins in `room_characters.rs` itself: the `Room characters loaded` line's
+three counts (`seats=2 requested=1 resolved=1` — two seats playing one character,
+so the dedupe is visible in the bag), the shortfall WARN with its silence arm, and
+a read error PROPAGATING rather than being swallowed.
+
+Regen:
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run room_characters_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run vault_read_overlay_equivalence --force
+```
+
+**A pre-existing intermittent found by this unit's gate and FIXED (spotted, not
+mine).** `host_llm_log_cleanup::boot_minted_cleanup_job_completes_and_prunes`
+waited for `background_jobs.status == 'COMPLETED'` and then read `llm_logs`.
+Those are DIFFERENT PARTITIONS — the handler marks the job on `main` and deletes
+the aged rows through a separate `llm_logs` write
+(`llm_log_cleanup_job.rs:157-168`) — so the beat was waiting on a proxy and
+reading the effect before it committed. Measured 2-in-4 failures on P4.D171's
+UNTOUCHED base (a detached worktree at `f6379983`), so it is not this lane's.
+The failure reads exactly like a retention-cutoff port defect; the tell is that
+the COMPLETED assertion passes and only the surviving-ids assertion fails.
+Fixed by a second `wait_until` on the effect's own partition before the
+assertion — nothing weakened, the assertion still names the exact surviving id,
+and a prune that never lands now fails with a clear timeout. 6/6 green after
+(was ~50%). Banked as a memory note.
+
+Versions: core 0.0.864 → 0.0.865, harness 0.0.754 → 0.0.755, host 0.0.119 → 0.0.120.
+
+### Units 5–6 — the six selection sites, the strike, the skip, the autonomous room, Continue Elsewhere, and `?action=turn`
+
+**The six sites, all on the batched whole-room map + the resolve:**
+
+| site | v4 | notes |
+|---|---|---|
+| `turn_orchestrator::should_chain_next` | `:168`, `:177`, `:212-226` | the map moved ABOVE the `if`, as v4's did, so it also serves the two chain-decision name lookups that used to be two more `find_by_id` calls |
+| `turn_orchestrator::handle_turn_action` | `turn.ts:176-189` | the resolve is UNCONDITIONAL — a `query` may write the chats row |
+| `message_finalizer::calculate_next_speaker` | `:673-690` | `preloaded: [character]` — the just-spoken seat is seeded, never re-read |
+| `participant_resolver` (multi-candidate) | `:139-166` | drawn over the WHOLE room, PICKED LLM-only via the argument — v4's split kept exactly |
+| `orchestrator::maybe_pause_for_user_seat_turn` | `:1818` | already whole-room (v4's one correct site); gains only the batched read |
+| `enclave/step.rs` (autonomous room) | `autonomous-room-turn.ts:575-599` | all-LLM by definition, so the same cast — one batched read instead of one overlay per seat |
+
+**Every per-seat reader is now dead and DELETED** — `load_talkativeness_map`,
+`read_character`, `character_name_for`, the finalizer's `read_speaker_character`
+and its inline participant walk. The deprecated LLM-only alias is no longer
+imported by `turn_orchestrator.rs` or `enclave/step.rs`; it survives only where v4
+still calls it (item 7 below).
+
+`load_all_participant_data` folds onto the same batched read, carrying v4's
+deliberate behaviour change: the old per-seat `find_by_id` failed the whole turn
+(and the read-only `?action=turn` behind the sidebar) on an unreadable vault; the
+batched list overlay logs and drops.
+
+**Consumption.** The strike lands in `db/chats_messages.rs::update_chat_metadata`,
+folded through the SAME loop as `spokenThisCycleParticipantIds` and written once
+after it (v4 collapsed `addMessage`/`addMessages` into one helper here, so the
+batch fold is the shape both take). `orchestrator`'s turn-skip twin strikes the
+seat. Continue Elsewhere carries the rotation with ids remapped, beside
+`turnQueue`'s — and the route trail beside it is deliberately NOT copied, which is
+P4.D173's pin.
+
+**Unit 6.** `TurnActionResult` gains `cycle_order` + `participant_name`;
+`?action=turn` answers `state: { queue, cycleOrder }` (§C.2). **`resolve_active_llm_name`
+is RETIRED** — it reproduced the pre-bug-131 shape (an LLM-only lookup that
+reported the human's own character as `"Unknown"`), and the name now comes from
+the whole-room map the handler already built.
+
+**Eleven families green at the pin** — `turn_orchestrator_tier2`,
+`participant_resolver_tier2`, `message_finalizer_tier3`, `chats_messages_tier2`,
+`enclave_step_tier3`, `regenerate_swipe_tier3`, `chat_activity`, `salon_skip`,
+`salon_mutations`, `salon_swipe_generate`, `answer_confirmation_tier3`, plus
+`orchestrator_tier3`.
+
+#### The three oracles that had to be repaired first
+
+1. **`turn_orchestrator_tier2`'s oracle REIMPLEMENTS `handleTurnAction` inline**
+   (v4 `turn.ts:31-184` transcribed by hand) rather than importing it, and the
+   transcription predated `2aca73ad6`. So it had no `resolveCycleOrder` at all,
+   and its diff — same speaker picked, `reason: weighted_selection` where v5 said
+   `cycle_order` — read exactly like a v5 defect. **v5 was right; the corpus was
+   describing a v4 that no longer exists.** This is the stale-oracle class
+   (P4.20, P4.36) in a new dress: a TRANSCRIPTION rather than a jest mock. The
+   inline core now carries the tip's shape — the `cycleOrderParticipantIds`
+   option, `skipOrderUpdate`, `loadRoomCharacters`, the unconditional resolve, and
+   the post-resolve persist.
+2. **Three salon families died on the committed fixture**, which predates both
+   `78b381a96` columns while v4's route now writes the rotation on every call
+   (`no such column: cycleOrderParticipantIds`, before any case ran). Healed on
+   BOTH sides — v5 through P4.D171's `ensure_p4d171_columns`, v4 through a new
+   shared `harness/oracle/lib/p4d171-columns.ts` mirroring it, staged by each
+   recipe. Deliberately NOT a fixture regen: the committed pair is read by other
+   families, and regenerating one to satisfy another is how a fixture stops being
+   comparable to its siblings. (The import must drop the `.js` extension — jest
+   resolves `../lib/x` to the staged `.ts`, but not `../lib/x.js`.)
+3. **`answer_confirmation_tier3` + `message_finalizer_tier3` + `orchestrator_tier3`
+   carry P4.D173's `routeTrail`**, which is not this lane's. Seeded
+   `routeFailures: []` on their synthetic `StreamingState`s (without it v4's
+   `buildRouteTrail` dereferences `undefined.length` and the oracle cannot RUN),
+   and the `done` frame's `routeTrail` key is subtracted by
+   `strip_pending_route_trail`, which ASSERTS the key is present so the
+   subtraction cannot go quietly dead. **P4.D173 or the unifier deletes all of
+   it.**
+
+#### A RECORDED DIVERGENCE — v4 disagreeing with ITSELF
+
+`orchestrator_tier3`'s `summary_fold` chat (`c860cf74`) ends with v5 holding
+`lastTurnParticipantId = c96713aa…` and v4 holding NULL — **yet v4's own
+`chain_complete` frame for that call announces `nextSpeakerId: c96713aa…`**,
+which is exactly what its `persistTurnParticipant(finalNextSpeaker)` was handed
+(`turn-orchestrator.service.ts:370-372`). v4 writes the id and then loses it; the
+three later `repos.chats.update` calls in the fold (`context-summary.ts:429`,
+`:566`, `:640`) are partial patches that never name the column, so it is not an
+explicit overwrite.
+
+**Not caused by this lane, measured rather than argued:** reverting the
+whole-room map and reverting the `cycleOrderParticipantIds` argument each left
+the divergence in place. It became visible only now because the per-call event
+assertions used to fail first, so the table comparison never ran at all.
+
+Pinned in BOTH directions rather than subtracted:
+`pin_summary_fold_last_turn_divergence` asserts (a) v5 persisted exactly what
+v4's own frame announced — a positive claim about the port — and (b) v4's row is
+still NULL, so when v4 stops losing that write the pin trips and is retired.
+⚠ **Candidate v4 filing.**
+
+#### Mutation proofs — and three that nearly went into the record as vacuous
+
+| mutation | reddens |
+|---|---|
+| the room map goes LLM-ONLY at BOTH `turn_orchestrator` sites | `turn_orchestrator_tier2` |
+| `query` stops resolving (v4's is unconditional) | `turn_orchestrator_tier2` |
+| write `skipOrderUpdate` instead of the post-resolve list | `turn_orchestrator_tier2` |
+
+⚠ **All three "survived" on the first pass and two of them genuinely were
+vacuous — but the third was a PHANTOM.** `cargo fmt` had reflowed the target
+between writing the mutation script and running it, so the string replace matched
+zero times, the test passed, and the transcript read "the mutation survived."
+Printing the replacement count exposed it at once. **Never mutate without
+asserting the replacement landed** — the guard also caught the whole-room-map
+needle matching at TWO call sites, where replacing one left the other intact.
+Banked as a memory note.
+
+The two genuinely vacuous arms were fixed in the CORPUS, not the claim:
+* **the skip-redraw arm** — a new room (`cccc0021`) whose rotation holds only the
+  user seat, so skipping it spends the cycle and forces a redraw;
+* **the `query`-writes arm** — a new room (`cccc0022`) touched by NOTHING but a
+  query, because on the shared rooms an earlier op has already resolved and the
+  query's own write is unobservable.
+
+**One arm could NOT be made to discriminate here, and is recorded rather than
+left looking covered.** The bug-131 *talkativeness* symptom needs the CHARACTER
+map to be the only source of weight, but this fixture seeds characters SLIM and
+the read hands back the Zod-default `talkativeness: 0.5` whatever the spec says —
+the builder's own header states this ("the per-participant `talkativeness`
+override on the chat carries the real weights; the character talkativeness is a
+constant 0.5"). A third room (`cccc0020`) with no per-chat overrides was added and
+DOES exercise the whole-room map, but its weights all read 0.5, so the draw cannot
+separate a whole-room map from an LLM-only one. **The invariant is pinned one
+level down, non-vacuously, by `room_characters_equivalence`'s `bug131-*` rows**,
+where the pin was chosen by arithmetic so the fixed map and the buggy map give
+provably different heads. Widening the slim-seeding path is a named follow-up.
+
+#### A coverage hole this lane found and could not fill
+
+**`services/chat_continuation.rs` has NO differential coverage at all.** The
+order's item 5 names a "`chat_continuation` family"; there is none — no test file,
+no oracle case, nothing under `harness/oracle/` driving
+`apply-chat-continuation.ts` (confirmed by three greps). So the rotation carry
+landed there is verified by inspection only, as is every other field
+`replicateTurnState` copies. Pre-existing, wider than this lane, and flagged for
+the unifier. (The sweep driver refused the bogus family name before running
+anything and suggested near-matches — P4.53's guard doing its job.)
+
+#### ⚠ The gate's own false green, caught before the commit
+
+The first units-5–6 `cargo test --workspace` reported **543 binaries / 3,103
+passed / 0 failed with ZERO `SKIP:` lines** — and was worthless. The env block
+had been hand-written rather than derived from the recipes, so it carried WRONG
+names (`QT_ORACLE_TURN_PAUSE` for `QT_ORACLE_TURN_PAUSE_FILTERS`; `QT_ORACLE_CC`
+pointed at `oracle-chat-create-capstone.ndjson` where the family reads
+`oracle-chat-create.ndjson`) and omitted a dozen outright. Those families skipped
+silently, and **cargo captures a passing test's stderr, so `grep -c 'SKIP:'`
+returning 0 proved nothing.** The tell was the per-binary DURATION: `salon_skip`,
+`salon_mutations`, `participant_resolver_tier2`, `message_finalizer_tier3`,
+`chats_messages_tier2`, `answer_confirmation_tier3` and `enclave_step_tier3` all
+"finished in 0.00s", which a family that copies a DB and replays turn actions
+cannot.
+
+Re-run with all 41 variables derived MECHANICALLY from the recipes' run stages,
+it failed honestly: `chat_create_capstone` died on `table chats has no column
+named cycleOrderParticipantIds` — its `/tmp` fixture had gone stale against
+P4.D171's schema move, invisible while the family was reading a nonexistent
+oracle path. That also showed the lane's `/tmp` fixtures were no longer mutually
+consistent (built across many hours, some rebuilt, some not), so the fix was not
+to patch the one that failed: **all twenty families were regenerated fresh at the
+`78b381a96` pin through the sweep driver (20/20 ok) and the workspace gate re-run
+against that consistent set.**
+
+Final gate: `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+-D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+clean; **543 test binaries / 3,103 passed / 0 failed / 1 ignored, exit 0**. Every
+moved family confirmed RUN **by duration**, not by the absence of `SKIP:` — 13
+with measurable time (`orchestrator_tier3` 2.91 s, `chat_create_capstone` 3.87 s,
+`enclave_step_tier3` 0.57 s, `salon_mutations` 0.30 s, …) and the seven pure
+tier-1 families confirmed individually by their own `OK:` lines under
+`--nocapture` (`cycle_order` 90 rows, `room_characters` 14, `select_speaker`
+20+8, `turn_state`, `turn_order` 8, `turn_pause_filters`, and `chat_activity`
+whose 42 oracle rows make its only early-return unreachable).
+
+Versions: core 0.0.865 → 0.0.866, harness 0.0.755 → 0.0.756.
+
+### Items 7–9 — the alias census, the ordered oracle pin, and the draw-count proof
+
+**Item 7 — `enclave/announce.rs` and `turn_pause_filters_equivalence.rs`,
+UNTOUCHED, with v4's line that keeps the alias.**
+
+v4's surviving caller at `78b381a96`:
+
+```text
+lib/background-jobs/handlers/autonomous-room-announce.ts:129
+  const startParticipants = getActiveCharacterParticipants(chat.participants ?? []);
+```
+
+`participant-resolver.service.ts:335` and `chat-message/index.ts:44` re-export it,
+but that is the ONLY production call — so v5's `enclave/announce.rs:289` keeps
+calling its port and `participant_filters` keeps exporting it.
+
+**Both files' only diff against `main` is the mandatory `participant_type` struct
+field** that unit 3's `ParticipantView` widening forced (5 and 6 insertions,
+inspected line by line). No alias call, and no comparison, moved. In
+`turn_pause_filters_equivalence` the field is seeded `String::new()` deliberately
+rather than `"CHARACTER"`: that corpus carries no `type` at all, so v4 evaluates
+`undefined === 'CHARACTER'` as false, and a wrong literal would mask a future
+reader that starts consulting it.
+
+**Landed beyond the order: `deprecated_alias_callers_guard`.** The order asks for
+this to be "stated in the lane record", but a sentence in a log cannot fail. The
+census walks `crates/**/*.rs` and holds every use of the alias against an
+allow-list that carries its own justification per file, so BOTH rot directions are
+loud: a lane tidying the alias away (silently widening the autonomous-room
+announcement to seats the human drives) and a new selection site reaching for it
+by name (reintroducing bug 131 in a file no differential covers). **Its first run
+caught my own miscount** — I had written 4 for `participant_filters.rs` where the
+real number is 3 — which is the census doing exactly its job on the way in.
+
+**Item 8 — the three frozen-zero pins as ordered sequences.**
+NEW `harness/oracle/lib/pinned-draws.ts` mirrors
+`weighted_random::DrawSource::sequence` exactly: values in order, the LAST one
+repeating once exhausted, `0` when empty. `Math.random = () => 0` becomes
+`pinDraws([0])` in `orchestrator-tier3`, `enclave-step-tier3`,
+`regenerate-swipe-tier3` and `salon-swipe-generate`.
+
+Because a one-element array IS the scalar freeze, the re-spelling is byte-neutral
+— and that is not asserted, it is measured: all four families pass against
+UNCHANGED v5 code, which they could not do if the oracle bytes had shifted. An
+arm that needs a real sequence later edits the array and nothing else.
+
+The three tier-3 recipes now stage the lib (`mkdir -p … "$TMPO/lib"` +
+`cp .../pinned-draws.ts`). ⚠ **Those recipes live in the RUST test's `//!`
+header, not the `.ts` case file** — I edited the `.ts` headers first and the
+driver ignored them, because it synthesizes staging from the `.rs`. Worth knowing
+for any lane adding a shared oracle import. (`salon-swipe-generate` stages from
+its own `.ts` header, which is why it worked immediately.) The jest import must
+also DROP the `.js` extension — jest resolves `../lib/x` to the staged `.ts`, but
+not `../lib/x.js`.
+
+**Item 9 — the draw COUNT, in two halves.**
+
+*The engine half*, `cycle_order::a_cycle_draws_once_per_seat_then_stops_drawing`:
+a counting `DrawSource` over a three-seat room proves 3 draws on a fresh cycle,
+**0 on the next turn of the same cycle**, and 3 again once it is spent. The
+middle assertion is the load-bearing one and the reason a count is the only
+instrument that works here: six server paths call `resolve_cycle_order` before
+asking who speaks next, and a re-draw at each would burn draws and let the sites
+disagree — while still returning a perfectly plausible permutation that no
+order-comparison could fault.
+
+*The host half*, `spine::the_production_draw_source_is_fresh_per_call`: 64 draws
+off `os_draw_source()` must yield more than 60 distinct bit patterns. A
+`DrawSource::constant` reaching production collapses that to ONE, which is
+precisely the failure the whole `DrawSource` change exists to prevent — a single
+value would make every position of the permutation land on the same relative
+offset, and the rotation would look plausible while not being v4's weighted draw.
+
+**Recorded deviation from the order's placement.** Item 9 asks for "a
+`host_cadence` arm". `os_draw_source` and `os_random01` are private to
+`spine.rs`, and `host_cadence.rs` is an integration test outside the crate, so it
+cannot reach either. The host half therefore lands in `spine.rs`'s own test
+module beside the existing `random01_in_unit_interval`, which is where its
+siblings already live; `host_cadence.rs` is untouched.
+
+Gate: `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+-D warnings` clean in BOTH feature sets; release build clean; the full workspace
+test with the 41-variable env block. The four re-spelled families re-run through
+the sweep driver at the `78b381a96` pin, all green.
+
+Versions: core 0.0.866 → 0.0.867, harness 0.0.756 → 0.0.757, host 0.0.120 → 0.0.121.

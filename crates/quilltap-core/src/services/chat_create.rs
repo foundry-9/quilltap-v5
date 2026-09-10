@@ -427,6 +427,7 @@ pub enum CreateZodIssue {
 /// ONE home, shared with the settings routes' Zod envelope (`api/settings.rs`),
 /// so a future Zod pattern change moves both at once.
 use crate::api::settings::ZOD_UUID_PATTERN;
+use crate::weighted_random::{pick_weighted_random, DrawSource};
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
 /// `format: "safeint"`.
@@ -1129,8 +1130,8 @@ where
     /// v4 `Date.now()` — the millisecond wall clock.
     pub now_ms: i64,
     /// v4 `Math.random()` for `pickWeightedByTalkativeness` (one value shared,
-    /// matching the spine's `random01` injection).
-    pub random01: f64,
+    /// matching the spine's draw-source injection).
+    pub random01: DrawSource,
     /// The autonomous-room lifecycle seam (`start_autonomous_room_manually`).
     pub lifecycle: &'a LifecycleDeps<'a>,
     /// When true (and the llm-logs partition exists), wire the greeting
@@ -1336,7 +1337,7 @@ where
     }
 
     // 3. Build participants (validation + weighted opener selection).
-    let built = build_all_participants(main, mount, &req.participants, deps.random01)?;
+    let built = build_all_participants(main, mount, &req.participants, &deps.random01)?;
 
     // Fetch the primary character for defaults resolution.
     let primary_character = characters_read::find_by_id(main, mount, &built.first_character_id)?;
@@ -1848,7 +1849,7 @@ fn build_all_participants(
     main: &Connection,
     mount: &Connection,
     participants_data: &[ChatCreateParticipant],
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<BuiltParticipants, HandleCreateError> {
     let mut built: Vec<Value> = Vec::new();
     let mut tags: Vec<String> = Vec::new();
@@ -1969,7 +1970,7 @@ fn build_all_participants(
         ));
     }
 
-    let chosen = pick_weighted_by_talkativeness(&candidates, random01);
+    let chosen = pick_weighted_by_talkativeness(&candidates, draws);
 
     Ok(BuiltParticipants {
         participants: built,
@@ -1982,25 +1983,19 @@ fn build_all_participants(
     })
 }
 
-/// v4 `pickWeightedByTalkativeness` — weighted-random opener selection. A single
-/// injected `random01` is reused for both the zero-total-weight uniform pick and
-/// the weighted scan (the spine's `random01` convention).
-fn pick_weighted_by_talkativeness(candidates: &[LlmCandidate], random01: f64) -> &LlmCandidate {
-    let total: f64 = candidates.iter().map(|c| c.talkativeness).sum();
-    if total <= 0.0 {
-        let idx = ((random01 * candidates.len() as f64).floor() as usize)
-            .min(candidates.len().saturating_sub(1));
-        return &candidates[idx];
-    }
-    let r = random01 * total;
-    let mut cumulative = 0.0;
-    for c in candidates {
-        cumulative += c.talkativeness;
-        if r < cumulative {
-            return c;
-        }
-    }
-    &candidates[candidates.len() - 1]
+/// The opening character (v4 `route.ts:333`
+/// `pickWeightedRandom(llmCandidates, c => c.talkativeness).item`).
+///
+/// v4 `2aca73ad6` named this the THIRD consumer of the one weighted pick, so v5's
+/// hand-rolled copy folds onto [`pick_weighted_random`] here. The old copy
+/// reproduced the numbers by a different route — a `floor(r * len)` uniform index
+/// for the zero-total case rather than v4's all-ones cumulative scan — which
+/// agreed by arithmetic and would have been free to stop agreeing.
+fn pick_weighted_by_talkativeness<'a>(
+    candidates: &'a [LlmCandidate],
+    draws: &DrawSource,
+) -> &'a LlmCandidate {
+    pick_weighted_random(candidates, |c| c.talkativeness, draws).item
 }
 
 // ============================================================================
@@ -3211,12 +3206,12 @@ mod tests {
         ];
         // random01 = 0.0 → r = 0 < first cumulative (1.0) → first.
         assert_eq!(
-            pick_weighted_by_talkativeness(&candidates, 0.0).character_id,
+            pick_weighted_by_talkativeness(&candidates, &DrawSource::constant(0.0)).character_id,
             "a"
         );
         // random01 = 0.99 → r = 2.97, cumulative reaches 3.0 → last.
         assert_eq!(
-            pick_weighted_by_talkativeness(&candidates, 0.99).character_id,
+            pick_weighted_by_talkativeness(&candidates, &DrawSource::constant(0.99)).character_id,
             "c"
         );
     }
@@ -3239,16 +3234,16 @@ mod tests {
         ];
         // total <= 0 → uniform index = floor(random01 * len).
         assert_eq!(
-            pick_weighted_by_talkativeness(&candidates, 0.0).character_id,
+            pick_weighted_by_talkativeness(&candidates, &DrawSource::constant(0.0)).character_id,
             "a"
         );
         assert_eq!(
-            pick_weighted_by_talkativeness(&candidates, 0.75).character_id,
+            pick_weighted_by_talkativeness(&candidates, &DrawSource::constant(0.75)).character_id,
             "b"
         );
         // A random01 of 1.0 would floor to len — clamped to the last.
         assert_eq!(
-            pick_weighted_by_talkativeness(&candidates, 1.0).character_id,
+            pick_weighted_by_talkativeness(&candidates, &DrawSource::constant(1.0)).character_id,
             "b"
         );
     }

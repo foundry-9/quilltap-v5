@@ -196,6 +196,14 @@ async fn replicate_turn_state(
             .get("spokenThisCycleParticipantIds")
             .and_then(Value::as_str),
     );
+    // The rotation IS carried across Continue Elsewhere, ids remapped like
+    // `turnQueue`'s (v4 `apply-chat-continuation.ts:216-219`, `:233`). The route
+    // trail beside it is deliberately NOT copied — that is P4.D173's pin.
+    let new_cycle_order = remap_json_array(
+        source_chat
+            .get("cycleOrderParticipantIds")
+            .and_then(Value::as_str),
+    );
     let new_impersonating: Vec<String> = source_chat
         .get("impersonatingParticipantIds")
         .and_then(Value::as_array)
@@ -233,6 +241,7 @@ async fn replicate_turn_state(
         ),
         turn_queue: Some(new_turn_queue),
         spoken_this_cycle_participant_ids: Some(new_spoken),
+        cycle_order_participant_ids: Some(new_cycle_order),
         ..Default::default()
     };
 

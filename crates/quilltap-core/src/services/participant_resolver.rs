@@ -72,9 +72,10 @@ use crate::db::{
 use crate::participant_filters::{
     find_active_user_participant, is_multi_character_chat, ParticipantView as FilterParticipant,
 };
-use crate::select_speaker::{select_next_speaker, SpeakerCharacter, SpeakerParticipant};
-use crate::turn_state::{calculate_turn_state_from_history, MessageView};
+use crate::select_speaker::{select_next_speaker, SpeakerParticipant};
+use crate::turn_state::MessageView;
 
+use crate::weighted_random::DrawSource;
 use std::collections::HashMap;
 
 /// Error variants that mirror v4's thrown `Error`s (message strings preserved).
@@ -164,6 +165,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
+        participant_type: str_field(p, "type").unwrap_or_default().to_string(),
         status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
@@ -303,7 +305,7 @@ pub async fn resolve_responding_participant(
     requested_responding_participant_id: Option<&str>,
     is_continue_mode: bool,
     active_user_participant_id: Option<&str>,
-    random01: f64,
+    draws: &DrawSource,
 ) -> Result<ParticipantResolution, ResolveError> {
     let chat_id = str_field(chat, "id").unwrap_or_default().to_string();
     let participants = participants_of(chat);
@@ -369,24 +371,16 @@ pub async fn resolve_responding_participant(
         } else if llm_candidates.len() == 1 {
             character_participant = Some(llm_candidates[0].clone());
         } else {
-            // Build the talkativeness map (one findById per candidate).
-            let mut talkativeness: HashMap<String, SpeakerCharacter> = HashMap::new();
-            for p in &llm_candidates {
-                if let Some(cid) = nonempty_character_id(p) {
-                    if let Some(ch) = read_character(db, &cid)? {
-                        // Insert unconditionally — see `load_talkativeness_map`:
-                        // the map now also carries the archived flag, which a
-                        // talkativeness-gated insert would drop.
-                        talkativeness.insert(
-                            cid,
-                            SpeakerCharacter {
-                                talkativeness: ch.get("talkativeness").and_then(Value::as_f64),
-                                archived: crate::api::characters::is_archived(&ch),
-                            },
-                        );
-                    }
-                }
-            }
+            // Built over the WHOLE room, not just `llm_candidates`: the draw
+            // below is a rotation of every seat, so a user-driven seat's
+            // talkativeness has to be visible to it (v4 `d14da3a56:139-143`).
+            // The PICK itself stays LLM-only via the argument to
+            // `select_next_speaker`.
+            let room_participants: Vec<SpeakerParticipant> =
+                participants.iter().map(to_speaker_participant).collect();
+            let room =
+                crate::room_characters::load_room_characters_from_db(db, &room_participants, &[])?;
+            let talkativeness = crate::room_characters::to_speaker_characters(&room);
 
             let messages = {
                 let chat_id = chat_id.clone();
@@ -397,7 +391,25 @@ pub async fn resolve_responding_participant(
             let spoken_json = chat
                 .get("spokenThisCycleParticipantIds")
                 .and_then(Value::as_str);
-            let turn_state = calculate_turn_state_from_history(&message_views, spoken_json);
+            let mut turn_state = crate::turn_state::calculate_turn_state_from_history_with_cycle(
+                &message_views,
+                spoken_json,
+                chat.get("cycleOrderParticipantIds").and_then(Value::as_str),
+            );
+
+            // Draw over the WHOLE room (user seats hold places in a rotation),
+            // then pick the earliest LLM seat in it below — the human's own seats
+            // are simply passed over when the question is "who answers this post"
+            // (v4 `d14da3a56:161-166`).
+            turn_state.cycle_order = crate::cycle_order::resolve_cycle_order(
+                db,
+                &chat_id,
+                &room_participants,
+                &talkativeness,
+                &turn_state,
+                draws,
+            )
+            .await;
 
             // v4 passes `llmCandidates` (the filtered set) to selectNextSpeaker.
             let speaker_participants: Vec<SpeakerParticipant> = llm_candidates
@@ -411,8 +423,9 @@ pub async fn resolve_responding_participant(
                 &[], // v4 passes turnState.queue; the resolver's turn state has none
                 &turn_state.spoken_since_user_turn,
                 turn_state.last_speaker_id.as_deref(),
-                random01,
+                draws,
                 Some(&impersonating),
+                &turn_state.cycle_order,
             );
 
             if let Some(next_id) = &selection.next_speaker_id {
@@ -481,38 +494,35 @@ pub async fn resolve_responding_participant(
 // ---------------------------------------------------------------------------
 
 /// Load all participant characters for a multi-character chat (v4
-/// `loadAllParticipantData`). The already-loaded `primary_character` is reused for
-/// its own id (no re-read). Returns a map of characterId → character JSON, over
-/// the present CHARACTER participants. A character that doesn't resolve is
-/// dropped.
+/// `loadAllParticipantData`), for PROMPT construction.
+///
+/// The same room map the turn paths build, for the same reason it is batched: one
+/// vault overlay for the whole cast instead of one per seat. The responding
+/// character is seeded from the copy already loaded rather than re-read.
+///
+/// **A behaviour change beyond the map's width (v4 `d14da3a56:268-283`).** The old
+/// per-seat loop read each character through `find_by_id`, whose single-character
+/// overlay FAILS on an unreadable vault — and that failure propagated straight out
+/// of speaker selection, taking the whole turn (and the read-only `?action=turn`
+/// projection behind the participant sidebar) with it. The batched list overlay
+/// logs and DROPS instead, which is the policy the rest of the per-turn context
+/// path already follows: a shelved vault costs the prompt that character's
+/// contribution, not the whole reply. Every consumer of this map looks its entries
+/// up defensively.
 pub fn load_all_participant_data(
     db: &Db,
     chat: &Value,
     primary_character: &Value,
 ) -> Result<HashMap<String, Value>, DbError> {
-    let primary_id = primary_character
-        .get("id")
-        .and_then(Value::as_str)
-        .map(String::from);
-
-    let mut out: HashMap<String, Value> = HashMap::new();
-    for p in participants_of(chat) {
-        if str_field(&p, "type") != Some("CHARACTER") {
-            continue;
-        }
-        let Some(cid) = nonempty_character_id(&p) else {
-            continue;
-        };
-        if !is_participant_present(participant_status_from_str(str_field(&p, "status"))) {
-            continue;
-        }
-        if Some(&cid) == primary_id.as_ref() {
-            out.insert(cid, primary_character.clone());
-        } else if let Some(ch) = read_character(db, &cid)? {
-            out.insert(cid, ch);
-        }
-    }
-    Ok(out)
+    let participants: Vec<SpeakerParticipant> = participants_of(chat)
+        .iter()
+        .map(to_speaker_participant)
+        .collect();
+    crate::room_characters::load_room_characters_from_db(
+        db,
+        &participants,
+        std::slice::from_ref(primary_character),
+    )
 }
 
 // ---------------------------------------------------------------------------
