@@ -265,6 +265,34 @@ cases that reach the room-character load — measured by withholding the two roo
 and re-running, which left the counter at its new value; it is the character, not
 the rooms, and both sides move together. No prompt byte, no DB row and no event
 of any pre-existing enclave case changed.
+#### 2026-09-10 — fix(db): one home for the migrations-ledger tables, and drop the guard that could not heal a half-built one
+
+_Versions: core 0.0.876._
+
+P4.88 (D), P4.D175's named OPEN item. The four boot heals
+(`chat_activity_recompute_heal`, `files_sha256_realign_heal`,
+`generated_image_placeholder_heal`, `thinking_prefill_retire_heal`) each
+carried its own copy of v4's two-table ledger DDL under its own `if
+!table_exists(main, "migrations_state")` guard, and then upserted into
+`migrations_metadata`. A partition carrying the FIRST table without the SECOND
+therefore failed the whole BOOT with `no such table: migrations_metadata` —
+not just the pass. That is exactly the failure P4.D175's boot-wiring test hit
+on its first run.
+
+v4's own `ensureSQLiteMigrationsTable` (`migrations/state.ts:44`) has the
+identical guard, so the shape is v4-faithful and unreachable FROM v4, which
+creates both tables together or neither. It is reachable from a hand-built
+partition, a partial restore, or a fixture. The new
+`db::migrations_ledger::ensure_migrations_tables` is the one home, unguarded —
+`CREATE TABLE IF NOT EXISTS` is its own guard — with the DDL text byte-identical
+to the four copies it replaces.
+
+Pinned by four module tests (bare partition, each table alone, and both already
+present with a v4-written row that must survive) plus one test per heal over
+all three partial shapes, asserting the ledger row and both metadata keys
+landed. Red-first: restoring the old guard on one heal reproduces `shape state:
+sqlite error: no such table: migrations_metadata`.
+
 #### 2026-09-10 — feat(memories): the memory-gate logging family — v4's seven `[MemoryGate]` / `[Memories API]` lines
 
 _Versions: core 0.0.875, harness 0.0.767._

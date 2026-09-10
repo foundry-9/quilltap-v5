@@ -121904,3 +121904,34 @@ v5 reuses `generate_with_retry` (so v5 can make a second provider call v4
 never makes), and v4's `try` there covers the row update and the vector-store
 writes too, which v5 propagates with `?` rather than warning and continuing.
 Both are pre-existing and out of a log-only mandate.
+
+### Unit D — the heals' shared migrations-ledger helper (Tier 1 item 2)
+
+P4.D175's named OPEN item, and its record's own words: "a one-word hardening
+(drop the guard, let `IF NOT EXISTS` do its job) across all four is a clean
+follow-up for whoever owns those modules next."
+
+**Measured first, at the pin:** v4's `migrations/state.ts:44`
+`ensureSQLiteMigrationsTable` has the IDENTICAL guard (`if
+(!sqliteTableExists(SQLITE_MIGRATIONS_TABLE))` wrapping both `CREATE TABLE IF
+NOT EXISTS` statements). So the shape is v4-faithful and unreachable FROM v4 —
+v4 creates both tables together or neither — and this is a v5-only robustness
+change that is behaviour-identical on every partition v4 can produce. The
+order's instruction to "port v4's own `ensureMigrationsTables` order" has
+nothing to port: the order is already right, the guard is the whole problem.
+
+Landed: `crates/quilltap-core/src/db/migrations_ledger.rs`, one home, unguarded,
+DDL byte-identical to the four copies it replaces (verified identical BEFORE the
+fold — the four strings were one distinct 399-character literal). The four heals
+call it. `db/mod.rs` gains the one `pub mod` line.
+
+Tests: four in the module (bare partition; `migrations_state` alone;
+`migrations_metadata` alone; both already present carrying a v4-written row and
+a metadata key, which must survive — §R.12's Friday shape), plus one per heal
+running its own "it ran" scenario over all three partial shapes and asserting
+the ledger row and BOTH metadata keys landed.
+
+**RED-FIRST:** restoring the old guard on `chat_activity_recompute_heal` fails
+its new test with `shape state: sqlite error: no such table:
+migrations_metadata` — the exact sentence P4.D175's boot-wiring test hit — while
+the other three stay green (they carry their own copies of the fix).

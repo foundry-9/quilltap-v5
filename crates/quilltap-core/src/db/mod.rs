@@ -90,6 +90,7 @@ pub mod like_escape;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
+pub mod migrations_ledger;
 pub mod mount_index_case_repair;
 pub mod plugin_config;
 pub mod project_doc_mount_links;

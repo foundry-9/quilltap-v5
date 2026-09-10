@@ -190,11 +190,12 @@ pub fn retire_prefill_on_thinking_profiles(
     // The ledger write — v4's `migrations/state.ts` shapes verbatim: both
     // tables created lazily under the migrations_state absence check, the row
     // appended, the two metadata keys upserted.
-    if !table_exists(main, "migrations_state")? {
-        main.execute_batch(
-            "CREATE TABLE IF NOT EXISTS \"migrations_state\" (\n        \"id\" TEXT PRIMARY KEY,\n        \"completedAt\" TEXT NOT NULL,\n        \"quilltapVersion\" TEXT NOT NULL,\n        \"itemsAffected\" INTEGER NOT NULL DEFAULT 0,\n        \"message\" TEXT\n      );\n      CREATE TABLE IF NOT EXISTS \"migrations_metadata\" (\n        \"key\" TEXT PRIMARY KEY,\n        \"value\" TEXT NOT NULL\n      );",
-        )?;
-    }
+    // P4.88: ONE home for the two ledger tables, and unguarded — the four heals
+    // each carried this DDL under an `if !table_exists(main, "migrations_state")`
+    // guard (v4's own shape), which cannot heal a partition carrying
+    // `migrations_state` WITHOUT `migrations_metadata`: the upsert below then
+    // fails the whole boot. See `super::migrations_ledger`.
+    super::migrations_ledger::ensure_migrations_tables(main)?;
     let message = format!(
         "Examined {} prefill-enabled profile(s) on thinking-capable providers; turned the [Name] prefill off on {}",
         rows.len(),
@@ -372,5 +373,73 @@ mod tests {
             .expect("no column");
         assert_eq!(out, RetireOutcome::NotApplicable);
         assert!(!table_exists(&db, "migrations_state").unwrap());
+    }
+
+    // -----------------------------------------------------------------------
+    // P4.88 — the shared ledger tables' boot shape (`super::migrations_ledger`).
+    //
+    // Every heal used to gate its `CREATE TABLE IF NOT EXISTS` batch on
+    // `migrations_state` alone and then upsert into `migrations_metadata`, so a
+    // partition carrying the FIRST table without the SECOND failed the whole
+    // BOOT. v4's `ensureSQLiteMigrationsTable` has the identical guard, so the
+    // shape is v4-faithful and unreachable FROM v4 — but reachable from a
+    // hand-built partition, a partial restore, or a fixture, which is exactly
+    // how P4.D175's boot-wiring test first hit it. Each arm below plants one
+    // table, or both (the Friday shape — §R.12: the hardening must stay a
+    // no-op there).
+    // -----------------------------------------------------------------------
+
+    /// The three partial shapes, planted before the heal runs.
+    fn plant_ledger_shape(main: &Connection, shape: &str) {
+        if shape.contains("state") {
+            main.execute_batch(
+                "CREATE TABLE \"migrations_state\" (\"id\" TEXT PRIMARY KEY, \
+                 \"completedAt\" TEXT NOT NULL, \"quilltapVersion\" TEXT NOT NULL, \
+                 \"itemsAffected\" INTEGER NOT NULL DEFAULT 0, \"message\" TEXT);",
+            )
+            .expect("plant migrations_state");
+        }
+        if shape.contains("metadata") {
+            main.execute_batch(
+                "CREATE TABLE \"migrations_metadata\" (\"key\" TEXT PRIMARY KEY, \
+                 \"value\" TEXT NOT NULL);",
+            )
+            .expect("plant migrations_metadata");
+        }
+    }
+
+    /// The ledger row and both metadata keys landed.
+    fn assert_ledger_stamped(main: &Connection) {
+        let rows: i64 = main
+            .query_row("SELECT COUNT(*) FROM \"migrations_state\"", [], |r| {
+                r.get(0)
+            })
+            .expect("the ledger row landed");
+        assert_eq!(rows, 1);
+        let keys: i64 = main
+            .query_row(
+                "SELECT COUNT(*) FROM \"migrations_metadata\" \
+                 WHERE key IN ('lastChecked', 'quilltapVersion')",
+                [],
+                |r| r.get(0),
+            )
+            .expect("the metadata upserts landed");
+        assert_eq!(keys, 2, "v4 writes both keys");
+    }
+
+    #[test]
+    fn the_ledger_stamp_survives_every_partial_table_shape() {
+        for shape in ["state", "metadata", "state+metadata"] {
+            let db = heal_vintage_db();
+            plant_ledger_shape(&db, shape);
+            seed(&db, "p1", "DEEPSEEK", Some("deepseek-reasoner"), None);
+            let out = retire_prefill_on_thinking_profiles(&db, "2026-09-01T00:00:00.000Z")
+                .unwrap_or_else(|e| panic!("shape {shape}: {e}"));
+            assert!(
+                matches!(out, RetireOutcome::Ran { .. }),
+                "shape {shape}: {out:?}"
+            );
+            assert_ledger_stamped(&db);
+        }
     }
 }
