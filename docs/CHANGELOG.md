@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 unit 4 — the batched room-characters read, and the drop lines v5 was swallowing
+
+_Versions: core 0.0.865, harness 0.0.755, host 0.0.120._
+
+`room_characters.rs` ports v4's `room-characters.ts` (`d14da3a56`, bug 131):
+`load_room_characters` builds the `characterId → Character` map over
+`get_present_character_seats` — user-driven seats included — through ONE batched
+read, with `preloaded` characters seeded AFTER the batch so the caller's copy
+wins. Seats whose character cannot be read are simply absent from the map, which
+is `cycle_candidates`' documented contract; `to_speaker_characters` projects the
+map to the talkativeness + archived pair the selection reads, and
+`room_character_name` serves the chain decision's `characterName`.
+
+The read is a closure seam rather than a trait so the differential can count calls
+exactly as v4's `jest.fn` does, and so the production caller can pass its nested
+`read_main(read_mount_index(…))` without a wrapper.
+
+`db/vault_read_overlay.rs` gains v4's two drop lines. `apply_document_store_overlay`
+had been dropping an unreadable character under a bare
+`Err(_) => { /* vault unavailable → drop */ }` — the DROP is v4's, but the silence
+was not: v4 logs `Dropping character from list — vault unavailable`
+`{characterId, characterDocumentMountPointId, detail}` per character and
+`applyDocumentStoreOverlay dropped characters with unavailable vaults`
+`{dropped, total}` once. That silence cost little while this was a list read; bug
+131 puts it on the hot turn path, where every selection site's room map comes
+through it. `VaultUnavailable::message()` now owns the byte-exact
+`CharacterVaultUnavailableError` string that `api/custom_tools.rs` had inlined, so
+the log's `detail` and the 422 body cannot drift.
+
+NEW `room_characters_equivalence`: 14 rows over v4's real module at the pin,
+driven through a counting stand-in for `findByIds` on both sides — the CALL COUNT
+and the ids each call asked for are comparands, because "reads the whole room in
+ONE call, not one per seat" is the point of the commit. v4's own talkativeness case
+is statistical; the two `bug131-*` rows make the same claim deterministically at a
+CHOSEN pin (0.8), where a whole-room map answers `p-user` / `p-llm-2` and an
+LLM-only map answers `p-user` for both — so the rows differing IS the fix.
+
+Riding the unit: `host_llm_log_cleanup`'s beat waited for the job's COMPLETED
+status and then read `llm_logs`. Those are different partitions — the handler
+marks the job on `main` and deletes the aged rows through a separate `llm_logs`
+write — so it was waiting on a proxy, and failed roughly one run in two. It is
+PRE-EXISTING (it reproduces 2-in-4 on the untouched base) and unrelated to this
+lane's surfaces; the fix waits for the prune on its own partition before the
+assertion, weakening nothing. 6/6 green after.
+
 #### 2026-09-09 — feat(turn-manager): P4.D172 unit 3 — the cycle's drawn rotation, tier-1 exact against v4's real modules
 
 _Versions: core 0.0.864, harness 0.0.754._

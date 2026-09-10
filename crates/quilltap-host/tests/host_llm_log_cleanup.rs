@@ -183,6 +183,23 @@ async fn boot_minted_cleanup_job_completes_and_prunes() {
         "the job did not complete — if lastError mentions \"not yet available\", \
          the ProductionSpineFactory registration was dropped"
     );
+
+    // The status and the prune land on DIFFERENT partitions: the handler marks
+    // the job COMPLETED on `main`, and deletes the aged rows through a separate
+    // `llm_logs` write (`llm_log_cleanup_job.rs:157-168`). Waiting on the status
+    // and then reading `llm_logs` is waiting on a proxy, and this beat failed
+    // roughly one run in two because of it — the un-pruned 2020 row was still
+    // there when the read went in. Wait for the EFFECT.
+    //
+    // Nothing is weakened: this only defers the assertion below, which still
+    // names the exact surviving id, and a prune that never lands still fails
+    // here with a clear timeout rather than a confusing diff.
+    wait_until(
+        || surviving_log_ids(&db).len() == 1,
+        "the llm-logs delete to commit on its own partition",
+    )
+    .await;
+
     assert_eq!(
         surviving_log_ids(&db),
         ["b0000000-0000-4000-8000-0000000000d2"],

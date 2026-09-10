@@ -118401,3 +118401,112 @@ python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
 ```
 
 Versions: core 0.0.863 → 0.0.864, harness 0.0.753 → 0.0.754.
+
+### Unit 4 — the batched room-characters read (bug 131's substrate) + the vault-overlay drop lines
+
+**What landed.** `crates/quilltap-core/src/room_characters.rs`, v4's
+`room-characters.ts` at `78b381a96`. `load_room_characters` builds the map over
+[`get_present_character_seats`] — **user-driven seats included**, which is the
+whole of bug 131 — deduped, through ONE batched read, with `preloaded` seeded
+AFTER the batch so the caller's copy WINS. `to_speaker_characters` projects to
+the talkativeness + archived pair; `room_character_name` serves the chain
+decision.
+
+**The read is a closure seam** (`FindCharactersByIds = &mut dyn FnMut(&[String])
+-> Result<Vec<Value>, DbError>`) rather than a trait, for two reasons: the
+differential counts calls on the Rust side exactly as v4's `jest.fn` counts them,
+and the production caller can pass its nested `read_main(read_mount_index(…))`
+without a wrapper type.
+
+**The map is `HashMap<String, Value>`, not the narrowed `SpeakerCharacter`.** v4's
+is `Map<string, Character>` and its consumers read three different things off it:
+talkativeness + `archivedAt` (the rotation and the seat filter), `name` (the two
+chain-decision lookups `d14da3a56` replaced), and the WHOLE character
+(`loadAllParticipantData`, for prompt construction). Narrowing at the loader
+would have forced a second read for the third consumer.
+
+**`db/vault_read_overlay.rs` — a silence closed.** `apply_document_store_overlay`
+dropped an unreadable character under a bare
+`Err(_) => { /* vault unavailable → drop */ }`. The DROP is v4's and stays; the
+SILENCE was the divergence. v4 logs, per dropped character,
+`Dropping character from list — vault unavailable` (ERROR) with
+`{characterId, characterDocumentMountPointId, detail}`, and once,
+`applyDocumentStoreOverlay dropped characters with unavailable vaults` (WARN)
+with `{dropped, total}`. That silence cost little while this was a list read;
+bug 131 makes it the hot turn path — every selection site's room map now comes
+through here, so a seat vanishing from the rotation because its vault is on the
+shelf says so. **This is the #103/#110/#116 class**: the drop was correct, the
+absence of the sentence was not.
+
+`VaultUnavailable::message()` now owns the byte-exact v4
+`CharacterVaultUnavailableError` string that `api/custom_tools.rs` had inlined, so
+the log's `detail` and the 422 body cannot drift apart. Verified: v5 raises that
+error only for the missing-`properties.json` case, which is the `detail` v4 passes.
+
+**One structural note recorded:** v5's `hydrate_one` returns
+`Result<_, VaultUnavailable>` — a single error type — so v5's `Err(_)` was NOT
+also swallowing other errors the way v4's `catch` would have if it did not
+re-throw. The two are structurally equivalent; only the logs were missing.
+
+**The differential — NEW `room_characters_equivalence`, 14 rows** (10 `load`, 2
+`candidates`, 2 `draw`), over v4's REAL `loadRoomCharacters` at the pin, driven
+through a counting stand-in for `repos.characters.findByIds` on BOTH sides. Every
+case name in v4's `room-characters.test.ts` is a row. The **call count and the ids
+each call asked for** are comparands — "reads the whole room in ONE call, not one
+per seat" is the point of the commit, and only the count can say it.
+
+**v4's talkativeness case is statistical** (300 loud vs 300 quiet) and cannot be a
+row. The two `bug131-*` rows make the same claim deterministically, at a **chosen**
+pin: at 0.8 a whole-room map answers `p-user` (loud) / `p-llm-2` (quiet), while an
+LLM-only map — which weights the human at the 0.5 default whatever their character
+says — answers `p-user` for BOTH. So the two rows DIFFERING is the fix, and an
+`assert_ne!` on their heads is what fires if the map ever narrows back. The first
+run of this family caught my own first pin (0.05) landing on `p-llm-1` in both
+rows — a discriminator that discriminated nothing, replaced by arithmetic rather
+than by trial.
+
+**Mutation proofs — four, each reddening exactly its row:**
+
+| mutation | reddens |
+|---|---|
+| the room map goes LLM-ONLY (bug 131 restored) | `includes-user-driven-seats-not-just-llm` (key set `{char-llm}` vs `{char-llm, char-user}`) |
+| `preloaded` seeded BEFORE the batch | `prefers-a-preloaded-character-over-the-copy-the-read-returned` (`Stale` vs `Fresh`) |
+| the empty room still calls `find_by_ids` | `skips-the-read-entirely-when-no-seat-is-present` (count 1 vs 0) |
+| duplicate ids are not deduped | `dedupes-two-seats-playing-the-same-character` (`["char-1","char-1"]`) |
+
+A fifth, on `vault_read_overlay_equivalence`: changing the drop sentence to
+`Dropping character from list` reddens the new per-character assertion, whose
+captured line shows v4's whole three-field bag. A **silence arm** re-runs the same
+overlay over a list with the broken vault removed and asserts NEITHER line fires —
+without it both assertions would pass on a logger that shouts about everything.
+
+Three log pins in `room_characters.rs` itself: the `Room characters loaded` line's
+three counts (`seats=2 requested=1 resolved=1` — two seats playing one character,
+so the dedupe is visible in the bag), the shortfall WARN with its silence arm, and
+a read error PROPAGATING rather than being swallowed.
+
+Regen:
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run room_characters_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run vault_read_overlay_equivalence --force
+```
+
+**A pre-existing intermittent found by this unit's gate and FIXED (spotted, not
+mine).** `host_llm_log_cleanup::boot_minted_cleanup_job_completes_and_prunes`
+waited for `background_jobs.status == 'COMPLETED'` and then read `llm_logs`.
+Those are DIFFERENT PARTITIONS — the handler marks the job on `main` and deletes
+the aged rows through a separate `llm_logs` write
+(`llm_log_cleanup_job.rs:157-168`) — so the beat was waiting on a proxy and
+reading the effect before it committed. Measured 2-in-4 failures on P4.D171's
+UNTOUCHED base (a detached worktree at `f6379983`), so it is not this lane's.
+The failure reads exactly like a retention-cutoff port defect; the tell is that
+the COMPLETED assertion passes and only the surviving-ids assertion fails.
+Fixed by a second `wait_until` on the effect's own partition before the
+assertion — nothing weakened, the assertion still names the exact surviving id,
+and a prune that never lands now fails with a clear timeout. 6/6 green after
+(was ~50%). Banked as a memory note.
+
+Versions: core 0.0.864 → 0.0.865, harness 0.0.754 → 0.0.755, host 0.0.119 → 0.0.120.

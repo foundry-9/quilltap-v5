@@ -1176,10 +1176,10 @@ fn resolve_metadata(db: &Db, metadata: Option<&Value>) -> Result<Map<String, Val
         Ok(Err(crate::db::vault_read_overlay::OverlayOneError::Unavailable(u))) => {
             // v4 `CharacterVaultUnavailableError`'s message, byte-for-byte: the
             // SPA renders the server's string rather than re-deriving one.
-            Err(unprocessable(format!(
-                "Character {} has no usable vault (characterDocumentMountPointId={}): properties.json missing",
-                u.character_id, u.mount_id
-            )))
+            // P4.D172 moved the formatter onto the error itself so the list
+            // overlay's `Dropping character from list` log carries the SAME
+            // `detail` v4's does.
+            Err(unprocessable(u.message()))
         }
         Ok(Ok(None)) => Err(not_found("Character")),
         Ok(Ok(Some(character))) => Ok(character
