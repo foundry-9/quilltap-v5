@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(setupphase): order the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88)
+
+_Docs-only change._
+
+Three work orders for the next round, all from `main` with no stacking. P4.D178 absorbs v4 bug 133 (`cc65d6bfc`): the appearance sanitizer's fourth parameter becomes "does THIS scene route to the uncensored provider" (story backgrounds pass `uncensoredImageTarget`, the image tool passes AUTO_ROUTE plus a configured profile), the story-background reroute is barred for a moderated chat, the candid re-craft is deleted (v5's `RerouteRecraft` seam retires with it), the six reroute-path log lines v5 never carried land, the story corpus flips its two moderated reroute cases red-first and gains two arms, a new `appearance_sanitize_gate_tier3_equivalence` family drives v4's real sanitizer (no family did), and `help/dangerous-content.md` is re-vendored. P4.87 discharges P4.D172/P4.D173's named OPEN harness items (per-case draw arrays for the two frozen-zero tier-3 families, the different-provider-understudy corpus pin for the §3-review fix, the `routeVia` concierge arm, the failover log bags, the two classify-before-reset tests, the `chat_continuation` family). P4.88 discharges P4.D171/P4.D174/P4.D175's (the memory-gate logging lines, the heals' shared migrations-tables helper, the non-default column plants through export/import, the `marshal_row` census, the ensure sites folded, the gallery `safeQuery` degrade with a plant-probe arm). The drift ledger's one row is marked `ORDERED(P4.D178)`; phase-4.md carries the round's ORDERED section.
+
 #### 2026-09-10 — test(e2e): the rotation beat draws on a FRESH chat — on a spent cycle every query re-draws (v4's read-or-draw rule), so its draw and the page's refresh never agreed
 
 _No version bump._

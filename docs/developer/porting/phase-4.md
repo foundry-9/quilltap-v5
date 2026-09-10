@@ -6628,6 +6628,96 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88) — ORDERED 2026-09-10
+
+**Baseline `78b381a96`; v4 `main` HEAD `cc65d6bfc` (ONE past — bug 133, the
+ledger's one §3 row, now `ORDERED(P4.D178)`), v4 `bugfix` tip `1a2b2164c`
+and `release` tip `8fbf2afe0` unmoved; the checkout on `main`, CLEAN at the
+planning probe; regen rule PIN REQUIRED (P4.D178 from a lane-unique
+detached worktree at `cc65d6bfc` for the families it moves and `78b381a96`
+for neutrality; P4.87 and P4.88 from `78b381a96` for everything — bug 133
+touches none of their surfaces, verified by path).** The standing rule
+holds: drift debt clears before new scope, so the round's first lane IS
+the one-row catch-up, and the other two lanes are the previous round's
+named OPEN remainders (phase-plan item 2 of the `78b381a96` UNIFIED
+section). No stacking; three worktrees from `main`; `apps/web/**` frozen
+for all three (no SPA half). The round-wide §R meeting points, the
+Ownership table and the verification gate are spliced byte-identically
+into every order (md5 `c906c05a…`, verified at planning). Fresh surveys
+(2026-09-10, at `cc65d6bfc` and on `main` `e5ff4be0`) are folded into the
+orders' survey sections.
+
+- **P4.D178 — bug 133: a moderated chat's story background never escalates
+  to the uncensored provider** (`work-orders/p4.d178-bug-133-story-
+  background-escalation.md`, from `main`): the sanitizer's fourth
+  parameter renamed and re-meant (`routes_dangerous_to_uncensored` — story
+  backgrounds pass `uncensored_image_target`, the image tool passes
+  `mode == "AUTO_ROUTE" && <profile set>`; the tool-path corpus is BLIND —
+  `image_generation_tier3` keeps danger OFF — so a unit pin lands and the
+  widening is Tier 2); the story job's reroute gated `moderation_rejection
+  && is_dangerous_chat` with the candid re-craft DELETED (the P4.D94
+  `RerouteRecraft` seam retired at source — v4 re-crafts nowhere at the
+  tip; the avatar's gate unchanged); **the six reroute-path log lines v5
+  never carried** (both handlers' failure ERROR / rerouting INFO /
+  after-reroute ERROR — measured: zero tracing lines in
+  `image_job_common.rs`; the story failure bag gains `rerouteAllowed` +
+  `isDangerousChat`), capture-pinned; the story corpus's two moderated
+  `moderation_recraft*` cases flip RED-FIRST (they now throw) + two new
+  arms (a moderated chat with a profile configured whose appearances now
+  SANITIZE — the oracle's completion mock gains classify + sanitize
+  branches; a flagged chat with no profile); the NEW `appearance_sanitize_
+  gate_tier3_equivalence` family over v4's REAL `sanitizeAppearancesIfNeeded`
+  (24-row truth table — the survey found NO family drives it); the
+  `help/dangerous-content.md` re-vendor (count stays 123).
+- **P4.87 — the turn-manager + route-trail harness remainders**
+  (`work-orders/p4.87-turn-route-trail-harness-remainders.md`, from
+  `main`): P4.D172's per-case draw arrays for the two frozen-zero tier-3
+  families (`pinDraws([0])` → a non-trivial three-seat case each) and the
+  ordered `chat_continuation_tier2` family (Tier 2); P4.D173's corpus pin
+  for the §3-review's stale-effective-profile fix (a different-provider
+  understudy in `orchestrator_tier3`, RED-FIRST against the reverted
+  re-read), the `routeVia` concierge-seeded arm, the three failover log
+  BAGS capture-pinned, and the two classify-before-reset reddening tests;
+  the `summary_fold` `lastTurnParticipantId` filing DRAFTED for the human
+  (no lane writes v4's checkout — a v4 commit fails every sibling's probe).
+- **P4.88 — the substrate + heal + gallery + logging remainders**
+  (`work-orders/p4.88-substrate-heal-gallery-logging-remainders.md`, from
+  `main`): P4.D175's memory-gate logging family (the `Deleted every memory
+  for a chat` debug first, then the four `[MemoryGate]` lines with
+  `durationMs`) + the four heals' shared migrations-tables boot shape as
+  ONE helper; P4.D171's three measurement gaps (a NON-default `routeTrail`
+  + `cycleOrderParticipantIds` planted through the export/import/restore
+  builders, the `marshal_row` alignment census off `fresh_schema.json`, the
+  seven hand-rolled ensure sites onto `test_support::ensure_p4d171_columns`);
+  P4.D174's `safeQuery`-degrade measurement per gallery read site with a
+  plant-probe arm (RED-FIRST — v5 500s today) + the empty-`sha256` arm.
+
+**Deliberately left out:** the owed dogfood pass over the `78b381a96`
+round's live surfaces (phase-plan item 3 — a `/dogfood` run after this
+round unifies, not a work order; it gains bug 133's live proof: a
+moderated chat's refused backdrop FAILING with v4's error line and no
+second image); the two upstream filings (prepared/owed, filed by the human
+after unification); every non-drift phase-4 candidate (the lock-conflict
+503-vs-409, the Suparṇā-mail ordering comparand, the `{{start}}`/`{{end}}`
+host-zone fallback, the `MONTHS_SHORT` duplicate, the `pascal-progress`
+corpus fold, the `subprompts_prompt_tier2` coupling, the census's honest
+totality, the present-but-null lead, the `CaptureLayer` consolidation);
+a Delete-Memories count for v5's sidebar (the `edit-section.ts` deferral
+stands); the standing human-only 💸 items.
+
+Recommended arrangement: all three lanes start together from `main` in
+three worktrees. P4.D178 wants the Opus tier (the seam deletion across two
+handlers, the oracle-mock branches, and a new tier-3 family); P4.87 wants
+the Opus tier too (the failover fixture seams and the continuation family
+are the round's subtlest harness work); P4.88 is Sonnet-carriable (four
+well-specified, mostly mechanical units with named line numbers) —
+though its gallery `safeQuery` measurement deserves a careful read. Three
+`target/` dirs, `CARGO_INCREMENTAL=0`, no Playwright in any lane. Unify in
+the order P4.D178, P4.87, P4.88; the unifier runs the full Playwright
+suite, refreshes the `docs/v4/` mirror (the bug-133 file + `bugs.md` + the
+help page), recounts the version bumps as base + total, moves the baseline
+to `cc65d6bfc`, and marks the row ABSORBED.
+
 ## The `78b381a96` twelve-commit drift catch-up round (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177) — UNIFIED 2026-09-10
 
 **ALL SEVEN ORDERS CLOSED; the oracle baseline MOVES `25f534c0b` →
