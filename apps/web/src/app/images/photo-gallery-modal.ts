@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -9,58 +11,92 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { injectChatGallery } from '../chat/chat-gallery.api';
 import { CoreClient } from '../core/core-client';
-import type { ChatFileDto, CharacterPhoto } from '../core/core-contract';
 import { apiUrl } from '../core/api-url';
+import type { CharacterPhoto, ChatGalleryEntry, ChatGallerySource } from '../core/core-contract';
+import { downloadGalleryEntry } from '../core/download-utils';
 import { Icon } from '../ui/icon';
-import { ChatGalleryImageViewModal, type ChatGalleryFile } from './chat-gallery-image-view-modal';
+import { ToastService } from '../ui/toast.service';
+import { ChatGalleryImageViewModal } from './chat-gallery-image-view-modal';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
 import { ImageDetailModal } from './image-detail-modal';
 import { applyImageNavigation } from './image-navigation';
 import type { ImageData } from './images.api';
-import { fileUrl, thumbnailUrl } from './image-urls';
-import { ToastService } from '../ui/toast.service';
+import { SaveImageDialog } from './save-image-dialog';
 
-/** v4 `PhotoGalleryModal` THUMBNAIL_SIZES / DEFAULT_THUMBNAIL_INDEX (120px). */
+/** v4 `THUMBNAIL_SIZES` / `DEFAULT_THUMBNAIL_INDEX` (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
 const DEFAULT_THUMBNAIL_INDEX = 2;
 
+/** Chip labels, in the order the chips are shown (v4 `SOURCE_LABELS`). */
+const SOURCE_LABELS: Record<ChatGallerySource, string> = {
+  'story-background': 'Backgrounds',
+  avatar: 'Avatars',
+  portrait: 'Portraits',
+  generated: 'Generated',
+  attachment: 'Attached',
+  kept: 'Kept',
+  inline: 'Inline',
+};
+
+/** v4 `SOURCE_ORDER` = `CHAT_GALLERY_SOURCES`'s chip order. */
+const SOURCE_ORDER: readonly ChatGallerySource[] = [
+  'story-background',
+  'avatar',
+  'portrait',
+  'generated',
+  'attachment',
+  'kept',
+  'inline',
+];
+
+/** `'all'` is the resting state; a chip narrows to one source (v4 `SourceFilter`). */
+type SourceFilter = ChatGallerySource | 'all';
+
 /**
- * v4's gallery modes (`PhotoGalleryModal.tsx:40-67`, a discriminated union).
- * Only `'chat'` has a live host (`ChatModals.tsx` always passes it — the
- * round's scope correction 2); `'character'` / `'user-character'` are ported
- * faithfully so the type is honest, with NO host invented for them.
+ * v4's gallery modes (`PhotoGalleryModal.tsx:58-78`, a discriminated union).
+ * `'chat'` reads the {@link injectChatGallery} query (P4.D176); `'character'`
+ * / `'user-character'` keep their pre-existing `characterPhotoList` read —
+ * Tier 3 of the round order: "port the strings and the mode switch only if
+ * v5's modal already carries a character mode" — it does, so it stays.
  */
 export type PhotoGalleryMode = 'chat' | 'character' | 'user-character';
 
-/** v4 `GalleryItem` (`PhotoGalleryModal.tsx:69-71`) — the routing split's key. */
-type GalleryItem =
-  | { kind: 'chat'; data: ChatFileDto }
-  | { kind: 'image'; data: ImageData };
+/** One album-mode photo (character / user-character), pre-P4.D176 shape. */
+interface AlbumImage {
+  id: string;
+  linkId?: string;
+  filename: string;
+  filepath: string;
+  url?: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
 
 /**
- * The photo-gallery modal — the full port of v4
- * `components/images/PhotoGalleryModal.tsx` (364 lines): the z-50 grid
- * overlay whose thumbnail click opens a z-[60] detail modal, routed by item
- * kind (`:338-351`): `kind: 'chat'` → `ChatGalleryImageViewModal` (hard
- * delete + album toggles), `kind: 'image'` → `ImageDetailModal`.
+ * The photo-gallery modal — a full rewrite of v4
+ * `components/images/PhotoGalleryModal.tsx` (579 lines at `78b381a96`,
+ * P4.D176) over the `chatGallery` query (§C.3): v4's filter chips (rendered
+ * only with ≥2 non-zero sources), the `current` badge, the Save / Download /
+ * Delete hover actions (Delete double-guarded on `deletable && idKind ===
+ * 'file'`), and the detail-view routing (chat → {@link
+ * ChatGalleryImageViewModal}, character/user-character → {@link
+ * ImageDetailModal}).
  *
- * The two subtlest invariants, both pinned by specs:
- * - **Nested-Escape suppression** (`:170-174`): the gallery handles Escape
- *   ONLY while no detail modal is open (`handleEscape: selectedIndex === -1`)
- *   — without it one press closes both layers.
- * - **The conditional-`undefined` arrow ends** (`:343-344`/`:358-359`): the
- *   prev/next callbacks are handed down as `undefined` at the ends of the
- *   list, which is how the arrows disappear — no separate disabled state.
+ * Portaled to `document.body` (v4 `:575-578`, bug-99's `.qt-workspace`
+ * stacking-context rule — the `afterNextRender` body-reparent idiom
+ * `image-detail-modal.ts` established; a constructor-time reparent is
+ * silently undone under `@if`).
  */
 @Component({
   selector: 'qt-photo-gallery-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ChatGalleryImageViewModal, DeletedImagePlaceholder, ImageDetailModal],
+  imports: [Icon, ChatGalleryImageViewModal, DeletedImagePlaceholder, ImageDetailModal, SaveImageDialog],
   template: `
-    <!-- v4 :299 — the gallery overlay is z-50; detail modals sit at z-[60]. -->
+    <!-- v4 :480 — the gallery overlay is z-50; detail modals sit at z-[60]. -->
     <div
       class="fixed inset-0 z-50 flex items-center justify-center qt-bg-overlay backdrop-blur-sm p-4"
       (click)="close.emit()"
@@ -102,51 +138,149 @@ type GalleryItem =
           </div>
         </div>
 
+        <!-- v4 :291-324 — the filter chips: "one kind of picture is not a
+             filter — it is the whole gallery" (< 2 non-zero sources → none). -->
+        @if (mode() === 'chat' && chips().length >= 2) {
+          <div class="qt-tab-group px-4 pt-3" role="group" aria-label="Filter by where the picture came from">
+            <button
+              type="button"
+              [class]="'qt-tab' + (sourceFilter() === 'all' ? ' qt-tab-active' : '')"
+              [attr.aria-pressed]="sourceFilter() === 'all'"
+              (click)="sourceFilter.set('all')"
+            >
+              All ({{ galleryTotal() }})
+            </button>
+            @for (source of chips(); track source) {
+              <button
+                type="button"
+                [class]="'qt-tab' + (sourceFilter() === source ? ' qt-tab-active' : '')"
+                [attr.aria-pressed]="sourceFilter() === source"
+                (click)="sourceFilter.set(source)"
+              >
+                {{ sourceLabel(source) }} ({{ galleryCounts()[source] }})
+              </button>
+            }
+          </div>
+        }
+
         <div class="flex-1 overflow-y-auto p-4">
-          @if (itemsQuery.isPending()) {
+          @if (loading()) {
             <div class="flex items-center justify-center py-12">
               <p class="qt-text-secondary">Loading images...</p>
             </div>
-          } @else if (items().length === 0) {
+          } @else if (itemCount() === 0) {
             <div class="flex items-center justify-center py-12">
               <p class="qt-text-secondary">{{ emptyStateText() }}</p>
             </div>
           } @else {
-            <div
-              class="flex flex-wrap gap-2 justify-center"
-              [style.max-width.px]="containerWidth()"
-            >
-              @for (item of items(); track item.data.id; let index = $index) {
-                <!-- v4 :258-265 — a div container for missing images (the
-                     placeholder holds a button), a button for valid ones. -->
-                @if (missingImages().has(item.data.id)) {
-                  <div
-                    class="relative rounded overflow-hidden hover:ring-2 hover:ring-ring focus:ring-2 focus:ring-ring focus:outline-none transition-all"
-                    [style.width.px]="thumbnailSize()"
-                    [style.height.px]="thumbnailSize()"
-                  >
-                    <qt-deleted-image-placeholder
-                      [imageId]="item.data.id"
-                      [filename]="item.data.filename"
-                      styleClass="w-full h-full absolute inset-0 !p-2"
-                      (cleanup)="reload()"
-                    />
-                  </div>
-                } @else {
-                  <button
-                    type="button"
-                    class="relative rounded overflow-hidden hover:ring-2 hover:ring-ring focus:ring-2 focus:ring-ring focus:outline-none transition-all"
-                    [style.width.px]="thumbnailSize()"
-                    [style.height.px]="thumbnailSize()"
-                    (click)="selectedIndex.set(index)"
-                  >
-                    <img
-                      [src]="thumbSrc(item)"
-                      [alt]="item.data.filename"
-                      class="w-full h-full object-cover"
-                      (error)="markMissing(item.data.id)"
-                    />
-                  </button>
+            <div class="flex flex-wrap gap-2 justify-center" [style.max-width.px]="containerWidth()">
+              @if (mode() === 'chat') {
+                @for (entry of filteredEntries(); track entry.id; let index = $index) {
+                  @if (missingImages().has(entry.id)) {
+                    <div
+                      class="relative rounded overflow-hidden"
+                      [style.width.px]="thumbnailSize()"
+                      [style.height.px]="thumbnailSize()"
+                    >
+                      <qt-deleted-image-placeholder
+                        [imageId]="entry.id"
+                        [filename]="entry.filename"
+                        (cleanup)="reload()"
+                        styleClass="w-full h-full absolute inset-0 !p-2"
+                      />
+                    </div>
+                  } @else {
+                    <div
+                      class="relative group rounded overflow-hidden"
+                      [style.width.px]="thumbnailSize()"
+                      [style.height.px]="thumbnailSize()"
+                    >
+                      <button
+                        type="button"
+                        class="relative w-full h-full overflow-hidden rounded hover:ring-2 hover:ring-ring focus:ring-2 focus:ring-ring focus:outline-none transition-all"
+                        [title]="entry.filename"
+                        (click)="selectedIndex.set(index)"
+                      >
+                        <img
+                          [src]="entry.url"
+                          [alt]="entry.filename"
+                          class="w-full h-full object-cover"
+                          (error)="markMissing(entry.id)"
+                        />
+                        @if (entry.isCurrent) {
+                          <span
+                            class="absolute top-1 left-1 qt-bg-success qt-text-on-success text-xs px-1.5 py-0.5 rounded font-medium"
+                          >
+                            current
+                          </span>
+                        }
+                      </button>
+
+                      <div class="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:qt-bg-primary hover:qt-text-on-primary transition-colors"
+                          title="Save to a photo album"
+                          aria-label="Save to a photo album"
+                          (click)="$event.stopPropagation(); saveTargetId.set(entry.id)"
+                        >
+                          <qt-icon name="bookmark" class="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:qt-bg-primary hover:qt-text-on-primary transition-colors"
+                          title="Download image"
+                          aria-label="Download image"
+                          (click)="$event.stopPropagation(); handleDownload(entry)"
+                        >
+                          <qt-icon name="download" class="w-4 h-4" />
+                        </button>
+                        @if (entry.deletable) {
+                          <button
+                            type="button"
+                            class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:qt-bg-destructive hover:qt-text-on-destructive transition-colors"
+                            title="Delete image"
+                            aria-label="Delete image"
+                            (click)="$event.stopPropagation(); handleDeleteEntry(entry)"
+                          >
+                            <qt-icon name="trash" class="w-4 h-4" />
+                          </button>
+                        }
+                      </div>
+                    </div>
+                  }
+                }
+              } @else {
+                @for (image of albumImages(); track image.id; let index = $index) {
+                  @if (missingImages().has(image.id)) {
+                    <div
+                      class="relative rounded overflow-hidden hover:ring-2 hover:ring-ring focus:ring-2 focus:ring-ring focus:outline-none transition-all"
+                      [style.width.px]="thumbnailSize()"
+                      [style.height.px]="thumbnailSize()"
+                    >
+                      <qt-deleted-image-placeholder
+                        [imageId]="image.id"
+                        [filename]="image.filename"
+                        (cleanup)="loadAlbum()"
+                        styleClass="w-full h-full absolute inset-0 !p-2"
+                      />
+                    </div>
+                  } @else {
+                    <button
+                      type="button"
+                      class="relative rounded overflow-hidden hover:ring-2 hover:ring-ring focus:ring-2 focus:ring-ring focus:outline-none transition-all"
+                      [style.width.px]="thumbnailSize()"
+                      [style.height.px]="thumbnailSize()"
+                      (click)="selectedIndex.set(index)"
+                    >
+                      <img
+                        [src]="albumImageSrc(image)"
+                        [alt]="image.filename"
+                        class="w-full h-full object-cover"
+                        (error)="markMissing(image.id)"
+                      />
+                    </button>
+                  }
                 }
               }
             </div>
@@ -155,27 +289,37 @@ type GalleryItem =
       </div>
     </div>
 
-    <!-- The routing split (v4 :338-361): chat items → the chat viewer,
-         image items → the deep detail modal. -->
-    @if (selectedChatItem(); as item) {
+    <!-- The routing split (v4 :521-550): chat items → the chat viewer,
+         character/user-character items → the deep detail modal. -->
+    @if (selectedChatEntry(); as entry) {
       <qt-chat-gallery-image-view-modal
-        [file]="chatFileFor(item)"
+        [entry]="entry"
         [onPrev]="selectedIndex() > 0 ? boundPrev : undefined"
-        [onNext]="selectedIndex() < items().length - 1 ? boundNext : undefined"
-        [characterId]="mode() === 'chat' ? characterId() : undefined"
-        [characterName]="mode() === 'chat' ? characterName() : undefined"
-        [userCharacterId]="mode() === 'chat' ? userCharacterId() : undefined"
-        [userCharacterName]="mode() === 'chat' ? userCharacterName() : undefined"
+        [onNext]="selectedIndex() < itemCount() - 1 ? boundNext : undefined"
         (closeModal)="selectedIndex.set(-1)"
-        (deleteFile)="handleDeleteChatFile(item.data.id)"
+        (deleteFile)="handleDeleteEntry(entry)"
+        (save)="saveTargetId.set(entry.id)"
+        (jumpToMessage)="handleJumpToMessage($event)"
       />
     }
-    @if (selectedImageItem(); as item) {
+    @if (selectedAlbumImage(); as image) {
       <qt-image-detail-modal
-        [image]="item.data"
+        [image]="albumImageAsImageData(image)"
         [onPrev]="selectedIndex() > 0 ? boundPrev : undefined"
-        [onNext]="selectedIndex() < items().length - 1 ? boundNext : undefined"
+        [onNext]="selectedIndex() < itemCount() - 1 ? boundNext : undefined"
         (closeModal)="selectedIndex.set(-1)"
+      />
+    }
+
+    @if (mode() === 'chat' && saveTarget(); as target) {
+      <qt-save-image-dialog
+        [chatId]="chatId()!"
+        [target]="{ kind: 'chat', fileId: target.id }"
+        [attachments]="[
+          { id: target.id, filename: target.filename, filepath: target.url, mimeType: target.mimeType },
+        ]"
+        (close)="saveTargetId.set(null)"
+        (saved)="handleSaved()"
       />
     }
   `,
@@ -183,9 +327,7 @@ type GalleryItem =
 export class PhotoGalleryModal {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
-  private readonly queryClient = injectQueryClient();
 
-  /** v4's union discriminant; the live host always passes (or defaults to) `'chat'`. */
   readonly mode = input<PhotoGalleryMode>('chat');
   readonly chatId = input<string | undefined>(undefined);
   readonly characterId = input<string | undefined>(undefined);
@@ -194,18 +336,67 @@ export class PhotoGalleryModal {
   readonly userCharacterName = input<string | undefined>(undefined);
 
   readonly close = output<void>();
-  /** Chat mode only in v4 (`ChatModals.tsx:169-184`) — the host reacts to a hard delete. */
+  /** Chat mode only (v4 `ChatModals.tsx` — the host reacts to a hard delete). */
   readonly imageDeleted = output<string>();
+  /** Scroll the transcript to a message (v4 `onJumpToMessage`, chat mode only). */
+  readonly jumpToMessage = output<string>();
 
   protected readonly maxSizeIndex = THUMBNAIL_SIZES.length - 1;
   protected readonly sizeIndex = signal(DEFAULT_THUMBNAIL_INDEX);
   protected readonly thumbnailSize = computed(() => THUMBNAIL_SIZES[this.sizeIndex()]);
-  /** v4 `selectedIndex` (`:80`) — `-1` means no detail modal is open. */
+  /** v4 `selectedIndex` — `-1` means no detail modal is open. */
   protected readonly selectedIndex = signal(-1);
-  /** v4 `missingImages` (`:81`) — per-item broken-thumbnail state. */
   protected readonly missingImages = signal<ReadonlySet<string>>(new Set());
+  protected readonly sourceFilter = signal<SourceFilter>('all');
+  protected readonly saveTargetId = signal<string | null>(null);
 
-  /** v4 `:91-96`. */
+  // --- chat mode: the shared chatGallery query (P4.D176, §C.3) ---
+  private readonly gallery = injectChatGallery(
+    () => this.chatId(),
+    { enabled: () => this.mode() === 'chat' },
+  );
+  protected readonly galleryTotal = this.gallery.total;
+  protected readonly galleryCounts = this.gallery.counts;
+
+  protected readonly filteredEntries = computed<ChatGalleryEntry[]>(() => {
+    const filter = this.sourceFilter();
+    const entries = this.gallery.entries();
+    return filter === 'all' ? entries : entries.filter((e) => e.source === filter);
+  });
+
+  /** v4 `:293-295` — chip order, filtered to non-zero counts. */
+  protected readonly chips = computed<ChatGallerySource[]>(() =>
+    SOURCE_ORDER.filter((source) => (this.galleryCounts()[source] ?? 0) > 0),
+  );
+
+  // --- character / user-character mode: the pre-existing photo-roll read ---
+  protected readonly albumImages = signal<AlbumImage[]>([]);
+  protected readonly albumLoading = signal(true);
+
+  protected readonly itemCount = computed(() =>
+    this.mode() === 'chat' ? this.filteredEntries().length : this.albumImages().length,
+  );
+  protected readonly loading = computed(() =>
+    this.mode() === 'chat' ? this.gallery.isLoading() : this.albumLoading(),
+  );
+
+  protected readonly selectedChatEntry = computed<ChatGalleryEntry | null>(() => {
+    if (this.mode() !== 'chat') return null;
+    const index = this.selectedIndex();
+    return index >= 0 ? (this.filteredEntries()[index] ?? null) : null;
+  });
+  protected readonly selectedAlbumImage = computed<AlbumImage | null>(() => {
+    if (this.mode() === 'chat') return null;
+    const index = this.selectedIndex();
+    return index >= 0 ? (this.albumImages()[index] ?? null) : null;
+  });
+  protected readonly saveTarget = computed<ChatGalleryEntry | null>(() => {
+    const id = this.saveTargetId();
+    if (!id) return null;
+    return this.gallery.entries().find((e) => e.id === id) ?? null;
+  });
+
+  /** v4 `:151-156`. */
   protected readonly title = computed(() =>
     this.mode() === 'chat'
       ? 'Chat Photos'
@@ -213,96 +404,45 @@ export class PhotoGalleryModal {
         ? `${this.characterName()}'s Photos`
         : `${this.userCharacterName()}'s Photos`,
   );
-  /** v4 `:98-103` (both character arms share the string). */
-  protected readonly emptyStateText = computed(() =>
-    this.mode() === 'chat' ? 'No photos in this chat' : "No photos in this character's album",
-  );
-
-  /** v4 `loadItems` (`:105-151`) — chat files or the character photo roll. */
-  protected readonly itemsQuery = injectQuery(() => ({
-    queryKey: [
-      'photoGalleryItems',
-      this.mode(),
-      this.chatId() ?? this.characterId() ?? this.userCharacterId() ?? '',
-    ],
-    queryFn: async (): Promise<GalleryItem[]> => {
-      if (this.mode() === 'chat') {
-        const chatId = this.chatId();
-        if (!chatId) return [];
-        const data = await this.core.dispatchData({ type: 'chatFilesList', chatId });
-        const files = (data['files'] as ChatFileDto[]) ?? [];
-        return files
-          .filter((f) => f.mimeType.startsWith('image/'))
-          .map((data) => ({ kind: 'chat' as const, data }));
-      }
-      const targetId = this.mode() === 'character' ? this.characterId() : this.userCharacterId();
-      if (!targetId) return [];
-      // v4 `:122` — `?limit=200`.
-      const data = await this.core.dispatchData({
-        type: 'characterPhotoList',
-        characterId: targetId,
-        limit: 200,
-      });
-      const entries = (data['entries'] as CharacterPhoto[]) ?? [];
-      // v4 `:130-143` — the entry → GalleryImage mapping; `tags: []` is
-      // hardcoded (image tag editing has no UI in v4 — scope correction 1).
-      return entries.map((entry) => ({
-        kind: 'image' as const,
-        data: {
-          id: entry.linkId,
-          linkId: entry.linkId,
-          filename: entry.fileName,
-          filepath: entry.blobUrl,
-          url: apiUrl(entry.blobUrl),
-          mimeType: entry.mimeType || 'image/webp',
-          size: entry.fileSizeBytes || 0,
-          createdAt: entry.keptAt,
-          tags: [],
-        } satisfies ImageData,
-      }));
-    },
-  }));
-
-  protected readonly items = computed(() => this.itemsQuery.data() ?? []);
-  protected readonly selectedItem = computed<GalleryItem | null>(() => {
-    const index = this.selectedIndex();
-    return index >= 0 ? (this.items()[index] ?? null) : null;
-  });
-  protected readonly selectedChatItem = computed(() => {
-    const item = this.selectedItem();
-    return item?.kind === 'chat' ? item : null;
-  });
-  protected readonly selectedImageItem = computed(() => {
-    const item = this.selectedItem();
-    return item?.kind === 'image' ? item : null;
+  /** v4 `:158-163`. */
+  protected readonly emptyStateText = computed(() => {
+    if (this.mode() !== 'chat') return "No photos in this character's album";
+    const filter = this.sourceFilter();
+    return filter === 'all' ? 'No photos in this chat' : `No ${this.sourceLabel(filter).toLowerCase()} in this chat`;
   });
 
-  /** v4 `:225-227` — the grid width caps at ~800px of tiles. */
+  /** v4 `:286-288` — the grid width caps at ~800px of tiles. */
   protected readonly containerWidth = computed(() => {
     const size = this.thumbnailSize();
     const maxColumns = Math.floor(800 / (size + 8)) || 1;
-    const visibleColumns = Math.min(this.items().length || 1, maxColumns);
+    const visibleColumns = Math.min(this.itemCount() || 1, maxColumns);
     return visibleColumns * (size + 8);
   });
 
-  /** v4 `:188-194` — the host owns the index arithmetic, clamped at the ends. */
+  /** v4 `:236-242` — the host owns the index arithmetic, clamped at the ends. */
   protected readonly boundPrev = (): void => {
     this.selectedIndex.update((prev) => (prev > 0 ? prev - 1 : prev));
   };
   protected readonly boundNext = (): void => {
-    this.selectedIndex.update((prev) =>
-      prev < this.items().length - 1 ? prev + 1 : prev,
-    );
+    this.selectedIndex.update((prev) => (prev < this.itemCount() - 1 ? prev + 1 : prev));
   };
 
   constructor() {
-    // v4 `:170-174` — the gallery's own Escape handler is SUPPRESSED while a
+    // v4 `:200-205` — load the album when the mode is character/user-character.
+    effect(() => {
+      const mode = this.mode();
+      const characterId = this.characterId();
+      const userCharacterId = this.userCharacterId();
+      if (mode === 'chat') return;
+      void this.loadAlbumFor(mode, characterId, userCharacterId);
+    });
+
+    // v4 `:217-222` — the gallery's own Escape handler is SUPPRESSED while a
     // detail modal is open (`handleEscape: selectedIndex === -1`); the detail
-    // modal's own navigation handles that press. Body scroll locks while
-    // mounted (the host mounts this component only while open).
+    // modal's own navigation handles that press.
     let dispose: (() => void) | null = null;
     effect(() => {
-      const suppressed = this.selectedIndex() !== -1;
+      const suppressed = this.selectedIndex() !== -1 || this.saveTargetId() !== null;
       dispose?.();
       dispose = applyImageNavigation({
         isOpen: true,
@@ -311,77 +451,139 @@ export class PhotoGalleryModal {
       });
     });
     inject(DestroyRef).onDestroy(() => dispose?.());
+
+    // v4 `:575-578` — the portal to document.body (bug 99's `.qt-workspace`
+    // stacking-context rule). Must run AFTER the first render: every host of
+    // this modal mounts it under an `@if`, and an embedded view's root nodes
+    // attach to the container only after the view is created.
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    inject(DestroyRef).onDestroy(() => host.remove());
+    afterNextRender(() => {
+      if (typeof document !== 'undefined') {
+        document.body.appendChild(host);
+      }
+    });
   }
 
   protected handleZoomIn(): void {
-    if (this.sizeIndex() < this.maxSizeIndex) {
-      this.sizeIndex.update((prev) => prev + 1);
-    }
+    if (this.sizeIndex() < this.maxSizeIndex) this.sizeIndex.update((prev) => prev + 1);
   }
   protected handleZoomOut(): void {
-    if (this.sizeIndex() > 0) {
-      this.sizeIndex.update((prev) => prev - 1);
-    }
+    if (this.sizeIndex() > 0) this.sizeIndex.update((prev) => prev - 1);
   }
 
-  protected thumbSrc(item: GalleryItem): string {
-    // Vault photos come with their blob URL (v4 `:250`, `item.data.url ||
-    // item.data.filepath`) — and so do `mountFile` entries, which the server
-    // contributes from the Librarian announcement walk rather than the `files`
-    // table. Their `id` is a `doc_mount_file_links` id, so the id-keyed
-    // thumbnail route 404s on them (dogfood #48). Only genuine chat files —
-    // uploads and generated images, both real `files` rows — take the v5
-    // thumbnail path, which is itself a v5 divergence (v4 served thumbnails
-    // straight off `filepath`; see `image-urls.ts`).
-    if (item.kind !== 'chat' || item.data.type === 'mountFile') {
-      return item.data.url ?? item.data.filepath;
-    }
-    return thumbnailUrl(item.data.id, this.thumbnailSize());
-  }
-
-  protected chatFileFor(item: GalleryItem & { kind: 'chat' }): ChatGalleryFile {
-    return {
-      id: item.data.id,
-      filename: item.data.filename,
-      // Same split as `thumbSrc`: a `mountFile`'s id does not address the files
-      // route, so the full-size view must use the server's own blob URL or the
-      // click straight after the thumbnail 404s in turn (dogfood #48).
-      url:
-        item.data.type === 'mountFile'
-          ? (item.data.url ?? item.data.filepath)
-          : fileUrl(item.data.id),
-    };
+  protected sourceLabel(source: ChatGallerySource): string {
+    return SOURCE_LABELS[source];
   }
 
   protected markMissing(id: string): void {
     this.missingImages.update((prev) => new Set(prev).add(id));
   }
 
-  /** v4 `:157-158` / the placeholder's `onCleanup: loadItems` (`:278`). */
+  /** v4 `:157-158` / `loadItems`'s cleanup callback. */
   protected reload(): void {
-    void this.itemsQuery.refetch();
+    this.gallery.invalidate();
   }
 
-  /** v4 `handleDeleteChatFile` (`:196-217`) — the hard chat-file delete. */
-  protected async handleDeleteChatFile(fileId: string): Promise<void> {
+  protected handleDownload(entry: ChatGalleryEntry): void {
     try {
-      const resp = await this.core.dispatch({ type: 'chatFileDelete', fileId });
-      if (resp.type === 'error') {
-        throw new Error(resp.data.message || 'Failed to delete image');
-      }
-      this.selectedIndex.set(-1);
-      await this.itemsQuery.refetch();
-      const chatId = this.chatId();
-      if (chatId) {
-        await this.queryClient.invalidateQueries({ queryKey: ['chatFilesList', chatId] });
-      }
+      downloadGalleryEntry(entry);
+    } catch {
+      this.toasts.showError('Failed to download image');
+    }
+  }
+
+  /** v4 `handleDeleteEntry` (`:253-277`) — double-guarded before the delete request. */
+  protected async handleDeleteEntry(entry: ChatGalleryEntry): Promise<void> {
+    if (!entry.deletable || entry.idKind !== 'file') return;
+    if (!window.confirm('Permanently delete this photo? This cannot be undone.')) return;
+    try {
+      const resp = await this.core.dispatch({ type: 'chatFileDelete', fileId: entry.id });
+      if (resp.type === 'error') throw new Error(resp.data.message || 'Failed to delete image');
       this.toasts.showSuccess('Image deleted');
-      if (this.mode() === 'chat') {
-        this.imageDeleted.emit(fileId);
-      }
+      this.selectedIndex.set(-1);
+      this.gallery.invalidate();
+      this.imageDeleted.emit(entry.id);
     } catch (err) {
-      // v4 `:215` — the grid keeps its item and the reason is reported.
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete image');
     }
+  }
+
+  protected handleSaved(): void {
+    this.saveTargetId.set(null);
+    this.gallery.invalidate();
+  }
+
+  /** v4 `ChatModals.tsx:168-172` — close BOTH modals, then let the tick pass. */
+  protected handleJumpToMessage(messageId: string): void {
+    this.selectedIndex.set(-1);
+    this.jumpToMessage.emit(messageId);
+    this.close.emit();
+  }
+
+  // --- character / user-character album (pre-P4.D176 read; unchanged) ---
+
+  protected async loadAlbum(): Promise<void> {
+    await this.loadAlbumFor(this.mode(), this.characterId(), this.userCharacterId());
+  }
+
+  private async loadAlbumFor(
+    mode: PhotoGalleryMode,
+    characterId: string | undefined,
+    userCharacterId: string | undefined,
+  ): Promise<void> {
+    if (mode === 'chat') return;
+    const targetId = mode === 'character' ? characterId : userCharacterId;
+    if (!targetId) return;
+    try {
+      this.albumLoading.set(true);
+      const data = await this.core.dispatchData({
+        type: 'characterPhotoList',
+        characterId: targetId,
+        limit: 200,
+      });
+      const entries = (data['entries'] as CharacterPhoto[]) ?? [];
+      this.albumImages.set(
+        entries.map((entry) => ({
+          id: entry.linkId,
+          linkId: entry.linkId,
+          filename: entry.fileName,
+          filepath: entry.blobUrl,
+          // Resolved once, here — v4 `:250` reads `item.data.url || item.data.filepath`
+          // directly as the image `src`, and v5's `apiUrl` is the D14 raw-route rule.
+          url: apiUrl(entry.blobUrl),
+          mimeType: entry.mimeType || 'image/webp',
+          size: entry.fileSizeBytes || 0,
+          createdAt: entry.keptAt,
+        })),
+      );
+    } catch (error) {
+      this.toasts.showError(
+        error instanceof Error ? error.message : 'Failed to load gallery items',
+      );
+    } finally {
+      this.albumLoading.set(false);
+    }
+  }
+
+  protected albumImageSrc(image: AlbumImage): string {
+    const src = image.url || image.filepath;
+    return src.startsWith('/') ? src : `/${src}`;
+  }
+
+  protected albumImageAsImageData(image: AlbumImage): ImageData {
+    return {
+      id: image.id,
+      linkId: image.linkId,
+      filename: image.filename,
+      filepath: image.filepath,
+      // Already resolved by `loadAlbumFor` — resolving twice would double-
+      // prefix the Tauri cross-origin dev loop.
+      url: image.url,
+      mimeType: image.mimeType,
+      size: image.size,
+      createdAt: image.createdAt,
+      tags: [],
+    };
   }
 }

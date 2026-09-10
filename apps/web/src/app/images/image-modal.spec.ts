@@ -97,6 +97,22 @@ describe('ImageModal', () => {
     expect(log.requests).toHaveLength(0);
   });
 
+  // v4 bug 132 (`78b381a96`): the download goes through `downloadImageUrl`
+  // (`?download=1`, an anchor click) — never a fetch-to-blob dance.
+  it('downloads via an anchor carrying ?download=1, not a fetch-to-blob', () => {
+    const fixture = render({}, stubClient({ requests: [] }));
+    const clicked: Array<{ href: string; download: string }> = [];
+    const spy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push({ href: this.href, download: this.download });
+      });
+    (fixture.nativeElement.querySelector('[title="Download"]') as HTMLButtonElement).click();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(clicked[0].href).toContain('/api/v1/files/f-1?download=1');
+    expect(clicked[0].download).toBe('portrait.webp');
+  });
+
   it('emits close from the backdrop and the close button', () => {
     const fixture = render({}, stubClient({ requests: [] }));
     const closed = vi.fn();

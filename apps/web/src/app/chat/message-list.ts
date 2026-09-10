@@ -355,6 +355,34 @@ export class MessageList {
     this.autoScroll.scrollOnUserMessage();
   }
 
+  /**
+   * Scroll a message into view by id (P4.D176 — the chat gallery's
+   * Jump-to-message, v4 `lib/chat/message-navigation.ts::scrollToMessage`).
+   *
+   * v4's DOM is unvirtualized, so it can `querySelector` any message row
+   * directly; v5's transcript is windowed (`@tanstack/angular-virtual` —
+   * only the viewport + overscan rows are mounted), so the target row may not
+   * exist in the DOM yet. This asks the virtualizer to scroll to the item's
+   * INDEX first (mounting it), then centers it — the same two-step v4's own
+   * `VirtualizedMessageList` uses internally for its own scroll-to-index
+   * paths. A message folded into a collapsed announcement group scrolls to
+   * that group's row instead (the group carries the chip's own id).
+   *
+   * A miss (the message is not in the current render-item array — deleted,
+   * or belongs to a different chat) is a silent no-op, matching v4's
+   * `querySelector` returning `null`.
+   */
+  scrollToMessage(messageId: string): void {
+    const items = this.items();
+    const index = items.findIndex((item) =>
+      item.type === 'announcement-group'
+        ? item.chips.some((chip) => chip.id === messageId)
+        : item.message.id === messageId,
+    );
+    if (index === -1) return;
+    this.virtualizer.scrollToIndex(index, { align: 'center', behavior: 'smooth' });
+  }
+
   protected swipeFor(message: MessageDto): SwipeState | null {
     return message.swipeGroupId ? (this.swipeStates()[message.swipeGroupId] ?? null) : null;
   }

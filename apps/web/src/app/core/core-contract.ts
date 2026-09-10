@@ -2110,6 +2110,89 @@ export interface ChatFileDeleteRequest {
   fileId: string;
 }
 
+// === P4.D176: the Salon chat gallery (P4.D174 server ↔ P4.D176 client; §C.3
+// of the `78b381a96` round order) — every image in a conversation, from
+// `lib/photos/chat-gallery.ts`'s nine-source enumerator. ===
+
+/**
+ * v4 `CHAT_GALLERY_SOURCES` — the reader-facing buckets the filter chips are
+ * built from, in chip order; also the `counts` key order (all seven ALWAYS
+ * present in a `chatGallery` response).
+ */
+export type ChatGallerySource =
+  | 'story-background'
+  | 'avatar'
+  | 'portrait'
+  | 'generated'
+  | 'attachment'
+  | 'kept'
+  | 'inline';
+
+/** One picture in a conversation's gallery (v4 `ChatGalleryEntry`). */
+export interface ChatGalleryEntry {
+  /** `files.id` or `doc_mount_file_links.id` — read `idKind` before using it. */
+  id: string;
+  idKind: 'file' | 'link';
+  /** Inline-served URL (`/api/v1/files/…` or a mount-point blob). */
+  url: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+  sha256?: string;
+  /** ISO timestamp; the sort key (newest first). */
+  createdAt: string;
+  source: ChatGallerySource;
+  /** The character this image is *of* or *by*, when known. */
+  characterId?: string;
+  characterName?: string;
+  /** The message it hangs beneath, when one exists. */
+  messageId?: string;
+  /** The background the chat is showing / the avatar a character is wearing. */
+  isCurrent: boolean;
+  /** = `!isCurrent && source ∈ {attachment, generated, story-background, avatar}`. */
+  deletable: boolean;
+  /** How many albums already hold these bytes. */
+  linkSummary?: { count: number };
+}
+
+/** `chatGallery`'s bare response body — NEVER nested under `data` (§C.3). */
+export interface ChatGalleryResult {
+  entries: ChatGalleryEntry[];
+  counts: Record<ChatGallerySource, number>;
+  total: number;
+}
+
+/**
+ * Every image in one conversation (v4 `GET …?action=gallery`) — the query the
+ * gallery grid AND the sidebar's `Gallery (N)` count both read, so the two
+ * cannot disagree (bug 129's fix).
+ */
+export interface ChatGalleryRequest {
+  type: 'chatGallery';
+  chatId: string;
+}
+
+/**
+ * Save a gallery picture into a store album (v4 `POST …?action=save-image`) —
+ * the chat-scoped twin of {@link MessageSaveImageRequest}, guarded by gallery
+ * membership rather than message attachment (half the gallery has no message
+ * at all — a Lantern backdrop posted with alerts off, a standing portrait).
+ * Refusal ladder (§C.3): schema → 400; no chat → 404; not in the gallery →
+ * 400; already saved → 409 `{code:'ALREADY_SAVED', relativePath, keptAt}`.
+ */
+export interface ChatSaveGalleryImageRequest {
+  type: 'chatSaveGalleryImage';
+  chatId: string;
+  /** A `files.id` OR a `doc_mount_file_links.id` — NOT uuid-gated. */
+  fileId: string;
+  mountPointId: string;
+  caption?: string;
+  tags?: string[];
+}
+// === end P4.D176 ===
+
 // ===========================================================================
 // The general files family (P4.6af — lane B owns this contract file; p4.6ae
 // implements the server side). All JSON verbs ride `POST /api/dispatch`; the
@@ -2564,6 +2647,9 @@ export type CoreRequest =
   | ChatAddToolResultRequest
   | ChatFilesListRequest
   | ChatFileDeleteRequest
+  // --- The Salon chat gallery (P4.D176; P4.D174 server side; §C.3) ---
+  | ChatGalleryRequest
+  | ChatSaveGalleryImageRequest
   // --- The general files family (P4.6af; p4.6ae server side) ---
   | FilesFamilyRequest
   // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---

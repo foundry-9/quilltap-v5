@@ -24,6 +24,7 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
       ['chat', 'chat-1', 'background'],
       ['chat', 'chat-1', 'outfit-summary'],
       ['chat', 'chat-1', 'cost', 3],
+      chatKeys.gallery('chat-1'),
     ]) {
       expect(sub.slice(0, detail.length)).toEqual([...detail]);
     }
@@ -31,5 +32,25 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
 
   it('accepts a nullable id, preserving the key those call sites already built', () => {
     expect(chatKeys.detail(null)).toEqual(['chat', null]);
+  });
+
+  describe('gallery (P4.D176 — v4 `queryKeys.chats.gallery`, bug 129)', () => {
+    it('is the raw shape the gallery query and the Organize count both read', () => {
+      expect(chatKeys.gallery('chat-1')).toEqual(['chat', 'chat-1', 'gallery']);
+    });
+
+    it("sits under the SAME prefix the 'chats' realtime topic invalidates", () => {
+      // realtime-topic-map.ts's `chats` row returns `chatKeys.detail(id)` as
+      // ONE prefix — this is the invariant that comment leans on: a Lantern
+      // backdrop or an Aurora repaint's `{topic:'chats', id}` publish must
+      // reach the gallery query with no dedicated row of its own.
+      const prefix = chatKeys.detail('chat-1');
+      const gallery = chatKeys.gallery('chat-1');
+      expect(gallery.slice(0, prefix.length)).toEqual([...prefix]);
+    });
+
+    it('is a per-chat key, not reachable from the bare collection prefix', () => {
+      expect(chatKeys.gallery('chat-1')[0]).not.toBe(chatKeys.all[0]);
+    });
   });
 });

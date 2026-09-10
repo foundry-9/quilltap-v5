@@ -79,6 +79,11 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // (`['chat', id, 'background' | 'outfit-summary' | 'cost']`), so ONE
       // prefix reaches the same three things v4 lists — and, because the
       // collection key is the plural word, still never touches the lists.
+      // === P4.D176: `chatKeys.gallery(id)` (`['chat', id, 'gallery']`) sits
+      // under this same prefix — no separate row needed; the story-background
+      // and avatar jobs already publish `{topic:'chats', id}`, which is what
+      // refreshes a Lantern backdrop or an Aurora repaint into the gallery for
+      // free. Pinned by `chat-keys.spec.ts`. === end P4.D176 ===
       return id ? [chatKeys.detail(id)] : [chatKeys.all];
 
     case 'projects':

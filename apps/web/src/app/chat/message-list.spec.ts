@@ -660,3 +660,56 @@ describe('MessageList — the avatar gate + responding character (v4 SalonView:1
     expect(column(fixture)?.classList.contains('qt-chat-avatar-dangerous')).toBe(true);
   });
 });
+
+/**
+ * `scrollToMessage` — P4.D176's Jump-to-message (v4
+ * `lib/chat/message-navigation.ts::scrollToMessage`). v4's transcript is
+ * unvirtualized, so it can `querySelector` any row directly; v5's is windowed
+ * (`@tanstack/angular-virtual`), so this asks the virtualizer to scroll to the
+ * item's INDEX rather than the DOM.
+ */
+describe('MessageList — scrollToMessage (P4.D176 Jump-to-message)', () => {
+  function render(messages: MessageDto[]): ComponentFixture<MessageList> {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', messages);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('asks the virtualizer to scroll to the target message’s index', () => {
+    const fixture = render([
+      message({ id: 'm1', content: 'first' }),
+      message({ id: 'm2', content: 'second' }),
+      message({ id: 'm3', content: 'third' }),
+    ]);
+    const virtualizer = (fixture.componentInstance as unknown as {
+      virtualizer: { scrollToIndex: ReturnType<typeof vi.fn> };
+    }).virtualizer;
+    const spy = vi.spyOn(virtualizer, 'scrollToIndex');
+
+    fixture.componentInstance.scrollToMessage('m2');
+
+    expect(spy).toHaveBeenCalledWith(1, { align: 'center', behavior: 'smooth' });
+  });
+
+  it('is a silent no-op when the message is not in the render-item array', () => {
+    const fixture = render([message({ id: 'm1' })]);
+    const virtualizer = (fixture.componentInstance as unknown as {
+      virtualizer: { scrollToIndex: ReturnType<typeof vi.fn> };
+    }).virtualizer;
+    const spy = vi.spyOn(virtualizer, 'scrollToIndex');
+
+    expect(() => fixture.componentInstance.scrollToMessage('not-here')).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

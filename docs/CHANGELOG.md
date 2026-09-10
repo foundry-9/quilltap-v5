@@ -793,6 +793,47 @@ by six wiring pins driving the real route over a provisioned partition.
 runs on the write pool's own OS thread.
 
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
+#### 2026-09-09 — feat(spa): the Salon chat gallery, SPA half — the `chatGallery`-backed grid, provenance + Jump-to-message, the retired bug-129 divergence (P4.D176, v4 `86d59660c`)
+
+_Versions: SPA 0.5.691._
+
+`PhotoGalleryModal` (chat mode) rewritten over the `chatGallery` query
+(§C.3, P4.D174's contract): v4's seven-source filter chips (rendered only
+with ≥2 non-zero sources), the `current` badge, and the Save/Download/Delete
+hover actions, with Delete double-guarded on `deletable && idKind ===
+'file'`. `ChatGalleryImageViewModal` rewritten to drop the two hard-wired
+"first character"/"first user-character" album buttons v4 itself deleted (a
+v5-only divergence from an already-superseded shape) in favor of the shared
+`SaveImageDialog`, and gains the provenance line (all seven `SOURCE_PHRASE`
+entries, `formatDay`'s placeholder-date `null` arm) and Jump-to-message,
+wired through a new `MessageList.scrollToMessage` (the virtualized
+transcript's own scroll-to-index, since v4's unvirtualized DOM can just
+`querySelector` any row). `SaveImageDialog` takes a `target: {kind:'message'}
+| {kind:'chat'}` union in place of `messageId`/`initialAttachmentId`, and
+dispatches `chatSaveGalleryImage` on the chat leg, `messageSaveImage`
+unchanged on the message leg; the chat leg's 409 (`kind: 'conflict'`) reads
+as "already in this album" rather than a bare failure. `ImageModal`'s
+download and the new `core/download-utils.ts` trio
+(`withDownloadFlag`/`downloadImageUrl`/`downloadGalleryEntry`, oracle-pinned
+against v4's real module — 14 recorded vectors) move off a fetch-to-blob
+dance onto an anchor carrying `?download=1`, matching v4's own bug-132-era
+fix. `chat/chat-gallery.api.ts` (`injectChatGallery`) is the ONE query
+behind both the grid and the Organize drawer's `Gallery (N)` count — the
+recorded divergence at `organize-section.ts` ("v5 has no per-chat photo
+count…") is retired to v4's post-bug-129 shape: ungated, numbered from the
+SAME read, and unnumbered (never a stale "(0)") while the verb is unknown to
+the server. New `chat/chat-keys.ts` `gallery(id)` key, already covered by
+the `chats` realtime topic's `['chat', id]` prefix (a fenced comment in
+`realtime-topic-map.ts`, no code change — pinned by `chat-keys.spec.ts`).
+
+Every content-dependent beat in the new `e2e/salon-chat-gallery-flow.spec.ts`
+is gated `P4D174_SERVER_LANDED = false` (the gallery server is a sibling
+lane's, P4.D174) except the entry-renders beat, which runs against the real
+shared server today and proves the retired divergence's unnumbered shape
+directly. `salon-image-detail-flow.spec.ts` re-gated the same way (its walk
+now depends on `chatGallery`); `salon-courier-images-flow.spec.ts` and
+`workspace-gallery-modal-flow.spec.ts` needed no change (neither touches the
+chat gallery's surfaces).
 
 _Docs-only change._
 

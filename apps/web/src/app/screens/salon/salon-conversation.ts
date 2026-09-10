@@ -561,10 +561,9 @@ interface CascadePrompt {
     @if (saveImageTarget(); as target) {
       <qt-save-image-dialog
         [chatId]="chatId()!"
-        [messageId]="target.messageId"
+        [target]="{ kind: 'message', messageId: target.messageId, fileId: target.attachmentId }"
         [attachments]="saveImageAttachments()"
-        [initialAttachmentId]="target.attachmentId"
-        (saved)="saveImageTarget.set(null)"
+        (saved)="onMessageImageSaved($event)"
         (close)="saveImageTarget.set(null)"
       />
     }
@@ -572,11 +571,8 @@ interface CascadePrompt {
     @if (showGallery() && chatId(); as id) {
       <qt-photo-gallery-modal
         [chatId]="id"
-        [characterId]="firstCharacter()?.id"
-        [characterName]="firstCharacter()?.name"
-        [userCharacterId]="firstUserCharacter()?.id"
-        [userCharacterName]="firstUserCharacter()?.name"
         (imageDeleted)="onCourierSettled()"
+        (jumpToMessage)="onJumpToMessage($event)"
         (close)="showGallery.set(false)"
       />
     }
@@ -3438,6 +3434,33 @@ export class SalonConversation {
   /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
   protected async onCourierSettled(): Promise<void> {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+  }
+
+  /**
+   * The message-door SaveImageDialog's `onSaved` (v4 `SalonView.tsx` —
+   * `showSuccessToast` + `invalidateChatGallery()`, P4.D176). The gallery
+   * door's own save toasts and invalidates through its OWN internal dialog
+   * (`photo-gallery-modal.ts`'s `handleSaved`) — this is only the message
+   * toolbar's Save button.
+   */
+  protected onMessageImageSaved(info: { mountPoint: string; relativePath: string }): void {
+    this.saveImageTarget.set(null);
+    this.toasts.showSuccess(`Saved to ${info.mountPoint}`);
+    const chatId = this.chatId();
+    if (chatId) {
+      void this.queryClient.invalidateQueries({ queryKey: chatKeys.gallery(chatId) });
+    }
+  }
+
+  /**
+   * The chat gallery's Jump-to-message (v4 `ChatModals.tsx:168-172`
+   * `onJumpToMessage`): both modals are ALREADY closed by
+   * `PhotoGalleryModal.handleJumpToMessage` before this fires; a `setTimeout`
+   * gives the transcript a tick to repaint before asking it to find the row —
+   * v4's own comment, carried verbatim.
+   */
+  protected onJumpToMessage(messageId: string): void {
+    setTimeout(() => this.messageList()?.scrollToMessage(messageId), 0);
   }
 
   /**

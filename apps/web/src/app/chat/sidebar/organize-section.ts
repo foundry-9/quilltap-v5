@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
+import { injectChatGallery } from '../chat-gallery.api';
 import { triggerUrlDownload } from '../../core/download-utils';
 import { CopyChatIdButton } from '../../ui/copy-chat-id-button';
 import { Icon } from '../../ui/icon';
@@ -50,12 +51,21 @@ import { Icon } from '../../ui/icon';
  * (`ChatRenameModal.tsx:52,184-192`), so v5's live verb had no reachable caller
  * until it landed (dogfood walk 2026-07-27).
  *
- * ## One reduction (recorded)
+ * ## Gallery — the retired divergence (P4.D176, `78b381a96` bug 129)
  *
- * v4 gates Gallery on `chatPhotoCount > 0` and shows the count in the label
- * (`Gallery (3)`). v5 has no per-chat photo count on the chat read, so the entry
- * is unconditional and unnumbered — which is what v5's header entry already did
- * before this section reclaimed it.
+ * This entry used to carry a recorded divergence: *"v4 gates Gallery on
+ * `chatPhotoCount > 0` … v5 has no per-chat photo count on the chat read, so
+ * the entry is unconditional and unnumbered."* v4's `86d59660c` retires the
+ * gate ITSELF (bug 129 — the old count read `?action=files`, an action
+ * `handleGet` never dispatched, so the gate never opened): v4's post-fix
+ * shape is what v5 already had, PLUS a count — ungated, always rendered,
+ * labelled from the SAME `chatGallery` query the grid reads
+ * (`injectChatGallery`, `chat/chat-gallery.api.ts`), so the count and the grid
+ * are one answer and cannot disagree. The invariant bug 129 teaches carries
+ * forward even though v5 never had its shape: a control gated (or numbered)
+ * off a fetch needs that fetch to reach an endpoint that EXISTS — before
+ * `chatGallery` lands server-side (P4.D174), the query errors and the label
+ * stays unnumbered rather than claiming a count it does not have.
  */
 @Component({
   selector: 'qt-organize-section',
@@ -132,11 +142,11 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
-        title="View gallery"
+        title="Every image in this conversation"
         (click)="openGallery.emit()"
       >
         <qt-icon name="image" class="w-4 h-4" />
-        <span>Gallery</span>
+        <span>{{ galleryLabel() }}</span>
       </button>
     </div>
   `,
@@ -151,6 +161,17 @@ export class OrganizeSection {
   readonly mergeIn = output<void>();
   readonly openState = output<void>();
   readonly openGallery = output<void>();
+
+  /**
+   * v4 `ChatSidebar.tsx:1676` `Gallery ({galleryCount})` — read from the SAME
+   * `chatGallery` query the grid draws (`injectChatGallery`), NEVER from any
+   * chat-read field. `hasData()` is false until the verb answers (pre-P4.D174,
+   * or still loading), which is when the label stays unnumbered.
+   */
+  private readonly gallery = injectChatGallery(() => this.chatId());
+  protected readonly galleryLabel = computed(() =>
+    this.gallery.hasData() ? `Gallery (${this.gallery.total()})` : 'Gallery',
+  );
 
   /**
    * v4 `handleExport` (`ChatSidebar.tsx:1511-1515`) — an anchor-click through

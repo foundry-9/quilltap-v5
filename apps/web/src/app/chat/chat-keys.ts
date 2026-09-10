@@ -35,4 +35,11 @@ export const chatKeys = {
   all: ['chats'] as const,
   /** One conversation, and the prefix of every per-chat sub-key. */
   detail: (chatId: string | null | undefined) => ['chat', chatId] as const,
+  /**
+   * Every image in one conversation (v4 `queryKeys.chats.gallery`, P4.D176) —
+   * also the source of the Organize drawer's `Gallery (N)` count, so the grid
+   * and the count read the SAME answer and cannot disagree (bug 129's fix).
+   * Already covered by {@link detail}'s prefix — see `realtime-topic-map.ts`.
+   */
+  gallery: (chatId: string) => ['chat', chatId, 'gallery'] as const,
 };

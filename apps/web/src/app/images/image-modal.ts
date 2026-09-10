@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { downloadImageUrl } from '../core/download-utils';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 
@@ -188,21 +189,19 @@ export class ImageModal {
     }
   }
 
-  protected async onDownload(e: Event): Promise<void> {
+  /**
+   * v4 `handleDownload` (bug 132 / `78b381a96` `:56-64`): the URL, not the
+   * bytes — `downloadImageUrl` asks the route for an `attachment` disposition
+   * via `?download=1` and anchor-clicks it, rather than fetching the whole
+   * image into a Blob first. Logs and says nothing to the operator on failure,
+   * same as v4.
+   */
+  protected onDownload(e: Event): void {
     e.stopPropagation();
     try {
-      const response = await fetch(this.src());
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = this.filename();
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadImageUrl(this.src(), this.filename());
     } catch {
-      // v4 `handleDownload` (:57-64) logs and says nothing to the operator.
+      // v4 logs and stays silent.
     }
   }
 
