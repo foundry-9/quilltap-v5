@@ -25,6 +25,7 @@ function msg(partial: Partial<MessageDto> & { role: MessageDto['role'] }): Messa
     attachments: [],
     provider: null,
     modelName: null,
+    routeTrail: null,
     targetParticipantIds: null,
     isSilentMessage: null,
     systemSender: null,

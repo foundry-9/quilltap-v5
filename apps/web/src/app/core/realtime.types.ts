@@ -47,6 +47,12 @@ export const REALTIME_TOPICS = [
   'characters',
   /** Document stores and their indexing/embedding status. */
   'mountPoints',
+  /**
+   * Memory extraction/housekeeping completing for a chat, or a delete
+   * touching the memory store (v4 `4a9be9878`, bug 128; P4.D177 §C.4).
+   * Appended LAST, matching v4's own append order.
+   */
+  'memories',
 ] as const;
 
 export type RealtimeTopic = (typeof REALTIME_TOPICS)[number];

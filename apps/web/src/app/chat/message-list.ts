@@ -428,6 +428,7 @@ function streamMessageToMessageDto(sm: StreamMessage): MessageDto {
     attachments: [],
     provider: sm.provider,
     modelName: sm.modelName,
+    routeTrail: sm.routeTrail,
     targetParticipantIds: null,
     isSilentMessage: sm.isSilentMessage ?? null,
     systemSender: null,

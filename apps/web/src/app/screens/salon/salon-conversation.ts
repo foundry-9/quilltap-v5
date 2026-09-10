@@ -97,6 +97,7 @@ import {
   findActiveUserParticipant,
   isUserDrivenSeat,
   nudgeParticipant,
+  parseCycleOrder,
   removeFromQueue,
   type TurnSelectionResult,
   type TurnState,
@@ -1910,10 +1911,22 @@ export class SalonConversation {
     () => this.turnOverride() ?? this.turnSelection(),
   );
 
-  /** Re-query the next speaker whenever the chat settles and no turn is running. */
+  /**
+   * Re-query the next speaker whenever the chat settles and no turn is
+   * running. Also seeds `turnState.cycleOrder` synchronously off the chat
+   * GET's raw `cycleOrderParticipantIds` (P4.D177 §C.2) so the sidebar shows
+   * the drawn rotation the instant the chat loads, ahead of the async
+   * `?action=turn` query below — which then refines it from `state.cycleOrder`
+   * once it resolves (the two sources named in the ruling; v5 has no
+   * `calculateTurnStateFromHistory` to recompute either one from scratch).
+   */
   private readonly _turnEffect = effect(() => {
     const chat = this.chat();
     const busy = this.busy();
+    if (chat) {
+      const cycleOrder = parseCycleOrder(chat.cycleOrderParticipantIds);
+      this.turnState.update((prev) => ({ ...prev, cycleOrder }));
+    }
     if (chat && !busy) {
       void this.refreshTurn();
     }
@@ -1936,17 +1949,22 @@ export class SalonConversation {
   }
 
   /**
-   * v4 `useTurnManagement.applyServerResponse`: take the authoritative queue back
-   * from `state.queue` and rebuild the selection result from the `turn` envelope.
-   * `spokenSinceUserTurn` / `lastSpeakerId` are never refreshed client-side — v4
-   * leaves them at their initial values too.
+   * v4 `useTurnManagement.applyServerResponse`: take the authoritative queue
+   * AND the drawn rotation back from `state` (P4.D177 §C.2 — `state.cycleOrder`
+   * is the parsed post-resolve list) and rebuild the selection result from the
+   * `turn` envelope. `spokenSinceUserTurn` / `lastSpeakerId` are never
+   * refreshed client-side — v4 leaves them at their initial values too.
    */
   private applyTurnResponse(data: unknown): void {
     const body = data as {
       turn?: { nextSpeakerId?: string | null; reason?: string; cycleComplete?: boolean };
-      state?: { queue?: string[] };
+      state?: { queue?: string[]; cycleOrder?: string[] };
     };
-    this.turnState.update((prev) => ({ ...prev, queue: body.state?.queue ?? prev.queue }));
+    this.turnState.update((prev) => ({
+      ...prev,
+      queue: body.state?.queue ?? prev.queue,
+      cycleOrder: body.state?.cycleOrder ?? prev.cycleOrder,
+    }));
     if (body.turn) {
       this.turnSelection.set({
         nextSpeakerId: body.turn.nextSpeakerId ?? null,
@@ -3406,6 +3424,7 @@ export class SalonConversation {
       attachments: [],
       provider: null,
       modelName: null,
+      routeTrail: null,
       targetParticipantIds: null,
       isSilentMessage: null,
       systemSender: null,

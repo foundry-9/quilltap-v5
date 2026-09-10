@@ -80,8 +80,19 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     expect(queryKeysForTopic('mountPoints')).toEqual([]);
   });
 
+  it('memories: the Salon list card is the only v5 surface, scoped or not (bug 128, P4.D177 §C.4)', () => {
+    // v4 narrows to a per-chat memory count when scoped; v5 has no such
+    // reader, so BOTH arms resolve to the same list prefix — the ONLY v5
+    // surface a memory-extraction/-deletion hint un-stales.
+    expect(queryKeysForTopic('memories')).toEqual([chatKeys.all]);
+    expect(queryKeysForTopic('memories', 'chat-7')).toEqual([chatKeys.all]);
+  });
+
   it('an unknown topic is ignored, never thrown on', () => {
-    expect(queryKeysForTopic('memories')).toEqual([]);
+    // `memories` used to be this exemplar's unknown topic (RED-FIRST once it
+    // became real — P4.D177 §C.4); re-spelled to a topic no server build has
+    // ever declared.
+    expect(queryKeysForTopic('a-topic-from-a-newer-server')).toEqual([]);
     expect(queryKeysForTopic('')).toEqual([]);
     expect(() => queryKeysForTopic('a-topic-from-a-newer-server', 'x')).not.toThrow();
   });
@@ -92,6 +103,12 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
         expect(ALL_REALTIME_PREFIXES).toContainEqual(prefix);
       }
     }
+  });
+
+  it('carries all seven topics and seven sweep prefixes (v4: eight and eight; mountPoints has none)', () => {
+    expect(REALTIME_TOPICS).toHaveLength(7);
+    expect(REALTIME_TOPICS[REALTIME_TOPICS.length - 1]).toBe('memories');
+    expect(ALL_REALTIME_PREFIXES).toHaveLength(7);
   });
 });
 

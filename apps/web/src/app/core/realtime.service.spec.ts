@@ -71,6 +71,19 @@ describe('RealtimeService — the hint → invalidation path', () => {
     expect(keysFrom(invalidate)).toEqual([[...chatKeys.detail('chat-7')]]);
   });
 
+  it('a memories hint reaches the Salon list’s subscribers, chat-scoped or not (bug 128, P4.D177 §C.4)', () => {
+    // v5 has no per-chat memory count reader, so BOTH a chat-scoped hint and a
+    // collection-wide one land on the SAME list prefix the `onTopic` filter
+    // is unchanged for (`realtime.service.ts:155`) — the hint just needs to
+    // reach it.
+    const { core, invalidate } = setup();
+    core.frames.next(hint('memories', 'chat-7'));
+    expect(keysFrom(invalidate)).toEqual([[...chatKeys.all]]);
+    invalidate.mockClear();
+    core.frames.next(hint('memories'));
+    expect(keysFrom(invalidate)).toEqual([[...chatKeys.all]]);
+  });
+
   it('ignores an unknown topic without touching the cache', () => {
     const { core, invalidate } = setup();
     core.frames.next(hint('a-topic-from-a-newer-server'));

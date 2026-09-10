@@ -27,6 +27,30 @@ import { Icon } from '../../ui/icon';
  * Both belong to the Commonplace Book family rather than to `p4.9e3`; they are
  * recorded here so the section's shape is legible against v4's, and in
  * `m6-screen-parity.md`.
+ *
+ * ### The shape whoever lands Delete Memories inherits (P4.D177, bug 128)
+ *
+ * v4's `useMemoryActions.handleDeleteChatMemories`
+ * (`app/salon/[id]/hooks/useMemoryActions.ts`) is worth transcribing
+ * verbatim, not reinventing, once a v5 memory-count key exists:
+ *
+ * 1. **Disabled at zero** — the button is `disabled` while the rendered
+ *    count is 0 (`.qt-tool-palette-button:disabled` is already themed in v5).
+ * 2. **Re-read from the server before confirming** — the click first
+ *    `fetch`es the live count (`GET /api/v1/memories?chatId=…`,
+ *    `cache:'no-store'`) rather than trusting the subscribed value, because a
+ *    dropped realtime connection can leave a stale zero on screen that used
+ *    to swallow the click silently (bug 128's OTHER half — the topic this
+ *    unit lands un-stales the count in the FIRST place, but a socket that
+ *    was down between the extraction and the click still needs this
+ *    belt-and-braces re-read); a failed probe falls through to the rendered
+ *    count rather than refusing the click outright.
+ * 3. **Toast on both outcomes** — a fresh zero after the re-read toasts
+ *    "This chat has no memories to delete" instead of opening the confirm
+ *    dialog; success toasts "Deleted N memories" (the server's own count,
+ *    not the pre-delete one); failure toasts the server's error message.
+ * 4. **The confirm dialog quotes the RE-READ count**, never the possibly
+ *    stale rendered one.
  */
 @Component({
   selector: 'qt-edit-section',

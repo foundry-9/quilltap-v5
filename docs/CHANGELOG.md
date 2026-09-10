@@ -791,6 +791,153 @@ the write-batch leg — by two `realtime_publish_sites_guard` census rows, and
 by six wiring pins driving the real route over a provisioned partition.
 `HintCapture` grew `arm_writer_thread`, because a repository publish only ever
 runs on the write pool's own OS thread.
+#### 2026-09-09 — docs(status-log): the five P4.D177 mutation proofs, run and restored
+
+_Docs-only change._
+
+The order's five named mutation proofs run against the committed P4.D177
+tree, each reverted with `git checkout -- <file>` after confirming the
+predicted tests (and only those) went red: breaking the route-trail
+collapse, swapping the two glyphs, breaking the rotation comparator's
+"only a in rotation" branch, mapping the `memories` topic to `[]`, and
+re-adding `</code>` to the progressions render. The rotation mutation's
+actual blast radius (one test pair, not four) corrects the order's own
+prose — the other three rotation scenarios never reach the mutated branch.
+The progressions mutation needed a different concrete form than the order's
+literal wording: Angular's HTML tokenizer refuses to compile a raw
+`</code>` inside an interpolated string at all (NG5002), which is itself
+evidence the original escaping bug is structurally unreachable here; the
+proof used the equivalent HTML-entity form instead, producing the same
+visible text v4's bug did.
+
+#### 2026-09-09 — test(e2e): three ACTIVATE-AT-UNIFY beats for the route trail, the drawn rotation, and the memories topic (P4.D177 unit 5)
+
+_Versions: SPA 0.5.694._
+
+Three new e2e beats, all gated on named constants (never capability probes)
+that flip at unification once P4.D171–P4.D175 land: a NEW
+`salon-route-trail-flow.spec.ts` behind `P4D173_SERVER_LANDED` drives a
+REAL failover — two purpose-built `OPENAI_COMPATIBLE` connection profiles
+created through Settings for the beat alone (a primary whose `baseUrl`
+points at an unbindable privileged port, so every call fails to connect,
+with its fallback set to the second, which answers through the real
+in-process mock LLM), assigned to a fresh isolated chat's sole active seat
+via the Add-Character dialog's profile picker — then asserts the badge's
+aria-label list, the failed row's ❌ glyph and hover text, and that a
+reload reads the identical trail off the chat GET. A rotation beat rides
+`salon-sidebar-flow.spec.ts` (`P4D172_SERVER_LANDED`): seeds distinct
+talkativeness on Group Expedition's active LLM seats, forces a rotation
+draw with `?action=turn { action: 'query' }` alone (never sending a
+message, since Group Expedition sends would perturb
+`salon-token-cost-flow.spec.ts`'s hardcoded token baseline), and asserts
+the sidebar's displayed order agrees with the server's own
+`state.cycleOrder` as a subsequence — proving against the server's actual
+draw rather than a guessed expectation. A NEW
+`salon-memories-realtime-flow.spec.ts` (`P4D175_SERVER_LANDED`) reuses the
+P4.D125 "pushed-invalidation discriminator" idiom from
+`page-toolbar-flow.spec.ts`'s `jobs` beat: it counts real `listChats`
+dispatch calls, fires a real `memoryHousekeepSweep` (safe against the fixed
+instance — the default housekeeping config's `perCharacterCap: 2000` and
+`mergeSimilar: false` make it a genuine no-op over the fixture's modest
+memory counts), waits for the job to reach `COMPLETED`, and asserts a fresh
+`listChats` read follows within 5 seconds — well inside the realtime hub's
+slow fallback-poll ceiling, so a refetch that prompt can only be the pushed
+hint. None of the three beats mutate the shared salon fixture's committed
+state.
+
+#### 2026-09-09 — feat(chat): the `memories` realtime topic un-stales the Salon list's memory badge; bug 127's client-fidelity note retires to a convergence record (P4.D177 units 3–4)
+
+_Versions: SPA 0.5.693._
+
+v4's `4a9be9878` (bugs 127–128) added a `memories` realtime topic
+(`REALTIME_TOPICS`, 7th and last) published on memory extraction/housekeeping
+completing or a memory delete, so a chat left open no longer shows a memory
+count stuck at zero after its own extraction finished. v5 has no per-chat
+memory count reader at all (`chat/sidebar/edit-section.ts`'s Delete Memories
+affordance is a loud tier-3 deferral), so `queryKeysForTopic('memories', id?)`
+resolves to the Salon LIST's `chatKeys.all` in both the scoped and
+collection-wide arms — the one v5 surface a memory hint un-stales
+(`screens/salon/chat-card.ts`'s memory badge) — a measured mapping
+divergence recorded at the map and pinned by new specs in
+`realtime-topic-map.spec.ts` and `realtime.service.spec.ts`. The existing
+`realtime-topic-map.spec.ts` exemplar that used `'memories'` as its
+stand-in "unknown topic" went RED the moment the topic became real, by
+design; re-spelled to `'a-topic-from-a-newer-server'`. `edit-section.ts`'s
+doc comment now records v4's `useMemoryActions.handleDeleteChatMemories`
+shape in full (disabled-at-zero, the server re-read before confirming, the
+toast on every outcome) for whoever lands Delete Memories against a future
+v5 memory-count key.
+
+Separately: P4.D170's transcription of `ProgressionsSection.tsx` had filed
+v4 bug 127 (a JSX string-join escaped by React, producing literal
+`</code>, <code>` in a user-facing sentence) and recorded v5's
+map-with-separator rendering as a divergence. v4 fixed it at `4a9be9878` by
+adopting v5's shape outright — the divergence note in
+`progressions-section.ts`'s template comment and the matching note in
+`progressions-section.spec.ts` are rewritten as CONVERGENCE records; the
+spec's assertion is unchanged, since it was already the correct equality.
+
+#### 2026-09-09 — feat(chat): the participants list draws its rotation from the cycle order, not a talkativeness guess (P4.D177 unit 2)
+
+_Versions: SPA 0.5.692._
+
+v4's `2aca73ad6` draws a multi-character chat's whole speaking order up
+front and follows it seat by seat; the sidebar used to guess the "still to
+come" order by talkativeness alone because the real pick had not been made
+yet. `chat/turn-order.ts` gains `TurnState.cycleOrder` and the step-4
+comparator: seats in the drawn rotation sort by rotation rank, a seat the
+rotation never dealt in falls behind those it did, and a chat with no
+rotation on file yet falls back to the old talkativeness-descending guess —
+v4's four new test cases transcribed as parity specs, plus a recorded-vector
+corpus (`turn-order-rotation.oracle.ndjson`, 14 rows) driven against v4's
+real `computePredictedTurnOrder` AND `parseCycleOrder` at the pin (the
+recorder caught a divergence between this order's prose and v4's actual
+source: `parseCycleOrder` *filters* non-string array elements rather than
+voiding the whole result, fixed before it shipped). `ChatDetail` carries the
+new `cycleOrderParticipantIds` raw JSON string (§C.2); `salon-conversation.ts`
+seeds `turnState.cycleOrder` synchronously from the chat GET the instant a
+chat loads, then `applyTurnResponse` refines it from `?action=turn`'s
+`state.cycleOrder` once the async query resolves — the two sources the
+ruling names, since v5's SPA has no `calculateTurnStateFromHistory` to
+recompute either one from a message walk. `chat-sidebar.ts`'s `turnOrder`
+computed already fed the whole `TurnState` through to
+`computePredictedTurnOrder`, so no additional wiring was needed there —
+verified with a new spec case seeding distinct talkativeness AND a
+cycle order that disagrees with it. The mechanism divergence (v4
+recomputes client-side from history; v5 only ever takes both fields back
+from the server) is recorded in the class docs and `m6-screen-parity.md`.
+
+#### 2026-09-09 — feat(chat): the message route trail — every model tried, in order, under the avatar (P4.D177 unit 1)
+
+_Versions: SPA 0.5.691._
+
+v4's `5841a8c62` shipped a per-message `routeTrail`: every connection profile
+tried for a turn, oldest attempt first, recorded on the assistant message and
+carried on the SSE `done` frame and the chat-GET projection. This unit lands
+the whole client-side reading half. `chat/route-trail-display.ts` is a
+straight port of v4's `lib/chat/route-trail-display.ts` — collapsing adjacent
+same-profile attempts into one row, the ❌/🚫 glyphs, the hover text — with
+v4's 139-line test suite transcribed 1:1 plus a recorded-vector corpus
+(`route-trail-display.oracle.ndjson`, 25 rows) driven through v4's REAL
+module at the `78b381a96` pin; the corpus also carries the three enums'
+literal values as the ground truth for the hand-rolled
+`RouteAttemptVia`/`RouteAttemptOutcome`/`RouteAttemptTrigger` unions v5 has to
+maintain by hand (no zod on the SPA side). `chat/route-trail-badge.ts` is
+NET-NEW for v5: the message row previously mounted no provider/model badge
+under the desktop avatar at all, so this unit lands both the plain
+`qt-provider-model-badge` fallback and the trail list, wired at both avatar
+sites in `message-row.ts` (the courier branch and the regular assistant
+branch) — a one-row trail renders with no mark and no strike, exactly the
+plain badge would. `core-contract.ts` carries the new `RouteAttempt` shape,
+`MessageDto.routeTrail` (always present, `null` when nothing failed) and
+`ChatStreamFrame.routeTrail` (optional, mirroring the frame's other done-only
+fields), fenced `// === P4.D177 ===`; `chat-stream.reducer.ts` folds the SSE
+`done` frame's `routeTrail` onto the streamed bubble, and `message-list.ts`'s
+stream→canonical mapper carries it through so a reload reads the same trail
+off the message DTO. The `MessageRow` memo comparator's O(1) `routeTrail`
+identity check (v4 `MessageRow.tsx:560`) is recorded NO-COUNTERPART — Angular
+`OnPush` already re-renders on any input reference change, so there is no
+per-field comparator to extend.
 
 #### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 #### 2026-09-09 — feat(spa): the Salon chat gallery, SPA half — the `chatGallery`-backed grid, provenance + Jump-to-message, the retired bug-129 divergence (P4.D176, v4 `86d59660c`)

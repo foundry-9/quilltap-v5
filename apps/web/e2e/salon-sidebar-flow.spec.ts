@@ -13,6 +13,12 @@ import { openSidebarSection } from './support/sidebar';
 const PROJECTION_ROUNDTRIP_SERVER_LANDED = true;
 
 /**
+ * P4.D177 §C.2 — the drawn rotation, live (v4 `2aca73ad6`). ACTIVATE-AT-UNIFY:
+ * named constant per §C.6, never a capability probe.
+ */
+const P4D172_SERVER_LANDED = false;
+
+/**
  * P4.9H1 — the Salon chat sidebar (v4 `components/chat/ChatSidebar.tsx`), and
  * above all **the Story's Clock**, the episodic timeline-mode switch the whole
  * round exists for.
@@ -243,5 +249,94 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     await page.locator('qt-chat-section button.qt-tool-palette-badge').click();
     await expect(page.getByText('Agent mode disabled')).toBeVisible({ timeout: 15_000 });
     expect(await readAgentMode(page, chatId)).toEqual({ stored: false, resolved: false });
+  });
+
+  /**
+   * P4.D177 §C.2 — the participants list draws the SERVER's rotation, not a
+   * talkativeness guess. Never sends a message into Group Expedition (that
+   * would shift `salon-token-cost-flow.spec.ts`'s hardcoded token baseline);
+   * a `?action=turn { action: 'query' }` alone draws and persists a rotation
+   * (the ruling: "a query action MAY write the chats row, the resolve is
+   * unconditional"), so the beat forces a draw without ever sending a turn.
+   * Talkativeness is seeded distinctly per seat so a stale talkativeness-sort
+   * client could not coincidentally agree with the server's real draw.
+   */
+  test('the position badges follow the server’s drawn rotation, not talkativeness', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D172_SERVER_LANDED,
+      'awaits P4.D171/P4.D172: cycleOrderParticipantIds + resolveCycleOrder + the ?action=turn state.cycleOrder carry.',
+    );
+
+    const chatId = await (async () => {
+      await page.goto('/salon');
+      await maybeUnlock(page);
+      const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
+      await expect(card).toBeVisible({ timeout: 15_000 });
+      await card.click();
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+      return new URL(page.url()).pathname.split('/').pop()!;
+    })();
+
+    const getResp = await page.request.post('/api/dispatch', {
+      data: { type: 'chatGet', chatId },
+    });
+    expect(getResp.ok(), `chatGet → ${getResp.status()}`).toBe(true);
+    const getBody = (await getResp.json()) as {
+      data?: {
+        chat?: {
+          participants?: Array<{
+            id: string;
+            controlledBy?: string;
+            status?: string;
+            character?: { name?: string } | null;
+          }>;
+        };
+      };
+    };
+    const activeLlmSeats = (getBody.data?.chat?.participants ?? []).filter(
+      (p) => p.controlledBy === 'llm' && p.status === 'active',
+    );
+    test.skip(activeLlmSeats.length < 2, 'Group Expedition needs at least two active LLM seats to draw a rotation over.');
+
+    // Distinct, descending talkativeness in roster order — the order a stale
+    // client would draw if it ignored the rotation entirely.
+    for (const [i, seat] of activeLlmSeats.entries()) {
+      const talkResp = await page.request.post('/api/dispatch', {
+        data: {
+          type: 'chatUpdateParticipant',
+          chatId,
+          participantId: seat.id,
+          talkativeness: Math.max(0.1, 0.9 - i * 0.3),
+        },
+      });
+      expect(talkResp.ok(), `chatUpdateParticipant → ${talkResp.status()}`).toBe(true);
+    }
+
+    // Force the draw — no message sent.
+    const turnResp = await page.request.post('/api/dispatch', {
+      data: { type: 'chatTurnAction', chatId, action: 'query' },
+    });
+    expect(turnResp.ok(), `chatTurnAction query → ${turnResp.status()}`).toBe(true);
+    const turnBody = (await turnResp.json()) as { data?: { state?: { cycleOrder?: string[] } } };
+    const cycleOrder = turnBody.data?.state?.cycleOrder ?? [];
+    test.skip(cycleOrder.length < 2, 'the server drew a rotation of fewer than two seats.');
+
+    const idToName = new Map(activeLlmSeats.map((s) => [s.id, (s.character?.name ?? '').trim()]));
+    const expectedNames = cycleOrder.map((id) => idToName.get(id)).filter((n): n is string => !!n);
+    test.skip(expectedNames.length < 2, 'the rotation named a seat outside the active-LLM roster.');
+
+    // The sidebar reads a fresh chat GET, so a reload picks up the drawn order.
+    await page.reload();
+    await openSidebarSection(page, 'Participants');
+    const names = page.locator('qt-chat-sidebar .qt-participant-card-name');
+    const visibleNames = (await names.allTextContents()).map((n) => n.trim());
+    // The rotation's own order must appear as a SUBSEQUENCE of the displayed
+    // cast (the user seat and any spoken-this-cycle seats interleave around
+    // it) — assert the relative order survives, not an exact full match.
+    const positions = expectedNames.map((n) => visibleNames.indexOf(n));
+    expect(positions.every((p) => p >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 });

@@ -195,13 +195,17 @@ describe('ProgressionsSection — the list', () => {
   });
 
   /**
-   * A RECORDED DIVERGENCE, filed upstream. v4 writes
+   * A CONVERGENCE, not a standing divergence — v4 fixed its own bug 127 at
+   * `4a9be9878`, filed by THIS transcription (P4.D170) finding that v4 wrote
    * `<code>{invalidIds.join('</code>, <code>')}</code>` — a JSX EXPRESSION, so
    * React escapes it: measured at `25f534c0b` with `react-dom/server`, two bad
-   * ids render the visible text `broken</code>, <code>other`. v5 renders them
-   * as separate `<code>` elements joined by a comma, which is plainly what the
-   * line means. Identical for ONE id, which is the common case and the only one
-   * v4's own suite covers.
+   * ids rendered the visible text `broken</code>, <code>other`. v4 adopted
+   * v5's shape (`invalidIds.map((id, i) => <span key={id}>{i > 0 && ', '}
+   * <code>{id}</code></span>)`, its own `4a9be9878` two-id pin asserts the SAME
+   * `not.toContain('</code>')` this spec already had). The assertion below is
+   * unchanged — it was already the correct equality, just described here as a
+   * divergence before the fix landed. No oracle compares this line; the
+   * retirement from divergence-note to convergence-record is manual (P4.D177).
    */
   it('lists several unparseable ids as separate code elements, not as escaped markup', async () => {
     const fixture = await render(

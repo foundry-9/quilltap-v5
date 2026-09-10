@@ -120610,3 +120610,331 @@ table's "must not touch: any other EXISTING e2e spec".
 * No committed DB fixture touched, widened, or regenerated — this lane reads
   the existing salon e2e fixture read-only, seeding nothing via SQL (the
   standing rule for SPA lanes).
+## P4.D177 — the Salon smalls, SPA half (the `78b381a96` twelve-commit drift catch-up round)
+
+**Freshness probe at lane start:** the ledger's §2 probe (`branch --show-
+current`, `status --short`, the two `log --oneline` ranges) matched the
+pre-authorized exception written into the ledger's §1 and this order's §R.2:
+tree CLEAN, `78b381a96..main` exactly ONE commit (`cc65d6bfc`, "Fix bug 133:
+a moderated chat's story background could escalate to the uncensored
+provider") naming bug 133, `1a2b2164c..bugfix` empty. Per the exception, the
+lane proceeds on its `78b381a96` pin; `cc65d6bfc` is recorded here as
+next-round drift, on top of the ledger's own twelve UNPROCESSED rows.
+
+Pin worktree: `/tmp/qt-v4-pin-p4d177-78b381a96` (detached at `78b381a96`,
+`node_modules` symlinked to `~/source/quilltap-server/node_modules` — the
+established sibling-lane convention). Markers verified: `lib/chat/route-
+trail-display.ts`, `lib/chat/turn-manager/{cycle-order,room-characters}.ts`,
+`lib/services/chat-message/route-trail.ts` all present; `cycleOrderParticipantIds`
+in `lib/schemas/chat.types.ts`; `'memories'` in `lib/schemas/realtime.types.ts`.
+
+### Unit 1 — the route trail: the display twin, the badge (NET-NEW), the carry
+
+`chat/route-trail-display.ts` — a straight port of v4's `lib/chat/route-
+trail-display.ts` (collapse adjacent same-profile rows keeping the opening
+`via` and the last outcome, the ❌/🚫ROUTE_OUTCOME_GLYPH map, the hover-text
+join, `routeOutcomeLabel`), with v4's 139-line `route-trail-display.test.ts`
+transcribed 1:1 (case text preserved) as `route-trail-display.spec.ts`, PLUS
+a recorded-vector corpus: `apps/web/oracle/route-trail-display.ts` executes
+v4's REAL module at the `78b381a96` pin (collapse × 4 scenarios, hover text
+× 12, the three glyph/label sweeps, and — the ground truth for the SPA's
+hand-rolled unions since v5 has no zod — the `via`/`outcome`/`trigger`
+enums' literal values straight off `RouteAttemptViaEnum` / `RouteAttemptOutcomeEnum`
+/ the unwrapped `trigger` zod enum). 25 lines recorded
+(`route-trail-display.oracle.ndjson`, line count pinned in the consuming
+`route-trail-display.oracle.spec.ts`), byte-identical to the hand transcription.
+
+`chat/route-trail-badge.ts` — NET-NEW: v5's message row mounted no provider/
+model badge under the desktop avatar at all (only `add-character-dialog.ts`
+and `participant-card.ts` used `qt-provider-model-badge`, per the survey).
+This unit lands BOTH halves: the plain badge fallback and the trail list
+(`qt-route-trail-badge`, the aria-label hook `[aria-label="Models tried for
+this reply"]`, no new `qt-*` class — matching v4's only theme hook), wired
+at message-row.ts's two assistant avatar regions (the courier branch and the
+regular branch; the user-side region at `:385`(pre-edit numbering) gets
+neither, matching v4). `route-trail-badge.spec.ts` transcribes v4's
+`RouteTrailBadge.test.tsx` 1:1. `message-row.spec.ts` grew four new describe
+blocks (no existing case weakened) — the plain-badge mount, the trail-badge
+mount + glyph/strike/hover assertions, and a "one-row trail renders with no
+mark and no strike" case standing in for v4's byte-identity claim (v4's own
+test doesn't assert exact DOM equality either — it asserts the same
+structural absence of marks/strikes the hand-rolled twin now asserts).
+
+The `MessageRow` memo comparator's O(1) `routeTrail` identity check (v4
+`MessageRow.tsx:560`) is recorded NO-COUNTERPART in a doc comment on the
+`MessageRow` class — Angular `OnPush` already re-renders on any input
+*reference* change across every field at once, so there is no per-field
+comparator to extend.
+
+The carry: `core-contract.ts` gains `RouteAttemptVia`/`RouteAttemptOutcome`/
+`RouteAttemptTrigger`/`RouteAttempt` (fenced `// === P4.D177 ===`, placed
+immediately before `MessageDto` since it references the type),
+`MessageDto.routeTrail: RouteAttempt[] | null` (always present, between
+`modelName` and `targetParticipantIds` per §C.1 — NOT optional, since the
+chat-GET wire key is `null`-not-omitted, the same shape as the existing
+`provider`/`modelName` fields), and `ChatStreamFrame.routeTrail?: RouteAttempt[]
+| null` (optional, after `modelName`, before `isSilentMessage`, matching the
+frame's other done-only optional fields). `chat-stream.reducer.ts` (not
+explicitly listed in either P4.D176's or P4.D177's Ownership row, but
+necessary plumbing for the SSE done-fold half of this unit's mandate, and
+touched by no other lane this round) gains `routeTrail` on the `assistant`
+variant of `StreamMessage` and folds `frame.routeTrail ?? null` at its one
+construction site in `reduceDone`. `message-list.ts:402`'s stream→canonical
+mapper carries `sm.routeTrail` through, so a reload reads the same trail off
+the message DTO the settled bubble showed live.
+
+**Required-field ripple.** Making `MessageDto.routeTrail` non-optional broke
+every spec file that hand-builds a full `MessageDto` object literal (an
+`as unknown as` cast is unaffected). Thirteen sites across eleven spec files
+plus one production file (`salon-conversation.ts`'s optimistic user-bubble
+construction, outside either lane's named region-fence but a bare type-
+completion ripple, not a functional edit) needed `routeTrail: null,` inserted
+after `modelName: null,` — done mechanically with a `perl -0pi` pass, verified
+by build.
+
+**Gate for this unit:** `npm run build` clean; `npx ... --filter="route
+trail"` (message-row.spec.ts's four new describe blocks) — 7/7 passed after
+two selector fixes (a subtree `querySelector('qt-provider-model-badge')`
+inside the avatar was finding the badge `qt-route-trail-badge` itself
+mounts per row — scoped to `:scope > qt-provider-model-badge`; a `[role=
+"img"]` sweep was also catching the provider icon SVG's own `role="img"` —
+scoped to `li > span[role="img"]`); `--filter="RouteTrailBadge|route-trail-
+display|agrees with v4|P4.D132"` — 179/179 passed (route-trail-display.spec,
+route-trail-display.oracle.spec, route-trail-badge.spec, message-row.spec,
+message-list.spec's P4.D132 confirmation-family case, chat-stream.reducer.spec).
+
+### Unit 2 — the drawn rotation reaching the participants list
+
+`chat/turn-order.ts` gains `TurnState.cycleOrder: string[]` (v4
+`TurnState.cycleOrder`) and step 4's comparator (rotation rank first, a
+latecomer the rotation never dealt in behind those it did, the old
+talkativeness-descending sort as the fallback with no rotation on file) —
+lifted from v4's `computePredictedTurnOrder` verbatim, with v4's four new
+`turn-order.test.ts` cases transcribed 1:1 into `turn-order.spec.ts`
+("orders the rest of the cycle by the rotation, not by talkativeness",
+"keeps the seat now generating at the head, with the rotation behind it",
+"puts a seat the rotation never dealt in behind those it did", "falls back
+to the talkativeness sort with no rotation on file"; `createInitialTurnState()`
+now returns `cycleOrder: []`, the direct `toEqual` pin grown to match).
+
+A recorded-vector corpus (`apps/web/oracle/turn-order-rotation.ts` →
+`turn-order-rotation.oracle.ndjson`, 14 lines) drives v4's REAL
+`computePredictedTurnOrder` over the same four scenarios AND v4's REAL
+`parseCycleOrder` (`lib/chat/turn-manager/cycle-order.ts`) over ten inputs —
+**the recorder caught a real divergence between this order's prose and v4's
+actual source**: the order's §C.2 text describes the client twin's lenience
+as "non-array → [], strings only", which reads as an all-or-nothing refusal
+on a mixed array; v4's REAL `parseCycleOrder` instead `.filter()`s out
+non-string elements and keeps the rest (`["a",1,"b",null,"c"]` → `["a","b","c"]`,
+not `[]`). The hand-written `parseCycleOrder` client twin (new in
+`turn-order.ts`, since v5's SPA has no `calculateTurnStateFromHistory` to
+call v4's own) was written to the prose's stricter reading first and fixed
+to match the recorded behavior before it shipped — exactly the failure mode
+the differential discipline exists to catch.
+
+`core-contract.ts`'s `ChatDetail` gains `cycleOrderParticipantIds?: string`
+(the raw JSON string, after `impersonatingParticipantIds`, per §C.2 — landed
+here even though the Rust projection is P4.D171/P4.D172's, since
+`core-contract.ts` is apps/web/** and this round splits that tree only
+between P4.D176 and P4.D177). `salon-conversation.ts`'s `_turnEffect` (my
+region-fence: the turn-state signal) now seeds `turnState.cycleOrder`
+synchronously from `parseCycleOrder(chat.cycleOrderParticipantIds)` the
+instant a chat loads or settles, ahead of the async `refreshTurn()` call;
+`applyTurnResponse` (also my region) folds `state.cycleOrder` off every
+`?action=turn` response — the two sources the ruling names (§C.2), since v5
+never recomputes `spokenSinceUserTurn`/`lastSpeakerId` from history either.
+
+`chat-sidebar.ts`'s `turnOrder` computed already passed the WHOLE
+`TurnState` through to `computePredictedTurnOrder` — no wiring change was
+needed there, only a new spec case (`chat-sidebar.spec.ts`, after the
+existing "lists the cast in predicted turn order" case, the ONLY prior DOM
+order assertion) seeding three characters with DISTINCT talkativeness and a
+`cycleOrder` that disagrees with it, proving the sidebar draws the rotation
+and not the talkativeness guess: `['Carol','Bob','Alice','You']` against
+what talkativeness alone would draw (`['Alice','Bob','Carol','You']`).
+
+The mechanism divergence — v4 recomputes `TurnState` client-side from
+message history (`calculateTurnStateFromHistory`); v5 only ever takes
+`cycleOrder` (and `queue`) back from the server, the same shape as v5's
+pre-existing `spokenSinceUserTurn`/`lastSpeakerId` divergence — is recorded
+in the `TurnState.cycleOrder` doc comment, the `_turnEffect`/
+`applyTurnResponse` doc comments, and a new row in `m6-screen-parity.md`
+§1.2 (alongside the route-trail badge and the now-closed provider/model
+badge MISSING row).
+
+**Gate for this unit:** `npm run build` clean; `--filter="rotation|cycleOrder|
+cycle order|turn-order-rotation"` — 22/22 passed; `--filter="v4 SalonView:1171|
+turn|Turn|applyTurnResponse|the sidebar's display-only"` (turn-order.spec,
+turn-order-rotation.oracle.spec, chat-sidebar.spec, salon-conversation.spec,
+message-list.spec's turn-related cases) — 377/377 passed, zero weakened.
+
+### Unit 3 — the `memories` realtime topic (bug 128)
+
+`core/realtime.types.ts`'s `REALTIME_TOPICS` gains `'memories'`, appended
+LAST (7th) matching v4's own append order. `core/realtime-topic-map.ts`'s
+`queryKeysForTopic('memories', id?)` returns `[chatKeys.all]` in BOTH arms —
+the measured v5 surface: v5 has no per-chat memory count reader at all
+(`chat/sidebar/edit-section.ts`'s Delete Memories affordance is a loud
+tier-3 deferral with no query key of its own), so the one thing a
+`memories` hint un-stales is the Salon LIST card's memory badge
+(`screens/salon/chat-card.ts:198`, fed by `salon-list.ts`'s `[...chatKeys.
+all, {...}]` query), whether the hint carried a chat id or not — a recorded
+mapping divergence from v4's `chatCount(id)`/`all` split.
+`ALL_REALTIME_PREFIXES` gains one more `chatKeys.all` entry (6 → 7,
+matching v4's 8 minus the target-less `mountPoints` row, the standing
+difference) — deliberately NOT deduped against the `chats` row's own entry,
+matching v4's one-row-per-topic shape.
+
+The existing `realtime-topic-map.spec.ts` used `'memories'` as its
+stand-in example of an unrecognised topic (`expect(queryKeysForTopic(
+'memories')).toEqual([])`) — this went RED the moment the topic became
+real, exactly as the order predicted; re-spelled to
+`'a-topic-from-a-newer-server'` (already used elsewhere in the same file
+for the no-throw check). New specs: a `memories` describe block asserting
+both arms resolve to `[chatKeys.all]`; a length/membership pin
+(`REALTIME_TOPICS` 7 with `'memories'` last, `ALL_REALTIME_PREFIXES` 7); and
+in `realtime.service.spec.ts`, a hint → invalidation case proving a
+`memories` hint (chat-scoped or not) reaches the Salon list's subscribers
+through the unchanged `onTopic` filter (`realtime.service.ts:155`).
+
+`edit-section.ts`'s doc comment records v4's `useMemoryActions.
+handleDeleteChatMemories` shape in full (disabled-at-zero, the server
+re-read before confirming since a dropped socket can leave a stale zero on
+screen, the toast on every outcome, the confirm dialog quoting the RE-READ
+count) — a doc note only, no code, for whoever lands a v5 memory-count key.
+
+### Unit 4 — bug 127's convergence
+
+`progressions-section.ts`'s template comment and `progressions-section.spec.ts`'s
+matching doc comment, both written by P4.D170 as a RECORDED DIVERGENCE (v4's
+`invalidIds.join('</code>, <code>')` inside a JSX expression, escaped by
+React into literal markup on screen for two-or-more unreadable ids), are
+rewritten as CONVERGENCE records: v4 fixed its own bug 127 at `4a9be9878`
+by adopting v5's map-with-separator shape outright, filed FROM this port's
+own transcription finding it. The spec's assertion
+(`not.toContain('</code>')`) is unchanged — it was already the correct
+equality between the two apps, only described as a divergence before v4's
+fix landed. No oracle compares this line, so nothing trips on the
+retirement; done by hand per the order's instruction.
+
+**Gate for these two units:** `npm run build` clean; `--filter="memories|
+memory hint|RealtimeService|queryKeysForTopic|realtime"` — 40/40 passed;
+`--filter="unparseable|ProgressionsSection|progressions-section"` — 36/36
+passed, zero weakened.
+
+### Unit 5 — the three ACTIVATE-AT-UNIFY e2e beats
+
+NEW `salon-route-trail-flow.spec.ts` (`P4D173_SERVER_LANDED`): a genuine
+failover, not a wire-level injection — two `OPENAI_COMPATIBLE` connection
+profiles created through Settings for this beat alone (distinctive names so
+they cannot be confused with the seeded fixture profiles other specs
+enumerate by position), the primary's `baseUrl` pointed at
+`http://127.0.0.1:1` (a privileged port nothing in the sandbox can bind, so
+every call fails at connect — the `network` trigger class), its `#qt-pf-
+fallback` set to the second (which points at the real in-process mock LLM).
+A fresh, isolated chat (never `Group Expedition`/`Solo Voyage`) is created
+via New Chat, then the Add-Character dialog's `#qt-add-character-profile`
+picker assigns the failing profile to a second character explicitly — New
+Chat's own picker only ever auto-seeds a character's OWN default profile,
+so this is the one place a specific profile can be forced onto a seat
+(the same mechanism `salon-cast-flow.spec.ts` uses to add a character at
+all). The seeded participant is then removed (a SOFT remove —
+`isActive: false` — so it drops out of turn selection without touching the
+roster), leaving the failing-then-understudy seat as the sole active LLM
+participant. A send streams for real through the failover; the beat
+asserts the badge's `[aria-label="Models tried for this reply"]` list (2
+rows), the failed row's `❌` glyph, its hover title naming the primary
+profile, and — after a reload — the identical shape read back off the chat
+GET.
+
+A rotation beat added to `salon-sidebar-flow.spec.ts` (`P4D172_SERVER_
+LANDED`, the file's ONLY other permitted edit besides its position-badge
+assertion): reads Group Expedition's active LLM seats via `chatGet`, seeds
+each a distinct, descending talkativeness via `chatUpdateParticipant`
+(the order a stale talkativeness-only client would draw), then forces a
+rotation to be drawn WITHOUT sending any message —
+`chatTurnAction { action: 'query' }` alone resolves and persists a cycle
+per the §C.2 ruling ("a query action MAY write the chats row, the resolve
+is unconditional"), avoiding any perturbation of
+`salon-token-cost-flow.spec.ts`'s hardcoded token baseline for that chat.
+The beat reads `state.cycleOrder` straight off the query response (never a
+hardcoded expected order — the assertion is against the SERVER's real
+draw) and, after a reload, checks the sidebar's displayed name order
+contains that sequence as a subsequence (the user seat and spoken-this-
+cycle seats interleave around it, so an exact full-list match would be
+over-specified).
+
+NEW `salon-memories-realtime-flow.spec.ts` (`P4D175_SERVER_LANDED`) reuses
+the P4.D125 "pushed-invalidation discriminator" idiom
+(`page-toolbar-flow.spec.ts`'s `jobs` beat) rather than faking any list
+data: it counts real `listChats` dispatch traffic via a `page.on('request',
+…)` listener, fires `memoryHousekeepSweep` against the real server (safe —
+the default housekeeping config's `perCharacterCap: 2000` +
+`mergeSimilar: false` make the sweep a genuine no-op over the fixture's
+memory counts, so no sibling spec's memory-count assumptions move), polls
+`systemJobGet` to `COMPLETED`, and asserts a fresh `listChats` call follows
+within 5 seconds — well inside the realtime hub's slow fallback-poll
+ceiling, so a refetch that prompt can only be the pushed hint, not a timer.
+v5 has no per-chat memory count to assert a changed VALUE against (the same
+measured gap `realtime-topic-map.ts`'s `memories` case records), so this
+beat proves the refetch happened rather than a badge number moving.
+
+All three beats verified with `npx playwright test --list` (parse/type
+check only — no live server this lane): 7 tests found across the three
+files, zero errors. None mutates the shared salon fixture's committed
+state; the route-trail and memories beats create only isolated,
+beat-scoped resources.
+
+**Gate for this unit:** `npm run build` clean; `npm run lint` clean (950
+`qt-*` classes, no new one); `git diff main -- crates/ help/ harness/`
+EMPTY; the full `npm test` suite — 420 test files / 6,966 passed / 1 failed
+(the pre-existing `generate-image-page.spec.ts` cross-test-pollution flake,
+confirmed unrelated by running it in isolation — 1/1 passed alone) / 0
+weakened. The region-fenced files (`message-row.ts`: only the two
+avatar-template regions + the badge import touched, not the save-image
+construct sites; `salon-conversation.ts`: only the turn-state signal +
+`applyTurnResponse` + the one required-field-ripple literal outside either
+named region) verified against `git diff main`.
+
+### Mutation proofs (run and restored by string edit, after unit 5)
+
+All five named in the order, run against the committed tree and reverted
+with `git checkout -- <file>` (the tree was clean before each, so the
+checkout could only discard the mutation itself):
+
+1. **Break the collapse** (`route-trail-display.ts`: guard the merge branch
+   with an unreachable id comparison) — reddened the two adjacent-collapse
+   cases in `route-trail-display.spec.ts` and the matching
+   `route-trail-display.oracle.spec.ts` rows (4 tests total).
+2. **Swap the two glyphs** (`ROUTE_OUTCOME_GLYPH.failed`/`.refused`) —
+   reddened both the hand-transcribed glyph/label spec and the recorded-
+   vector glyph rows (4 tests).
+3. **Comparator "only a in rotation" → `1`** (`turn-order.ts`'s step-4 sort)
+   — reddened the ONE transcribed case + its oracle-corpus twin where
+   exactly one of three seats is excluded from the rotation
+   ("latecomer-behind-dealt-in"/"puts a seat the rotation never dealt in
+   behind those it did"); **a measured correction to this order's own
+   prose**, which predicted "the four cases red" — the other three
+   scenarios never reach the `aRank !== undefined` branch at all (two have
+   every seat in rotation, so `aRank`/`bRank` are both defined; the
+   no-rotation fallback has neither), so only the ONE case that isolates
+   this exact branch is sensitive to it. Both proofs are still exact
+   reddenings of the tests that exercise the mutated line — the "four
+   cases" describes the whole rotation test group, not this mutation's
+   blast radius specifically.
+4. **Map `memories` to `[]`** (`realtime-topic-map.ts`'s `case 'memories'`)
+   — reddened the reach specs in both `realtime-topic-map.spec.ts` and
+   `realtime.service.spec.ts` (2 tests) — not the length/membership pin,
+   which only counts topics and targets and does not distinguish WHICH
+   prefix each resolves to.
+5. **Re-add `</code>` to the progressions render** — the literal v4-shaped
+   mutation (`invalidIds().join('</code>, <code>')` inside one interpolated
+   `<code>` element) does not COMPILE in Angular: its HTML tokenizer parses
+   `</code>` as a real closing tag before the JS expression inside `{{ }}`
+   is ever evaluated (NG5002, "Unexpected closing block"), which is itself
+   evidence the escaping bug is structurally unreachable in Angular, not
+   only fixed in v4. The proof was run with the equivalent HTML-entity form
+   (`&lt;/code&gt;, &lt;code&gt;` split across two interpolated ids inside
+   one `<code>` element — the same literal VISIBLE text v4's bug produced,
+   reached through a path Angular will actually compile) — reddened exactly
+   the "lists several unparseable ids..." equality assertion (1 test).

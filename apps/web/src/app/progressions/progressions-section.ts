@@ -92,15 +92,19 @@ interface Row {
       }
 
       <!--
-        The unparseable-ids line. v5 renders the ids as SEPARATE code elements
-        joined by a comma; v4 writes invalidIds.join with a literal closing and
-        opening code tag inside one element, which React escapes - MEASURED at
-        25f534c0b with react-dom/server: two bad ids render the visible text
-        broken&lt;/code&gt;, &lt;code&gt;other. A RECORDED DIVERGENCE, filed
-        upstream. It is invisible for one id (the overwhelmingly common case,
-        and the only one v4's own suite covers), and v5 will not show a user
-        literal markup to be faithful to a typo. NB no backticks in a template
-        comment - they end the literal.
+        The unparseable-ids line: v5 renders the ids as SEPARATE code elements
+        joined by a comma. v4 USED TO write invalidIds.join with a literal
+        closing and opening code tag inside one JSX element, which React
+        escapes - two bad ids rendered the visible text
+        broken&lt;/code&gt;, &lt;code&gt;other. A CONVERGENCE, not a standing
+        divergence: v4's 4a9be9878 (bug 127, filed by P4.D170's own
+        transcription of this file) fixed it by adopting v5's map-with-
+        separator shape (invalidIds.map((id, i) => &lt;span key={id}&gt;{i > 0
+        && ', '}&lt;code&gt;{id}&lt;/code&gt;&lt;/span&gt;)) - the two are now
+        the SAME rendering, byte for byte in visible text. No oracle compares
+        this line, so nothing trips on the retirement; it is recorded here so
+        a future reader does not go looking for a divergence that closed.
+        NB no backticks in a template comment - they end the literal.
       -->
       @if (invalidIds().length > 0) {
         <p class="qt-text-small qt-text-destructive">

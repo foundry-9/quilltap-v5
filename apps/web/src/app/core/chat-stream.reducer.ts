@@ -40,6 +40,7 @@ import type {
   ResponseStatus,
   NextSpeakerInfo,
   PostedMessage,
+  RouteAttempt,
 } from './core-contract';
 
 /** One in-progress tool call within a batch. */
@@ -79,6 +80,8 @@ export type StreamMessage =
       participantId: string | null;
       provider: string | null;
       modelName: string | null;
+      /** `null` emitted when nothing failed (P4.D177 §C.1). */
+      routeTrail: RouteAttempt[] | null;
       isSilentMessage?: boolean;
       reasoningContent: string | null;
       reasoningSegments: ReasoningSegment[] | null;
@@ -393,6 +396,7 @@ function reduceDone(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamSt
       participantId: frame.participantId ?? prev.respondingParticipantId ?? null,
       provider: frame.provider ?? null,
       modelName: frame.modelName ?? null,
+      routeTrail: frame.routeTrail ?? null,
       isSilentMessage: frame.isSilentMessage || undefined,
       reasoningContent: frame.reasoningContent ?? null,
       reasoningSegments: frame.reasoningSegments ?? null,

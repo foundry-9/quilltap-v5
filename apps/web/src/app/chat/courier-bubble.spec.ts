@@ -21,6 +21,7 @@ function courierMessage(overrides: Partial<MessageDto> = {}): MessageDto {
     attachments: [],
     provider: null,
     modelName: null,
+    routeTrail: null,
     targetParticipantIds: null,
     isSilentMessage: null,
     systemSender: null,
