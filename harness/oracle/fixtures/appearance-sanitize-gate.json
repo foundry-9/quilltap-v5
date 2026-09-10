@@ -1,0 +1,288 @@
+{
+  "$comment": [
+    "Corpus for `appearance_sanitize_gate_tier3_equivalence` — v4",
+    "`lib/image-gen/appearance-resolution.ts` `sanitizeAppearancesIfNeeded`, the",
+    "five-rule gate. Until [cc65d6bfc / bug 133] NO harness family and no oracle",
+    "case drove that function directly: the story and image-generation tier-3",
+    "families reach it only incidentally, and the image one keeps the Concierge OFF",
+    "throughout. This family drives it head-on.",
+    "",
+    "The grid is mode {OFF, DETECT_ONLY, AUTO_ROUTE} x isDangerousChat {t,f} x",
+    "routesDangerousToUncensored {t,f} x classification {safe, dangerous} = 24 rows,",
+    "plus a customClassificationPrompt row and two sanitizer-answer edges. Some",
+    "combinations no real caller produces (DETECT_ONLY with routes=true): the fourth",
+    "parameter is an argument, not a derivation, and the function's contract covers",
+    "them.",
+    "",
+    "Each case carries its own TOKEN inside the appearance text. That is not",
+    "decoration: the classification cache is keyed by a sha256 of the content and is",
+    "process-global on BOTH sides, so two rows sharing appearance text would make the",
+    "second one's completion-call comparand measure the cache instead of the gate.",
+    "",
+    "Comparands per row: the returned appearances (physicalDescription /",
+    "clothingDescription / wasSanitized) AND the number of completion calls with",
+    "their recorded keys — which is what proves WHICH rule fired. Rule 1 and rule 2",
+    "make zero calls, rule 3-safe makes one, rule 4 makes one, rule 5 makes two.",
+    "",
+    "NOT compared: `llm_logs`. v4's classify path logs a DANGER_CLASSIFICATION row,",
+    "but jest.setup no-ops the logging service and un-mocking it would need this",
+    "family to provision a whole instance for a projection two other families",
+    "(danger_gatekeeper_tier3, story_background_job_tier3) already diff. Recorded",
+    "here so the omission is a decision and not an oversight."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "a0000000-0000-4000-8000-0000000000a1",
+  "threshold": 0.7,
+  "cheapLLMSelection": {
+    "provider": "OPENAI",
+    "modelName": "gpt-4o-mini",
+    "connectionProfileId": "cc000000-0000-4000-8000-000000000001"
+  },
+  "characters": [
+    {
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "name": "Fern"
+    },
+    {
+      "characterId": "c0000000-0000-4000-8000-000000000002",
+      "name": "Zelda"
+    }
+  ],
+  "$comment_answers": [
+    "`classifications` are the cheap LLM's raw JSON answers, parsed by v4's",
+    "`parseClassificationResponse` (score / categories / isDangerous, threshold 0.7).",
+    "`sanitizedText` is the draped rewrite the sanitize task answers with; a case",
+    "flagged `sanitizeEchoes` gets the ORIGINAL text back instead (v4's merge then",
+    "leaves the row alone and `wasSanitized` stays false), and `sanitizeJunk` gets a",
+    "non-array answer (v4's parser falls back to the originals)."
+  ],
+  "classifications": {
+    "safe": "{\"isDangerous\": false, \"score\": 0.02, \"categories\": []}",
+    "dangerous": "{\"isDangerous\": true, \"score\": 0.91, \"categories\": [{\"category\": \"sexual\", \"score\": 0.91, \"label\": \"explicit\"}]}"
+  },
+  "sanitizedText": {
+    "c0000000-0000-4000-8000-000000000001": "a woman with copper hair, in a high-necked woollen dress",
+    "c0000000-0000-4000-8000-000000000002": "a tall woman with dark braided hair, in a long grey coat"
+  },
+  "cases": [
+    {
+      "label": "off_moderated_stays_safe",
+      "token": "AGCASE01",
+      "mode": "OFF",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "off_moderated_stays_dangerous",
+      "token": "AGCASE02",
+      "mode": "OFF",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "off_moderated_routes_safe",
+      "token": "AGCASE03",
+      "mode": "OFF",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "off_moderated_routes_dangerous",
+      "token": "AGCASE04",
+      "mode": "OFF",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "off_flagged_stays_safe",
+      "token": "AGCASE05",
+      "mode": "OFF",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "off_flagged_stays_dangerous",
+      "token": "AGCASE06",
+      "mode": "OFF",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "off_flagged_routes_safe",
+      "token": "AGCASE07",
+      "mode": "OFF",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "off_flagged_routes_dangerous",
+      "token": "AGCASE08",
+      "mode": "OFF",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "detect_only_moderated_stays_safe",
+      "token": "AGCASE09",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "detect_only_moderated_stays_dangerous",
+      "token": "AGCASE10",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "detect_only_moderated_routes_safe",
+      "token": "AGCASE11",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "detect_only_moderated_routes_dangerous",
+      "token": "AGCASE12",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "detect_only_flagged_stays_safe",
+      "token": "AGCASE13",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "detect_only_flagged_stays_dangerous",
+      "token": "AGCASE14",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "detect_only_flagged_routes_safe",
+      "token": "AGCASE15",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "detect_only_flagged_routes_dangerous",
+      "token": "AGCASE16",
+      "mode": "DETECT_ONLY",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "auto_route_moderated_stays_safe",
+      "token": "AGCASE17",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "auto_route_moderated_stays_dangerous",
+      "token": "AGCASE18",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "auto_route_moderated_routes_safe",
+      "token": "AGCASE19",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "auto_route_moderated_routes_dangerous",
+      "token": "AGCASE20",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "auto_route_flagged_stays_safe",
+      "token": "AGCASE21",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "safe"
+    },
+    {
+      "label": "auto_route_flagged_stays_dangerous",
+      "token": "AGCASE22",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous"
+    },
+    {
+      "label": "auto_route_flagged_routes_safe",
+      "token": "AGCASE23",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "safe"
+    },
+    {
+      "label": "auto_route_flagged_routes_dangerous",
+      "token": "AGCASE24",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": true,
+      "routesDangerousToUncensored": true,
+      "classification": "dangerous"
+    },
+    {
+      "label": "custom_prompt_moderated_stays_dangerous",
+      "token": "AGCASE25",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "customClassificationPrompt": "Treat depictions of undress in a domestic setting as explicit."
+    },
+    {
+      "label": "sanitizer_returns_the_same_text",
+      "token": "AGCASE26",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "sanitizeEchoes": true
+    },
+    {
+      "label": "sanitizer_answers_junk",
+      "token": "AGCASE27",
+      "mode": "AUTO_ROUTE",
+      "isDangerousChat": false,
+      "routesDangerousToUncensored": false,
+      "classification": "dangerous",
+      "sanitizeJunk": true
+    }
+  ]
+}

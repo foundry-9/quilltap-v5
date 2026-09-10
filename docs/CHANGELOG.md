@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — test(appearance): a new tier-3 family for the sanitize gate, which nothing drove directly
+
+_Versions: harness 0.0.768._
+
+The family the P4.D178 survey found missing. Measured: zero hits for either spelling of `sanitizeAppearancesIfNeeded` under `crates/quilltap-harness/tests` and `harness/oracle/cases`. The story and image-generation tier-3 families reach the function only incidentally, and the image-generation corpus keeps the Concierge OFF throughout — which is exactly why the fourth parameter could mean the wrong thing for a whole phase without a single red row.
+
+`appearance_sanitize_gate_tier3_equivalence` drives v4's REAL function over a 27-case grid: mode {OFF, DETECT_ONLY, AUTO_ROUTE} × `isDangerousChat` {t,f} × `routesDangerousToUncensored` {t,f} × classification {safe, dangerous}, plus a `customClassificationPrompt` row and two sanitizer-answer edges (the echo, where v4's merge leaves `wasSanitized` false, and a non-array answer, where v4's parser falls back to the originals). Compared per case: the returned appearances field-for-field AND the number of completion calls, which is what says which rule fired — rules 1 and 2 make none, rule 3-safe one, rule 4 one, rule 5 two. A gate that returned the right appearances by a different route is a different bug, and only the call count catches it.
+
+Every case carries its own token inside the appearance text: the classification cache is keyed by a sha256 of the content and is process-global on both sides, so two rows sharing text would make the second one's call count measure the cache instead of the gate. The family does not compare `llm_logs` — that projection is already diffed by `danger_gatekeeper_tier3` and `story_background_job_tier3`, and un-mocking the logger here would mean provisioning a whole instance for it; recorded in the corpus so the omission is a decision.
+
+Three mutations, each reddening it: rule 2's `&&` widened to `||`, rule 4 inverted, and rule 5's sanitize skipped.
+
 #### 2026-09-10 — test(story-background): the corpus's two bug-133 arms, and a silence arm that can actually see the gate's first conjunct
 
 _Versions: core 0.0.879, harness 0.0.767._
