@@ -26,6 +26,13 @@ pub struct TurnState {
     pub queue: Vec<String>,
     /// Last speaker (cannot speak again unless nudged/queued, except if sole character).
     pub last_speaker_id: Option<String>,
+    /// The rotation drawn for the current cycle: the participants who have yet
+    /// to speak, in the order they will. Sourced from
+    /// `chat.cycleOrderParticipantIds`, drawn and persisted by
+    /// [`crate::cycle_order::resolve_cycle_order_pure`], and struck from as each
+    /// seat speaks. Empty means "no rotation on file" — selection falls back to
+    /// picking one at a time (v4 `2aca73ad6`).
+    pub cycle_order: Vec<String>,
 }
 
 /// A message as the turn machine reads it. `msg_type` is the `ChatEvent.type`
@@ -141,11 +148,15 @@ pub fn nudge_participant(state: &TurnState, participant_id: &str) -> TurnState {
     }
 }
 
-/// Reset the cycle on a user skip: clear `spoken_since_user_turn`, keep the
-/// queue and last speaker intact.
+/// Reset the cycle on a user skip: clear `spoken_since_user_turn` AND the drawn
+/// rotation, keep the queue and last speaker intact.
+///
+/// v4 `queue.ts:87-96`: "a cycle that starts over draws a fresh order rather than
+/// replaying the tail of the one it abandoned."
 pub fn reset_cycle_for_user_skip(state: &TurnState) -> TurnState {
     TurnState {
         spoken_since_user_turn: Vec::new(),
+        cycle_order: Vec::new(),
         ..state.clone()
     }
 }
@@ -190,7 +201,22 @@ pub fn calculate_turn_state_from_history(
     messages: &[MessageView],
     spoken_this_cycle_json: Option<&str>,
 ) -> TurnState {
+    calculate_turn_state_from_history_with_cycle(messages, spoken_this_cycle_json, None)
+}
+
+/// [`calculate_turn_state_from_history`] plus the chat row's drawn rotation
+/// (v4 `state.ts:48`).
+///
+/// The rotation is READ here and never drawn: `calculateTurnStateFromHistory` is
+/// pure and runs on v4's client too; drawing and persisting is
+/// [`crate::cycle_order::resolve_cycle_order_pure`]'s job alone.
+pub fn calculate_turn_state_from_history_with_cycle(
+    messages: &[MessageView],
+    spoken_this_cycle_json: Option<&str>,
+    cycle_order_json: Option<&str>,
+) -> TurnState {
     let mut state = create_initial_turn_state();
+    state.cycle_order = crate::cycle_order::parse_cycle_order(cycle_order_json);
     state.spoken_since_user_turn = parse_spoken(spoken_this_cycle_json);
 
     // lastSpeakerId = most recent non-whisper message with a participantId.
@@ -239,6 +265,8 @@ pub fn update_turn_state_after_message(state: &TurnState, message: &MessageView)
     }
     next.last_speaker_id = Some(pid.to_string());
     next.queue.retain(|id| id != pid);
+    // The speaker leaves this cycle's rotation (v4 `state.ts:112`).
+    next.cycle_order.retain(|id| id != pid);
     next.current_turn_participant_id = None;
     next
 }
@@ -309,6 +337,61 @@ pub fn compute_spoken_this_cycle_after_message(
         return None;
     }
     compute_spoken_next(pid, participants, current_spoken_json)
+}
+
+/// Next `chat.cycleOrderParticipantIds` after the given message is persisted, or
+/// `None` if the field should not change (v4 `computeCycleOrderAfterMessage`,
+/// `state.ts:221-231`).
+///
+/// Consuming the rotation is pure bookkeeping — strike the speaker from the list
+/// of who has yet to go — so it rides along at the same write chokepoints that
+/// advance `spokenThisCycleParticipantIds`, needing neither talkativeness nor a
+/// characters read. Drawing the *next* rotation, which needs both, is
+/// `resolve_cycle_order`'s job and happens lazily at the following selection: an
+/// emptied list is exactly the signal that the cycle is spent.
+///
+/// The four guards are the SAME four the spoken twin applies.
+pub fn compute_cycle_order_after_message(
+    message: &MessageView,
+    current_cycle_order_json: Option<&str>,
+) -> Option<String> {
+    if message.msg_type.as_deref() != Some("message") {
+        return None;
+    }
+    if !message.is_user_or_assistant() {
+        return None;
+    }
+    let pid = message.nonempty_participant_id()?;
+    if message.is_whisper() {
+        return None;
+    }
+    remove_from_cycle_order(pid, current_cycle_order_json)
+}
+
+/// Next `chat.cycleOrderParticipantIds` after a skip-user-turn: the skipped seat
+/// has had its turn for cycle purposes, so it leaves the rotation exactly as a
+/// posted message would take it out (v4 `computeCycleOrderAfterSkip`).
+pub fn compute_cycle_order_after_skip(
+    skipped_participant_id: &str,
+    current_cycle_order_json: Option<&str>,
+) -> Option<String> {
+    remove_from_cycle_order(skipped_participant_id, current_cycle_order_json)
+}
+
+/// `None` when the id is absent (a no-op write), else the filtered list's JSON.
+fn remove_from_cycle_order(
+    participant_id: &str,
+    current_cycle_order_json: Option<&str>,
+) -> Option<String> {
+    let current = crate::cycle_order::parse_cycle_order(current_cycle_order_json);
+    if !current.iter().any(|id| id == participant_id) {
+        return None; // no-op
+    }
+    let filtered: Vec<String> = current
+        .into_iter()
+        .filter(|id| id != participant_id)
+        .collect();
+    Some(crate::cycle_order::stringify_cycle_order(&filtered))
 }
 
 /// Next `spokenThisCycleParticipantIds` after a skip-user-turn: append the

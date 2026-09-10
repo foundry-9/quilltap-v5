@@ -165,6 +165,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
+        participant_type: str_field(p, "type").unwrap_or_default().to_string(),
         status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
@@ -414,6 +415,7 @@ pub async fn resolve_responding_participant(
                 turn_state.last_speaker_id.as_deref(),
                 draws,
                 Some(&impersonating),
+                &turn_state.cycle_order,
             );
 
             if let Some(next_id) = &selection.next_speaker_id {

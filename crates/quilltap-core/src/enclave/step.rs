@@ -646,6 +646,7 @@ where
         &sdeps.random01,
         // Autonomous rooms never impersonate (v4 passes no overlay here).
         None,
+        &turn_state.cycle_order,
     );
 
     let Some(responding_participant_id) = selection.next_speaker_id.clone() else {

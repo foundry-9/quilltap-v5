@@ -39,6 +39,12 @@ fn parts_to_core(ps: &[WirePart]) -> Vec<ParticipantView> {
     ps.iter()
         .map(|p| ParticipantView {
             id: p.id.clone(),
+            // This corpus carries no `type` at all, so v4 reads `p.type ===
+            // 'CHARACTER'` as `undefined === 'CHARACTER'` — false. Empty is the
+            // faithful stand-in, and it is deliberately NOT "CHARACTER": none of
+            // the readers this family compares consults the field, and a wrong
+            // literal here would mask a future reader that starts to.
+            participant_type: String::new(),
             status: match p.status.as_str() {
                 "active" => ParticipantStatus::Active,
                 "silent" => ParticipantStatus::Silent,

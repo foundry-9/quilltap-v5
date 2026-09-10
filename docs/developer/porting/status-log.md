@@ -118282,3 +118282,122 @@ Gate: `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
 `cargo test --workspace` with `QT_ORACLE_SELECT_SPEAKER` + the capstone's env
 block. Versions: core 0.0.862 → 0.0.863, harness 0.0.752 → 0.0.753,
 host 0.0.118 → 0.0.119.
+
+### Unit 3 — the cycle's drawn rotation (`cycle_order.rs` + `turn_state` + `turn_order` + the present-seat home + selection step 2)
+
+**What landed.** `crates/quilltap-core/src/cycle_order.rs`, v4's
+`cycle-order.ts` at `78b381a96`: `parse_cycle_order` (v4's JS-truthy `!json`
+guard, so `null`/`undefined`/`""` all read as no rotation), `cycle_candidates`,
+`draw_cycle_order`, `pick_from_cycle_order`, `resolve_cycle_order_pure`, the
+`stringify_cycle_order` helper and v4's two persist log lines.
+
+**One recorded structural deviation.** v4's `resolveCycleOrder` awaits
+`repos.chats.update` inside itself. v5's write path is a channel to the single
+writer, so the port splits it: `resolve_cycle_order_pure` returns
+`CycleOrderResolution { order, persist: Option<CyclePersistHow> }` — the rotation
+to use AND the write to make — and the async shell (unit 5) performs the write and
+logs. That split is also what makes the decision tier-1 comparable: the corpus
+compares `persist.is_some()` against whether v4's repo double actually received a
+write, and the persisted BYTES against v4's `JSON.stringify`.
+
+**The four no-write arms all measured**, because three of them look identical
+from outside: no candidates → `[]`; exactly one candidate → `[]` (v4: "storing a
+one-entry order would churn the row every turn"); a usable stored rotation with no
+latecomer → the stored list, unwritten; and — the fourth, which is a write that
+FAILS — the rotation still returns while v4 records no write.
+
+**`turn_state.rs`**: `TurnState.cycle_order`; the strike in
+`update_turn_state_after_message`; `reset_cycle_for_user_skip` emptying it (v4
+`queue.ts:87-96` — "a cycle that starts over draws a fresh order rather than
+replaying the tail of the one it abandoned"); the new
+`calculate_turn_state_from_history_with_cycle` (READS, never draws — v4's function
+is pure and runs on its client too, so drawing there would be persisted by nobody);
+and `compute_cycle_order_after_message` / `_after_skip` behind the SAME four guards
+their spoken twins apply, both returning `None` when the id is absent.
+
+**`turn_order.rs`**: v4's step-4 comparator arm for arm — both in the rotation →
+rank order; only one → that one first; neither → the old `talkB - talkA`. Rust's
+`sort_by` is stable, as V8's `sort` is.
+
+**`select_speaker.rs`**: step 2, the rotation as an overlay ahead of the
+one-at-a-time pick, which survives as steps 3 and 4. The `cycle_order` reason,
+`getSelectionExplanation`'s `Next in this cycle's drawn rotation`, and the debug
+block v4 emits there: `weights: {}` and **no `randomValue` key at all**.
+`SelectionDebug.random_value` therefore becomes `Option<f64>`, and the harness
+compares its PRESENCE, not just its value. The after-user twin takes v4's 8th
+parameter (`cycleOrderJson`) and parses it — it never draws.
+
+**`participant_filters.rs` — the ONE present-seat home.** v5 spelled v4's
+`getPresentCharacterSeats` predicate three ways, and the third was a live
+divergence: `message_finalizer.rs`'s inline walk dropped only `removed`, so it
+KEPT `absent` seats v4 excludes. `is_present_character_seat` /
+`get_present_character_seats` are now the home; `ParticipantView` carries
+`participant_type` so the predicate can live in one place. The LLM-only alias
+STAYS, with a docblock naming bug 131 and v4's remaining caller.
+
+`turn_pause_filters_equivalence` is GREEN — the order's tripwire for "you widened
+the alias instead of its callers". Its corpus carries no `type` at all, so its
+`ParticipantView`s take `String::new()` deliberately rather than `"CHARACTER"`: v4
+reads `undefined === 'CHARACTER'` there, and a wrong literal would mask a future
+reader that starts consulting the field.
+
+**The differential — NEW `cycle_order_equivalence`, 90 rows, green on its first
+run** against v4's REAL `cycle-order.ts` / `state.ts` / `queue.ts` /
+`turn-order.ts` / `selection.ts` at the `78b381a96` pin:
+
+| kind | rows | kind | rows |
+|---|---|---|---|
+| `parse` | 9 | `draw` | 13 |
+| `candidates` | 6 | `pick-from` | 9 |
+| `resolve` | 10 | `after-message` | 11 |
+| `after-skip` | 4 | `history` | 4 |
+| `update-after-message` | 3 | `turn-order` | 8 |
+| `select` | 11 | `initial-state` / `reset` | 1 / 1 |
+
+Every case name in v4's own `cycle-order.test.ts` is a row. Per-kind FLOORS are
+asserted, so a corpus that silently loses a family fails rather than shrinking.
+
+**v4's two weighting cases could not be corpus rows** — they are statistical (400
+draws asserting `p1First > 240`; 300 loud vs 300 quiet asserting
+`loud > quiet * 5 && quiet < 15`). `weighting_matches_v4_statistical_bounds`
+mirrors both bounds Rust-side over a fixed-seed LCG, so the assertion is a real
+one and not a flake.
+
+**One oracle-authoring trap worth the note:** the case must import from the
+CONCRETE modules, not the `turn-manager` barrel. `state.ts` imports
+`cycle-order.ts` and `index.ts` re-exports both; under tsx's ESM loader that cycle
+makes the barrel report `does not provide an export named
+'calculateTurnStateFromHistory'`. v4's own jest suite (CJS) never sees it.
+`select-speaker.ts` already imported the concrete way.
+
+**Mutation proofs — five, each reddening exactly its row:**
+
+| mutation | reddens |
+|---|---|
+| draw WITH replacement (`pool.remove(0)`) | `draw-sequence-walks-the-shrinking-pool` (`["p3","p3","p3"]`) |
+| a one-seat room DOES store | `resolve-stores-nothing-for-a-one-character-room` |
+| an unknown character LOSES its seat | `candidates-drops-absent-and-removed-and-user-typed` (+ the statistical test) |
+| `exclude_first` ignores `pool.len() > 1` | `draw-seats-the-only-candidate-even-when-they-just-spoke` (an empty-pool panic — v4 gets `undefined` and throws too) |
+| a latecomer goes to the FRONT | `resolve-seats-a-mid-cycle-arrival-at-the-back` |
+
+A sixth, on `turn_state_equivalence`: deleting the `cycle_order.retain` strike
+reddens `seeded-rotation`. That row was ADDED for the purpose — without it the new
+`cycleOrder` assertion would have compared `[]` against `[]` on every row and
+measured nothing.
+
+Regen (all from the tip pin, through the sweep driver, never two concurrently):
+
+```bash
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run cycle_order_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_state_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_order_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run turn_pause_filters_equivalence --force
+python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d172-78b381a96 \
+  --run select_speaker_equivalence --force
+```
+
+Versions: core 0.0.863 → 0.0.864, harness 0.0.753 → 0.0.754.

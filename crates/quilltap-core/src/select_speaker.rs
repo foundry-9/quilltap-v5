@@ -57,7 +57,10 @@ pub struct SpeakerCharacter {
 pub struct SelectionDebug {
     pub eligible_speakers: Vec<String>,
     pub weights: BTreeMap<String, f64>,
-    pub random_value: f64,
+    /// The draw, scaled by the total weight. `None` on the `cycle_order` arm:
+    /// v4 emits NO `randomValue` key there at all, because the weighting
+    /// happened once, at the draw, not at this pick.
+    pub random_value: Option<f64>,
     pub all_llm_new_cycle: bool,
 }
 
@@ -182,6 +185,7 @@ pub fn is_users_turn(result: &SelectionResult) -> bool {
 pub fn get_selection_explanation(result: &SelectionResult) -> &'static str {
     match result.reason {
         "queue" => "Selected from queue (manually nudged/queued)",
+        "cycle_order" => "Next in this cycle's drawn rotation",
         "weighted_selection" => "Selected by weighted random based on talkativeness",
         "only_character" => "Only character in chat",
         "user_turn" => "User's turn - waiting for user input",
@@ -201,6 +205,7 @@ pub fn select_next_speaker(
     last_speaker_id: Option<&str>,
     draws: &DrawSource,
     impersonating_participant_ids: Option<&[String]>,
+    cycle_order: &[String],
 ) -> SelectionResult {
     // Step 1: the manual queue wins.
     if let Some(first) = queue.first() {
@@ -253,7 +258,43 @@ pub fn select_next_speaker(
         );
     }
 
-    // Step 2: eligible = active minus { last speaker, already-spoken }.
+    // Step 2: the rotation drawn for this cycle, if there is one.
+    // `resolve_cycle_order` (`cycle_order.rs`) draws and persists it before any
+    // server path asks this question, so every reader gets the same answer and
+    // nobody re-rolls a turn that was already decided. `debug.weights` is empty
+    // here on purpose, and there is no `random_value`: the weighting happened
+    // once, at the draw.
+    if let Some(from_order) = crate::cycle_order::pick_from_cycle_order(
+        cycle_order,
+        participants,
+        characters,
+        spoken_since_user_turn,
+        last_speaker_id,
+    ) {
+        // v4 `activeCharacterParticipants.find(...)!` — the id came out of
+        // `cycleCandidates` over these very participants, so it resolves.
+        let ordered = active
+            .iter()
+            .copied()
+            .find(|p| p.id == from_order)
+            .expect("the rotation's pick is one of the active participants");
+        return build_result(
+            ordered,
+            "cycle_order",
+            false,
+            impersonating_participant_ids,
+            Some(SelectionDebug {
+                eligible_speakers: cycle_order.to_vec(),
+                weights: BTreeMap::new(),
+                random_value: None,
+                all_llm_new_cycle: false,
+            }),
+        );
+    }
+
+    // Step 3: no stored rotation to follow (a fresh chat, a spent cycle, or a
+    // row that has none yet). Fall back to the original one-at-a-time weighted
+    // pick from eligible (not last speaker, not yet spoken this cycle).
     let eligible: Vec<&SpeakerParticipant> = active
         .iter()
         .copied()
@@ -277,13 +318,13 @@ pub fn select_next_speaker(
             Some(SelectionDebug {
                 eligible_speakers: eligible.iter().map(|p| p.id.clone()).collect(),
                 weights: pick.weights,
-                random_value: pick.random_value,
+                random_value: Some(pick.random_value),
                 all_llm_new_cycle: false,
             }),
         );
     }
 
-    // Step 3: cycle wrapped — pick from { active minus last speaker }.
+    // Step 4: cycle wrapped — pick from { active minus last speaker }.
     let new_cycle: Vec<&SpeakerParticipant> = active
         .iter()
         .copied()
@@ -312,7 +353,7 @@ pub fn select_next_speaker(
         Some(SelectionDebug {
             eligible_speakers: new_cycle.iter().map(|p| p.id.clone()).collect(),
             weights: pick.weights,
-            random_value: pick.random_value,
+            random_value: Some(pick.random_value),
             all_llm_new_cycle: true,
         }),
     )
@@ -365,6 +406,7 @@ pub fn select_next_speaker_after_user_message(
     _user_participant_id: Option<&str>,
     draws: &DrawSource,
     impersonating_participant_ids: Option<&[String]>,
+    cycle_order_json: Option<&str>,
 ) -> SelectionResult {
     // v4 builds a synthetic `{ type: 'message', role: 'USER', participantId:
     // poster }` event and advances the persisted cycle the same way the eventual
@@ -407,6 +449,11 @@ pub fn select_next_speaker_after_user_message(
         Some(poster_participant_id),
         draws,
         impersonating_participant_ids,
+        // The projection READS the stored rotation but never draws one: it is
+        // asking a hypothetical ("who would follow this post?"), and a draw made
+        // here would be persisted by nobody and contradicted by the real
+        // selection (v4 `selection.ts:208-211`).
+        &crate::cycle_order::parse_cycle_order(cycle_order_json),
     )
 }
 
@@ -441,6 +488,7 @@ mod tests {
             None,
             &DrawSource::constant(0.5),
             None,
+            &[],
         );
         assert_eq!(llm_turn.next_speaker_id.as_deref(), Some("p1"));
         assert_eq!(llm_turn.reason, "only_character");
@@ -455,6 +503,7 @@ mod tests {
             None,
             &DrawSource::constant(0.5),
             Some(&overlay),
+            &[],
         );
         assert_eq!(user_turn.next_speaker_id.as_deref(), Some("p1"));
         assert_eq!(user_turn.reason, "user_turn");
@@ -503,6 +552,7 @@ mod tests {
             Some("charlie"),
             &DrawSource::constant(0.5),
             Some(&impersonating),
+            None,
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("lorian"));
         assert_eq!(result.reason, "user_turn");
@@ -523,6 +573,7 @@ mod tests {
             Some("charlie"),
             &DrawSource::constant(0.5),
             Some(&impersonating),
+            None,
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
         assert_ne!(result.reason, "user_turn");
@@ -543,6 +594,7 @@ mod tests {
             Some("charlie"),
             &DrawSource::constant(0.1),
             Some(&impersonating),
+            None,
         );
         let next = result.next_speaker_id.as_deref();
         assert_ne!(next, Some("charlie"));
@@ -562,6 +614,7 @@ mod tests {
             Some("charlie"),
             &DrawSource::constant(0.5),
             Some(&impersonating),
+            None,
         );
         assert_eq!(result.next_speaker_id.as_deref(), Some("kumar"));
         assert_eq!(result.reason, "queue");
@@ -587,6 +640,7 @@ mod tests {
                 None,
                 &DrawSource::constant(0.6),
                 None,
+                &[],
             );
             // rv 1.2 over equal weights [1,1] → B.
             assert_eq!(r.next_speaker_id.as_deref(), Some("B"));
@@ -626,6 +680,7 @@ mod tests {
                 None,
                 &DrawSource::constant(0.1),
                 None,
+                &[],
             );
         });
         assert!(

@@ -34,18 +34,28 @@ type WireState = {
   currentTurnParticipantId: string | null;
   queue: string[];
   lastSpeakerId: string | null;
+  /**
+   * P4.D172: the cycle's drawn rotation. Emitted so the Rust side's assertion on
+   * it is a real comparand rather than a default matching a default — this
+   * corpus's states carry `cycleOrder: []` (v4's `createInitialTurnState`), and
+   * `updateTurnStateAfterMessage` striking the speaker from it is measured by
+   * `seeded-rotation` below. The rotation's own family is `cycle-order.ts`.
+   */
+  cycleOrder: string[];
 };
 const st = (
   spokenSinceUserTurn: string[],
   currentTurnParticipantId: string | null,
   queue: string[],
   lastSpeakerId: string | null,
-): TurnState => ({ spokenSinceUserTurn, currentTurnParticipantId, queue, lastSpeakerId } as TurnState);
+  cycleOrder: string[] = [],
+): TurnState => ({ spokenSinceUserTurn, currentTurnParticipantId, queue, lastSpeakerId, cycleOrder } as TurnState);
 const wire = (s: TurnState): WireState => ({
   spokenSinceUserTurn: s.spokenSinceUserTurn,
   currentTurnParticipantId: s.currentTurnParticipantId,
   queue: s.queue,
   lastSpeakerId: s.lastSpeakerId,
+  cycleOrder: s.cycleOrder,
 });
 
 // Message view: { type?, role, participantId?, targetParticipantIds? }
@@ -127,6 +137,11 @@ rows.push({ kind: 'calc', id: 'turn-pass-whisper-after', messages: msgsPassWhisp
 
 // ---- updateTurnStateAfterMessage ------------------------------------------
 const upBase = st(['c1'], 'c2', ['c2', 'c3'], 'c1');
+// P4.D172: a state that ACTUALLY carries a rotation, so the `cycleOrder`
+// comparand above measures the strike rather than `[] === []`.
+const upSeeded = st(['c1'], 'c2', ['c2', 'c3'], 'c1', ['c2', 'c3', 'c1']);
+rows.push({ kind: 'update', id: 'seeded-rotation', state: wire(upSeeded), message: { role: 'ASSISTANT', participantId: 'c2' }, out: wire(updateTurnStateAfterMessage(upSeeded, asMsg({ role: 'ASSISTANT', participantId: 'c2' }), null)) });
+rows.push({ kind: 'update', id: 'seeded-rotation-whisper-leaves-it', state: wire(upSeeded), message: { role: 'ASSISTANT', participantId: 'c2', targetParticipantIds: ['c1'] }, out: wire(updateTurnStateAfterMessage(upSeeded, asMsg({ role: 'ASSISTANT', participantId: 'c2', targetParticipantIds: ['c1'] }), null)) });
 rows.push({ kind: 'update', id: 'normal', state: wire(upBase), message: { role: 'ASSISTANT', participantId: 'c2' }, out: wire(updateTurnStateAfterMessage(upBase, asMsg({ role: 'ASSISTANT', participantId: 'c2' }), null)) });
 rows.push({ kind: 'update', id: 'dup-spoken', state: wire(upBase), message: { role: 'ASSISTANT', participantId: 'c1' }, out: wire(updateTurnStateAfterMessage(upBase, asMsg({ role: 'ASSISTANT', participantId: 'c1' }), null)) });
 rows.push({ kind: 'update', id: 'whisper-noop', state: wire(upBase), message: { role: 'ASSISTANT', participantId: 'c3', targetParticipantIds: ['c1'] }, out: wire(updateTurnStateAfterMessage(upBase, asMsg({ role: 'ASSISTANT', participantId: 'c3', targetParticipantIds: ['c1'] }), null)) });

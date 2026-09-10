@@ -130,9 +130,8 @@ pub fn draw_cycle_order(
     while !pool.is_empty() {
         // Position 1 only: hold back the previous speaker when anyone else could
         // take the floor instead.
-        let hold_back = order.is_empty()
-            && exclude_first.is_some_and(|e| !e.is_empty())
-            && pool.len() > 1;
+        let hold_back =
+            order.is_empty() && exclude_first.is_some_and(|e| !e.is_empty()) && pool.len() > 1;
         let eligible: Vec<&SpeakerParticipant> = if hold_back {
             let excluded = exclude_first.unwrap();
             pool.iter().copied().filter(|p| p.id != excluded).collect()
@@ -357,14 +356,13 @@ mod tests {
     // exactly once, whatever the draws.
     #[test]
     fn the_draw_is_a_permutation() {
-        let parts = vec![seat("A", Some(0.9)), seat("B", Some(0.3)), seat("C", Some(0.8))];
+        let parts = vec![
+            seat("A", Some(0.9)),
+            seat("B", Some(0.3)),
+            seat("C", Some(0.8)),
+        ];
         for pin in [0.0, 0.25, 0.5, 0.75, 0.999] {
-            let order = draw_cycle_order(
-                &parts,
-                &HashMap::new(),
-                None,
-                &DrawSource::constant(pin),
-            );
+            let order = draw_cycle_order(&parts, &HashMap::new(), None, &DrawSource::constant(pin));
             let mut sorted = order.clone();
             sorted.sort();
             assert_eq!(sorted, vec!["A", "B", "C"], "pin {pin} gave {order:?}");
@@ -404,8 +402,7 @@ mod tests {
     fn the_draw_never_warns_on_equal_weights() {
         let parts = vec![seat("A", Some(0.0)), seat("B", Some(0.0))];
         let lines = crate::test_support::captured(|| {
-            let order =
-                draw_cycle_order(&parts, &HashMap::new(), None, &DrawSource::constant(0.6));
+            let order = draw_cycle_order(&parts, &HashMap::new(), None, &DrawSource::constant(0.6));
             assert_eq!(order.len(), 2);
         });
         assert!(

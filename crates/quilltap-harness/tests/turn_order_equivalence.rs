@@ -96,6 +96,8 @@ fn turn_order_matches_oracle() {
             scenario.is_generating,
             scenario.responding_participant_id.as_deref(),
             scenario.user_participant_id.as_deref(),
+            // P4.D172: this corpus predates the rotation — every row carries none.
+            &[],
         );
 
         assert_eq!(got.len(), out.len(), "order '{id}' length");

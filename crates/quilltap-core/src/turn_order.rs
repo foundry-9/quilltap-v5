@@ -86,6 +86,7 @@ pub fn compute_predicted_turn_order(
     is_generating: bool,
     responding_participant_id: Option<&str>,
     user_participant_id: Option<&str>,
+    cycle_order: &[String],
 ) -> Vec<TurnOrderEntry> {
     let mut entries: Vec<TurnOrderEntry> = Vec::new();
     let mut placed: HashSet<String> = HashSet::new();
@@ -114,9 +115,15 @@ pub fn compute_predicted_turn_order(
     let inactive: Vec<&TurnOrderParticipant> =
         participants.iter().filter(|p| !p.is_present()).collect();
 
-    // 4. Eligible: active, not placed, not the user, not spoken, not last
-    //    speaker, not user-controlled — sorted by talkativeness descending.
-    let mut eligible: Vec<&TurnOrderParticipant> = active
+    // 4. Still to come this cycle: active, not placed, not the user, not spoken,
+    //    not last speaker, not user-controlled.
+    //
+    //    With a drawn rotation these are in the order they will actually speak;
+    //    without one (a chat whose cycle has not started, or a row that predates
+    //    the rotation) they fall back to the old talkativeness-descending guess
+    //    (v4 `turn-order.ts:144-159`). The user's own seat holds a place in the
+    //    rotation but is positioned in step 5, so it keeps its `user-turn` style.
+    let still_to_come: Vec<&TurnOrderParticipant> = active
         .iter()
         .copied()
         .filter(|p| {
@@ -127,10 +134,29 @@ pub fn compute_predicted_turn_order(
                 && p.controlled_by.as_deref() != Some("user")
         })
         .collect();
+
+    let rotation_index: std::collections::HashMap<&str, usize> = cycle_order
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+
+    let mut eligible = still_to_come;
+    // v4's comparator, arm for arm. `sort_by` is stable, as V8's `sort` is.
     eligible.sort_by(|a, b| {
-        b.talkativeness()
-            .partial_cmp(&a.talkativeness())
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let a_rank = rotation_index.get(a.id.as_str());
+        let b_rank = rotation_index.get(b.id.as_str());
+        // Anyone in the rotation comes before anyone who is not (a latecomer
+        // whose seat the current cycle never dealt in).
+        match (a_rank, b_rank) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => b
+                .talkativeness()
+                .partial_cmp(&a.talkativeness())
+                .unwrap_or(std::cmp::Ordering::Equal),
+        }
     });
     for p in &eligible {
         add_entry(&mut entries, &mut placed, participants, &p.id, "eligible");

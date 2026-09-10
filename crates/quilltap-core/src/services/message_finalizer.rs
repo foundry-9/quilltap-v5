@@ -1623,6 +1623,7 @@ async fn calculate_next_speaker(
         turn_state.last_speaker_id.as_deref(),
         draws,
         Some(&chat.impersonating_participant_ids),
+        &turn_state.cycle_order,
     );
     let _ = (character_participant, user_participant_id);
 

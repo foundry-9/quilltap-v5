@@ -840,6 +840,9 @@ where
         Some(&poster_id),
         draws,
         Some(&impersonating),
+        // v4 `orchestrator.service.ts:1828` — the projection reads the stored
+        // rotation and never draws one (P4.D172 unit 5 measures the write).
+        chat.get("cycleOrderParticipantIds").and_then(Value::as_str),
     );
     let next_seat = next.next_speaker_id.as_ref().and_then(|nid| {
         participants

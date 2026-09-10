@@ -12,6 +12,56 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 unit 3 — the cycle's drawn rotation, tier-1 exact against v4's real modules
+
+_Versions: core 0.0.864, harness 0.0.754._
+
+`cycle_order.rs` ports v4's `lib/chat/turn-manager/cycle-order.ts` (`2aca73ad6`):
+`parse_cycle_order`, `cycle_candidates`, `draw_cycle_order`,
+`pick_from_cycle_order` and the resolver. The draw is a weighted permutation
+sampled WITHOUT replacement, one draw per remaining candidate over a shrinking
+pool — which is what the ordered `DrawSource` from unit 1 exists for. Its
+contracts carry v4's reasons: an unknown character KEEPS its seat (the map is a
+best-effort read), a lone candidate is seated even when it just spoke, a stale id
+is skipped rather than terminal, a one-seat room stores nothing rather than
+churning the row every turn, and a mid-cycle joiner goes to the BACK rather than
+triggering a redraw.
+
+v4's `resolveCycleOrder` is split: `resolve_cycle_order_pure` decides (the
+rotation, and whether to write), and the async shell performs the write and logs.
+v5's write path is a channel to the single writer, not an awaited repo call, and
+the decision is a pure function of the row and the room — which is also what makes
+it tier-1 comparable. `log_cycle_order_persisted` / `log_cycle_order_persist_failed`
+carry v4's two log lines byte-for-byte; the write failure is swallowed by contract.
+
+`turn_state.rs` gains `TurnState.cycle_order`, the strike in
+`update_turn_state_after_message`, `reset_cycle_for_user_skip` emptying it,
+`calculate_turn_state_from_history_with_cycle` (reads, never draws — v4's
+function is pure and runs on its client too), and
+`compute_cycle_order_after_message` / `_after_skip` behind the same four guards
+their spoken twins apply. `turn_order.rs` takes the rotation-rank comparator, with
+the talkativeness sort surviving only as the no-rotation fallback.
+`select_speaker.rs` gains step 2 — the rotation as an overlay, the `cycle_order`
+reason and explanation, `weights: {}` and NO `randomValue` (`SelectionDebug.
+random_value` becomes `Option<f64>`, and its ABSENCE is a comparand) — and the
+after-user twin takes v4's 8th parameter.
+
+`participant_filters.rs` gets `is_present_character_seat` /
+`get_present_character_seats`, the ONE home for v4's `getPresentCharacterSeats`.
+v5 had spelled that predicate three ways, and the third — an inline walk in
+`message_finalizer.rs` — dropped only `removed` and therefore KEPT `absent` seats
+v4 excludes. `ParticipantView` carries `participant_type` so the predicate can
+live in one place. The deprecated LLM-only alias stays (v4 still calls it at
+`autonomous-room-announce.ts:129`) with a docblock naming bug 131.
+
+NEW `cycle_order_equivalence`: 90 rows over v4's real modules at the `78b381a96`
+pin — every case name in v4's own `cycle-order.test.ts` plus the arms it leaves to
+statistics, with pinned draw arrays and a consumed-draw comparand. v4's two
+weighting cases ARE statistical (400 draws asserting `p1First > 240`) and are
+mirrored Rust-side over a fixed-seed stream. `turn_state_equivalence` gained a
+seeded-rotation row so its new `cycleOrder` assertion measures the strike rather
+than `[] === []`.
+
 #### 2026-09-09 — feat(turn-manager): P4.D172 units 1–2 — the ordered draw source, and one weighted pick for all three consumers
 
 _Versions: core 0.0.863, harness 0.0.753, host 0.0.119._

@@ -66,8 +66,11 @@ struct WireDebug {
     #[serde(rename = "eligibleSpeakers")]
     eligible_speakers: Vec<String>,
     weights: HashMap<String, f64>,
-    #[serde(rename = "randomValue")]
-    random_value: f64,
+    /// P4.D172: v4 emits NO `randomValue` key on the `cycle_order` arm (the
+    /// weighting happened once, at the draw). Absent there, present everywhere
+    /// else — and the ABSENCE is a comparand, not a default.
+    #[serde(rename = "randomValue", default)]
+    random_value: Option<f64>,
     #[serde(rename = "allLLMNewCycle", default)]
     all_llm_new_cycle: bool,
 }
@@ -242,12 +245,14 @@ fn assert_result(id: &str, got: &quilltap_core::select_speaker::SelectionResult,
                 g.all_llm_new_cycle, o.all_llm_new_cycle,
                 "{id} allLLMNewCycle"
             );
-            assert!(
-                (g.random_value - o.random_value).abs() < 1e-12,
-                "{id} randomValue: rust={} oracle={}",
-                g.random_value,
-                o.random_value
-            );
+            match (g.random_value, o.random_value) {
+                (Some(gv), Some(ov)) => assert!(
+                    (gv - ov).abs() < 1e-12,
+                    "{id} randomValue: rust={gv} oracle={ov}"
+                ),
+                (None, None) => {}
+                (gv, ov) => panic!("{id} randomValue presence mismatch: rust={gv:?} oracle={ov:?}"),
+            }
             assert_eq!(g.weights.len(), o.weights.len(), "{id} weights size");
             for (k, gv) in &g.weights {
                 let ov = o
@@ -300,6 +305,9 @@ fn select_speaker_matches_oracle() {
                     scenario.last_speaker_id.as_deref(),
                     &draws,
                     scenario.impersonating.as_deref(),
+                    // This corpus predates the rotation: every row's turn state
+                    // carries none, which is what keeps it byte-identical.
+                    &[],
                 );
                 assert_result(&format!("select '{id}'"), &got, &out);
                 assert_draws(
@@ -327,6 +335,7 @@ fn select_speaker_matches_oracle() {
                     scenario.user_participant_id.as_deref(),
                     &draws,
                     scenario.impersonating.as_deref(),
+                    None,
                 );
                 assert_result(&format!("select-after '{id}'"), &got, &out);
                 assert_draws(

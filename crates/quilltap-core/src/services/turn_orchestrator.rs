@@ -212,6 +212,7 @@ pub(crate) fn to_turnstate_participant(p: &Value) -> ParticipantView {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
+        participant_type: str_field(p, "type").unwrap_or_default().to_string(),
         status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
@@ -524,6 +525,7 @@ pub async fn should_chain_next(
             turn_state.last_speaker_id.as_deref(),
             draws,
             Some(&impersonating),
+            &turn_state.cycle_order,
         );
 
         next_participant_id = result.next_speaker_id.clone();
@@ -750,6 +752,7 @@ pub async fn handle_turn_action(
         turn_state.last_speaker_id.as_deref(),
         draws,
         Some(&crate::db::chats_impersonation::read_impersonating(&chat)),
+        &turn_state.cycle_order,
     );
 
     // Persist turnQueue + lastTurnParticipantId for state-modifying actions.
