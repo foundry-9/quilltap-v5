@@ -263,34 +263,40 @@ fn job_success_content(response: &ImageGenResponse, suffix: &str) -> String {
         .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
 }
 
-/// [decd8ef9] The post-hoc reroute's optional prompt re-craft seam.
+/// Which handler is driving [`generate_with_reroute`] — v4's two catch blocks,
+/// which differ in what gates their post-hoc reroute.
 ///
-/// v4 does this inline in the story handler's catch: the prompt the moderated
-/// provider just rejected was crafted WITH the cinematic-concealment guidance,
-/// and the reroute target accepts adult content, so it is re-crafted candidly
-/// before being resent. v5 shares the reroute machinery between the story and
-/// avatar handlers, so the re-craft arrives as a seam — the story handler
-/// passes its candid re-craft, the avatar handler passes [`NoRerouteRecraft`]
-/// (v4's avatar path is unchanged by that commit).
+/// [cc65d6bfc] The story path's door is barred for a chat the operator left
+/// moderated (bug 133): a background nobody asked for is the wrong place to
+/// discover an uncensored provider, and treating a refusal as licence to try a
+/// franker one lets the provider's moderation *promote* the chat — the ratchet
+/// pointing exactly the wrong way. v4's avatar handler is untouched by that
+/// commit: its gate stays the moderation error alone.
 ///
-/// Best-effort by contract: `None` keeps the prompt already in hand, so the
-/// reroute still produces an image.
-pub(crate) trait RerouteRecraft {
-    /// `reroute_provider` is the RESOLVED reroute target's provider label (v4
-    /// passes `reroute.profile.provider` into the re-craft context).
-    fn recraft(
-        &self,
-        reroute_provider: &str,
-    ) -> impl std::future::Future<Output = Option<String>> + Send;
+/// [decd8ef9] The candid re-craft this seam used to carry is GONE, because v4
+/// deleted it in the same commit: the reroute is now reachable only for a chat
+/// whose prompt was already crafted candidly, so there was nothing left to
+/// un-drape and re-crafting here was how a moderated chat got escalated.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RerouteHandler {
+    /// v4 `background-jobs/handlers/story-background.ts`.
+    StoryBackground {
+        /// v4's `rerouteAllowed = moderationRejection && isDangerousChat`
+        /// second conjunct.
+        is_dangerous_chat: bool,
+    },
+    /// v4 `background-jobs/handlers/character-avatar.ts` — no chat gate.
+    CharacterAvatar,
 }
 
-/// The no-op re-craft: the reroute resends the prompt it already has. The
-/// avatar handler's answer (v4 re-crafts only on the story path).
-pub(crate) struct NoRerouteRecraft;
-
-impl RerouteRecraft for NoRerouteRecraft {
-    async fn recraft(&self, _reroute_provider: &str) -> Option<String> {
-        None
+impl RerouteHandler {
+    /// v4's per-handler second conjunct on the reroute gate. The avatar has
+    /// none, which is `true` (`moderationRejection` alone decides).
+    fn chat_reroute_allowed(self) -> bool {
+        match self {
+            RerouteHandler::StoryBackground { is_dangerous_chat } => is_dangerous_chat,
+            RerouteHandler::CharacterAvatar => true,
+        }
     }
 }
 
@@ -301,11 +307,7 @@ impl RerouteRecraft for NoRerouteRecraft {
 /// the injected registry seam. Each provider attempt writes an `IMAGE_GENERATION`
 /// `llm_logs` row (v4 `logLLMCall`) via [`log_image_gen_job`].
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn generate_with_reroute<
-    I: ImageProvider,
-    A: ApiKeyResolver,
-    R: RerouteRecraft,
->(
+pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     db: &Db,
     image_provider: &I,
     api_keys: &A,
@@ -329,7 +331,7 @@ pub(crate) async fn generate_with_reroute<
     log_context: &'static str,
     reroute_log_context: &'static str,
     job_id: Option<&str>,
-    recraft: &R,
+    handler: RerouteHandler,
 ) -> Result<GenOutcome, String> {
     // The shared builder maps the handler's orientation onto the provider's own
     // size / aspect ratio / prompt wording AND attaches the profile's LoRAs and
@@ -419,7 +421,7 @@ pub(crate) async fn generate_with_reroute<
                 fail_prefix,
                 reroute_log_context,
                 job_id,
-                recraft,
+                handler,
             )
             .await
         }
@@ -428,7 +430,7 @@ pub(crate) async fn generate_with_reroute<
 
 /// The post-hoc moderation reroute half of [`generate_with_reroute`].
 #[allow(clippy::too_many_arguments)]
-async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>(
+async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     db: &Db,
     image_provider: &I,
     api_keys: &A,
@@ -445,9 +447,14 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>
     fail_prefix: &str,
     reroute_log_context: &'static str,
     job_id: Option<&str>,
-    recraft: &R,
+    handler: RerouteHandler,
 ) -> Result<GenOutcome, String> {
-    let reroute = if is_image_moderation_error(&error.message) {
+    // [cc65d6bfc] v4's `moderationRejection` / `rerouteAllowed` pair, computed
+    // ONCE: the story handler's failure bag reports both, and the second
+    // conjunct is what bars the door for a moderated chat (bug 133).
+    let moderation_rejection = is_image_moderation_error(&error.message);
+    let reroute_allowed = moderation_rejection && handler.chat_reroute_allowed();
+    let reroute = if reroute_allowed {
         let uid = user_id.to_string();
         let mode = danger_mode.to_string();
         let uncensored = uncensored_image_profile_id.map(str::to_string);
@@ -472,18 +479,13 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>
         return Err(format!("{fail_prefix}: {}", error.message));
     };
 
-    // [decd8ef9] The rejected prompt was crafted for a MODERATED provider, so
-    // unless the chat was already flagged it carries the cinematic-concealment
-    // guidance. The reroute target accepts adult content, so give the handler
-    // its chance to re-craft candidly rather than sending a needlessly draped
-    // scene to a provider that never asked for one. Best-effort: `None` keeps
-    // the prompt we already have, so the reroute still happens. Sits before the
-    // profile/orientation resolution exactly as v4's block sits before
-    // `createImageProvider`.
-    let reroute_base_prompt = recraft
-        .recraft(&reroute.profile.provider)
-        .await
-        .unwrap_or_else(|| final_prompt.to_string());
+    // [cc65d6bfc] v4 `const rerouteBasePrompt = finalPrompt!;`. The reroute is
+    // gated on the chat already being flagged, so the prompt that just got
+    // rejected was crafted with `uncensoredImageTarget` set — candid already.
+    // It goes to the reroute target as-is; there is nothing left to un-drape,
+    // and re-crafting here is how a moderated chat used to get escalated
+    // (bug 133), so the [decd8ef9] re-craft seam is deleted with it.
+    let reroute_base_prompt = final_prompt.to_string();
 
     // Rebuild for the reroute provider/model — its shape mechanism, its LoRA
     // support, and its stored options are all its own.
@@ -788,7 +790,7 @@ mod tests {
             "test.image-job",
             "test.image-job.concierge-reroute",
             None,
-            &NoRerouteRecraft,
+            RerouteHandler::CharacterAvatar,
         )
         .await
     }

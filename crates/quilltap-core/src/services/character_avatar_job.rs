@@ -324,9 +324,9 @@ where
         "background-jobs.character-avatar",
         "background-jobs.character-avatar.concierge-reroute",
         Some(job_id),
-        // [decd8ef9] The candid re-craft is the STORY path's; v4's avatar
-        // builder is unchanged, so the reroute resends the prompt it has.
-        &common::NoRerouteRecraft,
+        // [cc65d6bfc] v4's avatar handler is UNTOUCHED by bug 133: its reroute
+        // is gated on the moderation error alone, with no chat-state conjunct.
+        common::RerouteHandler::CharacterAvatar,
     )
     .await?;
 

@@ -186,87 +186,6 @@ fn nullable_string(v: &Value, key: &str) -> Option<Option<String>> {
     }
 }
 
-/// [decd8ef9] The story handler's candid re-craft for a post-hoc moderation
-/// reroute (v4's inline block inside the reroute catch, hoisted onto v5's
-/// shared [`common::RerouteRecraft`] seam because the reroute machinery is
-/// shared with the avatar handler).
-///
-/// Best-effort in BOTH of v4's failure shapes: a soft empty result and a thrown
-/// error each leave the existing (concealed) prompt in place so the reroute
-/// still produces an image. v5's crafter is total — it returns a result rather
-/// than throwing — so the two arms collapse into one `None` return.
-struct CandidRecraft<'a, C: CompletionProvider> {
-    executor: &'a CheapLlmTaskExecutor,
-    completion: &'a C,
-    /// v4's re-craft context, complete except for `provider`, which is the
-    /// RESOLVED reroute target's (`reroute.profile.provider`).
-    /// `uncensored_image_target` is hard-coded `true` there — the whole point.
-    ctx: StoryBackgroundPromptContext,
-    /// v4 `uncensoredLLMSelection ?? cheapLLMSelection`.
-    selection: CheapLlmSelection,
-    /// v4 logs which of the two it picked as `usedUncensoredCrafter`.
-    used_uncensored_crafter: bool,
-    user_id: &'a str,
-    chat_id: &'a str,
-    /// v4's `!uncensoredImageTarget && cheapLLMSelection` guard.
-    enabled: bool,
-    /// The hoisted non-participant list for the step-9b enumeration re-run.
-    non_participant: &'a [Value],
-    /// v4 `promptLengthBefore` (a JS `.length`, i.e. UTF-16 code units).
-    prompt_len_before: usize,
-}
-
-impl<C: CompletionProvider + Sync> common::RerouteRecraft for CandidRecraft<'_, C> {
-    async fn recraft(&self, reroute_provider: &str) -> Option<String> {
-        if !self.enabled {
-            return None;
-        }
-        let mut ctx = self.ctx.clone();
-        reroute_provider.clone_into(&mut ctx.provider);
-        let result = craft_story_background_prompt(
-            self.executor,
-            self.completion,
-            &ctx,
-            &self.selection,
-            self.user_id,
-            Some(self.chat_id),
-        )
-        .await;
-        // v4: `if (recraftResult.success && recraftResult.result)` — a JS truthy
-        // check, so an empty string takes the soft-failure arm.
-        match result
-            .result
-            .filter(|_| result.success)
-            .filter(|s| !s.is_empty())
-        {
-            Some(crafted) => {
-                // A fresh prompt needs the step-9b enumeration pass re-run over
-                // it — the one applied earlier belongs to the prompt being
-                // replaced.
-                let prompt = append_missing_character_enumerations(&crafted, self.non_participant);
-                tracing::info!(
-                    target: "quilltap::story_background",
-                    chat_id = self.chat_id,
-                    prompt_length_before = self.prompt_len_before,
-                    prompt_length_after = prompt.encode_utf16().count(),
-                    used_uncensored_crafter = self.used_uncensored_crafter,
-                    "[StoryBackground] Re-crafted prompt candidly for the uncensored reroute target"
-                );
-                Some(prompt)
-            }
-            None => {
-                tracing::warn!(
-                    target: "quilltap::story_background",
-                    chat_id = self.chat_id,
-                    error = result.error.as_deref().unwrap_or(""),
-                    "[StoryBackground] Candid re-craft for the reroute target returned nothing, reusing the concealed prompt"
-                );
-                None
-            }
-        }
-    }
-}
-
 /// v4 `handleStoryBackgroundGeneration`.
 pub async fn handle_story_background_generation<I, C, M, A, T, U>(
     db: &Db,
@@ -755,35 +674,6 @@ where
         .collect();
     final_prompt = append_missing_character_enumerations(&final_prompt, &non_participant);
 
-    // [decd8ef9] The candid re-craft the post-hoc moderation reroute runs before
-    // resending. v4's guard is `if (!uncensoredImageTarget && cheapLLMSelection)`:
-    // an already-candid prompt is left alone, and v5 has returned early by here
-    // when there is no cheap selection, so the second conjunct is always true.
-    // The selection is v4's `uncensoredLLMSelection ?? cheapLLMSelection`.
-    let recraft = CandidRecraft {
-        executor: deps.executor,
-        completion: deps.completion,
-        ctx: StoryBackgroundPromptContext {
-            scene_context: scene_context.clone(),
-            characters: character_descriptions.clone(),
-            // Replaced with the RESOLVED reroute target's provider.
-            provider: String::new(),
-            scene_aesthetic: scene_aesthetic.clone(),
-            character_aesthetic: character_aesthetic.clone(),
-            depiction_guidelines: depiction_for_task.clone(),
-            uncensored_image_target: true,
-        },
-        selection: uncensored_selection
-            .clone()
-            .unwrap_or_else(|| cheap_selection.clone()),
-        used_uncensored_crafter: uncensored_selection.is_some(),
-        user_id,
-        chat_id: &payload.chat_id,
-        enabled: !uncensored_image_target,
-        non_participant: &non_participant,
-        prompt_len_before: final_prompt.encode_utf16().count(),
-    };
-
     // 10. Generate the image (landscape, with post-hoc reroute).
     let outcome = common::generate_with_reroute(
         db,
@@ -806,7 +696,11 @@ where
         "background-jobs.story-background",
         "background-jobs.story-background.concierge-reroute",
         Some(job_id),
-        &recraft,
+        // [cc65d6bfc] The post-hoc reroute's door is barred for a chat the
+        // operator left moderated (bug 133): a refusal is testimony that the
+        // scene was too frank, which is poor grounds for going and finding a
+        // franker provider.
+        common::RerouteHandler::StoryBackground { is_dangerous_chat },
     )
     .await?;
 

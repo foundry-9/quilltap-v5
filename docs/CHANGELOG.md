@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — fix(story-background): the post-hoc moderation reroute is barred for a moderated chat (v4 `cc65d6bfc`, bug 133)
+
+_Versions: core 0.0.877._
+
+v4's story-background reroute was gated on the global AUTO_ROUTE setting alone and never on the chat's own Concierge state, then re-crafted the prompt candidly because the chat was moderated — so a chat the operator had deliberately left moderated got the strongest escalation available, triggered by the refusal that should have stopped it. The gate is now `moderationRejection && isDangerousChat`, which makes the re-craft unreachable: any reroute is a chat whose prompt was already candid.
+
+`generate_with_reroute` and `reroute_or_fail` take a `RerouteHandler` where they took the `RerouteRecraft` seam. It carries each handler's second conjunct on the gate — the story's `is_dangerous_chat`, the avatar's `true` (v4's avatar handler is untouched by the commit; its gate stays the moderation error alone). `moderation_rejection` and `reroute_allowed` are computed once, as v4's locals are. The `RerouteRecraft` trait, `NoRerouteRecraft`, and the story's `CandidRecraft` implementation are deleted with the block they served: v4 re-crafts nowhere at the tip, and P4.D94's lane record already named this as the seam's retirement path.
+
+A moderated chat whose backdrop is refused now fails the job with `Image generation failed: <msg>` and produces no image, which is the intended outcome. `story_background_job_tier3_equivalence`'s `moderation_recraft` and `moderation_recraft_fails` cases were red against the pre-fix tree at the `cc65d6bfc` pin and are green now; the other thirteen never moved, and `avatar_job_tier3_equivalence` is byte-neutral.
+
 #### 2026-09-10 — fix(image-gen): the two sanitizer callers answer for the scene in hand (v4 `cc65d6bfc`, bug 133)
 
 _Versions: core 0.0.876._
