@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — feat(image-jobs): the six reroute-path log lines both handlers were missing (v4 `cc65d6bfc`, bug 133)
+
+_Versions: core 0.0.878._
+
+v5's whole post-hoc reroute path was silent. v4 announces at all three points of both catch blocks — the failure ERROR, the rerouting INFO, and the after-reroute ERROR — so a moderated chat whose backdrop was refused simply did not appear, with nothing in the log saying why. This is the finding #103 / #110 class: v4 announces, the port took it in silence.
+
+`RerouteHandler` now carries each handler's log identity as well as its gate, and emits v4's sentences under its own `context` and target. `tracing`'s callsite metadata is static, so `target:` cannot be a runtime value — the per-handler lines are spelled out in a match rather than parameterised. The story failure bag is v4's post-`cc65d6bfc` shape (`moderationRejection`, `rerouteAllowed`, `isDangerousChat`, `hasUncensoredImageProvider`).
+
+Measured deviation from the work order's survey: v4's avatar failure bag carries `{context, jobId, error, moderationRejection}` and NOT `hasUncensoredImageProvider` — that identifier does not appear in `character-avatar.ts` at all. The port follows the code; a test arm asserts the key's absence, and a mutation adding it reddens exactly that arm.
+
+Five capture-layer arms (thread-scoped subscriber), including a silence arm: a non-moderation provider failure logs the ERROR with `moderationRejection: false` and emits no rerouting line. Five mutations, each reddening exactly its arms — dropping `rerouteAllowed` from the bag, deleting either wiring call, adding the avatar key, and widening the gate back to the pre-fix always-true.
+
 #### 2026-09-10 — fix(story-background): the post-hoc moderation reroute is barred for a moderated chat (v4 `cc65d6bfc`, bug 133)
 
 _Versions: core 0.0.877._

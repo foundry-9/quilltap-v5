@@ -282,10 +282,16 @@ pub(crate) enum RerouteHandler {
     /// v4 `background-jobs/handlers/story-background.ts`.
     StoryBackground {
         /// v4's `rerouteAllowed = moderationRejection && isDangerousChat`
-        /// second conjunct.
+        /// second conjunct — AND a key of the failure bag.
         is_dangerous_chat: bool,
+        /// A failure-bag key only (v4 `Boolean(uncensoredImageProfileId)`);
+        /// it has not gated the reroute since `cc65d6bfc`, and the resolver
+        /// has always re-derived it for itself.
+        has_uncensored_image_provider: bool,
     },
-    /// v4 `background-jobs/handlers/character-avatar.ts` — no chat gate.
+    /// v4 `background-jobs/handlers/character-avatar.ts` — no chat gate, and
+    /// (measured at `cc65d6bfc`, against this order's survey, which claimed
+    /// otherwise) NO `hasUncensoredImageProvider` key in its failure bag.
     CharacterAvatar,
 }
 
@@ -294,8 +300,111 @@ impl RerouteHandler {
     /// none, which is `true` (`moderationRejection` alone decides).
     fn chat_reroute_allowed(self) -> bool {
         match self {
-            RerouteHandler::StoryBackground { is_dangerous_chat } => is_dangerous_chat,
+            RerouteHandler::StoryBackground {
+                is_dangerous_chat, ..
+            } => is_dangerous_chat,
             RerouteHandler::CharacterAvatar => true,
+        }
+    }
+
+    /// v4's `logger.error('[…] Image generation failed', {…}, error)` — the
+    /// arm taken when no second door opens. Each handler's message, `context`
+    /// and bag are v4's own; the story bag gained `rerouteAllowed` and
+    /// `isDangerousChat` at `cc65d6bfc`.
+    ///
+    /// `target:` must be a literal for `tracing`'s static callsite, so the
+    /// per-handler lines are spelled out here rather than parameterised.
+    fn log_failure(self, job_id: Option<&str>, error: &str, moderation_rejection: bool) {
+        match self {
+            RerouteHandler::StoryBackground {
+                is_dangerous_chat,
+                has_uncensored_image_provider,
+            } => tracing::error!(
+                target: "quilltap::story_background",
+                context = "background-jobs.story-background",
+                job_id = job_id.unwrap_or(""),
+                error = error,
+                moderation_rejection = moderation_rejection,
+                reroute_allowed = moderation_rejection && is_dangerous_chat,
+                is_dangerous_chat = is_dangerous_chat,
+                has_uncensored_image_provider = has_uncensored_image_provider,
+                "[StoryBackground] Image generation failed"
+            ),
+            RerouteHandler::CharacterAvatar => tracing::error!(
+                target: "quilltap::character_avatar",
+                context = "background-jobs.character-avatar",
+                job_id = job_id.unwrap_or(""),
+                error = error,
+                moderation_rejection = moderation_rejection,
+                "[CharacterAvatar] Image generation failed"
+            ),
+        }
+    }
+
+    /// v4's `logger.info('[…] Image provider rejected for content moderation,
+    /// rerouting through Concierge uncensored profile', {…})` — the same
+    /// quartet plus `originalError` in both handlers.
+    #[allow(clippy::too_many_arguments)]
+    fn log_rerouting(
+        self,
+        job_id: Option<&str>,
+        original_profile_id: &str,
+        original_provider: &str,
+        fallback_profile_id: &str,
+        fallback_provider: &str,
+        original_error: &str,
+    ) {
+        match self {
+            RerouteHandler::StoryBackground { .. } => tracing::info!(
+                target: "quilltap::story_background",
+                context = "background-jobs.story-background",
+                job_id = job_id.unwrap_or(""),
+                original_profile_id = original_profile_id,
+                original_provider = original_provider,
+                fallback_profile_id = fallback_profile_id,
+                fallback_provider = fallback_provider,
+                original_error = original_error,
+                "[StoryBackground] Image provider rejected for content moderation, rerouting through Concierge uncensored profile"
+            ),
+            RerouteHandler::CharacterAvatar => tracing::info!(
+                target: "quilltap::character_avatar",
+                context = "background-jobs.character-avatar",
+                job_id = job_id.unwrap_or(""),
+                original_profile_id = original_profile_id,
+                original_provider = original_provider,
+                fallback_profile_id = fallback_profile_id,
+                fallback_provider = fallback_provider,
+                original_error = original_error,
+                "[CharacterAvatar] Image provider rejected for content moderation, rerouting through Concierge uncensored profile"
+            ),
+        }
+    }
+
+    /// v4's `logger.error('[…] Image generation failed (Concierge reroute also
+    /// failed)', { context, jobId, originalError, rerouteError }, rerouteError)`.
+    fn log_after_reroute_failure(
+        self,
+        job_id: Option<&str>,
+        original_error: &str,
+        reroute_error: &str,
+    ) {
+        match self {
+            RerouteHandler::StoryBackground { .. } => tracing::error!(
+                target: "quilltap::story_background",
+                context = "background-jobs.story-background",
+                job_id = job_id.unwrap_or(""),
+                original_error = original_error,
+                reroute_error = reroute_error,
+                "[StoryBackground] Image generation failed (Concierge reroute also failed)"
+            ),
+            RerouteHandler::CharacterAvatar => tracing::error!(
+                target: "quilltap::character_avatar",
+                context = "background-jobs.character-avatar",
+                job_id = job_id.unwrap_or(""),
+                original_error = original_error,
+                reroute_error = reroute_error,
+                "[CharacterAvatar] Image generation failed (Concierge reroute also failed)"
+            ),
         }
     }
 }
@@ -409,6 +518,7 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
                 image_provider,
                 api_keys,
                 profile_id,
+                provider,
                 &error,
                 final_prompt,
                 orientation,
@@ -435,6 +545,9 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     image_provider: &I,
     api_keys: &A,
     profile_id: &str,
+    // v4's `imageProfile.provider` / `effectiveImageProfile.provider` — a
+    // rerouting-log field only.
+    original_provider: &str,
     error: &ImageGenError,
     final_prompt: &str,
     orientation: Orientation,
@@ -476,8 +589,20 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     };
 
     let Some(reroute) = reroute else {
+        handler.log_failure(job_id, &error.message, moderation_rejection);
         return Err(format!("{fail_prefix}: {}", error.message));
     };
+
+    handler.log_rerouting(
+        job_id,
+        profile_id,
+        // v4 logs the ORIGINAL attempt's provider, which is the one the params
+        // builder was handed; `reroute_or_fail` is only reached from that arm.
+        original_provider,
+        &reroute.profile.id,
+        &reroute.profile.provider,
+        &error.message,
+    );
 
     // [cc65d6bfc] v4 `const rerouteBasePrompt = finalPrompt!;`. The reroute is
     // gated on the chat already being flagged, so the prompt that just got
@@ -555,6 +680,7 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 reroute_duration_ms,
             )
             .await;
+            handler.log_after_reroute_failure(job_id, &error.message, &reroute_error.message);
             Err(format!(
                 "{fail_prefix} after Concierge reroute: {}",
                 reroute_error.message
@@ -793,6 +919,384 @@ mod tests {
             RerouteHandler::CharacterAvatar,
         )
         .await
+    }
+
+    // === [cc65d6bfc] bug 133: the reroute-path log lines (Tier 1 item 5) ===
+    //
+    // v4 announces at all three points of its two catch blocks; v5's whole
+    // reroute path was SILENT (the #103/#110 class — a moderated chat's
+    // backdrop simply did not appear, with nothing in the log saying why).
+    // The differentials cannot see a log line, so these are the proof.
+    //
+    // A `provider` whose failure IS a moderation rejection, so the gate's
+    // second conjunct is what decides.
+    struct BlockedImageProvider {
+        /// The reroute attempt (the SECOND call) fails too when set.
+        fail_reroute: bool,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl ImageProvider for BlockedImageProvider {
+        fn generate_image(
+            &self,
+            _provider: &str,
+            _api_key: &str,
+            _params: &crate::model::image::ImageGenParams,
+        ) -> impl std::future::Future<Output = Result<ImageGenResponse, ImageGenError>> + Send
+        {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let fail_reroute = self.fail_reroute;
+            async move {
+                if n == 0 {
+                    return Err(ImageGenError {
+                        message: "content policy violation on this prompt".to_string(),
+                    });
+                }
+                if fail_reroute {
+                    return Err(ImageGenError {
+                        message: "the second door slammed too".to_string(),
+                    });
+                }
+                Ok(ImageGenResponse {
+                    images: vec![GeneratedImageData {
+                        data: Some("aGk=".to_string()),
+                        url: None,
+                        mime_type: Some("image/png".to_string()),
+                        revised_prompt: None,
+                    }],
+                })
+            }
+        }
+    }
+
+    /// An `api_keys`-free resolver that always answers, so the reroute resolves
+    /// on the strength of the seeded `image_profiles` row alone.
+    struct AlwaysApiKey;
+    impl ApiKeyResolver for AlwaysApiKey {
+        fn resolve(&self, _api_key_id: &str, _user_id: &str) -> Option<String> {
+            Some("sk-reroute".to_string())
+        }
+    }
+
+    const UNCENSORED_ID: &str = "e5000000-0000-4000-8000-000000000004";
+
+    /// Seed the one `image_profiles` row the reroute resolver reads.
+    async fn seed_uncensored_profile(db: &Db) {
+        db.write(|w| {
+            let conn = w.main().connection();
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS image_profiles (\
+                   id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+                   apiKeyId TEXT, baseUrl TEXT, modelName TEXT, parameters TEXT, \
+                   isDefault INTEGER, isDangerousCompatible INTEGER, tags TEXT, \
+                   createdAt TEXT, updatedAt TEXT);",
+            )?;
+            conn.execute(
+                "INSERT OR REPLACE INTO image_profiles VALUES \
+                   (?1, 'user-1', 'Uncensored Images', 'OPENAI', 'key-1', NULL, \
+                    'uncensored-model', '{}', 0, 1, '[]', '2026-01-01', '2026-01-01')",
+                [UNCENSORED_ID],
+            )?;
+            Ok(())
+        })
+        .await
+        .expect("seed the uncensored image profile");
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_blocked(
+        db: &Db,
+        handler: RerouteHandler,
+        uncensored: Option<&str>,
+        fail_reroute: bool,
+    ) -> (Result<GenOutcome, String>, usize) {
+        let declarations: Box<ImageDeclarationsFn> =
+            Box::new(|_p: &str| ImageDeclarations::default());
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let out = generate_with_reroute(
+            db,
+            &BlockedImageProvider {
+                fail_reroute,
+                calls: calls.clone(),
+            },
+            &AlwaysApiKey,
+            "profile-1",
+            "OPENAI",
+            "blocked-model",
+            &Value::Null,
+            "sk-test",
+            "a prompt",
+            Orientation::Square,
+            &declarations,
+            "AUTO_ROUTE",
+            uncensored,
+            "user-1",
+            None,
+            None,
+            "Image generation failed",
+            "test.image-job",
+            "test.image-job.concierge-reroute",
+            Some("job-7"),
+            handler,
+        )
+        .await;
+        (out, calls.load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    /// The whole point of bug 133: a MODERATED chat's refusal ends the matter.
+    /// v4's failure bag gained `rerouteAllowed` and `isDangerousChat`, and the
+    /// resolver is never even asked (one provider call, not two).
+    #[tokio::test]
+    async fn moderated_story_failure_logs_the_bug_133_keys_and_never_reroutes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+        let handler = RerouteHandler::StoryBackground {
+            is_dangerous_chat: false,
+            has_uncensored_image_provider: true,
+        };
+        let (out, calls, lines) = {
+            let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            let subscriber = {
+                use tracing_subscriber::layer::SubscriberExt;
+                tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()))
+            };
+            let guard = tracing::subscriber::set_default(subscriber);
+            let (out, calls) = run_blocked(&db, handler, Some(UNCENSORED_ID), false).await;
+            drop(guard);
+            let lines = logs.lock().unwrap().clone();
+            (out, calls, lines)
+        };
+
+        assert_eq!(
+            out.err().as_deref(),
+            Some("Image generation failed: content policy violation on this prompt"),
+            "a moderated chat's refused backdrop fails the job"
+        );
+        assert_eq!(calls, 1, "the second door was never opened");
+
+        let failure = one_line(&lines, "[StoryBackground] Image generation failed");
+        assert!(
+            failure.starts_with("ERROR quilltap::story_background"),
+            "level + target: {failure}"
+        );
+        for field in [
+            "context=background-jobs.story-background",
+            "job_id=job-7",
+            "error=content policy violation on this prompt",
+            "moderation_rejection=true",
+            "reroute_allowed=false",
+            "is_dangerous_chat=false",
+            "has_uncensored_image_provider=true",
+        ] {
+            assert!(failure.contains(field), "missing {field} in: {failure}");
+        }
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("rerouting through Concierge")),
+            "no rerouting line when the door is barred: {lines:?}"
+        );
+    }
+
+    /// A FLAGGED chat still goes through, and both handlers announce it with
+    /// v4's quartet plus `originalError`.
+    #[tokio::test]
+    async fn flagged_story_reroute_announces_the_second_door() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+        let handler = RerouteHandler::StoryBackground {
+            is_dangerous_chat: true,
+            has_uncensored_image_provider: true,
+        };
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let (out, calls) = {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            let r = run_blocked(&db, handler, Some(UNCENSORED_ID), false).await;
+            drop(guard);
+            r
+        };
+        let lines = logs.lock().unwrap().clone();
+
+        assert!(out.is_ok(), "the reroute produced an image");
+        assert_eq!(calls, 2, "original attempt + reroute attempt");
+
+        let info = one_line(
+            &lines,
+            "[StoryBackground] Image provider rejected for content moderation, rerouting through Concierge uncensored profile",
+        );
+        assert!(
+            info.starts_with("INFO quilltap::story_background"),
+            "level + target: {info}"
+        );
+        for field in [
+            "context=background-jobs.story-background",
+            "job_id=job-7",
+            "original_profile_id=profile-1",
+            "original_provider=OPENAI",
+            &format!("fallback_profile_id={UNCENSORED_ID}"),
+            "fallback_provider=OPENAI",
+            "original_error=content policy violation on this prompt",
+        ] {
+            assert!(info.contains(field), "missing {field} in: {info}");
+        }
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[StoryBackground] Image generation failed")),
+            "no failure line on a successful reroute: {lines:?}"
+        );
+    }
+
+    /// v4's third line: the reroute target refused too.
+    #[tokio::test]
+    async fn a_failed_reroute_logs_both_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+        let handler = RerouteHandler::StoryBackground {
+            is_dangerous_chat: true,
+            has_uncensored_image_provider: true,
+        };
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let out = {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            let (out, _) = run_blocked(&db, handler, Some(UNCENSORED_ID), true).await;
+            drop(guard);
+            out
+        };
+        let lines = logs.lock().unwrap().clone();
+
+        assert_eq!(
+            out.err().as_deref(),
+            Some("Image generation failed after Concierge reroute: the second door slammed too")
+        );
+        let line = one_line(
+            &lines,
+            "[StoryBackground] Image generation failed (Concierge reroute also failed)",
+        );
+        assert!(line.starts_with("ERROR quilltap::story_background"));
+        assert!(line.contains("original_error=content policy violation on this prompt"));
+        assert!(line.contains("reroute_error=the second door slammed too"));
+    }
+
+    /// v4's avatar handler is UNTOUCHED by bug 133: no chat gate, and its
+    /// failure bag carries `moderationRejection` and nothing else new. Its
+    /// three lines are the same three sentences under its own name.
+    #[tokio::test]
+    async fn the_avatar_handler_logs_its_own_three_sentences() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        // Reroute path: the resolver finds the profile, so both lines fire.
+        seed_uncensored_profile(&db).await;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            let (out, calls) = run_blocked(
+                &db,
+                RerouteHandler::CharacterAvatar,
+                Some(UNCENSORED_ID),
+                true,
+            )
+            .await;
+            drop(guard);
+            assert!(out.is_err());
+            assert_eq!(calls, 2, "the avatar's door is NOT barred by a chat state");
+        }
+        let lines = logs.lock().unwrap().clone();
+        let info = one_line(
+            &lines,
+            "[CharacterAvatar] Image provider rejected for content moderation, rerouting through Concierge uncensored profile",
+        );
+        assert!(info.starts_with("INFO quilltap::character_avatar"));
+        assert!(info.contains("context=background-jobs.character-avatar"));
+        let after = one_line(
+            &lines,
+            "[CharacterAvatar] Image generation failed (Concierge reroute also failed)",
+        );
+        assert!(after.starts_with("ERROR quilltap::character_avatar"));
+
+        // And the avatar's own failure arm, with NO uncensored profile to find:
+        // v4's bag is `{context, jobId, error, moderationRejection}` — measured
+        // at `cc65d6bfc` against this order's survey, which claimed it also
+        // carried `hasUncensoredImageProvider`. It does not.
+        let dir2 = tempfile::tempdir().unwrap();
+        let db2 = open_db(dir2.path());
+        let logs2 = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs2.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            let (out, _) = run_blocked(&db2, RerouteHandler::CharacterAvatar, None, false).await;
+            drop(guard);
+            assert!(out.is_err());
+        }
+        let lines2 = logs2.lock().unwrap().clone();
+        let failure = one_line(&lines2, "[CharacterAvatar] Image generation failed");
+        assert!(failure.contains("moderation_rejection=true"));
+        assert!(
+            !failure.contains("has_uncensored_image_provider"),
+            "v4's avatar bag has no such key: {failure}"
+        );
+        assert!(
+            !failure.contains("reroute_allowed"),
+            "nor `rerouteAllowed` — that local is the story handler's: {failure}"
+        );
+    }
+
+    /// The silence arm: a NON-moderation failure logs the ERROR with
+    /// `moderationRejection: false` and emits no rerouting line at all.
+    #[tokio::test]
+    async fn a_non_moderation_failure_reports_it_and_says_nothing_about_rerouting() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            // `SlowImageProvider { fail: true }` throws "provider exploded",
+            // which `is_image_moderation_error` does not match.
+            let out = run_gen(&db, true).await;
+            drop(guard);
+            assert!(out.is_err());
+        }
+        let lines = logs.lock().unwrap().clone();
+        let failure = one_line(&lines, "[CharacterAvatar] Image generation failed");
+        assert!(
+            failure.contains("moderation_rejection=false"),
+            "a plain provider error is not a moderation rejection: {failure}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("rerouting through Concierge")),
+            "nothing to reroute: {lines:?}"
+        );
+    }
+
+    /// Exactly one captured line contains `needle`; hand it back.
+    fn one_line<'a>(lines: &'a [String], needle: &str) -> &'a str {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one line containing {needle:?}, got {hits:?} (all: {lines:?})"
+        );
+        hits[0]
     }
 
     #[tokio::test]

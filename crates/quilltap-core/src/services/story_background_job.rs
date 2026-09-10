@@ -700,7 +700,10 @@ where
         // operator left moderated (bug 133): a refusal is testimony that the
         // scene was too frank, which is poor grounds for going and finding a
         // franker provider.
-        common::RerouteHandler::StoryBackground { is_dangerous_chat },
+        common::RerouteHandler::StoryBackground {
+            is_dangerous_chat,
+            has_uncensored_image_provider,
+        },
     )
     .await?;
 
