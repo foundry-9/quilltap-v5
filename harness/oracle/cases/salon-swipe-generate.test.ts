@@ -31,6 +31,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp $V5W/harness/oracle/cases/salon-swipe-generate.test.ts "$TMPO/cases/"
  *   cp $V5W/harness/oracle/lib/p4d171-columns.ts "$TMPO/lib/"
+ *   cp $V5W/harness/oracle/lib/pinned-draws.ts "$TMPO/lib/"
  *   cp $V5W/harness/oracle/fixtures/salon.json                "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   TZ=UTC QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db \
@@ -46,6 +47,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { ensureP4D171Columns } from '../lib/p4d171-columns';
+import { pinDraws } from '../lib/pinned-draws';
 
 interface Spec {
   testPepperBase64: string;
@@ -302,8 +304,11 @@ async function main(): Promise<void> {
       }
     } as DateConstructor;
     (global as { Date: DateConstructor }).Date = FakeDate;
-    const realRandom = Math.random;
-    Math.random = () => 0;
+    // P4.D172: the pin is an ordered SEQUENCE, not a scalar — `drawCycleOrder`
+    // draws once per remaining candidate. `[0]` repeats its last value, so this
+    // is byte-identical to the `Math.random = () => 0` it replaces; an arm that
+    // needs a real sequence later changes this array and nothing else.
+    const pinned = pinDraws([0]);
 
     try {
       const url = `http://localhost/api/v1/messages/${c.messageId}?action=swipe`;
@@ -340,7 +345,7 @@ async function main(): Promise<void> {
       outLines.push(JSON.stringify({ name: c.name, status, body, tables, canned }));
     } finally {
       (global as { Date: DateConstructor }).Date = RealDate;
-      Math.random = realRandom;
+      pinned.restore();
       await closeDatabase();
       closeMountIndexSQLiteClient();
       rmSync(work, { recursive: true, force: true });

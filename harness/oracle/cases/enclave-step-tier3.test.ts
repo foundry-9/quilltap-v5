@@ -62,6 +62,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { pinDraws } from '../lib/pinned-draws';
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -448,8 +449,11 @@ async function main(): Promise<void> {
     }
   } as DateConstructor;
   (global as { Date: DateConstructor }).Date = FakeDate;
-  const realRandom = Math.random;
-  Math.random = () => 0;
+  // P4.D172: the pin is an ordered SEQUENCE, not a scalar — `drawCycleOrder`
+  // draws once per remaining candidate. `[0]` repeats its last value, so this
+  // is byte-identical to the `Math.random = () => 0` it replaces; an arm that
+  // needs a real sequence later changes this array and nothing else.
+  const pinned = pinDraws([0]);
 
   const lines: string[] = [];
 
@@ -503,7 +507,7 @@ async function main(): Promise<void> {
   }
 
   (global as { Date: DateConstructor }).Date = RealDate;
-  Math.random = realRandom;
+  pinned.restore();
 
   for (const s of cannedStreams.values()) lines.push(JSON.stringify({ kind: 'cannedStream', ...s }));
   for (const c of cannedCompletions.values()) lines.push(JSON.stringify({ kind: 'cannedCompletion', ...c }));

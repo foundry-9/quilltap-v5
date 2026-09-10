@@ -547,6 +547,89 @@ mod tests {
         assert_eq!(r.order, vec!["A", "B"], "B was held off the head");
     }
 
+    /// P4.D172 item 9 (the engine half): the CONSUMPTION SHAPE the ordered draw
+    /// source exists for — N draws for an N-seat room on the first turn of a
+    /// fresh cycle, and ZERO on every later turn of the same cycle.
+    ///
+    /// The second half is the one worth pinning. `resolve_cycle_order` is called
+    /// by every server path before it asks who speaks next, so if it re-drew each
+    /// time, six sites would burn draws (and disagree with each other) on a
+    /// rotation that was already decided. "Drawn once and then kept" is the whole
+    /// claim of v4 `2aca73ad6`, and a draw COUNT is the only thing that can state
+    /// it: the returned order looks identical either way.
+    #[test]
+    fn a_cycle_draws_once_per_seat_then_stops_drawing() {
+        let parts = vec![
+            seat("A", Some(0.9)),
+            seat("B", Some(0.3)),
+            seat("C", Some(0.8)),
+        ];
+        let chars = HashMap::new();
+
+        // A counting source, so the COUNT is the comparand rather than the order.
+        let counted = |values: Vec<f64>| {
+            let n = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let hits = n.clone();
+            let cursor = std::sync::atomic::AtomicUsize::new(0);
+            let src = DrawSource::from_fn(move || {
+                let i = cursor.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                hits.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                values[i.min(values.len() - 1)]
+            });
+            (src, n)
+        };
+
+        // Turn 1 — nothing on the row. Three seats, three draws.
+        let (src, count) = counted(vec![0.1, 0.5, 0.9]);
+        let first = resolve_cycle_order_pure(&parts, &chars, &[], &[], None, &src);
+        assert_eq!(
+            count.load(std::sync::atomic::Ordering::Relaxed),
+            parts.len(),
+            "a fresh cycle draws once per remaining candidate"
+        );
+        assert_eq!(first.persist, Some(CyclePersistHow::Drawn));
+        assert_eq!(first.order.len(), 3);
+
+        // Turn 2 — the rotation is on the row and the head has spoken. The order
+        // still seats somebody, so nothing is drawn and nothing is written.
+        let spoken = vec![first.order[0].clone()];
+        let (src2, count2) = counted(vec![0.1, 0.5, 0.9]);
+        let second = resolve_cycle_order_pure(
+            &parts,
+            &chars,
+            &first.order,
+            &spoken,
+            Some(&first.order[0]),
+            &src2,
+        );
+        assert_eq!(
+            count2.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "a cycle already under way must not draw again — the rotation was \
+             decided on turn 1 and every reader follows it"
+        );
+        assert_eq!(second.order, first.order, "and the order is unchanged");
+        assert_eq!(second.persist, None, "so there is nothing to write");
+
+        // Turn 3 — the cycle is spent, so it redraws: three seats, three draws.
+        let all_spoken: Vec<String> = first.order.clone();
+        let (src3, count3) = counted(vec![0.1, 0.5, 0.9]);
+        let third = resolve_cycle_order_pure(
+            &parts,
+            &chars,
+            &first.order,
+            &all_spoken,
+            Some(&first.order[2]),
+            &src3,
+        );
+        assert_eq!(
+            count3.load(std::sync::atomic::Ordering::Relaxed),
+            parts.len(),
+            "a spent cycle draws a fresh rotation"
+        );
+        assert_eq!(third.persist, Some(CyclePersistHow::Drawn));
+    }
+
     // A stale id (a departed seat) is skipped, not terminal.
     #[test]
     fn stale_ids_are_skipped_on_read() {

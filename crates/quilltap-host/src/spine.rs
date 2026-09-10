@@ -3811,6 +3811,37 @@ mod tests {
         }
     }
 
+    /// P4.D172 item 9 (the host half): the PRODUCTION draw source is a closure
+    /// over the OS CSPRNG, drawn afresh on every call — not a value sampled once
+    /// and repeated.
+    ///
+    /// This is what the whole `DrawSource` change is for. `drawCycleOrder` calls
+    /// `Math.random()` once per remaining candidate, so a source that answered
+    /// the same number every time would make every position of the permutation
+    /// land on the same relative offset: the rotation would still be a
+    /// permutation, and it would still look plausible, but it would not be the
+    /// weighted draw v4 makes. A `DrawSource::constant` reaching production is
+    /// exactly the shape this test refuses.
+    #[test]
+    fn the_production_draw_source_is_fresh_per_call() {
+        let src = os_draw_source();
+        let draws: Vec<f64> = (0..64).map(|_| src.draw()).collect();
+        for (i, r) in draws.iter().enumerate() {
+            assert!((0.0..1.0).contains(r), "draw[{i}] out of range: {r}");
+        }
+        // 64 draws off a 53-bit CSPRNG collide with probability ~2^-42; a
+        // constant source collapses to ONE distinct value, which is the failure
+        // this is looking for.
+        let distinct: std::collections::BTreeSet<u64> = draws.iter().map(|r| r.to_bits()).collect();
+        assert!(
+            distinct.len() > 60,
+            "the production source repeats itself ({} distinct of 64) — it is \
+             behaving like `DrawSource::constant`, and a whole cycle's rotation \
+             would be decided by one draw",
+            distinct.len()
+        );
+    }
+
     /// The JS `getTimezoneOffset()` sign convention: positive = WEST of UTC.
     /// Pinned at absolute instants so the assertions hold on any host zone.
     /// (jiff's raw `to_offset` is east-positive; the flip is the point.)

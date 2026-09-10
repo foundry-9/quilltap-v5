@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-09 — feat(turn-manager): P4.D172 items 7–9 — the alias caller census, the ordered oracle pin, and the draw-count proof
+
+_Versions: core 0.0.867, harness 0.0.757, host 0.0.121._
+
+**Item 7 — the deprecated alias, made executable rather than asserted in prose.**
+`get_active_character_participants` returns LLM-controlled seats only despite its
+name, which is what v4 bug 131 was. v4 KEPT it because one caller survives at the
+tip (`autonomous-room-announce.ts:129`), so v5's `enclave/announce.rs` keeps
+calling its port and the alias stays exported. Both directions of that decision
+can rot quietly — a lane could tidy the alias away (silently widening the
+autonomous-room announcement to seats the human drives), or a NEW selection site
+could reach for it by name and reintroduce the bug in a file no differential
+covers. `deprecated_alias_callers_guard` is the census that makes both loud; the
+allow-list IS the statement. Neither `enclave/announce.rs`'s call nor
+`turn_pause_filters_equivalence`'s by-name comparison moved — their only diff
+against `main` is the mandatory `participant_type` struct field.
+
+**Item 8 — the three frozen-zero oracle pins re-spelled as ordered sequences.**
+`Math.random = () => 0` became `pinDraws([0])` over a new shared
+`harness/oracle/lib/pinned-draws.ts`, which mirrors
+`DrawSource::sequence` exactly (repeating its last value once exhausted,
+answering `0` when empty). A one-element array behaves identically to the scalar
+freeze, so this is byte-neutral for `orchestrator_tier3`, `enclave_step_tier3`,
+`regenerate_swipe_tier3` and `salon_swipe_generate` — proven by all four passing
+against unchanged v5 code — and an arm that needs a real sequence later changes
+the array and nothing else. Three recipes now stage the lib alongside the case.
+
+**Item 9 — the draw COUNT, which is the only thing that can state "drawn once and
+then kept".** The engine half
+(`cycle_order::a_cycle_draws_once_per_seat_then_stops_drawing`) pins the shape a
+returned order cannot show: three seats draw three times on a fresh cycle, ZERO
+on the next turn of the same cycle, and three again once it is spent. That second
+assertion is the load-bearing one — six server paths call `resolve_cycle_order`
+before asking who speaks next, and a re-draw at each would burn draws and let
+them disagree while still returning a plausible permutation. The host half
+(`spine::the_production_draw_source_is_fresh_per_call`) pins that production
+draws from a per-call OS closure rather than one sampled value: 64 draws must
+yield more than 60 distinct bit patterns, which a `DrawSource::constant` reaching
+production would collapse to one.
+
 #### 2026-09-09 — feat(turn-manager): P4.D172 units 5–6 — the six selection sites, the strike, the skip, and `?action=turn`'s rotation
 
 _Versions: core 0.0.866, harness 0.0.756._

@@ -118692,3 +118692,90 @@ tier-1 families confirmed individually by their own `OK:` lines under
 whose 42 oracle rows make its only early-return unreachable).
 
 Versions: core 0.0.865 → 0.0.866, harness 0.0.755 → 0.0.756.
+
+### Items 7–9 — the alias census, the ordered oracle pin, and the draw-count proof
+
+**Item 7 — `enclave/announce.rs` and `turn_pause_filters_equivalence.rs`,
+UNTOUCHED, with v4's line that keeps the alias.**
+
+v4's surviving caller at `78b381a96`:
+
+```text
+lib/background-jobs/handlers/autonomous-room-announce.ts:129
+  const startParticipants = getActiveCharacterParticipants(chat.participants ?? []);
+```
+
+`participant-resolver.service.ts:335` and `chat-message/index.ts:44` re-export it,
+but that is the ONLY production call — so v5's `enclave/announce.rs:289` keeps
+calling its port and `participant_filters` keeps exporting it.
+
+**Both files' only diff against `main` is the mandatory `participant_type` struct
+field** that unit 3's `ParticipantView` widening forced (5 and 6 insertions,
+inspected line by line). No alias call, and no comparison, moved. In
+`turn_pause_filters_equivalence` the field is seeded `String::new()` deliberately
+rather than `"CHARACTER"`: that corpus carries no `type` at all, so v4 evaluates
+`undefined === 'CHARACTER'` as false, and a wrong literal would mask a future
+reader that starts consulting it.
+
+**Landed beyond the order: `deprecated_alias_callers_guard`.** The order asks for
+this to be "stated in the lane record", but a sentence in a log cannot fail. The
+census walks `crates/**/*.rs` and holds every use of the alias against an
+allow-list that carries its own justification per file, so BOTH rot directions are
+loud: a lane tidying the alias away (silently widening the autonomous-room
+announcement to seats the human drives) and a new selection site reaching for it
+by name (reintroducing bug 131 in a file no differential covers). **Its first run
+caught my own miscount** — I had written 4 for `participant_filters.rs` where the
+real number is 3 — which is the census doing exactly its job on the way in.
+
+**Item 8 — the three frozen-zero pins as ordered sequences.**
+NEW `harness/oracle/lib/pinned-draws.ts` mirrors
+`weighted_random::DrawSource::sequence` exactly: values in order, the LAST one
+repeating once exhausted, `0` when empty. `Math.random = () => 0` becomes
+`pinDraws([0])` in `orchestrator-tier3`, `enclave-step-tier3`,
+`regenerate-swipe-tier3` and `salon-swipe-generate`.
+
+Because a one-element array IS the scalar freeze, the re-spelling is byte-neutral
+— and that is not asserted, it is measured: all four families pass against
+UNCHANGED v5 code, which they could not do if the oracle bytes had shifted. An
+arm that needs a real sequence later edits the array and nothing else.
+
+The three tier-3 recipes now stage the lib (`mkdir -p … "$TMPO/lib"` +
+`cp .../pinned-draws.ts`). ⚠ **Those recipes live in the RUST test's `//!`
+header, not the `.ts` case file** — I edited the `.ts` headers first and the
+driver ignored them, because it synthesizes staging from the `.rs`. Worth knowing
+for any lane adding a shared oracle import. (`salon-swipe-generate` stages from
+its own `.ts` header, which is why it worked immediately.) The jest import must
+also DROP the `.js` extension — jest resolves `../lib/x` to the staged `.ts`, but
+not `../lib/x.js`.
+
+**Item 9 — the draw COUNT, in two halves.**
+
+*The engine half*, `cycle_order::a_cycle_draws_once_per_seat_then_stops_drawing`:
+a counting `DrawSource` over a three-seat room proves 3 draws on a fresh cycle,
+**0 on the next turn of the same cycle**, and 3 again once it is spent. The
+middle assertion is the load-bearing one and the reason a count is the only
+instrument that works here: six server paths call `resolve_cycle_order` before
+asking who speaks next, and a re-draw at each would burn draws and let the sites
+disagree — while still returning a perfectly plausible permutation that no
+order-comparison could fault.
+
+*The host half*, `spine::the_production_draw_source_is_fresh_per_call`: 64 draws
+off `os_draw_source()` must yield more than 60 distinct bit patterns. A
+`DrawSource::constant` reaching production collapses that to ONE, which is
+precisely the failure the whole `DrawSource` change exists to prevent — a single
+value would make every position of the permutation land on the same relative
+offset, and the rotation would look plausible while not being v4's weighted draw.
+
+**Recorded deviation from the order's placement.** Item 9 asks for "a
+`host_cadence` arm". `os_draw_source` and `os_random01` are private to
+`spine.rs`, and `host_cadence.rs` is an integration test outside the crate, so it
+cannot reach either. The host half therefore lands in `spine.rs`'s own test
+module beside the existing `random01_in_unit_interval`, which is where its
+siblings already live; `host_cadence.rs` is untouched.
+
+Gate: `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+-D warnings` clean in BOTH feature sets; release build clean; the full workspace
+test with the 41-variable env block. The four re-spelled families re-run through
+the sweep driver at the `78b381a96` pin, all green.
+
+Versions: core 0.0.866 → 0.0.867, harness 0.0.756 → 0.0.757, host 0.0.120 → 0.0.121.
