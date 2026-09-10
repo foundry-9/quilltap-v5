@@ -2735,9 +2735,11 @@ fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
 /// `Boolean(dangerSettings.uncensoredImageProfileId)` is the non-empty check
 /// (`Boolean('')` is false), which v5 already spelled that way.
 ///
-/// Extracted so it has a home a test can reach: the tier-3 image-generation
-/// corpus keeps the Concierge OFF and sends no messages, so no case in it ever
-/// reaches this line (see that family's header).
+/// Extracted so it has a home a test can reach. It was corpus-blind when the
+/// P4.D178 lane opened — the tier-3 image-generation corpus kept the Concierge
+/// OFF throughout — so the unit test below was its only proof. The corpus now
+/// carries `detect_only_sanitizes_appearance`, which measures this line through
+/// the production call site; both proofs stand.
 fn tool_routes_dangerous_to_uncensored(danger_settings: &DangerousContentSettings) -> bool {
     danger_settings.mode == "AUTO_ROUTE"
         && danger_settings
@@ -2753,8 +2755,10 @@ mod bug_133_tests {
 
     /// [cc65d6bfc] bug 133's tool half: "an uncensored profile is configured"
     /// is not "this scene routes there". Under DETECT_ONLY nothing reroutes, so
-    /// a dangerous appearance must be sanitized. Corpus-blind (the tier-3
-    /// family keeps the Concierge OFF), so this is the derivation's only proof.
+    /// a dangerous appearance must be sanitized. This pinned the derivation
+    /// while it was corpus-blind; `detect_only_sanitizes_appearance` now
+    /// measures it end-to-end too, and these five arms still cover the shapes a
+    /// corpus case cannot cheaply carry (the empty-string profile id).
     #[test]
     fn tool_routes_dangerous_to_uncensored_needs_auto_route_and_a_profile() {
         fn settings(mode: &str, uncensored: Option<&str>) -> DangerousContentSettings {

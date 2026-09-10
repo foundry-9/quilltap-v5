@@ -294,6 +294,23 @@
       "op": "avatar",
       "chatType": "salon",
       "avatarGenerationEnabled": false
+    },
+    "detect_only_sanitizes_appearance": {
+      "$comment": "[cc65d6bfc / bug 133] The image tool's half. Under DETECT_ONLY nothing reroutes on the spot, so a dangerous appearance stays on the moderated provider and must be sanitized — even with an uncensored image profile configured. This case exists because the family's own header said the corpus keeps the Concierge OFF throughout, which made the tool's `routesDangerousToUncensored` derivation structurally invisible while a live divergence sat behind it. The prompt carries a `{{Aurora}}` placeholder, which is what makes `resolveAppearances` run (v4 gates it on `parsePlaceholders(prompt).length > 0`, not on messages), so the classify + sanitize pair fires and the sanitized text reaches the craft prompt, the image key and every llm_logs projection. Pre-fix v5 read mere existence and returned unchanged at rule 4. The uncensored id points at the fixture's one image profile deliberately: nothing on this path dereferences it (the post-hoc reroute is never reached — the generation succeeds), and what the pre-fix trap needed was only that it be NON-EMPTY.",
+      "id": "aaaa001e-0000-4000-8000-00000000001e",
+      "op": "generate",
+      "prompt": "{{Aurora}} on a moonlit terrace",
+      "orientation": "portrait",
+      "dangerousContentSettings": {
+        "mode": "DETECT_ONLY",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a1"
+      }
     }
   }
 }

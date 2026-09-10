@@ -95,6 +95,13 @@ interface ChatSpec {
   clearLantern?: boolean;
   /** RAW tool arguments (see the call site) — deliberately `unknown`. */
   toolInput?: unknown;
+  /**
+   * [cc65d6bfc / bug 133] The case's own `chat_settings.dangerousContentSettings`
+   * bag, patched onto the fresh copy before the handler runs (one chat-settings
+   * row, one user — so a per-case danger bag has to be fixture state applied
+   * here, identically on both sides). The story family's shape.
+   */
+  dangerousContentSettings?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -253,8 +260,13 @@ async function main(): Promise<void> {
       };
     });
 
-    // Completion seam (recording pattern). Only the craft-prompt call fires (the
-    // corpus keeps danger OFF + no messages, so no classify/resolve/sanitize).
+    // Completion seam (recording pattern). For most cases only the craft-prompt
+    // call fires — the corpus keeps danger OFF and no case carries a
+    // placeholder, so `resolveAppearances` never runs. [cc65d6bfc / bug 133]
+    // `detect_only_sanitizes_appearance` is the exception, and the reason the
+    // resolve / classify / sanitize branches below exist: that "the corpus
+    // keeps danger OFF" note used to be a scope statement and was really a
+    // blind spot, with a live divergence behind it.
     jest.doMock('@/lib/llm', () => {
       const actual = jest.requireActual('@/lib/llm');
       return {
@@ -266,11 +278,39 @@ async function main(): Promise<void> {
             const user = messages.find((m) => m.role === 'user')?.content ?? '';
             // Craft: fail (empty) for the rose-garden placeholder case → the
             // tier-concatenation fallback; a success otherwise.
+            const system = messages.find((m) => m.role === 'system')?.content ?? '';
             let response: string;
             if (user.startsWith('Original prompt: ')) {
               response = /rose garden/.test(user)
                 ? ''
                 : 'A cinematic rendering with rich detail and dramatic lighting.';
+            } else if (user.includes('Determine what each character currently looks like and is wearing:')) {
+              // [cc65d6bfc] `resolveCharacterAppearances` — reached only by a
+              // case whose prompt carries a placeholder (v4 gates on
+              // `parsePlaceholders(prompt).length > 0`, not on messages).
+              const ids = [...user.matchAll(/\(ID: ([0-9a-f-]{36})\)/g)].map((m) => m[1]);
+              response = JSON.stringify(
+                ids.map((id) => ({ characterId: id, selectedDescriptionId: null, clothingDescription: 'wearing nothing at all', clothingSource: 'narrative' })),
+              );
+            } else if (user.startsWith('Classify the following content:')) {
+              // The Concierge's cheap-LLM classification of the concatenated
+              // appearance text (the moderation registry is nulled below).
+              response = JSON.stringify({
+                isDangerous: true,
+                score: 0.91,
+                categories: [{ category: 'sexual', score: 0.91, label: 'explicit' }],
+              });
+            } else if (system.startsWith('You are a content safety filter for image generation prompts.')) {
+              // The sanitize task. REWRITING (not echoing) is what makes the
+              // row discriminating: v4's merge only sets `wasSanitized` when
+              // the text actually changed.
+              const items = JSON.parse(user) as Array<{ characterId: string; appearanceText: string }>;
+              response = JSON.stringify(
+                items.map((it) => ({
+                  characterId: it.characterId,
+                  appearanceText: 'a woman with silver hair, in a high-necked woollen dress',
+                })),
+              );
             } else {
               throw new Error(`unexpected non-craft completion call: ${user.slice(0, 60)}`);
             }
@@ -334,6 +374,14 @@ async function main(): Promise<void> {
 
     if (chat.clearLantern) {
       await rawQuery('DELETE FROM "instance_settings" WHERE "key" = ?', ['lanternBackgroundsMountPointId']);
+    }
+
+    // [cc65d6bfc / bug 133] The case's own danger settings, onto this copy only.
+    if (chat.dangerousContentSettings) {
+      await rawQuery('UPDATE chat_settings SET dangerousContentSettings = ? WHERE userId = ?', [
+        JSON.stringify(chat.dangerousContentSettings),
+        spec.userId,
+      ]);
     }
 
     // Freeze Date.now() so the provider filename `generated_<ts>.<ext>` is pinned.

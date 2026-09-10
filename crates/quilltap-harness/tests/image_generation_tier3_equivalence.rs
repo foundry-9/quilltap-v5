@@ -128,6 +128,31 @@ struct ChatSpec {
     /// are the whole point of these rows.
     #[serde(default, rename = "toolInput")]
     tool_input: Option<Value>,
+    /// [cc65d6bfc / bug 133] The case's own `chat_settings.dangerousContentSettings`
+    /// bag, patched onto the fresh copy before the handler runs — one
+    /// chat-settings row, one user, so a per-case danger bag has to be fixture
+    /// state applied identically on both sides (the story family's shape).
+    #[serde(default, rename = "dangerousContentSettings")]
+    danger_settings: Option<Value>,
+}
+
+/// [cc65d6bfc] The per-case `dangerousContentSettings` patch, mirroring the
+/// oracle's `UPDATE chat_settings …` exactly.
+fn patch_danger_settings(
+    main_work: &std::path::Path,
+    pepper: &str,
+    user_id: &str,
+    settings: &Value,
+) {
+    let writer = quilltap_core::db::Writer::open_writable(main_work, pepper)
+        .expect("open fixture copy for the danger-settings patch");
+    writer
+        .connection()
+        .execute(
+            "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+            rusqlite::params![settings.to_string(), user_id],
+        )
+        .expect("patch chat_settings.dangerousContentSettings");
 }
 
 #[derive(Deserialize)]
@@ -741,6 +766,14 @@ fn image_generation_matches_oracle() {
         let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture, label);
         if case.clear_lantern {
             drop_lantern_pointer(&main_work, &spec.test_pepper_base64);
+        }
+        if let Some(settings) = &case.danger_settings {
+            patch_danger_settings(
+                &main_work,
+                &spec.test_pepper_base64,
+                &spec.user_id,
+                settings,
+            );
         }
 
         // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION +

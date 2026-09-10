@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — test(image-gen): the corpus can finally see the tool's `routesDangerousToUncensored` derivation
+
+_Versions: core 0.0.880, harness 0.0.769._
+
+`image_generation_tier3_equivalence`'s header said the corpus keeps the Concierge OFF, "so no classify/resolve/sanitize" — a scope statement that was really a blind spot, with a live divergence behind it. `detect_only_sanitizes_appearance` closes it: DETECT_ONLY with an uncensored image profile configured, a `{{Aurora}}` placeholder in the prompt (v4 gates `resolveAppearances` on `parsePlaceholders(prompt).length > 0`, not on messages), and the classification answering dangerous. Nothing reroutes under DETECT_ONLY, so v4 sanitizes; the sanitized text is visible in the recorded craft prompt (`a woman with silver hair, in a high-necked woollen dress` where the raw appearance would read `a tall elegant woman with flowing silver hair…`), which carries it into the image key, the result JSON and every `llm_logs` projection.
+
+The corpus gains a per-case `dangerousContentSettings` bag applied identically on both sides (the story family's shape — one chat-settings row, one user), and the oracle's completion mock gains the resolve, classify and sanitize branches. A mutation reverting the tool's derivation to mere existence reddens exactly this case, so the derivation now has a production-call-site proof alongside its unit pin.
+
 #### 2026-09-10 — test(appearance): a new tier-3 family for the sanitize gate, which nothing drove directly
 
 _Versions: harness 0.0.768._
