@@ -1310,7 +1310,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm_fallback::FallbackRepos;
     use crate::model::stream::{CannedStreamingProvider, StreamChunk};
+    use crate::services::api_key_service::ProfileApiKeyFailure;
     use crate::services::chat_events::RecordingSink;
 
     fn profile(id: &str, provider: &str) -> EffectiveProfile {
@@ -2177,6 +2179,389 @@ mod tests {
         assert_eq!(
             retry.detail.as_deref(),
             Some("finish_reason: content_filter")
+        );
+    }
+
+    // ========================================================================
+    // P4.87 — the chain walk's three abandon-an-understudy arms
+    //
+    // v4 `provider-failover.service.ts:632/:673/:694`. Their TEXT and LEVEL were
+    // byte-faithful from the port, but not one of the eighteen tracing sites in
+    // this file had its VALUES asserted by anything, so a bag that lost a field
+    // (or named the wrong profile) was a silent divergence — the log-only class
+    // that produced findings #103, #110 and #116. `walk_fallback_chain`'s three
+    // `continue` arms are the ones an operator reads to learn WHY a stand-in was
+    // passed over, so they are pinned here field by field.
+    //
+    // The rig is `CaptureLayer` held across the await (the shared `captured`
+    // wrappers take an `FnOnce`, which cannot span one). Field rendering in that
+    // rig: `%x` and a bare `&str` both go out UNQUOTED (`record_str` is
+    // implemented explicitly), which is NOT what production's `fmt` layer does —
+    // never copy an expected string out of a dogfood transcript.
+    // ========================================================================
+
+    /// The reads a chain walk needs, answered from memory.
+    struct ChainRepos {
+        profiles: Vec<FallbackProfile>,
+        /// Profile id → key resolution. Absent reads as a usable empty key.
+        keys: std::collections::HashMap<String, Result<String, ProfileApiKeyFailure>>,
+    }
+
+    impl FallbackRepos for ChainRepos {
+        fn find_by_id(&self, id: &str) -> Option<FallbackProfile> {
+            self.profiles.iter().find(|p| p.id == id).cloned()
+        }
+        fn find_by_user_id(&self, user_id: &str) -> Vec<FallbackProfile> {
+            self.profiles
+                .iter()
+                .filter(|p| p.user_id == user_id)
+                .cloned()
+                .collect()
+        }
+    }
+
+    impl FallbackChainRepos for ChainRepos {
+        fn resolve_api_key(
+            &self,
+            profile: &FallbackProfile,
+        ) -> Result<String, ProfileApiKeyFailure> {
+            self.keys
+                .get(&profile.id)
+                .cloned()
+                .unwrap_or_else(|| Ok(String::new()))
+        }
+    }
+
+    /// A whole `connection_profiles` row for the chain engine.
+    fn chain_profile(id: &str, name: &str, provider: &str, model: &str) -> FallbackProfile {
+        FallbackProfile {
+            id: id.into(),
+            user_id: "u".into(),
+            name: name.into(),
+            provider: provider.into(),
+            model_name: model.into(),
+            base_url: None,
+            api_key_id: Some("k".into()),
+            transport: "api".into(),
+            is_cheap: false,
+            is_dangerous_compatible: true,
+            supports_image_upload: true,
+            allow_tool_use: true,
+            model_class: None,
+            sort_index: 0.0,
+            fallback_profile_id: None,
+            allow_tier_fallback: false,
+            parameters: None,
+        }
+    }
+
+    fn chain_context() -> FallbackContext {
+        FallbackContext {
+            user_id: "u".into(),
+            purpose: FallbackPurpose::Chat,
+            dangerous: false,
+            needs_vision: false,
+            needs_tools: false,
+            already_tried: Vec::new(),
+        }
+    }
+
+    /// Capture every event a future emits, with the guard held across the await
+    /// (`test_support::captured` takes an `FnOnce` and cannot).
+    async fn captured_async<F: std::future::Future<Output = ()>>(f: F) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f.await;
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    fn line<'a>(lines: &'a [String], sentence: &str) -> &'a str {
+        lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("no line carried {sentence:?}; got {lines:#?}"))
+    }
+
+    /// Walk a one-candidate chain and hand back the captured lines plus the
+    /// state the walk left behind.
+    async fn walk_one(
+        provider: CannedStreamingProvider,
+        understudy: FallbackProfile,
+        key: Result<String, ProfileApiKeyFailure>,
+        state: &mut StreamingState,
+    ) -> Vec<String> {
+        let mut failed = chain_profile("p1", "Primary", "ANTHROPIC", "m");
+        failed.fallback_profile_id = Some(understudy.id.clone());
+        let repos = ChainRepos {
+            profiles: vec![failed.clone(), understudy.clone()],
+            keys: std::collections::HashMap::from([(understudy.id.clone(), key)]),
+        };
+        let sink = RecordingSink::new();
+        let params = base_params();
+        captured_async(async {
+            let _ = attempt_empty_response_chain_fallback(
+                &provider,
+                &sink,
+                WalkFallbackChainOptions {
+                    state,
+                    repos: &repos,
+                    failed,
+                    context: chain_context(),
+                    params,
+                    chat_id: "chat-7".into(),
+                    character_id: "ch".into(),
+                    character_name: "Friday".into(),
+                },
+                None,
+            )
+            .await;
+        })
+        .await
+    }
+
+    /// v4 `:632`. The bag names the understudy AND the reason it was passed
+    /// over — without `reason` an operator cannot tell "no key configured" from
+    /// "the key you attached is gone", which are different fixes.
+    #[tokio::test]
+    async fn understudy_without_a_usable_key_logs_its_whole_bag() {
+        let understudy = chain_profile("p2", "The Understudy", "OPENAI", "gpt-stands-in");
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            ..Default::default()
+        };
+        let lines = walk_one(
+            CannedStreamingProvider::new(),
+            understudy,
+            Err(ProfileApiKeyFailure::ApiKeyNotFound),
+            &mut state,
+        )
+        .await;
+
+        let l = line(
+            &lines,
+            "[Failover] Understudy has no usable API key; moving on",
+        );
+        assert!(l.starts_with("WARN quilltap::failover"), "{l}");
+        assert!(l.contains("chat_id=chat-7"), "{l}");
+        assert!(l.contains("understudy_id=p2"), "{l}");
+        assert!(l.contains("understudy_name=The Understudy"), "{l}");
+        assert!(l.contains("reason=api-key-not-found"), "{l}");
+    }
+
+    /// v4 `:673`. The widest bag in the file — eight fields, and the `kind` +
+    /// `trigger` pair is what says whether the operator named this stand-in or
+    /// the tier picker drafted it, and what went wrong.
+    #[tokio::test]
+    async fn understudy_that_throws_logs_its_whole_bag() {
+        let understudy = chain_profile("p2", "The Understudy", "OPENAI", "gpt-stands-in");
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_stream(
+            "OPENAI",
+            "gpt-stands-in",
+            Some(0.7),
+            &params.messages,
+            vec![Err(crate::model::stream::StreamError::new(
+                "upstream said 503",
+            ))],
+        );
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            ..Default::default()
+        };
+        let lines = walk_one(provider, understudy, Ok("k".into()), &mut state).await;
+
+        let l = line(&lines, "[Failover] Understudy also failed");
+        assert!(l.starts_with("WARN quilltap::failover"), "{l}");
+        assert!(l.contains("chat_id=chat-7"), "{l}");
+        assert!(l.contains("understudy_id=p2"), "{l}");
+        assert!(l.contains("understudy_name=The Understudy"), "{l}");
+        assert!(l.contains("provider=OPENAI"), "{l}");
+        assert!(l.contains("model=gpt-stands-in"), "{l}");
+        assert!(l.contains("kind=configured"), "{l}");
+        assert!(l.contains("trigger=provider-error"), "{l}");
+        assert!(l.contains("error=upstream said 503"), "{l}");
+    }
+
+    /// v4 `:694`, and the P4.87 pin for the CHAIN-EMPTY classify (site 4 of the
+    /// classify-before-reset ordering).
+    ///
+    /// Two things at once, because they are the same run: the bag's four fields,
+    /// and the recorded route failure's verdict. `classify_empty_body` is called
+    /// while `state.raw_response` still holds the understudy's finish reason;
+    /// `reset_streaming_buffers_for_swap` clears it — at the top of the NEXT
+    /// iteration and again after the loop falls through — so a classify moved
+    /// after either reset collapses `refused` / `moderation-refusal` /
+    /// `finish-reason` / the quoted detail into a bare `empty-response` with no
+    /// detail. Nothing else in the tree would notice: the tier-3 corpus carries
+    /// no canned stream with a `raw_response`.
+    #[tokio::test]
+    async fn understudy_that_answers_empty_logs_its_bag_and_classifies_before_the_reset() {
+        let understudy = chain_profile("p2", "The Understudy", "OPENAI", "gpt-stands-in");
+        let params = base_params();
+        let provider = CannedStreamingProvider::new().with_stream(
+            "OPENAI",
+            "gpt-stands-in",
+            Some(0.7),
+            &params.messages,
+            vec![Ok(moderated_done())],
+        );
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "ANTHROPIC")),
+            ..Default::default()
+        };
+        let lines = walk_one(provider, understudy, Ok("k".into()), &mut state).await;
+
+        let l = line(&lines, "[Failover] Understudy returned an empty response");
+        assert!(l.starts_with("WARN quilltap::failover"), "{l}");
+        assert!(l.contains("chat_id=chat-7"), "{l}");
+        assert!(l.contains("understudy_id=p2"), "{l}");
+        assert!(l.contains("understudy_name=The Understudy"), "{l}");
+        assert!(l.contains("kind=configured"), "{l}");
+
+        // The ordering guard. One entry: the understudy's own empty body.
+        assert_eq!(state.route_failures.len(), 1, "{:?}", state.route_failures);
+        let chain = &state.route_failures[0];
+        assert_eq!(chain.profile_id, "p2");
+        assert_eq!(chain.via, RouteAttemptVia::Understudy);
+        assert_eq!(chain.outcome, RouteAttemptOutcome::Refused);
+        assert_eq!(chain.trigger, Some(FallbackTrigger::ModerationRefusal));
+        assert_eq!(
+            chain.evidence,
+            Some(super::super::route_trail::RouteAttemptEvidence::FinishReason)
+        );
+        assert_eq!(
+            chain.detail.as_deref(),
+            Some("finish_reason: content_filter")
+        );
+    }
+
+    /// Site 3 of the classify-before-reset ordering: the UNCENSORED reroute that
+    /// comes back empty.
+    ///
+    /// This one needs the chain to actually run, because the reset that would
+    /// clobber the verdict is the chain walk's — so the recovery is given repos
+    /// AND a `fallback_context`, and the uncensored profile names an understudy
+    /// whose own attempt then resets the buffers. The uncensored entry is
+    /// recorded from `route.connection_profile` (the swap only happens on
+    /// success), and it is classified BEFORE the walk begins; move it after and
+    /// the recorded verdict is a bare `empty-response`.
+    #[tokio::test]
+    async fn the_uncensored_empty_record_classifies_before_the_chain_resets() {
+        let params = base_params();
+        let uncensored = profile("p2", "UNCENSORED");
+        // The reroute's own call comes back empty, naming its refusal; the
+        // understudy's call then comes back empty too (no `raw_response`), which
+        // is what makes the two recorded verdicts differ.
+        let provider = CannedStreamingProvider::new()
+            .with_stream(
+                "UNCENSORED",
+                "m",
+                Some(0.7),
+                &params.messages,
+                vec![Ok(moderated_done())],
+            )
+            .with_stream(
+                "OPENAI",
+                "gpt-stands-in",
+                Some(0.7),
+                &params.messages,
+                vec![Ok(StreamChunk::done(None))],
+            );
+
+        let understudy = chain_profile("p3", "The Understudy", "OPENAI", "gpt-stands-in");
+        let mut uncensored_row = chain_profile("p2", "Uncensored", "UNCENSORED", "m");
+        uncensored_row.fallback_profile_id = Some("p3".into());
+        // The walk runs against `state.effective_profile`, which after a FAILED
+        // reroute is still the original seat — so the understudy has to hang off
+        // p1, not off the uncensored profile. That is also what makes the guard
+        // tight: `reset_streaming_buffers_for_swap` fires at the top of the
+        // candidate's own attempt, between the uncensored record and this one.
+        let mut primary_row = chain_profile("p1", "Primary", "OPENAI", "m");
+        primary_row.fallback_profile_id = Some("p3".into());
+        let repos = ChainRepos {
+            profiles: vec![primary_row, uncensored_row, understudy],
+            keys: std::collections::HashMap::new(),
+        };
+
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(profile("p1", "OPENAI")),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let _ = attempt_empty_response_recovery::<
+            _,
+            _,
+            _,
+            ChainRepos,
+            crate::model::completion::CannedCompletionProvider,
+        >(
+            &provider,
+            &sink,
+            &UncensoredRouter {
+                profile: uncensored.clone(),
+                key: "k2".into(),
+            },
+            Some(&repos),
+            None,
+            AttemptEmptyResponseRecoveryOptions {
+                state: &mut state,
+                tool_messages_length: 0,
+                // Flagged, so the same-provider retry is skipped and the
+                // uncensored reroute is the FIRST call this recovery makes.
+                content_was_flagged_dangerous: true,
+                danger_settings: DangerSettings {
+                    mode: "AUTO_ROUTE".into(),
+                    uncensored_text_profile_id: Some("p2".into()),
+                },
+                connection_profile: profile("p1", "OPENAI"),
+                params,
+                user_id: "u".into(),
+                chat_id: "c".into(),
+                character_id: "ch".into(),
+                character_name: "Friday".into(),
+                fallback_context: Some(ChainCapabilities::default()),
+            },
+            None,
+        )
+        .await;
+
+        // opening (the primary's own empty body), the uncensored reroute, the
+        // understudy. The chain DID run — which is the reset this guards.
+        assert_eq!(state.route_failures.len(), 3, "{:?}", state.route_failures);
+        let unc = &state.route_failures[1];
+        assert_eq!(unc.profile_id, "p2");
+        assert_eq!(unc.via, RouteAttemptVia::Concierge);
+        assert_eq!(unc.outcome, RouteAttemptOutcome::Refused);
+        assert_eq!(unc.trigger, Some(FallbackTrigger::ModerationRefusal));
+        assert_eq!(
+            unc.evidence,
+            Some(super::super::route_trail::RouteAttemptEvidence::FinishReason)
+        );
+        assert_eq!(unc.detail.as_deref(), Some("finish_reason: content_filter"));
+
+        // The understudy's own leg carried NO finish reason, so its verdict is
+        // inferred from the flag rather than read off the body — and that is
+        // exactly what the uncensored entry above would collapse to if its
+        // classify were moved after the walk's reset. `evidence` and `detail`
+        // are the discriminators; `trigger` is not (a dangerous-flagged turn
+        // infers a refusal either way).
+        let und = &state.route_failures[2];
+        assert_eq!(und.profile_id, "p3");
+        assert_eq!(und.trigger, Some(FallbackTrigger::ModerationRefusal));
+        assert_eq!(
+            und.evidence,
+            Some(super::super::route_trail::RouteAttemptEvidence::Inferred)
+        );
+        assert_eq!(
+            und.detail.as_deref(),
+            Some("empty response on content the Concierge had flagged")
         );
     }
 }
