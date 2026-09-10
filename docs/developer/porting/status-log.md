@@ -9,6 +9,356 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.87 (the turn-manager + route-trail harness remainders: P4.D172 / P4.D173's named OPEN items)
+
+Ordered against baseline **`78b381a96`** with ONE unabsorbed drift commit
+(`cc65d6bfc`, bug 133 → P4.D178) that touches none of this lane's surfaces (the
+round's §R.3 verified that by path at ordering; re-verified here by marker —
+`routesDangerousToUncensored` and `rerouteAllowed` are ABSENT from the pin, and
+the pin's `help/dangerous-content.md` is byte-identical to v5's). **Drift-ledger
+§2 freshness probe at lane start:** PASS — v4 checkout on `main`, HEAD
+`cc65d6bfc`, tree clean, `git log cc65d6bfc..main` EMPTY,
+`git log 1a2b2164c..bugfix` EMPTY, `release` at `8fbf2afe0`. Re-run before the
+final regen batch: PASS, identical. Regen rule **PIN REQUIRED**; every regen and
+every fixture build ran from `/tmp/qt-v4-pin-p487-78b381a96` through
+`harness/tools/recipe_sweep.py --v4`. The lane never wrote the ledger.
+
+This lane moves NO v4 behaviour and NO v5 production behaviour. Every source
+edit is a test, a corpus arm, or a fixture builder; the one production file it
+opens (`services/provider_failover.rs`) gains tests only, inside its existing
+`#[cfg(test)] mod tests`.
+
+**All five Tier-1 items and the Tier-2 item landed.** Tier 3 (the `summary_fold`
+filing draft) is below and is NOT committed to the v4 checkout, per §R.13.
+
+### (A) The frozen-zero draw — per-case draw arrays, and a three-seat pair that can see a reordered rotation
+
+`enclave_step_tier3` and `orchestrator_tier3` both pinned `Math.random` to
+`pinDraws([0])` ONCE per file, and the Rust side built a fresh one-element
+`DrawSource` per carrier, so a reordered rotation passed both families in
+silence. Each corpus case now carries an optional `draws: number[]`; absent
+means `[0]`, which is byte-identical to the frozen zero every pre-rotation row
+was written against (a one-element sequence repeats its last value).
+
+`PinnedDraws` gained `reset(values?)` — rewind the cursor, optionally swap the
+values, clear `consumed` — rather than a `withDraws(seq, fn)` scope, because the
+two oracles already own the pin's lifetime (one `pinDraws` at the top, one
+`restore()` in the tail) and a scope would have meant nesting a second install
+inside that one. The module doc records the choice and its reason.
+
+**A fidelity point the order did not name, fixed here:** the Rust orchestrator
+harness built THREE independent `DrawSource`s per case — the initial
+`ProcessClock`, each chained turn's, and `execute_turn_chain`'s own — each
+restarting at index 0. v4 pins ONE `Math.random` whose cursor runs continuously
+across `handleSendMessage`. With a one-element array that is invisible; with a
+real sequence it is a divergence. The harness now builds ONE `DrawSource` per
+case and clones it into every carrier (clones share the `Arc`'d cursor).
+
+The arms are a PAIR per family, identical in shape and differing only in the
+sequence, so the difference is visible in one NDJSON without a mutation. With
+candidates `[p1, p2, p3]` at equal talkativeness and `excludeFirst = p1`:
+
+| draws | position 1 | position 2 | position 3 | order |
+|---|---|---|---|---|
+| `[0]` | from `[p2,p3]` at r=0 → p2 | from `[p1,p3]` at r=0 → p1 | p3 | `[p2, p1, p3]` |
+| `[0.9, 0.1]` | from `[p2,p3]` at r=0.9 → p3 | from `[p1,p2]` at r=0.1 → p1 | p2 | `[p3, p1, p2]` |
+
+Measured, on both sides. Enclave cases 18/19 (`rotation_draw_frozen` /
+`rotation_draw_sequenced`, three autonomous seats, one turn each) end with
+`cycleOrderParticipantIds` `[p1,p3]` vs `[p1,p2]` AND a different seat's
+assistant row — two comparands, not one. Orchestrator cases
+`rotation_draw_frozen` / `rotation_draw_sequenced` (three LLM seats,
+`isPaused: true` so the chain stops after one attempt, modelled on
+`paused_initial_stop`) end `[b,a,c]` vs `[c,a,b]`. **Both pairs agree across the
+two implementations, which is the first time v5's ordered `DrawSource` has been
+proven to consume draws in v4's order on a real three-seat draw.**
+
+Mutation (index the sequence from the END in `weighted_random.rs`): reddens
+`rotation_draw_sequenced` in the orchestrator family and the `chats` table in
+the enclave family; the `[0]` twins and every other case stay green (reversing a
+one-element array is a no-op).
+
+**Byte-identity of pre-existing rows.** Orchestrator: exact — no event trace
+changed, no `chats` / `chat_messages` / `background_jobs` row was lost, and no
+canned stream or completion moved. (The first attempt DID move one: the two new
+rooms had no seeded messages, so their request key collided with an existing
+case's and silently extended its `sequences`. Both rooms gained a distinct
+opener; `canned LOST 0 / NEW 4` after.)
+
+**A measured deviation from the order's "byte-identical" requirement, enclave
+family only.** The third character (Cleo) moves `clockReads` by **+2** on the
+eleven cases that reach the room-character load. It is the CHARACTER, not the
+rooms: withholding the two rooms and re-running left the counter at its new
+value (`budget_turns_end` 61 → 63 with the rooms, 63 without them), so a
+three-seat room in a two-character fixture cannot avoid it. Nothing else moved —
+no prompt byte, no DB row, no event of any pre-existing case — and both sides
+moved together, so `clockReads` remains an exact comparand at a new value.
+
+### (B) The different-provider understudy — the corpus pin for `46cb04c2`
+
+The corpus had **no profile with a `fallbackProfileId` at all**, so no
+orchestrator case had ever reached `walkFallbackChain`; the `78b381a96` round's
+§3-review fix was invisible to every Rust differential and pinned only by an SPA
+beat's hover title. `build-orchestrator-fixture.ts` learned
+`fallbackProfileId`; the corpus gained `FailoverPrimary` (ANTHROPIC
+`claude-falls-over`) naming `FailoverUnderstudy` (OPENAI `gpt-stands-in`, with
+its own seeded `api_keys` row), and a one-seat room on it (`understudy_answers`)
+whose first two attempts come back empty and whose third answers.
+
+The persisted row now reads `provider: OPENAI`, `modelName: gpt-stands-in`, with
+a three-entry trail (primary failed / retry failed / understudy answered).
+**RED-FIRST:** reverting `46cb04c2`'s two re-read blocks (both replaced with
+`if false { … }`, 2 replacements, restored by file backup) reddens exactly
+`understudy_answers`, at the `done` frame's `provider`/`modelName` — the same
+local that feeds the persisted row.
+
+### (C) `routeVia` seeding — the concierge arm
+
+`route_trail_compose_equivalence` only ever TRANSCRIBED the seeding on both
+sides; no arm reached `orchestrator.rs`'s derivation. `route_via_concierge` is a
+flagged chat (`isDangerousChat: true`, global `AUTO_ROUTE`) whose pre-call
+Concierge reroute installs the uncensored profile, which comes back empty, and
+whose understudy answers.
+
+**A measured correction to the ordered shape.** The order's "then ONE failure on
+the rerouted seat" is not enough on its own: on a flagged turn the same-provider
+retry is SKIPPED (`contentWasFlaggedDangerous` is true), the uncensored branch
+is a no-op (the router answers the same profile), and with no chain the turn
+ends `emptyResponse: true` — and the `done` frame carries **no** `routeTrail` on
+that path, so the trail is never persisted and there is nothing to compare. The
+arm therefore gives the uncensored profile its own understudy so the turn
+answers and the trail lands. The trail's FIRST entry:
+
+```
+via: "concierge", outcome: "refused", trigger: "moderation-refusal",
+evidence: "inferred", detail: "empty response on content the Concierge had flagged"
+```
+
+Mutation (force `RouteAttemptVia::Primary` in the seeding): reddens exactly
+`route_via_concierge`. Naming an understudy on the shared `Uncensored` profile
+changes nothing for the two cases that already use it — both answer on their
+first attempt and never reach a chain (`canned LOST 0`).
+
+### (D) The three failover log bags
+
+**Survey finding worth recording:** not ONE of `provider_failover.rs`'s eighteen
+tracing sites had its text, level, target or field values asserted by anything
+in the tree. The order's "text + level already byte-faithful" was a claim about
+the port audit, not about a guard.
+
+The three `walk_fallback_chain` arms that abandon an understudy are now pinned
+field by field (v4 `provider-failover.service.ts:632` / `:673` / `:694`):
+`[Failover] Understudy has no usable API key; moving on` (4 fields),
+`[Failover] Understudy also failed` (8 — the widest bag in the file), and
+`[Failover] Understudy returned an empty response` (4). The third was not named
+in the order; it is the only reading that makes a coherent triple (the three
+`continue` arms of one loop) and the only remaining `[Failover]` WARN in the
+chain walk.
+
+The rig is `test_support::CaptureLayer` held across the `.await` — the shared
+`captured` / `captured_with` wrappers take an `FnOnce`, which cannot span one —
+reached through a local `captured_async`, plus a `ChainRepos` answering the
+chain's two reads and the per-candidate key resolution from memory. **No seventh
+capture rig was added.**
+
+⚠ **A rendering trap for anyone extending these:** in the SHARED rig `%x` AND a
+bare `&str` both render UNQUOTED (`record_str` is implemented explicitly), which
+is NOT what production's `fmt` layer does — it quotes strings. Expected strings
+must never be copied out of a dogfood transcript. Also recorded: `:299` is the
+only site in the file with no `target:`, so it renders under the module path,
+not `quilltap::failover`.
+
+Mutations (drop one key from each bag): three, each reddening exactly its own
+test.
+
+### (E) The two unguarded classify-before-reset sites
+
+Site 4 (the understudy's own empty body, `provider_failover.rs:1116`) is pinned
+by the same run as (D)'s third bag. Site 3 (the uncensored reroute that comes
+back empty, `:531`) has its own test, which must let the chain WALK a real
+candidate, because the reset that would clobber that verdict is the walk's own
+(`:1047`, at the top of the candidate's attempt). The understudy therefore hangs
+off the PRIMARY, not off the uncensored profile: after a FAILED reroute
+`state.effective_profile` is still the original seat, and that is what
+`walk_fallback_chain` is given.
+
+Mutations (insert `reset_streaming_buffers_for_swap(state)` immediately before
+each classify): two, each reddening exactly its own site's test. With the two
+already-guarded sites (`:268`, `:355`), all four are now covered. **No
+production guard was needed and none was added.**
+
+**A measured correction to the order's expectation:** on a dangerous-flagged
+turn the understudy's verdict is `moderation-refusal` either way, because
+`classify_empty_body` infers a refusal from the flag when no finish reason
+survives. The discriminators are `evidence` (`finish-reason` vs `inferred`) and
+the quoted `detail`, and the test asserts those.
+
+### (F) The `chat_continuation_tier2_equivalence` family
+
+NEW: `harness/oracle/fixtures/chat-continuation-tier2.json` (corpus),
+`harness/oracle/fixtures/build-chat-continuation-fixture.ts` (the `/tmp` pair
+builder — a committed `build-*.ts`, which is this repo's convention for
+`/tmp`-built pairs; the in-prose rule applies to committed `.db` files),
+`harness/oracle/cases/chat-continuation-tier2.test.ts`, and
+`crates/quilltap-harness/tests/chat_continuation_tier2_equivalence.rs`.
+
+Six arms: `basic_carryover` (every turn-state column seeded, plus a whisper, a
+Host bubble with `opaqueContent` and a `hostEvent`, and a message carrying
+`routeTrail` / `provider` / `modelName` / `tokenCount` — so the P4.D173
+not-copied pin is now also a whole-table census), `librarian_anchor` (TWO
+summaries, so taking the FIRST is measurably wrong), `half_cast_drops` (an
+unmapped author dropped, a whisper whose only target is gone dropped, one whose
+targets are half gone NARROWED, a `hostEvent` naming the missing seat dropped),
+`malformed_turn_state`, `missing_source`, `missing_destination`.
+
+Comparands: the returned `{replayedMessageCount, hadLibrarianSummary,
+postedSourceTailBubble}` triple, the whole `chats` and `chat_messages` tables,
+and a **`rowid`-ordered message projection** — the last because continuation's
+contract is POSITIONAL (link bubble → replayed tail → the source's tail bubble)
+and a key-sorted dump cannot see it.
+
+Every id the fixture bakes stays LITERAL through normalization; only minted ids
+are relabelled `<minted-N>`. The turn-state columns carry PINNED participant
+ids, and whether the remap put the RIGHT one there is exactly what a
+first-appearance relabelling hides (the P4.D44 `chat_template_ids` trap). The
+keep-list is read out of the corpus itself (`include_str!` + a UUID scan), so a
+new pinned id needs no code change.
+
+**The family was green on its first run**, so it was mutation-tested hard before
+being believed. Five mutations, each reddening its own arm:
+
+| mutation | reddens |
+|---|---|
+| drop the participant remap in `remap_json_array` | `basic_carryover` |
+| `cycle_order_participant_ids: None` in the update | `basic_carryover` |
+| anchor on the FIRST Librarian summary | `librarian_anchor` |
+| post the source's tail bubble BEFORE the replay | `basic_carryover` |
+| keep messages whose author is not in the new cast | `half_cast_drops` |
+
+Two fixture-shape findings worth carrying:
+- The turn-state columns must be written AFTER the messages. `addMessages` runs
+  `computeSpokenThisCycleAfterMessage` / `computeCycleOrderAfterMessage` per
+  row, so a rotation set at `create` time is overwritten by the seeding itself.
+  That is also what makes the port's ORDERING measurable — the replay mutates
+  the destination's rotation and `replicateTurnState` overwrites it afterwards.
+- v4 DROPS a whole `chats` row that fails its Zod parse (the standing trap). The
+  malformed arm's first spelling used a non-UUID `lastTurnParticipantId`, which
+  made the source chat invisible and the arm vacuous (replayed 0, no tail
+  bubble). It was reshaped to values that are schema-valid but semantically
+  malformed: an empty-string `turnQueue`, an array with non-string members, a
+  value that is not an array at all, and a well-formed id naming nobody.
+
+`route_trail_continuation_guard` STAYS — its source census is the anti-rot half
+and this family cannot replace it. Note for future editors: that census greps
+`chat_continuation.rs` for the literal `routeTrail` / `route_trail`, so a doc
+comment naming the column in THAT file reddens it.
+
+The family does NOT cover the route the feature ships behind (`POST
+/api/v1/chats` with `continuationFromChatId`) — its `notFound('Source chat')`
+pre-check and its try/catch belong to `chat_create_capstone_equivalence`, which
+already carries `cs_continuation_bubble_before_replay`. Said so in the header.
+
+### Tier 3 — the `summary_fold` `lastTurnParticipantId` v4-side filing DRAFT (NOT filed; §R.13)
+
+**Title:** `A chat's lastTurnParticipantId is lost after a summary fold — the
+turn orchestrator's own chain-complete frame announces the id it just wrote`
+
+**Repro.** The `orchestrator_tier3` corpus's `summary_fold` case (chat
+`c860cf74-128f-4a81-9a5c-6c2275f24302`): a continue-mode turn on a chat carrying
+eleven interchanges, so the fold fires. v4's `chain_complete` frame for that call
+carries `nextSpeakerId: c96713aa-…` — exactly the value
+`persistTurnParticipant(finalNextSpeaker)` was handed at
+`turn-orchestrator.service.ts:372`, which is `await`ed and is terminal for that
+branch (it is immediately followed by `break`). The `chats` row for that chat
+nevertheless ends with `lastTurnParticipantId = NULL`. v5 is self-consistent:
+its frame and its row both carry the id.
+
+**Mechanism (supported by the code; for v4 to confirm).** The ordered
+hypothesis — "a partial patch from a stale in-memory snapshot" — is REFUTED as
+literally stated: `BaseRepository._update`
+(`lib/database/repositories/base.repository.ts:360`) re-reads `existing` with a
+FRESH `findById` on every call, and none of the fold's three
+`repos.chats.update` calls (`lib/chat/context-summary.ts:429`, `:566`, `:640`)
+names the column. But `_update` is a NON-ATOMIC read-modify-write that then
+`$set`s the WHOLE validated document, so two overlapping updates lose each
+other's fields: whichever writes second re-establishes every column from the
+snapshot it read. The fold runs as fire-and-forget work that overlaps the
+chain's terminal persist, and `persistTurnParticipantId` itself takes TWO
+round-trips (`update` without `updatedAt` → `findById`, then `_update` →
+`findById` again). A fold update whose read landed before the persist's write
+and whose write landed after it restores the pre-persist NULL. The fix is
+narrow: make `_update` write only the patched columns, or serialize the chat
+row's writes.
+
+**Blast radius beyond the fold.** Any concurrent `repos.chats.update` on one
+chat has this shape, not just the summary fold — the fold is simply the case a
+differential could see.
+
+### Fixtures changed, and what that invalidates
+
+| fixture | change | invalidates |
+|---|---|---|
+| `harness/oracle/fixtures/enclave-step-tier3.json` (+ its generator `gen-enclave-step-spec.py`) | +1 character, +2 chats, +2 cases, `draws` support | `enclave_step_tier3_equivalence` only (regenerated) |
+| `harness/oracle/fixtures/orchestrator-tier3.json` | +2 profiles, +1 api key, +4 chats, +4 cases, `fallbackProfileId` on the shared `Uncensored` profile | `orchestrator_tier3_equivalence` only (regenerated) |
+| `harness/oracle/fixtures/build-orchestrator-fixture.ts` | learns `fallbackProfileId` | as above |
+| `harness/oracle/cases/{enclave-step-tier3,orchestrator-tier3}.test.ts`, `harness/oracle/lib/pinned-draws.ts` | per-case `draws` | both families |
+| NEW `chat-continuation-tier2.json` + `build-chat-continuation-fixture.ts` + case + `.rs` | new family | none |
+
+No committed `.db` pair was touched. No other family reads these fixtures.
+
+### The lane's verification gate
+
+Run from the worktree with `CARGO_INCREMENTAL=0` and
+`QT_V4_ROOT=/tmp/qt-v4-pin-p487-78b381a96`:
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+  feature sets (default and `--features quilltap-core/native-transport`).
+- `cargo build --workspace` and `cargo build --workspace --release` — clean.
+- `cargo test --workspace` with the lane's ten-variable env block:
+  **551 test binaries / 3,141 passed / 0 failed / 2 ignored, exit 0, and ZERO
+  `SKIP:` lines in the log.** The three families this lane moves are positively
+  confirmed to have RUN, by name and by non-zero duration:
+  `chat_continuation_tier2_equivalence` 0.19 s,
+  `enclave_step_tier3_equivalence` 0.69 s,
+  `orchestrator_tier3_equivalence` 3.23 s. `route_trail_continuation_guard` —
+  the source census the new family must not break — is green at 2 passed.
+- All three families regenerated FRESH from `/tmp/qt-v4-pin-p487-78b381a96`
+  through `harness/tools/recipe_sweep.py --v4`, one at a time, never
+  concurrently, and re-run by name: 3/3 green, zero SKIP. Every NDJSON
+  non-empty (56 / 272 / 6 lines); the changed bytes grepped and present
+  (`rotation_draw` ×2, `understudy_answers`, `route_via_concierge`,
+  `"via":"concierge"`, `librarian_anchor`); the bug-133 pin marker
+  `routesDangerousToUncensored` ABSENT from the regenerated orchestrator NDJSON,
+  which is the pin's own proof.
+- `git diff main -- apps/web/` EMPTY; `git diff main -- help/` EMPTY. Every
+  file in `git diff main --stat` is inside P4.87's "owns" column; nothing from
+  any "must not touch" column was opened. `Cargo.toml` / `Cargo.lock` carry
+  version lines only.
+- `harness/tools/check_spelling.py` clean.
+
+Versions: **core 0.0.875, harness 0.0.769.** Four commits, one per unit:
+`ac5d60fe` (A), `500438a3` (B + C), `030e6733` (D + E), `288b120b` (F), plus
+this record.
+
+### Spotted, not mine (for the unifier)
+
+- `provider_failover.rs:1211`'s `error` field is `%error.message` where v4
+  `:765` sends `` `${error.name}: ${error.message}` ``. `FallbackError` has no
+  `name`, so this is structural, not a slip — but a future bag assertion on that
+  line must not expect the v4 shape. Not pinned by this lane (it is not one of
+  the three ordered bags).
+- `provider_failover.rs:602` (`[Failover] No fallback chain: the effective
+  profile's row is unavailable`) is v5-only, with no v4 counterpart — v5 re-reads
+  the row by id where v4 walks the live object. Recorded, unpinned.
+- The repo has SEVEN distinct capture-rig implementations, not the six CLAUDE.md
+  records after P4.77 (the shared `captured` / `captured_with` / `CaptureLayer` /
+  `global_capture`, plus locals in `api/help_docs.rs` + `api/help_chats.rs`,
+  `api/images.rs`, `services/message_context.rs`, and the harness's structured
+  rig in `files_sha256_realign_heal_equivalence.rs`). Two of them carry written
+  "NOT migrated, genuinely different" justifications. Worth a count correction,
+  not a consolidation.
+
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 
 Ordered against baseline **`2f4254b42`** with **ZERO drift** (the generator
