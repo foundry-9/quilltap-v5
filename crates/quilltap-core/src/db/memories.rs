@@ -48,6 +48,19 @@ use crate::embedding_blob::float32_to_blob;
 use crate::realtime::bus::publish_realtime;
 use crate::realtime::types::RealtimeTopic;
 
+/// v4's `SINGLE_DELETE_NEIGHBOUR_WARN` (`lib/memory/memory-gate.ts:474`) — the
+/// warn-log threshold for single-memory deletions touching an unusually large
+/// neighbour set. Either indicates a hub node (interesting) or a bug. Compared
+/// with `>=`, and the warn is IN ADDITION to the debug, never instead of it.
+const SINGLE_DELETE_NEIGHBOUR_WARN: usize = 20;
+
+/// v4's `BATCH_DELETE_NEIGHBOUR_WARN` (`lib/memory/memory-gate.ts:481`) — the
+/// batch twin. Batch cascades from large characters or chats are expected; the
+/// warn fires when neighbour count outstrips even those. Compared with `>=`
+/// against `neighboursTouched` (the rows actually rewritten), NOT the candidate
+/// count the one-pass scan returned.
+const BATCH_DELETE_NEIGHBOUR_WARN: usize = 200;
+
 /// Create fields — the post-Zod `Omit<Memory,'id'|'createdAt'|'updatedAt'>` shape
 /// (defaults already materialized by the caller, mirroring v4's `_create` which
 /// validates the merged entity). Nullable-optional fields are `Option`.
@@ -541,6 +554,10 @@ impl<'c> MemoriesRepository<'c> {
     /// `updateForCharacter` (character-scoped, bumps `updatedAt`); then the target
     /// row is deleted.
     pub fn delete_with_unlink(&self, memory_id: &str) -> Result<bool, DbError> {
+        // v4 takes its clock BEFORE the `findById` precondition, but returns from
+        // that precondition without logging — so the early exit narrates nothing
+        // on either side.
+        let started_at = crate::clock::now_unix_ms();
         // v4: `findById` → if missing, false without touching neighbours.
         if !self.row_exists(memory_id)? {
             return Ok(false);
@@ -551,6 +568,9 @@ impl<'c> MemoriesRepository<'c> {
              WHERE relatedMemoryIds LIKE ?1 AND id != ?2",
             params![like_param, memory_id],
         )?;
+        let neighbour_count = neighbours.len();
+        let mut characters_affected: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for (id, character_id, related_raw) in neighbours {
             let current = parse_related_ids(related_raw.as_deref());
             if !current.iter().any(|x| x == memory_id) {
@@ -562,24 +582,42 @@ impl<'c> MemoriesRepository<'c> {
                 ..Default::default()
             };
             self.update_for_character(&character_id, &id, &patch)?;
+            characters_affected.insert(character_id);
         }
         let deleted = self.delete(memory_id)?;
+
+        // v4 `memory-gate.ts:538-548`. Log-only (the finding-#103/#110/#116
+        // class): the row set and the returned bool are identical whether or not
+        // these fire, so their only proof is the capturing layer in this module's
+        // tests. `durationMs` is a REAL wall-clock read — v4's
+        // `Date.now() - startedAt` — never the pinned harness clock.
+        let duration_ms = crate::clock::now_unix_ms() - started_at;
+        if neighbour_count >= SINGLE_DELETE_NEIGHBOUR_WARN {
+            tracing::warn!(
+                memoryId = memory_id,
+                neighbourCount = neighbour_count,
+                charactersAffected = characters_affected.len(),
+                durationMs = duration_ms,
+                "[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set"
+            );
+        }
+        tracing::debug!(
+            memoryId = memory_id,
+            neighbourCount = neighbour_count,
+            charactersAffected = characters_affected.len(),
+            durationMs = duration_ms,
+            "[MemoryGate] deleteMemoryWithUnlink complete"
+        );
 
         // Bug 128 (`4a9be9878`). Collection-wide: this takes a memory id, not a
         // chat id, so there is no narrower hint to give. A no-op from the job
         // child by design — the parent chokepoints announce a child's deletions.
         //
-        // ⚠ **Deferred loud, and NOT this order's mandate:** `4a9be9878` also
-        // added `logger.debug('[MemoryGate] deleteMemoryWithUnlink complete',
-        // logFields)` here and a twin in the batch method. v5 carries NEITHER —
-        // nor the two `…touched an unusually large neighbour set` WARNS that
-        // predate this commit, nor v4's `logFields` (`memoryId`,
-        // `neighbourCount`, `charactersAffected`, `durationMs`), nor
-        // `handleDeleteByChatId`'s new `[Memories API] Deleted every memory for
-        // a chat`. That is a PRE-EXISTING four-line gap in the memory-gate port
-        // which this commit widens to five — the finding-#103/#110/#116 class —
-        // and closing it wants its own unit: a clock inside a repository method
-        // and a capture-layer pin per line. Recorded in the lane record.
+        // The five-line logging gap `4a9be9878` widened (the two `complete`
+        // debugs, the two neighbour-set WARNs, and `handleDeleteByChatId`'s
+        // `[Memories API] Deleted every memory for a chat`) is CLOSED — P4.88.
+        // The four gate lines are emitted above and in the batch twin; the route
+        // line lives in `api/memories.rs`.
         //
         // v4 publishes from the GATE (`lib/memory/memory-gate.ts`), whose v5
         // twin is this repo method, so every one of the eight callers
@@ -600,9 +638,12 @@ impl<'c> MemoriesRepository<'c> {
     /// characterId-scoped). Returns the number of rows actually deleted. Empty
     /// input → 0.
     pub fn delete_many_with_unlink(&self, memory_ids: &[String]) -> Result<i64, DbError> {
+        // v4's empty short circuit PRECEDES its `const startedAt = Date.now()`,
+        // so an empty batch narrates nothing at all.
         if memory_ids.is_empty() {
             return Ok(0);
         }
+        let started_at = crate::clock::now_unix_ms();
         let doomed: std::collections::HashSet<&str> =
             memory_ids.iter().map(String::as_str).collect();
 
@@ -613,6 +654,9 @@ impl<'c> MemoriesRepository<'c> {
              WHERE relatedMemoryIds IS NOT NULL AND relatedMemoryIds != '[]'",
             params![],
         )?;
+        let mut characters_affected: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut neighbours_touched = 0usize;
         for (id, character_id, related_raw) in candidates {
             if doomed.contains(id.as_str()) {
                 continue;
@@ -634,6 +678,8 @@ impl<'c> MemoriesRepository<'c> {
                 ..Default::default()
             };
             self.update_for_character(&character_id, &id, &patch)?;
+            characters_affected.insert(character_id);
+            neighbours_touched += 1;
         }
 
         // Resolve id → characterId for the doomed set, group, `bulkDelete` per
@@ -663,6 +709,30 @@ impl<'c> MemoriesRepository<'c> {
         for (character_id, ids) in by_character {
             deleted += self.bulk_delete(&character_id, &ids)?;
         }
+
+        // v4 `memory-gate.ts:623-633` — the batch twin of the single-id pair.
+        // `requested` counts the ids handed in (ghosts included); `deleted` the
+        // rows that existed. The WARN compares `neighboursTouched`, not the
+        // candidate count the one-pass scan returned.
+        let duration_ms = crate::clock::now_unix_ms() - started_at;
+        if neighbours_touched >= BATCH_DELETE_NEIGHBOUR_WARN {
+            tracing::warn!(
+                requested = memory_ids.len(),
+                deleted = deleted,
+                neighboursTouched = neighbours_touched,
+                charactersAffected = characters_affected.len(),
+                durationMs = duration_ms,
+                "[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set"
+            );
+        }
+        tracing::debug!(
+            requested = memory_ids.len(),
+            deleted = deleted,
+            neighboursTouched = neighbours_touched,
+            charactersAffected = characters_affected.len(),
+            durationMs = duration_ms,
+            "[MemoryGate] deleteMemoriesWithUnlinkBatch complete"
+        );
 
         // Bug 128: collection-wide for the same reason as the single-id path,
         // and doubly so — a batch can span several chats.
@@ -977,5 +1047,213 @@ mod tests {
         assert_eq!(repo.bulk_delete("charA", &ids).unwrap(), 2);
         assert_eq!(related_of(&w, "mA1"), None);
         assert_eq!(related_of(&w, "mA2"), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // The deletion chokepoint's four log lines (P4.88 — v4
+    // `lib/memory/memory-gate.ts:545-548` and `:630-633`).
+    //
+    // Log-only: every `memories` row and every returned count is identical
+    // whether or not these fire, so the ONLY proof is a capturing layer over the
+    // real repository method (the finding-#103/#110/#116 class). Each test
+    // asserts the line's whole field set AND the discriminating values;
+    // `durationMs` is a real wall-clock read, so it is asserted present and
+    // non-negative rather than pinned.
+    // -----------------------------------------------------------------------
+
+    /// The `durationMs=<n>` a captured line carries, parsed.
+    fn duration_ms_of(line: &str) -> i64 {
+        let tail = line
+            .split(" durationMs=")
+            .nth(1)
+            .unwrap_or_else(|| panic!("no durationMs field in {line:?}"));
+        tail.split(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap_or_else(|_| panic!("durationMs is not an integer in {line:?}"))
+    }
+
+    /// Every captured line whose message contains `needle`.
+    fn lines_with<'a>(lines: &'a [String], needle: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(needle)).collect()
+    }
+
+    #[test]
+    fn delete_with_unlink_logs_v4s_complete_debug() {
+        let (_dir, w) = seed(&[
+            ("mA1", "charA", &["mA2"]),
+            ("mA2", "charA", &["mA1"]),
+            ("mB1", "charB", &["mA1"]),
+        ]);
+        let lines = crate::test_support::captured(|| {
+            w.memories().delete_with_unlink("mA1").unwrap();
+        });
+        let hits = lines_with(&lines, "[MemoryGate] deleteMemoryWithUnlink complete");
+        assert_eq!(hits.len(), 1, "exactly one complete line: {lines:?}");
+        let line = hits[0];
+        assert!(line.starts_with("DEBUG "), "v4 logs at debug: {line:?}");
+        assert!(line.contains(" memoryId=mA1"), "{line:?}");
+        // Two neighbours name it (mA2 same character, mB1 another); both are
+        // rewritten, so two characters are affected.
+        assert!(line.contains(" neighbourCount=2"), "{line:?}");
+        assert!(line.contains(" charactersAffected=2"), "{line:?}");
+        assert!(duration_ms_of(line) >= 0, "{line:?}");
+        assert!(
+            lines_with(&lines, "unusually large neighbour set").is_empty(),
+            "two neighbours is under the 20 threshold: {lines:?}"
+        );
+    }
+
+    /// v4's `SINGLE_DELETE_NEIGHBOUR_WARN = 20`, compared with `>=`. Both sides
+    /// of the bound, so a flipped comparison or an off-by-one reddens.
+    #[test]
+    fn delete_with_unlink_warns_at_v4s_single_threshold() {
+        let warn = "[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set";
+        for (neighbours, expect_warn) in [(19usize, false), (20usize, true)] {
+            let mut rows: Vec<(String, String, Vec<String>)> =
+                vec![("target".to_string(), "charA".to_string(), Vec::new())];
+            for i in 0..neighbours {
+                rows.push((format!("n{i}"), "charA".to_string(), vec!["target".into()]));
+            }
+            let borrowed: Vec<(&str, &str, Vec<&str>)> = rows
+                .iter()
+                .map(|(a, b, c)| {
+                    (
+                        a.as_str(),
+                        b.as_str(),
+                        c.iter().map(String::as_str).collect(),
+                    )
+                })
+                .collect();
+            let seeds: Vec<(&str, &str, &[&str])> = borrowed
+                .iter()
+                .map(|(a, b, c)| (*a, *b, c.as_slice()))
+                .collect();
+            let (_dir, w) = seed(&seeds);
+            let lines = crate::test_support::captured(|| {
+                w.memories().delete_with_unlink("target").unwrap();
+            });
+            let hits = lines_with(&lines, warn);
+            assert_eq!(
+                hits.len(),
+                usize::from(expect_warn),
+                "{neighbours} neighbours, expect_warn={expect_warn}: {lines:?}"
+            );
+            if expect_warn {
+                let line = hits[0];
+                assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
+                assert!(line.contains(" memoryId=target"), "{line:?}");
+                assert!(line.contains(" neighbourCount=20"), "{line:?}");
+                assert!(line.contains(" charactersAffected=1"), "{line:?}");
+                assert!(duration_ms_of(line) >= 0, "{line:?}");
+            }
+            // The debug fires either way — v4 warns IN ADDITION, never instead.
+            assert_eq!(
+                lines_with(&lines, "deleteMemoryWithUnlink complete").len(),
+                1,
+                "{lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_many_with_unlink_logs_v4s_complete_debug() {
+        let (_dir, w) = seed(&[
+            ("mA1", "charA", &[]),
+            ("mA2", "charA", &["mA1"]),
+            ("mB1", "charB", &["mA1"]),
+            ("mB2", "charB", &[]),
+        ]);
+        let ids = vec!["mA1".to_string(), "mB2".to_string(), "ghost".to_string()];
+        let lines = crate::test_support::captured(|| {
+            w.memories().delete_many_with_unlink(&ids).unwrap();
+        });
+        let hits = lines_with(
+            &lines,
+            "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+        );
+        assert_eq!(hits.len(), 1, "exactly one complete line: {lines:?}");
+        let line = hits[0];
+        assert!(line.starts_with("DEBUG "), "v4 logs at debug: {line:?}");
+        // `requested` counts the ids handed in (the ghost included); `deleted`
+        // counts the rows that existed.
+        assert!(line.contains(" requested=3"), "{line:?}");
+        assert!(line.contains(" deleted=2"), "{line:?}");
+        assert!(line.contains(" neighboursTouched=2"), "{line:?}");
+        assert!(line.contains(" charactersAffected=2"), "{line:?}");
+        assert!(duration_ms_of(line) >= 0, "{line:?}");
+        assert!(
+            lines_with(&lines, "unusually large neighbour set").is_empty(),
+            "two neighbours is under the 200 threshold: {lines:?}"
+        );
+    }
+
+    /// The empty-input short circuit returns before v4 ever reads its clock, so
+    /// NOTHING is logged — v4's `if (memoryIds.length === 0) return 0` precedes
+    /// `const startedAt = Date.now()`.
+    #[test]
+    fn delete_many_with_unlink_is_silent_on_an_empty_batch() {
+        let (_dir, w) = seed(&[("mA1", "charA", &[])]);
+        let lines = crate::test_support::captured(|| {
+            assert_eq!(w.memories().delete_many_with_unlink(&[]).unwrap(), 0);
+        });
+        assert!(
+            lines_with(&lines, "[MemoryGate]").is_empty(),
+            "the empty short circuit precedes v4's clock read: {lines:?}"
+        );
+    }
+
+    /// v4's `BATCH_DELETE_NEIGHBOUR_WARN = 200`, compared with `>=` against
+    /// `neighboursTouched` (NOT the candidate count). Both sides of the bound.
+    #[test]
+    fn delete_many_with_unlink_warns_at_v4s_batch_threshold() {
+        let warn =
+            "[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set";
+        for (neighbours, expect_warn) in [(199usize, false), (200usize, true)] {
+            let mut rows: Vec<(String, String, Vec<String>)> =
+                vec![("target".to_string(), "charA".to_string(), Vec::new())];
+            for i in 0..neighbours {
+                rows.push((format!("n{i}"), "charA".to_string(), vec!["target".into()]));
+            }
+            let borrowed: Vec<(&str, &str, Vec<&str>)> = rows
+                .iter()
+                .map(|(a, b, c)| {
+                    (
+                        a.as_str(),
+                        b.as_str(),
+                        c.iter().map(String::as_str).collect(),
+                    )
+                })
+                .collect();
+            let seeds: Vec<(&str, &str, &[&str])> = borrowed
+                .iter()
+                .map(|(a, b, c)| (*a, *b, c.as_slice()))
+                .collect();
+            let (_dir, w) = seed(&seeds);
+            let ids = vec!["target".to_string()];
+            let lines = crate::test_support::captured(|| {
+                w.memories().delete_many_with_unlink(&ids).unwrap();
+            });
+            let hits = lines_with(&lines, warn);
+            assert_eq!(
+                hits.len(),
+                usize::from(expect_warn),
+                "{neighbours} neighbours, expect_warn={expect_warn}: {lines:?}"
+            );
+            if expect_warn {
+                let line = hits[0];
+                assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
+                assert!(line.contains(" requested=1"), "{line:?}");
+                assert!(line.contains(" deleted=1"), "{line:?}");
+                assert!(line.contains(" neighboursTouched=200"), "{line:?}");
+                assert!(line.contains(" charactersAffected=1"), "{line:?}");
+            }
+            assert_eq!(
+                lines_with(&lines, "deleteMemoriesWithUnlinkBatch complete").len(),
+                1,
+                "{lines:?}"
+            );
+        }
     }
 }

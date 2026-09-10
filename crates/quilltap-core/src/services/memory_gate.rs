@@ -407,9 +407,21 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
     let embedding =
         match generate_with_retry(provider, &embedding_text, user_id, embedding_profile_id).await {
             Ok(e) => e,
-            Err(reason) => {
+            Err(second_msg) => {
+                // v4 `memory-gate.ts:194`. Log-only (P4.88): the returned
+                // decision and the untouched `memories` table are identical
+                // whether or not this fires. `error` is the RAW provider message
+                // — v4's `secondMsg`, not the composed reason below.
+                tracing::warn!(
+                    characterId = character_id,
+                    userId = user_id,
+                    error = second_msg,
+                    "[MemoryGate] Skipping memory write — embedding generation failed after retry"
+                );
                 return Ok(GateResult {
-                    decision: GateDecision::SkipEmbeddingFailed { reason },
+                    decision: GateDecision::SkipEmbeddingFailed {
+                        reason: format!("Embedding failed after retry: {second_msg}"),
+                    },
                     embedding: None,
                 });
             }
@@ -515,6 +527,12 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
 /// Generate an embedding with v4's one-retry-on-failure (`SKIP_EMBEDDING_FAILED`
 /// reason on the second failure). The 500 ms inter-retry delay is omitted (see the
 /// module deferrals).
+///
+/// The error is the **raw second-attempt provider message** — v4's `secondMsg`
+/// (`secondError instanceof EmbeddingError ? secondError.message : String(…)`) —
+/// not the `Embedding failed after retry: …` sentence. v4 logs the raw message
+/// and composes the sentence separately, so both callers get what they need
+/// without either re-deriving the other's string.
 async fn generate_with_retry<P: EmbeddingProvider>(
     provider: &P,
     text: &str,
@@ -541,7 +559,7 @@ async fn generate_with_retry<P: EmbeddingProvider>(
             .await
         {
             Ok(r) => Ok(r.embedding),
-            Err(second) => Err(format!("Embedding failed after retry: {}", second.message)),
+            Err(second) => Err(second.message),
         },
     }
 }
@@ -768,6 +786,12 @@ async fn reinforce_memory<P: EmbeddingProvider>(
             .await?;
         // v4: if the update failed, return the existing memory unchanged.
         if !updated {
+            // v4 `memory-gate.ts:382`. Log-only (P4.88).
+            tracing::warn!(
+                memoryId = existing_id,
+                characterId = existing_char,
+                "[MemoryGate] Failed to update memory during reinforcement"
+            );
             return Ok((existing_id, novel_details, existing_count));
         }
     }
@@ -779,30 +803,49 @@ async fn reinforce_memory<P: EmbeddingProvider>(
     if content_changed || anchors_changed {
         let reembed_text =
             build_memory_embedding_text(&existing_summary, &new_content, Some(&row_anchors));
-        if let Ok(emb) =
-            generate_with_retry(provider, &reembed_text, user_id, embedding_profile_id).await
-        {
-            let existing_char = existing_char.clone();
-            let existing_id = existing_id.clone();
-            db.write(move |writers| {
-                let main = writers.main();
-                let patch = MemUpdate {
-                    embedding: Some(Some(emb.clone())),
-                    ..Default::default()
-                };
-                main.memories()
-                    .update_for_character(&existing_char, &existing_id, &patch)?;
+        match generate_with_retry(provider, &reembed_text, user_id, embedding_profile_id).await {
+            Err(msg) => {
+                // v4 `memory-gate.ts:416` — the whole re-embed block's catch.
+                // Log-only (P4.88); `String(error)` on an `EmbeddingError` renders
+                // `"<name>: <message>"`, and that class sets `this.name`.
+                //
+                // ⚠ Two PRE-EXISTING shape divergences this line makes visible,
+                // neither this log-only unit's to change (recorded in P4.88's
+                // lane record): v4 calls `generateEmbeddingForUser` here ONCE
+                // where v5 reuses `generate_with_retry` (so v5 can make a second
+                // provider call v4 never makes, and the message logged is the
+                // SECOND attempt's), and v4's `try` also covers the row update
+                // and the vector-store writes — which v5 propagates with `?`
+                // rather than warning and continuing.
+                tracing::warn!(
+                    memoryId = existing_id,
+                    error = format!("EmbeddingError: {msg}"),
+                    "[MemoryGate] Failed to re-embed reinforced memory"
+                );
+            }
+            Ok(emb) => {
+                let existing_char = existing_char.clone();
+                let existing_id = existing_id.clone();
+                db.write(move |writers| {
+                    let main = writers.main();
+                    let patch = MemUpdate {
+                        embedding: Some(Some(emb.clone())),
+                        ..Default::default()
+                    };
+                    main.memories()
+                        .update_for_character(&existing_char, &existing_id, &patch)?;
 
-                let mut store = CharacterVectorStore::load(main.connection(), &existing_char)?;
-                if store.has_vector(&existing_id) {
-                    store.update_vector(&existing_id, emb)?;
-                } else {
-                    store.add_vector(&existing_id, emb)?;
-                }
-                store.flush(&main.vector_indices())?;
-                Ok(())
-            })
-            .await?;
+                    let mut store = CharacterVectorStore::load(main.connection(), &existing_char)?;
+                    if store.has_vector(&existing_id) {
+                        store.update_vector(&existing_id, emb)?;
+                    } else {
+                        store.add_vector(&existing_id, emb)?;
+                    }
+                    store.flush(&main.vector_indices())?;
+                    Ok(())
+                })
+                .await?;
+            }
         }
     }
 
@@ -1288,5 +1331,160 @@ mod tests {
         assert!(outcome.memory_id.is_none());
         assert!(outcome.reason.is_some());
         assert_eq!(count(&db, "memories"), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // The three pre-`4a9be9878` `[MemoryGate]` WARNs (v4 `memory-gate.ts:194`,
+    // `:382`, `:416`) — P4.88. Log-only: the gate's decision, the returned
+    // triple and every `memories` row are identical whether or not these fire,
+    // so the capturing layer over the REAL function is the only proof.
+    // -----------------------------------------------------------------------
+
+    /// Install a thread-scoped capturing layer whose guard is held across an
+    /// `await` (the reason this is not `test_support::captured_with`).
+    fn capture_guard() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sub =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
+        (tracing::subscriber::set_default(sub), logs)
+    }
+
+    fn only_line(lines: &[String], needle: &str) -> String {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(hits.len(), 1, "expected exactly one {needle:?}: {lines:?}");
+        hits[0].clone()
+    }
+
+    /// v4 `:194`. `error` is the RAW second-attempt provider message — v4's
+    /// `secondMsg` — not the `Embedding failed after retry: …` sentence the same
+    /// branch composes for the decision's `reason`.
+    #[tokio::test]
+    async fn embedding_failure_warns_with_v4s_fields() {
+        let (_dir, db) = make_db(None);
+        let provider = CannedEmbeddingProvider::new()
+            .with_failure("s\n\nc")
+            .with_failure_message("provider exploded");
+        let (guard, logs) = capture_guard();
+        let outcome = create_memory_with_gate(&db, &provider, &candidate("c", "s"), &opts())
+            .await
+            .unwrap();
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        assert_eq!(outcome.action, GateAction::SkipEmbeddingFailed);
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Skipping memory write — embedding generation failed after retry",
+        );
+        assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
+        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
+        assert!(line.contains(" userId=user-1"), "{line:?}");
+        assert!(line.contains(" error=provider exploded"), "{line:?}");
+        assert!(
+            !line.contains("Embedding failed after retry"),
+            "the composed reason is the DECISION's, not the log's: {line:?}"
+        );
+        assert_eq!(
+            outcome.reason.as_deref(),
+            Some("Embedding failed after retry: provider exploded"),
+            "…and the decision still carries v4's composed sentence"
+        );
+    }
+
+    /// v4 `:382`. Defensive on both sides — `existing` always came from a real
+    /// row, so production never reaches it. Driven directly with a mismatched
+    /// `characterId`, which is exactly what makes the character-scoped UPDATE
+    /// match nothing.
+    #[tokio::test]
+    async fn a_failed_reinforcement_update_warns() {
+        let (_dir, db) = make_db(Some(("seed content", "seed summary", vec![1.0, 0.0])));
+        let provider = CannedEmbeddingProvider::new();
+        let existing = serde_json::json!({
+            "id": "mem-seed",
+            "characterId": "someone-else",
+            "content": "seed content",
+            "summary": "seed summary",
+            "importance": 0.5,
+            "reinforcementCount": 1.0,
+        });
+        let anchors = crate::episodic::EpisodicAnchorView::default();
+        let (guard, logs) = capture_guard();
+        let (id, _novel, count_for_log) = reinforce_memory(
+            &db,
+            &provider,
+            &existing,
+            "a different retelling entirely",
+            "user-1",
+            None,
+            &anchors,
+        )
+        .await
+        .unwrap();
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        assert_eq!(id, "mem-seed");
+        assert_eq!(
+            count_for_log, 1.0,
+            "v4 returns the EXISTING count when the update failed"
+        );
+        let line = only_line(
+            &lines,
+            "[MemoryGate] Failed to update memory during reinforcement",
+        );
+        assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
+        assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
+        assert!(line.contains(" characterId=someone-else"), "{line:?}");
+    }
+
+    /// v4 `:416`. A content change forces the re-embed; the provider refuses, and
+    /// v4's catch warns without failing the reinforcement.
+    #[tokio::test]
+    async fn a_failed_re_embed_warns_without_failing_the_reinforcement() {
+        let (_dir, db) = make_db(Some(("seed content", "seed summary", vec![1.0, 0.0])));
+        // A bare canned provider refuses every unregistered text, so whatever
+        // `build_memory_embedding_text` composes here comes back an error.
+        let provider = CannedEmbeddingProvider::new();
+        let existing = serde_json::json!({
+            "id": "mem-seed",
+            "characterId": CHAR,
+            "content": "seed content",
+            "summary": "seed summary",
+            "importance": 0.5,
+            "reinforcementCount": 1.0,
+        });
+        // An anchor upgrade the existing row lacks is what makes
+        // `anchorsChanged` true and forces the re-embed (novel-detail extraction
+        // needs a date or proper noun, which this prose has not got).
+        let anchors = crate::episodic::EpisodicAnchorView {
+            occurred_at: Some("2021-05-05T00:00:00.000Z".to_string()),
+            ..Default::default()
+        };
+        let (guard, logs) = capture_guard();
+        let (id, _novel, count_for_log) = reinforce_memory(
+            &db,
+            &provider,
+            &existing,
+            "a different retelling entirely",
+            "user-1",
+            None,
+            &anchors,
+        )
+        .await
+        .unwrap();
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        assert_eq!(id, "mem-seed");
+        assert_eq!(count_for_log, 2.0, "the reinforcement itself still landed");
+        let line = only_line(&lines, "[MemoryGate] Failed to re-embed reinforced memory");
+        assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
+        assert!(line.contains(" memoryId=mem-seed"), "{line:?}");
+        assert!(
+            line.contains(" error=EmbeddingError: no canned embedding registered"),
+            "v4's `String(error)` renders `<name>: <message>`, and `EmbeddingError` \
+             sets `this.name`: {line:?}"
+        );
     }
 }

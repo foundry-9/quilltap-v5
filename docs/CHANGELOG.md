@@ -265,6 +265,46 @@ cases that reach the room-character load — measured by withholding the two roo
 and re-running, which left the counter at its new value; it is the character, not
 the rooms, and both sides move together. No prompt byte, no DB row and no event
 of any pre-existing enclave case changed.
+#### 2026-09-10 — feat(memories): the memory-gate logging family — v4's seven `[MemoryGate]` / `[Memories API]` lines
+
+_Versions: core 0.0.875, harness 0.0.767._
+
+P4.88 (C). v4's memory-gate deletion chokepoint narrates every pass and the
+memories route narrates every chat wipe; v5 carried none of it. Log-only — the
+`memories` rows, the returned counts and the response bodies are identical
+whether or not these fire — which is why the port is pinned by a capturing
+`tracing` layer over the real functions rather than by any differential.
+
+Landed, at v4's levels and with v4's field sets: `deleteMemoryWithUnlink
+complete` and `deleteMemoriesWithUnlinkBatch complete` (both `debug`, both
+carrying `durationMs` from a real wall-clock read bracketing the pass, plus
+v4's counts); the two `touched an unusually large neighbour set` warns at v4's
+`SINGLE_DELETE_NEIGHBOUR_WARN = 20` / `BATCH_DELETE_NEIGHBOUR_WARN = 200`
+thresholds, compared with `>=` and emitted IN ADDITION to the debug; the three
+older warns `4a9be9878` predates (`Skipping memory write — embedding
+generation failed after retry`, `Failed to update memory during
+reinforcement`, `Failed to re-embed reinforced memory`); and `[Memories API]
+Deleted every memory for a chat`, which fires on both arms — an empty chat
+still narrates `deleted=0`, because v4 logs after the call rather than inside
+a deleted-something branch.
+
+`generate_with_retry` now hands back the RAW second-attempt provider message
+(v4's `secondMsg`) instead of the composed `Embedding failed after retry: …`
+sentence; the gate composes that sentence for the decision's `reason` as it
+always did, and the warn logs the raw message as v4 does.
+
+Two pre-existing shape divergences the re-embed warn made visible are
+RECORDED, not changed (both outside a log-only unit): v4 calls
+`generateEmbeddingForUser` once in the reinforcement re-embed where v5 reuses
+`generate_with_retry`, and v4's `try` there also covers the row update and the
+vector-store writes, which v5 propagates with `?`.
+
+Riding along: `memories_routes_equivalence` heals its fixture copy with
+`test_support::ensure_p4d171_columns`. The committed `memories-{main,mount}.db`
+pair predates the two `78b381a96`-round columns, so its `count_by_chat`,
+`by_message_*` and `delete_by_chat` arms answered 500 `no such column:
+cycleOrderParticipantIds` — a standing red the workspace gate cannot see,
+because the family SKIPs when its oracle vars are unset.
 
 #### 2026-09-10 — docs(setupphase): order the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88)
 

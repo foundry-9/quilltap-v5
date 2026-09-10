@@ -247,6 +247,19 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("memories-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("memories-mount.db"), &mount).unwrap();
+    // P4.88: the committed pair predates the two `78b381a96`-round columns, and
+    // three of this family's arms (`count_by_chat`, `by_message_*`,
+    // `delete_by_chat`) read a chat through `chats_read`, which always NAMES
+    // them. Without this the family 500s with `no such column:
+    // cycleOrderParticipantIds` on those arms — a red the workspace gate cannot
+    // see, because the family SKIPs when its oracle vars are unset. The
+    // repaired-at-boot idiom on the COPY, as `salon_fixture_p4d171_ensure`
+    // documents for the salon pair.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open the fixture copy writable to heal it");
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

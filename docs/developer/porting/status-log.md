@@ -121817,3 +121817,90 @@ Versions: core 0.0.880, harness 0.0.769, host 0.0.124 (its `build.rs` embeds
   `bugs.md` row and the two moved help paragraphs (Tier 3 item 13).
 - The baseline move to `cc65d6bfc` and the ledger's §3 row → ABSORBED.
 - `public_schemas_vendor_guard`'s stale pin path (above).
+---
+
+## P4.88 — the substrate + heal + gallery + logging remainders (lane record)
+
+**Branch:** `claude/p4-88-substrate-heal-gallery-e5ff4be0`. **Baseline
+`78b381a96`; regen rule PIN REQUIRED; the lane's one pin is
+`/tmp/qt-v4-pin-p488-78b381a96`.** The drift ledger's §2 probe PASSED at lane
+start (branch `main`, tree clean, both logs empty, HEAD `cc65d6bfc`), and the
+pin was verified by all three of §R.3's markers (`routesDangerousToUncensored`
+absent from `appearance-resolution.ts` and `image-generation-handler.ts`,
+`rerouteAllowed` absent from `story-background.ts`, and the pin's
+`help/dangerous-content.md` md5 `8af8a91b05d2780dd5e7b8062d10e45b` identical
+to v5's current copy).
+
+### Unit C — the memory-gate logging family (Tier 1 item 1)
+
+Seven lines, all log-only (the finding-#103/#110/#116 class), all pinned by a
+capturing `tracing` layer over the REAL function.
+
+| line | v4 | level | fields |
+| --- | --- | --- | --- |
+| `deleteMemoryWithUnlink complete` | `memory-gate.ts:548` | debug | `memoryId`, `neighbourCount`, `charactersAffected`, `durationMs` |
+| `deleteMemoryWithUnlink touched an unusually large neighbour set` | `:546` | warn | same bag |
+| `deleteMemoriesWithUnlinkBatch complete` | `:633` | debug | `requested`, `deleted`, `neighboursTouched`, `charactersAffected`, `durationMs` |
+| `deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set` | `:631` | warn | same bag |
+| `Skipping memory write — embedding generation failed after retry` | `:194` | warn | `characterId`, `userId`, `error` |
+| `Failed to update memory during reinforcement` | `:382` | warn | `memoryId`, `characterId` |
+| `Failed to re-embed reinforced memory` | `:416` | warn | `memoryId`, `error` |
+| `[Memories API] Deleted every memory for a chat` | route `:1093` | debug | `chatId`, `deleted` |
+
+Measured, not assumed: v4's `SINGLE_DELETE_NEIGHBOUR_WARN = 20` /
+`BATCH_DELETE_NEIGHBOUR_WARN = 200`, both compared with `>=`, both emitted IN
+ADDITION to the debug; the batch's empty short circuit PRECEDES v4's
+`const startedAt = Date.now()`, so an empty batch narrates nothing at all; the
+single-delete's `findById` precondition returns without logging; and the route
+line fires on BOTH arms — an empty chat still narrates `deleted=0`, because v4
+logs after the call rather than inside a deleted-something branch.
+
+`generate_with_retry` now returns the RAW second-attempt provider message (v4's
+`secondMsg`, which is what the warn logs) and the gate composes v4's
+`Embedding failed after retry: …` sentence for the decision's `reason` — v4
+does exactly that, in that order. The re-embed warn renders
+`EmbeddingError: <message>`, v4's `String(error)` on a class that sets
+`this.name`.
+
+**RED-FIRST**, before the first source edit: the four `db/memories.rs` capture
+tests failed (`8 passed; 4 failed`) with the silent-on-empty negative already
+green; the route test was proven red by mutation (removing the `tracing::debug!`
+→ `delete_by_chat_logs_v4s_debug_on_both_arms` FAILED, the missing-chat
+silence test still green).
+
+**Mutations** (string edit, restored from a file backup, replacement count
+asserted; each reddened exactly one test):
+
+| # | mutation | reddened |
+| --- | --- | --- |
+| M1 | single warn threshold `>=` → `>` | `delete_with_unlink_warns_at_v4s_single_threshold` |
+| M2 | batch warn threshold `>=` → `>` | `delete_many_with_unlink_warns_at_v4s_batch_threshold` |
+| M3 | drop `charactersAffected` from the single debug | `delete_with_unlink_logs_v4s_complete_debug` |
+| M4 | `requested` reads `deleted` | `delete_many_with_unlink_logs_v4s_complete_debug` |
+| M5 | the `:194` warn logs the composed reason, not the raw message | `embedding_failure_warns_with_v4s_fields` |
+| M6 | drop `characterId` from the failed-update warn | `a_failed_reinforcement_update_warns` |
+| M7 | the re-embed warn drops the `EmbeddingError` name | `a_failed_re_embed_warns_without_failing_the_reinforcement` |
+
+**Neutrality**, over oracles regenerated FRESH from the pin through the sweep
+driver: `memory_gate_tier3_equivalence`, `memory_delete_tier2_equivalence`,
+`memory_cascade_tier2_equivalence`, `memory_housekeeping_tier2_equivalence`,
+`memories_routes_equivalence` — all five green, zero SKIP.
+
+**⚠ A standing red the workspace gate could not see, found and fixed on the
+way.** `memories_routes_equivalence`'s first pin-fresh run failed five arms
+with `500 sqlite error: no such column: cycleOrderParticipantIds`: the
+committed `memories-{main,mount}.db` pair predates the two `78b381a96`-round
+columns, and `count_by_chat`, `by_message_swipe`, `by_message_single`,
+`by_message_missing` and `delete_by_chat` all read a chat through
+`chats_read`, which always NAMES them. The family SKIPs when its oracle vars
+are unset, so `cargo test --workspace` has never seen it. Healed the copy with
+`test_support::ensure_p4d171_columns` (the repaired-at-boot idiom
+`salon_fixture_p4d171_ensure` documents), zero product code — green, 24 + 23
+records.
+
+**Spotted, not mine** (recorded in `memory_gate.rs` beside the re-embed warn):
+v4 calls `generateEmbeddingForUser` ONCE in the reinforcement re-embed where
+v5 reuses `generate_with_retry` (so v5 can make a second provider call v4
+never makes), and v4's `try` there covers the row update and the vector-store
+writes too, which v5 propagates with `?` rather than warning and continuing.
+Both are pre-existing and out of a log-only mandate.

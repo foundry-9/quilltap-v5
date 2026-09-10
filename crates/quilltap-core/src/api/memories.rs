@@ -684,9 +684,29 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
         Err(e) => return internal(e),
     }
     match delete_memories_by_chat_id_with_vectors(db, chat_id).await {
-        Ok(res) => Response::Memory(
-            json!({ "success": true, "chatId": chat_id, "deletedCount": res.deleted }),
-        ),
+        Ok(res) => {
+            // v4 `app/api/v1/memories/route.ts:1093`. No publish here: this path
+            // runs through `deleteMemoriesWithUnlinkBatch`, and the memory-gate
+            // chokepoint already announces `memories` collection-wide — a
+            // chat-scoped subscriber takes it, since the id filter only discards
+            // an event naming a DIFFERENT id. A second, chat-scoped hint would
+            // cost every subscriber a duplicate refetch, and would fire on the
+            // one case where the gate correctly stays silent: a chat with no
+            // memories, where nothing was deleted and nothing changed.
+            //
+            // Log-only (P4.88, the finding-#103/#110/#116 class) — pinned by the
+            // capturing layer in this module's tests. It fires on BOTH arms, the
+            // empty chat included, because v4 logs after the call, not inside a
+            // deleted-something branch.
+            tracing::debug!(
+                chatId = chat_id,
+                deleted = res.deleted,
+                "[Memories API] Deleted every memory for a chat"
+            );
+            Response::Memory(
+                json!({ "success": true, "chatId": chat_id, "deletedCount": res.deleted }),
+            )
+        }
         Err(e) => internal(e),
     }
 }
@@ -1858,3 +1878,123 @@ pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Respo
 }
 
 // === end P4.6BM ===
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    /// Throwaway pepper for a fresh encrypted instance (never a real one).
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT_A: &str = "c0000000-0000-4000-8000-00000000000a";
+    const CHAT_EMPTY: &str = "c0000000-0000-4000-8000-00000000000b";
+    const CHAR_A: &str = "a0000000-0000-4000-8000-00000000000a";
+
+    /// A fully provisioned throwaway instance (v4's real `ensureCollection` DDL
+    /// through `fresh_schema.json`) carrying two chats — one with two memories
+    /// across two characters, one with none.
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        {
+            let w = crate::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+            let c = w.connection();
+            for id in [CHAT_A, CHAT_EMPTY] {
+                c.execute(
+                    "INSERT INTO \"chats\" (\"id\", \"userId\", \"title\", \"createdAt\", \"updatedAt\") \
+                     VALUES (?1, ?2, 'T', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                    rusqlite::params![id, crate::services::provisioning::SINGLE_USER_ID],
+                )
+                .unwrap();
+            }
+            for (mid, char_id) in [
+                ("m-1", CHAR_A),
+                ("m-2", "b0000000-0000-4000-8000-00000000000b"),
+            ] {
+                c.execute(
+                    "INSERT INTO \"memories\" (\"id\", \"characterId\", \"chatId\", \"content\", \
+                     \"summary\", \"createdAt\", \"updatedAt\") \
+                     VALUES (?1, ?2, ?3, 'c', 's', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                    rusqlite::params![mid, char_id, CHAT_A],
+                )
+                .unwrap();
+            }
+        }
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// Install a capturing layer on this thread (thread-scoped — parallel tests
+    /// cannot steal it) and hand back the lines. The guard is held across the
+    /// `await`, which is why this is not `test_support::captured_with`: that one
+    /// takes a synchronous closure.
+    fn capture_guard() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sub =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
+        (tracing::subscriber::set_default(sub), logs)
+    }
+
+    /// v4 `app/api/v1/memories/route.ts:1093`. Log-only: the response body and
+    /// every `memories` row are identical whether or not this fires, so the only
+    /// proof is the capturing layer over the real handler.
+    #[tokio::test]
+    async fn delete_by_chat_logs_v4s_debug_on_both_arms() {
+        let (_dir, db) = provisioned();
+        for (chat_id, expect_deleted) in [(CHAT_A, 2i64), (CHAT_EMPTY, 0i64)] {
+            let (guard, logs) = capture_guard();
+            let resp = memory_delete_by_chat(&db, chat_id).await;
+            drop(guard);
+            let lines = logs.lock().unwrap().clone();
+            assert!(matches!(resp, Response::Memory(_)), "{resp:?}");
+            let hits: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("[Memories API] Deleted every memory for a chat"))
+                .collect();
+            assert_eq!(hits.len(), 1, "one line per call: {lines:?}");
+            let line = hits[0];
+            assert!(line.starts_with("DEBUG "), "v4 logs at debug: {line:?}");
+            assert!(line.contains(&format!(" chatId={chat_id}")), "{line:?}");
+            assert!(
+                line.contains(&format!(" deleted={expect_deleted}")),
+                "the EMPTY chat still narrates deleted=0 — v4 logs after the \
+                 call, not inside a deleted-something branch: {line:?}"
+            );
+        }
+    }
+
+    /// The ownership gate returns BEFORE the delete, so a missing chat narrates
+    /// nothing (v4's `notFound('Chat')` precedes its logger call).
+    #[tokio::test]
+    async fn delete_by_chat_is_silent_for_a_missing_chat() {
+        let (_dir, db) = provisioned();
+        let (guard, logs) = capture_guard();
+        let resp = memory_delete_by_chat(&db, "c0000000-0000-4000-8000-0000000000ff").await;
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::NotFound),
+            "{resp:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[Memories API] Deleted every memory")),
+            "{lines:?}"
+        );
+    }
+}
