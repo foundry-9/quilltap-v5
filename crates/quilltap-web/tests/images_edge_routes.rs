@@ -23,7 +23,7 @@
 
 mod common;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 fn materialize_instance() -> tempfile::TempDir {
     let base = tempfile::tempdir().expect("tempdir");
@@ -178,5 +178,29 @@ async fn the_collection_post_edge_answers_v4s_own_arms() {
         (status, body["error"].as_str()),
         (500, Some("Internal server error")),
         "{body}"
+    );
+
+    // v4 bug 130 (`86d59660c`): the edge must FORWARD `chatId`. Nothing else
+    // pins that — `images_generate_route_equivalence` drives the core handler
+    // directly, so an edge that silently drops the key leaves the whole bug-130
+    // corpus vacuously green. The discriminator is the handler's own
+    // `z.uuid()` refusal: a malformed `chatId` can only produce a 400 if the
+    // value ARRIVED.
+    let (status, body) = post(
+        &client,
+        &format!("{url}?action=generate"),
+        "application/json",
+        json!({
+            "prompt": "a brass observatory at dusk",
+            "profileId": "aaaa0000-0000-4000-8000-000000000001",
+            "chatId": "not-a-uuid",
+        })
+        .to_string(),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("Validation error")),
+        "a malformed chatId must reach the handler's uuid gate: {body}"
     );
 }

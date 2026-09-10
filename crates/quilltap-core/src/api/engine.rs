@@ -4288,6 +4288,32 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D174 ===
+            Request::ChatGallery { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_media::chat_gallery(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatSaveGalleryImage { chat_id, body } => match self.ready_save_image() {
+                Ok((db, bytes)) => {
+                    super::chat_media::chat_save_gallery_image(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &body,
+                        bytes,
+                        Arc::new(crate::photos::save_image_to_album::NoSideEffects)
+                            as Arc<
+                                dyn crate::photos::save_image_to_album::SaveImageSideEffects
+                                    + Send
+                                    + Sync,
+                            >,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === /P4.D174 ===
             Request::ChatPhotoAlbums { chat_id } => match self.ready_db() {
                 Ok(db) => super::chat_media::chat_photo_albums(&db, &chat_id),
                 Err(r) => r,
@@ -5056,6 +5082,7 @@ impl CoreEngine {
             Request::ImagesGenerate {
                 prompt,
                 profile_id,
+                chat_id,
                 tags,
                 options,
             } => match self.ready_images_generate() {
@@ -5070,6 +5097,7 @@ impl CoreEngine {
                         crate::clock::now_unix_ms(),
                         prompt.as_ref(),
                         profile_id.as_ref(),
+                        chat_id.as_ref(),
                         tags.as_ref(),
                         options.as_ref(),
                     )

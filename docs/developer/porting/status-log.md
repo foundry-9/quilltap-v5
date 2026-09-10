@@ -119260,3 +119260,469 @@ test with the 41-variable env block. The four re-spelled families re-run through
 the sweep driver at the `78b381a96` pin, all green.
 
 Versions: core 0.0.866 → 0.0.867, harness 0.0.756 → 0.0.757, host 0.0.120 → 0.0.121.
+## Lane record — P4.D174 (the Salon chat gallery, server half), units 1–3
+
+**Branch** `claude/chat-gallery-server-porting-99d71e`, from `main` at
+`fa74d071`. **Pin** `/tmp/qt-v4-pin-p4d174-78b381a96` (the catch-up target;
+marker verified — `lib/photos/chat-gallery.ts` exists only there, `help/` at
+123 files) and `/tmp/qt-v4-pin-p4d174-25f534c0b` (the neutrality pin; marker
+verified — no `chat-gallery.ts`).
+
+### The freshness probe — the pre-authorized exception FIRED
+
+The ledger's §2 probe at lane start: checkout on `main`, tree **CLEAN**,
+`78b381a96..main` **exactly one commit** — `cc65d6bfc` "Fix bug 133: a
+moderated chat's story background could escalate to the uncensored provider" —
+over the ledger's recorded nine files (`story-background.ts`,
+`appearance-resolution.ts`, `image-generation-handler.ts`,
+`help/dangerous-content.md`, two tests, the CHANGELOG, `bugs.md`,
+`bugs/fixed/bug-133-…md`) **plus the four routine version-bump files**
+(`README.md`'s badge, `package.json`, `packages/quilltap/package.json`, the
+lock's two lines) that were not in the dirty-tree snapshot because the human
+had not bumped yet. `bugfix` and `release` unmoved. Read as the §R.2
+pre-authorized exception; **`cc65d6bfc` is recorded here as next-round
+drift** (it re-opens `services/story_background_job.rs` — P4.D175's file —
+and the P4.9a/W4.7f image-gen surfaces; it touches nothing this lane opens,
+and every regen ran from the pinned worktree regardless).
+
+### Unit 1 — the enumerator (`photos/chat_gallery.rs`, NEW)
+
+v4 `lib/photos/chat-gallery.ts` (962 lines) ported whole: the four passes,
+the classifier ladder, `EntryCollector`'s two dedup rules, the sort, and the
+helpers the regexes stand in for. Notes that outlive the port:
+
+- **Entries are `serde_json::Map`, not a `#[derive(Serialize)]` struct, and
+  that is the point.** v4's per-entry key order is its JS CONSTRUCTION order —
+  a portrait carries no `width`/`height`, a message attachment carries
+  `messageId` where a linked file carries `characterId` — and
+  `EntryCollector.noteMessage` APPENDS `messageId` to an entry an earlier pass
+  already built, landing it after `deletable`/`linkSummary` rather than in a
+  declaration slot. One declaration order satisfies four of the five shapes and
+  diverges on exactly that arm. `preserve_order` maps reproduce JS insertion
+  semantics for free.
+- **The linked-files read is raw SQL inside the module**, as `chat_files_list`
+  already does: `db/files.rs`'s typed projections carry neither `source` nor
+  `tags`, and that file is in this order's "must not touch" column.
+- **The sort is a TOTAL order and says so** (`EntryCollector::finish`'s doc
+  comment). v4's comparator returns NaN for an unparseable `createdAt`, which
+  V8 treats as "equal" — not a total order at all
+  (`js-nan-comparator-is-not-a-total-order`, the P4.D129 precedent). An
+  unparseable or absent timestamp sorts as `i64::MIN`, the END of a
+  newest-first roll.
+- **MEASURED: the ordered NaN-`createdAt` arm is UNREACHABLE through v4's own
+  reader, and the fixture row was removed.** `FileEntrySchema.createdAt` is
+  `z.iso.datetime()`, so a `not-a-date` row fails validation and v4's
+  repository drops it whole — probed at the pin 2026-09-09:
+  `findById` → `null`, `findByLinkedTo` 11 → 10, and the row is absent from
+  BOTH the gallery and the `/chats/{id}/files` listing. v4's sort therefore
+  never sees a NaN. Keeping the row would only have measured the general
+  "v5 does not Zod-validate reads" divergence, which is pre-existing and
+  belongs to no lane here (`v4-drops-a-whole-row-that-fails-its-schema`).
+
+### Unit 2 — the two verbs + the shared save schema and attribution
+
+`photos/save_attribution.rs` (NEW) carries v4's `resolveSaveAttribution` and
+the `SaveImageRequestSchema` both save doors now share.
+`api/chat_media.rs` gains `chat_gallery` and `chat_save_gallery_image`; the
+message leg is rewired onto both. `Request::{ChatGallery,
+ChatSaveGalleryImage}` + the engine arms in `// === P4.D174 ===` fences.
+`Response::ChatMedia` already serializes as the bare object §C.3 asks for —
+no new variant invented.
+
+- **The §C.3 409 spelling.** v4's body is `{error, code, relativePath,
+  keptAt}` — four siblings. `code` rides `CoreError::code` (its documented
+  purpose: the SPA error translation keys on it first); `relativePath`/`keptAt`
+  ride `CoreError::details`, which a transport spreads beside `error` exactly
+  as the files-delete refusal spreads `characterId`. Flagged for the unifier's
+  name-for-name diff with P4.D176.
+- **A measured v4 change on an already-ported v5 surface:** `86d59660c`
+  DELETED the message route's private uuid schema, so its
+  `fileId must be a UUID` / `mountPointId must be a UUID` sentences are GONE.
+  v5 had both. Landed RED-FIRST (`message_save_non_uuid` /
+  `message_save_empty_body`).
+- **MEASURED, both arms pinned:** an ABSENT key takes Zod 4.5's type issue
+  (`Invalid input: expected string, received undefined`), a PRESENT empty
+  string takes the `.min(1, …)` message (`fileId is required`). The two are
+  different sentences and both reach the wire.
+
+### Unit 3 — the shared message-attachment walk
+
+`resolve_message_attachment_entries` lifted into the new module;
+`chat_files_list` calls it through `resolve_message_attachment_entries_db`
+and its response bytes are UNCHANGED (the `courier_images_routes`
+`files_list` arm is the pin). v4's new fail-soft `getMessages` arm
+(`[Chats v1 Files] Failed to read messages for attachment walk` + `[]`) and
+its new resolved-attachments debug line are carried. `file_size_bytes_for`
+died with the old copy (`LinkWithContent.file_size_bytes` is the same joined
+column) and was deleted rather than left dead.
+
+### The differential — `chat_gallery_equivalence` (NEW, 18 cases)
+
+Fixture: NEW committed `crates/quilltap-web/tests/fixtures/chat-gallery-{main,
+mount}.db` (+ `.meta.json`), built by
+`harness/oracle/fixtures/build-chat-gallery-fixture.ts`. Oracle:
+`harness/oracle/cases/chat-gallery.test.ts`, driving v4's REAL `getChatGallery`
+through its REAL route plus the REAL save actions. The roll is 14 entries with
+every source populated (`{"story-background":2,"avatar":4,"portrait":1,
+"generated":1,"attachment":3,"kept":1,"inline":2}`).
+
+**A trap worth the note: `NextResponse.json(x).json()` hands back `x` BY
+REFERENCE in this environment.** v4 sets `characterId` unconditionally in
+`passLinkedFiles`, so the LIVE object carries `characterId: undefined` on every
+non-avatar entry — a key `Object.keys` sees and `JSON.stringify` drops. The
+first `gallery_key_order` recording therefore claimed a key no client ever
+receives. The case now round-trips through `JSON.parse(JSON.stringify(body))`
+before reading keys; the wire is the contract.
+
+**Mutation table** (each run against a fresh pin-generated oracle, reverted by
+file backup):
+
+| # | mutation | result |
+|---|---|---|
+| M1 | `entries.reverse()` before the sort (stability lost) | RED — `gallery`, `gallery_key_order`(+raw) |
+| M2 | dedupe on id only (the sha branch dead) | RED — `gallery`, `gallery_key_order`(+raw), `save_image_twin_alias`(+status) |
+| M3 | drop pass 2's `note_message` forwarding | RED — `gallery`, `gallery_key_order`(+raw) |
+| M4 | `is_story_background_path` reads `tool/` not `generated/` | RED — `gallery` |
+| M5 | drop pass 4's `SYSTEM`-role skip | RED — `gallery`, `gallery_key_order`(+raw) |
+| M6 | drop pass 3's `hasSha` skip | **SURVIVED — correctly; see below** |
+
+M1 needed a fixture change to be provable at all: every entry had a distinct
+`createdAt`, so stability was unobservable. `F_TWIN` now shares
+`2026-04-29T00:00:00.000Z` with `F_UPLOAD`, and the tie falls to pass order
+exactly as v4's stable sort makes it.
+
+**M6 survived CORRECTLY and is recorded rather than chased.** v4's pass-3
+`if (resolved.sha256 && collector.hasSha(resolved.sha256)) continue` is
+behaviourally redundant with `EntryCollector.add`'s own sha dedup *for the
+entry list*: without the guard, `add` finds the twin and aliases instead of
+appending, so the roll is identical. The one thing that differs is whether
+`byId` gains the portrait's `defaultImageId`, which is observable only through
+a pass-4 `has()` hit on that same id — a shape no real chat produces and no
+fixture can pose without inventing one. The guard is ported faithfully.
+
+**Fixture arms that are NOT what they look like, recorded so a later reader
+does not "fix" them:**
+
+- `save_image_twin_alias` → 400. The sha twin's LINK id resolves in the
+  collector (`by_id` aliases it to the `files` entry) but names no ENTRY, so
+  v4's `entries.find(e => e.id === fileId)` membership guard refuses it. A real
+  v4 quirk, pinned in both directions.
+- The kept photo has a `files` sister row that is NOT linked to the chat.
+  `saveImageToAlbum` resolves a `doc_mount_file_links.id` to its sister by
+  sha256 and only falls back to INGESTING the blob when there is none; a real
+  `attach_image` re-show always has one, and the ingest fallback is separately
+  proven by `photo_tools_equivalence`.
+- `save_image_already` runs the SAME save twice; the second is the answer. A
+  link id saved into the vault it already lives in does NOT refuse, because
+  `readImageBuffer` is jest.setup's storage stub for every id — the bytes it
+  hashes are the stub's, not the blob's.
+- That case is the family's one `Norm::Timestamps` arm: the ALREADY_SAVED
+  sentence quotes the EXISTING link row's `createdAt`, stamped by
+  `linkBlobContent`'s wall clock on both sides (v4's frozen inside the oracle;
+  a Rust `Db` write has no clock to freeze). The album name and the existing
+  relative path — both derived from the injected `kept_at` — stay compared.
+
+### `courier_images_routes_equivalence` — a `25f534c0b` NEUTRALITY regen, and a finding for the unifier
+
+Regenerated at BOTH pins. At `25f534c0b` it is clean and the family is GREEN
+against it. **At `78b381a96` seven of its fourteen cases change, and four of
+them 500** — `add_tool_result_user`, `add_tool_result_character`, `resolve`,
+`resolve_cadence` (and `cancel`) — because the committed courier fixture
+predates the tip's two new columns (`chat_messages.routeTrail` from
+`5841a8c62`, `chats.cycleOrderParticipantIds` from `2aca73ad6`), so v4's own
+write path fails on it. That is **P4.D171's substrate obligation showing
+through a committed fixture**, not a v5 defect and not this lane's to repair;
+recorded here so the unifier expects it. The other two differing cases
+(`save_image_riya`, `save_image_general`) differ ONLY in the minted `linkId`
+the family already blanks — i.e. **the shared-schema swap and the shared walk
+are byte-neutral across the two shas**, which is the neutrality claim this
+lane owes.
+
+### Census
+
+`dispatch_wrong_type_census.rs`'s `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`
+429 → **431** (`ChatGallery.chat_id` + `ChatSaveGalleryImage.chat_id`, both the
+`/api/v1/chats/[id]` route segment). The save verb's body rides as a flattened
+`Value` parsed by the shared schema inside the handler, so it is not a typed
+field and does not move the count.
+
+### Regen recipes
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d174-78b381a96   # or …-25f534c0b for courier-images
+V5W=<this worktree> ; N=~/.nvm/versions/node/v24.13.1/bin
+
+# the committed fixture (rebuild → new minted ids; the sidecar carries them)
+cd "$PIN"
+TZ=UTC \
+QT_FIXTURE_CG_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-gallery-main.db \
+QT_FIXTURE_CG_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-gallery-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-chat-gallery-fixture.ts
+rm -f $V5W/crates/quilltap-web/tests/fixtures/chat-gallery-*.db-journal
+
+# the oracle (jest ignores .claude/ — mirror the case to /tmp first)
+TMPO=/tmp/qt-cg-oracle-p4d174
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/chat-gallery.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/chat-gallery-web.json "$TMPO/fixtures/"
+cd "$PIN"
+TZ=UTC \
+QT_FIXTURE_CG_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-gallery-main.db \
+QT_FIXTURE_CG_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-gallery-mount.db \
+QT_FIXTURE_CG_META=$V5W/crates/quilltap-web/tests/fixtures/chat-gallery-main.db.meta.json \
+QT_ORACLE_OUT=/tmp/oracle-chat-gallery.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "cases/chat-gallery\.test\.ts$"
+
+# the diff
+cd "$V5W"
+QT_ORACLE_CHAT_GALLERY=/tmp/oracle-chat-gallery.ndjson \
+  cargo test -p quilltap-harness --test chat_gallery_equivalence
+```
+
+⚠ The jest `--` filter is anchored `cases/chat-gallery\.test\.ts$` on purpose:
+an unanchored `chat-gallery` also matches v4's OWN
+`__tests__/unit/lib/photos/chat-gallery.test.ts` and runs it alongside.
+
+⚠ **Never rebuild the fixture while a mutation run is in flight.** The first
+M4 run raced a concurrent rebuild and produced a reds list
+(`gallery_portrait_only`, `files_list`) that the mutation could not have
+caused; it was discarded and re-run cleanly.
+
+### Lane record — P4.D174 unit 4 (`?download=1`)
+
+`wants_attachment` / `disposition_for` land in `quilltap-web/src/query.rs`
+rather than in `quilltap-core::content_disposition`, because v4's predicate
+takes a `{url: string}` and v5's edge never has one: axum parses the request
+line and hands the handler a decoded pair list. A core-side function taking a
+URL string would have had to invent a URL parser to be reachable, and calling
+it with axum's relative `Uri` would have hit v4's `new URL()` THROW arm on
+every request.
+
+**The tier-1 tsx case the order offered as the first option was NOT written;
+the order's own sanctioned alternative — "fold it into `binary_routes.rs` if
+the web venue can serve it" — was taken**, plus a unit truth table on the
+predicate itself (`wants_attachment_accepts_only_one_and_true`,
+`wants_attachment_is_first_wins`, `disposition_for_maps_the_predicate`). The
+reason is the same one above: the comparand v4's function takes (a URL) and the
+comparand v5's takes (a pair list) are different types, so a corpus of URL
+strings would have measured a parser this port does not otherwise have.
+
+**v4's malformed-URL arm is a structural NO-COUNTERPART**, recorded in the
+predicate's doc comment: axum refuses an unparseable request line before any
+handler runs.
+
+Two arms the port deliberately does NOT wire, both pinned:
+
+- the **thumbnail** leg — v4's `files/[id]/handlers/get.ts` passes `request` to
+  `handleDownloadFile` alone, and `actions/thumbnail.ts` sets no
+  `Content-Disposition` at all (measured at the pin), so `?download=1` has
+  nothing to move there;
+- **`GET /mount-points/{id}/files/{path}?raw=1`**, the fourth byte route —
+  `86d59660c` touches three, and this is not one of them.
+
+`mount_blob_get` has ONE response builder for both of v4's arms (the blob and
+the native-text document), so the "easy port defect" the order names is closed
+by construction — and M11 below proves the assertion would have caught it
+anyway.
+
+| # | mutation | result |
+|---|---|---|
+| M10 | `wants_attachment` returns `false` always | RED — `binary_routes.rs:333` |
+| M11 | the blobs route hardcodes `Disposition::Inline` | RED — `binary_routes.rs:409` |
+
+### Lane record — P4.D174 unit 5 (v4 bug 130 — `chatId` on the images collection route)
+
+The order's warning held: **`images_routes.rs` forwarded only four body keys**,
+and the differential drives `api::images::images_generate` DIRECTLY, so without
+the edge fix the whole corpus would have been vacuously green. The edge arm's
+discriminator is the handler's own `z.uuid()` refusal — a malformed `chatId`
+can only produce a 400 if it ARRIVED — which is the cheapest thing that cannot
+pass on a dropped key.
+
+Measured at the pin: the `chatId` gate is the same `z.uuid()` `profileId` uses,
+and `.optional()` (not `.nullable()`), so an explicit `null` is
+`Invalid input: expected string, received null`. Both refusals answer v4's
+`Validation error` 400; v5 does not carry the `details` array (the standing
+project-wide omission this family already records).
+
+`chatId` names nothing in particular — the schema is `z.uuid()` and `linkedTo`
+is a bare id array — so the corpus uses a fresh uuid rather than one of the
+images fixture's, and the `Set` fold is measured by passing the SAME id as a
+CHAT tag. The oracle's answer:
+`["c7000000-…-0000000000c7","ee000000-…-000000000001"]`, the chat id once.
+
+| # | mutation | result |
+|---|---|---|
+| M7 | `chat_id` never reaches the fold | RED — `images_generate_route_equivalence` |
+| M8 | the fold is not deduped | RED — `images_generate_route_equivalence` |
+| M9 | the web edge drops `chatId` | RED — `images_edge_routes` |
+
+Regen: `images-generate-route` at the `78b381a96` pin — 41 rows, the four new
+ones present (`grep -c "generate_.*chat_id" → 4`).
+
+### Lane record — P4.D174 units 6–8 (the census re-measure + the two Tier-2 items)
+
+**The `query_param_semantics` re-measure needed no hand edit.** Regenerated
+from the `78b381a96` pin: v4's `chat_item_post__unknown` sentence now lists
+**43** actions with `save-image` LAST (measured, not counted from the order),
+and `chat_item_get` gained `gallery` — and the family's own classification held,
+green on the first run. No literal in the tree carries the action list, so the
+order's "31/43 sentences … RE-MEASURE, never hand-edit" reduces to a regen.
+
+**Two `UNSERVED_KNOWN_ACTIONS` rows added**, one per new v4 action, since the
+existing `chat_item_*` RECORDED_DIVERGENCE rows probe `zzz-not-an-action` —
+which is not v4-known and, as these rows MEASURED, takes a different leg with a
+SHORTER sentence. v5's chat edges already distinguish the two: a v4-known
+action gets the dispatch pointer tacked on (`…; the chat GET rides POST
+/api/dispatch`), an invented one does not. Both rows were written to the
+shorter sentence first and corrected against the running edge.
+
+`web_edge_body_parse_guard` UNMOVED (the save body parses through
+`parse_save_image_request`, not a new hand-rolled `and_then(Value::as_…)`);
+`chats_collection_route` green; `images_edge_routes` green with its new arm.
+
+**Tier 2 item 7 — API.md diffed field-for-field against the wire.** The
+documented shapes are transcribed as literals in a `documented` module inside
+the family and checked on the ROLL, not on a hand-built value: the top-level
+keys, `counts`' seven in chip order, every entry key documented and in the
+documented relative order, and the save response's seven. `messageId` is
+excluded from the ORDER check (not from the membership check) because
+`noteMessage` appends it.
+
+**A doc-vs-wire finding, recorded not fixed:** API.md's example entry shows
+`"characterId": null, "characterName": null, "messageId": null`. v4 builds
+those as `undefined` in `passLinkedFiles` and `JSON.stringify` drops them, so
+no client ever receives the key on an entry that has no value for it. The
+doc's nulls are readability; the port's contract is the bytes. All three DO
+reach the wire on the entries that carry them (an avatar, a portrait, an
+attachment respectively), which the family now asserts.
+
+**Tier 2 item 8 — the `ChatFileDelete` guard.** Two new arms on both sides:
+`DELETE /api/v1/chat-files/{id}` answers **404 `File not found`** for a
+`doc_mount_file_links.id` (half the gallery's entries) and **200
+`{success: true}`** for a `files.id` from the same roll. That is what API.md
+means by "accepts only the `file` species", it is what makes `idKind`
+load-bearing in P4.D176's modal, and it was asserted nowhere.
+
+### P4.D174 — the gate of record
+
+**The freshness probe re-run at the end of the lane and unchanged from lane
+start:** checkout on `main`, tree CLEAN, `78b381a96..main` still exactly
+`cc65d6bfc` (bug 133), `bugfix` unmoved. Every regen this lane ran came from a
+pinned detached worktree, never the checkout.
+
+- `cargo fmt --all --check` — clean. `cargo clippy --workspace --all-targets
+  -- -D warnings` — clean in BOTH feature sets (default and
+  `--features quilltap-core/native-transport`). `cargo build --release
+  --workspace` — clean.
+- **`cargo test --workspace` with the lane's 18-variable env block
+  (`QT_V4_ROOT` / `QT_V4_CHECKOUT` at the `25f534c0b` pin per §R.3, `QT_NODE`
+  the Node 24.13.1 BINARY): 542 test binaries / 3,073 passed / 0 failed /
+  1 ignored, ZERO `SKIP:` lines, exit 0** (read directly, never after a pipe).
+  Every family this lane moves confirmed RUN by per-binary duration:
+  `chat_gallery_equivalence` 0.18 s, `courier_images_routes_equivalence`
+  0.08 s, `images_generate_route_equivalence` 3.20 s,
+  `query_param_semantics_equivalence` 3 tests / 1.30 s, `binary_routes`
+  0.95 s, `images_edge_routes` 0.96 s, `dispatch_wrong_type_census` 4 tests,
+  `web_edge_body_parse_guard` 2 tests, `photo_tools_equivalence` 0.25 s,
+  `files_routes_equivalence` 0.16 s, `images_routes_equivalence` 2.71 s, and
+  Tier R `cli_differential` 366.67 s.
+- **The gate's own catch, twice.** (1) The first full run failed at binary 2
+  with `spawn CLI: PermissionDenied` — `QT_NODE` had been set to the node
+  `bin` DIRECTORY rather than the `node` binary, and `cli_differential`
+  spawns it. Fixed and re-run whole; `cargo test --workspace` is fail-fast per
+  BINARY, so that first log's 2 `test result` lines were not a result.
+  (2) **`os error 28` — the disk filled mid-gate** (417 MB free; this
+  worktree's `target/` was 21 GB and two sibling lanes held 29 GB and 93 GB).
+  Reclaimed by `cargo clean -p` over this lane's own six crates only
+  (16.5 GB, keeping the cached amalgamation build), never a sibling's.
+  53 GB free at the end.
+
+**Per-family regens, all through `harness/tools/recipe_sweep.py --run <family>
+--v4 <pin>` except the four hand-run ones whose recipes this lane authored or
+re-mirrored:**
+
+| family | pin | result |
+|---|---|---|
+| `chat_gallery_equivalence` (NEW) | `78b381a96` | 20 cases, green |
+| `images_generate_route_equivalence` | `78b381a96` | 41 rows, green |
+| `query_param_semantics_equivalence` | `78b381a96` | 224 rows, green |
+| `images_routes_equivalence` | `78b381a96` | green |
+| `files_routes_equivalence` | `78b381a96` | green |
+| `photos_relative_path_equivalence` | `78b381a96` | green (13 inputs) |
+| `image_generate_route_equivalence` (the PROFILE route) | `78b381a96` | green — UNMOVED, as the order predicted |
+| `courier_images_routes_equivalence` | `25f534c0b` | green (neutrality — see the unit-1–3 record) |
+| `photo_tools_equivalence` | `25f534c0b` | green (neutrality — see below) |
+| `chat_export_equivalence` | `25f534c0b` | green |
+| `markdown_transcript_equivalence` | `25f534c0b` | green (55 rows, 10 disposition) |
+| `almanack_tier2_equivalence` | `25f534c0b` | green |
+
+**`photo_tools_equivalence` is a `25f534c0b` NEUTRALITY family for this lane,
+not a tip regen — and its tip regen is RED BY DESIGN.** Regenerated at
+`78b381a96` it fails `describe_stored`: v4's `78b381a96` reorders
+`handleDescribeImage` to prompt → stored → vision and adds the
+`stored_description` rider (bug 132). That is **P4.D175's** port, not this
+lane's; §R.11 assigns `photo-tools.json` and its builder to that lane. Green at
+the baseline pin, which is the neutrality claim this lane owes.
+
+⚠ **A /tmp collision this lane created, for P4.D175's attention:** the sweep
+driver's `photo_tools_equivalence` recipe writes `/tmp/qt-photo-{main,mount}.db`
+and `/tmp/oracle-photo-tools.ndjson` at the DEFAULT paths, and this lane ran it
+twice (once at each pin). If P4.D175 had a build in flight against those paths
+it was clobbered (`tmp-fixtures-collide-across-parallel-lanes`); the fix is that
+lane re-running its own recipe, which it will do anyway for bug 132.
+
+### P4.D174 — what remains OPEN, and what is "spotted, not mine"
+
+**OPEN under this order: nothing in Tiers 1 or 2.** All six Tier-1 items and
+both Tier-2 items landed. Tier 3's two deferrals stand as written and are now
+executable: no REST edge for either action (pinned as two
+`UNSERVED_KNOWN_ACTIONS` rows), and no server-side realtime change (the
+gallery key sits under v5's existing `['chat', id]` prefix — P4.D176's spec is
+the verification, named here as the order asks).
+
+**Measured deviations from the order, each with its reason:**
+
+1. **The chat-scoped save arms live in `chat_gallery_equivalence`, not in a
+   migrated `courier-images-*.db`.** The order said "migrate in place: a
+   gallery-member image, a non-member, an already-saved one, a link-id
+   `fileId`". They are all there, over the NEW fixture this lane owns, which
+   the Playwright seeder does not read — so the committed courier pair the
+   seeder DOES read was not touched at all. The courier family still carries
+   the message leg and is regenerated as the neutrality proof.
+2. **The `wants_attachment` tier-1 tsx case was not written**; the order's own
+   alternative (fold into `binary_routes.rs`) was taken, plus a unit truth
+   table. Reason in the unit-4 record: v4's predicate takes a URL and v5's
+   takes axum's pair list, so a URL corpus would measure a parser this port
+   does not have.
+3. **The ordered NaN-`createdAt` fixture arm was removed after being measured
+   UNREACHABLE through v4's own reader** (unit-1 record).
+4. **The order's "`:548` quotes v4's whole 30-action sentence — RE-MEASURE,
+   never hand-edit"** turned out to need no edit at all: no literal in the tree
+   carries the action list, so the re-measure is a regen (unit-6 record).
+5. **The order's "`mount_blob_get` … BOTH its arms — the easy port defect"** is
+   closed by construction: v5 has one response builder for both arms. M11
+   proves the assertion would have caught it regardless.
+
+**Spotted, not mine — for the unifier:**
+
+- **The committed `courier-images-*.db` fixture is schema-vintage-stale for the
+  round's tip.** Regenerated at `78b381a96`, four of its fourteen cases 500 in
+  v4's OWN handlers (`add_tool_result_user`, `add_tool_result_character`,
+  `resolve`, `resolve_cadence`; `cancel` too) because the fixture predates
+  `chat_messages.routeTrail` and `chats.cycleOrderParticipantIds`. **This is
+  P4.D171's substrate obligation showing through a committed fixture**, and it
+  will bite any lane that regenerates a courier-family oracle at the new
+  baseline. The read/save cases are byte-identical at both shas.
+- **`photo_tools_equivalence` goes RED at the tip on bug 132** (above) — it is
+  on P4.D175's list, and the two lanes' /tmp paths for it collide.
+- `docs/developer/API.md`'s gallery example shows three optional entry keys as
+  explicit `null` that the wire omits (unit-6 record). v4's doc, v4's to fix;
+  recorded, not touched.
+- 💸 **The dogfood queue gains:** the gallery roll on real Friday data (the
+  nine sources at scale — the one thing no fixture can pose), a Save from the
+  gallery into a character vault and the 409 on a repeat, `?download=1` from
+  the browser (the Electron `will-download` half is only reachable in the
+  shell), and a chat-scoped `generate_image` whose output then appears in the
+  same chat's `files` listing (bug 130's user-visible half).

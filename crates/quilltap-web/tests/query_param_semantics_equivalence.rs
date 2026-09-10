@@ -599,6 +599,30 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         400,
         "Only the multipart 'write-file' action is served on this route; JSON mount actions ride POST /api/dispatch",
     ),
+    // --- P4.D174: the chat gallery's two v4 actions (`86d59660c`) ---
+    // v4 serves `?action=gallery` (GET) and `?action=save-image` (POST) on the
+    // chat item route; v5 hosts BOTH on `/api/dispatch` (`chatGallery` /
+    // `chatSaveGalleryImage`) and adds no REST edge — the deliberate Tier-3
+    // deferral of this order. Without these rows the two new v4-known actions
+    // would be asserted NOWHERE: the RECORDED_DIVERGENCE rows above probe
+    // `zzz-not-an-action`, which is not v4-known and takes a different leg —
+    // and, as these rows measure, a SHORTER sentence. v5's chat edges already
+    // distinguish the two: a v4-known action gets the dispatch pointer tacked
+    // on, an invented one does not.
+    (
+        "GET",
+        "/api/v1/chats/bb000000-0000-4000-8000-0000000000bb",
+        "gallery",
+        400,
+        "Only the get-background and cost actions are served on this route; the chat GET rides POST /api/dispatch",
+    ),
+    (
+        "POST",
+        "/api/v1/chats/bb000000-0000-4000-8000-0000000000bb",
+        "save-image",
+        400,
+        "Only the equip and regenerate-avatar actions are served on this route; the other chat actions ride POST /api/dispatch",
+    ),
     (
         "GET",
         "/api/v1/system/tools",

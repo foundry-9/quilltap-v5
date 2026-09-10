@@ -510,6 +510,168 @@ post-boot, with the rotation column reading `'[]'` for the pre-existing chat.
 
 This unit carries no behavior — nothing writes a non-null `routeTrail` or a
 non-`'[]'` rotation yet (P4.D173 and P4.D172, stacked on this lane's tip).
+#### 2026-09-09 — docs(p4.d174): the lane's gate of record, the twelve per-family regens, and the two findings that belong to sibling lanes
+
+_Docs-only change._
+
+The gate: 542 test binaries / 3,073 passed / 0 failed / 1 ignored, zero SKIP
+lines, exit 0, with every family the lane moves confirmed RUN by per-binary
+duration (Tier R at 366 s). fmt clean, clippy clean in both feature sets,
+release build clean. Twelve families regenerated from a pinned worktree — seven
+at the round's `78b381a96` target, five at the `25f534c0b` baseline as
+neutrality checks.
+
+Two findings recorded for other lanes rather than fixed here. The committed
+`courier-images-*.db` fixture is schema-vintage-stale for the round's tip: four
+of its fourteen cases 500 in v4's own handlers once regenerated at
+`78b381a96`, because the fixture predates the round's two new columns — that is
+P4.D171's substrate obligation showing through a committed fixture, and it will
+bite any lane regenerating a courier oracle at the new baseline.
+`photo_tools_equivalence` goes red at the tip on v4 bug 132, which is
+P4.D175's port; it is green at the baseline pin, and the two lanes share its
+default `/tmp` fixture paths.
+
+The gate caught two of its own problems worth the note: `QT_NODE` set to the
+node `bin` directory rather than the binary (Tier R spawns it, and the whole
+run is fail-fast per binary), and `os error 28` — the disk filled mid-gate,
+reclaimed with `cargo clean -p` over this lane's own crates only.
+
+#### 2026-09-09 — test(gallery): the two new v4 chat actions pinned as unserved, and API.md's documented shapes diffed against the wire (P4.D174 units 6–8)
+
+_Versions: harness 0.0.752, web 0.0.136._
+
+`86d59660c` adds two v4-known chat actions — `?action=gallery` on the GET and
+`?action=save-image` on the POST, the 43rd and last in v4's list. v5 hosts both
+on `/api/dispatch` and adds no REST edge, which is this order's deliberate
+deferral; `UNSERVED_KNOWN_ACTIONS` now says so out loud for each, with the
+sentence v5's edges actually answer. Measured on the way: v5's chat edges give
+a v4-KNOWN action the dispatch pointer (`…; the chat GET rides POST
+/api/dispatch`) and an invented one the shorter sentence, so the existing
+`zzz-not-an-action` rows could never have covered these.
+
+`query_param_semantics` regenerated at the tip — v4's POST sentence now lists
+43 actions with `save-image` last, and the family's classification held with no
+edit. `web_edge_body_parse_guard` unmoved (the save body parses through the
+shared schema, not a new hand-rolled reader) and `chats_collection_route` green.
+
+Tier 2: `chat_gallery_equivalence` gains API.md's documented shapes as
+literals, diffed field-for-field against the wire on both sides — the top-level
+keys, `counts`' seven in chip order, every entry key documented and in the
+documented relative order (`messageId` excepted, since a later pass appends it),
+and the save response's seven. It also gains the two arms behind the gallery
+modal's `idKind` branch: `DELETE /api/v1/chat-files/{id}` 404s a
+`doc_mount_file_links.id` and accepts a `files.id` from the same roll, which is
+what API.md means by "accepts only the `file` species" and was asserted nowhere.
+
+#### 2026-09-09 — fix(images): v4 bug 130 — the images collection route accepts `chatId` and folds it into `linkedTo` (P4.D174 unit 5)
+
+_Versions: core 0.0.859, harness 0.0.751, web 0.0.135._
+
+`POST /api/v1/images?action=generate` ignored the chat that asked for the
+image, so a chat-scoped read — the chat file listing, the new chat gallery, the
+stale-chat collapse sweep — could not see it. v4 `86d59660c` added
+`chatId: z.uuid().optional()` and folded it into `linkedTo` beside the tag ids
+through a `Set`.
+
+The `Set` is FIRST-WINS: a caller passing both a CHAT tag and `chatId` links
+the id once, not twice, which would otherwise double every inherited tag
+downstream. `.optional()` rather than `.nullable()`, so an explicit `null`
+refuses exactly as `tags` and `options` do. v4's
+`[Images v1] Generate: resolved linkedTo` debug line rides along.
+
+The web edge forwards the new key — without that the field never arrives and
+the whole corpus is vacuously green, so `images_edge_routes.rs` gains an arm
+whose discriminator is the handler's own uuid refusal: a malformed `chatId` can
+only produce a 400 if the value reached the handler.
+
+`images_generate_route_equivalence` grows four arms (the fold, the CHAT-tag
+collision, a non-uuid, an explicit null). Three mutations red them: dropping
+`chatId` from the fold, dropping the dedupe, and dropping the edge's
+forwarding.
+
+#### 2026-09-09 — feat(files): `?download=1` on the three image byte routes (P4.D174 unit 4)
+
+_Versions: web 0.0.134._
+
+v4 `86d59660c` added `lib/api/content-disposition.ts`'s `wantsAttachment` /
+`dispositionFor` and wired them into `GET /api/v1/files/{id}`,
+`GET /api/v1/files/proxy/{key}` and `GET /api/v1/mount-points/{id}/blobs/{path}`
+so the gallery's download button saves rather than renders, and the Electron
+shell streams through `will-download` instead of the renderer buffering a 4K
+image into a Blob.
+
+The predicates live in `quilltap-web`'s one query reader: `download` is a
+`searchParams.get` read (FIRST wins on a repeat), only the exact strings `'1'`
+and `'true'` download, and everything else — `0`, a word, a present-but-empty
+value, the wrong case — is inline. `file_bytes_response` and the blobs route's
+response builder take the disposition; nothing else about either response
+moves, which is what v4's own disposition test pins.
+
+`binary_routes.rs` grows the arms: both accepted flags and four rejected ones
+on the proxy route, the repeat rule, the by-id route, and BOTH blob arms (the
+blob and the native-text document — v4 wires them separately and a port can
+miss the second). The thumbnail leg is deliberately unwired, because v4 passes
+`request` to `handleDownloadFile` alone; so is the fourth byte route
+(`/mount-points/{id}/files/{path}?raw=1`), which `86d59660c` does not touch.
+
+v4's malformed-URL arm (`new URL(request.url)` in a try/catch) has no
+counterpart and cannot: axum parses the request line before any handler runs,
+so a URL that does not parse never reaches the predicate. Recorded as a
+structural NO-COUNTERPART.
+
+#### 2026-09-09 — feat(gallery): the Salon chat gallery's server half — the nine-source enumerator, the `chatGallery` + `chatSaveGalleryImage` verbs, and the message-attachment walk shared with the chat file listing (P4.D174 units 1–3)
+
+_Versions: core 0.0.858, harness 0.0.750, web 0.0.133._
+
+v4 `86d59660c` added one server-side enumerator that knows every way a picture
+can end up in a conversation — uploads and library links, `generate_image`
+output, both Generate Image entry points, `attach_image` re-shows, Librarian
+attaches, Lantern story backgrounds (including superseded ones), Aurora avatar
+repaints likewise, the cast's standing portraits, and Markdown-referenced
+images in message prose — over both id species (`files.id` and
+`doc_mount_file_links.id`), deduped by content hash, newest first with
+portraits last. There was no v5 counterpart.
+
+`photos/chat_gallery.rs` ports it whole: the four passes, the classifier
+ladder (current background → `generated/` path → worn avatar → `avatarOverrides`
+repaint → `images/history/` or `/character-avatars/` → `GENERATED` →
+attachment), the `EntryCollector`'s two dedup rules (the first pass to see an
+image wins its source; a later pass may only ADD a `messageId`), and the sort.
+Entries are `serde_json::Map` objects rather than a derived struct on purpose:
+v4's per-entry key order is its JS construction order, which differs per pass,
+and `noteMessage` APPENDS `messageId` to an entry an earlier pass already
+built. A fixed declaration order diverges on exactly that arm, and every
+differential normalizer sorts keys, so the raw sequence is pinned as its own
+comparand.
+
+`resolveMessageAttachmentEntries` — v4's second pass, which the
+`/chats/{id}/files` listing now shares instead of keeping a second copy — is
+lifted out with it; `chat_files_list` calls it, its response bytes unchanged,
+and gains v4's fail-soft `[Chats v1 Files] Failed to read messages for
+attachment walk` warn plus the new resolved-attachments debug line.
+
+Two dispatch verbs: `chatGallery` answers the BARE `{entries, counts, total}`
+(v4 uses `NextResponse.json`, not `successResponse`), 404s a missing chat
+before the enumerator runs, and answers 500 rather than an empty roll when the
+enumerator throws — both are true at once because the enumerator fails soft at
+every pass. `chatSaveGalleryImage` is the chat-scoped twin of the message
+toolbar's save, guarded by GALLERY MEMBERSHIP rather than message attachment,
+answering v4's ladder in order and — the one place the two doors differ —
+**409** with `{error, code, relativePath, keptAt}` where the message leg keeps
+400. `photos/save_attribution.rs` carries the one attribution rule both doors
+use and the shared request schema; the message leg's private uuid schema is
+deleted with it, so `fileId must be a UUID` is gone and a non-uuid id now
+passes the parse and fails at the attachment guard — an observable v4 change on
+an already-ported v5 surface.
+
+New `chat_gallery_equivalence` (18 cases) over a new committed
+`chat-gallery-{main,mount}.db` pair drives v4's real enumerator through its
+real route. Five mutations red exactly the right cases; a sixth — dropping
+pass 3's `hasSha` skip — survives CORRECTLY and is recorded: v4's guard is
+behaviourally redundant with the collector's own sha dedup for the entry list.
+`courier_images_routes_equivalence` regenerated as a neutrality check, green.
+
+#### 2026-09-09 — docs(setupphase): the `78b381a96` twelve-commit drift catch-up round ordered — seven work orders (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥ P4.D175 ∥ P4.D176 ∥ P4.D177), the ledger's twelve rows marked ORDERED
 
 _Docs-only change._
 

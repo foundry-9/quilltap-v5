@@ -81,6 +81,7 @@ const PROFILE_UNCENSORED: &str = "aaaa0000-0000-4000-8000-000000000002";
 const PROFILE_NOIMAGE: &str = "aaaa0000-0000-4000-8000-000000000003";
 const MISSING_PROFILE: &str = "aaaa0000-0000-4000-8000-0000000000ff";
 const CHAR_TAG: &str = "c1000000-0000-4000-8000-000000000003";
+const CHAT_ID: &str = "c7000000-0000-4000-8000-0000000000c7";
 const THEME_TAG: &str = "ee000000-0000-4000-8000-000000000001";
 const LANTERN_MP: &str = "80000000-0000-4000-8000-000000000002";
 
@@ -471,6 +472,8 @@ struct Case {
     name: &'static str,
     prompt: Option<Value>,
     profile_id: Option<Value>,
+    /// v4 bug 130's `chatId` (`86d59660c`).
+    chat_id: Option<Value>,
     tags: Option<Value>,
     options: Option<Value>,
     danger: Option<Value>,
@@ -485,6 +488,7 @@ impl Case {
             name,
             prompt,
             profile_id,
+            chat_id: None,
             tags: None,
             options: None,
             danger: None,
@@ -522,6 +526,31 @@ fn cases() -> Vec<Case> {
                 { "tagType": "THEME", "tagId": THEME_TAG }
             ])),
             ..ok("generate_with_tags")
+        },
+        // ── v4 bug 130: `chatId` folds into `linkedTo` ──────────────────────
+        Case {
+            chat_id: Some(json!(CHAT_ID)),
+            ..ok("generate_with_chat_id")
+        },
+        // The `Set` is FIRST-WINS: a CHAT tag and `chatId` naming the same id
+        // link it ONCE, not twice.
+        Case {
+            chat_id: Some(json!(CHAT_ID)),
+            tags: Some(json!([
+                { "tagType": "CHAT", "tagId": CHAT_ID },
+                { "tagType": "THEME", "tagId": THEME_TAG }
+            ])),
+            ..ok("generate_chat_id_and_chat_tag")
+        },
+        // `z.uuid()` + `.optional()` (not `.nullable()`): a non-uuid and an
+        // explicit null are both v4's `Validation error` 400.
+        Case {
+            chat_id: Some(json!("not-a-uuid")),
+            ..ok("generate_chat_id_not_uuid")
+        },
+        Case {
+            chat_id: Some(Value::Null),
+            ..ok("generate_chat_id_null")
         },
         Case {
             provider: ProviderMode::Png,
@@ -765,6 +794,7 @@ fn images_generate_matches_oracle() {
             spec.frozen_now_ms,
             c.prompt.as_ref(),
             c.profile_id.as_ref(),
+            c.chat_id.as_ref(),
             c.tags.as_ref(),
             c.options.as_ref(),
         ));

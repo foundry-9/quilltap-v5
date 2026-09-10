@@ -28,6 +28,7 @@
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::content_disposition::Disposition;
 
 /// The repeat-preserving query payload: `Query<QueryPairs>`.
 ///
@@ -45,6 +46,40 @@ pub(crate) fn first<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a 
         .iter()
         .find(|(k, _)| k == key)
         .map(|(_, v)| v.as_str())
+}
+
+/// v4 `wantsAttachment(request)` (`lib/api/content-disposition.ts:47`,
+/// `86d59660c`) — whether a request asked for the bytes as a download rather
+/// than inline.
+///
+/// The three routes that serve image bytes — `/files/{id}`,
+/// `/files/proxy/{key}` and `/mount-points/{id}/blobs/{path}` — all answer
+/// `inline` by default (the Salon embeds them in `<img>`) and all honour
+/// `?download=1` by switching to `attachment`. `true` is accepted alongside
+/// `1` so a hand-typed URL behaves the way a reader expects; **nothing else
+/// is** — `?download=0`, `?download=yes` and a bare `?download=` are all
+/// inline.
+///
+/// `download` is a `searchParams.get` read, so a repeated key takes the FIRST
+/// occurrence ([`first`]).
+///
+/// **v4's malformed-URL arm has no counterpart and cannot.** v4 wraps
+/// `new URL(request.url)` in a try/catch because its handler receives the URL
+/// as a string; axum parses the request line before any handler runs, so a
+/// request whose URL does not parse never reaches this predicate. Recorded as
+/// a structural NO-COUNTERPART (P4.D174).
+pub(crate) fn wants_attachment(pairs: &[(String, String)]) -> bool {
+    matches!(first(pairs, "download"), Some("1") | Some("true"))
+}
+
+/// v4 `dispositionFor(request)` — `attachment` when the request asked for a
+/// download, else `inline`.
+pub(crate) fn disposition_for(pairs: &[(String, String)]) -> Disposition {
+    if wants_attachment(pairs) {
+        Disposition::Attachment
+    } else {
+        Disposition::Inline
+    }
 }
 
 /// v4 `searchParams.getAll(key)` — **every** occurrence, in URL order.
@@ -293,5 +328,48 @@ mod tests {
             action(&pairs(&[("action", ""), ("action", "export")])),
             None
         );
+    }
+
+    /// v4's `wantsAttachment` truth table, whole: only the exact strings `'1'`
+    /// and `'true'` download. Everything else — a `0`, a word, a
+    /// present-but-empty value, an absent key, the wrong CASE — is inline.
+    #[test]
+    fn wants_attachment_accepts_only_one_and_true() {
+        for value in ["1", "true"] {
+            assert!(
+                wants_attachment(&pairs(&[("download", value)])),
+                "download={value}"
+            );
+        }
+        for value in ["0", "", "yes", "TRUE", "True", "on", "2", "1 "] {
+            assert!(
+                !wants_attachment(&pairs(&[("download", value)])),
+                "download={value}"
+            );
+        }
+        assert!(!wants_attachment(&pairs(&[])));
+        assert!(!wants_attachment(&pairs(&[("downloads", "1")])));
+    }
+
+    /// `download` is a `searchParams.get` read — FIRST wins.
+    #[test]
+    fn wants_attachment_is_first_wins() {
+        assert!(!wants_attachment(&pairs(&[
+            ("download", "0"),
+            ("download", "1")
+        ])));
+        assert!(wants_attachment(&pairs(&[
+            ("download", "1"),
+            ("download", "0")
+        ])));
+    }
+
+    #[test]
+    fn disposition_for_maps_the_predicate() {
+        assert_eq!(
+            disposition_for(&pairs(&[("download", "1")])),
+            Disposition::Attachment
+        );
+        assert_eq!(disposition_for(&pairs(&[])), Disposition::Inline);
     }
 }

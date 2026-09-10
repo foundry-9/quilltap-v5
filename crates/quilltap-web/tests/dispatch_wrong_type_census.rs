@@ -2456,7 +2456,12 @@ fn is_route_identifier(field: &str) -> bool {
 // `Option<Option<Value>>` tri-states parsed by v4's `createTemplateSchema` /
 // `updateTemplateSchema` inside the handler, so they are not typed fields and
 // do not move this count — 426 → 429.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 429;
+// P4.D174 added `ChatGallery.chat_id` + `ChatSaveGalleryImage.chat_id` — both
+// the `/api/v1/chats/[id]` route segment, never a body key. The save verb's own
+// body rides as a flattened `Value` parsed by v4's shared `SaveImageRequestSchema`
+// inside the handler (`photos::save_attribution::parse_save_image_request`), so
+// it is not a typed field and does not move this count — 429 → 431.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 431;
 
 #[test]
 fn census_covers_every_typed_request_field() {
