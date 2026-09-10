@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — test(story-background): the corpus's two bug-133 arms, and a silence arm that can actually see the gate's first conjunct
+
+_Versions: core 0.0.879, harness 0.0.767._
+
+Two new cases in `story-background-job.json`. `moderated_sanitize_profile_configured` is the sanitizer half: a moderated chat whose settings DO name an uncensored image profile, on the ordinary OpenAI profile. Rule 2 does not fire, the appearance text classifies dangerous, and rule 4 asks whether *this* scene routes uncensored — it does not. The sanitized text is visible in the recorded craft key (`a woman with copper hair, in a high-necked woollen dress` against everyone else's `Wearing: a moss-green cloak`), so it reaches the image key and both `llm_logs` projections. Reverting the story caller's derivation to mere existence reddens it. `flagged_no_profile_moderation` mirrors v4's second regression test: the chat IS flagged but no uncensored profile is configured, so the job throws.
+
+The oracle's completion mock gains the two branches those cases need — the Concierge's `Classify the following content:` call and the `sanitizeAppearance` task, which the mock answers by REWRITING the text rather than echoing it (v4's merge only sets `wasSanitized` when the text actually changed). The two flipped cases keep their now-historical `_recraft` labels, with a note outside the case map.
+
+A mutation dropping `moderationRejection` from the reroute gate SURVIVED the first pass: every arm was arranged so the reroute would be refused downstream anyway — mode OFF, or no profile — which made that conjunct invisible. The silence arm is rewritten around a flagged chat under AUTO_ROUTE with a profile configured and a plain (non-moderation) provider error, so the door is one conjunct away from opening and only that conjunct keeps it shut. The mutation now reddens exactly that arm.
+
 #### 2026-09-10 — docs(help): re-vendor `dangerous-content.md` at v4 `cc65d6bfc` (bug 133)
 
 _Versions: host 0.0.124._

@@ -931,6 +931,9 @@ mod tests {
     // A `provider` whose failure IS a moderation rejection, so the gate's
     // second conjunct is what decides.
     struct BlockedImageProvider {
+        /// The FIRST attempt's error. A moderation rejection unless a test is
+        /// asking what a plain provider error does.
+        first_error: &'static str,
         /// The reroute attempt (the SECOND call) fails too when set.
         fail_reroute: bool,
         calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -946,10 +949,11 @@ mod tests {
         {
             let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let fail_reroute = self.fail_reroute;
+            let first_error = self.first_error;
             async move {
                 if n == 0 {
                     return Err(ImageGenError {
-                        message: "content policy violation on this prompt".to_string(),
+                        message: first_error.to_string(),
                     });
                 }
                 if fail_reroute {
@@ -1010,12 +1014,31 @@ mod tests {
         uncensored: Option<&str>,
         fail_reroute: bool,
     ) -> (Result<GenOutcome, String>, usize) {
+        run_blocked_with(
+            db,
+            handler,
+            uncensored,
+            fail_reroute,
+            "content policy violation on this prompt",
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn run_blocked_with(
+        db: &Db,
+        handler: RerouteHandler,
+        uncensored: Option<&str>,
+        fail_reroute: bool,
+        first_error: &'static str,
+    ) -> (Result<GenOutcome, String>, usize) {
         let declarations: Box<ImageDeclarationsFn> =
             Box::new(|_p: &str| ImageDeclarations::default());
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let out = generate_with_reroute(
             db,
             &BlockedImageProvider {
+                first_error,
                 fail_reroute,
                 calls: calls.clone(),
             },
@@ -1255,30 +1278,55 @@ mod tests {
         );
     }
 
-    /// The silence arm: a NON-moderation failure logs the ERROR with
-    /// `moderationRejection: false` and emits no rerouting line at all.
+    /// The silence arm — and the ONLY thing that measures the gate's FIRST
+    /// conjunct. Everything else is arranged so the reroute would be refused
+    /// downstream anyway (mode OFF, or no profile), which makes dropping
+    /// `moderationRejection` invisible. Here the chat is flagged, the mode is
+    /// AUTO_ROUTE and an uncensored profile IS configured — so the door is one
+    /// conjunct away from opening, and only "this was not a moderation
+    /// rejection" keeps it shut. A gate reading `chat_reroute_allowed()` alone
+    /// reroutes a plain provider error and reddens this arm.
     #[tokio::test]
-    async fn a_non_moderation_failure_reports_it_and_says_nothing_about_rerouting() {
+    async fn a_non_moderation_failure_reports_it_and_never_opens_the_second_door() {
         let dir = tempfile::tempdir().unwrap();
         let db = open_db(dir.path());
         seed_uncensored_profile(&db).await;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        {
+        let (out, calls) = {
             use tracing_subscriber::layer::SubscriberExt;
             let subscriber = tracing_subscriber::registry()
                 .with(crate::test_support::CaptureLayer(logs.clone()));
             let guard = tracing::subscriber::set_default(subscriber);
-            // `SlowImageProvider { fail: true }` throws "provider exploded",
-            // which `is_image_moderation_error` does not match.
-            let out = run_gen(&db, true).await;
+            let r = run_blocked_with(
+                &db,
+                RerouteHandler::StoryBackground {
+                    is_dangerous_chat: true,
+                    has_uncensored_image_provider: true,
+                },
+                Some(UNCENSORED_ID),
+                false,
+                "the provider exploded",
+            )
+            .await;
             drop(guard);
-            assert!(out.is_err());
-        }
+            r
+        };
         let lines = logs.lock().unwrap().clone();
-        let failure = one_line(&lines, "[CharacterAvatar] Image generation failed");
+
+        assert_eq!(
+            out.err().as_deref(),
+            Some("Image generation failed: the provider exploded"),
+            "a plain provider error fails the job outright"
+        );
+        assert_eq!(calls, 1, "the second door stayed shut");
+        let failure = one_line(&lines, "[StoryBackground] Image generation failed");
         assert!(
             failure.contains("moderation_rejection=false"),
             "a plain provider error is not a moderation rejection: {failure}"
+        );
+        assert!(
+            failure.contains("reroute_allowed=false"),
+            "and so the reroute is not allowed, flagged chat or no: {failure}"
         );
         assert!(
             !lines

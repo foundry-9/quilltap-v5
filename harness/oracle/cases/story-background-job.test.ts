@@ -241,6 +241,32 @@ async function main(): Promise<void> {
               } else {
                 response = `An atmospheric ${caseLabel} landscape at dusk with soft, painterly light.`;
               }
+            } else if (user.startsWith('Classify the following content:')) {
+              // [cc65d6bfc / bug 133] The Concierge's cheap-LLM classification
+              // of the concatenated appearance text (v4
+              // `gatekeeper.service.ts:390`; the moderation registry is nulled
+              // below, so it always lands here). Only the sanitizer-gate cases
+              // reach it — every other case runs with the danger mode OFF or a
+              // chat/target combination that short-circuits at rule 2.
+              response = JSON.stringify({
+                isDangerous: true,
+                score: 0.91,
+                categories: [{ category: 'sexual', score: 0.91, label: 'explicit' }],
+              });
+            } else if (system.startsWith('You are a content safety filter for image generation prompts.')) {
+              // [cc65d6bfc / bug 133] The sanitize task (v4
+              // `image-scene-tasks.ts` `sanitizeAppearance`): the user message
+              // is `JSON.stringify([{characterId, appearanceText}])`, and the
+              // answer is the SAME array with draped text. Rewriting it (rather
+              // than echoing) is what makes the row discriminating: v4's merge
+              // only sets `wasSanitized` when the text actually CHANGED.
+              const items = JSON.parse(user) as Array<{ characterId: string; appearanceText: string }>;
+              response = JSON.stringify(
+                items.map((it) => ({
+                  characterId: it.characterId,
+                  appearanceText: 'a woman with copper hair, in a high-necked woollen dress',
+                })),
+              );
             } else {
               throw new Error(`unexpected completion task: ${user.slice(0, 80)}`);
             }

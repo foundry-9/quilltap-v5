@@ -36,6 +36,13 @@
     "uncensored retry) and '' on the cheap provider for empty_craft_retry (silent refusal \u2192",
     "uncensored retry).",
     "",
+    "[cc65d6bfc / bug 133] The `_recraft` in moderation_recraft / moderation_recraft_fails",
+    "is now HISTORICAL. Both are MODERATED chats (no isDangerousChat) on the blocked image",
+    "profile, so v4's reroute door is barred: ONE craft, one refused image, and the job",
+    "THROWS `Image generation failed: content policy violation on this prompt`. They were",
+    "built to exercise the candid re-craft, which exists on neither side any more. The",
+    "labels are kept so the pre-fix red stays greppable in the round record.",
+    "",
     "SCOPE: the first eight cases run with danger mode OFF, so no classify/sanitize LLM",
     "calls fire and the appearance/craft retries are driven purely by the",
     "imagePromptProfileId uncensored selection (which needs no danger mode).",
@@ -463,6 +470,50 @@
       "recentMessages": [
         "The tide came in under the customs house."
       ],
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "moderated_sanitize_profile_configured": {
+      "$comment": "[cc65d6bfc / bug 133] The SANITIZER half. A MODERATED chat (no isDangerousChat, no override) whose settings DO name an uncensored image profile. Rule 2 does not fire (the chat is not dangerous); the appearance text classifies dangerous; and the question at rule 4 is whether THIS scene routes uncensored — it does not, because story backgrounds never route up front. So v4 sanitizes. Pre-fix v5 passed mere existence and returned unchanged at rule 4, which put raw appearance text into the crafter's user prompt: the recorded craft key, the image key and both llm_logs projections all differ, so this row is RED before the fix and green after. On the OPENAI profile (not blocked-model), so nothing is refused and the write lands.",
+      "id": "5c000010-0000-4000-8000-000000000010",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "The lamp guttered and she did not reach for the shawl."
+      ],
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "flagged_no_profile_moderation": {
+      "$comment": "[cc65d6bfc / bug 133] v4's second regression test: the chat IS flagged, so the chat-state conjunct passes, but NO uncensored image profile is configured — the resolver finds no second door and the job throws. Mirrors v4's own second regression test and pins the throw. The row's OUTCOME cannot on its own separate `rerouteAllowed` from `reroute !== null` — with no profile configured the resolver answers None either way; what separates them is the failure bag, which reports `rerouteAllowed: true` here and `false` for the two moderated rows (the capture-layer arms in `image_job_common.rs` are that proof).",
+      "id": "5c000011-0000-4000-8000-000000000011",
+      "characterIds": [],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000003",
+      "recentMessages": [
+        "Ash drifted across the empty ballroom."
+      ],
+      "isDangerousChat": true,
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
       "expectWrite": true,
       "expectDerive": true
     }
