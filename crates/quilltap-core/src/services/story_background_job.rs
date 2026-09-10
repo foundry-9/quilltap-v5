@@ -546,7 +546,11 @@ where
                 appearances.clone(),
                 &danger_settings,
                 is_dangerous_chat,
-                has_uncensored_image_provider,
+                // [cc65d6bfc] Story backgrounds never route up front — only an
+                // `uncensored_image_target` scene actually reaches the
+                // uncensored provider, so mere existence of such a profile is
+                // the wrong question here (bug 133).
+                uncensored_image_target,
                 &cheap_selection,
                 user_id,
                 Some(&payload.chat_id),

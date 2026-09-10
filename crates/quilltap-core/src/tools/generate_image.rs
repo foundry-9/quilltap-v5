@@ -1887,11 +1887,8 @@ where
             )
             .await;
 
-            let has_uncensored_image_provider = danger_settings
-                .uncensored_image_profile_id
-                .as_deref()
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
+            let routes_dangerous_to_uncensored =
+                tool_routes_dangerous_to_uncensored(&danger_settings);
 
             let sanitized = sanitize_appearances_if_needed(
                 db,
@@ -1901,7 +1898,7 @@ where
                 resolution.appearances,
                 &danger_settings,
                 db_ctx.is_dangerous_chat,
-                has_uncensored_image_provider,
+                routes_dangerous_to_uncensored,
                 selection,
                 &ctx.user_id,
                 ctx.chat_id.as_deref(),
@@ -2727,6 +2724,81 @@ fn load_profile_parameters(db: &Db, profile_id: &str) -> Value {
         .flatten()
         .and_then(|p| p.get("parameters").cloned())
         .unwrap_or(Value::Null)
+}
+
+/// v4 `image-generation-handler.ts:978-983` — the fourth argument this handler
+/// hands [`sanitize_appearances_if_needed`].
+///
+/// [cc65d6bfc] The tool classifies each prompt and reroutes on the spot, but
+/// only under AUTO_ROUTE — under DETECT_ONLY a dangerous appearance stays on
+/// the moderated provider and must be sanitized (bug 133). v4's
+/// `Boolean(dangerSettings.uncensoredImageProfileId)` is the non-empty check
+/// (`Boolean('')` is false), which v5 already spelled that way.
+///
+/// Extracted so it has a home a test can reach: the tier-3 image-generation
+/// corpus keeps the Concierge OFF and sends no messages, so no case in it ever
+/// reaches this line (see that family's header).
+fn tool_routes_dangerous_to_uncensored(danger_settings: &DangerousContentSettings) -> bool {
+    danger_settings.mode == "AUTO_ROUTE"
+        && danger_settings
+            .uncensored_image_profile_id
+            .as_deref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod bug_133_tests {
+    use super::*;
+
+    /// [cc65d6bfc] bug 133's tool half: "an uncensored profile is configured"
+    /// is not "this scene routes there". Under DETECT_ONLY nothing reroutes, so
+    /// a dangerous appearance must be sanitized. Corpus-blind (the tier-3
+    /// family keeps the Concierge OFF), so this is the derivation's only proof.
+    #[test]
+    fn tool_routes_dangerous_to_uncensored_needs_auto_route_and_a_profile() {
+        fn settings(mode: &str, uncensored: Option<&str>) -> DangerousContentSettings {
+            DangerousContentSettings {
+                mode: mode.to_string(),
+                threshold: 0.7,
+                scan_text_chat: true,
+                scan_image_prompts: false,
+                scan_image_generation: false,
+                uncensored_text_profile_id: None,
+                uncensored_image_profile_id: uncensored.map(str::to_string),
+                display_mode: "SHOW".to_string(),
+                show_warning_badges: true,
+                custom_classification_prompt: None,
+            }
+        }
+
+        // DETECT_ONLY with a profile configured → does NOT route (the bug).
+        assert!(!tool_routes_dangerous_to_uncensored(&settings(
+            "DETECT_ONLY",
+            Some("e5000000-0000-4000-8000-000000000004")
+        )));
+        // AUTO_ROUTE with a profile → routes.
+        assert!(tool_routes_dangerous_to_uncensored(&settings(
+            "AUTO_ROUTE",
+            Some("e5000000-0000-4000-8000-000000000004")
+        )));
+        // AUTO_ROUTE with an EMPTY-string profile id → v4's `Boolean('')` is
+        // false, so it does not route.
+        assert!(!tool_routes_dangerous_to_uncensored(&settings(
+            "AUTO_ROUTE",
+            Some("")
+        )));
+        // AUTO_ROUTE with no profile at all → does not route.
+        assert!(!tool_routes_dangerous_to_uncensored(&settings(
+            "AUTO_ROUTE",
+            None
+        )));
+        // OFF short-circuits at rule 1 anyway, but the predicate is false too.
+        assert!(!tool_routes_dangerous_to_uncensored(&settings(
+            "OFF",
+            Some("e5000000-0000-4000-8000-000000000004")
+        )));
+    }
 }
 
 #[cfg(test)]

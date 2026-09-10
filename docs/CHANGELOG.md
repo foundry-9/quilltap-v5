@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — fix(image-gen): the two sanitizer callers answer for the scene in hand (v4 `cc65d6bfc`, bug 133)
+
+_Versions: core 0.0.876._
+
+The story-background job now passes `uncensored_image_target` (its existing `is_dangerous_chat && has_uncensored_image_provider` local) where it used to pass mere existence: story backgrounds never route up front, so a moderated chat's backdrop goes to the moderated provider whatever the classification says, and raw appearance text was reaching the prompt crafter for a provider that promptly refused it.
+
+The image-generation tool passes `mode == "AUTO_ROUTE" && <a non-empty uncensored profile id>` — under DETECT_ONLY nothing reroutes, so a dangerous appearance stays on the moderated provider and must be sanitized. That derivation is extracted as `tool_routes_dangerous_to_uncensored` because the tier-3 image-generation corpus keeps the Concierge OFF and sends no messages, so no case in it reaches the line; a five-arm unit test is its proof until the corpus is widened, and a mutation widening the mode check to `!= "OFF"` reddens it.
+
 #### 2026-09-10 — refactor(appearance): the sanitizer's fourth parameter is `routes_dangerous_to_uncensored` (v4 `cc65d6bfc`, bug 133 — the callee half)
 
 _Versions: core 0.0.875._
