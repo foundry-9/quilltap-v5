@@ -2716,6 +2716,19 @@ where
     .await
     .map_err(|e| DbError::Internal(format!("primary stream failed: {}", e.message)))?;
 
+    // v4 reads `streamingState.effectiveProfile` everywhere downstream
+    // (`orchestrator.service.ts:1112`, the finalizer's `streaming.effectiveProfile`):
+    // a recovery — the understudy chain, the same-seat retry, the Concierge's
+    // reroute — swaps THAT copy, so the seat that actually answered is what the
+    // row's `provider`/`modelName` and the trail's answering entry must name.
+    // v5 carried a local from before the stream and never re-read it; the
+    // route-trail beat's first live run persisted the PRIMARY's name on an
+    // understudy's answer (the two adjacent same-profile rows then collapsed
+    // to one). The §3 unification catch of the `78b381a96` round.
+    if let Some(p) = streaming_state.effective_profile.as_ref() {
+        effective_profile = p.clone();
+    }
+
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.
         return Ok(ProcessMessageResult {
@@ -3024,6 +3037,19 @@ where
         }),
     )
     .await;
+
+    // v4 reads `streamingState.effectiveProfile` everywhere downstream
+    // (`orchestrator.service.ts:1112`, the finalizer's `streaming.effectiveProfile`):
+    // a recovery — the understudy chain, the same-seat retry, the Concierge's
+    // reroute — swaps THAT copy, so the seat that actually answered is what the
+    // row's `provider`/`modelName` and the trail's answering entry must name.
+    // v5 carried a local from before the stream and never re-read it; the
+    // route-trail beat's first live run persisted the PRIMARY's name on an
+    // understudy's answer (the two adjacent same-profile rows then collapsed
+    // to one). The §3 unification catch of the `78b381a96` round.
+    if let Some(p) = streaming_state.effective_profile.as_ref() {
+        effective_profile = p.clone();
+    }
 
     // --- End-of-turn wardrobe drain (orchestrator.service.ts:1406) ---
     // Collapse any wardrobe edits this turn's characters made into one Aurora

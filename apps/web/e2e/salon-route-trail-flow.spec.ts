@@ -66,7 +66,9 @@ async function createProfile(page: Page, name: string, baseUrl: string, model: s
   await page.locator('#qt-pf-model').fill(model);
   await page.getByRole('button', { name: 'Create Profile' }).click();
   await expect(page.locator('#qt-pf-provider')).toHaveCount(0, { timeout: 15_000 });
-  return `${name} (OPENAI_COMPATIBLE: ${model})`;
+  // The understudy <select> renders `name — PROVIDER model` (profile-modal.ts);
+  // the Add-Character picker renders `name (PROVIDER: model)` — two formats.
+  return `${name} — OPENAI_COMPATIBLE ${model}`;
 }
 
 test.describe('P4.D177 — the route trail, live', () => {
@@ -162,6 +164,11 @@ test.describe('P4.D177 — the route trail, live', () => {
       await expect(list.locator('[role="img"]', { hasText: '❌' })).toHaveCount(1);
       const failedTitle = await list.locator('[title*="fell over"]').getAttribute('title');
       expect(failedTitle).toContain('P4D177 Route Trail Primary');
+      // The answering row names the UNDERSTUDY, not the seat that fell over —
+      // the first live run persisted the primary's name on the understudy's
+      // answer (the orchestrator finalized from a pre-failover local), and the
+      // two adjacent same-profile rows collapsed to one.
+      await expect(list.locator('[title*="P4D177 Route Trail Understudy"]')).toHaveCount(1);
 
       // A reload reads the SAME trail off the chat GET's message projection.
       await page.reload();

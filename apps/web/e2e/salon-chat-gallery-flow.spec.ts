@@ -39,7 +39,17 @@ async function maybeUnlock(page: Page): Promise<void> {
   }
 }
 
-async function openSoloVoyage(page: Page): Promise<void> {
+/**
+ * The shared fixture's rolls, MEASURED at unification (a `chatGallery` dispatch
+ * per chat): "Solo Voyage" / "Group Expedition" / "The Shuttered Wing" hold ONE
+ * portrait each (whose `files` row has no stored bytes here, so the tile
+ * renders as v4's "Image Deleted"); "Chat Images" — the courier fixture's chat —
+ * holds 1 generated + 2 attachments with real bytes, the only two-source roll,
+ * so it is the chat the content beats read. The beats were written mocked
+ * against §B presuming a background + a portrait; their first live run
+ * measured otherwise.
+ */
+async function openChat(page: Page, title: string): Promise<void> {
   await page.goto('/salon');
   const passphrase = page.locator('#qt-passphrase');
   const list = page.getByRole('heading', { name: 'Chats', exact: true });
@@ -49,10 +59,13 @@ async function openSoloVoyage(page: Page): Promise<void> {
     await page.getByRole('button', { name: 'Unlock' }).click();
   }
   await expect(list).toBeVisible();
-  await page.getByRole('link', { name: 'Solo Voyage' }).first().click();
+  await page.getByRole('link', { name: title }).first().click();
   await maybeUnlock(page);
   await expect(page.locator('.qt-chat-messages-list')).toBeVisible();
 }
+
+const openSoloVoyage = (page: Page) => openChat(page, 'Solo Voyage');
+const openChatImages = (page: Page) => openChat(page, 'Chat Images');
 
 test.describe('P4.D176 — the Salon chat gallery', () => {
   test('the Gallery entry renders, numbered from chatGallery.total (v4’s ungated post-bug-129 shape)', async ({
@@ -77,22 +90,24 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
       'chatGallery is P4.D174’s — the grid has nothing to read until it lands',
     );
 
-    await openSoloVoyage(page);
+    await openChatImages(page);
     await openSidebarSection(page, 'Organize');
     await page.locator('button[title="Every image in this conversation"]').click();
 
     const gallery = page.locator('qt-photo-gallery-modal');
     await expect(gallery.getByRole('heading', { name: 'Chat Photos' })).toBeVisible();
 
-    // The chips — Solo Voyage carries a story background AND Aria's own
-    // portrait, so the filter group must be present with (at least) those two.
+    // The chips — "Chat Images" carries one generated image AND two attachments:
+    // two non-zero sources, so the filter group renders (v4: chips only at >= 2).
     const chipGroup = page.locator('[role="group"][aria-label="Filter by where the picture came from"]');
     await expect(chipGroup).toBeVisible({ timeout: 10_000 });
-    await expect(chipGroup.getByRole('button', { name: /^Backgrounds \(/ })).toBeVisible();
-    await expect(chipGroup.getByRole('button', { name: /^Portraits \(/ })).toBeVisible();
+    await expect(chipGroup.getByRole('button', { name: /^Generated \(1\)/ })).toBeVisible();
+    await expect(chipGroup.getByRole('button', { name: /^Attached \(2\)/ })).toBeVisible();
 
-    // Filter to Backgrounds — exactly the one entry.
-    await chipGroup.getByRole('button', { name: /^Backgrounds \(/ }).click();
+    // Filter to Attached — two entries, ONE of which has stored bytes in this
+    // fixture (the other, like the generated row, renders as v4's "Image
+    // Deleted" placeholder with no <img> — measured live at unification).
+    await chipGroup.getByRole('button', { name: /^Attached \(/ }).click();
     const tiles = gallery.locator('.qt-dialog img');
     await expect(async () => {
       expect(await tiles.count()).toBe(1);
@@ -102,7 +117,7 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
     await tiles.first().click();
     const detail = page.locator('qt-chat-gallery-image-view-modal');
     await expect(detail.locator('[role="dialog"]')).toBeVisible();
-    await expect(detail).toContainText('Story background');
+    await expect(detail).toContainText('Attached beneath a message');
 
     // The two hard-wired album buttons are GONE (v4 deleted them; P4.D176
     // retires v5's own copy) — only the shared Save trigger remains.
@@ -123,7 +138,7 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
       'chatSaveGalleryImage / ?download=1 are P4.D174’s',
     );
 
-    await openSoloVoyage(page);
+    await openChatImages(page);
     await openSidebarSection(page, 'Organize');
     await page.locator('button[title="Every image in this conversation"]').click();
     const gallery = page.locator('qt-photo-gallery-modal');
@@ -157,8 +172,10 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
     // Save — the chat door's dialog opens with an album picker; pick the
     // first option and submit, then read the toast.
     await tile.getByRole('button', { name: 'Save to a photo album' }).click();
+    // The Angular host element is zero-size (the dialog is body-reparented), so
+    // assert the dialog itself, never the host — the inline-host locator trap.
     const dialog = page.locator('qt-save-image-dialog');
-    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Save image to album' })).toBeVisible();
     await expect(async () => {
       expect(await dialog.locator('select#save-image-album option').count()).toBeGreaterThan(0);
     }).toPass({ timeout: 10_000 });
@@ -222,9 +239,9 @@ test.describe('P4.D176 — the Salon chat gallery', () => {
       // Both modals close (the three-hop choreography).
       await expect(detail).toHaveCount(0);
       await expect(gallery).toHaveCount(0);
-      await expect(
-        page.locator(`[data-message-id="${messageId}"]`),
-      ).toBeVisible({ timeout: 10_000 });
+      // v4 addresses a row by `document.getElementById(\`message-${id}\`)`
+      // (`SalonView.tsx:1296`); v5's row carries the same id.
+      await expect(page.locator(`[id="message-${messageId}"]`)).toBeVisible({ timeout: 10_000 });
     }
   });
 
