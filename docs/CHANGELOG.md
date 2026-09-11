@@ -334,6 +334,25 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — docs(p4.d181): the lane record — the gate, the measured deviations, and a pre-existing clippy break on main
+
+_No crate versions bumped._
+
+P4.D181's lane record in `status-log.md`: the nine units, the twenty-three
+mutation proofs (two of which SURVIVED and are recorded rather than papered
+over), the measured deviations from the work order, the Carina corpus's regen
+recipe, and the gate.
+
+⛔ It also records a break this lane did not cause and cannot fix from inside its
+ownership: `cargo clippy --workspace --all-targets -- -D warnings` exits 101 in
+BOTH feature sets on three `clippy::needless_borrow` errors in
+`crates/quilltap-core/src/services/provider_failover.rs` (lines 2376, 2416,
+2468 — `field_keys(&l)` → `field_keys(l)`). `git diff main -- crates/` is empty,
+so the source is byte-identical to main and the break arrived with main's own
+`e7857682`. `cargo test --workspace` cannot see it (the sites are in
+`#[cfg(test)]` code), which is why the last round's gate missed it. It will fail
+the unified gate.
+
 #### 2026-09-11 — test(e2e): two In Their Own Words beats, authored and parked by name
 
 _Versions: SPA 0.5.703._

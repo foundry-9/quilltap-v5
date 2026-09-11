@@ -122939,6 +122939,22 @@ Tier-1 item landed, plus both Tier-2 items.** Eight commits. Touches
 `help/**` file, and no committed DB pair. Versions: **SPA 0.5.695 → 0.5.702**;
 no crate bumped.
 
+**Gate (all run on this branch, at the end):** `cargo fmt --all --check` clean;
+`cargo build --workspace` clean; `cargo test --workspace` **552 test binaries /
+3,172 passed / 0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines** — byte-for-byte
+main's own numbers, which is what a lane that touches no crate should produce
+(no env block: this lane moves no differential family). ⛔ `cargo clippy
+--workspace --all-targets -- -D warnings` exits 101 in BOTH feature sets on a
+PRE-EXISTING break that is main's, not this lane's — see the section below.
+SPA: `npm run lint` clean (`check-qt-classes` self-test 5/5, 951 classes, every
+guarded reference resolves); `npm test` **430 spec files / 7,189 passed**
+(423 / 7,030 on main — +7 files, +159 tests); `npm run build` clean; full
+Playwright **309 passed / 3 failed / 4 skipped (9.7 m)**. The four skips are this
+lane's three newly-parked beats plus the standing store-probe park; the three
+reds are the documented full-suite intermittents (both P4.D161 pause-toast beats
+and one Workbench beat) on surfaces this lane never opened — **11/11 green
+re-run by spec file in isolation on the same build**.
+
 **Drift**: the ledger's §2 freshness probe PASSED at lane start and again before
 every recorder run — checkout on `main`, HEAD `f4ad2c8d1`, tree clean,
 `f4ad2c8d1..main` and `1a2b2164c..bugfix` both empty. Regen rule PIN REQUIRED;
@@ -123119,6 +123135,32 @@ oracle, no `recipe_sweep.py` family, no committed DB pair touched.
   prettier-DIRTY on `main` (verified against `git show main:…`), so this lane did
   NOT run `prettier --write` over them — the inserted hunks match the surrounding
   style instead (`prettier-write-a-directory-is-never-a-noop`).
+
+### ⛔ Pre-existing on `main`: `cargo clippy` is RED, and it is not this lane's
+
+`cargo clippy --workspace --all-targets -- -D warnings` exits **101 in BOTH
+feature sets** on this branch — and `git diff main -- crates/` is **EMPTY**, so
+the source is byte-identical to `main` and the break is main's, not this lane's.
+Three `clippy::needless_borrow` errors in test code that arrived with main's own
+last commit `e7857682` ("fix(unify): the §3 review's should-fixes…"):
+
+```
+crates/quilltap-core/src/services/provider_failover.rs:2376:24   field_keys(&l)  →  field_keys(l)
+crates/quilltap-core/src/services/provider_failover.rs:2416:24   field_keys(&l)  →  field_keys(l)
+crates/quilltap-core/src/services/provider_failover.rs:2468:24   field_keys(&l)  →  field_keys(l)
+```
+
+The `cc65d6bfc` round record claims clippy clean in both feature sets, so that
+run must have preceded the review-fix commit. It is invisible to
+`cargo test --workspace` (which passes, 552 binaries / 3,172 / 0 / 2) — the
+`clippy-only-lint-a-workspace-test-cannot-see` shape exactly, this time in the
+other direction: the lint is in `#[cfg(test)]` code, so only `--all-targets`
+sees it.
+
+**This lane did not fix it**: `crates/**` sits in P4.D181's "must not touch"
+column, and the file belongs to no lane this round. **It WILL fail the unified
+gate** — the unifier (or whichever server lane is already in `quilltap-core`)
+should take the three-character fix.
 
 ### Trap worth a memory note
 
