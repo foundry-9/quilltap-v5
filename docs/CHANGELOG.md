@@ -334,6 +334,31 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — feat(salon): the In Their Own Words gate and a client-safe Carina-parser twin
+
+_Versions: SPA 0.5.696._
+
+The pure half of v4 `686954937`'s client gate (P4.D181 unit 1).
+`chat/impersonation-voice/gate.ts` carries `shouldRehearseImpersonatedLine`
+with v4's five rules and v4's early-return order verbatim; the parity spec is
+v4's own `describe('shouldRehearseImpersonatedLine')` block transcribed 1:1
+(twelve cases in v4's order, with v4's names and fixture builder — v4's file
+has fourteen `it`s only because two of them are the bug-134 source scan, which
+a vitest spec cannot run and which lands structurally in unit 8 instead).
+
+The gate's fourth rule needs to know what a Carina address looks like, and
+nothing in the SPA did: `parseCarinaQuery` lives in v4's `lib/`, which v4's
+client imports directly and v5 cannot reach across the Rust/TypeScript
+boundary. `chat/carina-parser.ts` is a character-for-character transcription of
+`lib/chat/carina-parser.ts`, pure and import-free as v4's is, pinned row for row
+by a 49-vector corpus recorded from v4's REAL module
+(`apps/web/oracle/carina-parser.recorder.ts` →
+`src/testing/fixtures/carina-parser.ndjson`). The vectors were written against
+the regex rather than the doc comment, so they carry the ASCII-`\w` boundary
+(an accented, Cyrillic or emoji name does not match), the two-word-char name
+floor, the `^@` anchor, CRLF, the keep-scanning rule for an empty question, all
+four quote pairs, and the quirk that an empty quoted span (`""`) answers null
+rather than falling through to the remainder.
 
 #### 2026-09-10 — docs(setupphase): order the `f4ad2c8d1` In-Their-Own-Words drift catch-up round — P4.D179 ∥ P4.D180 ∥ P4.D181
 

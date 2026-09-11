@@ -1,0 +1,49 @@
+{"id":"public address","content":"@Evangeline: what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"whispered address","content":"@Evangeline? what year is it?","out":{"characterName":"Evangeline","whisper":true,"question":"what year is it?"}}
+{"id":"gate: mid-text @name is not an address","content":"I look at @Evangeline and say nothing.","out":null}
+{"id":"gate: plain prose","content":"I tell him I will take the job.","out":null}
+{"id":"gate: empty string","content":"","out":null}
+{"id":"leading space defeats the anchor","content":" @Evangeline: what year is it?","out":null}
+{"id":"leading tab defeats the anchor","content":"\t@Evangeline: what year is it?","out":null}
+{"id":"a second line CAN carry the address","content":"Setting the scene.\n@Evangeline: what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"CRLF split is honoured","content":"Setting the scene.\r\n@Evangeline: what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"two-word name","content":"@Madame Evangeline: the hour, please.","out":{"characterName":"Madame Evangeline","whisper":false,"question":"the hour, please."}}
+{"id":"three-word name","content":"@The Right Honourable: your verdict?","out":{"characterName":"The Right Honourable","whisper":false,"question":"your verdict?"}}
+{"id":"single character name cannot match (needs two word chars)","content":"@E: hello","out":null}
+{"id":"two character name is the floor","content":"@Ev: hello","out":{"characterName":"Ev","whisper":false,"question":"hello"}}
+{"id":"digits are word chars","content":"@Unit7: report","out":{"characterName":"Unit7","whisper":false,"question":"report"}}
+{"id":"underscores are word chars","content":"@brass_owl: report","out":{"characterName":"brass_owl","whisper":false,"question":"report"}}
+{"id":"an apostrophe is NOT a word char","content":"@O'Malley: report","out":null}
+{"id":"a hyphen is NOT a word char","content":"@Jean-Luc: report","out":null}
+{"id":"an accented name does not match (ASCII \\w)","content":"@Zoé: bonjour","out":null}
+{"id":"a non-Latin name does not match (ASCII \\w)","content":"@Иван: привет","out":null}
+{"id":"an emoji name does not match","content":"@🦉: hoot","out":null}
+{"id":"a trailing space before the separator breaks the name","content":"@Evangeline : hello","out":null}
+{"id":"bare @ with no name","content":"@: hello","out":null}
+{"id":"bare @ alone","content":"@","out":null}
+{"id":"@ followed by the separator only","content":"@?","out":null}
+{"id":"a comma is not a separator","content":"@Evangeline, what year is it?","out":null}
+{"id":"an exclamation is not a separator","content":"@Evangeline! what year is it?","out":null}
+{"id":"a dash is not a separator","content":"@Evangeline - what year is it?","out":null}
+{"id":"no space after the colon","content":"@Evangeline:what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"several spaces after the colon","content":"@Evangeline:     what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"a tab after the colon","content":"@Evangeline:\twhat year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"an address with no question at all","content":"@Evangeline:","out":null}
+{"id":"an address with only whitespace after it","content":"@Evangeline:    ","out":null}
+{"id":"an empty address then a real one on the next line","content":"@Evangeline:\n@Prosper: who is there?","out":{"characterName":"Prosper","whisper":false,"question":"who is there?"}}
+{"id":"only the FIRST real question fires","content":"@Evangeline: first?\n@Prosper: second?","out":{"characterName":"Evangeline","whisper":false,"question":"first?"}}
+{"id":"straight double quotes are stripped","content":"@Evangeline: \"what year is it?\"","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"straight single quotes are stripped","content":"@Evangeline: 'what year is it?'","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"smart double quotes are stripped","content":"@Evangeline: “what year is it?”","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"smart single quotes are stripped","content":"@Evangeline: ‘what year is it?’","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
+{"id":"an unmatched open quote keeps the quote","content":"@Evangeline: \"what year is it?","out":{"characterName":"Evangeline","whisper":false,"question":"\"what year is it?"}}
+{"id":"a mismatched close quote keeps the quote","content":"@Evangeline: “what year is it?\"","out":{"characterName":"Evangeline","whisper":false,"question":"“what year is it?\""}}
+{"id":"text after the close quote is dropped","content":"@Evangeline: \"what year?\" and be quick","out":{"characterName":"Evangeline","whisper":false,"question":"what year?"}}
+{"id":"an empty quoted span answers null, it does not fall through","content":"@Evangeline: \"\"","out":null}
+{"id":"an empty span swallows the text after it","content":"@Evangeline: '' really","out":null}
+{"id":"inner quotes survive","content":"@Evangeline: \"say 'hello' twice\"","out":{"characterName":"Evangeline","whisper":false,"question":"say 'hello' twice"}}
+{"id":"the quoted span is trimmed","content":"@Evangeline: \"   spaced   \"","out":{"characterName":"Evangeline","whisper":false,"question":"spaced"}}
+{"id":"a markdown-ish line that merely starts with @","content":"@@Evangeline: hello","out":null}
+{"id":"an email-looking line","content":"@evangeline@example.com: ping","out":null}
+{"id":"whisper with a quoted question","content":"@Evangeline? 'is he still here'","out":{"characterName":"Evangeline","whisper":true,"question":"is he still here"}}
+{"id":"trailing newline after a valid address","content":"@Evangeline: what year is it?\n","out":{"characterName":"Evangeline","whisper":false,"question":"what year is it?"}}
