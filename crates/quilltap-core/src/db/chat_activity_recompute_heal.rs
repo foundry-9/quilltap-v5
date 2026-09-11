@@ -168,7 +168,7 @@ pub fn recompute_chat_last_message_at(
     tx.commit()?;
 
     // The ledger write — v4's `migrations/state.ts` shapes verbatim (the P4.D97
-    // heal's shapes, unchanged): both tables created lazily under the
+    // heal's shapes, unchanged): both tables created lazily (no longer under the
     // migrations_state absence check, the row appended, the two metadata keys
     // upserted.
     // P4.88: ONE home for the two ledger tables, and unguarded — the four heals

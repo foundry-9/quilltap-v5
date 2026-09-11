@@ -1882,9 +1882,11 @@ mod gallery_route_degrade_tests {
     /// Throwaway pepper for a fresh encrypted instance (never a real one).
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
-    /// A provisioned instance whose `chats` table has been DROPPED, so the
-    /// route's own chat read fails — v4's `safeQuery` shape, where a failed
-    /// `findById` is a `null`, not a thrown error.
+    /// A provisioned instance with a `chats` column RENAMED, so the route's
+    /// own chat read fails at prepare on BOTH sides (v4's `_findById` names its
+    /// columns too; a DROPPED table would not do — v4's `getCollection()`
+    /// recreates it and answers `null` without logging). v4's `safeQuery` shape:
+    /// a failed `findById` is a `null`, not a thrown error.
     fn instance_without_chats() -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("data");
@@ -1892,7 +1894,9 @@ mod gallery_route_degrade_tests {
         crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
         {
             let w = crate::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
-            w.connection().execute_batch("DROP TABLE \"chats\"").unwrap();
+            w.connection()
+                .execute_batch("ALTER TABLE \"chats\" RENAME COLUMN \"title\" TO \"title_x\"")
+                .unwrap();
         }
         let db = Db::open(
             DbPaths {
@@ -1916,13 +1920,17 @@ mod gallery_route_degrade_tests {
             assert_eq!(got, not_found("Chat"), "{got:?}");
         });
         assert!(
-            lines.iter().any(|l| l.contains("Error finding entity by ID")
-                && l.contains("collection=chats")
-                && l.contains("c0000000-0000-4000-8000-000000000001")),
+            lines
+                .iter()
+                .any(|l| l.contains("Error finding entity by ID")
+                    && l.contains("collection=chats")
+                    && l.contains("c0000000-0000-4000-8000-000000000001")),
             "v4's safeQuery line must be logged: {lines:#?}"
         );
         assert!(
-            !lines.iter().any(|l| l.contains("Failed to list chat gallery")),
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to list chat gallery")),
             "the old 500 sentence must be gone: {lines:#?}"
         );
     }

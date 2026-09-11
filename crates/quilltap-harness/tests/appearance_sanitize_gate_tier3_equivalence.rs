@@ -25,6 +25,15 @@
 //! ([`CannedCompletionProvider`], keyed on the exact recorded
 //! `provider|model|temperature|messages`), and no moderation provider
 //! ([`NoModerationProvider`]) so `classify_content` always falls to the cheap LLM.
+//! ⚠ Only the DANGEROUS rows pin the canned completion KEY. `CannedCompletionProvider`
+//! answers a key miss with `Err`, which the classify step degrades to "safe →
+//! return unchanged, one call" — byte-identical to every `…_safe` row. A corpus
+//! trim that dropped the dangerous rows would leave this family green while
+//! measuring nothing (the §3 unification review's N2). Two v4 error arms are
+//! deliberately NOT in the grid: a thrown classify (`appearance-resolution.ts`
+//! warn + return) and a failed sanitize task — both exist in v5, neither has a
+//! corpus row (N3, recorded, not ordered).
+//!
 //! The `Db` is a scratch instance carrying only `llm_logs` — this family does NOT
 //! compare that projection (see the corpus `$comment`); the handle exists because
 //! the classify path writes fire-and-forget rows through it.

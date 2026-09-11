@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — fix(unify): the §3 review's should-fixes across the three lanes — the failure bag logs the local that gated, a UTF-16 length gate, exact key-set pins, and four honest comments
+
+_Versions: core 0.0.886, harness 0.0.775._
+
+P4.D178: `log_failure` now receives the same `reroute_allowed` local the gate used instead of recomputing it (v4 logs its own local; a recomputation asserts what the code might not do — mutation-proven by logging the wrong local); the stale `[decd8ef9]` why-comment on `non_participant` said it was held for a re-craft that bug 133 deleted; the story oracle's unreachable `moderation_recraft_fails` soft-failure branch is retired with a note; the new sanitize-gate family's header records that only its dangerous rows pin the canned key and names the two v4 error arms outside its grid. P4.87: the three `[Failover]` bags are pinned as exact key SETS, not by presence (a field v5 adds now reddens — mutation-proven). P4.88: the blob digest gate counts UTF-16 units as Zod's `.length(64)` does; the gate's comment names the five other Zod refusals it does not reproduce and labels the logged sentence v5-worded; the walk's doc no longer claims an abort that can no longer happen; two heal comments stopped describing the guard the same hunk removed. The unifier's own gallery-route pin moved from a dropped table (a scenario v4 cannot produce — its `getCollection()` recreates the table and answers null without logging) to a renamed column, reachable on both sides.
+
 #### 2026-09-10 — fix(api): a failed chat read on the gallery route answers v4's 404, not a 500 (P4.88's escalation, landed at unification)
 
 _Versions: core 0.0.885._

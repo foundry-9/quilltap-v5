@@ -1315,6 +1315,25 @@ mod tests {
     use crate::services::api_key_service::ProfileApiKeyFailure;
     use crate::services::chat_events::RecordingSink;
 
+    /// The rendered line's field KEYS, in declaration order — so a bag is
+    /// pinned as an exact key set, not by presence (the §3 unification
+    /// review's P4.87 finding 2: a field v5 ADDS must redden, not pass).
+    fn field_keys(line: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for (i, _) in line.match_indices('=') {
+            let head = &line[..i];
+            let start = head
+                .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .map(|p| p + 1)
+                .unwrap_or(0);
+            let key = &head[start..];
+            if !key.is_empty() && key.chars().next().unwrap().is_ascii_lowercase() {
+                keys.push(key.to_string());
+            }
+        }
+        keys
+    }
+
     fn profile(id: &str, provider: &str) -> EffectiveProfile {
         EffectiveProfile {
             id: id.into(),
@@ -2352,6 +2371,12 @@ mod tests {
         assert!(l.contains("understudy_id=p2"), "{l}");
         assert!(l.contains("understudy_name=The Understudy"), "{l}");
         assert!(l.contains("reason=api-key-not-found"), "{l}");
+        // v4 `:632` — exactly four keys.
+        assert_eq!(
+            field_keys(&l),
+            ["chat_id", "understudy_id", "understudy_name", "reason"],
+            "{l}"
+        );
     }
 
     /// v4 `:673`. The widest bag in the file — eight fields, and the `kind` +
@@ -2386,6 +2411,21 @@ mod tests {
         assert!(l.contains("kind=configured"), "{l}");
         assert!(l.contains("trigger=provider-error"), "{l}");
         assert!(l.contains("error=upstream said 503"), "{l}");
+        // v4 `:673` — exactly eight keys.
+        assert_eq!(
+            field_keys(&l),
+            [
+                "chat_id",
+                "understudy_id",
+                "understudy_name",
+                "provider",
+                "model",
+                "kind",
+                "trigger",
+                "error"
+            ],
+            "{l}"
+        );
     }
 
     /// v4 `:694`, and the P4.87 pin for the CHAIN-EMPTY classify (site 4 of the
@@ -2423,6 +2463,12 @@ mod tests {
         assert!(l.contains("understudy_id=p2"), "{l}");
         assert!(l.contains("understudy_name=The Understudy"), "{l}");
         assert!(l.contains("kind=configured"), "{l}");
+        // v4 `:694` — exactly four keys.
+        assert_eq!(
+            field_keys(&l),
+            ["chat_id", "understudy_id", "understudy_name", "kind"],
+            "{l}"
+        );
 
         // The ordering guard. One entry: the understudy's own empty body.
         assert_eq!(state.route_failures.len(), 1, "{:?}", state.route_failures);

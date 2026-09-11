@@ -314,7 +314,17 @@ impl RerouteHandler {
     ///
     /// `target:` must be a literal for `tracing`'s static callsite, so the
     /// per-handler lines are spelled out here rather than parameterised.
-    fn log_failure(self, job_id: Option<&str>, error: &str, moderation_rejection: bool) {
+    ///
+    /// `reroute_allowed` is the SAME local the gate used (v4 logs its own
+    /// `rerouteAllowed`, never a recomputation) — the §3 unification review's
+    /// S2: a bag that re-derives the gate asserts what the code might not do.
+    fn log_failure(
+        self,
+        job_id: Option<&str>,
+        error: &str,
+        moderation_rejection: bool,
+        reroute_allowed: bool,
+    ) {
         match self {
             RerouteHandler::StoryBackground {
                 is_dangerous_chat,
@@ -325,7 +335,7 @@ impl RerouteHandler {
                 job_id = job_id.unwrap_or(""),
                 error = error,
                 moderation_rejection = moderation_rejection,
-                reroute_allowed = moderation_rejection && is_dangerous_chat,
+                reroute_allowed = reroute_allowed,
                 is_dangerous_chat = is_dangerous_chat,
                 has_uncensored_image_provider = has_uncensored_image_provider,
                 "[StoryBackground] Image generation failed"
@@ -589,7 +599,12 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
     };
 
     let Some(reroute) = reroute else {
-        handler.log_failure(job_id, &error.message, moderation_rejection);
+        handler.log_failure(
+            job_id,
+            &error.message,
+            moderation_rejection,
+            reroute_allowed,
+        );
         return Err(format!("{fail_prefix}: {}", error.message));
     };
 

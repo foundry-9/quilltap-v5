@@ -223,10 +223,10 @@ async function main(): Promise<void> {
               const candid = system.includes('The target image provider accepts adult content');
               if (caseLabel === 'empty_craft_retry' && provider !== 'OLLAMA') {
                 response = '';
-              } else if (candid && caseLabel === 'moderation_recraft_fails') {
-                // The soft-failure arm: success with an empty result, so the
-                // reroute reuses the concealed prompt.
-                response = '';
+              // [cc65d6bfc] The `moderation_recraft_fails` soft-failure arm that
+              // used to live here is UNREACHABLE since bug 133 deleted the
+              // candid re-craft: that chat is moderated, its craft is never
+              // candid, and the two `_recraft` labels are now historical.
               } else if (candid) {
                 response = `A candid ${caseLabel} bedroom at dawn, Zelda bare by the window, nothing draped.`;
               } else if (caseLabel === 'missing_char_enum') {

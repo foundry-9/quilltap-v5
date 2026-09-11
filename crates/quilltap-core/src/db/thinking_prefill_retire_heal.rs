@@ -188,7 +188,7 @@ pub fn retire_prefill_on_thinking_profiles(
     }
 
     // The ledger write — v4's `migrations/state.ts` shapes verbatim: both
-    // tables created lazily under the migrations_state absence check, the row
+    // tables created lazily (the migrations_state absence check is gone), the row
     // appended, the two metadata keys upserted.
     // P4.88: ONE home for the two ledger tables, and unguarded — the four heals
     // each carried this DDL under an `if !table_exists(main, "migrations_state")`

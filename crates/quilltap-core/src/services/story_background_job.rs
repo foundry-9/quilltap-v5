@@ -659,11 +659,12 @@ where
     })
     .await
     .unwrap_or_default();
-    // [decd8ef9] `non_participant` is HELD past this point for the
-    // moderation-reroute path below, which re-crafts the prompt and must re-run
-    // this same enrichment over the replacement. (v4 hoisted the binding out of
-    // its `try` with an `= []` initializer for exactly this; v5's read already
-    // falls back to an empty list, so the hoist is structural.)
+    // [cc65d6bfc] `non_participant` is used ONLY by this enumeration pass now.
+    // The moderation reroute below used to re-craft the prompt and re-run the
+    // pass over the replacement (v4 hoisted `nonParticipantCharacters` out of
+    // its `try` with an `= []` initializer for that); bug 133 deleted the
+    // re-craft, so v4's hoist is vestigial there and nothing here is held past
+    // this point.
     let non_participant: Vec<Value> = user_characters
         .into_iter()
         .filter(|c| {

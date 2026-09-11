@@ -115,10 +115,11 @@ pub struct MountAttachmentEntry {
 /// Lifted out of `chat_files_list` so the file listing and the gallery cannot
 /// drift apart; the listing still owns its own response shape.
 ///
-/// Best effort throughout: an id that resolves to nothing is skipped, and a
-/// repository failure aborts the walk with a `warn` rather than failing the
-/// request. An empty gallery is a worse answer than a short one, but a 500 is
-/// worse than both.
+/// Best effort throughout: an id that resolves to nothing is skipped, and every
+/// repository read degrades in place the way v4's `safeQuery` fallbacks do (P4.88),
+/// so the walk itself can no longer fail — the outer `warn` arm is defensive, as
+/// v4's outer `try` is. An empty gallery is a worse answer than a short one, but
+/// a 500 is worse than both.
 ///
 /// ⚠ v4 carries an asymmetry, reproduced here: the legacy fallback resolves an
 /// attachment id as a `fileId`, and then the seen set gains the LINK id while
@@ -298,8 +299,18 @@ fn walk_message_attachments(
                 // ABSENT on v4 and the walk falls through to the native-text
                 // document branch; it never reaches v4's
                 // `blob.sha256 ?? mountLink.sha256`.
+                //
+                // ⚠ Reproduced for `sha256` ONLY. v4's parse also refuses a
+                // non-UUID `id`/`fileId`, a non-integer or negative `sizeBytes`,
+                // an EMPTY `storedMimeType` (`.min(1)`) and a malformed
+                // `createdAt`/`updatedAt` — each reads ABSENT on v4 just the
+                // same; none has a fixture shape and none is gated here (the §3
+                // unification review's S3, recorded). The logged `error` below
+                // is a v5-worded sentence: v4's is a `ZodError.message`, a
+                // multi-line issues JSON, which nothing compares (S2).
                 let blob = match blobs.find_by_file_id(&mount_link.file_id) {
-                    Ok(Some(b)) if b.sha256.chars().count() != BLOB_SHA256_LENGTH => {
+                    // Zod `.length(64)` counts UTF-16 units (the `a6870c5a` §3 class).
+                    Ok(Some(b)) if crate::jsstr::utf16_len(&b.sha256) != BLOB_SHA256_LENGTH => {
                         tracing::warn!(
                             fileId = %mount_link.file_id,
                             error = %format!(
