@@ -10,8 +10,8 @@
 //! against the checkout (an edited or added help file the build did not see)
 //! cannot pass a gate.
 //!
-//! It also pins the tree's SIZE against the vendored v4 count (123 files at
-//! v4 `78b381a96`): a checkout without `help/` embeds an EMPTY table rather
+//! It also pins the tree's SIZE against the vendored v4 count (124 files at
+//! v4 `f4ad2c8d1`): a checkout without `help/` embeds an EMPTY table rather
 //! than failing the build, and this is the assertion that refuses it.
 //!
 //! Run standalone:
@@ -22,12 +22,13 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `78b381a96`: 123 files — the
-/// P4.D175 re-vendor added `help/chat-gallery.md` and re-took ten edited files
-/// across the round's twelve commits; 122 at `25f534c0b` after P4.D168's
+/// The shipped tree at the vendored pin (v4 `f4ad2c8d1`: 124 files — the
+/// P4.D179 re-vendor added `help/impersonation-voice.md` and re-took four
+/// edited files across `686954937` + `f4ad2c8d1`; 123 at `78b381a96` after
+/// P4.D175's `help/chat-gallery.md`; 122 at `25f534c0b` after P4.D168's
 /// `help/character-progressions.md`; 121 at `2f4254b42` after P4.D163's
 /// `help/character-subprompts.md`; 120 at `d883a5ee1`).
-const VENDORED_FILE_COUNT: usize = 123;
+const VENDORED_FILE_COUNT: usize = 124;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

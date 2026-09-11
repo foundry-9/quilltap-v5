@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — docs(help): re-vendor the help tree at the current reference pin
+
+_Versions: harness 0.0.778, host 0.0.127._
+
+The bundled help tree is re-taken from the reference checkout at the pin this
+round absorbs: one new page on the impersonated-line voice rewrite and four
+edited pages, 123 files to 124. Every file is a byte copy, and the whole tree
+is verified identical to the pinned source rather than file by file.
+
+The vendored count is written down in two crates, and both moved. Before the
+copy, the tree differential was red against a same-pin oracle at 124 against
+123 — which is the tripwire for a stale vendor working as designed.
+
+Three help-related differentials that share a committed chat fixture are red
+for an unrelated reason that predates this change; measured on an untouched
+checkout of the main line, with the same failure and the same message, so it
+is neither caused nor fixed here. Their oracles are byte-identical whether
+generated before or after this re-vendor, so the tree does not move them.
+
 #### 2026-09-11 — feat(almanack): report the impersonated-line voice setting
 
 _Versions: core 0.0.889._
