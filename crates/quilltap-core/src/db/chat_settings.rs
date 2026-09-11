@@ -58,10 +58,11 @@
 //!     default; v4 applies the Zod default during `validate`, so a row created
 //!     without it stores `256`. The corpus supplies it explicitly. Bound as
 //!     `i64`.
-//!   - **eight boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
+//!   - **nine boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
 //!     `autoDetectRng`, `customTools`, `compositionModeDefault`,
 //!     `composerSpellcheck`, `composerEmoji`, `composerUnicode`,
-//!     `textReplacementsEnabled`, `autoScrollOnResponseComplete`.
+//!     `impersonationVoiceRewrite`, `textReplacementsEnabled`,
+//!     `autoScrollOnResponseComplete`.
 //!
 //! ### Nested JSON key-order discipline (the load-bearing detail)
 //!
@@ -451,6 +452,18 @@ pub struct ChatSettingsCreate {
     /// same reason as `composer_emoji`.
     #[serde(default = "smart_typography_default_true")]
     pub composer_unicode: bool,
+    /// v4 4.10 `686954937` — the impersonated-line voice-rewrite gate
+    /// (schema-ordered between `composerUnicode` and
+    /// `textReplacementsEnabled`).
+    ///
+    /// Defaulted for the same reason as the two 4.8.2 booleans above — this
+    /// deserialize is also restore's input, and an archive taken before 4.10
+    /// simply has no such key; v4's restore parses through
+    /// `ChatSettingsSchema`, where the Zod default fills it. Unlike its
+    /// neighbours the default is **false** (`z.boolean().default(false)`,
+    /// settings.types.ts:646), so `bool::default()` is the faithful filler.
+    #[serde(default)]
+    pub impersonation_voice_rewrite: bool,
     pub text_replacements_enabled: bool,
     pub auto_scroll_on_response_complete: bool,
     pub agent_mode_settings: AgentModeSettings,
@@ -506,6 +519,7 @@ pub struct ChatSettingsUpdate {
     pub composer_spellcheck: Option<bool>,
     pub composer_emoji: Option<bool>,
     pub composer_unicode: Option<bool>,
+    pub impersonation_voice_rewrite: Option<bool>,
     pub text_replacements_enabled: Option<bool>,
     pub auto_scroll_on_response_complete: Option<bool>,
     pub answer_confirmation_settings: Option<AnswerConfirmationSettings>,
@@ -588,6 +602,7 @@ impl<'c> ChatSettingsRepository<'c> {
         let composer_spellcheck = i64::from(data.composer_spellcheck);
         let composer_emoji = i64::from(data.composer_emoji);
         let composer_unicode = i64::from(data.composer_unicode);
+        let impersonation_voice_rewrite = i64::from(data.impersonation_voice_rewrite);
         let text_replacements_enabled = i64::from(data.text_replacements_enabled);
         let auto_scroll_on_response_complete = i64::from(data.auto_scroll_on_response_complete);
 
@@ -629,6 +644,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("composerSpellcheck", &composer_spellcheck),
                 ("composerEmoji", &composer_emoji),
                 ("composerUnicode", &composer_unicode),
+                ("impersonationVoiceRewrite", &impersonation_voice_rewrite),
                 ("textReplacementsEnabled", &text_replacements_enabled),
                 (
                     "autoScrollOnResponseComplete",
@@ -745,6 +761,10 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(composer_unicode) = patch.composer_unicode {
             assignments.push(format!("composerUnicode = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(composer_unicode)));
+        }
+        if let Some(impersonation_voice_rewrite) = patch.impersonation_voice_rewrite {
+            assignments.push(format!("impersonationVoiceRewrite = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(impersonation_voice_rewrite)));
         }
         if let Some(text_replacements_enabled) = patch.text_replacements_enabled {
             assignments.push(format!("textReplacementsEnabled = ?{}", values.len() + 1));
@@ -907,6 +927,7 @@ pub fn find_by_user_id(
             "composerSpellcheck",
             "composerEmoji",
             "composerUnicode",
+            "impersonationVoiceRewrite",
             "textReplacementsEnabled",
             "autoScrollOnResponseComplete",
             "agentModeSettings",
@@ -1048,29 +1069,39 @@ pub fn find_by_user_id(
                     "composerUnicode".into(),
                     Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
                 );
+                // P4.D179 (v4 `686954937`), the same tolerance shape as its
+                // P4.D73 neighbours above — with the default the OTHER WAY
+                // ROUND. `impersonationVoiceRewrite` is
+                // `z.boolean().default(false)` (settings.types.ts:646), so an
+                // absent column must surface as `false`, and a stored 0 and an
+                // absent column agree. (`is_some_and`, not `is_none_or`.)
                 obj.insert(
-                    "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(25)? == 1),
+                    "impersonationVoiceRewrite".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(25)?.is_some_and(|v| v == 1)),
                 );
                 obj.insert(
-                    "autoScrollOnResponseComplete".into(),
+                    "textReplacementsEnabled".into(),
                     Value::Bool(r.get::<_, i64>(26)? == 1),
                 );
                 obj.insert(
-                    "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(27)?),
+                    "autoScrollOnResponseComplete".into(),
+                    Value::Bool(r.get::<_, i64>(27)? == 1),
                 );
                 obj.insert(
-                    "coreWhisper".into(),
+                    "agentModeSettings".into(),
                     parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 obj.insert(
-                    "thinkingDisplay".into(),
+                    "coreWhisper".into(),
                     parse_json(r.get::<_, Option<String>>(29)?),
                 );
                 obj.insert(
-                    "answerConfirmationSettings".into(),
+                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(30)?),
+                );
+                obj.insert(
+                    "answerConfirmationSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(31)?),
                 );
                 // The JSON-column twin of the two booleans above: an absent
                 // column (or a NULL cell) is `undefined` to v4, and
@@ -1079,25 +1110,25 @@ pub fn find_by_user_id(
                 obj.insert(
                     "smartTypographySettings".into(),
                     parse_json_or_default(
-                        r.get::<_, Option<String>>(31)?,
+                        r.get::<_, Option<String>>(32)?,
                         super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
                     ),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(32)?),
-                );
-                obj.insert(
-                    "dangerousContentSettings".into(),
                     parse_json(r.get::<_, Option<String>>(33)?),
                 );
                 obj.insert(
-                    "autoLockSettings".into(),
+                    "dangerousContentSettings".into(),
                     parse_json(r.get::<_, Option<String>>(34)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(35)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(36)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(37)?));
+                obj.insert(
+                    "autoLockSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(35)?),
+                );
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1220,9 +1251,12 @@ struct SeedRow {
     values: serde_json::Map<String, serde_json::Value>,
 }
 
-/// The 30 default non-id/non-timestamp columns of a fresh settings row, in v4
+/// The default non-id/non-timestamp columns of a fresh settings row, in v4
 /// schema (create) order, each mapped to its bind value. Reads the captured seed
-/// (a string cell → `Text`, a number → `Int`, JSON `null` → `Null`).
+/// (a string cell → `Text`, a number → `Int`, JSON `null` → `Null`) — so the
+/// count is whatever the D23 dump captured (35 at v4 `f4ad2c8d1`), and v4's
+/// per-column repository defaults are adopted by re-dumping rather than by
+/// hand. The prose used to name a fixed count; it had gone stale twice.
 fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> {
     let seed: SeedRow = serde_json::from_str(CHAT_SETTINGS_SEED_JSON)
         .map_err(|e| DbError::Internal(format!("chat_settings_seed.json: {e}")))?;
@@ -1446,7 +1480,8 @@ mod tests {
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
                 composerSpellcheck INTEGER, composerEmoji INTEGER, \
-                composerUnicode INTEGER, textReplacementsEnabled INTEGER, \
+                composerUnicode INTEGER, impersonationVoiceRewrite INTEGER, \
+                textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
                 smartTypographySettings TEXT, \
@@ -1550,7 +1585,8 @@ mod tests {
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, compositionModeDefault INTEGER, \
                 composerSpellcheck INTEGER, composerEmoji INTEGER, \
-                composerUnicode INTEGER, textReplacementsEnabled INTEGER, \
+                composerUnicode INTEGER, impersonationVoiceRewrite INTEGER, \
+                textReplacementsEnabled INTEGER, \
                 autoScrollOnResponseComplete INTEGER, agentModeSettings TEXT, \
                 coreWhisper TEXT, thinkingDisplay TEXT, answerConfirmationSettings TEXT, \
                 smartTypographySettings TEXT, \
@@ -1629,6 +1665,14 @@ mod tests {
         assert_eq!(
             row["smartTypographySettings"],
             serde_json::json!({"displayQuotes": false, "dashes": true, "ellipsis": true})
+        );
+        // P4.D179: this table also predates 4.10, so the same tolerance runs
+        // for `impersonationVoiceRewrite` — with the opposite default. An
+        // `is_none_or` here (the shape its three neighbours use) would answer
+        // `true` and silently arm the rehearsal on every un-ensured instance.
+        assert_eq!(
+            row["impersonationVoiceRewrite"],
+            serde_json::Value::Bool(false)
         );
         // The columns either side still land on their own stored values — the
         // positional extraction did not slip.

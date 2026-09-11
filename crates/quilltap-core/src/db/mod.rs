@@ -39,6 +39,7 @@ pub mod chat_messages_route_trail_repair;
 // === end P4.D171 ===
 pub mod chat_settings;
 pub mod chat_settings_composer_repair;
+pub mod chat_settings_impersonation_voice_repair;
 pub mod chats;
 // === P4.D171 ===
 pub mod chats_cycle_order_repair;

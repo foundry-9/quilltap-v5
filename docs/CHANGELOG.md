@@ -12,6 +12,34 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — feat(settings): adopt the impersonated-line voice-rewrite toggle
+
+_Versions: core 0.0.887, harness 0.0.776, host 0.0.126, web 0.0.137._
+
+The reference app added a chat setting that routes a line typed while
+impersonating a character through that character's own model for review before
+it posts. This commit adopts the setting itself — the storage column, its
+defaults, the read, the save and the refusals — not the rewrite feature, which
+is a separate change.
+
+A fresh instance gets the column from a fresh dump of the reference app's live
+schema generator, never a hand edit; an existing instance gains it at startup
+through a small repair pass, byte-for-byte the same ALTER the reference app's
+own migration writes, so an instance the two apps share reads the same default
+either way. The read tolerates the column's absence — this is the first such
+setting whose default is OFF rather than on, so the absent case had to land on
+false, and a test pins that both ways round. Saving a non-boolean value —
+including an explicit null, which is present, not absent — is refused with the
+reference app's own sentence, proven over the live wire as well as at the
+handler.
+
+Verified by regenerating the settings-route and repository differentials
+against the reference app's real handlers and repository: seven new route cases
+(the default, both polarities, the create branch and three refusals) and both
+polarities through a create and an update. A new source census makes the
+"adopting one column takes the same six edits" rule executable, and caught a
+dropped insert entry when that edit was deliberately removed.
+
 #### 2026-09-10 — docs(setupphase): order the `f4ad2c8d1` In-Their-Own-Words drift catch-up round — P4.D179 ∥ P4.D180 ∥ P4.D181
 
 _Docs-only change._

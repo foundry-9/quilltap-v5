@@ -583,6 +583,93 @@ describe('settings-routes oracle', () => {
         smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false },
       },
     },
+    // ---- P4.D179 (v4 686954937): the impersonated-line voice-rewrite gate ----
+    // `impersonationVoiceRewrite` is the first `chat_settings` boolean whose Zod
+    // default is FALSE, so the GET arm below is not merely "another toggle": it
+    // is the only case in this file that can catch a v5 read defaulting an
+    // absent column the wrong way round. The PUT arms are v4's manual
+    // `typeof !== 'undefined'` → `typeof !== 'boolean'` guard (route.ts:213-219),
+    // whose fixed sentence the route's `includes('Invalid') ? 400 : 500` split
+    // turns into a 400 — NOT a Zod envelope, so the body is the sentence alone.
+    {
+      // The GET default. v4's repository seeds `impersonationVoiceRewrite:
+      // false` (chat-settings.repository.ts:223); user A's row was written by
+      // that repo, so the key must be present and false on both sides.
+      name: 's_get_impersonation_voice_default',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+    },
+    {
+      // The positive arm — the PUT's own response IS the echo (v4 returns the
+      // updated settings object), so one case pins the write and the read-back.
+      name: 's_put_impersonation_voice_true',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: true },
+    },
+    {
+      // Explicit `false` — NOT a no-op for the guard (`typeof false !==
+      // 'undefined'`), so the assignment runs and the column is written 0.
+      name: 's_put_impersonation_voice_false',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: false },
+    },
+    {
+      // Wrong type — a string.
+      name: 's_put_impersonation_voice_wrong_type',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: 'yes' },
+    },
+    {
+      // Wrong type — a number. JS `1` is truthy but `typeof 1 !== 'boolean'`,
+      // so it refuses rather than coercing.
+      name: 's_put_impersonation_voice_number',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: 1 },
+    },
+    {
+      // An EXPLICIT null — `typeof null !== 'undefined'`, so the arm RUNS and
+      // the boolean guard refuses. This is the arm a transport that collapses
+      // present-null to absent would silently turn into a 200 + silent keep;
+      // the v5 dispatch carries the raw settings bag for exactly this reason.
+      name: 's_put_impersonation_voice_null',
+      family: 'impersonation_voice',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: null },
+    },
+    {
+      // The CREATE branch (user B has no settings row) — proves the repository
+      // default and the assignment override compose, as `s_put_composer_fresh`
+      // does for the 4.8.2 columns.
+      name: 's_put_impersonation_voice_fresh',
+      family: 'impersonation_voice',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { impersonationVoiceRewrite: true },
+    },
     // ---- P4.47 (A): the three sibling Zod-collapse arms ----
     // The D73 bank. `smartTypographySettings` above proved the machinery: a
     // route-level `Schema.parse` throw escapes to `getErrorMessage`, whose

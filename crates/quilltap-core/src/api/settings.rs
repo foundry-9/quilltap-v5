@@ -1192,6 +1192,23 @@ fn build_settings_assignments(
             bool_field(v, "Invalid composerUnicode value (must be boolean)")?,
         ));
     }
+    // P4.D179 (v4 4.10 `686954937`) — the impersonated-line voice-rewrite gate,
+    // at v4's own schema-ordered position after `composerUnicode`
+    // (route.ts:213-219). Same `typeof x !== 'boolean'` guard, same sentence
+    // bytes; the route's `includes('Invalid') ? 400 : 500` split makes it a 400.
+    // `obj.get` sees an EXPLICIT null as present, which is v4's semantics
+    // exactly (`typeof null !== 'undefined'`, so the arm runs and refuses) —
+    // pinned by the corpus's `s_put_impersonation_voice_null` row and at the
+    // web wire.
+    if let Some(v) = obj.get("impersonationVoiceRewrite") {
+        out.push((
+            "impersonationVoiceRewrite",
+            bool_field(
+                v,
+                "Invalid impersonationVoiceRewrite value (must be boolean)",
+            )?,
+        ));
+    }
     if let Some(v) = obj.get("textReplacementsEnabled") {
         out.push((
             "textReplacementsEnabled",

@@ -14,7 +14,12 @@
 //! `dangerousContentSettings`, whose present-but-invalid legs had NO corpus
 //! case and so collapsed to invented sentences; the family reaches five Zod
 //! issue codes and pins the cheap-LLM ordering, whose parse happens in the
-//! repo's whole-object validate rather than at the route), and P4.D85
+//! repo's whole-object validate rather than at the route), and P4.D179
+//! (`impersonation_voice` — v4 4.10 `686954937`'s
+//! `chat_settings.impersonationVoiceRewrite`: the GET default, both PUT
+//! polarities, the create branch, and the three refusal arms incl. an EXPLICIT
+//! `null`, whose 400 body is v4's fixed sentence rather than a Zod envelope),
+//! and P4.D85
 //! (`connection_profile_tags` — v4 Bug 74's `get-tags` / `add-tag` /
 //! `remove-tag`, over a fixture whose OPENAI profile finally carries tags: an
 //! unsorted bag with a dangling id, so order-preservation, drop-missing and
@@ -330,6 +335,7 @@ fn settings_routes_match_v4() {
     let mut taboo_cases = 0;
     let mut brahma_console_cases = 0;
     let mut composer_settings_cases = 0;
+    let mut impersonation_voice_cases = 0;
     let mut settings_zod_cases = 0;
     let mut connection_profile_cases = 0;
     let mut profile_tag_cases = 0;
@@ -524,6 +530,9 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("composer_settings") {
             composer_settings_cases += 1;
         }
+        if row["family"].as_str() == Some("impersonation_voice") {
+            impersonation_voice_cases += 1;
+        }
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
         }
@@ -560,6 +569,15 @@ fn settings_routes_match_v4() {
     assert!(
         composer_settings_cases >= 10,
         "expected >= 10 composer_settings cases, got {composer_settings_cases} — regenerate the oracle"
+    );
+    // P4.D179: the 4.10 `impersonationVoiceRewrite` key. Same stale-oracle
+    // guard as its neighbours — and it matters more here, because this is the
+    // first `chat_settings` boolean whose Zod default is FALSE, so a v5 read
+    // that defaulted an absent column the wrong way round would be invisible
+    // without these rows.
+    assert!(
+        impersonation_voice_cases >= 7,
+        "expected >= 7 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
     );
     // P4.47 (A): the three sibling Zod arms
     // (`answerConfirmationSettings` / `cheapLLMSettings` /

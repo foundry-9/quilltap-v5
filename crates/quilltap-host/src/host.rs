@@ -1105,6 +1105,19 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 main,
             )?;
             // === end P4.D73 ===
+            // === P4.D179 (v4 `686954937`, migration
+            // `add-impersonation-voice-rewrite-field-v1`) ===
+            // The `chat_settings.impersonationVoiceRewrite` column, re-homed
+            // from v4's migration runner for the same reason as its P4.D73
+            // neighbours above, and load-bearing in the same way: the read
+            // tolerates absence with v4's Zod default (`false`) and the write
+            // is a plain `UPDATE … SET impersonationVoiceRewrite = ?`, so
+            // without this the toggle would 500 on an existing instance. An
+            // exact no-op on the SHARED Friday instance, which v4's own
+            // migration already moved.
+            quilltap_core::db::chat_settings_impersonation_voice_repair::
+                ensure_chat_settings_impersonation_voice_column(main)?;
+            // === end P4.D179 ===
             // === P4.D79 (v4 `23af7146`, migration
             // `add-profile-multi-character-prefill-field-v1`) ===
             // The `connection_profiles.multiCharacterPrefill` column, re-homed

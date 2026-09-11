@@ -19,6 +19,13 @@
 //!      (the Taboo §3 lesson — that defect was invisible to a dispatch-leg-only
 //!      test). Pinned here at the wire with v4's byte-exact `ZodError.message`.
 //!
+//! P4.D179 adds a second test in the same shape for v4 4.10 `686954937`'s
+//! `impersonationVoiceRewrite` — the same two plumbing claims, with the twist
+//! that its Zod default is FALSE, so the GET's default and a dropped column's
+//! tolerance both have to land on `false` rather than on the truthy side its
+//! three neighbours take. Its refusal arm is v4's fixed SENTENCE, not a Zod
+//! envelope, because the route guards it by hand.
+//!
 //! Run:
 //!   cargo test -p quilltap-web --test chat_settings_composer_web_routes
 
@@ -205,4 +212,114 @@ async fn composer_settings_web_edges() {
         body["data"]["smartTypographySettings"],
         json!({"displayQuotes": true, "dashes": true, "ellipsis": true})
     );
+}
+
+/// P4.D179 (v4 `686954937`): the `impersonationVoiceRewrite` column, end to end
+/// over a live server. Same two claims as the test above — the boot ensure and
+/// the raw-bag wire — over its own fixture instance.
+#[tokio::test(flavor = "multi_thread")]
+async fn impersonation_voice_rewrite_web_edges() {
+    const COL: &str = "impersonationVoiceRewrite";
+
+    let base = common::materialize_fixture_instance();
+    let data = base.path().join("data");
+
+    // Drop the column regardless of the committed fixture's vintage, so the
+    // ensure is genuinely under test rather than vacuously satisfied.
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
+        if column_present(w.connection(), COL) {
+            w.connection()
+                .execute_batch(&format!(
+                    "ALTER TABLE \"chat_settings\" DROP COLUMN \"{COL}\""
+                ))
+                .unwrap();
+        }
+        assert!(
+            !column_present(w.connection(), COL),
+            "{COL} must be absent before boot"
+        );
+    }
+
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    // --- the ensure ran ---
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
+        assert!(
+            column_present(w.connection(), COL),
+            "{COL} must exist after the boot ensure"
+        );
+    }
+
+    // --- GET: v4's default is FALSE ---
+    let (status, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(status, 200, "settings GET");
+    assert_eq!(body["data"][COL], json!(false), "v4's Zod default");
+
+    // --- PUT: the single-key payload the SPA saves ---
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "impersonationVoiceRewrite": true }
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "impersonationVoiceRewrite PUT");
+    assert_eq!(body["data"][COL], json!(true), "echo");
+
+    // --- the write STUCK: without the ensure this PUT would have 500'd on
+    //     `update_for_user`'s plain `SET impersonationVoiceRewrite = ?` ---
+    let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(
+        body["data"][COL],
+        json!(true),
+        "the value must persist — an un-ensured column 500s the PUT outright"
+    );
+
+    // --- an EXPLICIT null reaches the handler as present-and-invalid ---
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "impersonationVoiceRewrite": null }
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 400,
+        "an explicit null must not pass as an absent key"
+    );
+    assert_eq!(
+        body["data"]["message"],
+        json!("Invalid impersonationVoiceRewrite value (must be boolean)")
+    );
+
+    // --- a wrong-typed value 400s with the same fixed sentence ---
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "impersonationVoiceRewrite": 1 }
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "non-boolean impersonationVoiceRewrite");
+    assert_eq!(
+        body["data"]["message"],
+        json!("Invalid impersonationVoiceRewrite value (must be boolean)")
+    );
+
+    // --- and a rejected PUT left the stored value untouched ---
+    let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(body["data"][COL], json!(true));
 }

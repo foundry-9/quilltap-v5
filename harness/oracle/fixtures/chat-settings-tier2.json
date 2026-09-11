@@ -245,6 +245,7 @@
         "composerSpellcheck": false,
         "composerEmoji": false,
         "composerUnicode": true,
+        "impersonationVoiceRewrite": false,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "agentModeSettings": {
@@ -328,6 +329,7 @@
         "composerSpellcheck": false,
         "composerEmoji": true,
         "composerUnicode": false,
+        "impersonationVoiceRewrite": true,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "timezone": "Europe/London",
@@ -454,6 +456,7 @@
         "composerSpellcheck": false,
         "composerEmoji": false,
         "composerUnicode": false,
+        "impersonationVoiceRewrite": false,
         "textReplacementsEnabled": false,
         "autoScrollOnResponseComplete": true,
         "agentModeSettings": {

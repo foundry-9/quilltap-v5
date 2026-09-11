@@ -107,6 +107,9 @@ struct CreateData {
     composer_spellcheck: bool,
     composer_emoji: bool,
     composer_unicode: bool,
+    /// P4.D179 (v4 4.10 `686954937`). The spec's `#[serde(default)]`-free
+    /// shape means every create op in `chat-settings-tier2.ts` must name it.
+    impersonation_voice_rewrite: bool,
     text_replacements_enabled: bool,
     auto_scroll_on_response_complete: bool,
     agent_mode_settings: AgentModeSettings,
@@ -165,6 +168,8 @@ struct UpdateData {
     composer_emoji: Option<bool>,
     #[serde(default)]
     composer_unicode: Option<bool>,
+    #[serde(default)]
+    impersonation_voice_rewrite: Option<bool>,
     #[serde(default)]
     text_replacements_enabled: Option<bool>,
     #[serde(default)]
@@ -254,6 +259,7 @@ fn chat_settings_tier2_matches_oracle() {
                             composer_spellcheck: data.composer_spellcheck,
                             composer_emoji: data.composer_emoji,
                             composer_unicode: data.composer_unicode,
+                            impersonation_voice_rewrite: data.impersonation_voice_rewrite,
                             text_replacements_enabled: data.text_replacements_enabled,
                             auto_scroll_on_response_complete: data.auto_scroll_on_response_complete,
                             agent_mode_settings: data.agent_mode_settings,
@@ -295,6 +301,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 composer_spellcheck: data.composer_spellcheck,
                                 composer_emoji: data.composer_emoji,
                                 composer_unicode: data.composer_unicode,
+                                impersonation_voice_rewrite: data.impersonation_voice_rewrite,
                                 text_replacements_enabled: data.text_replacements_enabled,
                                 auto_scroll_on_response_complete: data
                                     .auto_scroll_on_response_complete,
