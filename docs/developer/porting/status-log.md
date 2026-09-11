@@ -122929,3 +122929,202 @@ load-bearing on a moved checkout.
 
 **Nothing in this lane touched the SPA or Playwright** (P4.D181's), so no e2e
 run was owed or made.
+---
+
+## P4.D181 — In Their Own Words, the SPA half + bug 134 (the `f4ad2c8d1` drift catch-up, lane 3 of 3)
+
+**Branch `claude/voice-rewrite-spa-bug-134-32310a`, 2026-09-11. CLOSED — every
+Tier-1 item landed, plus both Tier-2 items.** Eight commits. Touches
+`apps/web/**` only: `git diff main --stat` names no `crates/**` file, no
+`help/**` file, and no committed DB pair. Versions: **SPA 0.5.695 → 0.5.702**;
+no crate bumped.
+
+**Drift**: the ledger's §2 freshness probe PASSED at lane start and again before
+every recorder run — checkout on `main`, HEAD `f4ad2c8d1`, tree clean,
+`f4ad2c8d1..main` and `1a2b2164c..bugfix` both empty. Regen rule PIN REQUIRED;
+the lane's pin is `/tmp/qt-v4-pin-p4d181-f4ad2c8d1` with all three symlink
+classes, marker-verified (`impersonationVoiceRewrite` present in
+`lib/schemas/settings.types.ts`, `VOICE_REWRITE` in `llm-log.types.ts`,
+`lib/services/announcer/in-scene-voiced.ts` present).
+
+### The units
+
+1. **The gate + the Carina twin.** `chat/impersonation-voice/gate.ts` carries
+   `shouldRehearseImpersonatedLine` with v4's five rules and v4's early-return
+   order verbatim. `chat/carina-parser.ts` is a character-for-character
+   transcription of v4's `lib/chat/carina-parser.ts` — pure and import-free as
+   v4's is — because rule 4 needs to know what a Carina address looks like and
+   nothing in the SPA did (v4's client imports the server module directly; v5
+   cannot, across the Rust/TypeScript boundary).
+2. **The state service.** `impersonation-voice.state.ts`, v4's
+   `useImpersonationVoice` hook as an `@Injectable()` provided at the Salon
+   component — never `providedIn: 'root'` (the dogfood-#105 NG0201 lesson) —
+   plus `impersonation-voice.api.ts` (the verb client) and the two §B contract
+   additions.
+3. **The composer clear restructure + the Salon intercept.** `submit()` emits
+   and stops; `clearAfterSend()` and `focusEditor()` are public; the Salon's new
+   `postComposedMessage` is the ONE door the direct submit and both dialog Send
+   paths go through. The intercept sits above the pending-rolls snapshot.
+4. **The dialog + the shared panel.** `VoiceRewriteReviewPanel` extracted out of
+   the announcement dialog mechanically (its specs stayed green UNCHANGED);
+   `qt-impersonation-voice-dialog` string for string with v4's.
+5. **The cue.** `voiceRehearsalArmed` + the four-arm send title on the composer;
+   `voiceRehearsal` + the three-arm title + the quill badge on the portrait, with
+   real CSS declarations in `_chat.css`.
+6. **The Composer-card toggle**, LAST in the card (v4's slot), copy byte-exact.
+7. **The three `VOICE_REWRITE` label sites.**
+8. **Bug 134**, measured then ported (below).
+9. **Two e2e beats, AUTHORED and PARKED BY NAME** — `P4D179_SERVER_LANDED` for
+   the settings round trip (in `settings-chat-cards-flow.spec.ts`) and
+   `P4D180_SERVER_LANDED` + `P4D179_SERVER_LANDED` for the new
+   `salon-impersonation-voice-flow.spec.ts`. Never capability probes: a DEFINED
+   verb defeats a probe, and an unknown settings KEY is not an "unknown variant"
+   the way a missing verb is — a probe would read "ready" against a server that
+   cannot store it.
+
+### Measured, not taken from the order or from v4's prose
+
+- ⚠ **v4's bypass-once latch never fires in v4's own flow.** `send()` reads
+  `bypassOnceRef.current = true` → `void sendMessage(...)` → `close()`, and
+  `close()` sets it back to `false`. It is armed for exactly the SYNCHRONOUS
+  duration of the send and cleared on the very next line; v4's own comment says
+  "if it is ever consulted **on the way out**", and in v4's flow it never is,
+  because the dialog's Send calls `sendMessage` directly and never re-enters the
+  composer's submit. It is a guard against a host whose send path loops back,
+  not a latch that outlives the dialog. Ported verbatim, quirk included, and
+  pinned in BOTH halves: a submit raised from inside the send passes through and
+  is spent (the rig makes `sendFinal` re-enter), and the submit after a send
+  rehearses again. The order's own description ("Consumed by the next
+  `intercept`") is true only of that re-entrant window. The first spec draft
+  assumed the latch survived the send and went red — that red is what found this.
+- **v4's suite has twelve gate cases, not fourteen.** The order says fourteen;
+  v4's file has fourteen `it`s only because two of them are the bug-134
+  `readFileSync` source scan, which is a separate `describe`. The parity spec
+  transcribes the twelve; the source-scan facts land structurally in unit 8.
+- **v4's "Generating..." send title is nearly unreachable in v4 too.** BOTH
+  composers swap a Stop button in while a reply is in flight — v4 under
+  `(streaming || waitingForResponse) && !hideStopButton`, v5 unconditionally — so
+  v4 reaches that title only with its participant sidebar open
+  (`SalonView.tsx:1679`), a prop v5 has never had. The ladder arm is carried
+  verbatim; the spec reads it through the computed and pins the Stop button as
+  what the DOM actually shows. The `hideStopButton` gap is PRE-EXISTING and
+  unrelated to this lane — spotted, not mine.
+- **`ParticipantDetail` carries everything `RehearsalTarget` needs** —
+  `character.name`/`title`/`avatarUrl`/`defaultImage`,
+  `connectionProfile.{name,modelName}`, `character.systemPrompts`,
+  `selectedSystemPromptId` — so the order's Tier-3 prompt-picker deferral does
+  NOT apply and nothing was deferred there.
+- **v4's memory-cascade dialog DOES have a remember arm**
+  (`components/ui/MemoryCascadeDialog.tsx:113-125`, `onConfirm(action,
+  rememberChoice)`), so the order's conditional fired: v5's had none at all — a
+  pre-existing gap — and it lands here WITH v4's bug-134 invalidation.
+- **`ChatSettingsCard.save` invalidates only on FAILURE**, not after a successful
+  PUT: it seeds with `setQueryData` and stops (v4's `mutateSettings(updated,
+  false)` — seed, don't revalidate). The order's §B paragraph says "then
+  `invalidateQueries`". Seeding the shared key already publishes to every mounted
+  observer, which is what bug 134 needs, so nothing changed — recorded because
+  the §B text is wrong about v5's code.
+- **`check-qt-classes` does NOT guard a bare component class on an ordinary
+  element.** Deleting the `.qt-speaking-as-avatar-voice-badge` rule outright
+  leaves `npm run lint` green (measured). The guard is deliberately narrow — the
+  four utility families, variant forms, and component HOSTS. So the badge's
+  `position: absolute` and the wrapper's `position: relative` are asserted
+  against a REAL cascade in the parked e2e beat (computed style + bounding boxes),
+  the only place either means anything; a vitest spec cannot read the stylesheet
+  (`spa-spec-cannot-read-source`) and jsdom runs no cascade.
+
+### Bug 134 (`f4ad2c8d1`), measured before ported
+
+v4's bug is a mount-only `useState` fetch in `useChatData` that the tabbed
+workspace kept alive forever. **v5 never had that mechanism** — its Salon has
+read through the `['chatSettings']` TanStack query since P4.6f — so the deletion
+half of v4's fix has NO COUNTERPART. Three things landed instead:
+
+- `salon-settings-live.spec.ts`, the structural twin of v4's `readFileSync`
+  scan: seed the shared key, render, flip the cache, and every derived read
+  (LLM logging, composer spellcheck, text replacements, story backgrounds,
+  `impersonationVoiceRewrite`) follows — with the Salon never remounted and the
+  chat query never refetched (v4's own verification note: a live setting must not
+  disturb a stream). Plus the inspector button appearing/disappearing, and a
+  settings-card save reaching the open Salon.
+- The Salon's query key now comes from the shared `chatSettingsKeys.all` constant
+  rather than a second `['chatSettings']` literal — two spellings would silently
+  be two caches, which is the one way this could regress unseen.
+- The memory-cascade remember arm + its invalidation (above).
+
+**NO-COUNTERPARTs recorded:** v4's `types.ts` consolidation (v5 has ONE
+`ChatSettingsDto`, in `core-contract.ts`); `useChatData`'s deletion; the
+`sendMessage(e: React.FormEvent | null)` seam. All three are in the m6 class doc.
+
+### Mutation table — twenty proofs, each reddening exactly its named rows
+
+| # | Mutation | Result |
+| --- | --- | --- |
+| M1 | gate: reorder `bypassOnce` after `!seat` | **SURVIVED — recorded.** v4's early-return order is unobservable (every arm answers `false`); transcription is its only guarantee |
+| M2 | gate: drop the `controlledBy === 'user'` arm | the owner case |
+| M3 | carina: widen the name class past ASCII `\w` | the three boundary rows |
+| M4 | state: consume the bypass INSIDE the armed branch | the armed-duration row |
+| M5 | state: `idle` instead of `review` after a failed preview | two failed-preview rows |
+| M6 | state: `close()` stops clearing the latch | the clear-on-close row |
+| M7 | salon: ignore the intercept's answer | six Salon rows |
+| M8 | salon: snapshot the rolls BEFORE the gate | two (incl. a pre-existing roll spec) |
+| M9 | salon: drop `clearAfterSend` from the send path | two |
+| M10 | dialog: disable "Send as written" by `canSend` | the failed-preview doors row |
+| M11 | dialog: show the prompt picker at 1 | the hidden-picker row |
+| M12 | dialog: drop the controlled-select re-apply | the re-apply row |
+| M13 | dialog: let Cmd+Enter past the send gate | the refused-send row |
+| M14 | avatar: reorder the title ladder | the outranking row |
+| M15 | composer: drop the `speakingAs` conjunct | the no-seat fallback row |
+| M16 | avatar: let the cue reach the `aria-label` | the aria row |
+| M17 | settings card: default the toggle to `true` | the default row |
+| M18 | settings card: change one word of v4's copy | the copy row |
+| M19 | inspector: drop `VOICE_REWRITE` from `other` | the filter row |
+| M20 | CSS: delete the badge rule | **SURVIVED — recorded** (see above) |
+| M21 | salon: plant v4's pre-fix settings SNAPSHOT | four live-read rows |
+| M22 | salon: PUT the remembered choice but never invalidate | **SURVIVED at first — the assertion was VACUOUS** (an `||` whose second half read the seeded cache). Rewritten to assert the refetch the invalidation forces on the active observer; re-run, it reddens |
+| M23 | salon: drop the sibling key from the remembered bag | two remember rows |
+
+### Fixtures and the regen recipe
+
+Delivers ONE fixture: `apps/web/src/testing/fixtures/carina-parser.ndjson` (49
+lines), new — it invalidates no other oracle. Its recorder is
+`apps/web/oracle/carina-parser.recorder.ts`:
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d181-f4ad2c8d1
+git -C ~/source/quilltap-server worktree add --detach "$PIN" f4ad2c8d1
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+cp <V5>/apps/web/oracle/carina-parser.recorder.ts "$PIN/"
+cd "$PIN" && npx tsx carina-parser.recorder.ts \
+  > <V5>/apps/web/src/testing/fixtures/carina-parser.ndjson
+# expect 49 lines; 24 answer null and 25 answer a query — both asserted, so the
+# corpus cannot go vacuous in either direction
+```
+
+No env vars; the spec imports the NDJSON through angular.json's `.ndjson` text
+loader (so a bare `npx vitest` cannot run it — `npm test` is the gate). No crate
+oracle, no `recipe_sweep.py` family, no committed DB pair touched.
+
+### Spotted, not mine (for the unifier)
+
+- v5's composer has no `hideStopButton` counterpart, so v4's "Generating..."
+  send title is unreachable at that site. Pre-existing; the ladder arm is
+  carried anyway.
+- `check-qt-classes` cannot see a bare component class on an ordinary element.
+  Widening it is the WIDER-invariant work P4.D142/P4.75 already deferred; this
+  lane only measured the gap and routed around it.
+- `chat-composer.ts`, `chat-composer.spec.ts`, `salon-conversation.ts`,
+  `memory-cascade-dialog.ts` and `settings-chat-cards-flow.spec.ts` are all
+  prettier-DIRTY on `main` (verified against `git show main:…`), so this lane did
+  NOT run `prettier --write` over them — the inserted hunks match the surrounding
+  style instead (`prettier-write-a-directory-is-never-a-noop`).
+
+### Trap worth a memory note
+
+A backtick inside an Angular **inline template comment** terminates the
+TypeScript template literal, and the errors name everything but the comment —
+including an `NG2012` blaming a DIFFERENT file (here `salon-conversation.ts`,
+for an import of the file that actually had the backtick). Already a memory note
+(`backtick-in-an-angular-inline-template-comment`); re-encountered writing the
+announcement dialog's panel swap.

@@ -30,6 +30,21 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  */
 let stateBackendReady = false;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D181 §R.8): the In Their Own Words toggle writes
+ * `impersonationVoiceRewrite`, a `chat_settings` column the SIBLING server lane
+ * P4.D179 adds. Until that lands the PUT is refused by the settings route's own
+ * validation, so the round-trip cannot be walked.
+ *
+ * A NAMED CONSTANT, deliberately, never a capability probe: an unknown settings
+ * key is not an "unknown variant" the way a missing verb is — the update arrives
+ * at a DEFINED verb and is simply dropped or refused, so a probe would read as
+ * "ready" against a server that cannot store it (`round-plan-takeaways`). The
+ * unifier flips this to `true`; activating a beat is its first execution, so
+ * expect gesture fixes.
+ */
+const P4D179_SERVER_LANDED = false;
+
 test.beforeAll(async () => {
   try {
     const ctx = await pwRequest.newContext();
@@ -244,3 +259,54 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     await expect(page.getByText('Next run:')).toHaveCount(0);
   });
 });
+
+/**
+ * P4.D181 — In Their Own Words joins the Composer card (v4 `686954937`,
+ * `ChatTabContent.tsx:107-111`), LAST, after the unicode toggle. The same scalar
+ * round trip the Auto-Scroll beat walks, against the real server.
+ */
+test.describe('P4.D181 — the In Their Own Words toggle', () => {
+  test('Composer → Impersonated lines: toggle → reload → persisted', async ({ page }) => {
+    test.skip(
+      !P4D179_SERVER_LANDED,
+      'awaits P4.D179: the chat_settings.impersonationVoiceRewrite column + its route arm',
+    );
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=chat&section=composer-spellcheck');
+
+    const card = page.locator('qt-impersonation-voice-settings');
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    // v4's heading and the first clause of its copy, on the live screen.
+    await expect(card).toContainText("Impersonated lines in the character's own words");
+    await expect(card).toContainText('before a syllable reaches the room');
+
+    // It sits AFTER the unicode toggle inside the one Composer card (v4's order).
+    const rows = page.locator(
+      'qt-composer-spellcheck-settings, qt-composer-emoji-settings, qt-composer-unicode-settings, qt-impersonation-voice-settings',
+    );
+    await expect(rows).toHaveCount(4);
+    expect(await rows.nth(3).evaluate((el) => el.tagName.toLowerCase())).toBe(
+      'qt-impersonation-voice-settings',
+    );
+
+    const box = card.locator('input[type="checkbox"]');
+    // v4's default when unset is FALSE — the feature spends a model call per line.
+    await expect(box).not.toBeChecked();
+
+    const saved = waitForSave(page, 'impersonationVoiceRewrite');
+    await box.check();
+    await saved;
+
+    await page.goto('/settings?tab=chat&section=composer-spellcheck');
+    await expect(
+      page.locator('qt-impersonation-voice-settings input[type="checkbox"]'),
+    ).toBeChecked({ timeout: 15_000 });
+
+    // Leave the shared instance as we found it — later beats read this row.
+    const off = waitForSave(page, 'impersonationVoiceRewrite');
+    await page.locator('qt-impersonation-voice-settings input[type="checkbox"]').uncheck();
+    await off;
+  });
+});
+

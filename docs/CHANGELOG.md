@@ -334,6 +334,42 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — test(e2e): two In Their Own Words beats, authored and parked by name
+
+_Versions: SPA 0.5.703._
+
+P4.D181 unit 9 plus the Tier-2 class-doc rows.
+
+`salon-impersonation-voice-flow.spec.ts` walks the whole thing against a real
+browser, a real binary and the mock LLM: impersonate the seeded seat, flip the
+toggle through the UI, type a line, and prove NOTHING posted while the dialog
+opened on the draft and the composer kept it. Then Edit original (draft intact,
+still nothing posted), resend, Send as written (the operator's own bytes reach
+the room and the composer clears), a second line, Send (the proposal reaches the
+room). A second beat pins the two refusals: an attachment-only send is never
+rehearsed, and the setting off lets a typed line straight through.
+
+The beat also carries the ONE assertion no unit spec can make — the badge's
+computed `position: absolute` against the portrait's `position: relative`, and
+its bounding box inside the portrait's. jsdom runs no cascade,
+`check-qt-classes` does not police a bare component class on an ordinary element,
+and a vitest spec cannot read the stylesheet, so a real browser is the only place
+this means anything.
+
+`settings-chat-cards-flow.spec.ts` gains the toggle's round trip in the same
+idiom as the Auto-Scroll beat, and leaves the shared instance as it found it.
+
+All three are gated on NAMED CONSTANTS — `P4D179_SERVER_LANDED` (the
+`chat_settings` column) and `P4D180_SERVER_LANDED` (the
+`chatImpersonationVoicePreview` verb) — never capability probes: a DEFINED verb
+defeats a probe, and an unknown settings key is not an "unknown variant" the way
+a missing verb is, so a probe would read "ready" against a server that cannot
+store it. The unifier flips them; activating a beat is its first execution.
+
+Also: the m6 class doc gains the dialog row with its three recorded divergences
+(`Modal` for `FloatingDialog`, no Lexical `namespace`, the `sendMessage(null)`
+seam), the composer-clear restructure, and the shared review panel.
+
 #### 2026-09-11 — fix(salon): bug 134's write side — the remembered memory-cascade choice is published, and every settings read is pinned LIVE
 
 _Versions: SPA 0.5.702._
