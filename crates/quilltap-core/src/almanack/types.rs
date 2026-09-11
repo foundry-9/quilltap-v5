@@ -501,6 +501,8 @@ pub struct FeatureConfigInfo {
     pub auto_housekeeping: AutoHousekeepingConfig,
     pub text_replacements: TextReplacementsConfig,
     pub composer_spellcheck: bool,
+    /// v4 4.10 `686954937` — the impersonated-line voice-rewrite gate.
+    pub impersonation_voice_rewrite: bool,
     pub auto_scroll_on_response_complete: bool,
     pub image_description_profile_configured: bool,
     pub uncensored_image_description_profile_configured: bool,

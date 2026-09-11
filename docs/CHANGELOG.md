@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — feat(almanack): report the impersonated-line voice setting
+
+_Versions: core 0.0.889._
+
+The instance report gains the new chat setting: a field on the feature-config
+record, its default, the read that falls back to off when the setting has never
+been written, and one rendered line in the reference app's exact slot and
+wording.
+
+The reference app's own test fixture for this report was not updated when the
+field was added, so it is missing a field its own type declares required — and
+its render test therefore only ever exercises the off arm. The oracle here
+supplies the field explicitly, on in one variant and off in another, so both
+polarities of the new line are measured; removing the line from the renderer
+reddens the differential. Worth reporting upstream.
+
+The committed report fixtures still predate the storage column, so the
+tolerant read yields off and the line reads "No" — no fixture rebuild needed,
+which is what the plan predicted.
+
 #### 2026-09-11 — fix(logging): file both voice rehearsals under their own log type
 
 _Versions: core 0.0.888, harness 0.0.777._

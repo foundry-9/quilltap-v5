@@ -641,6 +641,7 @@ pub fn default_feature_config() -> FeatureConfigInfo {
             enabled_rules: 0.0,
         },
         composer_spellcheck: true,
+        impersonation_voice_rewrite: false,
         auto_scroll_on_response_complete: false,
         image_description_profile_configured: false,
         uncensored_image_description_profile_configured: false,
@@ -762,6 +763,9 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
             enabled_rules,
         },
         composer_spellcheck: jbool(s, &["composerSpellcheck"], true),
+        // v4's `chatSettings?.impersonationVoiceRewrite ?? false` — note the
+        // fallback is FALSE, unlike its `composerSpellcheck` neighbour.
+        impersonation_voice_rewrite: jbool(s, &["impersonationVoiceRewrite"], false),
         auto_scroll_on_response_complete: jbool(s, &["autoScrollOnResponseComplete"], false),
         image_description_profile_configured: jtruthy(s, &["imageDescriptionProfileId"]),
         uncensored_image_description_profile_configured: jtruthy(

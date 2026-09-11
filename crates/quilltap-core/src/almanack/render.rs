@@ -1108,6 +1108,10 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
         yes_no(fc.composer_spellcheck)
     ));
     push!(format!(
+        "- **Impersonated Lines in Character Voice**: {}",
+        yes_no(fc.impersonation_voice_rewrite)
+    ));
+    push!(format!(
         "- **Auto-Scroll on Response Complete**: {}",
         yes_no(fc.auto_scroll_on_response_complete)
     ));

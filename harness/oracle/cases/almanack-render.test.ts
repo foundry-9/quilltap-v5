@@ -45,6 +45,25 @@ function clone(data: AlmanackReportData): AlmanackReportData {
   return JSON.parse(JSON.stringify(data)) as AlmanackReportData;
 }
 
+/**
+ * v4's fixture helper, with the one field `686954937` forgot to add to it.
+ *
+ * That commit added `FeatureConfigInfo.impersonationVoiceRewrite` to the
+ * interface, `defaultFeatureConfig()`, `collectFeatureConfig` and the renderer —
+ * but not to `__tests__/helpers/almanack/fixture.ts`, so v4's own fixture is
+ * missing a field its own interface declares required and v4's render test only
+ * ever renders `yesNo(undefined)` → `No`. Filling it here keeps the data a
+ * faithful `AlmanackReportData` (so the port's model round-trips it) and lets
+ * `base` / `all_empty` take opposite polarities, which is what makes the new
+ * render line discriminating. A v4-side gap worth filing; recorded in the
+ * P4.D179 lane record.
+ */
+function fixture(): AlmanackReportData {
+  const d = makeAlmanackFixture();
+  d.featureConfig.impersonationVoiceRewrite = false;
+  return d;
+}
+
 interface Variant {
   name: string;
   build: () => AlmanackReportData;
@@ -53,7 +72,25 @@ interface Variant {
 function variants(): Variant[] {
   return [
     // 1. v4's fixture verbatim — every section populated.
-    { name: 'base', build: () => makeAlmanackFixture() },
+    //
+    // P4.D179 exception: v4's `686954937` added
+    // `FeatureConfigInfo.impersonationVoiceRewrite` to the interface, the
+    // default, the collector and the renderer but NOT to
+    // `__tests__/helpers/almanack/fixture.ts` — so v4's own fixture is missing a
+    // field its own interface declares required, and its render test exercises
+    // only the falsy arm (`yesNo(undefined)` → `No`). We supply the key
+    // explicitly, TRUE here and FALSE in `all_empty`, so both polarities of the
+    // new render line are measured and the port's model round-trips a field
+    // v4's fixture would otherwise leave absent. (A v4-side gap worth filing;
+    // recorded in the P4.D179 lane record.)
+    {
+      name: 'base',
+      build: () => {
+        const d = fixture();
+        d.featureConfig.impersonationVoiceRewrite = true;
+        return d;
+      },
+    },
 
     // 2. Every collection empty and every count zero: the `*None*` /
     //    `*No X*` / `countList` empty arms, plus the conditional blocks that
@@ -64,7 +101,8 @@ function variants(): Variant[] {
     {
       name: 'all_empty',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
+        d.featureConfig.impersonationVoiceRewrite = false;
         d.runtimeEnvironment.electronShellVersion = null;
         d.runtimeEnvironment.shellCapabilities = [];
         d.databaseSecurity.databases = [];
@@ -161,7 +199,7 @@ function variants(): Variant[] {
     {
       name: 'scriptorium_unavailable',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         d.scriptorium.available = false;
         return d;
       },
@@ -172,7 +210,7 @@ function variants(): Variant[] {
     {
       name: 'approximate_attribution',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         d.wireRecords.exactProfileAttribution = false;
         d.wireRecords.retentionDays = 0; // the "forever" arm
         d.wireRecords.loggingEnabled = false;
@@ -188,7 +226,7 @@ function variants(): Variant[] {
     {
       name: 'pipes_and_newlines',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         const dirty = (s: string) => `a|b\nc ${s}`;
         d.databaseSecurity.databases = d.databaseSecurity.databases.map(x => ({
           ...x,
@@ -305,7 +343,7 @@ function variants(): Variant[] {
     {
       name: 'numeric_edges',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         d.memoryBreakdown.total = 1234.5678;
         d.memoryBreakdown.withOccurredAt = 0.0005;
         d.memoryBreakdown.withNarrativeTime = 12345.6785;
@@ -360,7 +398,7 @@ function variants(): Variant[] {
     {
       name: 'null_dates_and_zero_tables',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         d.backupStatus = d.backupStatus.map(b => ({ ...b, newestDate: null, oldestDate: null }));
         d.migrationState.lastMigrationAt = null;
         d.migrationState.lastMigrationVersion = null;
@@ -392,7 +430,7 @@ function variants(): Variant[] {
     {
       name: 'space_form_date_stamps',
       build: () => {
-        const d = clone(makeAlmanackFixture());
+        const d = clone(fixture());
         d.generatedAt = '2026-08-05 09:07:03';
         d.migrationState.lastMigrationAt = '2026-08-04 23:59:59.500';
         d.instanceSettings.lastMaintenanceSweepAt = '2026-08-01 00:00:00';
