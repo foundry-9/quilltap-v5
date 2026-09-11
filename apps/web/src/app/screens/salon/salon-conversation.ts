@@ -50,6 +50,7 @@ import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-
 import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
 import type { RehearsalSeat } from '../../chat/impersonation-voice/gate';
+import { ImpersonationVoiceDialog } from '../../chat/impersonation-voice/impersonation-voice-dialog';
 import {
   ImpersonationVoiceState,
   type PendingSend,
@@ -304,6 +305,7 @@ interface CascadePrompt {
     LLMInspectorPanel,
     ChatSidebar,
     InsertAnnouncementDialog,
+    ImpersonationVoiceDialog,
     ComposeMailDialog,
     WhisperDialog,
     AddCharacterDialog,
@@ -607,6 +609,35 @@ interface CascadePrompt {
         [audienceCandidates]="audienceCandidates()"
         (posted)="onAnnouncementPosted()"
         (close)="showAnnouncement.set(false)"
+      />
+    }
+
+    <!-- In Their Own Words (v4 ChatModals.tsx:347-373). A FRESH mount per open,
+         as v4's is: the profiles read and the scroll-into-view both run once per
+         rehearsal. -->
+    @if (impersonationVoice.isOpen() && impersonationVoice.target(); as seat) {
+      <qt-impersonation-voice-dialog
+        [characterName]="seat.characterName"
+        [characterTitle]="seat.characterTitle ?? null"
+        [avatarUrl]="seat.avatarUrl ?? null"
+        [profileName]="impersonationVoice.resolvedVoice()?.profileName ?? seat.profileName ?? null"
+        [modelName]="impersonationVoice.resolvedVoice()?.modelName ?? seat.modelName ?? null"
+        [systemPrompts]="seat.systemPrompts ?? []"
+        [selectedSystemPromptId]="seat.selectedSystemPromptId ?? null"
+        [seed]="impersonationVoice.seed()"
+        [proposal]="impersonationVoice.proposal()"
+        [generating]="impersonationVoice.generating()"
+        [profileOverride]="impersonationVoice.profileOverride()"
+        [systemPromptOverride]="impersonationVoice.systemPromptOverride()"
+        (seedChange)="impersonationVoice.setSeed($event)"
+        (proposalChange)="impersonationVoice.setProposal($event)"
+        (send)="impersonationVoice.send($event)"
+        (sendAsWritten)="impersonationVoice.sendAsWritten()"
+        (regenerate)="impersonationVoice.regenerate()"
+        (changeProfile)="impersonationVoice.changeProfile($event)"
+        (changeSystemPrompt)="impersonationVoice.changeSystemPrompt($event)"
+        (editOriginal)="impersonationVoice.editOriginal()"
+        (cancel)="impersonationVoice.cancel()"
       />
     }
 

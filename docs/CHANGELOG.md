@@ -334,6 +334,38 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — feat(salon): the In Their Own Words review dialog and the shared voice-rewrite panel
+
+_Versions: SPA 0.5.699._
+
+P4.D181 unit 4. `VoiceRewriteReviewPanel` is extracted out of the Insert
+Announcement dialog MECHANICALLY, exactly as v4 `686954937` extracted its own —
+same label, same generating box, same editor — and the announcement dialog's
+existing specs stay green unchanged.
+
+`qt-impersonation-voice-dialog` is v4's `ImpersonationVoiceDialog` string for
+string: the seat header with its `Spoken through …` line, the editable draft, the
+"How should they say it?" profile picker defaulting to "Their own voice (…)", the
+system-prompt picker that appears only at 2+, the shared review panel,
+Cmd/Ctrl+Enter, the "Nothing came back…" line, and the five footer doors in v4's
+order — Cancel · Edit original · Send as written · Regenerate · Send. The three
+secondary doors are disabled only while a preview is IN FLIGHT, which is what
+keeps them reachable after one fails: a dead provider must not trap a draft.
+
+Two divergences, recorded in the class doc: it is a `Modal`, not v4's
+`FloatingDialog` (v5 has no draggable primitive; the sibling rehearsal made the
+same substitution, so v4's `storageKey`/`initialGeometry` have no counterpart),
+and there is no Lexical `namespace` (v5's ProseMirror field needs no instance
+key, D17). The profile list reads through the sibling's existing query key, so two
+rehearsals in one session dedupe into one dispatch.
+
+Both selects are controlled by the service's overrides through the P4.D115
+`afterRenderEffect` idiom — a naive one-time binding loses a service-chosen
+profile, because the options do not exist on the first render. Mutations, each
+reddening exactly its row: disabling "Send as written" by `canSend`; showing the
+prompt picker at 1; dropping the select re-apply; letting Cmd+Enter past the send
+gate.
+
 #### 2026-09-11 — refactor(composer): the clear moves to the send path, and the Salon gains the In Their Own Words intercept
 
 _Versions: SPA 0.5.698._

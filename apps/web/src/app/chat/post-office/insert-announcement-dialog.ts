@@ -14,7 +14,7 @@ import type { AnnouncerSenderWire, CharacterListItem, StaffSenderWire } from '..
 import { MarkdownField } from '../../editor/markdown-field';
 import { characterKeys, fetchCharacterList } from '../../screens/characters/characters.api';
 import { Modal } from '../../ui/modal';
-import { QuillAnimation } from '../quill-animation';
+import { VoiceRewriteReviewPanel } from '../impersonation-voice/voice-rewrite-review-panel';
 import {
   STAFF_OPTIONS,
   announcementKeys,
@@ -74,7 +74,7 @@ const AS_IS = 'as-is';
 @Component({
   selector: 'qt-insert-announcement-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, MarkdownField, QuillAnimation],
+  imports: [Modal, MarkdownField, VoiceRewriteReviewPanel],
   template: `
     <qt-modal
       title="Insert Announcement"
@@ -348,29 +348,17 @@ const AS_IS = 'as-is';
         />
       </div>
 
-      <!-- Preview panel (v4 :561-581) -->
+      <!-- Preview panel (v4 :561-581) — shared with the in-scene rehearsal
+           since v4 686954937 extracted VoiceRewriteReviewPanel. -->
       @if (willRewrite() && stage() !== 'compose') {
-        <div>
-          <label class="block text-sm qt-text-primary mb-2">
-            What {{ selectedCharacter()?.name || 'the character' }} will say
-          </label>
-          @if (stage() === 'generating') {
-            <div
-              class="qt-border-primary border rounded p-6 flex flex-col items-center justify-center gap-3 min-h-32"
-            >
-              <qt-quill-animation size="lg" />
-              <div class="qt-text-secondary text-sm">Generating in character…</div>
-            </div>
-          } @else {
-            <qt-markdown-field
-              [value]="proposedMarkdown()"
-              [disabled]="isPosting()"
-              minHeight="12rem"
-              ariaLabel="Proposed announcement"
-              (contentChange)="proposedMarkdown.set($event)"
-            />
-          }
-        </div>
+        <qt-voice-rewrite-review-panel
+          [characterName]="selectedCharacter()?.name || 'the character'"
+          [generating]="stage() === 'generating'"
+          [value]="proposedMarkdown()"
+          [disabled]="isPosting()"
+          ariaLabel="Proposed announcement"
+          (valueChange)="proposedMarkdown.set($event)"
+        />
       }
 
       <div qt-modal-footer class="flex items-center justify-end gap-3">
