@@ -334,6 +334,41 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — feat(salon): the In Their Own Words state machine, the verb client, and the §B wire shape
+
+_Versions: SPA 0.5.697._
+
+P4.D181 unit 2 — v4's `useImpersonationVoice` hook as a Salon-scoped Angular
+service (`chat/impersonation-voice/impersonation-voice.state.ts`), plus the verb
+client and the two contract additions §B pins:
+`ChatImpersonationVoicePreviewRequest` (both optional ids omitted, never `null`)
+and `ChatSettingsDto.impersonationVoiceRewrite`.
+
+The service is `@Injectable()` without `providedIn`, provided at the Salon
+component — it holds one chat's in-flight submit, and a root singleton would also
+walk into the NG0201 trap that produced dogfood finding #105. Three shape
+divergences are recorded in its module doc: there is no `preventDefault` (v5's
+composer emits an output where v4 cancels a form event), v4's two error arms
+converge into one (v5 dispatches rather than fetching, so a refusal arrives as a
+thrown `CoreDispatchError` and the `Failed (HTTP ${status})` fallback has no
+seam to come from), and the host registers one `sendFinal` callback instead of
+v4's four-field `sendMessage` args bundle.
+
+⚠ **Measured, not taken from v4's prose:** the bypass-once latch is armed for
+exactly the synchronous duration of the send and cleared by the `close()` on the
+very next line, so the "Send as written" resubmit it describes never actually
+consults it — v4's own comment says "if it is ever consulted on the way out",
+and in v4's flow the dialog's Send calls `sendMessage` directly and never
+re-enters the composer's submit. Ported verbatim, quirk included, and pinned in
+both halves: a submit raised from INSIDE the send passes through and is spent,
+and the submit after a send rehearses again.
+
+The api client keeps v4's two different null-coalescings on purpose
+(`String(data.proposedMarkdown || '')` versus `String(data.profileName ?? '')`)
+and decides the resolved-voice gate on the RAW body, because the coercion would
+otherwise make it unanswerable — a raw `0` is falsy and must not set the voice,
+but `String(0 ?? '')` is the truthy `'0'`.
+
 #### 2026-09-11 — feat(salon): the In Their Own Words gate and a client-safe Carina-parser twin
 
 _Versions: SPA 0.5.696._

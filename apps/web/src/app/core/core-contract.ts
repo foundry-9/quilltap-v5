@@ -227,6 +227,28 @@ export interface ChatAnnouncementPreviewRequest {
 }
 
 /**
+ * v4 `POST /api/v1/chats/[id]?action=impersonation-voice-preview` (`686954937`)
+ * — In Their Own Words: restate a line the operator typed while wearing an
+ * impersonated seat, in that character's own voice. Persists nothing; the
+ * operator approves, edits, regenerates or discards before any bubble posts.
+ *
+ * `connectionProfileId` / `systemPromptId` are OMITTED when unset, never sent as
+ * `null` — v4's client spells them `profileId || undefined` so an empty-string
+ * picker value drops the key entirely (`useImpersonationVoice.ts:165-166`).
+ *
+ * Success data, key order as v4's `NextResponse.json`:
+ * `{ success, proposedMarkdown, profileName, modelName }`.
+ */
+export interface ChatImpersonationVoicePreviewRequest {
+  type: 'chatImpersonationVoicePreview';
+  chatId: string;
+  participantId: string;
+  seedMarkdown: string;
+  connectionProfileId?: string;
+  systemPromptId?: string;
+}
+
+/**
  * v4 `POST /api/v1/chats/[id]?action=send-mail` — post a letter as one of the
  * operator's player-characters. 201 on success.
  */
@@ -2469,6 +2491,7 @@ export type CoreRequest =
   | ConversationSummariesRegenerateRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
+  | ChatImpersonationVoicePreviewRequest
   | ChatSendMailRequest
   | ChatMailboxListRequest
   // --- Pascal custom tools, the composer popup's path (P4.6ay implements the
@@ -3541,6 +3564,12 @@ export interface ChatSettingsDto {
     showWarningBadges: boolean;
   };
   autoScrollOnResponseComplete?: boolean;
+  /**
+   * Whether a line typed while impersonating a character is first restated by
+   * that character's own model, for review, before it posts (v4 `686954937`,
+   * `components/settings/chat-settings/types.ts:95-96`). Default false.
+   */
+  impersonationVoiceRewrite?: boolean;
   /** The composer text-replacement master switch (v4 default true). */
   textReplacementsEnabled?: boolean;
   [key: string]: unknown;
