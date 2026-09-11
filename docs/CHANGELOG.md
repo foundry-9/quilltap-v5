@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — test(e2e): the two activated In Their Own Words beats' first-run gesture fixes, and the shared mock LLM answers a non-streaming call
+
+_Versions: SPA 0.5.706._
+
+The unified Playwright run was the beats' first execution (§R.8), and it found
+three gesture defects and no product defect: the beat's dialog locator was the
+box-less inline `qt-impersonation-voice-dialog` host, which Playwright reports
+hidden while the fixed-position modal child is on screen (now scoped to the
+modal's `role=dialog`); `qt-message-row` is the component's element name, not a
+class, so `.qt-message-row` counted 0 rows before and after every send; and the
+shared `support/mock-llm.ts` answered the rehearsal's NON-streaming cheap-LLM
+call with SSE, which read as an empty proposal ("Nothing came back") — it now
+answers a JSON `chat.completion` whenever the body's `stream` is not `true`,
+the K2 spec-local precedent folded into the shared helper. Two coupling fixes
+so a sibling beat dying mid-flow cannot strand the shared instance: the
+impersonate helper releases a leftover overlay, beat 3's cleanup runs in a
+`finally`, and the settings beat measures its round trip relative to the row's
+initial state. One v4-faithful measurement recorded in the beat: after the
+impersonated seat's line the composer follows the rotation onto the owner
+persona (bug 49), whom the gate never rehearses, so the second line re-takes the
+seat from the participant card as an operator would.
+
 #### 2026-09-11 — feat(unify): the round's wires — the rehearsal's `llm_logs` row asserted as `VOICE_REWRITE`, and the two In Their Own Words beats un-parked
 
 _Versions: web 0.0.142, SPA 0.5.705._

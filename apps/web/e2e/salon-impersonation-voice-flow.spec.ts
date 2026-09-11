@@ -83,6 +83,16 @@ async function openSoloVoyage(page: Page): Promise<string> {
  */
 async function impersonateFirstSeat(page: Page): Promise<string> {
   await openSidebarSection(page, 'Participants');
+  // A sibling beat that died mid-flow can leave the seat impersonated on the
+  // shared instance; release it first so this beat starts from the same place
+  // every time.
+  const leftover = page.locator('qt-participant-card button[title^="Stop speaking as "]');
+  if (await leftover.count()) {
+    await leftover.first().click();
+    await expect(
+      page.locator('qt-participant-card button[title^="Speak as "]').first(),
+    ).toBeVisible({ timeout: 15_000 });
+  }
   const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();
   await expect(speakAs).toBeVisible({ timeout: 10_000 });
   const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
@@ -105,7 +115,12 @@ async function stopImpersonating(page: Page, name: string): Promise<void> {
 }
 
 const composer = (page: Page) => page.locator('.qt-chat-composer-input .qt-rich-editor-content');
-const dialog = (page: Page) => page.locator('qt-impersonation-voice-dialog');
+// The modal's `[role=dialog]`, not the `qt-impersonation-voice-dialog` host: the
+// host is a box-less inline custom element whose fixed-position child IS the
+// dialog, so Playwright reports the host "hidden" while the modal is on screen
+// (the activated beat's first run at the `f4ad2c8d1` unification). `toHaveCount(0)`
+// still measures the close, because the `@if` unmounts the host with its child.
+const dialog = (page: Page) => page.locator('qt-impersonation-voice-dialog').getByRole('dialog');
 
 async function typeAndEnter(page: Page, text: string): Promise<void> {
   await composer(page).click();
@@ -113,9 +128,34 @@ async function typeAndEnter(page: Page, text: string): Promise<void> {
   await page.keyboard.press('Enter');
 }
 
-/** The newest rendered bubble's text. */
+/**
+ * Make the composer speak as `name` with In Their Own Words ARMED again (the
+ * portrait's title carries the cue) after the rotation has moved off the seat.
+ */
+async function retakeSeat(page: Page, name: string): Promise<void> {
+  const portrait = page.locator('.qt-speaking-as-avatar');
+  const armed = `Speaking as ${name} — your draft goes to ${name} to say in their own words first`;
+  if ((await portrait.getAttribute('title')) === armed) return;
+  // The rotation has moved the composer onto the owner persona (no Skip banner
+  // there — the banner is an impersonated seat's). The operator's route back is
+  // the participant card: release the seat and take it again, which v4's
+  // `impersonate` answers by making that seat the active typing seat (P4.D60's
+  // turn override above the server's rotation).
+  await openSidebarSection(page, 'Participants');
+  await stopImpersonating(page, name);
+  const speakAs = page.locator(`qt-participant-card button[title="Speak as ${name}"]`);
+  await expect(speakAs).toBeVisible({ timeout: 15_000 });
+  await speakAs.click();
+  await expect(portrait).toHaveAttribute('title', armed, { timeout: 15_000 });
+}
+
+/**
+ * The newest rendered bubble's text. `qt-message-row` is the component's ELEMENT
+ * name, not a class — the activated beat's first runs counted `.qt-message-row`
+ * and saw 0 rows before and after every send (the `f4ad2c8d1` unification).
+ */
 async function newestBubble(page: Page): Promise<string> {
-  const rows = page.locator('.qt-chat-messages-list .qt-message-row');
+  const rows = page.locator('.qt-chat-messages-list qt-message-row');
   const n = await rows.count();
   return ((await rows.nth(n - 1).textContent()) ?? '').trim();
 }
@@ -145,88 +185,99 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     await setVoiceRewrite(page, true);
     await openSoloVoyage(page);
     const name = await impersonateFirstSeat(page);
+    try {
+      // The CUE, before anything is typed: the portrait wears the quill badge and
+      // says what a send will do. The badge's positioning is the one thing no unit
+      // spec can see (jsdom runs no cascade), so assert the computed box here —
+      // inside the portrait, bottom-right, which needs BOTH its own
+      // `position: absolute` and the wrapper's `position: relative`.
+      const portrait = page.locator('.qt-speaking-as-avatar');
+      await expect(portrait).toHaveAttribute(
+        'title',
+        `Speaking as ${name} — your draft goes to ${name} to say in their own words first`,
+        { timeout: 15_000 },
+      );
+      const badge = portrait.locator('.qt-speaking-as-avatar-voice-badge');
+      await expect(badge).toBeVisible({ timeout: 15_000 });
+      expect(await badge.evaluate((el) => getComputedStyle(el).position)).toBe('absolute');
+      expect(await portrait.evaluate((el) => getComputedStyle(el).position)).toBe('relative');
+      const outer = (await portrait.boundingBox())!;
+      const inner = (await badge.boundingBox())!;
+      expect(inner.x).toBeGreaterThan(outer.x);
+      expect(inner.y).toBeGreaterThan(outer.y);
+      expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
+      expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
 
-    // The CUE, before anything is typed: the portrait wears the quill badge and
-    // says what a send will do. The badge's positioning is the one thing no unit
-    // spec can see (jsdom runs no cascade), so assert the computed box here —
-    // inside the portrait, bottom-right, which needs BOTH its own
-    // `position: absolute` and the wrapper's `position: relative`.
-    const portrait = page.locator('.qt-speaking-as-avatar');
-    await expect(portrait).toHaveAttribute(
-      'title',
-      `Speaking as ${name} — your draft goes to ${name} to say in their own words first`,
-      { timeout: 15_000 },
-    );
-    const badge = portrait.locator('.qt-speaking-as-avatar-voice-badge');
-    await expect(badge).toBeVisible({ timeout: 15_000 });
-    expect(await badge.evaluate((el) => getComputedStyle(el).position)).toBe('absolute');
-    expect(await portrait.evaluate((el) => getComputedStyle(el).position)).toBe('relative');
-    const outer = (await portrait.boundingBox())!;
-    const inner = (await badge.boundingBox())!;
-    expect(inner.x).toBeGreaterThan(outer.x);
-    expect(inner.y).toBeGreaterThan(outer.y);
-    expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
-    expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
+      const DRAFT = 'Tell the harbourmaster we sail at dawn.';
+      const before = await page.locator('.qt-chat-messages-list qt-message-row').count();
 
-    const DRAFT = 'Tell the harbourmaster we sail at dawn.';
-    const before = await page.locator('.qt-chat-messages-list .qt-message-row').count();
+      await typeAndEnter(page, DRAFT);
 
-    await typeAndEnter(page, DRAFT);
+      // NOTHING posted, and the dialog opened on the draft.
+      await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('.qt-dialog-title')).toHaveText(`In ${name}'s own words`);
+      await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
+        timeout: 15_000,
+      });
+      expect(await page.locator('.qt-chat-messages-list qt-message-row').count()).toBe(before);
 
-    // NOTHING posted, and the dialog opened on the draft.
-    await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('.qt-dialog-title')).toHaveText(`In ${name}'s own words`);
-    await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
-      timeout: 15_000,
-    });
-    expect(await page.locator('.qt-chat-messages-list .qt-message-row').count()).toBe(before);
+      // The composer was NOT cleared — the whole point of unit 3's restructure.
+      await expect(composer(page)).toContainText(DRAFT);
 
-    // The composer was NOT cleared — the whole point of unit 3's restructure.
-    await expect(composer(page)).toContainText(DRAFT);
+      // The mock's restatement arrives as the proposal.
+      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+        REHEARSED,
+        { timeout: 20_000 },
+      );
 
-    // The mock's restatement arrives as the proposal.
-    await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
-      REHEARSED,
-      { timeout: 20_000 },
-    );
+      // ── Edit original: back to the composer, draft intact, nothing posted. ──
+      await dialog(page).getByRole('button', { name: 'Edit original' }).click();
+      await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
+      await expect(composer(page)).toContainText(DRAFT);
+      expect(await page.locator('.qt-chat-messages-list qt-message-row').count()).toBe(before);
 
-    // ── Edit original: back to the composer, draft intact, nothing posted. ──
-    await dialog(page).getByRole('button', { name: 'Edit original' }).click();
-    await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
-    await expect(composer(page)).toContainText(DRAFT);
-    expect(await page.locator('.qt-chat-messages-list .qt-message-row').count()).toBe(before);
+      // ── Resend, then Send as written: the operator's OWN bytes post. ──
+      await composer(page).click();
+      await page.keyboard.press('Enter');
+      await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
+      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+        REHEARSED,
+        { timeout: 20_000 },
+      );
+      await dialog(page).getByRole('button', { name: 'Send as written' }).click();
+      await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
+      await expect.poll(async () => await newestBubble(page), { timeout: 20_000 }).toContain(DRAFT);
+      // …and a Send DOES clear the composer, exactly as an ordinary send does.
+      await expect(composer(page)).not.toContainText(DRAFT, { timeout: 15_000 });
 
-    // ── Resend, then Send as written: the operator's OWN bytes post. ──
-    await composer(page).click();
-    await page.keyboard.press('Enter');
-    await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-    await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
-      REHEARSED,
-      { timeout: 20_000 },
-    );
-    await dialog(page).getByRole('button', { name: 'Send as written' }).click();
-    await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
-    await expect.poll(async () => await newestBubble(page), { timeout: 20_000 }).toContain(DRAFT);
-    // …and a Send DOES clear the composer, exactly as an ordinary send does.
-    await expect(composer(page)).not.toContainText(DRAFT, { timeout: 15_000 });
-
-    // ── A second line, sent as the PROPOSAL this time. ──
-    const SECOND = 'And have the charts brought up.';
-    await typeAndEnter(page, SECOND);
-    await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-    await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
-      REHEARSED,
-      { timeout: 20_000 },
-    );
-    await dialog(page).getByRole('button', { name: 'Send', exact: true }).click();
-    await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
-    await expect
-      .poll(async () => await newestBubble(page), { timeout: 20_000 })
-      .toContain(REHEARSED);
-
-    await openSidebarSection(page, 'Participants');
-    await stopImpersonating(page, name);
-    await setVoiceRewrite(page, false);
+      // ── A second line, sent as the PROPOSAL this time. ──
+      // v4's bug-49 rule: after the impersonated seat's line the composer's
+      // speaking-as FOLLOWS the rotation, and in this solo chat that lands on
+      // the owner persona (Cleo), whom the gate never rehearses — the activated
+      // beat's first isolated run posted the second line as Cleo. The operator
+      // gets Aria's seat back from the participant card (release + Speak as),
+      // so the beat does the same until the portrait's title says the gate is
+      // armed for Aria again.
+      await retakeSeat(page, name);
+      const SECOND = 'And have the charts brought up.';
+      await typeAndEnter(page, SECOND);
+      await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
+      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+        REHEARSED,
+        { timeout: 20_000 },
+      );
+      await dialog(page).getByRole('button', { name: 'Send', exact: true }).click();
+      await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
+      await expect
+        .poll(async () => await newestBubble(page), { timeout: 20_000 })
+        .toContain(REHEARSED);
+    } finally {
+      // Leave the shared instance as we found it even when an assertion above
+      // fails — the sibling beats read the same seat and the same setting.
+      await openSidebarSection(page, 'Participants');
+      await stopImpersonating(page, name);
+      await setVoiceRewrite(page, false);
+    }
   });
 
   test('an attachment-only send is never rehearsed, and the setting off lets a line straight through', async ({
@@ -257,12 +308,12 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     });
     await expect(page.locator('.qt-chat-attachment-chip')).toBeVisible({ timeout: 20_000 });
 
-    const before = await page.locator('.qt-chat-messages-list .qt-message-row').count();
+    const before = await page.locator('.qt-chat-messages-list qt-message-row').count();
     await page.locator('.qt-chat-composer-send').click();
     // No dialog, and the message goes out as an ordinary send.
     await expect(dialog(page)).toHaveCount(0);
     await expect
-      .poll(async () => await page.locator('.qt-chat-messages-list .qt-message-row').count(), {
+      .poll(async () => await page.locator('.qt-chat-messages-list qt-message-row').count(), {
         timeout: 20_000,
       })
       .toBeGreaterThan(before);
@@ -270,11 +321,11 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     // Rule 1: turn the setting off and a plain typed line posts with no dialog.
     await setVoiceRewrite(page, false);
     await openSoloVoyage(page);
-    const afterAttachment = await page.locator('.qt-chat-messages-list .qt-message-row').count();
+    const afterAttachment = await page.locator('.qt-chat-messages-list qt-message-row').count();
     await typeAndEnter(page, 'Straight to the room, if you please.');
     await expect(dialog(page)).toHaveCount(0);
     await expect
-      .poll(async () => await page.locator('.qt-chat-messages-list .qt-message-row').count(), {
+      .poll(async () => await page.locator('.qt-chat-messages-list qt-message-row').count(), {
         timeout: 20_000,
       })
       .toBeGreaterThan(afterAttachment);

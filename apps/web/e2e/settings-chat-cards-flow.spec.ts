@@ -291,22 +291,28 @@ test.describe('P4.D181 — the In Their Own Words toggle', () => {
     );
 
     const box = card.locator('input[type="checkbox"]');
-    // v4's default when unset is FALSE — the feature spends a model call per line.
-    await expect(box).not.toBeChecked();
+    // v4's default when unset is FALSE — but the shared instance may have been
+    // left ON by a sibling beat that died mid-flow, so the round trip is
+    // measured RELATIVE to whatever the row holds now (the activated beat's
+    // first full-suite run at the `f4ad2c8d1` unification found it checked).
+    const initial = await box.isChecked();
 
     const saved = waitForSave(page, 'impersonationVoiceRewrite');
-    await box.check();
+    await box.setChecked(!initial);
     await saved;
 
     await page.goto('/settings?tab=chat&section=composer-spellcheck');
-    await expect(
-      page.locator('qt-impersonation-voice-settings input[type="checkbox"]'),
-    ).toBeChecked({ timeout: 15_000 });
+    const after = page.locator('qt-impersonation-voice-settings input[type="checkbox"]');
+    if (initial) {
+      await expect(after).not.toBeChecked({ timeout: 15_000 });
+    } else {
+      await expect(after).toBeChecked({ timeout: 15_000 });
+    }
 
     // Leave the shared instance as we found it — later beats read this row.
-    const off = waitForSave(page, 'impersonationVoiceRewrite');
-    await page.locator('qt-impersonation-voice-settings input[type="checkbox"]').uncheck();
-    await off;
+    const back = waitForSave(page, 'impersonationVoiceRewrite');
+    await after.setChecked(initial);
+    await back;
   });
 });
 

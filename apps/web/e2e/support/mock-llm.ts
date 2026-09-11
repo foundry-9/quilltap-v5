@@ -45,9 +45,41 @@ export async function startMockLlm(
       res.writeHead(404).end();
       return;
     }
-    // Drain the request body (we ignore it — the reply is fixed).
-    req.on('data', () => {});
+    // Read the request body for ONE thing: its `stream` flag. A non-streaming
+    // call (the cheap-LLM path — a rehearsal, an optimizer run) expects a JSON
+    // `chat.completion` body; answering it with SSE reads as an empty reply
+    // (the `f4ad2c8d1` unification's activated In Their Own Words beat found
+    // the dialog reporting "Nothing came back"). The reply is fixed either way.
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
+      let streaming = true;
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        streaming = body.stream === true;
+      } catch {
+        streaming = true;
+      }
+      if (!streaming) {
+        const words = reply.split(' ');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            id: 'mock-1',
+            object: 'chat.completion',
+            model: 'mock-model',
+            choices: [
+              { index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: words.length,
+              total_tokens: 10 + words.length,
+            },
+          }),
+        );
+        return;
+      }
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
