@@ -853,10 +853,29 @@ export class ChatComposer implements OnInit {
     // `canSend`) in step with the textarea. Same behaviour, no shared module:
     // v5 has one composer component where v4 has a page and a child.
     const content = this.showSource() ? this.sourceText() : (this.editorView()?.getMarkdown() ?? '');
+    // The emit is the whole of `submit`: the CLEAR belongs to whoever actually
+    // posts the message. See `clearAfterSend` — In Their Own Words (P4.D181) can
+    // take this submit over, and "Edit original" / "Cancel" require the draft and
+    // the tray to survive it. This is v4's own shape: v4's composer clears
+    // nothing, only `sendMessage` does (`useSSEStreaming.ts`).
     this.send.emit({
       content: content.trim(),
       fileIds: this.attachedFiles().map((f) => f.id),
     });
+  }
+
+  /**
+   * Empty the composer the way a completed send does: the editor, the source
+   * textarea, the `text` gate signal, the attachment tray, and the persisted
+   * draft — all four of the things `submit` used to clear itself.
+   *
+   * The Salon calls this from its own send path, on the direct route AND on both
+   * of the dialog's Send doors, so the three land in exactly the same state. It
+   * is NOT called when a submit is intercepted, which is what leaves the draft
+   * where the operator left it. v4 reaches the same place through `sendMessage`,
+   * which owns `setInput('')` / `setAttachedFiles([])` / `clearDraft()`.
+   */
+  clearAfterSend(): void {
     this.editorView()?.setMarkdown('');
     this.sourceText.set('');
     this.text.set('');
@@ -892,6 +911,19 @@ export class ChatComposer implements OnInit {
    * in the tray, so a double-link can't produce a double chip (and a duplicate
    * `fileIds` entry on the send).
    */
+  /**
+   * Put the cursor back where the operator left it (v4's `focusComposer` →
+   * `inputRef.current?.focus()`, `SalonView.tsx:601-603`). In raw-source view the
+   * textarea is the edited surface, so that is what takes the caret.
+   */
+  focusEditor(): void {
+    if (this.showSource()) {
+      this.sourceArea()?.nativeElement.focus();
+      return;
+    }
+    this.editorView()?.focus();
+  }
+
   addAttachedFile(file: UploadedChatFile): void {
     this.attachedFiles.update((files) =>
       files.some((f) => f.id === file.id) ? files : [...files, file],

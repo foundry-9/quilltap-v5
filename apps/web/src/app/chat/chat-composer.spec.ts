@@ -86,10 +86,42 @@ describe('ChatComposer — attach affordance', () => {
     await settle(fixture);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
     expect(sent).toEqual({ content: 'look at this', fileIds: ['f-1'] });
-    // Chips + editor cleared after send.
+
+    // P4.D181: `submit` EMITS and stops there — the clear belongs to whoever
+    // posts the message, because In Their Own Words can take this submit over
+    // and "Edit original" needs the draft and the tray to survive it. (v4's own
+    // shape: its composer clears nothing, only `sendMessage` does.)
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).not.toBeNull();
+    expect(richEditor(fixture).getMarkdown()).toBe('look at this');
+
+    // …and `clearAfterSend` — what the Salon calls on its send path — empties
+    // all four: the editor, the source text, the send gate, and the tray.
+    fixture.componentInstance.clearAfterSend();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
     expect(richEditor(fixture).getMarkdown()).toBe('');
+  });
+
+  it('an intercepted submit leaves the draft and the tray exactly where they were', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(UPLOADED)));
+    const fixture = render();
+    await settle(fixture);
+    fixture.componentInstance.send.subscribe(() => {
+      /* the host decides not to post — nothing calls clearAfterSend */
+    });
+    pickFile(fixture);
+    await settle(fixture);
+    richEditor(fixture).setMarkdown('a line to rehearse');
+    await settle(fixture);
+    fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    expect(richEditor(fixture).getMarkdown()).toBe('a line to rehearse');
+    expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).not.toBeNull();
+    // The send button is still live, so a resubmit is possible.
+    expect(
+      (fixture.nativeElement.querySelector('.qt-chat-composer-send') as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('keeps a user-typed *narration* literal in the sent content (v4 dialect)', async () => {
@@ -217,7 +249,7 @@ describe('ChatComposer — draft persistence (v4 useDraftPersistence)', () => {
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 
-  it('clears the draft immediately on a successful send', async () => {
+  it('clears the draft when the send completes, not when it is emitted (P4.D181)', async () => {
     vi.stubGlobal('fetch', vi.fn());
     localStorage.setItem(KEY, 'to send');
     const fixture = render();
@@ -225,6 +257,9 @@ describe('ChatComposer — draft persistence (v4 useDraftPersistence)', () => {
     richEditor(fixture).setMarkdown('to send');
     await settle(fixture);
     fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
+    // An intercepted submit must be able to come back to this draft.
+    expect(localStorage.getItem(KEY)).toBe('to send');
+    fixture.componentInstance.clearAfterSend();
     expect(localStorage.getItem(KEY)).toBeNull();
   });
 });

@@ -334,6 +334,36 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — refactor(composer): the clear moves to the send path, and the Salon gains the In Their Own Words intercept
+
+_Versions: SPA 0.5.698._
+
+P4.D181 unit 3. v5's composer cleared the editor, the source text, the send gate,
+the attachment tray and the persisted draft ITSELF, right after `send.emit(...)`.
+v4's composer clears nothing — only `sendMessage` does — and In Their Own Words
+depends on that difference: "Edit original" and "Cancel" require the draft and the
+tray to survive an intercepted submit.
+
+So `submit()` now emits and stops there, and the composer exposes
+`clearAfterSend()` (beside the existing `addAttachedFile`) plus a `focusEditor()`
+for v4's `focusComposer`. The Salon owns the clear through one new chokepoint,
+`postComposedMessage`, which the direct submit AND both of the dialog's Send doors
+go through, so all three land in the same state.
+
+The intercept sits at the TOP of the Salon's `send()` — above the
+pending-tool-results snapshot, so an intercepted submit leaves the rolls in state
+exactly as v4's does by never reaching `sendMessage` at all. Alongside it:
+`rehearsalTarget` (v4's memo, and `ParticipantDetail` was measured to carry every
+field it needs, so the order's Tier-3 prompt-picker deferral does not apply),
+`impersonationVoiceEnabled`, and `impersonationVoiceArmed` — the text-free half of
+the gate that drives the cue.
+
+Two composer specs that pinned the old clear-on-emit invariant are re-expressed
+for the new one, and a third proves an intercepted submit leaves the draft, the
+tray and the send button exactly as they were. Mutations: ignoring the intercept's
+answer reddens six Salon rows; snapshotting the rolls before the gate reddens two;
+dropping `clearAfterSend` from the send path reddens two.
+
 #### 2026-09-11 — feat(salon): the In Their Own Words state machine, the verb client, and the §B wire shape
 
 _Versions: SPA 0.5.697._

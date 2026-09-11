@@ -49,6 +49,12 @@ import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
 import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-image-dialog';
 import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
+import type { RehearsalSeat } from '../../chat/impersonation-voice/gate';
+import {
+  ImpersonationVoiceState,
+  type PendingSend,
+  type RehearsalTarget,
+} from '../../chat/impersonation-voice/impersonation-voice.state';
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import type { AudienceCandidate } from '../../chat/post-office/post-office.api';
@@ -266,7 +272,14 @@ interface CascadePrompt {
   // .qt-chat-layout h-full directly; Angular's host element sits in between).
   host: { class: 'block h-full' },
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [TerminalModeController, DocumentModeController, DocumentApi],
+  providers: [
+    TerminalModeController,
+    DocumentModeController,
+    DocumentApi,
+    // In Their Own Words holds ONE chat's in-flight submit — component-scoped,
+    // never `providedIn: 'root'` (the dogfood-#105 NG0201 lesson).
+    ImpersonationVoiceState,
+  ],
   imports: [
     RouterLink,
     LoadingState,
@@ -813,6 +826,8 @@ export class SalonConversation {
   protected readonly terminalMode = inject(TerminalModeController);
   /** Document Mode state for this conversation (v4 `useDocumentMode`). */
   protected readonly documentMode = inject(DocumentModeController);
+  /** In Their Own Words — the impersonated-line rehearsal (P4.D181). */
+  protected readonly impersonationVoice = inject(ImpersonationVoiceState);
   /** Workspace backdrop seams (p4.9j2, v4 `useReportWorkspaceBackdrop`); null ⇒ routed. */
   private readonly backdropRegistry = inject(WORKSPACE_BACKDROP_REGISTRY, { optional: true });
   private readonly workspaceTabId = inject(WORKSPACE_TAB_ID, { optional: true });
@@ -857,6 +872,17 @@ export class SalonConversation {
   });
 
   constructor() {
+    // In Their Own Words posts through the ONE send path — the same
+    // `postComposedMessage` the direct submit uses — so a rehearsed line clears
+    // the composer exactly as an ordinary send does (v4 reaches this by handing
+    // the hook `sendMessage` itself).
+    this.impersonationVoice.attach({
+      chatId: () => this.chatId(),
+      sendFinal: (final: string, stash: PendingSend) =>
+        this.postComposedMessage(final, stash.fileIds, stash.pending as PendingToolResultChip[]),
+      focusComposer: () => this.composer()?.focusEditor(),
+    });
+
     // Bind the id-dependent wiring once the chat id is known. In routed mode the
     // route param is synchronous, so this runs on the first change detection with
     // the id already resolved (ordering preserved); in workspace-tab mode the
@@ -2062,6 +2088,48 @@ export class SalonConversation {
   });
 
   /**
+   * In Their Own Words: everything the review dialog needs about the seat the
+   * composer will attribute this message to (v4 `SalonView.tsx:584-600`'s
+   * `rehearsalTarget` memo). Null whenever the seat plays no character, which is
+   * also what makes `intercept` decline.
+   */
+  private readonly rehearsalTarget = computed<RehearsalTarget | null>(() => {
+    const p = this.speakingSeat();
+    if (!p?.character) return null;
+    return {
+      participantId: p.id,
+      characterName: p.character.name,
+      characterTitle: p.character.title ?? null,
+      avatarUrl: participantAvatar(p),
+      profileName: p.connectionProfile?.name ?? null,
+      modelName: p.connectionProfile?.modelName ?? null,
+      systemPrompts: p.character.systemPrompts ?? [],
+      selectedSystemPromptId: p.selectedSystemPromptId ?? null,
+    };
+  });
+
+  /** v4 `chatSettings?.impersonationVoiceRewrite ?? false` (`SalonView.tsx:583`). */
+  protected readonly impersonationVoiceEnabled = computed(
+    () => this.settings()?.impersonationVoiceRewrite ?? false,
+  );
+
+  /**
+   * Armed for the current seat — the TEXT-FREE half of the gate, which drives the
+   * composer's informational cue only (v4 `SalonView.tsx:613-620`). The
+   * text-dependent half is checked at submit time by `intercept`.
+   */
+  protected readonly impersonationVoiceArmed = computed(() => {
+    const seat = this.speakingSeat();
+    return Boolean(
+      this.impersonationVoiceEnabled() &&
+        seat &&
+        seat.type === 'CHARACTER' &&
+        seat.controlledBy !== 'user' &&
+        this.impersonatingIds().includes(seat.id),
+    );
+  });
+
+  /**
    * The name of the seat the Skip banner is about — the seat the composer
    * speaks as, on or off turn since v4 bug 123 — or null when the banner is
    * hidden (`bannerSeat` holds the three gates; `isSeatsTurn` says whether the
@@ -3001,11 +3069,57 @@ export class SalonConversation {
   // -------------------------------------------------------------------------
 
   protected send(payload: { content: string; fileIds: string[] }): void {
-    // v4 `useSSEStreaming:606-612` snapshots the pending results and clears them
-    // BEFORE the request, so a second send cannot carry the same roll twice.
-    const pending = this.pendingToolResults();
+    // In Their Own Words takes the submit over when it is armed (v4
+    // `SalonView.tsx:1615-1642`). It sits ABOVE the pending-results snapshot on
+    // purpose: an intercepted submit must leave the rolls in state, exactly as
+    // v4's does by never reaching `sendMessage` at all.
+    if (
+      this.impersonationVoice.intercept({
+        text: payload.content,
+        seat: this.rehearsalSeat(),
+        seatTarget: this.rehearsalTarget(),
+        enabled: this.impersonationVoiceEnabled(),
+        impersonatingParticipantIds: this.impersonatingIds(),
+        fileIds: payload.fileIds,
+        pending: this.pendingToolResults(),
+      })
+    ) {
+      // Nothing cleared, nothing snapshotted, nothing sent: the composer still
+      // holds the draft and the tray, which is what "Edit original" returns to.
+      return;
+    }
+    this.postComposedMessage(payload.content, payload.fileIds);
+  }
+
+  /**
+   * The one place a composed message actually goes out — the direct submit AND
+   * both of the dialog's Send doors — so all three clear the composer the same
+   * way and snapshot the pending rolls the same way.
+   *
+   * v4 `useSSEStreaming:606-612` snapshots the pending results and clears them
+   * BEFORE the request, so a second send cannot carry the same roll twice; the
+   * clear of the editor, the tray and the draft is v4's `sendMessage`'s too
+   * (v5's composer exposes it as `clearAfterSend`).
+   */
+  private postComposedMessage(
+    content: string,
+    fileIds: string[],
+    pendingOverride?: readonly PendingToolResultChip[],
+  ): void {
+    const pending = [...(pendingOverride ?? this.pendingToolResults())];
     this.pendingToolResults.set([]);
-    void this.runTurn({ content: payload.content, fileIds: payload.fileIds, pending });
+    this.composer()?.clearAfterSend();
+    void this.runTurn({ content, fileIds, pending });
+  }
+
+  /**
+   * The speaking seat narrowed to what the gate needs (v4 passes the whole
+   * participant; the gate only ever reads three fields).
+   */
+  private rehearsalSeat(): RehearsalSeat | null {
+    const p = this.speakingSeat();
+    if (!p || p.type !== 'CHARACTER') return null;
+    return { id: p.id, type: 'CHARACTER', controlledBy: p.controlledBy };
   }
 
   protected continueTurn(): void {
