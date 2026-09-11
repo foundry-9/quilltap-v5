@@ -334,6 +334,41 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — fix(salon): bug 134's write side — the remembered memory-cascade choice is published, and every settings read is pinned LIVE
+
+_Versions: SPA 0.5.702._
+
+P4.D181 unit 8, measured before ported. v4's bug 134 is a mount-only
+`useState` fetch in `useChatData` that a workspace tab kept alive forever; **v5
+never had that mechanism** — its Salon has read through the `['chatSettings']`
+TanStack query since P4.6f — so the deletion half of v4's fix has no counterpart,
+and what the port owes is the proof and the write side.
+
+The proof is `salon-settings-live.spec.ts`, the structural twin of v4's
+`readFileSync` source scan (a vitest spec cannot read source): seed the shared
+key, render, flip the cache, and every derived read — LLM logging, composer
+spellcheck, text replacements, story backgrounds, the new
+`impersonationVoiceRewrite` — follows, with the Salon never remounted and the chat
+query never refetched. The inspector button appears and disappears with the flag,
+and a settings-card save reaches the open Salon through the same key. The Salon's
+query key now comes from the shared `chatSettingsKeys.all` constant rather than a
+second literal, since two spellings would silently be two caches.
+
+The write side is the real port. v4's memory-cascade dialog has always offered
+"Remember this choice (can be changed in Settings)"; v5's had no remember arm at
+all — a pre-existing gap this closes — and v4's bug-134 fix adds the invalidation
+after the PUT, without which "don't ask me again" holds for that dialog and is
+forgotten by the next one until something else refetches. Both land: the checkbox
+rides the confirm payload, the Salon PUTs the whole
+`memoryCascadePreferences` bag with the sibling key preserved (v4's
+`|| 'DELETE_MEMORIES'`), swallows a failed write so the delete survives it, and
+invalidates the shared key.
+
+⚠ The first version of the invalidation assertion was VACUOUS — an `||` whose
+second half read the seeded cache — and survived the mutation that removes the
+invalidation. It now asserts the refetch that invalidation forces on the active
+observer, and reddens.
+
 #### 2026-09-11 — feat(settings): the In Their Own Words toggle and the VOICE_REWRITE labels
 
 _Versions: SPA 0.5.701._

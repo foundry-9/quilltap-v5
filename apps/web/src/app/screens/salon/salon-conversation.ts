@@ -48,7 +48,10 @@ import { SaveImageDialog } from '../../images/save-image-dialog';
 import { PhotoGalleryModal } from '../../images/photo-gallery-modal';
 import { GenerateImageDialog, type GeneratedImage } from '../../images/generate-image-dialog';
 import { StandaloneGenerateImageDialog } from '../../images/standalone-generate-image-dialog';
-import { MemoryCascadeDialog, type MemoryCascadeAction } from '../../chat/memory-cascade-dialog';
+import {
+  MemoryCascadeDialog,
+  type MemoryCascadeChoice,
+} from '../../chat/memory-cascade-dialog';
 import type { RehearsalSeat } from '../../chat/impersonation-voice/gate';
 import { ImpersonationVoiceDialog } from '../../chat/impersonation-voice/impersonation-voice-dialog';
 import {
@@ -146,6 +149,7 @@ import {
 import { chatKeys } from '../../chat/chat-keys';
 import { RealtimeService } from '../../core/realtime.service';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
+import { chatSettingsKeys } from '../settings/chat/chat-settings.api';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
 import {
   WORKSPACE_BACKDROP_REGISTRY,
@@ -1108,7 +1112,10 @@ export class SalonConversation {
   }));
 
   private readonly settingsQuery = injectQuery(() => ({
-    queryKey: ['chatSettings'],
+    // The SHARED key (`chat-settings.api`), not a second literal: bug 134's
+    // whole mechanism is that saving a dial publishes to every mounted observer
+    // of this key, and two spellings of it would silently be two caches.
+    queryKey: chatSettingsKeys.all,
     queryFn: async (): Promise<ChatSettingsDto> => {
       const resp = await this.core.dispatchExpect({ type: 'chatSettings' }, 'chatSettings');
       return resp.data;
@@ -3746,10 +3753,41 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
-  protected async onCascadeConfirm(action: MemoryCascadeAction): Promise<void> {
+  protected async onCascadeConfirm(choice: MemoryCascadeChoice): Promise<void> {
+    const { action } = choice;
     const pending = this.cascade();
     this.cascade.set(null);
     if (!pending) return;
+    // v4 `handleMemoryCascadeConfirm` (`useMessageActions.ts:123-150`): the
+    // remembered choice is written BEFORE the delete, as its own PUT, and a
+    // failure is swallowed — losing the preference must not lose the delete.
+    // Bug 134's write side: the PUT alone published nothing, so "don't ask me
+    // again" held for this dialog and was forgotten by the next one until
+    // something else refetched. The invalidation is what publishes it.
+    if (choice.remember) {
+      try {
+        const current = (this.settings()?.['memoryCascadePreferences'] ?? {}) as {
+          onSwipeRegenerate?: string;
+        };
+        await this.core.dispatchExpect(
+          {
+            type: 'chatSettingsUpdate',
+            settings: {
+              memoryCascadePreferences: {
+                onMessageDelete: action,
+                // v4 `|| 'DELETE_MEMORIES'` — the sibling key is carried, never
+                // dropped, because the server replaces the column wholesale.
+                onSwipeRegenerate: current.onSwipeRegenerate || 'DELETE_MEMORIES',
+              },
+            },
+          },
+          'chatSettings',
+        );
+        await this.queryClient.invalidateQueries({ queryKey: chatSettingsKeys.all });
+      } catch {
+        // v4: "Don't fail if settings update fails".
+      }
+    }
     const resp = await this.core.dispatch({
       type: 'messageDelete',
       messageId: pending.messageId,
