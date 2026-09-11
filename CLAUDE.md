@@ -3365,10 +3365,46 @@ records THERE. Update this summary only when a phase or round completes.
   in `status-log.md` (core 0.0.874, harness 0.0.766, host 0.0.123, web
   0.0.136, SPA 0.5.695). **Next: the bug-133 catch-up, then the round's
   named OPEN items, then the owed dogfood pass** — `phase-4.md`.
-- **Oracle baseline: `78b381a96` (2026-09-09, v4 main — "Fix bug 132:
-  describe_image returned a generated image's label, not a description",
-  `4.10.0-dev.21`), adopted at the `78b381a96` twelve-commit drift catch-up
-  round unification (2026-09-10).**
+- **The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round
+  (P4.D178 ∥ P4.87 ∥ P4.88): UNIFIED on main (2026-09-10) — ALL THREE
+  CLOSED (P4.87 with two coverage items named OPEN); the oracle baseline
+  MOVES to `cc65d6bfc` and the ledger's §3 is EMPTY.** Bug 133 absorbed
+  whole: the sanitizer's fourth parameter re-meant as "does THIS scene
+  route uncensored" (story backgrounds pass `uncensored_image_target`, the
+  image tool `AUTO_ROUTE && <profile set>` — a unit pin plus a DETECT_ONLY
+  corpus case, the tool path having been corpus-BLIND), the story reroute
+  barred for a moderated chat with the candid re-craft and v5's
+  `RerouteRecraft` seam DELETED (v4 re-crafts nowhere at the tip), **the six
+  reroute-path log lines both handlers were missing** (v5's whole reroute
+  path was silent — the #103/#110 class; the order's avatar-bag survey
+  claim REFUTED by the lane and pinned as an absence), the story corpus's
+  two moderated reroute rows RED-FIRST + two arms, the NEW
+  `appearance_sanitize_gate_tier3_equivalence` family over v4's REAL
+  sanitizer (nothing drove it), the help page re-vendored ∥ the previous
+  round's OPEN remainders: per-case draw arrays for the two frozen-zero
+  tier-3 families (and ONE shared `DrawSource` per case — v4 pins one
+  cursor), the different-provider understudy + concierge-seeded trail arms,
+  the three `[Failover]` bags as exact key sets, the two classify-before-
+  reset tests, the NEW `chat_continuation_tier2` family ∥ the seven
+  `[MemoryGate]`/`[Memories API]` lines, ONE home for the migrations-ledger
+  tables (the guard drop measured v5-only), the P4.D171 plants through
+  export/import + the `marshal_row` census (100 columns, not 98) + the
+  ensure sites folded, the gallery's six-site `safeQuery` degrade with
+  plant-probe arms — and P4.88's escalation landed at unification (the
+  gallery route's failed chat read answers v4's 404, not a 500). **§3
+  review: NO blocking code finding**; the lane's methodological find — a
+  guard whose other conjuncts are false in every test arm is not tested at
+  all — plus the review's own shapes (a recomputed log bag, presence-only
+  pins, a v4-impossible dropped-table scenario, UTF-16 vs scalars) are in
+  the round record and the memory note. Gate: 19/19 families fresh from
+  one `cc65d6bfc` pin zero SKIP; 552 test binaries / 3,172 / 0; clippy both
+  feature sets; release build; SPA 310 passed / 2 failed (the documented P4.D161 intermittent, 2/2 green in isolation) / 1 skipped. Versions: core 0.0.886,
+  harness 0.0.775, host 0.0.125. **The owed dogfood pass is the top next
+  candidate** — see phase-4.md. Round record: `status-log.md`.
+- **Oracle baseline: `cc65d6bfc` (2026-09-09, v4 main — "Fix bug 133: a
+  moderated chat's story background could escalate to the uncensored
+  provider", `4.10.0-dev.22`), adopted at the `cc65d6bfc` bug-133 catch-up +
+  `78b381a96`-round remainders round unification (2026-09-10).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

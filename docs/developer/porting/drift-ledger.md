@@ -19,51 +19,28 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `78b381a96`** — "Fix bug 132: describe_image returned a
-  generated image's label, not a description" (v4 main, 2026-09-09 09:26
-  -0500, `4.10.0-dev.21`), adopted at the `78b381a96` twelve-commit drift
-  catch-up round unification (P4.D171 → {P4.D172 ∥ P4.D173} ∥ P4.D174 ∥
-  P4.D175 ∥ P4.D176 ∥ P4.D177, 2026-09-10). CLAUDE.md's Status bullet agrees.
+- **Oracle baseline: `cc65d6bfc`** — "Fix bug 133: a moderated chat's story
+  background could escalate to the uncensored provider" (v4 main, 2026-09-09
+  15:51 -0500, `4.10.0-dev.22`), adopted at the `cc65d6bfc` bug-133 catch-up +
+  `78b381a96`-round remainders round unification (P4.D178 ∥ P4.87 ∥ P4.88,
+  2026-09-10). CLAUDE.md's Status bullet agrees.
 - **Checked:** 2026-09-10 at the round's unification (the §2 probe at the
-  opening survey, re-run at the gate — identical both times).
-- **v4 `main` HEAD at check:** `cc65d6bfc` (2026-09-09 15:51 -0500,
-  `4.10.0-dev.22`, "Fix bug 133: a moderated chat's story background could
-  escalate to the uncensored provider") — **ONE commit past the baseline**,
-  the commit the previous §1 predicted and pre-authorized as the seven
-  lanes' probe exception. It landed during the round (every lane's probe
-  found exactly it; every regen ran from a pinned worktree regardless).
-  Thirteen files, not the predicted nine: the nine recorded plus four
-  version-bump-only files (the README badge, `package.json`,
-  `packages/quilltap/package.json`, the lock's two lines — the `d3f0ed133`
-  rider class). Tabled in §3 as `UNPROCESSED`, class PORT.
+  opening survey, re-run before the gate's regen batch — identical both
+  times).
+- **v4 `main` HEAD at check:** `cc65d6bfc` — **AT the baseline**. Zero
+  commits past it.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 1 commit** (`cc65d6bfc`, bug 133, PORT). It
-  re-opens `services/story_background_job.rs` (P4.D175's bug-132 writer),
-  the P4.9a/W4.7f image-gen surfaces (`image_generation`, the appearance
-  resolver family), and `help/dangerous-content.md` (one of P4.D175's eleven
-  re-vendored files, edited again — `help_tree_equivalence` goes RED against
-  any oracle regenerated past `78b381a96`, by design). **Regen rule: PIN
-  REQUIRED** — v4 HEAD is past the baseline; every regen from a detached
-  worktree at `78b381a96` (§5.1) until the bug-133 catch-up moves the
-  baseline.
-- **Schema state at the baseline:** both schema moves the previous §1 owed
-  are ABSORBED — `chat_messages.routeTrail` (`TEXT` in `generateDDL`,
-  `TEXT DEFAULT NULL` in the migration; both carried, the P4.D78 class) and
-  `chats.cycleOrderParticipantIds` (`TEXT DEFAULT '[]'` in BOTH — the one
-  agreeing shape this round, documented as the exception in
-  `db/chats_read.rs`); `fresh_schema.json` re-dumped from the tip;
-  `qtap-export.schema.json` re-vendored (92,797 bytes, md5
-  `a347c46b802b3c195d2ab2a21f7e43f4`) — `qtap_schema_embed_guard` is GREEN
-  against the baseline and needs no `QT_V4_ROOT` pin for the full gate.
-  `help/**` at 123 files, byte-identical to the baseline's tree. Bug 133
-  adds no schema move.
-- **⚠ For the next round (bug 133):** `cc65d6bfc` is a PORT on ported
-  surfaces — the moderated chat's story background must not escalate to
-  the uncensored provider (`story-background.ts` +77/−?,
-  `appearance-resolution.ts`, `image-generation-handler.ts`, the help page,
-  two unit tests). Read the hunks, never the message (§5.3).
+- **Verdict: NO DRIFT.** The §3 table is EMPTY. **Regen rule: pin NOT
+  required** — v4 HEAD is the baseline and the checkout is clean; regen from
+  the checkout directly (re-probe first — v4 ships a commit every day or
+  two).
+- **Schema state at the baseline:** unchanged from `78b381a96` — bug 133
+  adds no schema move (`fresh_schema.json`, `qtap-export.schema.json` and
+  the boot ensures all stand; `qtap_schema_embed_guard` is GREEN against the
+  checkout). `help/**` at 123 files, byte-identical to the baseline's tree
+  (`help/dangerous-content.md` re-vendored at `cc65d6bfc` by P4.D178).
 
 ## §2 The freshness probe
 
@@ -102,7 +79,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `cc65d6bfc` | 2026-09-09 | Fix bug 133: a moderated chat's story background could escalate to the uncensored provider | PORT | **The commit the previous §1 predicted from the dirty tree and pre-authorized as the `78b381a96` round's probe exception; it landed mid-round (15:51) and every lane proceeded on its pin.** Thirteen files: `lib/background-jobs/handlers/story-background.ts` (+77/−?), `lib/image-gen/appearance-resolution.ts`, `lib/tools/handlers/image-generation-handler.ts`, `help/dangerous-content.md` (+8/−?), `__tests__/unit/image-gen/appearance-resolution.test.ts`, `__tests__/…/story-background-uncensored-target.test.ts` (+124), `docs/CHANGELOG.md`, `docs/developer/bugs.md`, `docs/developer/bugs/fixed/bug-133-moderated-chat-image-escalation.md` (186 lines) + the four version-bump files (`4.10.0-dev.21` → `-dev.22`). v5 surfaces: `services/story_background_job.rs` (P4.D175's bug-132 writer 1 — the same file, edited again), the P4.9a/W4.7f image-gen surfaces (`image_generation` + the appearance-resolver family, both with tier-3 families), `help/dangerous-content.md` (re-vendor obligation — `help_tree_equivalence` reds against any oracle past `78b381a96`). Not a convergence. | ORDERED(P4.D178) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -256,6 +232,18 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round
+  (2026-09-10, baseline `78b381a96` → `cc65d6bfc`):** `cc65d6bfc`
+  ABSORBED(P4.D178 — bug 133 whole: the sanitizer's fourth parameter
+  re-meant as "does THIS scene route uncensored", the story reroute barred
+  for a moderated chat with the candid re-craft and v5's `RerouteRecraft`
+  seam deleted, the six reroute-path log lines both handlers were missing,
+  the story corpus's two moderated reroute rows red-first + two new arms, the
+  NEW `appearance_sanitize_gate_tier3_equivalence` family over v4's real
+  sanitizer, `image_generation_tier3` widened with a DETECT_ONLY case,
+  `help/dangerous-content.md` re-vendored). Round record: `status-log.md` →
+  "Round record — the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round
+  remainders round unification".
 - **The `78b381a96` twelve-commit drift catch-up round (2026-09-10, baseline
   `25f534c0b` → `78b381a96`):** `5841a8c62` ABSORBED(P4.D171 substrate →
   P4.D173 server ∥ P4.D177 SPA — the message route trail: the column through

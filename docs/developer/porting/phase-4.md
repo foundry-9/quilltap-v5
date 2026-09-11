@@ -6628,6 +6628,61 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88) — UNIFIED 2026-09-10
+
+**ALL THREE ORDERS CLOSED (P4.87 with two coverage items named OPEN in its
+header); the oracle baseline MOVES `78b381a96` → `cc65d6bfc`; the drift
+ledger's §3 is EMPTY and the regen rule is pin NOT required (re-probe
+first).** Round record: `status-log.md` → "Round record — the `cc65d6bfc`
+bug-133 catch-up + `78b381a96`-round remainders round unification" (the gate
+numbers, the §3 review's findings, the wires). CHANGELOG: the unification
+entries of 2026-09-10.
+
+**What is next, in order:**
+
+1. **The owed dogfood pass** over the `78b381a96` round's live surfaces
+   (item 3 of that round's UNIFIED section — unchanged) PLUS this round's:
+   bug 133 live (a moderated chat's refused backdrop FAILING with v4's
+   `[StoryBackground] Image generation failed` line carrying `rerouteAllowed:
+   false` and NO second image; a Flagged chat's refused backdrop rerouting
+   with the prompt resent as-is; a moderated chat with an uncensored profile
+   configured whose appearances now SANITIZE); the gallery route on a chat
+   whose read fails answering 404; the memory-gate lines in a real
+   `combined.log` on a deletion with a wide neighbour set. The standing
+   human-only 💸 items stand.
+2. **P4.87's two OPEN coverage items** (its header): an UN-paused multi-turn
+   orchestrator case with ≥3 seats and a long enough draw sequence so the
+   shared-`DrawSource` fix has a reddening test, and the per-case draw COUNT
+   emitted (`PinnedDraws.consumed`) + a Rust-side counter. Plus the two
+   remaining frozen-zero families (`regenerate-swipe-tier3`,
+   `salon-swipe-generate`). A small harness lane.
+3. **Small handler-logging remainders banked this round:** v4's two
+   `[AppearanceResolution]` info lines (unported — `appearance_resolution.rs`
+   emits nothing); the story craft-failure warn's missing `jobId` (the
+   comment claims no source; the function threads `job_id`); the
+   `provider_failover.rs:1211` `%error.message` vs v4's `${error.name}:
+   ${error.message}` (structural — `FallbackError` has no `name`; record,
+   not port). One order, or riders on the next drift round.
+4. **Maintenance smalls recorded by the §3 review:** the capture idiom
+   `captured_async` duplicated across seven files (home `test_support.rs`);
+   the repo's SEVEN capture rigs vs CLAUDE.md's six (a count correction);
+   `plant_ledger_shape`/`assert_ledger_stamped` copied into four heal test
+   modules; `public_schemas_vendor_guard`'s stale `/tmp` pin path
+   (`stale_v4_pin_path`); the story oracle's v4-side `Raw query failed … no
+   such table: instance_settings` line (v4 logs it and falls back; the
+   family is green — a fixture-vintage wart worth one table); the
+   oracle-side `ALTER TABLE ADD COLUMN` plant that throws once the
+   `system-data-*` pair is re-dumped past `78b381a96`.
+5. **Two v4-side filings for the human:** the `summary_fold`
+   `lastTurnParticipantId` loss (P4.87's DRAFT in its lane record — the
+   mechanism is `_update`'s non-atomic read-modify-write racing the fold's
+   fire-and-forget writes, NOT a stale snapshot) and P4.D175's `— outfit
+   preview` third writer. Both texts are in the status log; nothing is
+   written to v4's checkout by this repo.
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88) — ORDERED 2026-09-10
 
 **Baseline `78b381a96`; v4 `main` HEAD `cc65d6bfc` (ONE past — bug 133, the

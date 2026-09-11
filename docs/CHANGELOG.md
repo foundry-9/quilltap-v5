@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(unify): the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round — three orders unified, the baseline moves to `cc65d6bfc`
+
+_Docs-only change._
+
+P4.D178 (bug 133 whole), P4.87 (the turn-manager + route-trail harness remainders; two coverage items named OPEN) and P4.88 (the substrate + heal + gallery + logging remainders) unified on main. The §3 review (three parallel readers) found no blocking code defect; its should-fixes landed as the `fix(unify)` commit, and P4.88's escalation (the gallery route's 500 where v4 answers 404) landed as the `fix(api)` commit. Wires: the docs/v4 mirror refreshed for bug 133, the host version recounted after a silent identical-bump merge, the three order headers, the drift ledger (§1 rewritten, its one row retired to §6 — §3 EMPTY, pin not required), phase-4.md's UNIFIED section. Gate: 19/19 families regenerated fresh from one pin at `cc65d6bfc` with zero SKIP; fmt/clippy both feature sets/release clean; `cargo test --workspace` 552 test binaries / 3,172 passed / 0 failed / 2 ignored, zero SKIP lines; SPA `npm test` 423 spec files / 7,030 passed (`check-qt-classes` self-test 5/5); `npm run build` clean; full Playwright **310 passed / 2 failed / 1 skipped (8.8 m)** — the two reds are the P4.D161 pause-toast beats, the documented full-suite intermittent on a surface this round never opened, **2/2 green by spec file in isolation** on the same build; the skip is the standing runtime park prior rounds record. Final versions: core 0.0.886, harness 0.0.775, host 0.0.125.
+
 #### 2026-09-10 — fix(unify): the §3 review's should-fixes across the three lanes — the failure bag logs the local that gated, a UTF-16 length gate, exact key-set pins, and four honest comments
 
 _Versions: core 0.0.886, harness 0.0.775._

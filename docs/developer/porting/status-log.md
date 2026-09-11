@@ -122115,3 +122115,112 @@ this record.
   rig in `files_sha256_realign_heal_equivalence.rs`). Two of them carry written
   "NOT migrated, genuinely different" justifications. Worth a count correction,
   not a consolidation.
+
+
+## Round record — the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round unification (2026-09-10)
+
+**Unified on main; the oracle baseline MOVES `78b381a96` → `cc65d6bfc`; the
+drift ledger's §3 is EMPTY (v4 HEAD AT the baseline at both probes) and the
+regen rule is pin NOT required.** Three lanes from `main`, no stacking: P4.D178
+(bug 133) ∥ P4.87 (the turn-manager + route-trail harness remainders) ∥ P4.88
+(the substrate + heal + gallery + logging remainders). Unify branch
+`unify/cc65d6bfc-bug133-remainders`, cherry-picked in that order — every
+conflict version-only (resolved as ours + that commit's own increment; the
+lock refreshed by `cargo metadata --offline`), the two append-only docs
+union-merged. **The host bump merged silently** (P4.D178 and P4.88 both moved
+0.0.123 → 0.0.124 off the same base) and was recounted as base + total.
+
+### The §3 review (three parallel readers, one per lane; the verdict owned here)
+
+**No blocking CODE finding in any lane.** P4.88's one BLOCKING item was
+evidentiary: its lane record carried no verification-gate section at all (no
+counts, no clippy, no release, no `Versions:` line) while its header declared
+"LANE COMPLETE" — the unified gate below is the evidence, and the header now
+says so. Every should-fix was fixed on the unify branch (`fix(unify)` commit),
+mutation-proven where a test could see it:
+
+| lane | finding | fix | proof |
+| --- | --- | --- | --- |
+| D178 S2 | `log_failure` RECOMPUTED `reroute_allowed` (`moderation_rejection && is_dangerous_chat`) where v4 logs the same local the gate used | the gate's local is passed in | logging the wrong local reddens `moderated_story_failure_logs_the_bug_133_keys_and_never_reroutes` |
+| D178 S1 | the `[decd8ef9]` why-comment on `non_participant` described a re-craft bug 133 deleted | rewritten to v4's post-commit shape | — |
+| D178 N1 | the story oracle's `moderation_recraft_fails` candid branch was unreachable | retired with a note | the family regenerated and green (17 result rows, the same three `threw`) |
+| D178 N2/N3 | the new gate family's SAFE rows cannot see a canned-key miss (`Err` → "safe → unchanged, one call"); two v4 error arms outside the grid | recorded in the family header | — |
+| P4.87 #2 | the three `[Failover]` bags were pinned by `contains()` — a field v5 ADDS passed | exact KEY SETS via `field_keys` | adding `extra_key` to the `Understudy also failed` bag reddens exactly `understudy_that_throws_logs_its_whole_bag` |
+| P4.88 S1 | `b.sha256.chars().count()` where Zod's `.length(64)` counts UTF-16 units (the `a6870c5a` class) | `jsstr::utf16_len` | ASCII corpus — neutral; `chat_gallery_equivalence` regenerated green |
+| P4.88 S2/S3 | the logged `error` sentence is v5-worded (v4's is a `ZodError.message` JSON blob) and the gate reproduces one of six Zod refusals | both named in the comment | — |
+| P4.88 N1/N4 | the walk's doc claimed an abort the degrades made impossible; two heal comments described the removed guard | comments corrected | — |
+| unifier's own pin | my `chat_gallery` 404 pin used a DROPPED `chats` table — a scenario v4 cannot produce (its `getCollection()` recreates it and answers null WITHOUT the log line), caught by P4.88's reviewer N8 on the lane's sibling test | a RENAMED column, failing at prepare on both sides | restoring the 500 reddens `a_failed_chat_read_is_v4s_404_not_a_500` |
+
+**Recorded, not changed (in the headers and phase-4.md):** P4.87's headline
+fix — ONE `DrawSource` shared across the three harness carriers where v4 pins
+ONE `Math.random` cursor — has NO reddening test: the only sequenced case is
+`isPaused: true` and returns before the chain draws, and every other case's
+`[0]` cannot tell sharing from restarting; `PinnedDraws.consumed` is read by
+nobody (the draw COUNT is unpinned); `regenerate-swipe-tier3` and
+`salon-swipe-generate` still pin `[0]` once per file. D178 N4 (a hand-rolled
+13-column `image_profiles` DDL in the capture tests) and N7 (the story craft-
+failure warn's `jobId`, claimed sourceless while the function threads it), the
+banked `[AppearanceResolution]` two lines, `photo_link_summary`'s never-fails
+catch flipping NINE `?` sites in five files 500 → empty summary (correct — v4
+never throws there — but the lane record called it inert), the oracle-side
+`ALTER TABLE ADD COLUMN` plant that throws once `system-data-*` is re-dumped
+past `78b381a96`, the seven-not-six capture rigs, `captured_async` duplicated
+seven times, `plant_ledger_shape` copied into four heal test modules.
+
+### The wires
+
+- **P4.88's escalation LANDED:** `api::chat_media::chat_gallery`'s failed chat
+  read answered a 500 (`Failed to list chat gallery`) where v4's route gets
+  `null` from `_findById`'s `safeQuery` (`base.repository.ts:246`, logging
+  `Error finding entity by ID` with `{collection, id, error}`) and answers
+  `notFound('Chat')`. Fixed in `fix(api)`, pinned over a renamed column,
+  mutation-proven. core 0.0.885.
+- The `docs/v4/` mirror refreshed for bug 133 (`bugs/fixed/bug-133-…md`,
+  `bugs.md`, `CHANGELOG.md` at `cc65d6bfc`); the mirror carries no `help/`
+  tree (the vendored one lives at the repo root).
+- P4.87's lane record sat at the HEAD of this file; moved to the tail beside
+  its siblings.
+- The three order status headers rewritten; the ledger's §1 rewritten, its
+  one row retired to §6; phase-4.md's UNIFIED section with what is next.
+
+### The gate (from the unify branch, `CARGO_INCREMENTAL=0`)
+
+- `cargo fmt --all --check` clean (after `cargo fmt --all` over the review
+  fixes); `cargo clippy --workspace --all-targets -- -D warnings` clean in
+  BOTH feature sets (default and `--features quilltap-core/native-transport`);
+  `cargo build --workspace --release` clean.
+- **All 19 families the round moves regenerated FRESH from ONE unifier pin
+  at `cc65d6bfc`** (`/tmp/qt-v4-pin-unify-cc65d6bfc`, the three symlink
+  classes, marker-verified) through `recipe_sweep.py --v4 <pin> --run
+  <family>`, one at a time: **19/19 exit 0, zero `SKIP`**, every family's
+  tests RUN — including P4.87's and P4.88's families, which the lanes had
+  regenerated at `78b381a96`: byte-identical outcomes at the new baseline,
+  which is the pin-free claim's proof. Changed bytes grepped in the fresh
+  NDJSONs: the three `threw` rows (`moderation_recraft`,
+  `moderation_recraft_fails`, `flagged_no_profile_moderation`), `He has been
+  spoken to` ×1, `rotation_draw` ×2 in BOTH turn families,
+  `understudy_answers` ×1 + `"via":"concierge"` ×1, `column_renamed` ×2 +
+  `empty_mount_file_sha256` ×1, the planted `…0000000000f2` 3 + 28. After the
+  review fixes, `story_background_job_tier3` and `chat_gallery_equivalence`
+  regenerated and re-run again — green.
+- `cargo test --workspace` with the 54-variable env block assembled from the
+  moved families' recipe headers (every path verified present) and
+  `QT_V4_ROOT` at the pin: **552 test binaries / 3,172 passed / 0 failed /
+  2 ignored, exit 0, ZERO `SKIP:` lines** (551 + the new gate family; the
+  three lanes' own gates reported 551 / 3,143 and 551 / 3,141). Every round
+  family confirmed RUN by name and non-zero duration: `appearance_sanitize_
+  gate_tier3` 0.02 s, `story_background_job_tier3` 0.39 s, `avatar_job_tier3`
+  0.28 s, `image_generation_tier3` 0.22 s, `help_tree_equivalence` 1.06 s,
+  `chat_continuation_tier2` 0.19 s, `enclave_step_tier3` 0.64 s,
+  `orchestrator_tier3` 2.94 s, `memory_gate_tier3` 0.17 s, `memories_routes`
+  0.45 s, `chat_gallery_equivalence` 0.12 s, `system_export_equivalence`
+  0.58 s, `system_import_state` 4.31 s, `route_trail_continuation_guard` 2/0.
+- SPA (untouched this round — `git diff main -- apps/web/` EMPTY): `npm test` 423 spec files / 7,030 passed (`check-qt-classes` self-test 5/5); `npm run build` clean; full Playwright **310 passed / 2 failed / 1 skipped (8.8 m)** — the two reds are the P4.D161 pause-toast beats, the documented full-suite intermittent on a surface this round never opened, **2/2 green by spec file in isolation** on the same build; the skip is the standing runtime park prior rounds record
+- One v4-side wart observed during the story regen: v4 logs `Raw query failed
+  … no such table: instance_settings` (a settings read that falls back) —
+  the family is green; recorded as a fixture-vintage table to add, not
+  chased.
+
+Versions: **core 0.0.886, harness 0.0.775, host 0.0.125**; web / cli /
+tauri / SPA unchanged. The dogfood pass over this round's live surfaces is the
+top next candidate (phase-4.md).
