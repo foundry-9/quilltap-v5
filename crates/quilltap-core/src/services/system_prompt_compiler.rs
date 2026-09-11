@@ -223,6 +223,28 @@ fn read_current_stacks(chat: &Value) -> Option<Map<String, Value>> {
     Some(obj.get("stacks")?.as_object()?.clone())
 }
 
+/// v4 `getCompiledIdentityStack(chat, participantId)` — the cached stack for ONE
+/// participant, or `None` when absent or version-stale (the caller falls back to
+/// a fresh build).
+///
+/// v4: `readCurrentStacks(chat)?.[participantId]`, then `typeof value ===
+/// 'string' && value.length > 0 ? value : null` — a non-string or EMPTY entry is
+/// as good as absent.
+///
+/// ⚠ **This does not lift the turn-time deferral.** `orchestrator.rs` still
+/// passes `precompiled_identity_stack: None` (the standing P4.D103/P4.D163
+/// deferral, whose tier-3 oracles stub v4's reader to null). The one caller here
+/// is the P4.D180 in-scene rehearsal, a NEW surface with no deferral debt, where
+/// v4's `subprompts: precompiledIdentityStack ? null : subprompts` arm is only
+/// measurable with a real stack present.
+pub fn get_compiled_identity_stack(chat: &Value, participant_id: &str) -> Option<String> {
+    read_current_stacks(chat)?
+        .get(participant_id)
+        .and_then(Value::as_str)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+}
+
 /// Persist the compiled map (v4 `writeStacks`), stamped with the current builder
 /// version: `chats.update({ compiledIdentityStacks: keys > 0 ? {version, stacks}
 /// : null })`. An EMPTY map still writes `null` — the null column is the

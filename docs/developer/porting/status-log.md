@@ -122605,3 +122605,72 @@ against correct code. **The same floor makes `in_scene_voiced`'s
 the service boundary the differential compares, invisible on the wire.
 
 Versions: core 0.0.887.
+
+### Units 2–4 — `in_scene_voiced.rs`, the verb, and the LIVE host wire
+
+The service is v4's file function for function. Three fidelity points worth
+naming, each a place a plausible port goes wrong:
+
+* **The filter order is v4's IN-SCENE order, not the turn path's.**
+  `buildTranscriptForSeat` runs whisper → history-access → presence;
+  `build_context` runs history → whisper. They are not interchangeable (each
+  filter sees a different input list), and the presence windows are computed
+  from the FULL event list because the Host status announcements that define
+  them are themselves whispers and are gone from the played subset.
+* **`maxTokensForSeed` counts UTF-16 units.** `seedMarkdown.length` in JS is
+  units, not scalars, so a 3,000-emoji draft is 6,000 units and buys 3,000
+  tokens where a `chars().count()` port buys 1,500. Pinned by
+  `an_astral_draft_is_measured_in_utf16_units`.
+* **`REWRITE_INSTRUCTION` is pinned against its own construction.** v4 writes
+  eight lines and `.join(' ')`s them; the test reassembles v4's eight lines and
+  compares, so the constant cannot drift from the thing it transcribes.
+
+`get_compiled_identity_stack` is the compiler's only edit — the per-participant
+twin of the private `read_current_stacks`, with v4's
+`typeof value === 'string' && value.length > 0` gate. **It does not lift the
+turn-time deferral**: `orchestrator.rs` still passes
+`precompiled_identity_stack: None` (P4.D103/P4.D163), and nothing here wires the
+new reader into it.
+
+The verb reproduces v4's ladder in v4's ORDER, measured on v4 first:
+`handlers/post.ts:118` loads the chat and answers `notFound('Chat')` BEFORE
+dispatching, so the chat 404 precedes the body parse and the parse precedes
+every participant check. That ordering is observable — a non-uuid
+`participantId` on a MISSING seat answers the Zod envelope, not 404.
+
+**Three measured deviations from the order, all recorded here:**
+
+1. **No new `CoreResponse` variant.** The order specified
+   `CoreResponse::ChatImpersonationVoicePreview(Value)`, but the sibling it
+   tells this handler to copy does not work that way: `chat_announcement_preview`
+   returns `Response::ChatPostOffice(Value)` directly, and there is no
+   `CoreResponse` type in this tree. Followed the sibling.
+2. **The census moves 431 → 435, not +3.** The verb carries FOUR `*_id` fields
+   (`chat_id` is the route segment; `participant_id`, `connection_profile_id`
+   and `system_prompt_id` are real v4 body keys the route-identifier heuristic
+   drops — the exact class the constant's doc warns about). Their wrong-type
+   behaviour is adjudicated in the action rows, not in the census.
+3. **`route_profile_from_value` is private and `dangerous_content/**` is
+   READ-ONLY for this lane**, so the five-field identity projection is made at
+   the call site instead, field for field against `provider_routing.rs:132`.
+
+⚠ **Out-of-ownership edit, authorised by the human (2026-09-11).**
+`quilltap-host/src/host.rs` is P4.D179's this round. P4.D180 adds four lines to
+it (the tuple destructure, the `None => (...)` arm, the `bundle.` read, the
+assembly field), all marked in-code with the exception. They are unavoidable:
+host.rs is the ONLY place the spine bundle is threaded into `EngineAssembly`,
+whose struct literal is exhaustive, so even a DEFERRED wire could not compile
+without touching the file. P4.D179's own hunk is ~400 lines away (the boot
+ensure at `:1105`), so the two cannot conflict textually. **The unifier should
+verify both hunks survive the pick.**
+
+⚠ **Spotted and FIXED, not mine: a pre-existing clippy red on `main`.**
+`provider_failover.rs`'s three `field_keys(&l)` sites are a `needless_borrow`
+(`l` is already a `&str`) introduced by the PREVIOUS round's §3 review fixes
+(`e7857682c`, the last commit before this round's ordering commit) — after that
+round's gate had run. It fails `cargo clippy --workspace --all-targets --
+-D warnings` in both feature sets and therefore blocks every lane this round,
+so it is fixed here rather than reported: three characters, test-module only,
+zero behavioural content. Recorded so the unifier knows why the file moved.
+
+Versions: core 0.0.888, host 0.0.126, web 0.0.137.

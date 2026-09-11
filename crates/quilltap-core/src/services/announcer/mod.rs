@@ -10,6 +10,9 @@
 //!   - [`voice_rewrite_core`] — what the two "say it in the character's own
 //!     voice" rehearsals share: the Commonplace recall against the draft, the
 //!     cheap-LLM call, and the never-throws result shape (v4 `686954937`).
+//!   - [`in_scene_voiced`] — `generateInSceneVoicedLine`, the IN-SCENE rewrite
+//!     for a seat the operator is impersonating ("In Their Own Words"). The
+//!     character is in the room and it is their turn. Persists nothing.
 //!   - [`character_voiced`] — `generateCharacterVoicedAnnouncement`, the
 //!     OFF-SCENE rewrite the Insert Announcement dialog offers before the
 //!     operator posts. Persists nothing.
@@ -18,5 +21,6 @@
 
 pub mod audience;
 pub mod character_voiced;
+pub mod in_scene_voiced;
 pub mod voice_rewrite_core;
 pub mod writer;

@@ -188,6 +188,7 @@ impl SpineFactory for SmokeSpineFactory {
             help_chat_send: None,
             recall_replay: None,
             announcement_preview: None,
+            in_scene_voice: None,
             // P4.9E3A: canned test factory — no tool runner, so `run-tool`
             // answers the loud not-assembled refusal.
             operator_tool_runner: None,

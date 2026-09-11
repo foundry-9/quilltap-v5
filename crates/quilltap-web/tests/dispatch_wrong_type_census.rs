@@ -1948,6 +1948,18 @@ const CENSUS: &[Row] = &[
         ),
     },
     Row {
+        variant: "ChatImpersonationVoicePreview",
+        field: "seed_markdown",
+        rust_type: "String",
+        v4: V4::BodyParse,
+        note: concat!(
+            "`chats/[id]/schemas.ts:237`, `actions/impersonation-voice-preview.ts:37` ",
+            "`impersonationVoicePreviewSchema.parse` — `z.string().min(1)`, so a ",
+            "non-string is v4's `Validation error` 400 and v5's decode 400. ",
+            "FAITHFUL in outcome: both refuse, both write nothing."
+        ),
+    },
+    Row {
         variant: "ChatSendMail",
         field: "body_markdown",
         rust_type: "String",
@@ -2461,7 +2473,16 @@ fn is_route_identifier(field: &str) -> bool {
 // body rides as a flattened `Value` parsed by v4's shared `SaveImageRequestSchema`
 // inside the handler (`photos::save_attribution::parse_save_image_request`), so
 // it is not a typed field and does not move this count — 429 → 431.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 431;
+// P4.D180 added `ChatImpersonationVoicePreview.{chat_id, participant_id,
+// connection_profile_id, system_prompt_id}` — FOUR, not the three the order
+// predicted (measured, not guessed). `chat_id` is the `/api/v1/chats/[id]` route
+// segment and never a body key; the other three ARE real v4 body keys that the
+// heuristic drops, each a `z.uuid()` in `impersonationVoicePreviewSchema` — the
+// exact class the constant's doc warns about. Their wrong-type behaviour is
+// adjudicated FAITHFUL in the `in_scene_voiced_tier3_equivalence` action rows,
+// where v4's Zod and v5's decode both refuse with nothing written, rather than
+// here — 431 → 435.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 435;
 
 #[test]
 fn census_covers_every_typed_request_field() {

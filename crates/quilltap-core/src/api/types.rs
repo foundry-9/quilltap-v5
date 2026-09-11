@@ -2897,6 +2897,27 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target_participant_ids: Option<Vec<String>>,
     },
+    /// v4 `POST /api/v1/chats/[id]?action=impersonation-voice-preview`
+    /// (`686954937`) — restate a line the operator typed while impersonating a
+    /// character in that character's own voice ("In Their Own Words"), the
+    /// IN-SCENE cousin of `chatAnnouncementPreview`. Persists nothing.
+    ///
+    /// The impersonation is re-derived from the chat row — the client's claim
+    /// about which seat it is driving is never trusted.
+    #[serde(rename_all = "camelCase")]
+    ChatImpersonationVoicePreview {
+        chat_id: String,
+        /// The seat the operator is impersonating.
+        participant_id: String,
+        seed_markdown: String,
+        /// Operator overrides from the dialog's pickers. OMITTED when unset,
+        /// never `null` (the SPA mirrors `previewAnnouncement`'s `|| undefined`);
+        /// omitted, the seat's own selections are used.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        connection_profile_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        system_prompt_id: Option<String>,
+    },
     /// v4 `POST /api/v1/chats/[id]?action=send-mail` — post a letter as one of the
     /// operator's player-characters. 201 on success.
     #[serde(rename_all = "camelCase")]

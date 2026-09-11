@@ -144,6 +144,46 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-11 — feat(salon): the in-scene voice rehearsal — service, verb, and the LIVE host wire
+
+_Versions: core 0.0.888, host 0.0.126, web 0.0.137._
+
+The port of v4 `686954937`'s in-scene half. `services/announcer/
+in_scene_voiced.rs` carries `IN_SCENE_REWRITE_WINDOW`, the
+`impersonation-voice-rewrite` task type, `max_tokens_for_seed` (UTF-16
+units, so an astral draft buys twice what a `chars().count()` port would),
+v4's `REWRITE_INSTRUCTION` byte-exact, `build_transcript_for_seat` in v4's
+own filter order (whisper → history-access → presence, which is NOT the
+turn path's), and `generate_in_scene_voiced_line` composing the seat's
+per-turn system prompt with no tool instructions.
+
+`get_compiled_identity_stack` joins the compiler as the per-participant
+twin of the private `read_current_stacks`. It does **not** lift the
+standing P4.D103/P4.D163 deferral on the orchestrator's turn-time reader —
+the rehearsal is a new surface with no deferral debt, and v4's
+`subprompts: precompiledIdentityStack ? null : subprompts` arm is only
+measurable with a real stack present.
+
+`Request::ChatImpersonationVoicePreview` + `chat_impersonation_voice_preview`
+reproduce v4's ladder in v4's order — the dispatcher's chat 404 precedes the
+body parse, which precedes every participant check — with the profile chain,
+the uncensored-route reroute (api key discarded), the system-prompt chain,
+and v4's byte-exact refusal sentences. The body rides
+`Response::ChatPostOffice`, as its `announcement-preview` sibling does.
+
+The host wire is LIVE: `HostInSceneVoiceRunner` in `spine.rs` rebuilds the
+logging cheap executor per call so the rehearsal lands on an `llm_logs` row,
+as v4 does. ⚠ Real money — one cheap-LLM call per rehearsal, and the dialog
+offers Regenerate.
+
+Two measurements worth recording. The dispatch wrong-type census moves
+431 → **435**, not the +3 the order predicted: the verb carries FOUR `*_id`
+fields, and three of them are real v4 body keys the route-identifier
+heuristic drops — the class the constant's own doc warns about. And
+`provider_failover.rs`'s three `field_keys(&l)` sites were a **pre-existing
+clippy red on main**, introduced by the previous round's §3 review fixes
+after its gate ran; fixed here because it blocks every lane's gate.
+
 #### 2026-09-10 — refactor(announcer): extract the shared `voice_rewrite_core` from the off-scene rehearsal
 
 _Versions: core 0.0.887._

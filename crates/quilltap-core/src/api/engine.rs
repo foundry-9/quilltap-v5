@@ -230,6 +230,15 @@ pub struct EngineAssembly {
     /// the recipe is in the lane record).
     pub announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
     // === end P4.9E2A ===
+    // === P4.D180: the in-scene voice-rehearsal seam ===
+    /// The IN-SCENE rewriter for an impersonated seat (the
+    /// `announcement_preview` sibling — same reason, same shape: the host holds
+    /// the completion + embedding providers and the cheap executor). `None`
+    /// → the `ChatImpersonationVoicePreview` arm answers the loud
+    /// not-assembled refusal AFTER running v4's whole ladder, so the dialog can
+    /// render the reason.
+    pub in_scene_voice: Option<Arc<dyn super::chat_post_office::InSceneVoiceDriver>>,
+    // === end P4.D180 ===
     // === P4.9E3A: the operator run-tool seam ===
     /// The tool runner the `run-tool` action executes through — the host's
     /// `BuiltInToolRunner`, which carries the `SelfInventoryEnv`, the terminal
@@ -360,6 +369,9 @@ impl EngineAssembly {
             // === P4.9E2A ===
             announcement_preview: None,
             // === end P4.9E2A ===
+            // === P4.D180 ===
+            in_scene_voice: None,
+            // === end P4.D180 ===
             // === P4.9E3A ===
             operator_tool_runner: None,
             regenerate_title: None,
@@ -578,6 +590,8 @@ struct ReadyEngine {
     /// deferred host wire — the `ChatAnnouncementPreview` arm then answers the
     /// loud not-assembled refusal after v4's own validation arms).
     announcement_preview: Option<Arc<dyn super::chat_post_office::AnnouncementPreviewDriver>>,
+    /// P4.D180's sibling seam — see the assembly field.
+    in_scene_voice: Option<Arc<dyn super::chat_post_office::InSceneVoiceDriver>>,
     operator_tool_runner: Option<Arc<dyn crate::services::chat_run_tool::OperatorToolRunner>>,
     regenerate_title: Option<Arc<dyn crate::services::chat_admin::RegenerateTitleDriver>>,
     // === end P4.9E2A ===
@@ -1253,6 +1267,28 @@ impl CoreEngine {
                         &connection_profile_id,
                         system_prompt_id.as_deref(),
                         target_participant_ids.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatImpersonationVoicePreview {
+                chat_id,
+                participant_id,
+                seed_markdown,
+                connection_profile_id,
+                system_prompt_id,
+            } => match self.ready_db_and_in_scene_voice() {
+                Ok((db, driver)) => {
+                    super::chat_post_office::chat_impersonation_voice_preview(
+                        &db,
+                        driver.as_ref(),
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &participant_id,
+                        &seed_markdown,
+                        connection_profile_id.as_deref(),
+                        system_prompt_id.as_deref(),
                     )
                     .await
                 }
@@ -5774,6 +5810,24 @@ impl CoreEngine {
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
+
+    /// The Db + optional in-scene voice driver under the readiness gate (the
+    /// `ready_db_and_announcement_preview` sibling).
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_in_scene_voice(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn super::chat_post_office::InSceneVoiceDriver>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.in_scene_voice.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
     // ── end P4.9E2A ──
 
     // ── P4.9E4A ──
@@ -6661,6 +6715,8 @@ fn open_ready(
         almanack_host: assembly.almanack_host,
         // === P4.9E2A ===
         announcement_preview: assembly.announcement_preview,
+        // === P4.D180 ===
+        in_scene_voice: assembly.in_scene_voice,
         operator_tool_runner: assembly.operator_tool_runner,
         regenerate_title: assembly.regenerate_title,
         // === end P4.9E2A ===

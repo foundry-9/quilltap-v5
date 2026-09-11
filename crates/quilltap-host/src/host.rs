@@ -662,6 +662,14 @@ impl EngineAssembler for HostAssembler {
             brahma_console_send,
             recall_replay,
             announcement_preview,
+            // ⚠ OUT-OF-OWNERSHIP (P4.D180, authorised by the human 2026-09-11):
+            // `host.rs` is P4.D179's file this round, for its one boot-ensure
+            // call ~400 lines below. These three `in_scene_voice` lines are the
+            // whole of P4.D180's edit here, and they are unavoidable: host.rs is
+            // the ONLY place the spine bundle is threaded into `EngineAssembly`,
+            // whose struct literal is exhaustive, so even a DEFERRED wire could
+            // not compile without touching this file. Flagged for the unifier.
+            in_scene_voice,
             operator_tool_runner,
             regenerate_title,
             outfit_llm_choose,
@@ -690,6 +698,7 @@ impl EngineAssembler for HostAssembler {
                     bundle.brahma_console_send,
                     bundle.recall_replay,
                     bundle.announcement_preview,
+                    bundle.in_scene_voice, // ⚠ P4.D180 out-of-ownership — see above
                     bundle.operator_tool_runner,
                     bundle.regenerate_title,
                     bundle.outfit_llm_choose,
@@ -711,6 +720,7 @@ impl EngineAssembler for HostAssembler {
                 None,
                 None,
                 None,
+                None, // ⚠ P4.D180 in_scene_voice — see the destructure's note
                 None,
                 None,
                 None,
@@ -943,6 +953,16 @@ impl EngineAssembler for HostAssembler {
             // dialog renders the reason rather than breaking.
             // ⚠ LIVE means real money: one cheap-LLM call per Generate. ===
             announcement_preview,
+            // === P4.D180: the IN-SCENE voice rehearsal ("In Their Own Words"),
+            // wired LIVE from the spine's completion + embedding providers
+            // (`HostInSceneVoiceRunner`, the announcement-preview arrangement —
+            // a per-call logging cheap executor so the request's own user/chat
+            // land on the `llm_logs` row, as v4 does). Spine-less assemblies
+            // keep `None` → the arm answers the loud not-assembled refusal
+            // AFTER v4's whole ladder, so the dialog renders the reason.
+            // ⚠ LIVE means real money: one cheap-LLM call per rehearsal.
+            // ⚠ OUT-OF-OWNERSHIP for P4.D180 — see the note at the destructure.
+            in_scene_voice,
             // === P4.9E3A: the operator run-tool seam, wired LIVE from the spine's
             // own `BuiltInToolRunner` — a tool run from the Run Tool modal behaves
             // exactly as it does mid-turn (scrollback + consult included).

@@ -731,6 +731,85 @@ where
     }
 }
 
+/// P4.D180: the IN-SCENE voice-rehearsal runner — the host's live
+/// `EngineAssembly.in_scene_voice` seam behind the Salon's "In Their Own Words"
+/// dialog, and the exact sibling of [`HostAnnouncementPreviewRunner`] above.
+///
+/// Same reason for the per-call LOGGING executor: v4 threads `userId`, `chatId`
+/// and `character.id` into `executeCheapLLMTask` through the shared
+/// `executeVoiceRewrite` (`lib/services/announcer/voice-rewrite-core.ts:119`),
+/// so the rehearsal lands on an `llm_logs` row in v4 and must land on one here.
+/// A single assembly-time executor cannot carry per-request identity.
+///
+/// ⚠ LIVE means real money: one cheap-LLM call per rehearsal (and the dialog
+/// offers Regenerate).
+struct HostInSceneVoiceRunner<C, E> {
+    db: Db,
+    completion: Arc<C>,
+    embedding: Arc<E>,
+}
+
+impl<C, E> quilltap_core::api::chat_post_office::InSceneVoiceDriver for HostInSceneVoiceRunner<C, E>
+where
+    C: quilltap_core::model::completion::CompletionProvider + Send + Sync,
+    E: quilltap_core::model::embedding::EmbeddingProvider + Send + Sync,
+{
+    fn run(
+        &self,
+        input: quilltap_core::api::chat_post_office::InSceneVoicedRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        quilltap_core::api::chat_post_office::InSceneVoicedOutcome,
+                        String,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            let chat_id = input
+                .chat
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: self.db.clone(),
+                user_id: input.user_id.clone(),
+                chat_id: Some(chat_id),
+                message_id: None,
+                ctx: LogContext::none(),
+            });
+            let result =
+                quilltap_core::services::announcer::in_scene_voiced::generate_in_scene_voiced_line(
+                    &self.db,
+                    &*self.completion,
+                    &*self.embedding,
+                    &executor,
+                    &quilltap_core::services::announcer::in_scene_voiced::InSceneVoicedLineParams {
+                        chat: &input.chat,
+                        participant: &input.participant,
+                        character: &input.character,
+                        profile: &input.profile,
+                        seed_markdown: &input.seed_markdown,
+                        system_prompt_id: input.system_prompt_id.as_deref(),
+                        subprompts: Some(&input.subprompts),
+                        user_id: &input.user_id,
+                        now_ms: quilltap_core::clock::now_unix_ms() as f64,
+                    },
+                )
+                .await;
+            Ok(quilltap_core::api::chat_post_office::InSceneVoicedOutcome {
+                success: result.success,
+                proposed_markdown: result.proposed_markdown,
+                error: result.error,
+            })
+        })
+    }
+}
+
 /// P4.9E3A: the manual title-regeneration driver — the host's completion
 /// provider plus a per-call LOGGING cheap executor, so the regeneration's
 /// `llm_logs` row carries the request's own user + chat (the announcement-preview
@@ -3239,6 +3318,10 @@ pub struct SpineBundle {
     /// `ChatAnnouncementPreview` arm answers the loud not-assembled refusal).
     pub announcement_preview:
         Option<Arc<dyn quilltap_core::api::chat_post_office::AnnouncementPreviewDriver>>,
+    /// The IN-SCENE voice-rehearsal runner (P4.D180). `None` for canned test
+    /// factories — the `ChatImpersonationVoicePreview` arm answers the loud
+    /// not-assembled refusal AFTER v4's whole ladder.
+    pub in_scene_voice: Option<Arc<dyn quilltap_core::api::chat_post_office::InSceneVoiceDriver>>,
     /// The operator run-tool runner (P4.9E3A) — the same `BuiltInToolRunner` the
     /// carina / ask_carina / Brahma engines get, so a tool invoked from the Run
     /// Tool modal behaves exactly as it does mid-turn. `None` for canned test
@@ -3389,6 +3472,7 @@ impl SpineFactory for ProductionSpineFactory {
         // send/create drivers' provider Arcs; cloned here because `completion`
         // and `embedding` move into `chat_create` below.
         let announcement_completion = Arc::clone(&completion);
+        let in_scene_completion = Arc::clone(&completion);
         let title_completion = Arc::clone(&completion);
         let outfit_completion = Arc::clone(&completion);
         // P4.9E4A: the attach-mount-file describe shares the same provider Arc.
@@ -3397,6 +3481,7 @@ impl SpineFactory for ProductionSpineFactory {
         // vision tier shares it too (its own Arc — `completion` moves below).
         let turn_describe_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
+        let in_scene_embedding = Arc::clone(&embedding);
         // P4.42 + P4.59: web search, from ONE registration decision.
         //
         // v4's boot registers the bundled Serper plugin into
@@ -3594,6 +3679,14 @@ impl SpineFactory for ProductionSpineFactory {
                 db: db.clone(),
                 completion: announcement_completion,
                 embedding: announcement_embedding,
+            })),
+            // P4.D180: the IN-SCENE rehearsal, LIVE — the same two providers,
+            // the same per-call logging executor. ⚠ Real money: one cheap-LLM
+            // call per rehearsal, and the dialog offers Regenerate.
+            in_scene_voice: Some(Arc::new(HostInSceneVoiceRunner {
+                db: db.clone(),
+                completion: in_scene_completion,
+                embedding: in_scene_embedding,
             })),
             // P4.9E3A: the operator run-tool seam, LIVE — the same built-in tool
             // runner the in-turn engines use, so a tool run from the Run Tool

@@ -477,6 +477,492 @@ pub async fn chat_announcement_preview(
 }
 
 // ===========================================================================
+// `?action=impersonation-voice-preview` — v4 `handleImpersonationVoicePreview`
+// ===========================================================================
+
+/// A `""`-defaulting string read. Hoisted out of every `tracing!` call below
+/// because inside a tracing macro `Value` resolves to the `tracing::Value`
+/// TRAIT, and `Value::as_str` there is `expected a type, found a trait`
+/// (memory note `tracing-macro-shadows-serde-json-value`).
+fn str_of(v: &Value, key: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The host seam for the IN-SCENE rewrite (the [`AnnouncementPreviewDriver`]
+/// sibling): only the composing host holds the completion provider + cheap
+/// executor + embedding provider the rewrite's Commonplace recall and cheap-LLM
+/// call ride. `Ok(result)` is v4's `InSceneVoicedLineResult`; `Err(message)` is
+/// the not-assembled refusal.
+pub trait InSceneVoiceDriver: Send + Sync {
+    fn run(
+        &self,
+        input: InSceneVoicedRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InSceneVoicedOutcome, String>> + Send + '_>>;
+}
+
+/// What the driver needs to run one rehearsal — the route's already-resolved
+/// chat / participant / character / profile rows plus the seed and the two
+/// caller-resolved selections.
+#[derive(Debug, Clone)]
+pub struct InSceneVoicedRequest {
+    pub chat: Value,
+    pub participant: Value,
+    pub character: Value,
+    pub profile: Value,
+    pub seed_markdown: String,
+    pub system_prompt_id: Option<String>,
+    pub subprompts: Vec<crate::subprompts::SubpromptForPrompt>,
+    pub user_id: String,
+}
+
+/// v4 `InSceneVoicedLineResult` (= `VoiceRewriteResult`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InSceneVoicedOutcome {
+    pub success: bool,
+    pub proposed_markdown: String,
+    pub error: Option<String>,
+}
+
+/// A ready-made [`InSceneVoiceDriver`] over the ported service — the
+/// [`AnnouncementPreviewRunner`] sibling.
+pub struct InSceneVoiceRunner<C, E> {
+    pub db: Db,
+    pub completion: C,
+    pub embedding: E,
+    pub executor: std::sync::Arc<crate::services::cheap_llm_exec::CheapLlmTaskExecutor>,
+    /// The injected `Date.now()` (ms) the Commonplace recall's time-decay and
+    /// relative-age labels read. `None` = the process clock (production); the
+    /// differential pins it.
+    pub now_ms: Option<f64>,
+}
+
+impl<C, E> InSceneVoiceDriver for InSceneVoiceRunner<C, E>
+where
+    C: crate::model::completion::CompletionProvider + Send + Sync,
+    E: crate::model::embedding::EmbeddingProvider + Send + Sync,
+{
+    fn run(
+        &self,
+        input: InSceneVoicedRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<InSceneVoicedOutcome, String>> + Send + '_>> {
+        Box::pin(async move {
+            let result =
+                crate::services::announcer::in_scene_voiced::generate_in_scene_voiced_line(
+                    &self.db,
+                    &self.completion,
+                    &self.embedding,
+                    &self.executor,
+                    &crate::services::announcer::in_scene_voiced::InSceneVoicedLineParams {
+                        chat: &input.chat,
+                        participant: &input.participant,
+                        character: &input.character,
+                        profile: &input.profile,
+                        seed_markdown: &input.seed_markdown,
+                        system_prompt_id: input.system_prompt_id.as_deref(),
+                        // v4's caller always passes an ARRAY (possibly empty), never
+                        // null, so the `precompiled ? null : subprompts` branch is
+                        // the only thing that can make it null.
+                        subprompts: Some(&input.subprompts),
+                        user_id: &input.user_id,
+                        now_ms: self
+                            .now_ms
+                            .unwrap_or_else(|| crate::clock::now_unix_ms() as f64),
+                    },
+                )
+                .await;
+            Ok(InSceneVoicedOutcome {
+                success: result.success,
+                proposed_markdown: result.proposed_markdown,
+                error: result.error,
+            })
+        })
+    }
+}
+
+/// v4 `POST /api/v1/chats/[id]?action=impersonation-voice-preview`.
+///
+/// ## The ladder, in v4's order
+///
+/// v4's dispatcher (`handlers/post.ts:118`) loads the chat and answers
+/// `notFound('Chat')` BEFORE dispatching, so the chat 404 precedes the body
+/// parse; the parse then precedes every participant check. That ordering is
+/// observable — a non-uuid `participantId` on a MISSING seat answers the Zod
+/// envelope, not 404 — and is pinned by the differential's action rows.
+#[allow(clippy::too_many_arguments)] // mirrors the route's parameter surface
+pub async fn chat_impersonation_voice_preview(
+    db: &Db,
+    driver: Option<&Arc<dyn InSceneVoiceDriver>>,
+    user_id: &str,
+    chat_id: &str,
+    participant_id: &str,
+    seed_markdown: &str,
+    connection_profile_id: Option<&str>,
+    system_prompt_id: Option<&str>,
+) -> Response {
+    // The dispatcher's own gate, ahead of the handler.
+    let chat = match load_chat(db, chat_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+
+    // `impersonationVoicePreviewSchema.parse(body)`.
+    if !is_uuid(participant_id)
+        || !min1(seed_markdown)
+        || connection_profile_id.is_some_and(|s| !is_uuid(s))
+        || system_prompt_id.is_some_and(|s| !is_uuid(s))
+    {
+        return validation_error();
+    }
+
+    let participants = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let Some(participant) = participants
+        .iter()
+        .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))
+        .cloned()
+    else {
+        return not_found("Participant");
+    };
+
+    // v4 `participant.type !== 'CHARACTER' || !participant.characterId` — the
+    // empty string is falsy.
+    let character_id = participant
+        .get("characterId")
+        .and_then(Value::as_str)
+        .filter(|c| !c.is_empty());
+    let Some(character_id) = character_id
+        .filter(|_| participant.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+    else {
+        return bad_request("Only a character seat can be spoken for.");
+    };
+    let character_id = character_id.to_string();
+
+    if !crate::chat_predicates::is_participant_present(
+        crate::chat_predicates::participant_status_from_str(
+            participant.get("status").and_then(Value::as_str),
+        ),
+    ) {
+        return bad_request("That character is not present in this chat.");
+    }
+
+    // The overlay on the chat row is the authority, not the client's claim.
+    let impersonating: Vec<&str> = chat
+        .get("impersonatingParticipantIds")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if !impersonating.contains(&participant_id) {
+        return bad_request("That seat is not being impersonated.");
+    }
+    tracing::debug!(
+        chatId = %chat_id,
+        participantId = %participant_id,
+        characterId = %character_id,
+        "[Chats v1] Impersonation voice preview: seat verified"
+    );
+
+    // A broken vault throws `CharacterVaultUnavailableError`; v5's store-
+    // unavailable carry (`ErrorKind::Unavailable`, P4.23) is the twin, and
+    // `read_main_mount`'s error already routes through it.
+    let cid = character_id.clone();
+    let character = match read_main_mount(db, move |main, mount| {
+        characters_read::find_by_id(main, mount, &cid)
+    }) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Character"),
+        Err(e) => return internal(e),
+    };
+
+    // Profile: operator override → the seat's own → the character's default →
+    // the instance default. The seat keeps its `connectionProfileId` under the
+    // impersonation overlay, which is exactly the voice we want.
+    let by_id = |id: Option<&str>| -> Result<Option<Value>, crate::db::DbError> {
+        let Some(id) = id.filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        let id = id.to_string();
+        db.read_main(move |c| crate::db::connection_profiles::find_by_id(c, &id))
+    };
+    let mut profile_source = "";
+    let mut profile = match by_id(connection_profile_id) {
+        Ok(p) => p,
+        Err(e) => return internal(e),
+    };
+    if profile.is_some() {
+        profile_source = "override";
+    }
+    if profile.is_none() {
+        match by_id(
+            participant
+                .get("connectionProfileId")
+                .and_then(Value::as_str),
+        ) {
+            Ok(Some(p)) => {
+                profile = Some(p);
+                profile_source = "participant";
+            }
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
+    }
+    if profile.is_none() {
+        match by_id(
+            character
+                .get("defaultConnectionProfileId")
+                .and_then(Value::as_str),
+        ) {
+            Ok(Some(p)) => {
+                profile = Some(p);
+                profile_source = "character-default";
+            }
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
+    }
+    if profile.is_none() {
+        let uid = user_id.to_string();
+        match db.read_main(move |c| crate::db::connection_profiles::find_default(c, &uid)) {
+            Ok(Some(p)) => {
+                profile = Some(p);
+                profile_source = "instance-default";
+            }
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
+    }
+    let Some(mut profile) = profile else {
+        return bad_request("No connection profile to rewrite with");
+    };
+    tracing::debug!(
+        chatId = %chat_id,
+        participantId = %participant_id,
+        profileId = %str_of(&profile, "id"),
+        profileSource = profile_source,
+        "[Chats v1] Impersonation voice preview: profile resolved"
+    );
+
+    // A chat the Concierge has flagged already runs its turns on the uncensored
+    // route; the rehearsal follows the turn rather than asking a moderated
+    // provider to restate what it would refuse. A refusal here is an ordinary
+    // preview failure and never escalates on its own (bug 133's principle).
+    if crate::services::dangerous_content::chat_override::should_use_uncensored_route(Some(&chat)) {
+        let uid = user_id.to_string();
+        let chat_settings =
+            match db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid)) {
+                Ok(s) => s,
+                Err(e) => return internal(e),
+            };
+        let global = chat_settings
+            .as_ref()
+            .and_then(|s| s.get("dangerousContentSettings"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let danger =
+            crate::services::dangerous_content::resolver::resolve_dangerous_content_settings(
+                global,
+                Some(&chat),
+            )
+            .settings;
+        let is_dangerous_compatible =
+            profile.get("isDangerousCompatible") == Some(&Value::Bool(true));
+        if danger.mode == "AUTO_ROUTE" && !is_dangerous_compatible {
+            // The api key the helper hands back is discarded —
+            // `executeCheapLLMTask` resolves its own from the profile. Only the
+            // profile CHOICE is wanted, which is why v4 passes `''` in.
+            let resolver =
+                crate::services::dangerous_content::provider_routing::DbApiKeys(db.clone());
+            // v4 hands `resolveProviderForDangerousContent` the whole profile;
+            // v5's takes the five-field identity projection. That crate's own
+            // `route_profile_from_value` is private and
+            // `dangerous_content/**` is READ-ONLY for this lane, so the same
+            // five reads are made here (its field-for-field twin —
+            // `provider_routing.rs:132`).
+            let original = crate::services::dangerous_content::provider_routing::RouteProfile {
+                id: str_of(&profile, "id"),
+                name: str_of(&profile, "name"),
+                provider: str_of(&profile, "provider"),
+                model_name: str_of(&profile, "modelName"),
+                base_url: profile
+                    .get("baseUrl")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            };
+            let route = match db.read_main(|c| {
+                Ok(
+                    crate::services::dangerous_content::provider_routing::
+                        resolve_provider_for_dangerous_content(
+                        c,
+                        &resolver,
+                        &original,
+                        "",
+                        "AUTO_ROUTE",
+                        danger.uncensored_text_profile_id.as_deref(),
+                        user_id,
+                        // A rehearsal carries no turn attachments (v4's route
+                        // passes nothing, so the `[]` default — v4 `a1d88aa3a`).
+                        &[],
+                    ),
+                )
+            }) {
+                Ok(r) => r,
+                Err(e) => return internal(e),
+            };
+            if route.rerouted {
+                // v4 assigns `routeResult.connectionProfile`, the WHOLE row.
+                if let Some(row) = route.profile_row {
+                    profile = row;
+                }
+                // v4 assigns `profileSource = 'uncensored-route'` here and
+                // never reads it again — the debug line below logs only the
+                // profile id. Carried anyway so the variable's meaning stays
+                // v4's, and marked so the dead write is deliberate rather than
+                // an oversight (clippy would otherwise refuse it).
+                #[allow(unused_assignments)]
+                {
+                    profile_source = "uncensored-route";
+                }
+                tracing::debug!(
+                    chatId = %chat_id,
+                    participantId = %participant_id,
+                    profileId = %str_of(&profile, "id"),
+                    "[Chats v1] Impersonation voice preview: rerouted to uncensored profile"
+                );
+            }
+        }
+    }
+
+    // System prompt: operator override → the seat's own → the character's
+    // default → their `isDefault` prompt → their first.
+    let character_prompts = character
+        .get("systemPrompts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let prompt_id = |v: Option<&Value>| -> Option<String> {
+        v.and_then(|p| p.get("id"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let resolved_system_prompt_id: Option<String> = system_prompt_id
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            participant
+                .get("selectedSystemPromptId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            character
+                .get("defaultSystemPromptId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            prompt_id(
+                character_prompts
+                    .iter()
+                    .find(|p| p.get("isDefault") == Some(&Value::Bool(true))),
+            )
+        })
+        .or_else(|| prompt_id(character_prompts.first()));
+
+    let selected_subprompt_ids: Vec<String> = participant
+        .get("selectedSubpromptIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let scid = character_id.clone();
+    let subprompts = match read_main_mount(db, move |main, mount| {
+        Ok(crate::subprompts::storage::resolve_selected_subprompts(
+            main,
+            mount,
+            &scid,
+            &selected_subprompt_ids,
+        ))
+    }) {
+        Ok(s) => s,
+        Err(e) => return internal(e),
+    };
+    tracing::debug!(
+        chatId = %chat_id,
+        participantId = %participant_id,
+        systemPromptId = resolved_system_prompt_id.as_deref().unwrap_or("<null>"),
+        subprompts = subprompts.len(),
+        "[Chats v1] Impersonation voice preview: prompt resolved"
+    );
+
+    let Some(driver) = driver else {
+        return internal(
+            "chatImpersonationVoicePreview is not available: the host has not assembled an \
+             InSceneVoiceDriver (the in-scene rewrite needs the completion + embedding \
+             providers).",
+        );
+    };
+
+    let seed_length = crate::jsstr::utf16_len(seed_markdown);
+    let outcome = driver
+        .run(InSceneVoicedRequest {
+            chat: chat.clone(),
+            participant: participant.clone(),
+            character,
+            profile: profile.clone(),
+            seed_markdown: seed_markdown.to_string(),
+            system_prompt_id: resolved_system_prompt_id,
+            subprompts,
+            user_id: user_id.to_string(),
+        })
+        .await;
+
+    let outcome = match outcome {
+        Ok(o) => o,
+        Err(e) => return internal(e),
+    };
+
+    if !outcome.success {
+        // v4: `badRequest(result.error || 'Failed to restate the line in
+        // character.')` — an empty-string error is falsy in JS, so it takes the
+        // default too.
+        let msg = outcome
+            .error
+            .filter(|e| !e.is_empty())
+            .unwrap_or_else(|| "Failed to restate the line in character.".to_string());
+        return bad_request(msg);
+    }
+
+    tracing::info!(
+        chatId = %chat_id,
+        participantId = %participant_id,
+        characterId = %character_id,
+        profileId = %str_of(&profile, "id"),
+        seedLength = seed_length,
+        proposedLength = crate::jsstr::utf16_len(&outcome.proposed_markdown),
+        "[Chats v1] Impersonation voice preview generated"
+    );
+
+    ok(json!({
+        "success": true,
+        "proposedMarkdown": outcome.proposed_markdown,
+        "profileName": str_of(&profile, "name"),
+        "modelName": str_of(&profile, "modelName"),
+    }))
+}
+
+// ===========================================================================
 // `?action=send-mail` — v4 `handleSendMail`
 // ===========================================================================
 
