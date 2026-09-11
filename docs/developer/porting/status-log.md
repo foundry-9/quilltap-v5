@@ -122747,3 +122747,185 @@ port's 1,500 → floored 2,048), plus a long-plain row at 3,002 and a cap row at
 4,096. **A budget arm under 4,096 units measures nothing.**
 
 Versions: core 0.0.889, harness 0.0.777.
+
+### Unit 6 — the host wire, and the two claims no differential can make
+
+`impersonation_voice_preview_wire.rs` boots the host's LIVE assembly
+(`ProductionSpineFactory` — `web-test-venue-has-no-spine-factory`; without it
+every model-calling driver is `None` and the refusal is indistinguishable from a
+wired path) and proves three things the tier-3 family structurally cannot:
+
+1. **The driver is WIRED.** Mutation MW1 — leaving `in_scene_voice: None` in the
+   spine — reddens with the exact refusal sentence. This is the failure mode
+   P4.9E2A's sibling seam shipped with for a whole round.
+2. **The rehearsal lands on an `llm_logs` row** carrying the request's own
+   `chatId` and a NULL `messageId`. The tier-3 oracle is BLIND to this: jest
+   no-ops `logLLMCall` wholesale, so v4's side writes zero rows and the log type
+   is not a comparand. Mutation MW2 — a non-logging executor in the runner —
+   reddens exactly the row assertion.
+3. **The verb resolves over `/api/dispatch`**, and a not-impersonated seat
+   refuses at v4's sentence through the same wire with nothing written.
+
+No spend: the seat's profile points at `http://127.0.0.1:1/v1`, so the provider
+call dies at the socket — which is itself the proof the driver RAN, and
+`logLLMCall` writes its row for a failed call the same as a successful one.
+
+**`EXPECTED_REHEARSAL_LOG_TYPE = "SUMMARIZATION"`** is the round's ACTIVATE-AT-
+UNIFY meeting point (§R.6). v5 measurably carries v4's pre-fix silent default
+until P4.D179's map lands; **the unifier flips it to `"VOICE_REWRITE"` and the
+test must go green on the flip.**
+
+### Unit 7 — Tier 2, and three self-corrections
+
+`the_info_line_carries_v4s_bag` pins v4's `Impersonation voice preview
+generated` info bag key for key at v4's level, with an ASTRAL seed so
+`seedLength=6` rather than a scalar port's 3, plus the three debug sentences.
+`the_warn_lines_render_their_error_unquoted` pins the bystander-vault warn's bag
+and the `%error` Display rendering, plus the composer's twelve-key debug bag.
+
+**Three self-corrections, each recorded because each was a test that looked
+right and measured nothing:**
+
+1. The wire test's refusal assertion read `body["error"]`, which the dispatch
+   envelope never carries (`{"type":"error","data":{"kind","message"}}`), so
+   every `contains` on it passed VACUOUSLY. Now reads `data.message` through a
+   named helper.
+2. The `%error` check was first aimed at the Taboo warn and fired nothing.
+   `get_taboo_settings` folds BOTH a missing setting and an unparseable one into
+   `Ok(defaults)` — it warns `[InstanceSettings] taboo failed to parse` itself —
+   so neither dropping `instance_settings` nor renaming its `value` column
+   reaches the service's catch. **That arm is RECORDED as near-unreachable**
+   (ported byte-for-byte with v4's bag, but undriveable from this tree) and the
+   check retargeted at the bystander warn, which fires on every `CHAT_STACK`
+   row.
+3. The first attempt at that test dropped the table, which
+   `a-dropped-table-raises-no-read-error` predicts is lazily recreated — the
+   rename was the second attempt, and it too was folded away, which is how
+   finding 2 was found.
+
+### The census
+
+`dispatch_wrong_type_census.rs`'s `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`
+**431 → 435 — measured, and NOT the +3 the order predicted.** The verb carries
+FOUR `*_id` fields: `chat_id` is the `/api/v1/chats/[id]` route segment and
+never a body key, but `participant_id`, `connection_profile_id` and
+`system_prompt_id` ARE real v4 body keys that the heuristic drops — the exact
+class the constant's own doc warns about. Their wrong-type behaviour is
+adjudicated FAITHFUL in the tier-3 action rows (v4's Zod and v5's decode both
+refuse, both write nothing) rather than in the census, and `seed_markdown` gets
+its own census row. `db_error_key_guard`'s per-file counts are unmoved:
+`DbError::Internal` at every new site.
+
+### One ordered mutation NOT run, and why
+
+Tier-1 item 9 lists "read the rehearsing seat's own character from the vault
+instead of the loaded value (no row should move — record that it is
+unobservable, and pin the 'no second read' by a read-count on the vault seam if
+cheap)". **Not run.** Its own parenthesis is the reason: a re-read returns the
+SAME row, so no comparand can move, and the claim it would pin — that the
+rehearsing seat costs no second vault hit — needs a read-counting seam on
+`characters_read::find_by_id` that does not exist and is not cheap to add. The
+skip is recorded rather than the mutation reported as passing. The behaviour
+itself IS in the port (`in_scene_voiced.rs` inserts the already-loaded
+`character` and `continue`s, with v4's comment carried), just unpinned.
+
+### Deferrals, recorded loudly
+
+* **No REST edge for the new action.** v5 serves NO `POST /api/v1/chats/{id}
+  ?action=` family; `announcement-preview` is dispatch-only, and this follows its
+  sibling. RE-MEASURED this lane: `impersonation-voice-preview` appears nowhere
+  in `crates/quilltap-web/src`, and no CLI command calls either action. Recorded,
+  not invented (the order's Tier-3 says a lane finding otherwise is a
+  STOP-and-flag; nothing was found).
+* **The orchestrator's turn-time compiled-stack reader stays UNPORTED** (§R.14).
+  `orchestrator.rs` still passes `precompiled_identity_stack: None`, and nothing
+  in this lane wires `get_compiled_identity_stack` into it. The rehearsal reads
+  the stored stack ITSELF because it is a new surface with no deferral debt and
+  because v4's `subprompts` arm is only measurable with a real stack.
+* **The store-unavailable carry** for a broken rehearsing-seat vault reuses
+  v5's existing `ErrorKind::Unavailable` (P4.23) through `read_main_mount` — no
+  new refusal was needed, so nothing is deferred there.
+
+### The "spotted, not mine" list for the unifier
+
+1. **`post_office_routes_equivalence` is RED on `main`** — measured, not
+   inferred (its oracle regenerated at the tip and re-run: `no such column:
+   routeTrail`). Same P4.D171 vintage class as the announcer family this lane
+   healed, same one-line fix (`ensure_p4d171_columns` on the fixture copy at
+   `post_office_routes_equivalence.rs:155-156`). In no lane's ownership table.
+2. **`provider_failover.rs`'s three `field_keys(&l)` needless borrows** were a
+   pre-existing clippy red on `main`, landed by the PREVIOUS round's §3 review
+   fixes (`e7857682c`) after that round's gate had run. **Fixed here** because it
+   fails `-D warnings` in both feature sets and therefore blocks every lane this
+   round — three characters, test-module only.
+3. **`host.rs` carries four out-of-ownership lines** (authorised by the human
+   2026-09-11) — the tuple destructure, the `None => (…)` arm, the `bundle.` read
+   and the assembly field, each marked in-code. P4.D179's own hunk is ~400 lines
+   away. **Verify both survive the pick.**
+4. The `EXPECTED_REHEARSAL_LOG_TYPE` flip (§R.6) and the §B name-for-name diff
+   are the unifier's, as ordered.
+
+### Files touched outside the Ownership table's "owns" column
+
+Four, each forced and each named here so the unifier can check rather than
+discover:
+
+| File | Why |
+| --- | --- |
+| `quilltap-host/src/host.rs` | The authorised out-of-ownership wire (4 lines) — the ONLY place the spine bundle reaches `EngineAssembly`, whose literal is exhaustive. P4.D179's hunk is ~400 lines away. |
+| `quilltap-core/src/services/provider_failover.rs` | A pre-existing clippy red on `main` that blocks every lane's gate (3 chars, test module only). |
+| `quilltap-harness/tests/memory_subject_call_site_guard.rs` | Forced by this lane's own extraction: `build_memory_subject_context` moved out of `character_voiced.rs` into the shared core, and the census names the file. Still THREE sites — the second rehearsal reaches the same call through the same helper, which is what the extraction was for. (`closing-a-divergence-moves-the-censuses`.) |
+| `quilltap-web/tests/common/mod.rs` | Additive only: `materialize_in_scene_voiced_instance`, the fixture materializer this lane's own wire test needs. |
+
+The two `announcement_preview: None` seam sites the order names
+(`chat_create_end_to_end.rs`, `chat_send_smoke.rs`) each gained their
+`in_scene_voice: None` line, as ordered.
+
+### Versions
+
+core 0.0.889, harness **0.0.779**, host 0.0.126, web 0.0.138 (base at ordering:
+core 0.0.886, harness 0.0.775, host 0.0.125, web 0.0.136 — so **+3 / +4 / +1 /
++2**). cli / tauri / SPA untouched. ⚠ The unifier RECOUNTS as base + total bumps
+(§R.7, the silent-auto-merge trap): identical bumps merge without conflict.
+
+⚠ The final harness bump (778 → 779) landed AFTER the workspace gate ran, so the
+gate's log names 0.0.778. A version line is inert for behaviour, and the
+amended commit was re-built; nothing else moved.
+
+### The gate
+
+The drift ledger's §2 freshness probe was re-run at lane END and PASSED again
+(branch `main`, tree clean, `f4ad2c8d1..main` empty, `1a2b2164c..bugfix` empty)
+— so every regen in this lane saw the same tree, and the pins were never
+load-bearing on a moved checkout.
+
+* `cargo fmt --all --check` — clean.
+* `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+  feature sets (default and `--features quilltap-core/native-transport`), after
+  fixing the pre-existing `provider_failover.rs` red that blocks every lane.
+* `cargo build --workspace --release` — clean.
+* `cargo test --workspace` with this lane's env block
+  (`QT_ORACLE_ANNOUNCER_TIER3`, `QT_ORACLE_IN_SCENE_VOICED`, `TZ=UTC`, and
+  `QT_V4_ROOT` at the **`cc65d6bfc`** pin per §R.3 — this lane's embedded help
+  tree stays the 123-file one): **554 test binaries / 3,183 passed / 0 failed /
+  2 ignored — exit 0, and ZERO `SKIP:` lines.** Every family this lane moves is
+  positively confirmed to have RUN by name and non-zero duration:
+  `announcer_tier3_equivalence` 1/0 (0.09 s),
+  `in_scene_voiced_tier3_equivalence` 5/0 (0.39 s),
+  `impersonation_voice_preview_wire` 1/0 (1.03 s),
+  `dispatch_wrong_type_census` 4/0 (0.02 s),
+  `memory_subject_call_site_guard` 3/0.
+* Both moved families regenerated FRESH through
+  `harness/tools/recipe_sweep.py --v4 <pin> --run <family>`, never two sweeps at
+  once, with the changed bytes grepped: the announcer NDJSON at BOTH pins
+  (byte-identical, md5 `7087b8e0f1e32186f41625793c116cd7`, 15 rows) and the new
+  family's 27 rows at the `f4ad2c8d1` pin carrying v4's `REWRITE_INSTRUCTION`
+  first sentence 16 times. Both NDJSONs non-empty before any diff was believed.
+* The nine service/route mutations + the two wire mutations, each run and each
+  restored by file backup, each reddening exactly its named rows (the tables
+  above).
+* Ownership honoured: `git diff main -- apps/web/`, `-- help/`, `-- docs/v4/`
+  and `-- docs/developer/porting/drift-ledger.md` are ALL EMPTY.
+
+**Nothing in this lane touched the SPA or Playwright** (P4.D181's), so no e2e
+run was owed or made.

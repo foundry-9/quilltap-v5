@@ -144,6 +144,21 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-11 — test(harness): follow the memory-subject census onto the extracted core
+
+_Versions: harness 0.0.779._
+
+`build_memory_subject_context` moved out of `character_voiced.rs` into the
+shared `voice_rewrite_core.rs` with v4's own extraction, and
+`memory_subject_call_site_guard` names the file the call lives in — so the
+census had to follow. The count is still THREE: the second rehearsal reaches
+the same call through the same helper, which is precisely what the extraction
+was for. The guard now also asserts ZERO calls in both rehearsal modules, so a
+future lane that re-inlines one is caught.
+
+Caught by the full workspace run, which is the only thing that sees a census in
+another crate (`closing-a-divergence-moves-the-censuses`).
+
 #### 2026-09-11 — test(salon): prove the rehearsal's host wire, its llm_logs row, and the log lines the differential cannot see
 
 _Versions: harness 0.0.778, web 0.0.138._

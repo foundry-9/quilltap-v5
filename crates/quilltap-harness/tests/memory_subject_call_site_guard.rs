@@ -17,8 +17,13 @@
 //!     fixture whose archive and head draw from the same store can detect.
 //!
 //! v4's three sites: `context-manager.ts:1495` (the per-turn build),
-//! `carina.service.ts:229` (the answerer's recall) and
-//! `character-voiced.ts:131` (the announcement recall). A source census in the
+//! `carina.service.ts:229` (the answerer's recall) and — since v4 `686954937`
+//! extracted it — `voice-rewrite-core.ts:80` (`recallForSeed`, the recall BOTH
+//! voice rehearsals share). It was `character-voiced.ts:131` until that commit;
+//! P4.D180 followed the move, so the census now names
+//! `services/announcer/voice_rewrite_core.rs`. The count is still THREE because
+//! the second rehearsal reaches the same call through the same helper — which
+//! is exactly what the extraction was for. A source census in the
 //! `db_error_key_guard` / `lora_log_anchor_guard` idiom.
 //!
 //! Run standalone:
@@ -43,7 +48,11 @@ fn the_three_v4_call_sites_and_no_others() {
     for (file, want) in [
         ("services/build_context.rs", 1usize),
         ("services/carina_query.rs", 1),
-        ("services/announcer/character_voiced.rs", 1),
+        // v4 `686954937`: moved out of `character_voiced.rs` into the core
+        // both rehearsals share. ONE call still serves both.
+        ("services/announcer/voice_rewrite_core.rs", 1),
+        ("services/announcer/character_voiced.rs", 0),
+        ("services/announcer/in_scene_voiced.rs", 0),
     ] {
         let n = source(file).matches(CALL).count();
         assert_eq!(

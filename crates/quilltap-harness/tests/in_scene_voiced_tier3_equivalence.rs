@@ -924,18 +924,15 @@ fn the_info_line_carries_v4s_bag() {
         .unwrap_or_else(|| panic!("no info line in {lines:#?}"));
     assert!(info.starts_with("INFO"), "v4 logs this at info: {info}");
     for field in [
-        &format!("chatId={CHAT_STACK}"),
-        &format!("participantId={P_VESPER}"),
-        "characterId=a1000000-0000-4000-8000-000000000001",
-        "profileId=c0000000-0000-4000-8000-000000000001",
+        format!("chatId={CHAT_STACK}"),
+        format!("participantId={P_VESPER}"),
+        "characterId=a1000000-0000-4000-8000-000000000001".to_string(),
+        "profileId=c0000000-0000-4000-8000-000000000001".to_string(),
         // UTF-16 units, not scalars — the whole reason the seed is astral.
-        "seedLength=6",
-        "proposedLength=3",
+        "seedLength=6".to_string(),
+        "proposedLength=3".to_string(),
     ] {
-        assert!(
-            info.contains(field.as_ref() as &str),
-            "{field} missing: {info}"
-        );
+        assert!(info.contains(&field), "{field} missing: {info}");
     }
 
     // The three debug lines v4 emits on the way, at v4's level.
