@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — fix(harness): widen the three committed web fixture pairs to the current schema vintage — four families were silently red on main
+
+_Versions: web 0.0.141._
+
+The committed `post-office-main.db`, `help-chat-main.db` and `memories-main.db`
+predate P4.D171's `chats.cycleOrderParticipantIds` / `chat_messages.routeTrail`
+(and, for post-office, the P4.D63 archive columns and `multiCharacterPrefill`).
+v4's own `_update` writes every Zod-defaulted field, so on the pre-`78b381a96`
+pairs v4's jest side recorded `no such column` as the EXPECTED value and v5
+answered 500 — `post_office_routes`, `help_docs_routes`, `help_chats_routes` and
+`help_chat_orchestrator_tier3` were red on `main`, hidden behind oracle
+variables no gate set (found by both server lanes at the `f4ad2c8d1`
+unification; a v5-side heal on the per-case copy only made v5 diverge from a
+red oracle). The P4.52 widening script gains the two P4.D171 rows (v4's real
+`addColumnIfMissing` ALTERs, verbatim, behind v4's presence guard) and was run
+on all three pairs from a pinned worktree; all six affected families
+regenerated fresh and green. The announcer family's per-copy heal stays as a
+no-op.
+
 #### 2026-09-11 — docs(status-log): the P4.D179 lane record
 
 _Docs-only change._

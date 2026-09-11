@@ -1,7 +1,10 @@
 /**
  * P4.52 — bring the committed `memories-{main,mount}.db` pair up to v4's
  * current schema vintage (measured at v4 `b8449b3e`; extended at v4
- * `f4ad2c8d1` by P4.D179 with `chat_settings.impersonationVoiceRewrite`).
+ * `f4ad2c8d1` by P4.D179 with `chat_settings.impersonationVoiceRewrite`, and at
+ * the same unification with the two P4.D171 columns — at which point the script
+ * was also pointed at the `post-office-*` and `help-chat-*` main partitions,
+ * whose staleness had put FOUR families silently red on `main`; see below).
  *
  * ## Why this exists
  *
@@ -23,6 +26,17 @@
  *   chat_settings        composerEmoji, composerUnicode, smartTypographySettings,
  *                        impersonationVoiceRewrite (P4.D179, v4 `f4ad2c8d1`)
  *   connection_profiles  multiCharacterPrefill
+ *   chats                cycleOrderParticipantIds (P4.D171, v4 `78b381a96`)
+ *   chat_messages        routeTrail                (P4.D171, v4 `78b381a96`)
+ *
+ * The two P4.D171 rows were added at the `f4ad2c8d1` unification. v4's OWN
+ * jest side dies on them too — `_update` writes `$set: validated`, so any case
+ * that WRITES a chat or a message on a pre-`78b381a96` pair recorded v4's
+ * `no such column` as the expected value, and a v5-side heal on the per-case
+ * copy could only make v5 diverge from a red oracle. Widening the committed
+ * pair is the only fix that reaches BOTH engines; the v5-side
+ * `ensure_p4d171_columns` heals the announcer family carries stay as harmless
+ * no-ops.
  *
  * Two further columns generateDDL emits are DELIBERATELY NOT added:
  * `characters.metadata` and `characters.canChooseOutfit`. Both are
@@ -51,7 +65,7 @@
  *
  * Run from the v4 checkout (it resolves v4's aliased `better-sqlite3` →
  * better-sqlite3-multiple-ciphers, the sqleet/ChaCha20 binding), Node 24, with
- * the .db files named EXPLICITLY — this lane widens the memories pair only:
+ * the .db files named EXPLICITLY — name every pair to widen:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   W=<this worktree>
  *   cd ~/source/quilltap-server
@@ -130,6 +144,23 @@ const MIGRATIONS: { table: string; column: string; sql: string; source: string }
     column: 'impersonationVoiceRewrite',
     sql: `ALTER TABLE "chat_settings" ADD COLUMN "impersonationVoiceRewrite" INTEGER DEFAULT 0`,
     source: 'migrations/scripts/add-impersonation-voice-rewrite-field.ts:64',
+  },
+  {
+    // P4.D171 (v4 `78b381a96`) — `addColumnIfMissing('chats',
+    // 'cycleOrderParticipantIds', "TEXT DEFAULT '[]'")`, rendered by
+    // `migrations/lib/database-utils.ts:354` as the ALTER below.
+    table: 'chats',
+    column: 'cycleOrderParticipantIds',
+    sql: `ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT '[]'`,
+    source: 'migrations/scripts/add-cycle-order-column-v1.ts:47',
+  },
+  {
+    // P4.D171 (v4 `78b381a96`) — `addColumnIfMissing('chat_messages',
+    // 'routeTrail', 'TEXT DEFAULT NULL')`.
+    table: 'chat_messages',
+    column: 'routeTrail',
+    sql: `ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT DEFAULT NULL`,
+    source: 'migrations/scripts/add-route-trail-message-column-v1.ts:49',
   },
 ];
 
