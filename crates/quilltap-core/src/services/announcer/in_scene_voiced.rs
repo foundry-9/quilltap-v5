@@ -604,10 +604,15 @@ where
                     WireRole::User => CompletionRole::User,
                 },
                 // v4 `...(m.name ? { name: m.name } : {})` — v5's
-                // `CompletionMessage` has no `name` field, so the formatter's
-                // name reaches the wire through its content prefix instead
-                // (`format_messages_for_provider` already applied whichever of
-                // the two the provider supports).
+                // `CompletionMessage` has no `name` field, so on a provider the
+                // formatter treats as name-SUPPORTING (content left unprefixed,
+                // attribution in `name` alone) the attribution does NOT reach
+                // the wire here. That is the shape v5's whole turn path already
+                // has (`StreamMessage` carries no `name` either); it is RECORDED
+                // as `[CHEAP_LLM_NAME_FIELD_GAP]` in the tier-3 family, pinned
+                // in both directions, not silently dropped — and the wider
+                // measurement (do v4's chat-completions plugins forward `name`
+                // on the turn path?) is a named phase-4 candidate.
                 content: m.content,
             })
             .collect();

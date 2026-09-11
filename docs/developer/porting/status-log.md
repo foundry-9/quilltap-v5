@@ -122362,7 +122362,7 @@ pin on the two snake_case struct fields a quoted-name census cannot see.
 | --- | --- | --- |
 | 1 | revert the `announcement-rewrite` map arm | `task_type_log_mapping_equivalence`, EXACTLY that row |
 | 2 | drop the Almanack render push | `almanack_render_equivalence`, case `base` on the `Yes` line |
-| 3 | seed default `0` → `1` | `settings_routes_equivalence`, the GET-default row |
+| 3 | seed default `0` → `1` | `settings_routes_equivalence`, the GET-default row — _unification correction (§3 review): the fixture's user-A row is built by v4's own repo at the pin, so v5's seed cannot reach it; this mutation reddens `s_default_inject` (the create branch), and the new GET-default row's non-vacuity rests on red-first (a) instead_ |
 | 4 | drop the route `bool_field` arm | `settings_routes_equivalence`, `s_put_impersonation_voice_true` |
 | 5 | drop the UPDATE assignment | `chat_settings_tier2_equivalence` (the update op's `1` never lands — the spec's create was re-seeded FALSE precisely so the UPDATE is the only source of that `1`) |
 | 6 | read tolerance `is_some_and` → `is_none_or` | `chat_settings::tests::find_by_user_id_defaults_the_composer_columns_when_absent` |
@@ -122873,7 +122873,7 @@ discover:
 | File | Why |
 | --- | --- |
 | `quilltap-host/src/host.rs` | The authorised out-of-ownership wire (4 lines) — the ONLY place the spine bundle reaches `EngineAssembly`, whose literal is exhaustive. P4.D179's hunk is ~400 lines away. |
-| `quilltap-core/src/services/provider_failover.rs` | A pre-existing clippy red on `main` that blocks every lane's gate (3 chars, test module only). |
+| `quilltap-core/src/services/provider_failover.rs` | A pre-existing clippy red on `main` that blocks every lane's gate (3 chars, test module only). _Unification note: P4.D179 made the identical fix (`fix(lint)`), so the cherry-pick deduped this lane's copy silently — on `main` the fix rides P4.D179's commit, and this lane's commit no longer touches the file._ |
 | `quilltap-harness/tests/memory_subject_call_site_guard.rs` | Forced by this lane's own extraction: `build_memory_subject_context` moved out of `character_voiced.rs` into the shared core, and the census names the file. Still THREE sites — the second rehearsal reaches the same call through the same helper, which is what the extraction was for. (`closing-a-divergence-moves-the-censuses`.) |
 | `quilltap-web/tests/common/mod.rs` | Additive only: `materialize_in_scene_voiced_instance`, the fixture materializer this lane's own wire test needs. |
 
@@ -122934,10 +122934,11 @@ run was owed or made.
 ## P4.D181 — In Their Own Words, the SPA half + bug 134 (the `f4ad2c8d1` drift catch-up, lane 3 of 3)
 
 **Branch `claude/voice-rewrite-spa-bug-134-32310a`, 2026-09-11. CLOSED — every
-Tier-1 item landed, plus both Tier-2 items.** Eight commits. Touches
-`apps/web/**` only: `git diff main --stat` names no `crates/**` file, no
-`help/**` file, and no committed DB pair. Versions: **SPA 0.5.695 → 0.5.702**;
-no crate bumped.
+Tier-1 item landed, plus both Tier-2 items.** Nine commits (eight bumps + the
+record). Touches `apps/web/**` only: `git diff main --stat` names no
+`crates/**` file, no `help/**` file, and no committed DB pair. Versions: **SPA
+0.5.695 → 0.5.703**; no crate bumped. _(Recount at the unification — the lane's
+own header said eight / 0.5.702.)_
 
 **Gate (all run on this branch, at the end):** `cargo fmt --all --check` clean;
 `cargo build --workspace` clean; `cargo test --workspace` **552 test binaries /

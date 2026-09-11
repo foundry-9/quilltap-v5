@@ -914,7 +914,10 @@ pub async fn chat_impersonation_voice_preview(
     tracing::debug!(
         chatId = %chat_id,
         participantId = %participant_id,
-        systemPromptId = resolved_system_prompt_id.as_deref().unwrap_or("<null>"),
+        // v4 logs the JS value, so an unresolved prompt renders `null` (the tree's
+        // convention at every other `unwrap_or("null")` site — the §3 review at the
+        // `f4ad2c8d1` unification retired an invented `<null>` here).
+        systemPromptId = resolved_system_prompt_id.as_deref().unwrap_or("null"),
         subprompts = subprompts.len(),
         "[Chats v1] Impersonation voice preview: prompt resolved"
     );

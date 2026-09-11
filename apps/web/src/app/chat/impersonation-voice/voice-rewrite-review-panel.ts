@@ -23,6 +23,12 @@ import { QuillAnimation } from '../quill-animation';
  */
 @Component({
   selector: 'qt-voice-rewrite-review-panel',
+  // `display: contents` so the extraction is exactly mechanical: v4 kept a bare
+  // `<div>` root in the DOM, and an inline custom element interposed between
+  // `.qt-dialog-body` and that div would be the #97/#107 inline-host class (the
+  // `concierge-mark` / `confirmation-badge` idiom). Landed at the `f4ad2c8d1`
+  // unification (§3 review).
+  host: { style: 'display: contents' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MarkdownField, QuillAnimation],
   template: `

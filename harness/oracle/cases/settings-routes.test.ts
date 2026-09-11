@@ -585,9 +585,13 @@ describe('settings-routes oracle', () => {
     },
     // ---- P4.D179 (v4 686954937): the impersonated-line voice-rewrite gate ----
     // `impersonationVoiceRewrite` is the first `chat_settings` boolean whose Zod
-    // default is FALSE, so the GET arm below is not merely "another toggle": it
-    // is the only case in this file that can catch a v5 read defaulting an
-    // absent column the wrong way round. The PUT arms are v4's manual
+    // default is FALSE. The GET arm below pins key PRESENCE and the seeded value
+    // — NOT the absent-column read tolerance: user A's row is built by v4's own
+    // repo at the pin, so the column is present with `0` on both sides and an
+    // `is_none_or` read would answer `false` here too (the `f4ad2c8d1` §3
+    // review's correction). The tolerance is pinned by the unit test
+    // `find_by_user_id_defaults_the_composer_columns_when_absent` and by the web
+    // arm that drops the column before boot. The PUT arms are v4's manual
     // `typeof !== 'undefined'` → `typeof !== 'boolean'` guard (route.ts:213-219),
     // whose fixed sentence the route's `includes('Invalid') ? 400 : 500` split
     // turns into a 400 — NOT a Zod envelope, so the body is the sentence alone.

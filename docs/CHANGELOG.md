@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — fix(unify): the §3 review's fixes across the three lanes — the cheap-LLM `name`-field gap recorded in both directions, two silently-skipping pins un-guarded, the remember-arm wiring pinned, and six comment corrections
+
+_Versions: core 0.0.894, harness 0.0.783, host 0.0.129, SPA 0.5.704._
+
+P4.D180: the in-scene rehearsal's comment claimed the formatter's `name` reached
+the wire through a content prefix; on a name-supporting provider the formatter
+leaves the content unprefixed and v5's `CompletionMessage` carries no `name`,
+so the attribution never reaches the wire — the shape v5's whole turn path
+already has (`StreamMessage` has no `name` either). Recorded as
+`[CHEAP_LLM_NAME_FIELD_GAP]`: the jest oracle now records `name`, the family
+strips it before comparing content and asserts both directions (v4 rows carry
+it — 136 do; v5 rows never do); the wider turn-path measurement is a phase-4
+candidate. `systemPromptId` renders `null` (not an invented `<null>`) in the
+prompt-resolved debug line. The two Tier-2 log pins dropped an `env_or_skip`
+guard on an oracle variable they never read (they skipped silently in any gate
+without it). The `host.rs` out-of-ownership note counts four sites, not three.
+P4.D179: two comments claiming the new GET row pins the FALSE-default read
+tolerance corrected (the corpus row's column is present on both sides; the unit
+test and the web arm pin it); v4's `[Settings v1] impersonationVoiceRewrite
+updated` debug line recorded NO-PORT beside its equally-unported sibling; the
+lane record's mutation row 3 corrected to the row it actually reddened. P4.D181:
+the memory-cascade dialog's remember-checkbox → `confirm` payload wiring gains a
+spec (hard-coding `remember: false` left the suite green); the extracted review
+panel gets a `display: contents` host so the extraction is exactly mechanical;
+the gate spec's header count (twelve, not fourteen); the class doc gains the two
+missing NO-COUNTERPARTs; the lane record's recount (nine commits, SPA 0.5.703).
+
 #### 2026-09-11 — fix(harness): widen the three committed web fixture pairs to the current schema vintage — four families were silently red on main
 
 _Versions: web 0.0.141._

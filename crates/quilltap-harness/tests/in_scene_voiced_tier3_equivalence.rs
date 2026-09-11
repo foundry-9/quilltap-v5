@@ -568,6 +568,8 @@ fn in_scene_voiced_tier3_matches_oracle() {
         .build()
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
+    // [CHEAP_LLM_NAME_FIELD_GAP] — see the prompt comparison below.
+    let mut want_name_rows = 0usize;
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
     for case in CASES {
@@ -781,7 +783,30 @@ fn in_scene_voiced_tier3_matches_oracle() {
 
         // The assembled prompt AND the ceiling — the substance of this tier.
         let got_calls = Value::Array(provider.calls.lock().unwrap().clone());
-        if norm(&got_calls) != norm(&want["canned"]) {
+        // [CHEAP_LLM_NAME_FIELD_GAP] v4 hands the formatter's `name` field to the
+        // plugin on every transcript turn (`in-scene-voiced.ts:271-279` →
+        // `core-execution.ts:356`), and on a name-supporting provider the
+        // formatter leaves the content UNPREFIXED — the attribution lives in
+        // `name` alone. v5's cheap-LLM path carries `CompletionMessage {role,
+        // content}` (no `name`), the same shape its whole turn path sends
+        // (`StreamMessage` has no `name` either), so the field never reaches
+        // the wire on v5. Recorded at the `f4ad2c8d1` unification as a
+        // BOTH-DIRECTIONS tripwire rather than dropped: v4's rows must carry
+        // `name` on at least one transcript turn of this corpus (else v4 moved
+        // and this needs a re-ruling), v5's never do (else v5 grew the field and
+        // the strip below must retire), and the content comparison runs on the
+        // rows with `name` removed. The wider measurement — whether v4's
+        // chat-completions plugins forward `name` on the TURN path, which would
+        // make this a v5-wide wire divergence — is a named phase-4 candidate.
+        let want_calls = strip_name_field(&want["canned"], &mut want_name_rows);
+        let mut got_name_rows = 0usize;
+        let _ = strip_name_field(&got_calls, &mut got_name_rows);
+        assert_eq!(
+            got_name_rows, 0,
+            "[CHEAP_LLM_NAME_FIELD_GAP] v5 recorded a `name` field on a cheap-LLM \
+             message — the gap has closed; retire the strip and the tripwire"
+        );
+        if norm(&got_calls) != norm(&want_calls) {
             eprintln!(
                 "[{} prompt] MISMATCH:\n{}",
                 case.name,
@@ -814,7 +839,36 @@ fn in_scene_voiced_tier3_matches_oracle() {
     );
     eprintln!("in-scene-voiced: {} cases driven.", driven.len());
 
+    assert!(
+        want_name_rows > 0,
+        "[CHEAP_LLM_NAME_FIELD_GAP] v4 recorded NO `name` field on any transcript turn \
+         of this corpus — the fixture's OPENAI / OPENAI_COMPATIBLE seats should carry \
+         one on every attributed assistant line; either the oracle stopped emitting it \
+         or v4 stopped sending it, and the recorded divergence needs a re-ruling"
+    );
+    eprintln!("[CHEAP_LLM_NAME_FIELD_GAP] v4 rows carrying `name`: {want_name_rows}; v5 rows: 0 (recorded divergence)");
+
     assert!(failed.is_empty(), "in-scene-voiced FAILED: {failed:?}");
+}
+
+/// Return `calls` with every message's `name` key removed, counting the rows
+/// that carried one (`[CHEAP_LLM_NAME_FIELD_GAP]`).
+fn strip_name_field(calls: &Value, carried: &mut usize) -> Value {
+    let mut out = calls.clone();
+    if let Some(arr) = out.as_array_mut() {
+        for call in arr.iter_mut() {
+            if let Some(msgs) = call.get_mut("messages").and_then(Value::as_array_mut) {
+                for m in msgs.iter_mut() {
+                    if let Some(obj) = m.as_object_mut() {
+                        if obj.remove("name").is_some() {
+                            *carried += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// **The `Only a character seat can be spoken for.` refusal is unreachable
@@ -892,9 +946,9 @@ impl InSceneVoiceDriver for StubDriver {
 /// the seed below is astral: a scalar-counting port would log 3, not 6.
 #[test]
 fn the_info_line_carries_v4s_bag() {
-    let Some(_) = env_or_skip("QT_ORACLE_IN_SCENE_VOICED") else {
-        return;
-    };
+    // No oracle needed: this pin reads only the committed spec + fixture pair.
+    // (The `f4ad2c8d1` §3 review removed an `env_or_skip` guard here that made
+    // the pin SKIP silently in any gate without the family's oracle variable.)
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec")).expect("spec");
     let db = fresh_db(&spec, "infoline");
@@ -973,9 +1027,9 @@ fn the_info_line_carries_v4s_bag() {
 /// but nothing in this tree can currently drive it.
 #[test]
 fn the_warn_lines_render_their_error_unquoted() {
-    let Some(_) = env_or_skip("QT_ORACLE_IN_SCENE_VOICED") else {
-        return;
-    };
+    // No oracle needed: this pin reads only the committed spec + fixture pair.
+    // (The `f4ad2c8d1` §3 review removed an `env_or_skip` guard here that made
+    // the pin SKIP silently in any gate without the family's oracle variable.)
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec")).expect("spec");
     let db = fresh_db(&spec, "warnrender");

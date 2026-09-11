@@ -93,7 +93,7 @@ const cannedRecorded = new Map<
     model: string;
     temperature: number | null;
     maxTokens: number | null;
-    messages: Array<{ role: string; content: string }>;
+    messages: Array<{ role: string; content: string; name?: string }>;
     response: string;
   }
 >();
@@ -140,14 +140,21 @@ function applyMocks(spec: Spec, sessionUserId: string): void {
       createLLMProvider: async (provider: string, _baseUrl?: string) => ({
         sendMessage: async (
           params: {
-            messages: Array<{ role: string; content: string }>;
+            messages: Array<{ role: string; content: string; name?: string }>;
             model: string;
             temperature?: number;
             maxTokens?: number;
           },
           _apiKey: string,
         ) => {
-          const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
+          // [CHEAP_LLM_NAME_FIELD_GAP] the `name` field is RECORDED (present iff
+          // v4 set it) so the Rust family can assert the recorded divergence in
+          // both directions; the canned key still reads role + content only.
+          const messages = params.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            ...(m.name ? { name: m.name } : {}),
+          }));
           const response = respondEmpty ? '' : REWRITE;
           const temperature = (params.temperature as number | undefined) ?? null;
           const maxTokens = (params.maxTokens as number | undefined) ?? null;

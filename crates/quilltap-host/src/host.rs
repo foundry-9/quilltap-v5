@@ -664,7 +664,7 @@ impl EngineAssembler for HostAssembler {
             announcement_preview,
             // ⚠ OUT-OF-OWNERSHIP (P4.D180, authorised by the human 2026-09-11):
             // `host.rs` is P4.D179's file this round, for its one boot-ensure
-            // call ~400 lines below. These three `in_scene_voice` lines are the
+            // call ~400 lines below. These four `in_scene_voice` sites are the
             // whole of P4.D180's edit here, and they are unavoidable: host.rs is
             // the ONLY place the spine bundle is threaded into `EngineAssembly`,
             // whose struct literal is exhaustive, so even a DEFERRED wire could

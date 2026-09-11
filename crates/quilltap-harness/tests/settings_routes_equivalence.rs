@@ -571,10 +571,10 @@ fn settings_routes_match_v4() {
         "expected >= 10 composer_settings cases, got {composer_settings_cases} — regenerate the oracle"
     );
     // P4.D179: the 4.10 `impersonationVoiceRewrite` key. Same stale-oracle
-    // guard as its neighbours — and it matters more here, because this is the
-    // first `chat_settings` boolean whose Zod default is FALSE, so a v5 read
-    // that defaulted an absent column the wrong way round would be invisible
-    // without these rows.
+    // guard as its neighbours. (These rows pin key presence, both PUT polarities
+    // and the three refusals; the FALSE-default read tolerance is pinned by the
+    // `chat_settings.rs` unit test and the web arm that drops the column, not
+    // here — the corpus row's column is present on both sides.)
     assert!(
         impersonation_voice_cases >= 7,
         "expected >= 7 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"

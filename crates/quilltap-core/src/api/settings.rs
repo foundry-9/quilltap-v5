@@ -1199,7 +1199,11 @@ fn build_settings_assignments(
     // `obj.get` sees an EXPLICIT null as present, which is v4's semantics
     // exactly (`typeof null !== 'undefined'`, so the arm runs and refuses) —
     // pinned by the corpus's `s_put_impersonation_voice_null` row and at the
-    // web wire.
+    // web wire. v4's trailing `logger.debug('[Settings v1] impersonationVoiceRewrite
+    // updated', …)` (route.ts:218) is NOT ported — the sibling scalar arms'
+    // debug lines (`autoScrollOnResponseComplete`, route.ts:231) are equally
+    // unported here; recorded NO-PORT at the `f4ad2c8d1` unification rather
+    // than porting one arm's line and not its neighbours'.
     if let Some(v) = obj.get("impersonationVoiceRewrite") {
         out.push((
             "impersonationVoiceRewrite",

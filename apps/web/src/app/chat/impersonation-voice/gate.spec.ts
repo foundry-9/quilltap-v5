@@ -6,7 +6,7 @@ import { shouldRehearseImpersonatedLine, type ShouldRehearseArgs } from './gate'
  * The In Their Own Words gate (`shouldRehearseImpersonatedLine`) — the parity
  * spec, transcribed 1:1 from v4's
  * `app/salon/[id]/hooks/__tests__/useImpersonationVoice.test.ts` at `f4ad2c8d1`
- * (its `describe('shouldRehearseImpersonatedLine')` block: fourteen `it`s in
+ * (its `describe('shouldRehearseImpersonatedLine')` block: twelve `it`s in
  * v4's order, with v4's names and v4's fixture builder).
  *
  * v4's file also carries a `describe('every chat setting the Salon reads is
