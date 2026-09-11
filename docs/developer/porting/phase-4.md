@@ -6628,6 +6628,126 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (P4.D179 ∥ P4.D180 ∥ P4.D181) — ORDERED 2026-09-10
+
+**Baseline `cc65d6bfc`; v4 `main` HEAD `f4ad2c8d1` (TWO past — `686954937`,
+the In Their Own Words feature with its PORT riders, and `f4ad2c8d1`, bug
+134 — the ledger's two §3 rows, now `ORDERED(P4.D179, P4.D180, P4.D181)` and
+`ORDERED(P4.D181)`), v4 `bugfix` tip `1a2b2164c` and `release` tip
+`8fbf2afe0` unmoved; the checkout on `main`, CLEAN at the planning probe;
+regen rule PIN REQUIRED (every moved family from a lane-unique detached
+worktree at `f4ad2c8d1`; neutrality regens and P4.D180's `QT_V4_ROOT` at
+`cc65d6bfc`).** The standing rule holds: drift debt clears before new
+scope, so the whole round IS the two-row catch-up — split by FILE
+OWNERSHIP, not by v4's commit batching. No stacking; three worktrees from
+`main`. The round-wide §R meeting points, the §B contract, the Ownership
+table and the verification gate are spliced byte-identically into every
+order (md5 `bfb83428…` over the spliced section, verified at planning).
+Fresh surveys (2026-09-10, at `f4ad2c8d1` and on `main` `a0c95230`) are
+folded into the orders' survey sections.
+
+- **P4.D179 — the server substrate** (`work-orders/p4.d179-voice-rewrite-
+  substrate-server.md`, from `main`): the `chat_settings."impersonation
+  VoiceRewrite"` column through the D23 re-dump (seed 34 → 35) + a
+  single-column boot ensure in the P4.D79 shape (idempotent, a no-op on
+  the shared Friday instance v4 has already migrated) + the six data-layer
+  sites + the `bool_field` route arm with v4's `Invalid impersonationVoice
+  Rewrite value (must be boolean)` (present-but-null 400s, pinned at the
+  wire); the `VOICE_REWRITE` log type + the two `map_task_type_to_log_
+  type` arms — **v5 measurably files `announcement-rewrite` as
+  `SUMMARIZATION` today**, a real defect coming back fixed — pinned by a
+  NEW tier-1 family over v4's now-exported `mapTaskTypeToLogType`; the
+  Almanack `featureConfig` row + render line (no fixture rebuild — the
+  tolerant read yields `false`); the `help/**` re-vendor 123 → 124 with
+  every count literal moved; `settings_routes_equivalence` gains the
+  `impersonation_voice` family, `chat_settings_tier2` the column,
+  `provisioning_equivalence` re-dumped-and-green. The `prettify` label a
+  third-time NO-PORT.
+- **P4.D180 — the rehearsal service + verb + host wire** (`work-orders/
+  p4.d180-in-scene-voice-rehearsal-server.md`, from `main`): the
+  `voice_rewrite_core` extraction (recall / execute / `format_name_list`)
+  with the announcement rehearsal proven UNMOVED by `announcer_tier3_
+  equivalence` regenerated at BOTH pins (byte-identical NDJSONs = v4's
+  refactor was neutral; v5 green against both); the NEW `in_scene_voiced`
+  service — the seat's per-turn prompt (the STORED compiled stack read
+  through a per-participant twin in the compiler, §R.14; template; Taboo,
+  read-tolerant; standing instructions; subprompts only without a stack;
+  NO tools), the last 12 played messages shaped for the seat (played →
+  whispers → history access → presence windows from the FULL list →
+  `[Name]` attribution with bystander vault failures warned-and-skipped
+  → provider formatting), the recall block, v4's byte-exact
+  `REWRITE_INSTRUCTION`, `max_tokens = clamp(floor(utf16len/2), 1024,
+  4096)` — every log line at v4's level; the `chatImpersonationVoicePreview`
+  verb with v4's ladder IN v4's order (the chat 404 before the parse, the
+  parse before the seat checks), the four-source profile chain, the
+  uncensored-route reroute through the three dangerous-content twins, the
+  prompt chain, the byte-exact sentences, the four-key body; the host
+  driver LIVE (💸 one cheap-LLM call per rehearsal, a per-request logging
+  executor); a NEW committed `in-scene-voiced-{main,mount}.db` pair + a
+  NEW tier-3 family (service rows + action rows, `max_tokens` a comparand
+  — the canned key omits it); a web-venue wire test whose
+  `EXPECTED_REHEARSAL_LOG_TYPE` is ACTIVATE-AT-UNIFY (needs P4.D179's
+  map on the same branch); the dispatch wrong-type census constant moves
+  (three `*_id` fields — measured, not guessed). **No REST edge** —
+  `announcement-preview` is dispatch-only in v5 (measured), recorded.
+- **P4.D181 — the SPA half + bug 134** (`work-orders/p4.d181-voice-rewrite-
+  spa-bug-134.md`, from `main`): the pure gate with v4's fourteen cases
+  transcribed 1:1 + a client-safe `parseCarinaQuery` twin proven by a
+  recorded vector corpus over v4's REAL parser (the SPA had NO Carina
+  twin); the state service at the Salon's injector (the #105 lesson); **the
+  round's one structural decision — v5's composer clears the editor inside
+  `submit()` where v4 clears only in `sendMessage`, so "Edit original" needs
+  the clear moved behind the gate** (the composer stops clearing on emit;
+  the Salon clears on send, never on intercept; both levels spec-pinned);
+  the dialog (five doors, two never disabled after a failed preview, the
+  two pickers, Cmd/Ctrl+Enter, scroll-into-view) + the shared review panel
+  extracted MECHANICALLY from the announcement dialog; the composer title
+  ladder + the portrait's quill badge (CSS-backed if the utilities are
+  inert); the Composer-card toggle with v4's copy byte-for-byte; the three
+  `VOICE_REWRITE` label sites; **bug 134 measured, not assumed:** v5's
+  Salon already reads every setting through the `['chatSettings']` query
+  with save-side invalidation and the tab-activation sweep, so the lane
+  pins the facts STRUCTURALLY (a cache flip the derived reads must follow
+  — v4's source-scan test cannot be transcribed), measures the memory-
+  cascade "remember my choice" arm on v4's dialog at the pin (v5's dialog
+  carries none) and ports it WITH the invalidation only if present, and
+  records the `types.ts` consolidation / `useChatData` deletion /
+  `sendMessage(null)` as NO-COUNTERPART; two e2e beats AUTHORED and PARKED
+  by NAME (`P4D179_SERVER_LANDED`, `P4D180_SERVER_LANDED`) for the unifier
+  to flip.
+
+**Deliberately left out:** the owed dogfood pass (phase-plan item 1 of the
+previous UNIFIED section — a `/dogfood` run after this round unifies, now
+larger by the whole rehearsal flow on the Friday copy, where v4 has already
+shipped the column and, likely, run the feature: the live proofs are the
+toggle on a real seat, a real rehearsal through a real profile with its
+`VOICE_REWRITE` row, the uncensored reroute on a Flagged chat, and "Edit
+original" keeping a real draft); P4.87's two OPEN coverage items (the
+shared-`DrawSource` reddening case + `PinnedDraws.consumed`) and the two
+frozen-zero swipe families — a small harness lane for a non-drift round;
+the handler-logging remainders and the maintenance smalls (items 3–4 of the
+previous UNIFIED section); the two upstream filings (human); every
+non-drift phase-4 candidate.
+
+Recommended arrangement: all three lanes start together from `main` in
+three worktrees. P4.D180 wants the Opus tier (the new service's
+composition over eleven twins, the fixture pair with its fourteen required
+shapes, and a two-section tier-3 recorder are the round's subtlest work);
+P4.D181 wants the Opus tier too (the composer-clear restructure across two
+components, the Carina recorder, and the bug-134 measurement each want a
+careful read); P4.D179 is Sonnet-carriable (the P4.D73 shape for one
+column, a two-arm map change, a three-line Almanack row, a byte copy —
+with the D23 re-dump memory notes named in its preamble) — a careful
+reviewer on its re-dump artifacts. Three `target/` dirs,
+`CARGO_INCREMENTAL=0`; Playwright in P4.D181 only (port 4319 is
+repo-wide). Unify in the order P4.D179, P4.D180, P4.D181; the unifier
+flips the two beat gates and the log-type constant, runs the full
+Playwright suite, diffs §B name-for-name across `api/types.rs` / the web
+renderer / `core-contract.ts`, refreshes the `docs/v4/` mirror (the
+feature doc, the bug-134 file, `bugs.md`, `API.md`, `DDL.md`), recounts the
+version bumps as base + total, moves the baseline to `f4ad2c8d1`, and
+marks both rows ABSORBED.
+
 ## The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round (P4.D178 ∥ P4.87 ∥ P4.88) — UNIFIED 2026-09-10
 
 **ALL THREE ORDERS CLOSED (P4.87 with two coverage items named OPEN in its

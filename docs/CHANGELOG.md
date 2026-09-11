@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(setupphase): order the `f4ad2c8d1` In-Their-Own-Words drift catch-up round — P4.D179 ∥ P4.D180 ∥ P4.D181
+
+_Docs-only change._
+
+Three work orders for the two v4 commits past the `cc65d6bfc` baseline
+(`686954937`, the impersonated-line voice rewrite with its PORT riders;
+`f4ad2c8d1`, bug 134), split by file ownership: P4.D179 the server substrate
+(the `chat_settings."impersonationVoiceRewrite"` column through the D23
+re-dump and a boot ensure, the `VOICE_REWRITE` log type and its two
+task-type arms — v5 files `announcement-rewrite` as `SUMMARIZATION` today —
+the Almanack row, the `help/**` re-vendor 123 → 124), P4.D180 the rehearsal
+service and verb (the `voice_rewrite_core` extraction proven neutral at both
+pins, the new `in_scene_voiced` service, the `chatImpersonationVoicePreview`
+verb, the host wire, a new committed fixture pair and tier-3 family), and
+P4.D181 the SPA half plus bug 134 measured before ported. The shared §R /
+§B / Ownership / gate block is spliced byte-identically into all three
+(one md5). The drift ledger's two §3 rows are marked ORDERED; phase-4.md
+gains the round's ORDERED section.
+
 #### 2026-09-10 — docs(drift): v4 ships the impersonated-line voice rewrite and bug 134 — two commits, a new `chat_settings` column, and a silent log-type default v5 shares
 
 _Docs-only change._
