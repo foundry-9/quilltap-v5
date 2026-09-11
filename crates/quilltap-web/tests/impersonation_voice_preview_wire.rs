@@ -46,7 +46,7 @@ const P_BRAM: &str = "e1000000-0000-4000-8000-000000000002";
 /// (`services/llm_logging.rs`, `map_task_type_to_log_type`). **The unifier flips
 /// this to `"VOICE_REWRITE"`** and the assertion below must go green on the
 /// flip — red-first on the unify branch if it does not.
-const EXPECTED_REHEARSAL_LOG_TYPE: &str = "SUMMARIZATION";
+const EXPECTED_REHEARSAL_LOG_TYPE: &str = "VOICE_REWRITE";
 
 async fn dispatch(
     client: &reqwest::Client,
@@ -120,7 +120,7 @@ async fn the_rehearsal_runs_over_the_live_assembly_and_logs_its_call() {
     let row = &logs[0];
     assert_eq!(
         row.0, EXPECTED_REHEARSAL_LOG_TYPE,
-        "see EXPECTED_REHEARSAL_LOG_TYPE — the unifier flips this with P4.D179"
+        "see EXPECTED_REHEARSAL_LOG_TYPE — flipped at the `f4ad2c8d1` unification with P4.D179's map"
     );
     assert_eq!(
         row.1.as_deref(),

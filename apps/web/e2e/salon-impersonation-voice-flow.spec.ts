@@ -32,9 +32,9 @@ import { openSidebarSection } from './support/sidebar';
  */
 
 /** @see the header — P4.D180 defines `chatImpersonationVoicePreview`. */
-const P4D180_SERVER_LANDED = false;
+const P4D180_SERVER_LANDED = true;
 /** @see the header — P4.D179 adds `chat_settings.impersonationVoiceRewrite`. */
-const P4D179_SERVER_LANDED = false;
+const P4D179_SERVER_LANDED = true;
 
 /** What the mock restates every draft as — distinct from anything a human types. */
 const REHEARSED = 'Indeed, sir. The matter is entirely in hand.';

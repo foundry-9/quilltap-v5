@@ -43,7 +43,7 @@ let stateBackendReady = false;
  * unifier flips this to `true`; activating a beat is its first execution, so
  * expect gesture fixes.
  */
-const P4D179_SERVER_LANDED = false;
+const P4D179_SERVER_LANDED = true;
 
 test.beforeAll(async () => {
   try {

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — feat(unify): the round's wires — the rehearsal's `llm_logs` row asserted as `VOICE_REWRITE`, and the two In Their Own Words beats un-parked
+
+_Versions: web 0.0.142, SPA 0.5.705._
+
+`EXPECTED_REHEARSAL_LOG_TYPE` flips from the pre-fix `SUMMARIZATION` to
+`VOICE_REWRITE` now that P4.D179's map and P4.D180's verb share a branch — the
+wire test went green on the flip, which is the live proof that a rehearsal's
+call lands on its own log type. `P4D179_SERVER_LANDED` / `P4D180_SERVER_LANDED`
+flip to `true` in both e2e specs, activating the settings-toggle round trip and
+the full dialog walk (their first execution is the unified Playwright run). The
+§B contract was diffed name-for-name across `api/types.rs`, the handler's body
+and `core-contract.ts` — clean.
+
 #### 2026-09-11 — fix(unify): the §3 review's fixes across the three lanes — the cheap-LLM `name`-field gap recorded in both directions, two silently-skipping pins un-guarded, the remember-arm wiring pinned, and six comment corrections
 
 _Versions: core 0.0.894, harness 0.0.783, host 0.0.129, SPA 0.5.704._
