@@ -31,7 +31,14 @@ probe verifies against._
   commits past it.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
+- **Checkout at check:** branch **`main`**, tree CLEAN at both probes;
+  **at the post-unification cleanup (2026-09-10, ~20:40) the tree carried
+  the human's own docs-only edits** — `M .claude/commands/
+  update-documentation.md`, `M docs/developer/features/ROADMAP.md`,
+  `?? docs/developer/features/impersonation-voice-rewrite.md` — no `lib/`,
+  `app/`, `packages/` or `plugins/` file, so no regen is poisoned and the
+  rule below stands. Recorded so the next §2 probe does not re-alarm on
+  exactly these three paths; anything BEYOND them is a real mismatch.
 - **Verdict: NO DRIFT.** The §3 table is EMPTY. **Regen rule: pin NOT
   required** — v4 HEAD is the baseline and the checkout is clean; regen from
   the checkout directly (re-probe first — v4 ships a commit every day or
