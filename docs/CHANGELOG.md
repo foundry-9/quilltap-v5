@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — docs(drift): v4 ships the impersonated-line voice rewrite and bug 134 — two commits, a new `chat_settings` column, and a silent log-type default v5 shares
+
+_Docs-only change._
+
+`/driftcheck` from the main checkout. v4 `main` is **2 commits past the `cc65d6bfc` baseline**; `bugfix` (`1a2b2164c`) and `release` (`8fbf2afe0`) are unmoved, and the checkout is clean on `main` — the docs-only dirt the previous check recorded shipped as part of the feature commit. The regen rule flips to **PIN REQUIRED**.
+
+`686954937` is PORT-NEW: "In Their Own Words", an instance setting that routes a line typed while impersonating a character through that character's own model for review before it posts. It carries PORT riders onto already-ported surfaces — a new `chat_settings."impersonationVoiceRewrite"` column (so a D23 re-dump plus a boot ensure, the P4.D72 precedent), the settings PUT/GET arms, the Almanack `featureConfig` ledger, the migration pretty-label table, the LLM Inspector and Wire Records type rows, the Salon composer/modals/`SpeakingAsAvatar`, and the vendored `help/**` tree at 123 → 124 files. Two riders are worth naming: `mapTaskTypeToLogType` gains a `VOICE_REWRITE` type for **both** rehearsals, which means v5 shares v4's pre-fix silent default — `announcement-rewrite` has filed as `SUMMARIZATION` since 4.4 — and `character-voiced.ts` is refactored onto a shared `voice-rewrite-core.ts`, read as behaviour-neutral and to be proven as such. `llm_logs.type` is plain TEXT, so the new log type needs no migration.
+
+`f4ad2c8d1` is PORT: bug 134, filed by v4 from its own verification of the feature. Every `SalonView` settings read moves onto `useChatSettingsQuery` and the mount-only `fetchChatSettings` is deleted, the salon-local `ChatSettings` duplicate becomes a re-export, and the memory-cascade "remember my choice" PUT invalidates the settings key. Whether v5 shares the staleness is a measurement for the lane, not an assumption — v5 has both a tab-activation refetch (P4.D89) and pushed invalidation (P4.D123–D125) that v4 lacked. No convergence rows: bug 134 is v4-originated, and every v5 filing through 133 is already absorbed.
+
 #### 2026-09-10 — docs(unify): the `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round — three orders unified, the baseline moves to `cc65d6bfc`
 
 _Docs-only change._
