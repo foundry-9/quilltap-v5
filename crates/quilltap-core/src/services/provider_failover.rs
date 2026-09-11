@@ -2373,7 +2373,7 @@ mod tests {
         assert!(l.contains("reason=api-key-not-found"), "{l}");
         // v4 `:632` — exactly four keys.
         assert_eq!(
-            field_keys(&l),
+            field_keys(l),
             ["chat_id", "understudy_id", "understudy_name", "reason"],
             "{l}"
         );
@@ -2413,7 +2413,7 @@ mod tests {
         assert!(l.contains("error=upstream said 503"), "{l}");
         // v4 `:673` — exactly eight keys.
         assert_eq!(
-            field_keys(&l),
+            field_keys(l),
             [
                 "chat_id",
                 "understudy_id",
@@ -2465,7 +2465,7 @@ mod tests {
         assert!(l.contains("kind=configured"), "{l}");
         // v4 `:694` — exactly four keys.
         assert_eq!(
-            field_keys(&l),
+            field_keys(l),
             ["chat_id", "understudy_id", "understudy_name", "kind"],
             "{l}"
         );

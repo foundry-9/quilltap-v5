@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — fix(lint): clear three pre-existing lint errors in the failover tests
+
+_Versions: core 0.0.890._
+
+Three needless-borrow errors in a test module block the lint gate in both
+feature configurations. They arrived with yesterday's unification commit and
+have nothing to do with this change; the checklist says to fix what the gate
+finds regardless of cause, so they are fixed here rather than carried. Test
+code only, no behavior.
+
 #### 2026-09-11 — docs(help): re-vendor the help tree at the current reference pin
 
 _Versions: harness 0.0.778, host 0.0.127._
