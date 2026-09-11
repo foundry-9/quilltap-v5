@@ -1,6 +1,7 @@
 /**
  * P4.52 — bring the committed `memories-{main,mount}.db` pair up to v4's
- * current schema vintage (measured at v4 `b8449b3e`).
+ * current schema vintage (measured at v4 `b8449b3e`; extended at v4
+ * `f4ad2c8d1` by P4.D179 with `chat_settings.impersonationVoiceRewrite`).
  *
  * ## Why this exists
  *
@@ -19,7 +20,8 @@
  * Main partition, three tables; the mount partition has NO column gap:
  *
  *   characters           archivedAt, archiveFileId, archivedAvatarFileId
- *   chat_settings        composerEmoji, composerUnicode, smartTypographySettings
+ *   chat_settings        composerEmoji, composerUnicode, smartTypographySettings,
+ *                        impersonationVoiceRewrite (P4.D179, v4 `f4ad2c8d1`)
  *   connection_profiles  multiCharacterPrefill
  *
  * Two further columns generateDDL emits are DELIBERATELY NOT added:
@@ -118,6 +120,16 @@ const MIGRATIONS: { table: string; column: string; sql: string; source: string }
     column: 'smartTypographySettings',
     sql: `ALTER TABLE "chat_settings" ADD COLUMN "smartTypographySettings" TEXT DEFAULT '${DEFAULT_SMART_TYPOGRAPHY_SETTINGS}'`,
     source: 'migrations/scripts/add-smart-typography-settings-field.ts:71',
+  },
+  {
+    // P4.D179 (v4 `686954937`, 4.10). Same class, same cause: `updateForUser`'s
+    // `$set: validated` names it, so a fixture that predates it made v4's own
+    // regen die on `no such column: impersonationVoiceRewrite` — which is how
+    // this row was found (the P4.D179 regen batch, not inspection).
+    table: 'chat_settings',
+    column: 'impersonationVoiceRewrite',
+    sql: `ALTER TABLE "chat_settings" ADD COLUMN "impersonationVoiceRewrite" INTEGER DEFAULT 0`,
+    source: 'migrations/scripts/add-impersonation-voice-rewrite-field.ts:64',
   },
 ];
 

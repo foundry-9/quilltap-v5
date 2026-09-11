@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — fix(fixtures): bring the memories test database up to the current schema vintage
+
+_Versions: web 0.0.138._
+
+The committed memories test databases were baked before the new chat setting
+existed. The reference app's repository writes the whole validated record on
+every update, so it names every field that has a default — and its own test run
+therefore died outright on the missing column while regenerating this
+differential. This is the same failure, with the same cause, that an earlier
+round already wrote a repair script for; the script gains one more row and was
+re-run.
+
+The added column is the reference app's own migration statement, verbatim,
+behind its own "only if missing" guard, so the result is byte-identical to what
+an upgrade produces. Only the main database moved; the mount database already
+matched. The differential is green again with no change to either app's code.
+
 #### 2026-09-11 — feat(settings): adopt the impersonated-line voice-rewrite toggle
 
 _Versions: core 0.0.887, harness 0.0.776, host 0.0.126, web 0.0.137._
