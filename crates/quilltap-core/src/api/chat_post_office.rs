@@ -480,6 +480,19 @@ pub async fn chat_announcement_preview(
 // `?action=impersonation-voice-preview` — v4 `handleImpersonationVoicePreview`
 // ===========================================================================
 
+/// v4's `Only a character seat can be spoken for.` — public because NO corpus
+/// row can drive it: v4's own `ChatParticipantSchema` types `type` as a
+/// one-member enum and `characterId` as a required `UUIDSchema`, so both halves
+/// of the guard are unreachable through v4's write path (measured — the fixture
+/// builder was written with such a seat and `chats.create` refused it). Pinned
+/// by unit test in `in_scene_voiced_tier3_equivalence` instead.
+pub const ONLY_A_CHARACTER_SEAT: &str = "Only a character seat can be spoken for.";
+
+/// v4's `result.error || 'Failed to restate the line in character.'` default.
+/// Public for the same reason: `executeVoiceRewrite` always returns a NON-empty
+/// error, so the right-hand side of that `||` is unreachable on this path.
+pub const FAILED_TO_RESTATE: &str = "Failed to restate the line in character.";
+
 /// A `""`-defaulting string read. Hoisted out of every `tracing!` call below
 /// because inside a tracing macro `Value` resolves to the `tracing::Value`
 /// TRAIT, and `Value::as_str` there is `expected a type, found a trait`
@@ -640,7 +653,7 @@ pub async fn chat_impersonation_voice_preview(
     let Some(character_id) = character_id
         .filter(|_| participant.get("type").and_then(Value::as_str) == Some("CHARACTER"))
     else {
-        return bad_request("Only a character seat can be spoken for.");
+        return bad_request(ONLY_A_CHARACTER_SEAT);
     };
     let character_id = character_id.to_string();
 
@@ -940,7 +953,7 @@ pub async fn chat_impersonation_voice_preview(
         let msg = outcome
             .error
             .filter(|e| !e.is_empty())
-            .unwrap_or_else(|| "Failed to restate the line in character.".to_string());
+            .unwrap_or_else(|| FAILED_TO_RESTATE.to_string());
         return bad_request(msg);
     }
 

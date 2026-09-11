@@ -144,6 +144,43 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-11 — test(salon): the in-scene voice rehearsal's tier-3 differential, and the played filter it caught
+
+_Versions: core 0.0.889, harness 0.0.777._
+
+A new committed `in-scene-voiced-{main,mount}.db` pair, a new jest oracle
+driving v4's REAL `generateInSceneVoicedLine` AND its REAL
+`handleImpersonationVoicePreview`, and `in_scene_voiced_tier3_equivalence`:
+27 cases, 8 service rows and 19 action rows, all green.
+
+**The differential found a real bug inspection had missed.** The played
+filter tested `systemSender` against a BOOLEAN, but the column is TEXT
+(`'host'`, `'carina'`, …) where v4 tests JS truthiness — so every Staff
+bubble stayed in the transcript, silently displacing the oldest line out of
+the 12-message window. The fixture's Host bubble is what exposed it.
+
+Two things the corpus provably cannot reach, each measured rather than
+assumed and pinned by unit test instead: v4's own `ChatParticipantSchema`
+makes a non-CHARACTER seat unwritable, so both halves of
+`Only a character seat can be spoken for.` are unreachable through v4's
+write path (the builder was written with such a seat and `chats.create`
+refused it); and `executeVoiceRewrite` always returns a non-empty error, so
+`result.error || 'Failed to restate the line in character.'` never takes its
+default.
+
+Recorded, not silently normalized: `subprompts: precompiled ? null :
+subprompts` is defensive in BOTH implementations — the builder uses a present
+stack verbatim, so the argument is inert and a mutation dropping the
+conditional stays green. The branch itself is pinned by the with/without-stack
+row pair, which a mutation forcing `get_compiled_identity_stack` to `None`
+reddens exactly.
+
+The oracle initializes v4's provider registry with the two dist plugins the
+arms need — without it `formatMessagesForProvider` reads the no-plugin
+fallback and prefixes assistant turns that production v4 sends with a native
+`name` field, so the oracle would record a v4 behaviour that never occurs
+(`jest-oracle-empty-provider-registry`, caught on the first regen).
+
 #### 2026-09-11 — feat(salon): the in-scene voice rehearsal — service, verb, and the LIVE host wire
 
 _Versions: core 0.0.888, host 0.0.126, web 0.0.137._

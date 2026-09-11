@@ -304,9 +304,16 @@ fn build_transcript_for_seat(events: &[Value], participant: &Value) -> Vec<Attri
                 .get("content")
                 .and_then(Value::as_str)
                 .is_some_and(|c| !js_trim(c).is_empty());
-            m.get("systemSender") != Some(&Value::Bool(true))
-                && matches!(role, Some("USER") | Some("ASSISTANT"))
-                && content_ok
+            // v4 `!m.systemSender` — JS truthiness. The column is TEXT
+            // (`'host'`, `'carina'`, …), so a bool comparison here silently
+            // keeps every Staff bubble; the differential caught exactly that.
+            let system_sender = match m.get("systemSender") {
+                None | Some(Value::Null) => false,
+                Some(Value::String(s)) => !s.is_empty(),
+                Some(Value::Bool(b)) => *b,
+                Some(_) => true,
+            };
+            !system_sender && matches!(role, Some("USER") | Some("ASSISTANT")) && content_ok
         })
         .map(|m| to_attribution_message(m, false))
         .collect();

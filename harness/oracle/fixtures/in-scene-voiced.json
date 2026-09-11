@@ -1,0 +1,34 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "f0000000-0000-4000-8000-00000000000f",
+  "userIdNoDefault": "f0000000-0000-4000-8000-0000000000ff",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "frozenNowMs": 1777939200000,
+  "scenarioText": "The eastern quay after the evening bell, fog coming in off the water.",
+  "projectInstructions": "{{char}} keeps to the harbour register: short sentences, no metaphor about weather.",
+  "roleplayTemplatePrompt": "Narration in *asterisks*; dialogue in \"quotes\".",
+  "tabooPhrases": ["a symphony of", "little did they know"],
+  "subpromptTitle": "Measure your words",
+  "subpromptContent": "{{char}} never uses three words where two will do.",
+  "compiledStack": "<<seeded-compiled-stack-for-vesper>>",
+  "memories": [
+    {
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "content": "The eastern quay lamps run short of oil each winter, and the ledger never says so.",
+      "summary": "Quay lamps run short of oil in winter.",
+      "importance": 0.8
+    },
+    {
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "content": "Was curt with Bram about the lamps once, and has not said so since.",
+      "summary": "Was curt with Bram about the lamps.",
+      "importance": 0.6
+    },
+    {
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "content": "Keeps a spare signal-book under the third floorboard of the watch-house.",
+      "summary": "A spare signal-book under the floorboard.",
+      "importance": 0.45
+    }
+  ]
+}

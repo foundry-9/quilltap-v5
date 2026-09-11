@@ -122674,3 +122674,76 @@ so it is fixed here rather than reported: three characters, test-module only,
 zero behavioural content. Recorded so the unifier knows why the file moved.
 
 Versions: core 0.0.888, host 0.0.126, web 0.0.137.
+
+### Unit 5 — the tier-3 differential, and the bug it found
+
+`in_scene_voiced_tier3_equivalence`: **27 cases, 8 service rows + 19 action
+rows, all green** over a NEW committed `in-scene-voiced-{main,mount}.db` pair
+and a NEW jest oracle driving v4's REAL service AND v4's REAL action handler
+through the real route.
+
+**The differential found a real defect that inspection had missed.** The played
+filter tested `systemSender` against a BOOLEAN where the column is TEXT
+(`'host'`, `'carina'`, …) and v4 tests JS truthiness, so every Staff bubble
+stayed in the transcript and silently displaced the oldest line out of the
+12-message window. The prompt comparand caught it on the first run. This is why
+the fixture carries a Host bubble at all.
+
+**Three things the corpus provably cannot reach** — each measured, not assumed,
+and pinned by unit test instead of quietly dropped:
+
+1. **A non-CHARACTER seat.** v4's own `ChatParticipantSchema` types `type` as a
+   one-member enum and `characterId` as a required `UUIDSchema`. The builder was
+   written with such a seat and v4's `chats.create` REFUSED it, so both halves of
+   `Only a character seat can be spoken for.` are unreachable through v4's write
+   path. Pinned by `only_a_character_seat_refusal_is_unreachable_through_v4s_writer`
+   (the P4.D112 precedent).
+2. **The `Failed to restate the line in character.` default.**
+   `executeVoiceRewrite` always returns a NON-empty error, so v4's
+   `result.error || <default>` never takes its right-hand side on this path. The
+   `route_failure_default_sentence` row measures the PROPAGATED sentence; the
+   default is pinned by `the_empty_error_default_sentence`.
+3. **`subprompts: precompiled ? null : subprompts` is inert in BOTH
+   implementations.** `build_system_prompt` uses a present stack verbatim
+   (`system_prompt.rs:589`), so the argument only ever reaches the `None` branch
+   — mutation-measured (M3 below). The BRANCH is pinned by the with/without-stack
+   row pair, which M3b reddens exactly. The conditional is kept because it is
+   v4's, and because it stops being inert the moment the builder learns to merge.
+
+**One recorded divergence, asserted in BOTH directions:**
+`[VALIDATION_DETAILS_GAP]` — v4's Zod 400 carries a `details` array v5's error
+envelope does not model (the standing P4.6bb deferral). The four Zod rows assert
+that v4 HAS it and v5 has NOT before dropping it, so the day either side moves,
+this family goes red rather than quietly agreeing.
+
+**An oracle trap caught on the first regen.** v4's `providerRegistry` is
+initialized by startup, which no jest oracle runs, so
+`formatMessagesForProvider` read the no-plugin fallback and prefixed every
+assistant turn where production v4 sends the native `name` field. v5 reads its
+built-in manifests, which are always populated — so the oracle was about to fail
+a CORRECT port with a v4 behaviour that never occurs
+(`jest-oracle-empty-provider-registry`). The case now initializes the registry
+with the two dist plugins its arms need.
+
+### The mutation proofs
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M1 | `IN_SCENE_REWRITE_WINDOW` 12 → 11 | every row with a transcript (the window is one short) — 25 comparands |
+| M2 | drop the presence-window leg (`if false && !has_history_access`) | `service_presence_windows` ONLY — exact attribution |
+| M3 | `subprompts` passed alongside a present precompiled stack | **NOTHING — survived.** The finding above: the argument is inert by construction, measured rather than argued |
+| M3b | `get_compiled_identity_stack` always `None` | exactly the with-stack rows (`service_with_precompiled_stack` + the four `CHAT_STACK` route rows) |
+| M4 | `max_tokens_for_seed` over `chars().count()` instead of UTF-16 units | `service_astral_seed_budget_prompt` ONLY — the one row where the two differ |
+| M5 | the reroute gate reads `is_dangerous_compatible` INVERTED | both reroute rows, in both directions |
+| M6 | the profile chain skips the `character-default` rung | `route_character_default_profile` ONLY |
+| M7 | the ladder parses AFTER the participant find | `route_zod_beats_missing_participant` ONLY — v4's order is observable |
+| M8 | the `systemSender` played filter back to a bool compare (the found bug) | every transcript-carrying row — the defect's own reddening proof |
+
+⚠ **M4's row had to be built twice.** The first astral seed was 2,816 UTF-16
+units, which halves to 1,408 — and the executor floors every ceiling at 2,048
+(v4 `effectiveMaxTokens`), so BOTH sides sent 2,048 and a `chars().count()` port
+would have passed. The seed is now 3,000 emoji (6,000 units → 3,000 vs a scalar
+port's 1,500 → floored 2,048), plus a long-plain row at 3,002 and a cap row at
+4,096. **A budget arm under 4,096 units measures nothing.**
+
+Versions: core 0.0.889, harness 0.0.777.
