@@ -388,6 +388,37 @@ pub async fn serve_instance(
     (addr, state)
 }
 
+/// P4.D180: materialize an instance dir from the committed
+/// `in-scene-voiced-*` pair, WITH an llm-logs partition the fixture family
+/// itself has none of — the wire test's whole point is the rehearsal's
+/// `llm_logs` row, which the tier-3 oracle cannot see because `jest.setup`
+/// no-ops `logLLMCall` wholesale.
+#[allow(dead_code)]
+pub fn materialize_in_scene_voiced_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("in-scene-voiced-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("in-scene-voiced-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        rewrite_user_ids(w.connection());
+    }
+    base
+}
+
 /// P4.9K1 unit 5: materialize an instance dir from the committed
 /// `character-generators-*` pair (two characters — Mira, vaulted and rich, and
 /// Nix, bare — two connection profiles pointing at `http://127.0.0.1:1`, a

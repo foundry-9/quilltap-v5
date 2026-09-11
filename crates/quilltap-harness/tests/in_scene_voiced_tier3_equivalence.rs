@@ -846,3 +846,229 @@ fn the_empty_error_default_sentence() {
         "Failed to restate the line in character."
     );
 }
+
+// ===========================================================================
+// Tier 2 — the log lines the differential cannot see
+// ===========================================================================
+
+/// A driver that answers without touching a provider, so the handler's own
+/// logging can be observed on a SUCCESS path.
+struct StubDriver(&'static str);
+impl InSceneVoiceDriver for StubDriver {
+    fn run(
+        &self,
+        _input: quilltap_core::api::chat_post_office::InSceneVoicedRequest,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        quilltap_core::api::chat_post_office::InSceneVoicedOutcome,
+                        String,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
+        let proposed = self.0.to_string();
+        Box::pin(async move {
+            Ok(quilltap_core::api::chat_post_office::InSceneVoicedOutcome {
+                success: true,
+                proposed_markdown: proposed,
+                error: None,
+            })
+        })
+    }
+}
+
+/// **v4's `[Chats v1] Impersonation voice preview generated` info bag, key for
+/// key.** The differential cannot see it — a log line changes no response byte
+/// and no table — so it is pinned through a capturing layer
+/// (`capture-layer-target-assert-is-a-prefix-match`: the assertions below match
+/// on the SENTENCE, not the target, because the target is a prefix).
+///
+/// v4 `impersonation-voice-preview.ts:160-167`: `{chatId, participantId,
+/// characterId, profileId, seedLength, proposedLength}` at INFO. `seedLength`
+/// and `proposedLength` are JS `String.length` — UTF-16 units — which is why
+/// the seed below is astral: a scalar-counting port would log 3, not 6.
+#[test]
+fn the_info_line_carries_v4s_bag() {
+    let Some(_) = env_or_skip("QT_ORACLE_IN_SCENE_VOICED") else {
+        return;
+    };
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec")).expect("spec");
+    let db = fresh_db(&spec, "infoline");
+    let driver: Arc<dyn InSceneVoiceDriver> = Arc::new(StubDriver("ok."));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let lines = quilltap_core::test_support::captured(|| {
+        let resp = rt.block_on(chat_impersonation_voice_preview(
+            &db,
+            Some(&driver),
+            &spec.user_id,
+            CHAT_STACK,
+            P_VESPER,
+            "\u{1F4DC}\u{1F4DC}\u{1F4DC}", // 3 scalars, SIX UTF-16 units
+            None,
+            None,
+        ));
+        assert_eq!(status_body(&resp).0, 200);
+    });
+
+    let info = lines
+        .iter()
+        .find(|l| l.contains("Impersonation voice preview generated"))
+        .unwrap_or_else(|| panic!("no info line in {lines:#?}"));
+    assert!(info.starts_with("INFO"), "v4 logs this at info: {info}");
+    for field in [
+        &format!("chatId={CHAT_STACK}"),
+        &format!("participantId={P_VESPER}"),
+        "characterId=a1000000-0000-4000-8000-000000000001",
+        "profileId=c0000000-0000-4000-8000-000000000001",
+        // UTF-16 units, not scalars — the whole reason the seed is astral.
+        "seedLength=6",
+        "proposedLength=3",
+    ] {
+        assert!(
+            info.contains(field.as_ref() as &str),
+            "{field} missing: {info}"
+        );
+    }
+
+    // The three debug lines v4 emits on the way, at v4's level.
+    for sentence in [
+        "Impersonation voice preview: seat verified",
+        "Impersonation voice preview: profile resolved",
+        "Impersonation voice preview: prompt resolved",
+    ] {
+        let l = lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("`{sentence}` missing from {lines:#?}"));
+        assert!(l.starts_with("DEBUG"), "v4 logs this at debug: {l}");
+    }
+}
+
+/// **The `%error` vs `?error` rendering check** (Tier 2 item 11,
+/// `tracing-percent-field-renders-unquoted`), on the warn arm that actually
+/// fires in production.
+///
+/// Every new log line in this lane spells its error field `error = %e` —
+/// Display, so the sentence renders UNQUOTED, which is the house convention
+/// every sibling ported warn uses (`chat_scenario.rs:321`,
+/// `embedding_dimension_reconcile.rs:269`). A stray `?e` or a bare `e` would
+/// render it Debug-QUOTED and silently diverge from its neighbours.
+///
+/// Driven through the **bystander-vault** warn, which the fixture's broken
+/// CORMAC makes fire on every `CHAT_STACK` row — no surgery needed, and the
+/// line under test is one production really emits.
+///
+/// ⚠ **The OTHER warn arm — `Failed to read Taboo settings` — is very nearly
+/// unreachable, and this test was first written against it and fired nothing.**
+/// `get_taboo_settings` folds BOTH a missing setting and an unparseable one
+/// into `Ok(defaults)` (it warns `[InstanceSettings] taboo failed to parse —
+/// using defaults` itself), so neither dropping `instance_settings` nor
+/// renaming its `value` column reaches the service's own catch. Recorded rather
+/// than faked: the arm is ported byte-for-byte against v4 and carries v4's bag,
+/// but nothing in this tree can currently drive it.
+#[test]
+fn the_warn_lines_render_their_error_unquoted() {
+    let Some(_) = env_or_skip("QT_ORACLE_IN_SCENE_VOICED") else {
+        return;
+    };
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec")).expect("spec");
+    let db = fresh_db(&spec, "warnrender");
+    let chat = db
+        .read_main(|c| quilltap_core::db::chats_read::find_by_id(c, CHAT_STACK))
+        .unwrap()
+        .expect("fixture chat");
+    let participant = chat["participants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"].as_str() == Some(P_VESPER))
+        .cloned()
+        .unwrap();
+    let character_id = participant["characterId"].as_str().unwrap().to_string();
+    let character = db
+        .read_main(|m| {
+            db.read_mount_index(|mo| {
+                quilltap_core::db::characters_read::find_by_id(m, mo, &character_id)
+            })
+        })
+        .unwrap()
+        .expect("fixture character");
+    let profile = db
+        .read_main(|m| quilltap_core::db::connection_profiles::find_by_id(m, CONN_SEAT))
+        .unwrap()
+        .expect("fixture profile");
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let completion = CannedCompletionProvider::new();
+    let embedding = CannedEmbeddingProvider::new();
+    let executor = CheapLlmTaskExecutor::new();
+    let lines = quilltap_core::test_support::captured(|| {
+        let _ = rt.block_on(generate_in_scene_voiced_line(
+            &db,
+            &completion,
+            &embedding,
+            &executor,
+            &InSceneVoicedLineParams {
+                chat: &chat,
+                participant: &participant,
+                character: &character,
+                profile: &profile,
+                seed_markdown: "The lamps are out.",
+                system_prompt_id: Some(SP_DEFAULT),
+                subprompts: None,
+                user_id: &spec.user_id,
+                now_ms: NOW_MS as f64,
+            },
+        ));
+    });
+    let warn = lines
+        .iter()
+        .find(|l| l.contains("Could not load a participant character for attribution"))
+        .unwrap_or_else(|| panic!("the bystander warn did not fire: {lines:#?}"));
+    assert!(warn.starts_with("WARN"), "v4 warns here: {warn}");
+    // v4's bag keys, in v4's order (`in-scene-voiced.ts:258-262`).
+    assert!(warn.contains(&format!("chatId={CHAT_STACK}")), "{warn}");
+    assert!(
+        warn.contains("characterId=a1000000-0000-4000-8000-000000000003"),
+        "the BROKEN bystander, not the rehearsing seat: {warn}"
+    );
+    // Display, not Debug: `error=applyDocumentStoreOverlayOne: …`, never quoted.
+    assert!(
+        warn.contains("error=applyDocumentStoreOverlayOne") && !warn.contains("error=\""),
+        "the error field must render UNQUOTED (`%e`, not `?e`): {warn}"
+    );
+    // And the debug bag the composer emits, with v4's twelve keys.
+    let debug = lines
+        .iter()
+        .find(|l| l.contains("Composed rewrite request"))
+        .unwrap_or_else(|| panic!("no composer debug line: {lines:#?}"));
+    assert!(debug.starts_with("DEBUG"), "{debug}");
+    for key in [
+        "chatId=",
+        "participantId=",
+        "characterId=",
+        "profileId=",
+        "transcriptMessages=",
+        "systemPromptLength=",
+        "hasRecall=",
+        "hasTemplate=",
+        "tabooPhrases=",
+        "usedPrecompiledStack=",
+        "seedLength=",
+        "maxTokens=",
+    ] {
+        assert!(debug.contains(key), "{key} missing: {debug}");
+    }
+}

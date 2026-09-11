@@ -144,6 +144,38 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-11 — test(salon): prove the rehearsal's host wire, its llm_logs row, and the log lines the differential cannot see
+
+_Versions: harness 0.0.778, web 0.0.138._
+
+`impersonation_voice_preview_wire.rs` boots the host's LIVE assembly
+(`ProductionSpineFactory`) and proves three things no differential can: the
+`InSceneVoiceDriver` is actually wired (a spine-less host answers the named
+refusal, and P4.9E2A's sibling seam shipped `None` for a whole round
+unnoticed), the rehearsal lands on exactly one `llm_logs` row carrying the
+request's own `chatId` and a NULL `messageId`, and the verb resolves over
+`/api/dispatch`. No spend: the seat's profile points at a dead socket, and
+`logLLMCall` writes its row for a failed call the same as a successful one.
+
+The log type is asserted through `EXPECTED_REHEARSAL_LOG_TYPE`, an
+ACTIVATE-AT-UNIFY constant currently `"SUMMARIZATION"` — v4's pre-fix silent
+default, which v5 measurably shares. The unifier flips it to `"VOICE_REWRITE"`
+with P4.D179.
+
+Two Tier-2 capture pins: v4's `Impersonation voice preview generated` info bag
+key for key (with an ASTRAL seed, so `seedLength=6` rather than a scalar port's
+3), the three debug sentences at v4's levels, and the twelve-key composer bag.
+
+Three self-corrections worth recording. The wire test's first refusal
+assertion read `body["error"]`, which the dispatch envelope never carries —
+every `contains` on it passed VACUOUSLY until it was pointed at `data.message`.
+The `%error` rendering check was first aimed at the Taboo warn and fired
+nothing: `get_taboo_settings` folds a missing OR unparseable setting into
+`Ok(defaults)`, so neither dropping the table nor renaming its column reaches
+the service's catch — that arm is recorded as near-unreachable and the check
+retargeted at the bystander-vault warn, which the fixture's broken character
+makes fire on every row.
+
 #### 2026-09-11 — test(salon): the in-scene voice rehearsal's tier-3 differential, and the played filter it caught
 
 _Versions: core 0.0.889, harness 0.0.777._
