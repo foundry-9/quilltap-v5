@@ -357,12 +357,23 @@ pub async fn message_save_image(
 /// a real fault (pinned by v4's own `chat-gallery-actions.test.ts:136`).
 pub fn chat_gallery(db: &Db, chat_id: &str) -> Response {
     let cid = chat_id.to_string();
+    // v4's route reads the chat through `repos.chats.findById`, whose
+    // `_findById` is `safeQuery(…, 'Error finding entity by ID', { id }, null)`
+    // (`base.repository.ts:246`): a FAILED read logs that line and answers
+    // `null`, and the route then answers `notFound('Chat')`. A 500 here was
+    // v5's own invention (P4.88's escalation — the "a 404" half of P4.D174's
+    // OPEN note), fixed at the round's unification.
     match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
         Ok(Some(_)) => {}
         Ok(None) => return not_found("Chat"),
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Failed to list chat gallery");
-            return Response::error(ErrorKind::Internal, "Failed to list chat gallery");
+            tracing::error!(
+                collection = "chats",
+                id = %chat_id,
+                error = %e,
+                "Error finding entity by ID"
+            );
+            return not_found("Chat");
         }
     }
     let cid = chat_id.to_string();
@@ -1861,4 +1872,58 @@ async fn attach_mount_document(
             "createdAt": announcement.get("createdAt").cloned().unwrap_or(Value::Null),
         },
     }))
+}
+
+#[cfg(test)]
+mod gallery_route_degrade_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    /// Throwaway pepper for a fresh encrypted instance (never a real one).
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance whose `chats` table has been DROPPED, so the
+    /// route's own chat read fails — v4's `safeQuery` shape, where a failed
+    /// `findById` is a `null`, not a thrown error.
+    fn instance_without_chats() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        {
+            let w = crate::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+            w.connection().execute_batch("DROP TABLE \"chats\"").unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// P4.88's escalation, pinned: a failed chat read answers v4's 404 with
+    /// v4's `Error finding entity by ID` line, never a 500.
+    #[test]
+    fn a_failed_chat_read_is_v4s_404_not_a_500() {
+        let (_dir, db) = instance_without_chats();
+        let lines = crate::test_support::captured(|| {
+            let got = chat_gallery(&db, "c0000000-0000-4000-8000-000000000001");
+            assert_eq!(got, not_found("Chat"), "{got:?}");
+        });
+        assert!(
+            lines.iter().any(|l| l.contains("Error finding entity by ID")
+                && l.contains("collection=chats")
+                && l.contains("c0000000-0000-4000-8000-000000000001")),
+            "v4's safeQuery line must be logged: {lines:#?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Failed to list chat gallery")),
+            "the old 500 sentence must be gone: {lines:#?}"
+        );
+    }
 }

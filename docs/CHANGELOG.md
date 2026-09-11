@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-10 — fix(api): a failed chat read on the gallery route answers v4's 404, not a 500 (P4.88's escalation, landed at unification)
+
+_Versions: core 0.0.885._
+
+`chat_gallery` in `api/chat_media.rs` did its own `chats_read::find_by_id` and answered a 500 with `Failed to list chat gallery` when that read failed. v4's route reads the chat through `repos.chats.findById`, whose `_findById` is a `safeQuery` that logs `Error finding entity by ID` and answers null on failure, so v4 answers `notFound('Chat')`. This was the "a 404" half of P4.D174's OPEN note that P4.88's enumerator fix could not reach (the route's read runs before the enumerator). The arm now logs v4's line with its `collection`/`id`/`error` bag and takes the not-found branch. Pinned by a unit test over a provisioned instance whose `chats` table is dropped; mutation-proven (restoring the 500 reddens it).
+
 #### 2026-09-10 — docs(status-log): the P4.D178 lane record (bug 133, the `cc65d6bfc` catch-up)
 
 _Docs-only change._
