@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { Icon } from '../ui/icon';
+
 /**
  * SpeakingAsAvatar — a persistent cue, seated inside the composer directly to
  * the left of the action-button cluster, of the character whose voice a typed
@@ -17,6 +19,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 @Component({
   selector: 'qt-speaking-as-avatar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Icon],
   template: `
     <div
       class="qt-speaking-as-avatar"
@@ -29,6 +32,11 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
       } @else {
         <span class="font-bold qt-text-secondary text-lg">{{ initial() }}</span>
       }
+      @if (voiceRehearsal()) {
+        <span class="qt-speaking-as-avatar-voice-badge" aria-hidden="true">
+          <qt-icon name="thinking" class="w-3 h-3" />
+        </span>
+      }
     </div>
   `,
 })
@@ -39,12 +47,27 @@ export class SpeakingAsAvatar {
   readonly avatarUrl = input<string | null>(null);
   /** Bright when the human may type now; dimmed to near-dark while a reply streams. */
   readonly canType = input(false);
+  /**
+   * True when In Their Own Words is armed for this seat — a typed line goes to
+   * the character for a restatement you review before it posts. Purely a cue:
+   * the badge says what will happen, it does not make it happen (v4
+   * `SpeakingAsAvatar.tsx`'s `voiceRehearsal`, `686954937`).
+   */
+  readonly voiceRehearsal = input(false);
 
   protected readonly initial = computed(() => (this.name()[0] ?? '?').toUpperCase());
+  /**
+   * v4's three-arm ladder: the rehearsal cue outranks BOTH of the others, so an
+   * armed seat says what the send will do even while the floor belongs to
+   * someone else. The `aria-label` below is deliberately UNCHANGED — v4 leaves
+   * it alone, and the badge itself is `aria-hidden`.
+   */
   protected readonly titleText = computed(() =>
-    this.canType()
-      ? `Speaking as ${this.name()}`
-      : `Speaking as ${this.name()} — waiting for the room`,
+    this.voiceRehearsal()
+      ? `Speaking as ${this.name()} — your draft goes to ${this.name()} to say in their own words first`
+      : this.canType()
+        ? `Speaking as ${this.name()}`
+        : `Speaking as ${this.name()} — waiting for the room`,
   );
   protected readonly ariaLabel = computed(() =>
     this.canType()

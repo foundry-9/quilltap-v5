@@ -1277,6 +1277,9 @@
    */
   .qt-speaking-as-avatar {
     @apply flex items-center justify-center flex-shrink-0 overflow-hidden;
+    /* The In Their Own Words badge is absolutely placed inside this box (v4
+       adds `relative` to the same wrapper in `686954937`). */
+    position: relative;
     align-self: stretch;
     aspect-ratio: 4 / 5;
     max-height: 10rem;
@@ -1290,6 +1293,25 @@
   .qt-speaking-as-avatar-dim {
     opacity: 0.6;
     filter: brightness(0.5);
+  }
+
+  /**
+   * The quill badge on an armed In Their Own Words seat (v4's inline
+   * `absolute bottom-0.5 right-0.5 qt-bg-muted qt-text-secondary p-0.5 flex
+   * items-center justify-center` + `border-radius: var(--radius-sm)`). Written
+   * as a rule rather than utility class names so it cannot be inert — the
+   * #97/#107/#108 lesson.
+   */
+  .qt-speaking-as-avatar-voice-badge {
+    @apply flex items-center justify-center;
+    position: absolute;
+    bottom: 0.125rem;
+    right: 0.125rem;
+    padding: 0.125rem;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-muted);
+    /* v4's `qt-text-secondary`, which in v5's stylesheet is muted-foreground. */
+    color: var(--color-muted-foreground);
   }
 
   /**

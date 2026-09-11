@@ -505,3 +505,83 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     });
   });
 });
+
+/**
+ * The In Their Own Words cue on the composer (v4 `686954937`,
+ * `ChatComposer.tsx:505-514`): the Send button's title ladder and the quill
+ * badge on the speaking-as portrait. Informational only — the gate lives in the
+ * Salon's `ImpersonationVoiceState`.
+ */
+describe('ChatComposer — the voice-rehearsal cue', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  function sendTitle(fixture: ComponentFixture<ChatComposer>): string | null {
+    return (
+      fixture.nativeElement.querySelector('.qt-chat-composer-send') as HTMLButtonElement
+    ).getAttribute('title');
+  }
+
+  async function armed(over: Record<string, unknown> = {}): Promise<ComponentFixture<ChatComposer>> {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.componentRef.setInput('speakingAs', { name: 'Evangeline', avatarUrl: null });
+    fixture.componentRef.setInput('voiceRehearsalArmed', true);
+    for (const [k, v] of Object.entries(over)) fixture.componentRef.setInput(k, v);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  it("names the seat the draft will go to, in v4's exact sentence", async () => {
+    expect(sendTitle(await armed())).toBe(
+      'Sends your draft to Evangeline to say in their own words first',
+    );
+  });
+
+  it('falls back to "Send message" when the feature is not armed', async () => {
+    expect(sendTitle(await armed({ voiceRehearsalArmed: false }))).toBe('Send message');
+  });
+
+  it('falls back when armed but there is no seat to name (v4 `armed && speakingAs`)', async () => {
+    expect(sendTitle(await armed({ speakingAs: null }))).toBe('Send message');
+  });
+
+  /**
+   * v4's second ladder arm. Both composers swap a Stop button in while a reply is
+   * in flight — v4 under `(streaming || waitingForResponse) && !hideStopButton`,
+   * v5 unconditionally — so v4 reaches this title only with its participant
+   * sidebar open (`SalonView.tsx:1679`'s `hideStopButton`), a prop v5 has never
+   * had. The ARM is carried verbatim; its reachability at this site is the
+   * pre-existing gap, recorded rather than papered over. Read through the
+   * computed, since the DOM node it would title does not exist while busy.
+   */
+  it('"Generating..." outranks the cue (v4\'s ladder order)', async () => {
+    const fixture = await armed({ busy: true });
+    const inst = fixture.componentInstance as unknown as { sendTitle(): string };
+    expect(inst.sendTitle()).toBe('Generating...');
+    // …and at this site v5 shows Stop instead of a titled Send.
+    expect(sendTitle(fixture)).toBe('Stop generating');
+  });
+
+  it('the no-characters sentence outranks everything', async () => {
+    expect(sendTitle(await armed({ hasActiveCharacters: false }))).toBe(
+      'Add a character to start chatting',
+    );
+  });
+
+  it('arms the portrait badge through to SpeakingAsAvatar', async () => {
+    const fixture = await armed();
+    expect(
+      fixture.nativeElement.querySelector('.qt-speaking-as-avatar-voice-badge'),
+    ).not.toBeNull();
+  });
+
+  it('…and leaves the portrait bare when it is not armed', async () => {
+    const fixture = await armed({ voiceRehearsalArmed: false });
+    expect(fixture.nativeElement.querySelector('.qt-speaking-as-avatar-voice-badge')).toBeNull();
+  });
+});

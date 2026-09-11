@@ -334,6 +334,32 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — feat(salon): the In Their Own Words cue on the composer and the speaking-as portrait
+
+_Versions: SPA 0.5.700._
+
+P4.D181 unit 5 — the informational half. The composer takes v4's
+`voiceRehearsalArmed` prop and its four-arm Send-title ladder, and passes the flag
+through to `SpeakingAsAvatar`, which gains v4's three-arm title (the cue outranks
+both of the others) and the quill badge in the portrait's corner. The
+`aria-label` is deliberately unchanged and the badge is `aria-hidden`, exactly as
+v4 leaves them. The Salon computes `impersonationVoiceArmed` from the setting, the
+seat and the overlay — no text anywhere in the decision.
+
+The badge's positioning is written as REAL declarations in
+`_chat.css` — `.qt-speaking-as-avatar-voice-badge` plus `position: relative` on
+the wrapper v4 spells as inline `absolute` / `relative` utilities — rather than
+class names that would be inert.
+
+Two facts measured rather than assumed, both recorded at the site: v4's
+"Generating..." arm is reachable in v4 only with its participant sidebar open
+(`hideStopButton`, a prop v5 has never had), because BOTH composers swap a Stop
+button in while a reply is in flight — the arm is carried verbatim and the spec
+reads it through the computed; and `check-qt-classes` does NOT guard this badge
+class (deleting its rule leaves lint green — the guard is deliberately narrow:
+utility families, variant forms, and component hosts), so the positioning is
+asserted against a real cascade by the parked e2e beat instead.
+
 #### 2026-09-11 — feat(salon): the In Their Own Words review dialog and the shared voice-rewrite panel
 
 _Versions: SPA 0.5.699._

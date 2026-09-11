@@ -274,6 +274,7 @@ export interface PendingToolResultChip extends RngPendingResult {
               [name]="seat.name"
               [avatarUrl]="seat.avatarUrl"
               [canType]="canType()"
+              [voiceRehearsal]="voiceRehearsalArmed()"
             />
           </div>
         }
@@ -562,6 +563,14 @@ export class ChatComposer implements OnInit {
    */
   readonly speakingAs = input<SpeakingAsSeat | null>(null);
   /**
+   * In Their Own Words is armed for the speaking-as seat: a typed line will be
+   * handed to that character to restate, for review, before it posts.
+   * Informational only — the gate itself lives in the Salon's
+   * `ImpersonationVoiceState` (v4 `ChatComposer.tsx`'s `voiceRehearsalArmed`,
+   * `686954937`).
+   */
+  readonly voiceRehearsalArmed = input(false);
+  /**
    * The active roleplay template's delimiter entries and narration characters,
    * for the formatting toolbar's delimiter section (v4 passes
    * `roleplayTemplateId` + `narrationDelimiters` and the toolbar fetches the
@@ -658,9 +667,21 @@ export class ChatComposer implements OnInit {
     return this.attachedFiles().length > 0 ? 'Add a message (optional)…' : 'Type a message…';
   });
 
-  protected readonly sendTitle = computed(() =>
-    this.hasActiveCharacters() ? 'Send message' : 'Add a character to start chatting',
-  );
+  /**
+   * v4's four-arm ladder (`ChatComposer.tsx:505-514`), in v4's order. v4's third
+   * test is `streaming || waitingForResponse` WITHOUT its `sending` flag; v5 has
+   * no separate `sending` and folds streaming + waiting into the one `busy`
+   * input, which is the same signal `canType` already stands on.
+   */
+  protected readonly sendTitle = computed(() => {
+    if (!this.hasActiveCharacters()) return 'Add a character to start chatting';
+    if (this.busy()) return 'Generating...';
+    const seat = this.speakingAs();
+    if (this.voiceRehearsalArmed() && seat) {
+      return `Sends your draft to ${seat.name} to say in their own words first`;
+    }
+    return 'Send message';
+  });
 
   /** Rules only take effect when the feature gate is on (v4). */
   protected readonly effectiveTextReplacementRules = computed(() =>

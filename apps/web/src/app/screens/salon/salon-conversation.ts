@@ -477,6 +477,7 @@ interface CascadePrompt {
         [busy]="busy()"
         [chatId]="chatId()!"
         [speakingAs]="speakingAsSeat()"
+        [voiceRehearsalArmed]="impersonationVoiceArmed()"
         [hasActiveCharacters]="hasAnyActiveCharacter()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
