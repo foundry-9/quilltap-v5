@@ -339,3 +339,35 @@ describe('the CUSTOM_TOOL_CONSULT filter group (v4 616930db)', () => {
     expect(entryIds(fixture).sort()).toEqual(['consult', 'wizard']);
   });
 });
+
+/**
+ * The `686954937` drift (P4.D181): `VOICE_REWRITE` joins the `other` filter
+ * group (v4 `LLMInspectorPanel.tsx:18`), after `CUSTOM_TOOL_CONSULT`.
+ */
+describe('the VOICE_REWRITE filter group (v4 686954937)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('is reachable under other, alongside the consult', () => {
+    const fixture = render({
+      logs: [
+        log({ id: 'voice', type: 'VOICE_REWRITE' }),
+        log({ id: 'consult', type: 'CUSTOM_TOOL_CONSULT' }),
+        log({ id: 'chat', type: 'CHAT_MESSAGE' }),
+      ],
+    });
+    setFilter(fixture, 'other');
+    expect(entryIds(fixture).sort()).toEqual(['consult', 'voice']);
+  });
+
+  it('is NOT swept into System Ops with the summaries it used to file as', () => {
+    const fixture = render({
+      logs: [
+        log({ id: 'voice', type: 'VOICE_REWRITE' }),
+        log({ id: 'summary', type: 'SUMMARIZATION' }),
+      ],
+    });
+    setFilter(fixture, 'system');
+    expect(entryIds(fixture)).toEqual(['summary']);
+  });
+});
+

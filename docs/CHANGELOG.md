@@ -334,6 +334,26 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+#### 2026-09-11 — feat(settings): the In Their Own Words toggle and the VOICE_REWRITE labels
+
+_Versions: SPA 0.5.701._
+
+P4.D181 units 6 and 7. `qt-impersonation-voice-settings` lands LAST in the
+Composer card, after the unicode toggle, exactly where v4's
+`ChatTabContent.tsx:107-111` puts it. It writes the `impersonationVoiceRewrite`
+scalar, defaults to OFF when unset (the feature spends a model call on every
+impersonated line), and carries v4's heading and body copy byte for byte — proven
+by extracting v4's JSX at the pin and comparing whitespace-collapsed, then pinned
+by a spec that reddens on a single changed word.
+
+The three `VOICE_REWRITE` label sites follow: the inspector badge reads "Voice"
+with the info classes, the inspector's `other` filter group admits it after
+`CUSTOM_TOOL_CONSULT`, and Wire Records labels it "Voice Rewrite". The last one
+is a discriminator rather than decoration, because v4's map falls through to the
+RAW type for anything unlisted — an unported row would have rendered the bare
+enum name. A second filter spec pins that it is no longer swept into System Ops
+with the summaries it used to file as.
+
 #### 2026-09-11 — feat(salon): the In Their Own Words cue on the composer and the speaking-as portrait
 
 _Versions: SPA 0.5.700._

@@ -20,6 +20,7 @@ import { AutomationSettings } from './automation-settings';
 import { ComposerEmojiSettings } from './composer-emoji-settings';
 import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
 import { ComposerUnicodeSettings } from './composer-unicode-settings';
+import { ImpersonationVoiceSettings } from './impersonation-voice-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { ContextCompressionSettings } from './context-compression-settings';
 import { CustomToolsSettings } from './custom-tools-settings';
@@ -69,6 +70,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     AutomationSettings,
     ComposerEmojiSettings,
     ComposerUnicodeSettings,
+    ImpersonationVoiceSettings,
     ComposerSpellcheckSettings,
     CompositionModeSettings,
     ContextCompressionSettings,
@@ -114,6 +116,9 @@ import { TokenDisplaySettings } from './token-display-settings';
                round's §Editor meeting points). -->
           <qt-composer-emoji-settings />
           <qt-composer-unicode-settings />
+          <!-- v4 ChatTabContent:107-111 — In Their Own Words lands LAST in the
+               Composer card, after the unicode toggle. -->
+          <qt-impersonation-voice-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

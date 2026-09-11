@@ -18,6 +18,7 @@ const TYPE_LABELS: Record<string, string> = {
   CHARACTER_WIZARD: 'Wizard',
   IMAGE_DESCRIPTION: 'Image Desc',
   CUSTOM_TOOL_CONSULT: 'Custom Tool',
+  VOICE_REWRITE: 'Voice Rewrite',
 };
 
 /** v4 `formatDateTime(str, {includeYear:false})` — month/day + time, no year. */

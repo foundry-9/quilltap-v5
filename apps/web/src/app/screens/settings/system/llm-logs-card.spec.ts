@@ -64,3 +64,19 @@ describe('LlmLogsCard', () => {
     expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
   });
 });
+
+/**
+ * The `686954937` drift (P4.D181): Wire Records labels the new log type (v4
+ * `llm-logs-card.tsx:44`). v4's map falls through to the RAW type for anything
+ * unlisted, so the pre-fix rendering of a `VOICE_REWRITE` row was the bare
+ * enum name — which is what makes this row a discriminator and not decoration.
+ */
+describe('LlmLogsCard — the VOICE_REWRITE label (v4 686954937)', () => {
+  it('reads "Voice Rewrite", not the raw type', async () => {
+    const fixture = await mount([sampleLog({ type: 'VOICE_REWRITE' })]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Voice Rewrite');
+    expect(text).not.toContain('VOICE_REWRITE');
+  });
+});
+

@@ -506,3 +506,23 @@ describe('the CUSTOM_TOOL_CONSULT type (v4 616930db)', () => {
     expect(badge?.className).toContain('qt-text-info');
   });
 });
+
+/**
+ * The `686954937` drift (P4.D181): both voice rehearsals — the off-scene
+ * announcement one and the new in-scene one — stop filing as chat summaries and
+ * get a type of their own. v4 anchors: `LLMInspectorEntry.tsx:28` (badge class)
+ * and `:45` (label).
+ */
+describe('the VOICE_REWRITE type (v4 686954937)', () => {
+  it('carries the info badge and reads "Voice"', () => {
+    const fixture = render(log({ type: 'VOICE_REWRITE' }));
+    const el = fixture.nativeElement as HTMLElement;
+    const badge = Array.from(el.querySelectorAll('span')).find(
+      (s) => s.textContent?.trim() === 'Voice',
+    );
+    expect(badge).toBeDefined();
+    expect(badge?.className).toContain('qt-bg-info/15');
+    expect(badge?.className).toContain('qt-text-info');
+  });
+});
+

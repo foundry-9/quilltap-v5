@@ -122,20 +122,23 @@ describe('ChatTab', () => {
     expect(card?.querySelector('qt-smart-typography-settings')).toBeTruthy();
   });
 
-  it('the Composer card hosts spellcheck, then emoji, then unicode (v4 ChatTabContent order; the P4.D75 at-unify mounts)', () => {
+  it('the Composer card hosts spellcheck → emoji → unicode → In Their Own Words (v4 ChatTabContent order)', () => {
     const fixture = mount('composer-spellcheck');
     const card = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
     ).find((c) => c.getAttribute('sectionId') === 'composer-spellcheck');
     const rows = Array.from(
       card?.querySelectorAll(
-        'qt-composer-spellcheck-settings, qt-composer-emoji-settings, qt-composer-unicode-settings',
+        'qt-composer-spellcheck-settings, qt-composer-emoji-settings, qt-composer-unicode-settings, qt-impersonation-voice-settings',
       ) ?? [],
     ).map((el) => el.tagName.toLowerCase());
+    // P4.D75's at-unify mounts, then P4.D181's — v4 `ChatTabContent.tsx:107-111`
+    // puts In Their Own Words LAST, after the unicode toggle.
     expect(rows).toEqual([
       'qt-composer-spellcheck-settings',
       'qt-composer-emoji-settings',
       'qt-composer-unicode-settings',
+      'qt-impersonation-voice-settings',
     ]);
   });
 
