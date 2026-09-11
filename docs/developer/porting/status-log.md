@@ -122224,3 +122224,268 @@ seven times, `plant_ledger_shape` copied into four heal test modules.
 Versions: **core 0.0.886, harness 0.0.775, host 0.0.125**; web / cli /
 tauri / SPA unchanged. The dogfood pass over this round's live surfaces is the
 top next candidate (phase-4.md).
+
+## P4.D179 — In Their Own Words, the server substrate (the `686954937` + `f4ad2c8d1` drift catch-up, lane 1 of 3)
+
+**Branch `claude/voice-rewrite-substrate-server-9a6101`, five commits.
+CLOSED — every Tier-1 and Tier-2 item landed.** v4 oracle baseline at lane
+start `cc65d6bfc`; this lane's catch-up target `f4ad2c8d1`.
+
+### The freshness probe (ledger §2, §R.2)
+
+Run at lane start and again before every regen batch and before the gate.
+PASS each time: checkout on `main`, tree CLEAN, HEAD `f4ad2c8d1`,
+`f4ad2c8d1..main` EMPTY, `1a2b2164c..bugfix` EMPTY. v4 did NOT move during
+the lane.
+
+Pins (§R.3, lane-unique, all three symlink classes):
+`/tmp/qt-v4-pin-p4d179-f4ad2c8d1` (every family this lane moves; the help
+re-vendor's source) and `/tmp/qt-v4-pin-p4d179-cc65d6bfc` (neutrality +
+red-first). Markers verified: `impersonationVoiceRewrite` in
+`lib/schemas/settings.types.ts` 1× at the tip / 0× at the baseline;
+`VOICE_REWRITE` in `lib/schemas/llm-log.types.ts` 1× / 0×;
+`lib/services/announcer/in-scene-voiced.ts` present only at the tip;
+`git diff --stat cc65d6bfc f4ad2c8d1 -- help/` exactly five paths; `help/`
+124 files at the tip, 123 at the baseline.
+
+### The red-first measurements (Tier 1 item 1)
+
+Run against the UNEDITED tree before the first source commit.
+
+| item | pin | result |
+| --- | --- | --- |
+| (a) `settings_routes_equivalence` with the new `impersonation_voice` rows | `f4ad2c8d1` | **RED** at the first case (`s_default_inject`) — v5's GET lacks the key entirely. The oracle's seven new rows: GET default `false`; PUT `true`/`false` echoing; `'yes'` / `1` / **explicit `null`** all 400 with `Invalid impersonationVoiceRewrite value (must be boolean)`; the create branch `true`. |
+| (b) the NEW task-type oracle vs v5's map | `f4ad2c8d1` | **RED on exactly two rows** — `announcement-rewrite` and `impersonation-voice-rewrite`, v5 `SUMMARIZATION` vs v4 `VOICE_REWRITE`. Measured by lifting the equality assert so every mismatch printed rather than stopping at the first; the other 29 rows matched. |
+| (c) `provisioning_equivalence` after the re-dump alone | `f4ad2c8d1` | **GREEN — the order's prediction REFUTED.** See below. |
+| `help_tree_equivalence` against a baseline-pinned oracle | `cc65d6bfc` | **RED** — `embedded file count vs the oracle's synced count`, left 124 / right 123: the stale-vendor tripwire firing as designed. |
+
+**(c) is a measured deviation worth carrying.** The order expected
+`provisioning_equivalence` red after the fresh-schema re-dump alone, with the
+seed half closing it. It is not: the new column's DDL `DEFAULT 0` and v4's
+seeded `0` agree, so an INSERT that never names the column produces the same
+row. The family's SENSITIVITY to the column was proven the other way round —
+holding `fresh_schema.json` at the OLD bytes against the tip oracle reddens it
+on the `chat_settings` DDL. The seed was re-dumped anyway (34 → 35 columns),
+per the D23 never-hand-edit discipline: leaving it at 34 would make the port's
+create-branch default depend on the DDL clause rather than on v4's captured
+row.
+
+### What landed
+
+**Unit 1 — the column end-to-end** (`5f6e297e`). D23 re-dump from the tip pin
+through the shipped `dump-fresh-schema.ts` (`QT_SCHEMA_OUT` + `QT_SEED_OUT`,
+Node 24): `fresh_schema.json` moves by exactly ONE line
+(`"impersonationVoiceRewrite" INTEGER DEFAULT 0`, between `composerUnicode`
+and `textReplacementsEnabled` — v4's `generateDDL` and the Zod schema agree on
+the position this time), `chat_settings_seed.json` 34 → 35 columns with value
+`0`. `schema-key-order.json` regenerated with the shipped generator and
+**byte-identical** — the P4.D73 measurement holds, `chat_settings` is not an
+export entity.
+
+The boot ensure is a NEW `db/chat_settings_impersonation_voice_repair.rs` in
+the P4.D79 single-column shape, with v4's migration ALTER verbatim, plus ONE
+`host.rs` call after the P4.D73 block. §R.12a is pinned by name: a table that
+ALREADY carries the column (the shared Friday instance, which v4's own
+migration moved the day the feature shipped) is left untouched, and a
+v4-written `1` survives the ensure. The migration pretty label is a NO-PORT,
+recorded in the module header — the third recording of that ruling.
+
+The data layer took all six sites plus the two test-fixture DDLs. The read's
+tolerance is the one place this column is NOT its neighbours: v4's Zod default
+is `false`, so absent must read `false` — `is_some_and`, where the three
+P4.D73 columns beside it use `is_none_or`. The route arm is v4's hand-written
+guard at its schema-ordered position; an explicit `null` is present-and-invalid
+(`typeof null !== 'undefined'`), pinned in the corpus AND at the web wire.
+
+A stale doc comment was corrected on the way: `default_settings_columns`'s
+prose said "The 30 default … columns" against a 34-column seed. It now names
+the seed as the source and the measured count at a dated pin.
+
+**Unit 2 — the memories fixture vintage** (`e971f93a`). The regen batch, not
+inspection, found it: v4's own oracle died on `no such column:
+impersonationVoiceRewrite` inside `chatSettings.updateForUser`, because
+`BaseRepository._update` writes `$set: validated` — every field with a Zod
+default. Exactly the P4.52 class, so the shipped
+`migrate-memories-fixture-columns.ts` gained the row (v4's migration SQL
+verbatim behind v4's own presence guard) and was re-run: main `+chat_settings.
+impersonationVoiceRewrite`, mount `already current`. **A measured deviation
+from the order's "Touches NO committed DB pair"** — the alternative was a
+fresh RULED VINTAGE ROW, which P4.52 retired deliberately.
+
+**Unit 3 — the `VOICE_REWRITE` log type** (`73a8dca6`). The const with a doc
+line naming both task types, the two map arms carrying v4's comment, v4's new
+closed-allowlist doc block, and the two inline test rows. NEW tier-1 family
+`task_type_log_mapping_equivalence` over v4's now-exported `mapTaskTypeToLogType`
++ `LLMLogTypeEnum` — 31 rows, exact on the mapping, with v4's own enum verdict
+(`admitted`) riding each row, and **coverage asserted by censusing the v5
+match's own arm strings** so a future arm added without a corpus row is a red
+rather than another silence. The census went comment-aware on its first run,
+when v4's prose comment INSIDE the match (`// Both "say it in the character's
+own voice" rehearsals`) scanned as an arm pattern — a small trap worth the
+note: a source census over quoted strings must drop comment lines.
+
+**Unit 4 — the Almanack row** (`a40a004c`). Types + default + read + the
+byte-exact render line in v4's slot. **A v4-side gap found on the way, worth
+filing upstream:** `686954937` updated `FeatureConfigInfo`,
+`defaultFeatureConfig()`, `collectFeatureConfig` and `render.ts` but NOT
+`__tests__/helpers/almanack/fixture.ts` — so v4's own fixture is missing a
+field its own interface declares required, and v4's render test only ever
+renders `yesNo(undefined)` → `No`. The oracle case supplies it explicitly
+through a new `fixture()` wrapper (FALSE by default, TRUE in `base`), so both
+polarities are measured and the port's model round-trips it. The committed
+`almanack-*.db` pair still lacks the column, so the tier-2 collector's
+`?? false` yields `false` — no fixture rebuild, as the order predicted.
+
+**Unit 5 — the `help/**` re-vendor** (`ea70289d`). Five files `cp`'d from the
+tip pin, and the WHOLE tree `diff -r`-verified byte-identical to it rather
+than file-by-file. 123 → 124. Count literals moved in BOTH crates the memory
+note warns about (`help_tree_embed_guard.rs:13/25/30`,
+`host_help_docs_boot.rs:7/12/15/82-89`); a full `--workspace` run found no
+third home.
+
+**Tier 2 item 9 — `memories_routes` neutrality.** Regenerated from BOTH pins
+is not meaningful for this family once unit 2 moved its fixture; what was
+measured instead is that it is GREEN at the tip pin after the widening, with
+no v5 source change in the lane touching it.
+
+**Tier 2 item 10 — the six-sites census** (`chat_settings_column_sites_guard`,
+landed with unit 1). Per-REGION rather than by count (a count floor passes
+when one site is duplicated and another missing): the INSERT column list, the
+UPDATE assignment builder, and the tolerant SELECT + read (twice — the array
+entry AND the `obj.insert` key, which is what makes a dropped array entry's
+index shift visible), across all NINE adopted boolean columns, plus a direct
+pin on the two snake_case struct fields a quoted-name census cannot see.
+
+### Mutation proofs
+
+| # | mutation | reddens |
+| --- | --- | --- |
+| 1 | revert the `announcement-rewrite` map arm | `task_type_log_mapping_equivalence`, EXACTLY that row |
+| 2 | drop the Almanack render push | `almanack_render_equivalence`, case `base` on the `Yes` line |
+| 3 | seed default `0` → `1` | `settings_routes_equivalence`, the GET-default row |
+| 4 | drop the route `bool_field` arm | `settings_routes_equivalence`, `s_put_impersonation_voice_true` |
+| 5 | drop the UPDATE assignment | `chat_settings_tier2_equivalence` (the update op's `1` never lands — the spec's create was re-seeded FALSE precisely so the UPDATE is the only source of that `1`) |
+| 6 | read tolerance `is_some_and` → `is_none_or` | `chat_settings::tests::find_by_user_id_defaults_the_composer_columns_when_absent` |
+| 7 | drop the INSERT column-list entry | `chat_settings_column_sites_guard` (`the INSERT column list has 0`) |
+| 8 | remove the `host.rs` ensure call | `chat_settings_composer_web_routes::impersonation_voice_rewrite_web_edges` (`must exist after the boot ensure`) |
+
+### Deferrals (loud)
+
+- **The `prettify` migration label** (`lib/startup/prettify.ts:144`) — NO-PORT.
+  v5 surfaces no migration labels anywhere; recorded in the repair module's
+  header, the third recording of the P4.D63 / P4.D73 ruling.
+- No refusal arm is owed: this lane defines no verb.
+
+### Spotted, not mine (for the unifier)
+
+1. **Three help families are RED on a P4.D171 fixture-vintage debt.**
+   `help_docs_routes_equivalence`, `help_chats_routes_equivalence` and
+   `help_chat_orchestrator_tier3_equivalence` all fail with `sqlite error: no
+   such column: cycleOrderParticipantIds`. **PROVEN pre-existing**: reproduced
+   identically on a clean `main` worktree (`/tmp/qt-p4d179-baseline-tree`,
+   its own `CARGO_TARGET_DIR`), on source this lane does not touch. The
+   committed `help-chat-{main,mount}.db` pair predates P4.D171's
+   `chats.cycleOrderParticipantIds`, and those three families open with
+   `Db::open`, which runs NO boot ensures — exactly the gotcha P4.D171's own
+   record wrote down. The remedy is P4.D171's: call
+   `ensure_chats_cycle_order_column` on the opened connection after the copy,
+   or widen the pair through v4's migration ALTER as this lane's unit 2 did
+   for `memories-main.db`. **This lane does not move them** — proven, not
+   assumed: their oracles regenerated at BOTH pins are byte-identical (the
+   orchestrator's only delta is its live `createdAt` wall clock; 0 differing
+   rows once that is folded). They are therefore outside "families this lane
+   moves" and are NOT in its gate env block. All three files are outside this
+   lane's Ownership table.
+2. **A v4-side filing candidate** — `__tests__/helpers/almanack/fixture.ts`
+   omits `impersonationVoiceRewrite` while `FeatureConfigInfo` declares it
+   required (unit 4).
+
+### Regen recipes (all from `/tmp/qt-v4-pin-p4d179-f4ad2c8d1` unless noted)
+
+Every family through `harness/tools/recipe_sweep.py --v5w "$PWD" --v4 <pin>
+--run <family>`, one at a time. The D23 dump and the key-order dump are
+direct:
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d179-f4ad2c8d1
+cd "$PIN"
+QT_SCHEMA_OUT=/tmp/qt-fresh-schema-p4d179.json \
+QT_SEED_OUT=/tmp/qt-chat-settings-seed-p4d179.json \
+  $N/npx tsx <v5w>/harness/oracle/provision/dump-fresh-schema.ts
+$N/node --import tsx <v5w>/harness/oracle/fixtures/dump-export-key-order.ts \
+  > /tmp/qt-schema-key-order-p4d179.json
+QT_ORACLE_PROVISION=/tmp/oracle-provision-p4d179.json \
+QT_V4_FRESH_OUT=/tmp/qt-v4-fresh-p4d179 \
+  $N/npx tsx <v5w>/harness/oracle/provision/build-provision-oracle.ts
+# the memories fixture widening (unit 2), run ONCE:
+$N/node --import tsx <v5w>/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+  <v5w>/crates/quilltap-web/tests/fixtures/memories-main.db \
+  <v5w>/crates/quilltap-web/tests/fixtures/memories-mount.db
+```
+
+The NEW family's own recipe is in its header and is sweep-runnable:
+`npx tsx harness/oracle/cases/task-type-log-mapping.ts >
+/tmp/oracle-task-type-log-mapping.ndjson`, then
+`QT_ORACLE_TASK_TYPE_LOG_MAPPING=… cargo test -p quilltap-harness --test
+task_type_log_mapping_equivalence`.
+
+### Fixtures changed, and what they invalidate
+
+- `crates/quilltap-web/tests/fixtures/memories-main.db` — one ALTER (unit 2).
+  Invalidates nothing else: the `memories-*` pair is read only by
+  `memories_routes_equivalence` and its own oracle cases, both regenerated.
+- `harness/oracle/fixtures/chat-settings-tier2.json` — the column in two
+  creates and one update. Drives `chat_settings_tier2_equivalence` only.
+- `harness/oracle/cases/settings-routes.test.ts` — seven new rows.
+- `harness/oracle/cases/almanack-render.test.ts` — the `fixture()` wrapper.
+- `crates/quilltap-core/src/services/provisioning/{fresh_schema,chat_settings_seed}.json`
+  — the D23 dump; drives `provisioning_equivalence` and every fresh-instance
+  provision in the workspace.
+- No committed `.db` pair beyond `memories-main.db`; `apps/web/` untouched
+  (`git diff main -- apps/web/` EMPTY).
+
+### The gate (2026-09-11, `QT_V4_ROOT` = the `f4ad2c8d1` pin)
+
+- `cargo fmt --all --check` = 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` = 0 in BOTH feature
+  sets (default and `--features quilltap-core/native-transport`) — after
+  `b4c32f6a`, which clears three PRE-EXISTING `needless_borrow` errors in
+  `provider_failover.rs`'s test module. They arrived with main's `e7857682`
+  (yesterday's §3 should-fixes unification); `git diff main` shows this lane
+  never touched the file. Fixed rather than carried, per the commit
+  checklist's "regardless of whether you think you caused it".
+- `cargo build --workspace --release` = 0 (re-run after that fix).
+- `cargo test --workspace` = **exit 0 — 554 `test result:` lines, 3,181
+  passed, 0 failed, 2 ignored, ZERO `SKIP:` lines**, with the lane's
+  17-variable env block. Because cargo captures a passing test's output, the
+  absence of `SKIP:` proves nothing on its own — every family this lane moves
+  was confirmed to have RUN by its per-binary result line:
+  `settings_routes` 1/0 (0.24 s) · `chat_settings_tier2` 1/0 (0.01 s) ·
+  `provisioning` 3/0 (0.02 s) · `task_type_log_mapping` 1/0 ·
+  `almanack_tier2` 1/0 (0.11 s) · `almanack_render` 1/0 (0.02 s) ·
+  `help_tree` 1/0 (1.14 s) · `memories_routes` 1/0 (0.46 s) ·
+  `chat_settings_column_sites_guard` 1/0 · `help_tree_embed_guard` 1/0 ·
+  `chat_settings_composer_web_routes` **2**/0 (0.97 s — the new arm) ·
+  `host_help_docs_boot` 2/0 (2.99 s). The two 0.00 s rows are pure in-memory
+  families whose green was separately proven by name with `--nocapture`
+  (`OK: task-type→log-type matched oracle (31 rows; 28 v5 arms all covered)`).
+- Every family this lane moves regenerated FRESH from
+  `/tmp/qt-v4-pin-p4d179-f4ad2c8d1` through `recipe_sweep.py --v4 <pin> --run
+  <family>`, one sweep at a time, re-run by name, with the changed bytes
+  grepped in each NDJSON: `impersonation_voice` 7 rows /
+  `impersonationVoiceRewrite` 29× (settings) · both polarities `0` and `1`
+  (chat-settings tier 2) · `VOICE_REWRITE` 2× (task-type) ·
+  `impersonationVoiceRewrite":false` 2× (almanack tier 2) ·
+  `Impersonated Lines in Character Voice` 7× No + 1× Yes (almanack render) ·
+  `impersonation-voice.md` + `In Their Own Words` (help tree).
+- Ownership honoured: `git diff main -- apps/web/` EMPTY;
+  `api/types.rs`, `api/engine.rs`, `api/chat_post_office.rs`,
+  `services/announcer/**`, `system_prompt_compiler.rs`, `spine.rs`,
+  `docs/v4/**` and the `post-office-*` / `in-scene-voiced-*` pairs all
+  untouched. One file outside the table moved and is flagged above:
+  `provider_failover.rs` (the pre-existing clippy red), which no lane in this
+  round owns.
+
+Versions at lane end: core **0.0.890**, harness **0.0.778**, host
+**0.0.127**, web **0.0.138**; cli / tauri / SPA unchanged.

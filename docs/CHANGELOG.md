@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — docs(status-log): the P4.D179 lane record
+
+_Docs-only change._
+
+The lane record for the server substrate of the impersonated-line voice
+rewrite: the freshness probe results, the four before-the-fix measurements
+(including one the plan predicted would fail and did not, with what was
+measured instead), what each of the five units landed, the eight
+deliberate-breakage checks and what each one reddened, the deferral, the
+regeneration recipes, which fixtures moved and what that invalidates, and the
+full gate.
+
+It also carries two things for whoever merges this: three help differentials
+that are red for a reason predating this work — proven by reproducing them on
+an untouched checkout — with the remedy an earlier round already wrote down,
+and a gap in the reference app's own test fixture worth reporting upstream.
+
 #### 2026-09-11 — fix(lint): clear three pre-existing lint errors in the failover tests
 
 _Versions: core 0.0.890._
