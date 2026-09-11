@@ -123171,3 +123171,141 @@ including an `NG2012` blaming a DIFFERENT file (here `salon-conversation.ts`,
 for an import of the file that actually had the backtick). Already a memory note
 (`backtick-in-an-angular-inline-template-comment`); re-encountered writing the
 announcement dialog's panel swap.
+
+---
+
+## Round record — the `f4ad2c8d1` In-Their-Own-Words drift catch-up round unification (2026-09-11)
+
+**Unified on main; the oracle baseline MOVES `cc65d6bfc` → `f4ad2c8d1`; the
+drift ledger's §3 is EMPTY (v4 HEAD AT the baseline at both ends of the
+unification) and the regen rule is pin NOT required (re-probe first).** Three
+lanes from `main`, no stacking: P4.D179 (the server substrate) ∥ P4.D180 (the
+rehearsal service + verb + host wire) ∥ P4.D181 (the SPA half + bug 134). Unify
+branch `unify/f4ad2c8d1-in-their-own-words`, cherry-picked in that order —
+every conflict version-only (resolved as ours + that commit's own increment;
+the lock refreshed by `cargo metadata --offline`), the two append-only docs
+union-merged. **Two pick incidents, both caught by count:** a manual
+`--continue` on the first version conflict left the loop's `main..branch`
+list still naming that commit, so it was picked TWICE (the second copy a
+pure version bump — 23 commits where 22 were due; dropped with `git rebase
+--onto` and the cascade re-resolved ours+1), and both server lanes had fixed
+the same pre-existing clippy red in `provider_failover.rs`, which the pick
+deduped silently (the fix rides P4.D179's commit; P4.D180's record corrected).
+The human-authorised four-site `host.rs` edit (P4.D180) and P4.D179's boot
+ensure in the same file both survived the pick. Versions recounted as base +
+total bumps: core 886 + 7, harness 775 + 7, host 125 + 3, web 136 + 4, SPA
+0.5.695 + 8 — the tree agreed exactly after the duplicate was dropped.
+
+### The §3 review (three parallel readers, one per lane; the verdict owned here)
+
+**No blocking finding in any lane's own code.** Every should-fix landed on the
+unify branch (`fix(unify)`, core 0.0.894 / harness 0.0.783 / host 0.0.129 / SPA
+0.5.704), mutation-proven where a test could see it:
+
+| lane | finding | fix | proof |
+| --- | --- | --- | --- |
+| D180 (the one that mattered) | `in_scene_voiced.rs` claimed the formatter's `name` reaches the wire through a content prefix. FALSE on a name-supporting provider: the formatter leaves the content UNPREFIXED and puts the attribution in `name` alone, and v5's `CompletionMessage` carries no `name` — so on the fixture's OPENAI / OPENAI_COMPATIBLE seats the transcript's attribution never reaches the wire. BOTH recorders projected `{role, content}`, so 27 green cases were blind to it. Measured further at the unify: v5's whole TURN path has the same shape (`StreamMessage` carries no `name`; the chat-completions builder emits `{role, content}`), and v4's OpenAI plugin drives the Responses API, which has no such field — so this is NOT the lane's regression but a pre-existing, v5-wide question about the chat-completions providers (Grok / NanoGPT / OAC) | the comment corrected; the oracle now RECORDS `name`; the family strips it before the content compare and asserts BOTH directions — `[CHEAP_LLM_NAME_FIELD_GAP]`: v4 rows carrying `name` must be > 0 (**136** are), v5 rows must be 0 | reverting either assertion reddens the family; the wider turn-path measurement is a named phase-4 candidate |
+| D180 | the two Tier-2 log pins opened with `env_or_skip("QT_ORACLE_IN_SCENE_VOICED")` though neither reads the NDJSON — they SKIPped silently in any gate without the var (the class Unit 0 of the same lane was spent on) | guards deleted | run WITHOUT the var: both pins RUN and pass (only the main differential SKIPs) |
+| D180 | `systemPromptId=<null>` in the prompt-resolved debug line — v4 logs `null`; the tree's convention is `unwrap_or("null")`, `<null>` appeared at this one site | `null` | — |
+| D180 | `host.rs`'s out-of-ownership note said "three" lines for four sites; the lane record's files table credited its commit with the failover fix the pick deduped | both corrected | — |
+| D179 | two comments (oracle case + harness) claimed the new GET row is what catches a FALSE-default read defaulting the wrong way — it cannot: user A's row is built by v4's own repo at the pin, so the column is present with `0` on both sides; the tolerance is pinned by the `chat_settings.rs` unit test and the web arm that drops the column | reworded to what the rows pin | — |
+| D179 | v4's `logger.debug('[Settings v1] impersonationVoiceRewrite updated', …)` dropped with no NO-PORT recorded | recorded NO-PORT beside its equally-unported sibling arm | — |
+| D179 | lane record mutation row 3 credited the seed mutation with reddening the GET-default row; the seed cannot reach v4's row — it reddened `s_default_inject` | row corrected | — |
+| D181 | the memory-cascade dialog's new "Remember this choice" → `confirm` payload wiring was pinned by NOTHING (hard-coding `remember: false` left `npm test` green) | `memory-cascade-dialog.spec.ts`: both legs + the action + v4's sentence | hard-coding `remember: false` reddens the ticked leg |
+| D181 | the extracted `qt-voice-rewrite-review-panel` interposed an inline custom element between `.qt-dialog-body` and v4's `<div>` root — "mechanical" only modulo the host box (the #97/#107 class) | `host: { style: 'display: contents' }` (the `concierge-mark` idiom) | — |
+| D181 | gate spec header "fourteen `it`s" (twelve); the class doc carried one of three NO-COUNTERPARTs; the lane record's recount (eight → nine commits, 0.5.702 → 0.5.703) | all corrected | — |
+
+**Verified clean by the review (and re-read here):** the §B wire name-for-name
+across `api/types.rs` / the handler body / `core-contract.ts`; the handler ladder
+in v4's MEASURED order; every dialog/composer/settings string byte-identical to
+v4's; the composer-clear restructure reaching every caller (one host, one door);
+no `providedIn: 'root'`, no `[value]`-bound select, no stub, no `TODO`, no
+`DbError::Key` at a new site; the spelling.
+
+### The standing red the round fixed at its ROOT (a unifier wire)
+
+Both server lanes reported the same "spotted, not mine": four families RED on
+`main` — `post_office_routes_equivalence` and the three help-chat families —
+behind oracle variables no gate sets. P4.D180 healed the announcer family's
+per-case COPY with `ensure_p4d171_columns`; applying the same to the four went
+1-of-4 green. **The other three showed `WANT: "error": "no such column:
+cycleOrderParticipantIds"` — the ORACLE itself was red:** v4's `_update` writes
+every Zod-defaulted field, so on a pre-`78b381a96` committed pair v4's jest
+side recorded its own failure as the expected value, and a v5-side heal could
+only make v5 diverge from a red oracle (the fixture-that-agrees-with-itself
+class in its worst form — the announcer family had been "green" with BOTH sides
+silently losing the roster). The root fix: the P4.52 widening script
+(`migrate-memories-fixture-columns.ts`) gains the two P4.D171 rows — v4's real
+`addColumnIfMissing` ALTERs verbatim behind v4's presence guard — and was run
+from the pinned worktree on `post-office-main.db`, `help-chat-main.db` and
+`memories-main.db` (`fix(harness)`, web 0.0.141). All six affected families
+regenerated fresh from the pin: 6/6 green. The v5-side heals I had first
+applied were reverted; the announcer family's stays as a no-op.
+
+### The wires
+
+- `EXPECTED_REHEARSAL_LOG_TYPE` flipped `SUMMARIZATION` → `VOICE_REWRITE`
+  — GREEN on the flip (`feat(unify)`, web 0.0.142): the live proof that a
+  rehearsal's call lands on its own log type, which needed P4.D179's map and
+  P4.D180's verb on one branch.
+- `P4D179_SERVER_LANDED` / `P4D180_SERVER_LANDED` → `true` in both e2e specs
+  (SPA 0.5.705). **Their first execution caught three gesture defects, none a
+  product defect** (the snapshot showed the modal on screen with the heading,
+  the draft, both pickers): the beat's `dialog` locator was the box-less inline
+  HOST, which Playwright reports hidden while the fixed-position modal child is
+  visible (scoped to the modal's `role=dialog`); the shared `mock-llm.ts`
+  answered the rehearsal's NON-streaming call with SSE, which read as an empty
+  reply ("Nothing came back") — it now answers a JSON `chat.completion` when
+  the body's `stream` is not `true`, the K2 precedent folded into the shared
+  helper; and the two sibling beats failed by COUPLING from the first dying
+  mid-flow (seat left impersonated, toggle left on) — the impersonate helper
+  releases a leftover overlay, beat 3's cleanup runs in a `finally`, and the
+  settings beat measures its round trip RELATIVE to the row's initial state.
+  **The second full run then found the round's most reusable lesson:** the
+  shared mock's new JSON answer, applied GLOBALLY, fed the Host's title
+  checkpoints a real verdict on every beat, and the checkpoints re-titled the
+  shared fixture chats from the mock's words — a class of coupling no isolated
+  run can see (`fix(e2e)` follow-up, SPA 0.5.707: the answer is opt-in; the
+  rehearsal beats send into the chat nobody totals with its title pinned as
+  manually renamed — v4's own `isManuallyRenamed` skip — wait for the floor
+  before typing, take the seat by NAME, and prove an attachment-only send by
+  the tray emptying under the virtualized transcript).
+- The `docs/v4/` mirror refreshed at the tip (the feature doc at
+  `features/complete/`, the bug-134 file at `bugs/fixed/`, `bugs.md`, `API.md`,
+  `DDL.md`, `ROADMAP.md`, `CHANGELOG.md`).
+- The three order status headers rewritten; the ledger's §1 rewritten, its two
+  §3 rows retired to §6; phase-4.md's UNIFIED section; the memory note.
+
+### The gate (from the unify branch, `CARGO_INCREMENTAL=0`, `TZ=UTC`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets (default and `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` clean.
+- **All 14 families the round moves regenerated FRESH from ONE unifier pin at
+  `f4ad2c8d1`** (`/tmp/qt-v4-pin-unify-f4ad2c8d1`, the three symlink classes,
+  marker-verified: `impersonationVoiceRewrite` 1× in `settings.types.ts`,
+  `help/` 124 files) through `recipe_sweep.py --v4 <pin> --run-all --families
+  …`: **14/14 ok, zero SKIP** (`sweep-results.json` label "f4ad2c8d1
+  unification gate"). Changed bytes grepped: 31 task-type rows with
+  `VOICE_REWRITE` ×2; `Impersonated Lines in Character Voice` 7× No + 1× Yes;
+  `impersonation_voice` 7 rows; the in-scene family's 27 cases with
+  `[CHEAP_LLM_NAME_FIELD_GAP] v4 rows carrying name: 136; v5 rows: 0`; the
+  announcer NDJSON identical at both pins (md5 `7087b8e0…`, per the lane) —
+  and green again after the pair widening.
+- `cargo test --workspace` with the 15-variable env block (`QT_V4_ROOT` at the
+  pin + the 14 families' recipe vars): **556 test binaries / 3,192 passed / 0
+  failed / 2 ignored, exit 0, ZERO `SKIP:` lines** (552 + the round's four new
+  binaries: `task_type_log_mapping_equivalence`, `chat_settings_column_sites_
+  guard`, `in_scene_voiced_tier3_equivalence`, `impersonation_voice_preview_
+  wire`).
+- SPA: `npm run lint` clean (`check-qt-classes` 951 classes); `npm test`
+  **431 spec files / 7,193 passed** (430 + the new `memory-cascade-dialog.spec`);
+  `npm run build` clean.
+- Full Playwright, first run against the fresh release build: **309 passed /
+  6 failed / 1 skipped (9.6 m)** — the three activated beats on their first
+  execution (the gesture defects above) plus the three documented full-suite
+  intermittents (both P4.D161 pause-toast beats, the P4.d17 quill) on surfaces
+  this round never opened; the skip is the standing store-probe park.
+  full Playwright — FOUR runs, the activated beats' first executions: run 1 **309 passed / 6 failed / 1 skipped (9.6 m)** — the three activated beats (gesture defects, no product defect) + the three documented intermittents; run 2, after the shared mock learned to answer non-streaming calls GLOBALLY, **305 / 10 / 1** — the Host's title checkpoints, fed a real verdict for the first time, RE-TITLED the shared fixture chats from the mock's words and six later title-keyed beats lost "Group Expedition" (the answer is now OPT-IN; the rehearsal beats moved onto Group Expedition with its title pinned manual — v4's own skip rule — and wait for the floor before typing); run 3 **314 / 1 / 1** (the attachment-only beat's "first seat" had drifted onto Bram — now by name, and the send is proven by the tray emptying); run 4 **312 passed / 3 failed / 1 skipped (9.2 m)** — the three reds EXACTLY the documented full-suite intermittents (both P4.D161 pause-toast beats, the P4.d17 quill; green in run 3 and 9/9 by file in isolation), the skip the standing store-probe park, **every beat this round touched green**
+
+Versions: **core 0.0.894, harness 0.0.783, host 0.0.129, web 0.0.142, SPA 0.5.707**; cli 0.0.20 / tauri 0.0.7 unchanged. The dogfood pass over this round's live surfaces is the top next candidate (phase-4.md).

@@ -6628,6 +6628,56 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (P4.D179 ∥ P4.D180 ∥ P4.D181) — UNIFIED 2026-09-11
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES `cc65d6bfc` →
+`f4ad2c8d1`; the drift ledger's §3 is EMPTY (v4 HEAD AT the baseline at both
+ends of the unification) and the regen rule is pin NOT required (re-probe
+first).** Round record: `status-log.md` → "Round record — the `f4ad2c8d1`
+In-Their-Own-Words drift catch-up round unification" (the pick incidents, the
+§3 review's findings, the root fix of four standing reds, the wires, the gate
+numbers). CHANGELOG: the unification entries of 2026-09-11.
+
+**What is next, in order:**
+
+1. **The owed dogfood pass** over this round's live surfaces on the Friday
+   copy (where v4 has already shipped the column and, likely, run the
+   feature): the toggle on a real seat; a REAL rehearsal through a real
+   profile (💸) with its `VOICE_REWRITE` `llm_logs` row — the first time the
+   log type is right for the announcement rehearsal too; the uncensored
+   reroute on a Flagged chat; "Edit original" keeping a real draft and the
+   tray; the memory-cascade "Remember this choice" arm + its invalidation;
+   bug 134's live-settings claim on a chat left open in another tab. Plus
+   the previous round's owed items (bug 133 live, the gallery 404, the
+   memory-gate lines) and the standing human-only 💸 items.
+2. **The cheap-LLM / turn-path `name`-field measurement** (the §3 review's
+   headline, RECORDED as `[CHEAP_LLM_NAME_FIELD_GAP]` in the in-scene
+   family — 136 v4 rows carry `name`, 0 v5 rows): v5's `CompletionMessage`
+   AND `StreamMessage` carry no `name`, and the chat-completions builder
+   emits `{role, content}`. v4's OpenAI plugin drives the Responses API (no
+   such field), so the open question is whether v4's chat-completions
+   plugins (Grok / NanoGPT / OAC / DeepSeek) forward `name` on the TURN
+   path. If they do, v5 has a v5-wide wire divergence on multi-character
+   attribution for those providers — a request-envelope corpus row with a
+   named message is the measurement, and threading `name` through
+   `StreamMessage` + `CompletionMessage` + the builders is the repair (48
+   struct-literal sites, mostly tests). One order.
+3. **P4.87's two OPEN coverage items** (unchanged from the previous round:
+   the shared-`DrawSource` reddening case + `PinnedDraws.consumed`; the two
+   frozen-zero swipe families).
+4. **The handler-logging remainders + maintenance smalls** banked at the
+   previous round (unchanged — this round banked nothing new beyond item 2).
+5. **Two v4-side filing candidates for the human:** v4's
+   `__tests__/helpers/almanack/fixture.ts` omits `impersonationVoiceRewrite`
+   while `FeatureConfigInfo` declares it required (so v4's own render test
+   only ever renders `No`); and `hideStopButton` makes v4's "Generating..."
+   send title reachable only with the participant sidebar open. Plus the
+   previous round's two (the `summary_fold` `lastTurnParticipantId` loss;
+   the `— outfit preview` third writer).
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (P4.D179 ∥ P4.D180 ∥ P4.D181) — ORDERED 2026-09-10
 
 **Baseline `cc65d6bfc`; v4 `main` HEAD `f4ad2c8d1` (TWO past — `686954937`,

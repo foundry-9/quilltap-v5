@@ -19,40 +19,33 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `cc65d6bfc`** — "Fix bug 133: a moderated chat's story
-  background could escalate to the uncensored provider" (v4 main, 2026-09-09
-  15:51 -0500, `4.10.0-dev.22`), adopted at the `cc65d6bfc` bug-133 catch-up +
-  `78b381a96`-round remainders round unification (P4.D178 ∥ P4.87 ∥ P4.88,
-  2026-09-10). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-10 (`/driftcheck`, main checkout, after the round's
-  unification).
-- **v4 `main` HEAD at check:** `f4ad2c8d1` ("Fix bug 134: a chat setting
-  changed while a Salon tab is open never reached it", 2026-09-10 22:47
-  -0500) — **2 commits past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content-checked: no
-  `lib/`/`app/`/`packages/` delta unabsorbed by main).
+- **Oracle baseline: `f4ad2c8d1`** — "Fix bug 134: a chat setting changed
+  while a Salon tab is open never reached it" (v4 main, 2026-09-10 22:47
+  -0500, `4.10.0-dev.24`), adopted at the `f4ad2c8d1` In-Their-Own-Words
+  drift catch-up round unification (P4.D179 ∥ P4.D180 ∥ P4.D181,
+  2026-09-11). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-11 (`/unify`, main checkout, at the round's
+  unification — the §2 probe passed at every lane's start and end and at
+  both ends of the unification).
+- **v4 `main` HEAD at check:** `f4ad2c8d1` — **AT the baseline, zero
+  commits past.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content-checked at
+  the previous check: no `lib/`/`app/`/`packages/` delta unabsorbed by
+  main).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. The docs-only
-  dirt §1 recorded at the previous check (`update-documentation.md`,
-  `ROADMAP.md`, `impersonation-voice-rewrite.md`) has been committed — it
-  was this round's feature work in flight, and it shipped in `686954937`.
-- **Verdict: DRIFT PENDING — 2 commits.** See §3.
-- **Regen rule: PIN REQUIRED.** v4 HEAD is past the baseline, so every
-  oracle regeneration must run from a worktree pinned at `cc65d6bfc`
-  (§5.1's recipe) until the catch-up round moves the baseline. The
-  checkout itself is clean, so the pin is the only constraint.
-- **Schema state:** ⚠ **v4 has moved the schema.** `686954937` adds
-  `chat_settings."impersonationVoiceRewrite" INTEGER DEFAULT 0` (migration
-  `add-impersonation-voice-rewrite-field-v1`, one ALTER TABLE, no
-  collection loop; `introducedInVersion: 4.10.0`). v5's
-  `fresh_schema.json` therefore needs a **D23 re-dump** from v4's live
-  `generateDDL` plus a boot ensure — the P4.D72 `chat_settings`-columns
-  precedent. `qtap-export.schema.json` is untouched, so
-  `qtap_schema_embed_guard` stays green. `llm_logs.type` is plain TEXT, so
-  the new `VOICE_REWRITE` log type needs **no** migration. `help/**` moves
-  **123 → 124** (new `impersonation-voice.md`; modified
-  `chat-participants.md`, `chat-settings.md`, `insert-announcement.md`,
-  `settings.md`).
+- **Checkout at check:** branch **`main`**, tree **CLEAN**.
+- **Verdict: CLEAN — no drift pending.** §3 is empty.
+- **Regen rule: pin NOT required** (v4 HEAD is AT the baseline and the
+  checkout is clean) — **re-probe first, every time**; the moment v4 HEAD
+  moves past `f4ad2c8d1` the rule flips back to PIN REQUIRED (§5.1).
+- **Schema state:** in step. `fresh_schema.json` + `chat_settings_seed.json`
+  re-dumped from v4's live `generateDDL` at `f4ad2c8d1` (P4.D179 — the
+  `chat_settings."impersonationVoiceRewrite" INTEGER DEFAULT 0` column, seed
+  34 → 35, `schema-key-order.json` byte-identical); the boot ensure
+  `chat_settings_impersonation_voice_repair` re-homes v4's
+  `add-impersonation-voice-rewrite-field-v1`. `qtap-export.schema.json`
+  untouched. `llm_logs.type` gained the `VOICE_REWRITE` value (plain TEXT,
+  no DDL move). `help/**` vendored at 124 files (the tip's bytes).
 
 ## §2 The freshness probe
 
@@ -91,8 +84,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `686954937` | 2026-09-10 | feat(salon): restate an impersonated line in the character's own voice ("In Their Own Words") | **PORT-NEW** (with PORT riders) | **New:** the in-scene voice rehearsal — `lib/services/announcer/in-scene-voiced.ts` + `voice-rewrite-core.ts`, the `impersonation-voice-preview` chat action + `impersonationVoicePreviewSchema`, `ImpersonationVoiceDialog`/`VoiceRewriteReviewPanel`/`useImpersonationVoice`. **Ported surfaces it moves:** `chat_settings` (a new column — D23 re-dump + boot ensure, P4.D72 precedent) · the settings PUT/GET arms + `chatSettings` verb (`api/settings.rs`, `settings_routes_equivalence`, P4.D72/P4.D95) · `llm_logging.rs`'s `map_task_type_to_log_type` — **v5 measurably has v4's pre-fix silent default for `announcement-rewrite`**, which has filed as SUMMARIZATION since 4.4 (the `VOICE_REWRITE` log type is new) · `services/announcer/character_voiced.rs` (v4 extracts its recall/call/result into the shared core — read as behaviour-neutral, to be proven) · the Almanack `featureConfig` ledger (`almanack/phase3_ledgers.rs` + `almanack_tier2_equivalence`/`render`, P4.37/P4.D50) · the migration pretty-label table (`quilltap-host/src/host.rs`) · the LLM Inspector + Wire Records type rows (SPA `llm-inspector-panel.ts`, `llm-logs-card.ts`) · the Salon composer/modals/`SpeakingAsAvatar` (P4.D58/P4.D60) · Settings → Chat → Composer · the vendored `help/**` tree 123 → 124 (P4.9I2) | **ORDERED(P4.D179, P4.D180, P4.D181)** — 2026-09-10: P4.D179 the column (D23 re-dump + boot ensure + route arm) + the `VOICE_REWRITE` map + the Almanack row + the `help/**` re-vendor; P4.D180 the `voice_rewrite_core` extraction + the new `in_scene_voiced` service + the `chatImpersonationVoicePreview` verb + the host wire; P4.D181 the SPA half. Orders: `work-orders/p4.d179-voice-rewrite-substrate-server.md`, `p4.d180-in-scene-voice-rehearsal-server.md`, `p4.d181-voice-rewrite-spa-bug-134.md` |
-| `f4ad2c8d1` | 2026-09-10 | Fix bug 134: a chat setting changed while a Salon tab is open never reached it | **PORT** | v4 moves all nine `SalonView` settings reads onto `useChatSettingsQuery` and deletes `useChatData`'s mount-only `fetchChatSettings`; the salon-local `ChatSettings` duplicate becomes a re-export of the canonical shape; the memory-cascade "remember my choice" PUT invalidates `queryKeys.settings.chat`. **Intersects:** the v5 SPA Salon settings readers (`chat/conversation-header.ts`, `message-row.ts`, `message-list.ts`, `thinking-block.ts`), the tab-activation refresh machinery (P4.D89) and the realtime invalidation topics (P4.D123–D125/D177). ⚠ **Whether v5 shares the staleness is a measurement, not an assumption** — v5 has both a tab-activation refetch and pushed invalidation that v4 lacked at the time; the lane measures before porting. Bug 134 was filed by v4 from its own verification of `686954937`, **not** a v5 filing, so no convergence pin is implicated. `help/settings.md` moves with it | **ORDERED(P4.D181)** — 2026-09-10: measured-then-ported in the SPA lane (v5's Salon already reads settings through the `['chatSettings']` TanStack query with save-side invalidation and the tab-activation sweep; the memory-cascade remember arm is measured on v4's dialog at the pin; the `types.ts` consolidation is NO-COUNTERPART). Its `help/settings.md` hunk rides P4.D179's re-vendor. Order: `work-orders/p4.d181-voice-rewrite-spa-bug-134.md` |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -246,6 +237,22 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (2026-09-11,
+  baseline `cc65d6bfc` → `f4ad2c8d1`):** `686954937` ABSORBED(P4.D179 the
+  `chat_settings."impersonationVoiceRewrite"` column through the D23 re-dump
+  + a boot ensure + the route arm, the `VOICE_REWRITE` log type + both
+  `mapTaskTypeToLogType` arms — v5 had filed `announcement-rewrite` as
+  `SUMMARIZATION` since it was ported — the Almanack row, `help/**` 123 →
+  124 ∥ P4.D180 the `voice_rewrite_core` extraction proven neutral at both
+  pins, the new `in_scene_voiced` service, the `chatImpersonationVoicePreview`
+  verb, the LIVE host wire, a new committed pair + 27-case tier-3 family ∥
+  P4.D181 the whole SPA half); `f4ad2c8d1` ABSORBED(P4.D181 — bug 134
+  measured then ported: v5 never had the mount-only snapshot, the live-read
+  facts pinned structurally, the memory-cascade remember arm + its
+  invalidation landed, the `types.ts` consolidation NO-COUNTERPART; its
+  `help/settings.md` hunk rode P4.D179's re-vendor). Round record:
+  `status-log.md` → "Round record — the `f4ad2c8d1` In-Their-Own-Words drift
+  catch-up round unification".
 - **The `cc65d6bfc` bug-133 catch-up + `78b381a96`-round remainders round
   (2026-09-10, baseline `78b381a96` → `cc65d6bfc`):** `cc65d6bfc`
   ABSORBED(P4.D178 — bug 133 whole: the sanitizer's fourth parameter

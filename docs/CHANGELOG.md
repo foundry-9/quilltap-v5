@@ -51,15 +51,15 @@ on main behind unset oracle variables were fixed at the root by widening the
 committed fixture pairs. Gate: 14/14 families fresh from the `f4ad2c8d1` pin
 zero SKIP; 556 test binaries / 3,192 passed / 0 failed / 2 ignored, zero SKIP
 lines; clippy both feature sets; release build; SPA 431 spec files / 7,193;
-build clean; PLAYWRIGHT_RERUN_LINE. Final versions: core 0.0.894, harness
-0.0.783, host 0.0.129, web 0.0.142, cli 0.0.20, tauri 0.0.7, SPA 0.5.706.
+build clean; full Playwright 312 passed / 3 failed / 1 skipped over four runs (the three reds the documented P4.D161/P4.d17 intermittents, green in run 3 and by file; every round beat green — see the round record for what the activated beats' first runs found). Final versions: core 0.0.894, harness
+0.0.783, host 0.0.129, web 0.0.142, cli 0.0.20, tauri 0.0.7, SPA 0.5.707.
 The three order status headers, the ledger (§1 rewritten, two §3 rows retired
 to §6), phase-4.md's UNIFIED section, CLAUDE.md's Status, and the `docs/v4/`
 mirror are updated.
 
 #### 2026-09-11 — test(e2e): the two activated In Their Own Words beats' first-run gesture fixes, and the shared mock LLM answers a non-streaming call
 
-_Versions: SPA 0.5.706._
+_Versions: SPA 0.5.707._
 
 The unified Playwright run was the beats' first execution (§R.8), and it found
 three gesture defects and no product defect: the beat's dialog locator was the

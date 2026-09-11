@@ -3401,10 +3401,57 @@ records THERE. Update this summary only when a phase or round completes.
   feature sets; release build; SPA 310 passed / 2 failed (the documented P4.D161 intermittent, 2/2 green in isolation) / 1 skipped. Versions: core 0.0.886,
   harness 0.0.775, host 0.0.125. **The owed dogfood pass is the top next
   candidate** — see phase-4.md. Round record: `status-log.md`.
-- **Oracle baseline: `cc65d6bfc` (2026-09-09, v4 main — "Fix bug 133: a
-  moderated chat's story background could escalate to the uncensored
-  provider", `4.10.0-dev.22`), adopted at the `cc65d6bfc` bug-133 catch-up +
-  `78b381a96`-round remainders round unification (2026-09-10).**
+- **The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (P4.D179 ∥
+  P4.D180 ∥ P4.D181): UNIFIED on main (2026-09-11) — ALL THREE CLOSED; the
+  oracle baseline MOVES to `f4ad2c8d1` and the drift debt is CLEARED.** v4's
+  impersonated-line voice rewrite + bug 134 absorbed whole. Server: the
+  `chat_settings."impersonationVoiceRewrite"` column through the D23
+  re-dump (seed 34 → 35) + a boot ensure + the route arm with v4's sentence
+  (present-but-null 400s, pinned at the wire); the `VOICE_REWRITE` log type
+  + both `map_task_type_to_log_type` arms — **v5 had filed
+  `announcement-rewrite` as `SUMMARIZATION` since it was ported**, pinned
+  by a NEW 31-row tier-1 family censusing v5's own match arms; the Almanack
+  row; `help/**` 123 → 124. The rehearsal whole: `voice_rewrite_core`
+  extracted with the announcer family byte-identical at BOTH pins (v4's
+  refactor proven neutral on v4's own code), the new `in_scene_voiced`
+  service (the filter order whisper → history → presence from the FULL
+  event list; UTF-16 `max_tokens`; the stored compiled stack read by the
+  rehearsal while the orchestrator's turn-time deferral stays), the
+  `chatImpersonationVoicePreview` verb in v4's MEASURED ladder order, the
+  LIVE host wire (💸), a NEW committed pair + 27-case tier-3 family whose
+  first run caught a real defect (the `systemSender` played filter tested a
+  TEXT column as a bool), the wire test proving the driver WIRED + the
+  `llm_logs` row. SPA: the gate with v4's twelve cases, a client-safe
+  `carina-parser.ts` over a recorded corpus, **the composer-clear
+  restructure** (the composer stops clearing on emit; the Salon's one door
+  clears on send), the dialog string for string + the shared review panel,
+  the cue, the Composer-card toggle, the label sites, and **bug 134 measured
+  then ported** (v5 never had the mount-only snapshot; the live-read facts
+  pinned structurally; v4's memory-cascade "Remember this choice" arm —
+  which v5 had NEVER carried — landed with its invalidation). **The §3
+  review found no blocking code in any lane; its headline: the in-scene
+  service's claim that the formatter's `name` reaches the wire was FALSE on
+  name-supporting providers** — v5's `CompletionMessage` carries no `name`,
+  the same shape as the whole turn path, now RECORDED both directions as
+  `[CHEAP_LLM_NAME_FIELD_GAP]` (136 v4 rows, 0 v5) with the turn-path
+  measurement a named candidate; also two silently-skipping pins un-guarded,
+  the remember-arm wiring pinned, six comment corrections. **The unifier's
+  root fix:** four families (`post_office_routes` + three help-chat) were
+  RED on main behind oracle vars no gate set — v4's own jest side recorded
+  `no such column` on the pre-`78b381a96` committed pairs — widened through
+  v4's migration SQL (the P4.52 script + the two P4.D171 rows). The
+  activated beats' first execution caught three gesture defects, no product
+  defect (an inline-host locator, a class-vs-element selector, the shared
+  mock answering a non-streaming call with SSE). Gate: 14/14 families fresh
+  at the pin zero SKIP; 556 test binaries / 3,192 / 0; clippy both feature
+  sets; release build; ng 431 files / 7,193; full Playwright 312 passed / 3 failed / 1 skipped over four runs (the three reds the documented P4.D161/P4.d17 intermittents, green in run 3 and by file; every round beat green — see the round record for what the activated beats' first runs found).
+  Versions: core 0.0.894, harness 0.0.783, host 0.0.129, web 0.0.142, SPA 0.5.707; cli/tauri unchanged. **Next: the owed dogfood pass, then the
+  `name`-field turn-path measurement** — see phase-4.md. Round record:
+  `status-log.md`.
+- **Oracle baseline: `f4ad2c8d1` (2026-09-10, v4 main — "Fix bug 134: a chat
+  setting changed while a Salon tab is open never reached it",
+  `4.10.0-dev.24`), adopted at the `f4ad2c8d1` In-Their-Own-Words drift
+  catch-up round unification (2026-09-11).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
