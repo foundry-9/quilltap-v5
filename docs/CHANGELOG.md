@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — docs(drift): one docs-only v4 commit landed mid-unification — recorded as a NO-PORT? candidate, the regen rule back to pin required
+
+_Docs-only change._
+
+The post-merge re-probe found v4 `main` at `4dc48283d` ("docs: plan for the
+Salon transcript as a subscribed read"), one past the new `f4ad2c8d1` baseline:
+two files, both under `docs/` (a plan + its changelog line), no lib/app/packages
+/help delta. Recorded in the ledger's §3 as NO-PORT? with that evidence for the
+next round to ratify; §1 rewritten (the regen rule flips to PIN REQUIRED by the
+standing rule). Every regen of the unified round ran from the pinned worktree,
+so none is affected. The plan describes a future PORT-NEW on the realtime and
+transcript surfaces — watched.
+
 #### 2026-09-11 — test(e2e): the rehearsal beats move onto Group Expedition with a pinned title, and the mock's non-streaming answer becomes opt-in
 
 _Versions: SPA 0.5.707._

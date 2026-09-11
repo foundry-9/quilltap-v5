@@ -26,18 +26,22 @@ probe verifies against._
   2026-09-11). CLAUDE.md's Status bullet agrees.
 - **Checked:** 2026-09-11 (`/unify`, main checkout, at the round's
   unification — the §2 probe passed at every lane's start and end and at
-  both ends of the unification).
-- **v4 `main` HEAD at check:** `f4ad2c8d1` — **AT the baseline, zero
-  commits past.**
+  the START of the unification; the post-merge re-probe found ONE commit
+  landed mid-unification, recorded below. Every regen of the round ran from
+  the `f4ad2c8d1` pinned worktree, so none is affected).
+- **v4 `main` HEAD at check:** `4dc48283d` ("docs: plan for the Salon
+  transcript as a subscribed read (SSE demoted to display-only)",
+  2026-09-11 09:28 -0500) — **ONE commit past the baseline.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content-checked at
   the previous check: no `lib/`/`app/`/`packages/` delta unabsorbed by
   main).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: CLEAN — no drift pending.** §3 is empty.
-- **Regen rule: pin NOT required** (v4 HEAD is AT the baseline and the
-  checkout is clean) — **re-probe first, every time**; the moment v4 HEAD
-  moves past `f4ad2c8d1` the rule flips back to PIN REQUIRED (§5.1).
+- **Verdict: DRIFT PENDING — 1 commit, a `NO-PORT?` candidate.** See §3.
+- **Regen rule: PIN REQUIRED** (v4 HEAD is past the baseline — by the
+  standing rule, even for a docs-only candidate until it is ratified): every
+  oracle regeneration runs from a worktree pinned at `f4ad2c8d1` (§5.1). The
+  checkout is clean, so the pin is the only constraint.
 - **Schema state:** in step. `fresh_schema.json` + `chat_settings_seed.json`
   re-dumped from v4's live `generateDDL` at `f4ad2c8d1` (P4.D179 — the
   `chat_settings."impersonationVoiceRewrite" INTEGER DEFAULT 0` column, seed
@@ -84,6 +88,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `4dc48283d` | 2026-09-11 | docs: plan for the Salon transcript as a subscribed read (SSE demoted to display-only) | **NO-PORT?** — two files, both under `docs/` (`docs/CHANGELOG.md` +18, NEW `docs/developer/features/salon-realtime-transcript.md` +128); no `lib/`, `app/`, `packages/`, `plugins/` or `help/` delta (measured by `git show --stat`). Ratify at the next round with that evidence. ⚠ It is a PLAN: when the feature it describes ships (the Salon transcript read through a subscribed query with SSE demoted to display-only), that commit is a PORT-NEW on the P4.D123–D125 realtime + `chat-view-model` surfaces — watch for it | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
