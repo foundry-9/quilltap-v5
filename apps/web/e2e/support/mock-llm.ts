@@ -24,10 +24,25 @@ export const MOCK_LLM_MODELS = ['mock-model', 'mock-model-mini'];
  * OBSERVE the in-flight UI (the thinking indicator) asks for a slow stream, since
  * an instant one can settle before the first assertion polls.
  */
+export interface MockLlmOptions {
+  /**
+   * Answer a NON-streaming completion (`stream` not `true` in the body) with a
+   * JSON `chat.completion` instead of SSE. OPT-IN, and deliberately so: with
+   * it on, every cheap-LLM call the app makes against this mock — the Host's
+   * title checkpoints included — gets a real reply, and the `f4ad2c8d1`
+   * unification measured what that does to the shared fixture: the chats a
+   * beat sends into get RE-TITLED from the mock's words, and every later beat
+   * that finds a chat by title loses it. A beat that opts in must therefore
+   * send only into a chat it created itself (`salon-impersonation-voice-flow`).
+   */
+  nonStreaming?: boolean;
+}
+
 export async function startMockLlm(
   reply: string = MOCK_LLM_REPLY,
   port = 0,
   delayMs = 0,
+  options: MockLlmOptions = {},
 ): Promise<MockLlm> {
   const server = createServer((req, res) => {
     // The models-list + validate probe (OPENAI_COMPATIBLE `GET {baseUrl}/models`
@@ -46,10 +61,11 @@ export async function startMockLlm(
       return;
     }
     // Read the request body for ONE thing: its `stream` flag. A non-streaming
-    // call (the cheap-LLM path — a rehearsal, an optimizer run) expects a JSON
-    // `chat.completion` body; answering it with SSE reads as an empty reply
-    // (the `f4ad2c8d1` unification's activated In Their Own Words beat found
-    // the dialog reporting "Nothing came back"). The reply is fixed either way.
+    // call (the cheap-LLM path — a rehearsal, a title checkpoint) expects a JSON
+    // `chat.completion` body; answering it with SSE reads as an empty reply.
+    // Only a beat that opted in gets the JSON answer (see `MockLlmOptions`);
+    // everyone else keeps the SSE-for-everything shape every existing beat was
+    // written against. The reply is fixed either way.
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
@@ -60,7 +76,7 @@ export async function startMockLlm(
       } catch {
         streaming = true;
       }
-      if (!streaming) {
+      if (options.nonStreaming && !streaming) {
         const words = reply.split(' ');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(

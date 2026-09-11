@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — test(e2e): the rehearsal beats move onto Group Expedition with a pinned title, and the mock's non-streaming answer becomes opt-in
+
+_Versions: SPA 0.5.707._
+
+The second full-suite run after the shared mock learned to answer non-streaming
+calls went from 6 red to 10: every beat's mock now gave the Host's title
+checkpoints a real verdict, and the checkpoints RE-TITLED the shared fixture
+chats from the mock's words — "Group Expedition" became "The kettle is on. Do
+come in." — stranding six later beats that find chats by title, while the
+rehearsal's sends into "Solo Voyage" moved the totals `salon-token-cost-flow`
+asserts. Three changes: the JSON answer is OPT-IN (`MockLlmOptions.nonStreaming`,
+only the rehearsal spec sets it, so every other beat keeps the SSE-for-everything
+world it was written against); the rehearsal beats send into "Group Expedition"
+(the chat the other send-beats share and nobody totals) after pinning its title
+as manually renamed through `chatUpdate` — v4's own rule that a manual title is
+never regenerated (`title_update_job.rs:192`), so an operator gesture, not a
+seam; and the beats wait for the floor (no Stop button) before every typed line,
+take Aria's seat by NAME (the full suite reorders the cards), and prove an
+attachment-only send by the tray EMPTYING — after the composer-clear
+restructure only a real send clears it — rather than by a row under the
+virtualized transcript. Both beats green alone and in the full suite; the
+fourth full run's three reds are the documented intermittents.
+
+#### 2026-09-11 — docs(unify): the `f4ad2c8d1` In-Their-Own-Words drift catch-up round — three orders unified, the baseline moves to `f4ad2c8d1`
+
+_Docs-only change._
+
+P4.D179 (the `chat_settings.impersonationVoiceRewrite` column + the
+`VOICE_REWRITE` log type + the Almanack row + `help/**` 124) ∥ P4.D180 (the
+in-scene voice rehearsal: shared core, service, verb, LIVE host wire, a new
+committed fixture pair + 27-case tier-3 family) ∥ P4.D181 (the SPA half + bug
+134) unified on main; the oracle baseline moves `cc65d6bfc` → `f4ad2c8d1`; the
+drift ledger's §3 is empty. The §3 review found no blocking code in any lane
+and every should-fix landed on the unify branch (headline: the cheap-LLM
+`name`-field gap recorded in both directions). Four families that had been red
+on main behind unset oracle variables were fixed at the root by widening the
+committed fixture pairs. Gate: 14/14 families fresh from the `f4ad2c8d1` pin
+zero SKIP; 556 test binaries / 3,192 passed / 0 failed / 2 ignored, zero SKIP
+lines; clippy both feature sets; release build; SPA 431 spec files / 7,193;
+build clean; PLAYWRIGHT_RERUN_LINE. Final versions: core 0.0.894, harness
+0.0.783, host 0.0.129, web 0.0.142, cli 0.0.20, tauri 0.0.7, SPA 0.5.706.
+The three order status headers, the ledger (§1 rewritten, two §3 rows retired
+to §6), phase-4.md's UNIFIED section, CLAUDE.md's Status, and the `docs/v4/`
+mirror are updated.
+
 #### 2026-09-11 — test(e2e): the two activated In Their Own Words beats' first-run gesture fixes, and the shared mock LLM answers a non-streaming call
 
 _Versions: SPA 0.5.706._

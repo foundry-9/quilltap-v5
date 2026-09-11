@@ -1,6 +1,8 @@
 import { expect, test, type Page } from './support/fixtures';
 
-import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { request as pwRequest } from '@playwright/test';
+
+import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, type MockLlm } from './support/mock-llm';
 import { openSidebarSection } from './support/sidebar';
 
@@ -65,10 +67,32 @@ async function setVoiceRewrite(page: Page, on: boolean): Promise<void> {
   await saved;
 }
 
-async function openSoloVoyage(page: Page): Promise<string> {
+/** Raw dispatch against the real axum server (the `chat-delete-flow` idiom). */
+async function dispatch(req: unknown): Promise<Record<string, unknown>> {
+  const ctx = await pwRequest.newContext();
+  try {
+    const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: req });
+    const body = (await res.json().catch(() => null)) as {
+      type?: string;
+      data?: Record<string, unknown>;
+    } | null;
+    return { type: body?.type ?? '', ...(body?.data ?? {}) };
+  } finally {
+    await ctx.dispose();
+  }
+}
+
+/**
+ * Open the fixture's "Group Expedition" — the multi-seat chat the other
+ * send-beats (`m4-salon`, `smart-typography-flow`) already share, and the one
+ * no beat asserts token totals on ("Solo Voyage" is `salon-token-cost-flow`'s,
+ * and this spec's sends moved its totals in the `f4ad2c8d1` unification's
+ * full-suite run). Returns the chat id.
+ */
+async function openGroupExpedition(page: Page): Promise<string> {
   await page.goto('/salon');
   await maybeUnlock(page);
-  const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Solo Voyage' });
+  const card = page.locator('.chat-card-stack a.qt-entity-card', { hasText: 'Group Expedition' });
   await expect(card).toBeVisible({ timeout: 15_000 });
   await card.click();
   await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
@@ -78,14 +102,41 @@ async function openSoloVoyage(page: Page): Promise<string> {
 }
 
 /**
+ * Pin the chat's title as MANUALLY renamed. This spec's mock answers
+ * non-streaming calls (see `MockLlmOptions.nonStreaming`), so the Host's title
+ * checkpoints get a real verdict and would re-title the chat from the mock's
+ * words — which is how "Group Expedition" became "The kettle is on. Do come
+ * in." for six later beats in the unification's full-suite run. v4 skips a
+ * manually renamed chat (`title_update_job.rs:192`, v4's own rule), so the pin
+ * is an operator gesture, not a test seam. Idempotent.
+ */
+async function pinTitle(chatId: string, title: string): Promise<void> {
+  const resp = await dispatch({
+    type: 'chatUpdate',
+    chatId,
+    chat: { title, isManuallyRenamed: true },
+  });
+  expect(
+    resp['type'],
+    `chatUpdate must not refuse the title pin: ${JSON.stringify(resp)}`,
+  ).not.toBe('error');
+}
+
+/** The chain is settled when no Stop button stands in for Send. */
+async function waitForFloor(page: Page): Promise<void> {
+  await expect(page.locator('.qt-chat-stop-button')).toHaveCount(0, { timeout: 45_000 });
+}
+
+/**
  * Take the LLM seat, the way `salon-dialogs-flow`'s impersonation beat does.
  * Returns the character's name.
  */
-async function impersonateFirstSeat(page: Page): Promise<string> {
+async function impersonateSeat(page: Page, name: string): Promise<string> {
   await openSidebarSection(page, 'Participants');
-  // A sibling beat that died mid-flow can leave the seat impersonated on the
+  // A sibling beat that died mid-flow can leave a seat impersonated on the
   // shared instance; release it first so this beat starts from the same place
-  // every time.
+  // every time. And take the seat by NAME — the full suite reorders the
+  // participant cards, and "the first Speak as button" drifted onto Bram.
   const leftover = page.locator('qt-participant-card button[title^="Stop speaking as "]');
   if (await leftover.count()) {
     await leftover.first().click();
@@ -93,9 +144,8 @@ async function impersonateFirstSeat(page: Page): Promise<string> {
       page.locator('qt-participant-card button[title^="Speak as "]').first(),
     ).toBeVisible({ timeout: 15_000 });
   }
-  const speakAs = page.locator('qt-participant-card button[title^="Speak as "]').first();
+  const speakAs = page.locator(`qt-participant-card button[title="Speak as ${name}"]`);
   await expect(speakAs).toBeVisible({ timeout: 10_000 });
-  const name = (await speakAs.getAttribute('title'))!.replace('Speak as ', '');
   await speakAs.click();
   const card = page.locator('qt-participant-card').filter({ hasText: name });
   await expect(card.locator('span.qt-badge-info')).toBeVisible({ timeout: 15_000 });
@@ -123,6 +173,9 @@ const composer = (page: Page) => page.locator('.qt-chat-composer-input .qt-rich-
 const dialog = (page: Page) => page.locator('qt-impersonation-voice-dialog').getByRole('dialog');
 
 async function typeAndEnter(page: Page, text: string): Promise<void> {
+  // A multi-seat chat answers a line with a streamed chain; an Enter pressed
+  // while the Stop button stands in for Send is swallowed by the composer's gate.
+  await waitForFloor(page);
   await composer(page).click();
   await page.keyboard.type(text);
   await page.keyboard.press('Enter');
@@ -133,6 +186,7 @@ async function typeAndEnter(page: Page, text: string): Promise<void> {
  * portrait's title carries the cue) after the rotation has moved off the seat.
  */
 async function retakeSeat(page: Page, name: string): Promise<void> {
+  await waitForFloor(page);
   const portrait = page.locator('.qt-speaking-as-avatar');
   const armed = `Speaking as ${name} — your draft goes to ${name} to say in their own words first`;
   if ((await portrait.getAttribute('title')) === armed) return;
@@ -166,7 +220,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
   test.beforeAll(async () => {
     // A slow-ish stream so the dialog's "Rehearsing…" state is genuinely
     // observable rather than settled before the first assertion polls.
-    mock = await startMockLlm(REHEARSED, MOCK_LLM_PORT, 150);
+    mock = await startMockLlm(REHEARSED, MOCK_LLM_PORT, 150, { nonStreaming: true });
   });
   test.afterAll(async () => {
     await mock?.close();
@@ -183,8 +237,9 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     await page.goto('/salon');
     await maybeUnlock(page);
     await setVoiceRewrite(page, true);
-    await openSoloVoyage(page);
-    const name = await impersonateFirstSeat(page);
+    const chatId = await openGroupExpedition(page);
+    await pinTitle(chatId, 'Group Expedition');
+    const name = await impersonateSeat(page, 'Aria');
     try {
       // The CUE, before anything is typed: the portrait wears the quill badge and
       // says what a send will do. The badge's positioning is the one thing no unit
@@ -209,7 +264,6 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
 
       const DRAFT = 'Tell the harbourmaster we sail at dawn.';
-      const before = await page.locator('.qt-chat-messages-list qt-message-row').count();
 
       await typeAndEnter(page, DRAFT);
 
@@ -219,7 +273,9 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
         timeout: 15_000,
       });
-      expect(await page.locator('.qt-chat-messages-list qt-message-row').count()).toBe(before);
+      // Nothing posted while the dialog is up: the newest bubble is not the draft
+      // (a row COUNT is not an instrument here — the list is virtualized).
+      expect(await newestBubble(page)).not.toContain(DRAFT);
 
       // The composer was NOT cleared — the whole point of unit 3's restructure.
       await expect(composer(page)).toContainText(DRAFT);
@@ -234,7 +290,9 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await dialog(page).getByRole('button', { name: 'Edit original' }).click();
       await expect(dialog(page)).toHaveCount(0, { timeout: 15_000 });
       await expect(composer(page)).toContainText(DRAFT);
-      expect(await page.locator('.qt-chat-messages-list qt-message-row').count()).toBe(before);
+      // Nothing posted while the dialog is up: the newest bubble is not the draft
+      // (a row COUNT is not an instrument here — the list is virtualized).
+      expect(await newestBubble(page)).not.toContain(DRAFT);
 
       // ── Resend, then Send as written: the operator's OWN bytes post. ──
       await composer(page).click();
@@ -274,6 +332,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     } finally {
       // Leave the shared instance as we found it even when an assertion above
       // fails — the sibling beats read the same seat and the same setting.
+      await waitForFloor(page);
       await openSidebarSection(page, 'Participants');
       await stopImpersonating(page, name);
       await setVoiceRewrite(page, false);
@@ -291,46 +350,51 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     await page.goto('/salon');
     await maybeUnlock(page);
     await setVoiceRewrite(page, true);
-    await openSoloVoyage(page);
-    const name = await impersonateFirstSeat(page);
+    const chatId = await openGroupExpedition(page);
+    await pinTitle(chatId, 'Group Expedition');
+    const name = await impersonateSeat(page, 'Aria');
+    try {
+      // Rule 3: a send with no prose has nothing to restate. Drop a file in the
+      // tray and send on it alone.
+      const file = page.locator('.qt-chat-composer input[type="file"]');
+      await file.setInputFiles({
+        name: 'chart.png',
+        mimeType: 'image/png',
+        // A 1×1 PNG — the smallest thing the upload path will accept.
+        buffer: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+      });
+      await expect(page.locator('.qt-chat-attachment-chip')).toBeVisible({ timeout: 20_000 });
 
-    // Rule 3: a send with no prose has nothing to restate. Drop a file in the
-    // tray and send on it alone.
-    const file = page.locator('.qt-chat-composer input[type="file"]');
-    await file.setInputFiles({
-      name: 'chart.png',
-      mimeType: 'image/png',
-      // A 1×1 PNG — the smallest thing the upload path will accept.
-      buffer: Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-        'base64',
-      ),
-    });
-    await expect(page.locator('.qt-chat-attachment-chip')).toBeVisible({ timeout: 20_000 });
+      await waitForFloor(page);
+      await page.locator('.qt-chat-composer-send').click();
+      // No dialog, and the message goes out as an ordinary send: the newest row
+      // carries the attachment (a row COUNT is not an instrument here — the
+      // list is virtualized).
+      await expect(dialog(page)).toHaveCount(0);
+      // The proof the send went out is the tray EMPTYING: after the composer-
+      // clear restructure only a real send clears it (`clearAfterSend` from the
+      // Salon's one door), and an intercepted submit leaves the chip in place.
+      // (A row under the virtualized transcript is not an instrument here.)
+      await expect(page.locator('.qt-chat-attachment-chip')).toHaveCount(0, { timeout: 20_000 });
 
-    const before = await page.locator('.qt-chat-messages-list qt-message-row').count();
-    await page.locator('.qt-chat-composer-send').click();
-    // No dialog, and the message goes out as an ordinary send.
-    await expect(dialog(page)).toHaveCount(0);
-    await expect
-      .poll(async () => await page.locator('.qt-chat-messages-list qt-message-row').count(), {
-        timeout: 20_000,
-      })
-      .toBeGreaterThan(before);
-
-    // Rule 1: turn the setting off and a plain typed line posts with no dialog.
-    await setVoiceRewrite(page, false);
-    await openSoloVoyage(page);
-    const afterAttachment = await page.locator('.qt-chat-messages-list qt-message-row').count();
-    await typeAndEnter(page, 'Straight to the room, if you please.');
-    await expect(dialog(page)).toHaveCount(0);
-    await expect
-      .poll(async () => await page.locator('.qt-chat-messages-list qt-message-row').count(), {
-        timeout: 20_000,
-      })
-      .toBeGreaterThan(afterAttachment);
-
-    await openSidebarSection(page, 'Participants');
-    await stopImpersonating(page, name);
+      // Rule 1: turn the setting off and a plain typed line posts with no dialog.
+      await setVoiceRewrite(page, false);
+      await page.goto(`/salon/${chatId}`);
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+      const STRAIGHT = 'Straight to the room, if you please.';
+      await typeAndEnter(page, STRAIGHT);
+      await expect(dialog(page)).toHaveCount(0);
+      await expect
+        .poll(async () => await newestBubble(page), { timeout: 20_000 })
+        .toContain(STRAIGHT);
+    } finally {
+      await waitForFloor(page);
+      await openSidebarSection(page, 'Participants');
+      await stopImpersonating(page, name);
+      await setVoiceRewrite(page, false);
+    }
   });
 });
