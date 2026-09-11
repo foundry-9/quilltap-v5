@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-11 — fix(logging): file both voice rehearsals under their own log type
+
+_Versions: core 0.0.888, harness 0.0.777._
+
+The table that decides which log type a cheap-model task is filed under is a
+closed list whose fallback is "chat summary". Two rehearsal tasks were never in
+it, so both filed themselves among the chat summaries in the wire records and
+the inspector — a failure that does not throw and cannot be seen except by
+comparison. This port reproduced it faithfully, which is how it arrived here:
+the older of the two rehearsals has been misfiled since 4.4.
+
+The reference app added a log type for them and exported the mapping function
+so it could be tested. A new differential drives that real export over every
+task-type string this port's own table names — plus the absent, empty and
+unknown probes — and compares row for row; each row also carries the reference
+app's own verdict on whether the result is a type its schema admits. Coverage
+is asserted by censusing this port's source, so a row added later without a
+corpus entry fails rather than passing in silence.
+
+Measured before the fix and after: exactly the two rehearsal rows differed,
+and reverting one of them afterwards reddens exactly that row.
+
 #### 2026-09-11 — fix(fixtures): bring the memories test database up to the current schema vintage
 
 _Versions: web 0.0.138._

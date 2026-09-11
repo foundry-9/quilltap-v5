@@ -383,12 +383,27 @@ pub mod log_type {
     /// A custom tool's mid-run LLM consult (v4 `616930db`/`a2d9a3c8`).
     pub const CUSTOM_TOOL_CONSULT: &str = "CUSTOM_TOOL_CONSULT";
     pub const DANGER_CLASSIFICATION: &str = "DANGER_CLASSIFICATION";
+    /// Both "say it in the character's own voice" rehearsals — the Insert
+    /// Announcement rehearsal (`announcement-rewrite`) and the impersonated-line
+    /// rewrite (`impersonation-voice-rewrite`). v4 4.10 `686954937`; before it,
+    /// both fell through the closed allowlist's `SUMMARIZATION` default, and v5
+    /// reproduced that (measured red-first by
+    /// `task_type_log_mapping_equivalence`).
+    pub const VOICE_REWRITE: &str = "VOICE_REWRITE";
     /// UI-only in v4; no emitter.
     pub const TOOL_CONTINUATION: &str = "TOOL_CONTINUATION";
 }
 
-/// v4 `mapTaskTypeToLogType` (core-execution.ts:36–63), verbatim including the
+/// v4 `mapTaskTypeToLogType` (core-execution.ts), verbatim including the
 /// `|| 'SUMMARIZATION'` default (an unknown or absent task type → SUMMARIZATION).
+///
+/// v4's own doc block, added when it exported the function in `686954937`:
+/// "A CLOSED allowlist: an unmapped task type falls through to SUMMARIZATION
+/// and becomes indistinguishable from a chat summary in the Wire Records and
+/// the LLM inspector. Add a row here whenever you add a task type worth telling
+/// apart." Pinned by `task_type_log_mapping_equivalence`, whose coverage census
+/// requires every arm string below to appear in the corpus — so a row added
+/// here without one is a red rather than another silence.
 pub fn map_task_type_to_log_type(task_type: Option<&str>) -> String {
     let mapped = match task_type.unwrap_or("") {
         "memory-extraction-self"
@@ -411,6 +426,10 @@ pub fn map_task_type_to_log_type(task_type: Option<&str>) -> String {
         "scene-state-tracking" => log_type::SCENE_STATE_TRACKING,
         "answer-confirmation" | "answer-reaffirmation" => log_type::ANSWER_CONFIRMATION,
         "custom-tool-consult" => log_type::CUSTOM_TOOL_CONSULT,
+        // Both "say it in the character's own voice" rehearsals. Unmapped, these
+        // fell through to the SUMMARIZATION default and were indistinguishable
+        // from a chat summary in the Wire Records and the LLM inspector.
+        "announcement-rewrite" | "impersonation-voice-rewrite" => log_type::VOICE_REWRITE,
         // Without this arm the consult would log silently as SUMMARIZATION.
         _ => log_type::SUMMARIZATION,
     };
@@ -441,6 +460,16 @@ mod tests {
         assert_eq!(
             map_task_type_to_log_type(Some("custom-tool-consult")),
             "CUSTOM_TOOL_CONSULT"
+        );
+        // The two v4 4.10 `686954937` arms. Same silent failure mode: without
+        // them both rehearsals file as chat summaries.
+        assert_eq!(
+            map_task_type_to_log_type(Some("announcement-rewrite")),
+            "VOICE_REWRITE"
+        );
+        assert_eq!(
+            map_task_type_to_log_type(Some("impersonation-voice-rewrite")),
+            "VOICE_REWRITE"
         );
         assert_eq!(map_task_type_to_log_type(Some("nonsense")), "SUMMARIZATION");
         assert_eq!(map_task_type_to_log_type(None), "SUMMARIZATION");
