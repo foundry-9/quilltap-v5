@@ -7,12 +7,16 @@
 //!   - [`writer`] — `postAdhocAnnouncement`, the Insert Announcement composer
 //!     button's persisted bubble (Staff / off-scene character / free custom
 //!     name), public by default and whispered when an audience resolved.
+//!   - [`voice_rewrite_core`] — what the two "say it in the character's own
+//!     voice" rehearsals share: the Commonplace recall against the draft, the
+//!     cheap-LLM call, and the never-throws result shape (v4 `686954937`).
 //!   - [`character_voiced`] — `generateCharacterVoicedAnnouncement`, the
-//!     in-character rewrite the dialog offers before the operator posts.
-//!     Persists nothing.
+//!     OFF-SCENE rewrite the Insert Announcement dialog offers before the
+//!     operator posts. Persists nothing.
 //!
 //! Both sit behind the P4.9E2A dispatch verbs in [`crate::api::chat_post_office`].
 
 pub mod audience;
 pub mod character_voiced;
+pub mod voice_rewrite_core;
 pub mod writer;

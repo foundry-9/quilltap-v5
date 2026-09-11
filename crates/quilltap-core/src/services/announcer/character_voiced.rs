@@ -1,4 +1,4 @@
-//! Character-voiced announcement rewriter — v4
+//! Character-voiced announcement rewriter — the OFF-SCENE rehearsal. v4
 //! `lib/services/announcer/character-voiced.ts`
 //! (`generateCharacterVoicedAnnouncement`).
 //!
@@ -16,6 +16,12 @@
 //! audience and the character is told the remark is private. A line pitched to a
 //! full room reads wrong when only one person hears it, so the audience has to
 //! reach the rewrite rather than being applied after the fact.
+//!
+//! The recall, the provider call and the result shape are shared with the
+//! IN-SCENE rehearsal ([`super::in_scene_voiced`]) through
+//! [`super::voice_rewrite_core`]; only the framing below is this module's own
+//! (v4 `686954937`). The extraction is proven byte-neutral — see that module's
+//! header and `announcer_tier3_equivalence`'s.
 //!
 //! Every dependency was already ported; this is composition, not new subsystem
 //! work:
@@ -38,25 +44,31 @@
 
 use serde_json::Value;
 
-use crate::cheap_llm::CheapLlmSelection;
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
-use crate::memory_injector::{format_dynamic_memory_head, InjectorResult, RecallAdjustment};
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
-use crate::services::commonplace_notifications::{build_commonplace_llm_context, CommonplaceParts};
-use crate::services::memory_service::{
-    search_memories_semantic, SemanticSearchOptions, SemanticSearchResult,
-};
 use crate::system_prompt::{
     build_system_prompt, BuildSystemPromptOptions, Character, PhysicalDescription, Pronouns,
     ScenarioEntry, SystemPromptEntry,
 };
 
+use super::voice_rewrite_core::{
+    build_selection, execute_voice_rewrite, format_name_list, recall_for_seed,
+    ExecuteVoiceRewriteParams, VoiceRewriteResult,
+};
+
 /// v4 `TASK_TYPE`.
 const TASK_TYPE: &str = "announcement-rewrite";
+
+/// v4 `ANNOUNCEMENT_MAX_TOKENS` — token ceiling for a proclamation. Flat: an
+/// announcement is short by nature. (The IN-SCENE rehearsal scales its ceiling
+/// to the draft instead — `in_scene_voiced::max_tokens_for_seed`.)
+const ANNOUNCEMENT_MAX_TOKENS: f64 = 2048.0;
+
+/// v4 `LOG_CONTEXT`.
+const LOG_CONTEXT: &str = "[CharacterVoicedAnnouncement]";
 
 /// v4 `CharacterVoicedAnnouncementParams` — `character` and `profile` arrive as
 /// the route's already-resolved rows (vault-overlaid character, raw profile).
@@ -76,22 +88,16 @@ pub struct CharacterVoicedAnnouncementParams<'a> {
     pub now_ms: f64,
 }
 
-/// v4 `CharacterVoicedAnnouncementResult`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CharacterVoicedAnnouncementResult {
-    pub success: bool,
-    pub proposed_markdown: String,
-    pub error: Option<String>,
-}
+/// v4 `CharacterVoicedAnnouncementResult = VoiceRewriteResult`.
+pub type CharacterVoicedAnnouncementResult = VoiceRewriteResult;
 
 // ---------------------------------------------------------------------------
 // Small JSON readers (the `to_carina_character` convention — each service keeps
 // its own projection of the character row)
 // ---------------------------------------------------------------------------
 
-fn s(v: &Value, k: &str) -> Option<String> {
-    v.get(k).and_then(Value::as_str).map(str::to_string)
-}
+use super::voice_rewrite_core::s;
+
 fn b(v: &Value, k: &str) -> Option<bool> {
     v.get(k).and_then(Value::as_bool)
 }
@@ -163,54 +169,6 @@ fn to_sys_character(c: &Value) -> Character {
                     .collect()
             })
             .unwrap_or_default(),
-    }
-}
-
-/// Project a semantic-search result into the injector shape the memory formatter
-/// reads (mirrors `build_context`'s private `injector_result_from_search`).
-fn injector_result_from_search(r: &SemanticSearchResult) -> InjectorResult {
-    InjectorResult {
-        memory: crate::services::carina_query::injector_memory_from_json(&r.memory),
-        score: r.score,
-        effective_weight: Some(r.effective_weight),
-        raw_weight: Some(r.raw_weight),
-        recall_adjustment: r.recall_adjustment.as_ref().map(|a| RecallAdjustment {
-            multiplier: Some(a.multiplier),
-            fired: a.fired.clone(),
-            blended_before: Some(a.blended_before),
-            blended_after: Some(a.blended_after),
-        }),
-    }
-}
-
-/// v4 `buildSelection(profile)` — straight off the operator's chosen profile.
-/// The profile's provider params (e.g. DeepSeek thinking mode) are forwarded so
-/// per-model settings take effect for this utility call too.
-fn build_selection(profile: &Value) -> CheapLlmSelection {
-    let provider = s(profile, "provider").unwrap_or_default();
-    CheapLlmSelection {
-        is_local: provider == "OLLAMA",
-        provider,
-        model_name: s(profile, "modelName").unwrap_or_default(),
-        // JS `profile.baseUrl || undefined` — the empty string is falsy.
-        base_url: s(profile, "baseUrl").filter(|u| !u.is_empty()),
-        connection_profile_id: s(profile, "id"),
-        // v4 `d9c5a1c7` converted this inline construction to the shared
-        // `profileParams()` helper, so the Ollama `num_ctx` injection applies
-        // to this utility call too.
-        profile_parameters: crate::cheap_llm::profile_params_value(profile),
-    }
-}
-
-/// v4 `formatNameList` — `"Alice"`, `"Alice and Bob"`, `"Alice, Bob, and Carol"`.
-/// (The zero-length case is unreachable: every call site guards on a non-empty
-/// audience, and v4's own `names[names.length - 1]` would be `undefined` there.)
-fn format_name_list(names: &[String]) -> String {
-    match names {
-        [] => String::new(),
-        [one] => one.clone(),
-        [a, b] => format!("{a} and {b}"),
-        [head @ .., last] => format!("{}, and {last}", head.join(", ")),
     }
 }
 
@@ -354,46 +312,18 @@ where
     };
 
     // Commonplace recall against the seed text. **Memory recall failure should
-    // not block the rewrite** — v4 catches and proceeds without (it only warns).
-    let mut recall_text = String::new();
-    let memory_results = search_memories_semantic(
+    // not block the rewrite** — the shared core catches and proceeds without
+    // (it only warns), exactly as v4 does.
+    let recall_text = recall_for_seed(
         db,
         embedding,
         &character_id,
         params.seed_markdown,
-        &SemanticSearchOptions {
-            limit: Some(20),
-            min_importance: Some(0.3),
-            now_ms: params.now_ms,
-            ..Default::default()
-        },
-        None,
+        params.chat_id,
+        params.now_ms,
+        LOG_CONTEXT,
     )
     .await;
-    match memory_results {
-        Ok(results) if !results.is_empty() => {
-            let injector: Vec<InjectorResult> =
-                results.iter().map(injector_result_from_search).collect();
-            // The recall spans the character's whole store, so it carries their
-            // memories about other people too; attribute them or the rewrite
-            // reads someone else's life as its own (v4 `d883a5ee1`, bug 122).
-            let subject = crate::services::memory_subject::build_memory_subject_context(
-                db,
-                &character_id,
-                injector.iter().map(|r| r.memory.about_character_id.clone()),
-            );
-            let formatted =
-                format_dynamic_memory_head(&injector, None, Some(12), params.now_ms, &subject);
-            if !formatted.content.is_empty() {
-                recall_text = build_commonplace_llm_context(&CommonplaceParts {
-                    relevant: Some(formatted.content),
-                    ..Default::default()
-                });
-            }
-        }
-        Ok(_) => {}
-        Err(_) => { /* v4 logs a warning and proceeds without recall. */ }
-    }
 
     // Who's listening. A whisper's audience IS the audience — the room's wider
     // roster is not merely irrelevant to it, it would mislead the rewrite into
@@ -441,60 +371,33 @@ where
         },
     ];
 
-    let llm_result = executor
-        .execute(
-            completion,
-            &selection,
+    execute_voice_rewrite(
+        completion,
+        executor,
+        ExecuteVoiceRewriteParams {
+            selection: &selection,
             messages,
-            |content: &str| js_trim(content).to_string(),
-            // v4 passes `undefined` for the uncensored fallback here.
-            None,
-            Some(2048.0),
-            Some(&character_id),
-            Some(TASK_TYPE),
-            CheapLlmTaskOptions::default(),
-        )
-        .await;
-
-    // v4: `if (!llmResult.success || !llmResult.result)` — an empty-string result
-    // is falsy in JS, so a whitespace-only completion takes the failure arm too.
-    let result = llm_result.result.filter(|r| !r.is_empty());
-    match (llm_result.success, result) {
-        (true, Some(proposed)) => CharacterVoicedAnnouncementResult {
-            success: true,
-            proposed_markdown: proposed,
-            error: None,
+            task_type: TASK_TYPE,
+            character_id: &character_id,
+            max_tokens: ANNOUNCEMENT_MAX_TOKENS,
         },
-        _ => CharacterVoicedAnnouncementResult {
-            success: false,
-            proposed_markdown: String::new(),
-            error: Some(
-                llm_result
-                    .error
-                    .filter(|e| !e.is_empty())
-                    .unwrap_or_else(|| "The LLM returned no content.".to_string()),
-            ),
-        },
-    }
+    )
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// v4 `formatNameList` — the Oxford comma is v4's, not ours.
+    /// v4 `ANNOUNCEMENT_MAX_TOKENS = 2048`. The differential is blind to it (its
+    /// canned key omits `max_tokens`; measured 2026-09-10 — 2048 → 99 leaves
+    /// `announcer_tier3_equivalence` green), and the forwarding itself is pinned
+    /// in [`super::voice_rewrite_core`]'s `the_ceiling_reaches_the_provider`.
+    /// This is the other half: the VALUE this call site chooses, which is what
+    /// separates the OFF-SCENE rehearsal's flat ceiling from the IN-SCENE one's
+    /// draft-scaled `max_tokens_for_seed`.
     #[test]
-    fn name_list_is_oxford_comma_joined() {
-        let n = |xs: &[&str]| -> Vec<String> { xs.iter().map(|s| s.to_string()).collect() };
-        assert_eq!(format_name_list(&n(&["Alice"])), "Alice");
-        assert_eq!(format_name_list(&n(&["Alice", "Bob"])), "Alice and Bob");
-        assert_eq!(
-            format_name_list(&n(&["Alice", "Bob", "Carol"])),
-            "Alice, Bob, and Carol"
-        );
-        assert_eq!(
-            format_name_list(&n(&["Alice", "Bob", "Carol", "Dan"])),
-            "Alice, Bob, Carol, and Dan"
-        );
+    fn the_announcement_ceiling_is_flat_2048() {
+        assert_eq!(ANNOUNCEMENT_MAX_TOKENS, 2048.0);
     }
 }

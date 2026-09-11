@@ -122550,3 +122550,58 @@ it — which makes FOUR known instances of the P4.D171 vintage gap, all of
 them hidden behind an oracle variable no gate sets.
 
 Versions: harness 0.0.776.
+
+### Unit 1 — `voice_rewrite_core.rs` and the `character_voiced.rs` refactor
+
+v4's extraction, followed. The new module carries the three recall constants,
+`VoiceRewriteResult`, `format_name_list` (moved verbatim), `recall_for_seed`
+with v4's warn bytes and bag keys, `execute_voice_rewrite`, and — beyond v4's
+file, because v5 had duplicated it — the `build_selection` both framings use.
+`character_voiced.rs` keeps only its framing plus `ANNOUNCEMENT_MAX_TOKENS`
+and `LOG_CONTEXT`.
+
+Two signature deviations from v4, both forced and both recorded at the source:
+v4 reads its repositories, its embedding provider and its clock off module
+singletons where v5 injects `db` / `embedding` / `now_ms`; and v4's
+`recallForSeed` passes `profile.provider` to `formatDynamicMemoryHead`, which
+v5's port of that function does not take (measured unused at P4.9E2A and
+pinned since by this family's assembled-prompt comparand), so the `profile`
+argument is dropped rather than carried as decoration.
+
+**The proof:** `announcer_tier3_equivalence` green against BOTH pins' NDJSONs
+after the refactor, 15 cases each — and those two NDJSONs are the same bytes,
+so the claim is that neither v4's extraction nor v5's moved anything.
+
+**A measured deviation from the order.** Tier-1 item 4 says to add `max_tokens`
+as a comparand in the announcer family "if it is not already". It is not —
+MEASURED: the canned key is `provider|model|temperature|messages`, and
+mutating `ANNOUNCEMENT_MAX_TOKENS` 2048 → 99 leaves all 15 cases green. But
+§R.10 binds this lane to regenerate `cases/announcer-tier3.test.ts` **AS-IS,
+no case edit**, which is what makes the cross-pin byte comparison trustworthy;
+§R is declared binding round-wide, so it wins the conflict. The item's intent
+is discharged in Rust instead, at strictly local cost:
+`voice_rewrite_core::tests::the_callers_ceiling_reaches_the_provider` pins the
+forwarding through the shared helper (the half that would break BOTH
+rehearsals) and `character_voiced::tests::the_announcement_ceiling_is_flat_2048`
+pins this call site's value. The new in-scene family captures `maxTokens` as a
+first-class comparand on both sides, as the order requires, so the scaled
+ceiling is differential-pinned even though the flat one is not.
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M-A | `execute_voice_rewrite` hard-codes `Some(2048.0)` instead of forwarding `params.max_tokens` | `the_callers_ceiling_reaches_the_provider` only |
+| M-B | `ANNOUNCEMENT_MAX_TOKENS` 2048 → 4096 | `the_announcement_ceiling_is_flat_2048` only |
+| M-C (the measurement) | `ANNOUNCEMENT_MAX_TOKENS` 2048 → 99 | NOTHING — `announcer_tier3_equivalence` stayed green, which is the blindness this unit's two pins answer |
+
+⚠ **M-A survived its first form and the test was wrong, not the code.** The
+first draft asserted `2048 → Some(2048)`, so a hard-coded `Some(2048.0)` was
+indistinguishable from a forwarded one — the test was asking whether the number
+it had just supplied came back. Rewritten with arbitrary probe values, it
+reddens. Those values then had to move ABOVE 2048: the executor applies v4's
+`effectiveMaxTokens` floor (`Math.max(maxTokens ?? 2048, 2048)`,
+`core-execution.ts:316` / `cheap_llm_exec.rs:442`), so a 1337 probe failed
+against correct code. **The same floor makes `in_scene_voiced`'s
+`MIN_MAX_TOKENS = 1024` inert at the provider on BOTH sides** — v4-faithful at
+the service boundary the differential compares, invisible on the wire.
+
+Versions: core 0.0.887.

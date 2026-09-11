@@ -144,6 +144,38 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-10 — refactor(announcer): extract the shared `voice_rewrite_core` from the off-scene rehearsal
+
+_Versions: core 0.0.887._
+
+v4 `686954937` moved the Commonplace recall against the draft, the
+`executeCheapLLMTask` call and the never-throws result shape out of
+`character-voiced.ts` into a new `voice-rewrite-core.ts`, so the off-scene
+(Insert Announcement) and in-scene (In Their Own Words) rehearsals cannot
+drift apart in everything except their wording. v5 follows: new
+`services/announcer/voice_rewrite_core.rs` carrying `RECALL_LIMIT` /
+`RECALL_MIN_IMPORTANCE` / `RECALL_MAX_ENTRIES`, `VoiceRewriteResult`,
+`format_name_list`, `recall_for_seed` and `execute_voice_rewrite` (plus the
+`build_selection` both framings share), with `character_voiced.rs` reduced
+to its own framing and the new `ANNOUNCEMENT_MAX_TOKENS` / `LOG_CONTEXT`
+constants.
+
+**Proven byte-neutral, not read as such.**
+`announcer_tier3_equivalence`'s NDJSON regenerated from worktrees pinned at
+`cc65d6bfc` and at `f4ad2c8d1` is byte-identical, and v5's tree is green
+against both before and after the extraction.
+
+Two ceilings the differential cannot see are now pinned in Rust. The canned
+completion is keyed on `provider|model|temperature|messages`, which omits
+`max_tokens` — measured: 2048 → 99 leaves the family green. So
+`the_callers_ceiling_reaches_the_provider` pins the forwarding through the
+now-shared helper and `the_announcement_ceiling_is_flat_2048` pins this call
+site's choice of value. Both were written the wrong way first: asserting
+`2048 → 2048` let a hard-coded `Some(2048.0)` survive, and the replacement
+probe values had to move above 2048 because the executor applies v4's
+`Math.max(maxTokens ?? 2048, 2048)` floor — which also makes
+`MIN_MAX_TOKENS = 1024` inert at the provider on both sides.
+
 #### 2026-09-10 — fix(harness): heal the P4.D171 column vintage on the announcer tier-3 fixture copy
 
 _Versions: harness 0.0.776._
