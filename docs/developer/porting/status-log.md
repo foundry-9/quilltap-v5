@@ -122489,3 +122489,64 @@ task_type_log_mapping_equivalence`.
 
 Versions at lane end: core **0.0.890**, harness **0.0.778**, host
 **0.0.127**, web **0.0.138**; cli / tauri / SPA unchanged.
+---
+
+## P4.D180 — In Their Own Words, the rehearsal (the `686954937` drift catch-up, lane 2 of 3)
+
+Branch `claude/p4-d180-voice-rehearsal-3522a0`, from `main` `e63a274d`. Baseline
+`cc65d6bfc`; v4 `main` HEAD `f4ad2c8d1`; **regen rule PIN REQUIRED**. The
+ledger's §2 freshness probe PASSED at lane start (branch `main`, tree clean,
+`f4ad2c8d1..main` empty, `1a2b2164c..bugfix` empty, `release` tip `8fbf2afe0`).
+Pins: `/tmp/qt-v4-pin-p4d180-f4ad2c8d1` and `/tmp/qt-v4-pin-p4d180-cc65d6bfc`,
+both verified by the order's §R.3 markers (`impersonationVoiceRewrite` in
+`settings.types.ts` 1 / 0; `VOICE_REWRITE` in `llm-log.types.ts` 1 / 0;
+`in-scene-voiced.ts` present / absent; `git diff --stat cc65d6bfc f4ad2c8d1 --
+help/` exactly five paths).
+
+### Unit 0 — the RED-FIRST neutrality baseline, and a standing red it exposed
+
+**The order's Tier-1 item 1(a) is discharged, and it found a pre-existing
+failure on the way.**
+
+*v4's half — the premise HOLDS.* `announcer_tier3_equivalence`'s NDJSON was
+regenerated from BOTH pins through the sweep driver, in two clean serial
+invocations. The two files are **byte-identical**: 15 rows, 39,695 bytes, md5
+`7087b8e0f1e32186f41625793c116cd7` each. v4's extraction of the recall, the
+`executeCheapLLMTask` call and the result shape into `voice-rewrite-core.ts` is
+therefore proven behaviour-neutral on v4's own code rather than read as such,
+which is what the rest of this lane's refactor leans on.
+
+*v5's half — RED, and not this lane's doing.* Against an **unchanged tree at
+main's tip** the family failed 30 of its comparands with
+`sqlite error: no such column: cycleOrderParticipantIds`. The cause is
+P4.D171 (`22a65735`, the `78b381a96` round, unified the day before): it spliced
+that column into `chats_read`'s `ALL_COLUMNS`, and the committed
+`post-office-main.db` predates it. The failure is quiet by construction —
+`build_roster` folds a failed chat read into `String::new()`, so the assembled
+user message simply lost its `The following people are present:` block on every
+non-whisper arm while the three route arms answered 500. It escaped every gate
+because the family SKIPs without `QT_ORACLE_ANNOUNCER_TIER3` and neither the
+`78b381a96` round nor the `cc65d6bfc` round carried that variable — the
+SKIP-masquerade class, and the third instance of the P4.D171 vintage gap after
+the two `salon_fixture_p4d171_ensure.rs` already records.
+
+*The fix* is the one thirteen sibling harness families already run:
+`test_support::ensure_p4d171_columns` on the **per-case fixture COPY**. The
+committed pair is READ-ONLY (three families and the Playwright seeder read it)
+and stays untouched — `git diff main -- crates/quilltap-web/tests/fixtures/`
+is empty. Fifteen cases green afterwards, against BOTH pins' NDJSONs. No
+product code moved, so the neutrality baseline this lane now measures its
+refactor against is a real one rather than a red compared to a red.
+
+**Spotted, not mine (for the unifier):** `post_office_routes_equivalence`
+copies the same committed pair with no heal and is red as well — MEASURED,
+not inferred. Its oracle was regenerated at the `f4ad2c8d1` pin and re-run:
+`no such column: routeTrail`, the OTHER P4.D171 column (the `chat_messages`
+half, `chat_messages_route_trail_repair`). Same class, same one-line fix
+(`ensure_p4d171_columns` on its fixture copy at
+`post_office_routes_equivalence.rs:155-156`). That file is in no lane's
+ownership table this round, so this lane records it rather than touching
+it — which makes FOUR known instances of the P4.D171 vintage gap, all of
+them hidden behind an oracle variable no gate sets.
+
+Versions: harness 0.0.776.

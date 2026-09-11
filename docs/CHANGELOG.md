@@ -144,6 +144,40 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+#### 2026-09-10 — fix(harness): heal the P4.D171 column vintage on the announcer tier-3 fixture copy
+
+_Versions: harness 0.0.776._
+
+`announcer_tier3_equivalence` has been RED since the `78b381a96` round and
+nobody saw it. P4.D171 spliced `cycleOrderParticipantIds` into
+`chats_read`'s `ALL_COLUMNS`, and the committed `post-office-main.db` pair
+predates it, so every chat read on the v5 side raised `no such column:
+cycleOrderParticipantIds`. `build_roster` swallows a failed read into an
+empty string, so the failure did not surface as an error — the assembled
+user message simply lost its `The following people are present:` block on
+every non-whisper arm, and the three route arms answered 500. The family
+SKIPs without `QT_ORACLE_ANNOUNCER_TIER3`, and neither the `78b381a96`
+round nor the `cc65d6bfc` round carried that variable, so the red never
+reached a gate.
+
+The fix is the heal thirteen sibling harness families already run:
+`test_support::ensure_p4d171_columns` on the per-case fixture COPY, never
+on the committed pair (three families and the Playwright seeder read it).
+Fifteen cases, all green. No product code moved.
+
+Also recorded in the test header: the P4.D180 neutrality result. v4's
+`686954937` extracted the Commonplace recall, the `executeCheapLLMTask`
+call and the result shape out of `character-voiced.ts` into the new
+`voice-rewrite-core.ts`; this family's NDJSON regenerated from worktrees
+pinned at `cc65d6bfc` and at `f4ad2c8d1` is **byte-identical** (md5
+`7087b8e0f1e32186f41625793c116cd7`, 15 rows / 39,695 bytes), which is
+v4's extraction proven behaviour-neutral rather than read as such.
+
+**Spotted, not mine (for the unifier):** `post_office_routes_equivalence`
+copies the same committed pair without the heal and is red too — MEASURED,
+not guessed: its oracle regenerated at the tip and re-run gives `no such
+column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
+Same class, same one-line fix. That file belongs to no lane this round.
 
 #### 2026-09-10 — docs(setupphase): order the `f4ad2c8d1` In-Their-Own-Words drift catch-up round — P4.D179 ∥ P4.D180 ∥ P4.D181
 

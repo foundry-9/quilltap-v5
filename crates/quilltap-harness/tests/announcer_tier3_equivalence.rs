@@ -35,6 +35,26 @@
 //! roster block is absent from a whisper's prompt — IS pinned, by the whisper arms
 //! themselves.
 //!
+//! ## P4.D180 — the extraction's neutrality (v4 `686954937`)
+//!
+//! v4 moved the Commonplace recall, the `executeCheapLLMTask` call and the
+//! never-throws result shape out of `character-voiced.ts` into the shared
+//! `voice-rewrite-core.ts`, and v5 followed. **This family is the proof that
+//! neither move changed a byte**, in two halves:
+//!
+//!  1. **v4's half.** Regenerate this family's NDJSON from a worktree pinned at
+//!     `cc65d6bfc` (the baseline, pre-extraction) and from one pinned at
+//!     `f4ad2c8d1` (the tip, post-extraction). The two files are **byte-identical**
+//!     — measured 2026-09-10, md5 `7087b8e0f1e32186f41625793c116cd7`, 15 rows /
+//!     39,695 bytes each. That is v4's extraction proven behaviour-neutral on
+//!     v4's own code, not asserted.
+//!  2. **v5's half.** This test is green against BOTH of those NDJSONs, before
+//!     and after v5's own extraction into
+//!     [`quilltap_core::services::announcer::voice_rewrite_core`]. Since the two
+//!     comparands are the same bytes, one green run is a green run against both
+//!     pins — but run both anyway when the extraction is touched again: the
+//!     cheap check is what makes the claim a measurement.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout, **TZ=UTC** — see the .ts
 //! header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-announcer-tier3.ndjson TZ=UTC npx jest -- announcer-tier3
@@ -98,6 +118,18 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("post-office-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("post-office-mount.db"), &mount).unwrap();
+    // P4.D171: the committed `post-office-main.db` predates the `78b381a96`-round
+    // schema moves, and `chats_read`'s SELECT now names `cycleOrderParticipantIds`.
+    // Without this heal every chat read raises `no such column`, which
+    // `build_roster` swallows into an empty roster — so the assembled user
+    // message silently loses its "The following people are present:" block and
+    // the route arms answer 500. The committed pair is READ-ONLY (three families
+    // and the Playwright seeder read it), so the heal goes on the per-case COPY,
+    // exactly as the thirteen sibling families already do.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+    }
     Db::open(
         DbPaths {
             main,
