@@ -1515,6 +1515,58 @@ fn orchestrator_tier3_matches_oracle() {
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
 
+    // --- P4.D186 tier 2: the held result's SHAPE, read off the jobs it did not
+    // enqueue ---
+    // `finish_held_user_turn` returns `hasContent: false`, and v4's
+    // `handleSendMessage` gates BOTH the scene-state trigger and the Scriptorium
+    // render on `result.hasContent`. Nothing about the returned struct is a
+    // comparand on either side, so the only observable consequence is the absence
+    // of those job rows — asserted on V5's OWN dump (an assertion on the oracle
+    // could not catch a v5 regression), with the table equality above carrying it
+    // to v4. Non-vacuous by construction: the same corpus enqueues 38
+    // CONVERSATION_RENDER rows for the chats that DO take a turn.
+    {
+        let held_chat_ids: Vec<String> = spec
+            .calls
+            .iter()
+            .filter(|c| held_cases.contains(&c.name.as_str()))
+            .map(|c| c.chat_id.clone())
+            .collect();
+        assert_eq!(held_chat_ids.len(), held_cases.len(), "held chat ids");
+        let rows = got_jobs
+            .get("rows")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut render_rows = 0usize;
+        for row in &rows {
+            let kind = row.get("type").and_then(Value::as_str).unwrap_or_default();
+            if kind == "CONVERSATION_RENDER" {
+                render_rows += 1;
+            }
+            if kind != "CONVERSATION_RENDER" && kind != "SCENE_STATE_TRACKING" {
+                continue;
+            }
+            let payload = row
+                .get("payload")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            for held in &held_chat_ids {
+                assert!(
+                    !payload.contains(held.as_str()),
+                    "a held turn enqueued a {kind} job for {held} — `hasContent` \
+                     must be false so neither scene tracking nor the Scriptorium \
+                     render fires: {payload}"
+                );
+            }
+        }
+        assert!(
+            render_rows > 0,
+            "no CONVERSATION_RENDER rows at all — the absence assertion above \
+             would be vacuous"
+        );
+    }
+
     // --- llm_logs (W4.11a) ---
     // The per-call `with_logging` executor wrote the cheap-LLM rows (distill
     // MEMORY_EXTRACTION, summary-fold SUMMARIZATION, title TITLE_GENERATION);

@@ -712,6 +712,25 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — test(harness): a held turn enqueues no render and no scene-state job (v4 bug 137, server unit 6)
+
+_Versions: harness 0.0.786._
+
+The held result's shape, read off the jobs it does not enqueue.
+`finish_held_user_turn` returns `hasContent: false`, and v4's
+`handleSendMessage` gates BOTH the scene-state trigger and the Scriptorium render
+on `result.hasContent` — but nothing about the returned struct is a comparand on
+either side, so the only observable consequence is the absence of those rows.
+
+Asserted on v5's OWN `background_jobs` dump (an assertion on the oracle could not
+catch a v5 regression), with the existing table equality carrying it to v4, and
+guarded against vacuity by requiring that the corpus still contains
+`CONVERSATION_RENDER` rows for the chats that DO take a turn — it holds 38.
+
+Mutation-proven by forcing `has_content: true` on the held return, which reddens;
+note the red surfaces first at the event trace, because a held turn that claims
+content also chains, and the frame comparison runs before the jobs one.
+
 #### 2026-09-14 — test(web): the held chain-complete frame at the wire (v4 bug 137, server unit 5)
 
 _Versions: web 0.0.143._
