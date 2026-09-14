@@ -58,6 +58,17 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — fix(vendor): move the SECOND hard-coded export-schema byte count
+
+_Versions: core 0.0.900, harness 0.0.787._
+
+The re-vendor moved `qtap_schema_embed_guard::VENDORED_BYTES` and missed
+`generators::qtap_schema::tests::the_embedded_schema_compiles`, which carries
+its own `assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), …)`. The lane's own
+workspace gate caught it — the standing "a vendored count is hard-coded in
+several crates" trap, firing live. Both constants now name each other, so the
+next re-vendor finds the second one by reading the first.
+
 #### 2026-09-14 — feat(export): carry `files.generationKey` through backup, `.qtap` and restore, and pin what `chats.transcriptVersion` must never reach
 
 _Versions: core 0.0.899, harness 0.0.786._

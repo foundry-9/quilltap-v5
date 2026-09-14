@@ -21,7 +21,11 @@ use quilltap_core::generators::qtap_schema::{validate_qtap_export, QTAP_EXPORT_S
 use serde_json::{json, Value};
 
 /// The vendored size at v4 `78b381a96` (P4.D171 — the route-trail message
-/// field, `5841a8c62`; was 89,769 at `2f4254b42`).
+/// field, `5841a8c62`; was 89,769 at `2f4254b42`). 93,384 at `31436bae4`
+/// (the file-entry `generationKey`, v4 `7fbf8a55b`).
+///
+/// ⚠ `generators::qtap_schema`'s own `the_embedded_schema_compiles` carries a
+/// SECOND copy of this number. A re-vendor moves both.
 const VENDORED_BYTES: usize = 93_384;
 
 fn v4_root() -> Option<PathBuf> {

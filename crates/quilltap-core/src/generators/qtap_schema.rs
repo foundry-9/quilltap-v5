@@ -161,8 +161,14 @@ mod tests {
     #[test]
     fn the_embedded_schema_compiles() {
         assert!(validator().is_ok(), "the vendored schema must compile");
-        // P4.D171: 92,797 at v4 `78b381a96` (was 89,769 at `2f4254b42`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 92_797);
+        // P4.D182: 93,384 at v4 `31436bae4` (the file-entry `generationKey`
+        // property, v4 `7fbf8a55b`); 92,797 at `78b381a96`; 89,769 at
+        // `2f4254b42`. ⚠ This is the SECOND hard-coded copy of the vendored
+        // byte count — `qtap_schema_embed_guard::VENDORED_BYTES` is the other,
+        // and a re-vendor must move BOTH (the standing
+        // `a-vendored-count-is-hard-coded-in-several-crates` trap; this one is
+        // what caught the miss in this lane's own gate).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 93_384);
     }
 
     #[test]

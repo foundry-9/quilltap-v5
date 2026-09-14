@@ -123475,3 +123475,241 @@ for the human, not a lane.** Flagged for the unifier.
   without `QT_ORACLE_HELP_TREE`, printing `ok` in 0.00 s. With the variable
   set it reddens and the restored run takes 1.02 s. The
   `a-family-env-var-is-not-its-regen-var` note, caught live.
+
+### Unit 3 — the `files.generationKey` carry
+
+- `db/files.rs`: the field on `FileCreate` (bound on the INSERT, 23 → 24
+  columns) and on `FileEntry` + `FileFull`; all three column-list literals and
+  both marshals shifted; `find_by_generation_key` added; the in-crate reduced
+  DDL and `services/file_storage.rs`'s twin widened.
+- **NOT on `FileUpdate`, measured not assumed.** v4's is a
+  `Partial<FileEntry>` so it *could* carry one, but `grep -rn generationKey
+  lib app components` at the target returns SEVEN hits and the only write in
+  the tree is `files.create` in
+  `lib/background-jobs/handlers/character-avatar.ts:574`. A settable arm here
+  would let a later caller rewrite a key v4 only ever binds at creation; the
+  measurement is recorded in the struct's doc.
+- **NOT on the files-family wire, measured not assumed.** v4's
+  `serializeFileEntry` (`app/api/v1/files/shared.ts:45`) is an explicit
+  eighteen-key list that adding the schema field did not touch — so
+  `FileFull.generation_key` exists for readers and reaches no response.
+  Pinned by `serialize_file_entry_never_emits_the_cache_key`, which compares a
+  keyed row's serialization with a bare row's and finds them identical (and,
+  not incidentally, is what READS the field so the lint cannot call it dead).
+- **`find_by_generation_key` emits NO `ORDER BY`** — v4's body is
+  `findByFilter({ generationKey })` with no `QueryOptions`, and its query
+  translator emits an ORDER BY only when a sort is supplied. The caller
+  (`lib/wardrobe/avatar-cache.ts:167`) sorts newest-first itself, with v4's own
+  comment saying why. Putting the order in the read would move the policy.
+- **The differential:** `files-tier2.json` gained FOUR insertions — a seeded
+  key on the row a later op updates (so the survives-an-update leg is real),
+  and the three write shapes on the create ops: a real key, an explicit
+  `null`, and ABSENT. `build-files-fixture.ts` carries it into the seed. The
+  regenerated v4 dump carries BOTH planted values
+  (`v1:a1b2c3d4e5f60718`, `v1:0f1e2d3c4b5a6978` — grepped).
+  `files_tier2_equivalence`, `files_routes_equivalence`,
+  `doc_mount_files_tier2_equivalence`, `files_sha256_realign_heal_equivalence`
+  all green at the pin. Two module unit tests cover the read (every holder and
+  no others; a NULL row is never a holder, since SQL `= NULL` is never true)
+  and the write (`None` binds SQL NULL, not the empty string).
+- **The venue asymmetry, and it is the lane's most transferable finding:**
+  v4's insert names only the keys its data object carries, so v4 writes
+  happily into a pre-4.10 `files` table while this port's fixed column list
+  answers `no such column: generationKey`. That is a difference in how the two
+  engines BUILD a statement, not in what either stores.
+  `test_support::ensure_p4d182_columns` (beside `ensure_p4d171_columns`) heals
+  a fixture the way boot heals an instance, and three venues adopt it:
+  `files_routes_equivalence`, `chat_upload_codec_wiring`, and — the one worth
+  noticing — `restore_vintage_state`, whose
+  `no_restore_phase_names_a_column_a_migrated_table_lacks` tripwire caught the
+  leaked raw sentence exactly as designed (`Failed to restore file
+  "portrait.png": sqlite error: table files has no column named
+  generationKey`).
+- **⚠ Forced out-of-ownership edits, all one-liners, flagged for the unifier.**
+  Adding a required field to `FileCreate` forces every construction site, and
+  four of them fall in this lane's MUST-NOT-TOUCH list:
+  `api/almanack.rs`, `api/images.rs`, `api/wardrobe.rs` and
+  `photos/auto_describe_attachment.rs` (one `generation_key: None,` line
+  each), plus `services/character_avatar_job.rs` (**P4.D184's file** — one
+  `generation_key: None,` with a comment naming that lane as the one that
+  changes it to `Some(cache_keys.key)`; a guard test asserts the `None` is
+  still there, so P4.D184 edits BOTH in one step). `api/files.rs` took the
+  serializer pin as an appended `#[cfg(test)]` module; no sibling lane in this
+  round touches that file. `git diff main` over every other MUST-NOT-TOUCH
+  path is EMPTY (`db/chats*.rs`, `db/chat_messages.rs`, `db/chats_search.rs`,
+  `services/orchestrator.rs`, `services/avatar_generation.rs`,
+  `crates/quilltap-web/src/**`, `apps/web/**`, `docs/v4/**`).
+
+### Unit 4 — export / backup / import / restore carry, and the non-remap pin
+
+- `backup/collect::FILES` gains `("generationKey", F::StrOpt)` between
+  `generationRevisedPrompt` and `description` — ONE edit feeding both writers
+  (`qtap_export/records.rs` reuses the const). The restore and `.qtap` import
+  readers carry it verbatim.
+- **The plant, on BOTH sides:** `system-export.test.ts` and
+  `system-import-execute.test.ts` gained `plantP4d182Values`, and the Rust
+  twins plant the identical cells, so the two engines provably start from the
+  same bytes. The planted VALUE is `PROJECT_1`'s own id
+  (`a3000000-…-000000000001`) — deliberately a UUID the same archive REMAPS
+  elsewhere, because a remap-shaped value surviving unchanged is the only way
+  to distinguish "carried" from "carried and rewritten". The other `files`
+  rows keep NULL, so the same seeds cover the omit-when-null rule.
+- **Why the plant is not sufficient, and what closes it:**
+  `system_import_state` normalizes every minted id to `<minted-N>`, which
+  labels a correctly-carried key and a wrongly-remapped one IDENTICALLY (the
+  P4.D126 normalizer blindness). So the new
+  `generation_key_travels_as_is_guard` censuses BOTH archive readers for the
+  verbatim assignment (and for exactly one mention of the key in each file, so
+  a remap added a few lines away is caught too), pins the field spec's
+  POSITION and COUNT (24), and asserts the avatar job still binds `None`.
+- **Green at the pin:** `system_export`, `system_import`, `system_import_state`,
+  `system_backup`, `system_restore`, `system_restore_state`,
+  `system_restore_guards`, `qtap_import`, `qtap_schema_validate`,
+  `backup_uuid_remap`. The export oracle carries the planted key 8× (grepped).
+- `qtap_schema_validate_equivalence`: the oracle plants the key before
+  exporting (so the seeds' file records really carry it) and the corpus gained
+  FOUR literals — a key present, an explicit `null`, ABSENT, and a NUMERIC key
+  — over the freshly re-vendored schema.
+- **A pre-existing red this lane surfaced, not caused:**
+  `system_import_equivalence` never healed the committed fixture with the
+  P4.D171 columns, unlike both its siblings. It only shows when the family
+  actually RUNS — without `QT_ORACLE_SYSTEM_IMPORT` it skips — so no workspace
+  gate had ever seen `no such column: cycleOrderParticipantIds`. Healed, with
+  the finding recorded at the site. It takes the HEAL only, not the plant: its
+  oracle (`system-import.test.ts`) plants neither, and a v5-side-only plant
+  would be a silent asymmetry measuring nothing.
+- **Also surfaced:** `harness/oracle/fixtures/uuid-remap-corpus.json` was one
+  field stale (`impersonationVoiceRewrite`, from the PREVIOUS round's
+  `chat_settings` move). The regen at this pin widened it; the family stays
+  green. That family's regen is `deliberate_repo_write`, which the sweep
+  driver refuses from a worktree venue — run manually with the pin (recipe in
+  the final report).
+
+### Unit 5 — the `transcriptVersion` negatives, and the round's ONE deliberate divergence
+
+- NEW `crates/quilltap-harness/tests/transcript_version_isolation_guard.rs`.
+  It lives in the harness, not beside the code, because `db/chats_read.rs`
+  and `db/chats.rs` are outside this lane's ownership (the read census must
+  not move; `db/chats.rs` is P4.D183's) — an order-text tension recorded
+  below. Four arms: the D23 dump names the column NOWHERE (§R.5(a), made
+  executable, and the arm that tells the next reader to re-measure everything
+  if v4 ever moves the field into the schema); a counter PLANTED AT 7 never
+  reaches the marshalled row, nor `find_all`'s, which is the export mechanism
+  since both writers read exactly that; the `ChatUpdate` struct and `update`
+  body cannot name it (a brace-balanced source census, scoped to those two
+  zones so P4.D183's `get_transcript_version` can land beside it); and neither
+  export writer mentions it.
+- The plant at 7 is the point: a row left at `0` would pass with the column
+  freely marshalled.
+- **The ONE deliberate divergence, pinned in both directions rather than
+  hidden.** The round splits the counter across two lanes, so between them an
+  import leaves v4's counter bumped (its funnel writes it) and v5's at zero —
+  a real difference, and visible because `system_import_state` diffs raw rows.
+  `subtract_the_deferred_transcript_counter` removes that ONE field with a
+  tripwire on each side: a non-zero v5 value says P4.D183's writer has landed
+  and the subtraction is stale (naming the function to delete), and a
+  CORPUS-WIDE v4 maximum of zero says the subtraction has stopped measuring
+  anything. The vacuity guard had to move from per-case to corpus-level — its
+  first run failed on `execute_skip_all`, an arm that imports nothing and so
+  has nothing to bump.
+
+### The mutation table (every one reverted by FILE BACKUP, never `git checkout`)
+
+| # | mutation | reddens |
+|---|---|---|
+| 1 | hold the OLD `fresh_schema.json` against the target-pinned oracle | `provisioning_equivalence` (2 passed / 1 failed) — the backwards sensitivity proof |
+| 2 | drop the `ensure_chats_transcript_version_column` call from `host.rs` | all THREE `host_boot_p4d182_columns` arms |
+| 3 | drop `main.execute_batch(GENERATION_KEY_INDEX_DDL)` | all three host arms + 4 of 5 module unit tests |
+| 4 | drop only the COLUMN arm of the files ensure | the two legacy arms; **setup stays GREEN** — the proof the two arms are measured independently |
+| 5 | add `transcriptVersion` to `ALL_COLUMNS` only | the in-crate `chats_read` census (both arms) — my harness arm stays green, correctly |
+| 6 | …and to `marshal_row` as well | `a_bumped_counter_never_reaches_the_marshalled_row` |
+| 7 | add a `transcript_version` field to `ChatUpdate` | `the_chat_update_surface_cannot_reach_the_transcript_version` |
+| 8 | name the column in `backup/collect.rs` | `no_backup_field_spec_names_the_transcript_version` |
+| 9 | wrap the import reader's key in `.map(\|k\| k.to_uppercase())` | `every_archive_reader_carries_the_key_verbatim` |
+| 10 | replace the restore reader's key with `None` | the same arm |
+| 11 | drop the `FILES` const entry | `the_export_field_spec_holds_v4s_schema_position` |
+| 12 | one byte of the vendored schema (`Travels as-is` → `as-was`) | BOTH `qtap_schema_embed_guard` arms |
+| 13 | one byte of `help/chats.md` | `help_tree_equivalence` at `docs[30]` |
+| 14 | make v5's subtracted counter non-zero | the P4.D183-has-landed tripwire |
+| 15 | make the oracle's counter read zero | the corpus-level vacuity guard |
+
+⚠ Mutation 13 first appeared to SURVIVE — because the family SKIPs silently
+without `QT_ORACLE_HELP_TREE`, printing `ok` in **0.00 s**. With the variable
+set it reddens, and the restored run takes 1.02 s. The
+`a-family-env-var-is-not-its-regen-var` note, caught live; the duration is the
+tell.
+
+### Tier 2 item 9 — the two NO-PORT ratifications, with evidence
+
+- **`4dc48283d`** ("docs: plan for the Salon transcript as a subscribed read")
+  — `git show --stat`: `docs/CHANGELOG.md` +18 and NEW
+  `docs/developer/features/salon-realtime-transcript.md` +128. **Two files,
+  both under `docs/`; no `lib/`, `app/`, `packages/`, `plugins/` or `help/`
+  path.** NO-PORT ratified. (The feature it planned shipped two hours later as
+  `5029075bb`, which this round ports.)
+- **`aecf9de0b`** ("docs: update version for subscribed salon read") — `git
+  show --stat`: `README.md`, `package.json`, `package-lock.json`,
+  `packages/quilltap/package.json`, 5 insertions / 5 deletions. The diff is
+  four version markers, `4.10.0-claude-elegant-ritchie-k654ru.27` →
+  `4.10.0-dev.27`. **No code, no comparand.** NO-PORT ratified.
+
+### Order-text corrections and things spotted, not mine (for the unifier)
+
+1. **`schema-key-order.json` lives in `services/qtap_export/`**, not
+   `services/provisioning/` as the Ownership row says. No conflict; no lane
+   else touches it. Regenerated at the pin: **byte-identical** (`files` is not
+   one of its eleven schema-ordered entities).
+2. **`help_tree_embed_guard` does not read `QT_V4_ROOT`** — it compares the
+   embedded table with the repo's own `help/` tree and pins the file COUNT, so
+   the order's "RED against the target until the copies land" is not what it
+   does. The CONTENT comparand is `help_tree_equivalence`. Both measured; the
+   guard's header now says so.
+3. **The order's Tier-1 item 5 asks for pins inside `db/chats_read.rs` and
+   `db/chats.rs`, which the same order's Ownership table forbids this lane to
+   touch** (and `db/chats.rs` is P4.D183's). Resolved by putting every pin in
+   a NEW harness file — arguably its better home, since the guard is
+   cross-cutting — with the `ChatUpdate` half as a brace-scoped SOURCE census
+   so P4.D183's `get_transcript_version` lands beside it without tripping.
+   The order's 5(c) `chat_export` arm is P4.D183's file, so this lane did the
+   `system_export` half only.
+4. **A SECOND hard-coded vendored byte count** —
+   `generators::qtap_schema::tests::the_embedded_schema_compiles` carries its
+   own `assert_eq!(…len(), 92_797)` beside the harness guard's
+   `VENDORED_BYTES`. The re-vendor moved one and the lane's own gate caught
+   the other (the standing
+   `a-vendored-count-is-hard-coded-in-several-crates` trap, live). Both now
+   name each other.
+5. **For P4.D184:** the avatar job's `generation_key: None` is your line; a
+   guard asserts it is still `None`, so change both in one step.
+   `find_by_generation_key` returns `Vec<FileEntry>`, and v5's `FileEntry`
+   carries **neither `tags` nor `createdAt`** — v4's `lookupCachedAvatar`
+   needs BOTH (`row.tags?.includes(characterId)` and the newest-first sort),
+   so that read needs widening or a second projection. Also: v5 has **no
+   tag-indexed `files` read at all** (`db/files.rs` has no `find_by_tag`), and
+   P4.D185's roll listing wants one.
+6. **For P4.D183:** `subtract_the_deferred_transcript_counter` in
+   `system_import_state` is yours to delete the moment your bump lands — its
+   tripwire fires and names itself. `test_support::ensure_p4d182_columns` is
+   the shared fixture heal if a `chats` venue of yours needs the column.
+
+### Gate
+
+- §2 freshness probe: PASSED at lane start and before every regen batch
+  (branch `main`, tree clean, `31436bae4..main` empty, `1a2b2164c..bugfix`
+  empty).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default and `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` clean.
+- `cargo test --workspace` with the lane's **44-variable env block** plus
+  `QT_V4_ROOT` at the target pin: **559 test binaries / 3,214 passed / 0
+  failed / 2 ignored, exit 0, ZERO `SKIP:` lines** (the four `FAILED` strings
+  in the log are inside one boot WARN sentence, not test results). Every one
+  of the lane's 23 families confirmed to have RUN by name and non-zero
+  duration.
+- Families regenerated FRESH from `/tmp/qt-v4-pin-p4d182-31436bae4` through
+  `recipe_sweep.py --v4 <pin>`: the files trio, the fifteen help families
+  (15/15 ok), the export/import/restore nine, and `backup_uuid_remap` run
+  manually (its regen is `deliberate_repo_write`, which the driver refuses
+  from a worktree venue). Changed bytes grepped in every NDJSON.
+- **No `apps/web/**` file touched — no e2e owed.**
+- Versions: core 0.0.900, harness 0.0.787, host 0.0.131.
