@@ -1,0 +1,363 @@
+{
+  "$note": [
+    "Corpus for the tier-1 avatar cache key differential (P4.D184, v4 7fbf8a55b).",
+    "Read by BOTH sides: harness/oracle/cases/avatar-cache-key.ts drives v4's real",
+    "deriveAvatarCacheKey / deriveLegacyAvatarCacheKey / deriveAvatarCacheKeys, and",
+    "crates/quilltap-harness/tests/avatar_cache_key_equivalence.rs drives v5's.",
+    "",
+    "Two sentinels express what JSON cannot say:",
+    "  \"__UNDEFINED__\"  a key present with the value `undefined`. The v4 runner",
+    "                    substitutes a real `undefined`; v5 REMOVES the key, because",
+    "                    a serde_json::Value has no undefined and to_key_value omits",
+    "                    every None. The <...>-absent sibling of each such case must",
+    "                    hash IDENTICALLY — that identity is the whole point.",
+    "  \"__ABSENT__\"     (v0 modelName only) the key is not present at all, as",
+    "                    against an explicit null. v4's `?? null` makes them one key.",
+    "",
+    "kind: v1  -> deriveAvatarCacheKey({provider, imageProfileId, params})",
+    "kind: v0  -> deriveLegacyAvatarCacheKey({modelName, prompt})",
+    "kind: pair-> deriveAvatarCacheKeys({provider, imageProfileId, params}) (both)"
+  ],
+  "cases": [
+    {
+      "name": "v1-baseline",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-baseline-repeat",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-baseline-key-order-shuffled",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "size": "1024x1792",
+        "style": "natural",
+        "n": 1,
+        "model": "dall-e-3",
+        "prompt": "head and shoulders portrait of Ada"
+      }
+    },
+    {
+      "name": "v1-prompt-changed",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada, in a red coat",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-model-changed",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "gpt-image-1",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-profile-changed-same-model",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-2",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-provider-changed-same-model",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "v1-loras-ab",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-3",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "loras": [
+          { "source": "hf:one/adapter", "scale": 0.8 },
+          { "source": "hf:two/adapter", "scale": 0.4 }
+        ]
+      }
+    },
+    {
+      "name": "v1-loras-ba",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-3",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "loras": [
+          { "source": "hf:two/adapter", "scale": 0.4 },
+          { "source": "hf:one/adapter", "scale": 0.8 }
+        ]
+      }
+    },
+    {
+      "name": "v1-lora-entry-keys-shuffled",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-3",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "loras": [
+          { "scale": 0.8, "source": "hf:one/adapter" },
+          { "scale": 0.4, "source": "hf:two/adapter" }
+        ]
+      }
+    },
+    {
+      "name": "v1-explicit-undefined",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "negativePrompt": "__UNDEFINED__"
+      }
+    },
+    {
+      "name": "v1-explicit-undefined-absent-sibling",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3"
+      }
+    },
+    {
+      "name": "v1-explicit-null-not-the-same-as-undefined",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "negativePrompt": null
+      }
+    },
+    {
+      "name": "v1-nested-undefined-inside-profile-parameters",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-4",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": { "zeta": 1, "alpha": "__UNDEFINED__", "mu": true }
+      }
+    },
+    {
+      "name": "v1-nested-undefined-absent-sibling",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-4",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": { "mu": true, "zeta": 1 }
+      }
+    },
+    {
+      "name": "v1-nested-unsorted-object",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-4",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": {
+          "zeta": { "inner_b": [3, 1, 2], "inner_a": { "deep_z": 1, "deep_a": 2 } },
+          "alpha": 0
+        }
+      }
+    },
+    {
+      "name": "v1-nested-sorted-object-same-content",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-4",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": {
+          "alpha": 0,
+          "zeta": { "inner_a": { "deep_a": 2, "deep_z": 1 }, "inner_b": [3, 1, 2] }
+        }
+      }
+    },
+    {
+      "name": "v1-nested-array-order-matters",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-4",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": {
+          "zeta": { "inner_b": [1, 2, 3], "inner_a": { "deep_z": 1, "deep_a": 2 } },
+          "alpha": 0
+        }
+      }
+    },
+    {
+      "name": "astral-vs-bmp-key-order",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-5",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "profileParameters": { "�": "bmp", "𐀀": "astral" }
+      }
+    },
+    {
+      "name": "v1-unicode-prompt",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "portrait de Ada — café, naïveté, 日本語, 🎩, \"quoted\", back\\slash, \u0001control",
+        "model": "dall-e-3"
+      }
+    },
+    {
+      "name": "v1-numbers-integral-and-fractional",
+      "kind": "v1",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-6",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "n": 1,
+        "seed": 1234567890,
+        "guidanceScale": 7.5,
+        "steps": 28
+      }
+    },
+    {
+      "name": "v1-empty-params",
+      "kind": "v1",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {}
+    },
+    {
+      "name": "v0-baseline",
+      "kind": "v0",
+      "modelName": "dall-e-3",
+      "prompt": "head and shoulders portrait of Ada"
+    },
+    {
+      "name": "v0-null-model",
+      "kind": "v0",
+      "modelName": null,
+      "prompt": "head and shoulders portrait of Ada"
+    },
+    {
+      "name": "v0-absent-model",
+      "kind": "v0",
+      "modelName": "__ABSENT__",
+      "prompt": "head and shoulders portrait of Ada"
+    },
+    {
+      "name": "v0-empty-prompt",
+      "kind": "v0",
+      "modelName": "dall-e-3",
+      "prompt": ""
+    },
+    {
+      "name": "v0-unicode-prompt",
+      "kind": "v0",
+      "modelName": "chroma",
+      "prompt": "portrait de Ada — café, naïveté, 日本語, 🎩, \"quoted\", back\\slash, \u0001control"
+    },
+    {
+      "name": "v0-collides-with-nothing-v1",
+      "kind": "v0",
+      "modelName": "dall-e-3",
+      "prompt": "head and shoulders portrait of Ada"
+    },
+    {
+      "name": "pair-baseline",
+      "kind": "pair",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "dall-e-3",
+        "n": 1,
+        "style": "natural",
+        "size": "1024x1792"
+      }
+    },
+    {
+      "name": "pair-model-absent-from-params",
+      "kind": "pair",
+      "provider": "OPENAI",
+      "imageProfileId": "profile-1",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada"
+      }
+    },
+    {
+      "name": "pair-loras-do-not-move-the-legacy-half",
+      "kind": "pair",
+      "provider": "NANOGPT",
+      "imageProfileId": "profile-3",
+      "params": {
+        "prompt": "head and shoulders portrait of Ada",
+        "model": "chroma",
+        "loras": [{ "source": "hf:one/adapter", "scale": 0.8 }]
+      }
+    }
+  ]
+}

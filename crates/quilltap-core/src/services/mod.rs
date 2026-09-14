@@ -36,6 +36,7 @@ pub mod api_key_service;
 pub mod appearance_resolution;
 pub mod ariel_notifications;
 pub mod aurora_notifications;
+pub mod avatar_cache;
 pub mod avatar_generation;
 pub mod avatar_prompt;
 // === P4.9G5 ===

@@ -302,6 +302,43 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+#### 2026-09-14 — feat(wardrobe): the avatar configuration cache key derivation and lookup chokepoint
+
+_Versions: core 0.0.901, harness 0.0.788._
+
+`services/avatar_cache.rs` is v5's twin of v4's `lib/wardrobe/avatar-cache.ts`
+(`7fbf8a55b`): the ONE place an avatar cache key is derived or looked up. It
+derives the full-fidelity v1 key (`sha256` of a canonical JSON over
+`{v, provider, imageProfileId, params}`) and the v0 legacy key
+(`{v, modelName, prompt}`), and looks a configuration up over P4.D182's
+`find_by_generation_key` — v1 first, then v0, never upgrading a v0 hit, newest
+holder first, skipping a row that is not tagged with the character, a row with
+no `storageKey`, and a row whose mount blob is gone (a miss, with v4's info
+line). A read error answers `None` after v4's warn: a cache lookup must never
+be the reason an avatar fails to generate.
+
+Two shapes needed deciding rather than transcribing. v4 hashes the live params
+object; v5 hashes `ImageGenParams::to_key_value()`, the rendering already pinned
+key-for-key by the request-envelope corpora, so there is one params object and
+no second shape to drift. And v4's `canonicalJson` drops `undefined`-valued keys
+— a value `serde_json::Value` does not have — so on this side there is nothing
+to filter and nothing that may be filtered: a JSON `null` is a real value and
+stays in the preimage.
+
+The key sort turned out to be load-bearing. v4 compares with `<`, which is JS
+string comparison, which is by UTF-16 code unit; Rust's `String: Ord` is by
+UTF-8 byte, and the two disagree whenever a supplementary-plane key meets a BMP
+key above U+DFFF. A profile's residual `parameters` bag carries operator-chosen
+keys, so `encode_utf16().cmp()` is what keeps an emoji-keyed bag from hashing to
+a permanently-missing cache entry.
+
+NEW tier-1 family `avatar_cache_key_equivalence` over a 31-shape corpus both
+sides read (`harness/oracle/fixtures/avatar-cache-key.json`), driving v4's real
+module at the `31436bae4` pin: exact hex digests, plus the identities asserted
+on v5's own digests. Three mutations, each reddening exactly its row — filtering
+nulls collapses the null case onto the undefined case's digest (two
+configurations, one key), sorting arrays reddens the LoRA pair, byte-order key
+sorting reddens the astral-vs-BMP row.
 
 #### 2026-09-14 — fix(vendor): move the SECOND hard-coded export-schema byte count
 
