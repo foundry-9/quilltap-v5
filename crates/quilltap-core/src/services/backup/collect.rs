@@ -150,6 +150,14 @@ pub(crate) const FILES: &[(&str, F)] = &[
     ("generationPrompt", F::StrOpt),
     ("generationModel", F::StrOpt),
     ("generationRevisedPrompt", F::StrOpt),
+    // v4 `7fbf8a55b`: the avatar configuration cache key, in v4's
+    // `FileEntrySchema` slot. Travels AS-IS through `.qtap` and backups — the
+    // vendored `qtap-export.schema.json` says "Travels as-is … Only avatar
+    // rows carry one" — and is NEVER remapped on import or restore: it folds
+    // in the exporting instance's image-profile id, so on a receiving
+    // instance the key is simply inert until that same profile id derives it
+    // again, and a round trip back to the origin still hits.
+    ("generationKey", F::StrOpt),
     ("description", F::StrOpt),
     ("tags", F::Json("[]")),
     ("projectId", F::StrOpt),

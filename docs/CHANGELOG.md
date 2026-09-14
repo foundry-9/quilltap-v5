@@ -58,6 +58,39 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(export): carry `files.generationKey` through backup, `.qtap` and restore, and pin what `chats.transcriptVersion` must never reach
+
+_Versions: core 0.0.899, harness 0.0.786._
+
+The backup `FILES` field spec gains `generationKey` in v4's `FileEntrySchema`
+slot, which feeds both writers — the backup collector and the `.qtap` record
+stream. The export and import oracles now plant a non-null key on one `files`
+row, and the planted VALUE is deliberately a UUID the same archive remaps
+elsewhere: the cache key travels as-is, so a remap-shaped value coming back out
+unchanged is the only way to tell "carried" from "carried and rewritten". The
+other rows keep NULL, so the same seeds cover the omitted case.
+
+That is not enough on its own, and a new `generation_key_travels_as_is_guard`
+says why: `system_import_state` normalizes minted ids to `<minted-N>`, which
+labels a correctly-carried key and a wrongly-remapped one identically. The
+guard censuses both archive readers for a verbatim assignment, pins the field
+spec's position and count, and asserts the avatar job still binds `None` — the
+line P4.D184 will change.
+
+For `chats.transcriptVersion` the whole contract is a negative, so
+`transcript_version_isolation_guard` makes the absences executable: the D23
+dump names the column nowhere, a bumped counter never reaches the marshalled
+row (planted at 7, since a row at 0 would pass with the column freely
+marshalled), the `ChatUpdate` struct and update body cannot name it, and
+neither export writer mentions it.
+
+One deliberate, temporary divergence is pinned rather than hidden. The round
+splits the counter across two lanes, so between them v4's import leaves it
+bumped and v5's leaves it at zero. `system_import_state` subtracts that one
+field with tripwires in both directions: a non-zero v5 value says P4.D183 has
+landed and the subtraction is stale, and a corpus-wide v4 maximum of zero says
+the subtraction has stopped measuring anything.
+
 #### 2026-09-14 — chore(vendor): re-vendor the `.qtap` export schema and the eight edited help pages at `31436bae4`
 
 _Versions: core 0.0.898, harness 0.0.785, host 0.0.131._

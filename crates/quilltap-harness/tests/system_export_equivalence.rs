@@ -56,6 +56,7 @@ fn fresh_db(tag: &str) -> Db {
         )
         .expect("ensure the cycle-order column on the vintage fixture");
         plant_p4d171_values(w.connection());
+        plant_p4d182_values(w.connection());
     }
     Db::open(
         DbPaths {
@@ -425,3 +426,42 @@ fn plant_p4d171_values(conn: &rusqlite::Connection) {
     )
     .expect("plant the route trail");
 }
+
+/// P4.D182: the twin of the oracle's `plantP4d182Values`. A NON-NULL
+/// `files.generationKey` on one row (the others stay NULL, which proves the
+/// omit-when-null rule at the same time) and a BUMPED `chats.transcriptVersion`
+/// that must reach no export record at all.
+///
+/// The planted key's VALUE is a real UUID this archive remaps elsewhere
+/// (`PROJECT_1`'s id), chosen on purpose: the cache key travels AS-IS, so a
+/// remap-shaped value surviving unchanged is the only way to tell "carried"
+/// from "carried and rewritten".
+fn plant_p4d182_values(conn: &rusqlite::Connection) {
+    quilltap_core::db::files_generation_key_repair::ensure_files_generation_key_column_and_index(
+        conn,
+    )
+    .expect("ensure the generation-key column + index on the vintage fixture");
+    quilltap_core::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
+        conn,
+    )
+    .expect("ensure the transcript-version column on the vintage fixture");
+    let touched = conn
+        .execute(
+            "UPDATE \"files\" SET \"generationKey\" = ?1 WHERE \"id\" = ?2",
+            rusqlite::params![P4D182_GENERATION_KEY, P4D182_FILE_ID],
+        )
+        .expect("plant the avatar cache key");
+    assert_eq!(touched, 1, "the planted file row must exist in the fixture");
+    let touched = conn
+        .execute(
+            "UPDATE \"chats\" SET \"transcriptVersion\" = 7 WHERE \"id\" = ?1",
+            rusqlite::params!["c1000000-0000-4000-8000-000000000001"],
+        )
+        .expect("plant the transcript counter");
+    assert_eq!(touched, 1, "the planted chat row must exist in the fixture");
+}
+
+/// The planted cache key — deliberately `PROJECT_1`'s own id (see
+/// [`plant_p4d182_values`]).
+const P4D182_GENERATION_KEY: &str = "a3000000-0000-4000-8000-000000000001";
+const P4D182_FILE_ID: &str = "f0000001-0000-4000-8000-000000000001";

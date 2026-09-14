@@ -142,6 +142,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use quilltap_core::api::system_qtap;
 use quilltap_core::api::types::{ErrorKind, Response};
@@ -207,6 +208,27 @@ fn fresh_fixture(tag: &str) -> Scratch {
         )
         .expect("ensure the cycle-order column on the vintage fixture");
         plant_p4d171_values(w.connection());
+        // P4.D182 (v4 `7fbf8a55b` + `5029075bb`): the same class one round on.
+        // The oracle's `plantP4d182Values` writes the identical cells on v4's
+        // copy, so the two engines provably start from the same bytes.
+        quilltap_core::db::files_generation_key_repair::
+            ensure_files_generation_key_column_and_index(w.connection())
+            .expect("ensure the generation-key column + index on the vintage fixture");
+        quilltap_core::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
+            w.connection(),
+        )
+        .expect("ensure the transcript-version column on the vintage fixture");
+        let touched = w
+            .connection()
+            .execute(
+                "UPDATE \"files\" SET \"generationKey\" = ?1 WHERE \"id\" = ?2",
+                rusqlite::params![
+                    "a3000000-0000-4000-8000-000000000001",
+                    "f0000001-0000-4000-8000-000000000001"
+                ],
+            )
+            .expect("plant the avatar cache key");
+        assert_eq!(touched, 1, "the planted file row must exist in the fixture");
     }
     Scratch { root }
 }
@@ -772,6 +794,60 @@ fn normalize_side(
     (norm_result, norm_state)
 }
 
+/// P4.D182 — the ONE deliberate, TEMPORARY divergence this substrate lane
+/// creates, pinned in both directions rather than hidden.
+///
+/// The `31436bae4` round splits `chats.transcriptVersion` across two lanes:
+/// P4.D182 gives the column its boot ensure and P4.D183 gives it its single
+/// writer. Between the two, an import that adds messages leaves v4's counter
+/// at the number of message writes (v4's funnel bumps it) and v5's at `0`
+/// (v5 has no bumper yet) — a real difference, visible here because this
+/// family diffs raw table rows.
+///
+/// So it is asserted, not normalized away: v4 must be ABOVE zero somewhere
+/// (or the arm has stopped measuring v4's funnel at all) and v5 must be
+/// exactly zero everywhere. The moment P4.D183 lands its bump, the second
+/// assertion trips and this whole function is what that lane deletes — which
+/// is the point of writing it as a tripwire instead of a subtraction.
+fn subtract_the_deferred_transcript_counter(name: &str, got: &mut StateDump, want: &mut StateDump) {
+    const KEY: &str = "transcriptVersion";
+    let mut v4_max = 0i64;
+    for (side, dump, is_v5) in [("rust", &mut *got, true), ("oracle", &mut *want, false)] {
+        for tables in dump.values_mut() {
+            let Some(rows) = tables.get_mut("chats") else {
+                continue;
+            };
+            for row in rows.iter_mut() {
+                let Some(obj) = row.as_object_mut() else {
+                    continue;
+                };
+                let Some(v) = obj.remove(KEY) else { continue };
+                let n = v.as_i64().unwrap_or(0);
+                if is_v5 {
+                    assert_eq!(
+                        n, 0,
+                        "[{name}] v5's `{KEY}` is {n}, not 0 — P4.D183's bump has                          landed, so this subtraction is stale: delete                          `subtract_the_deferred_transcript_counter` and let the                          column diff plainly (side {side})"
+                    );
+                } else {
+                    v4_max = v4_max.max(n);
+                }
+            }
+        }
+    }
+    // The "v4 really does bump" half is a CORPUS-level claim, not a per-case
+    // one: plenty of arms import nothing at all (`execute_skip_all`), and a
+    // case with no new chat has nothing to bump. Accumulate here and let the
+    // test assert once at the end — a per-case assert fails on the arms it has
+    // no business judging, and says nothing about the ones it does.
+    V4_TRANSCRIPT_MAX.fetch_max(v4_max, Ordering::Relaxed);
+    let _ = name;
+}
+
+/// The highest `transcriptVersion` v4 left on any chat across the whole
+/// corpus. Zero at the end means the subtraction above measured nothing —
+/// asserted once by `system_import_execute_state_equivalence`.
+static V4_TRANSCRIPT_MAX: AtomicI64 = AtomicI64::new(0);
+
 fn diff_states(name: &str, got: &StateDump, want: &StateDump, failures: &mut Vec<String>) {
     let all_tables: HashSet<(String, String)> = got
         .iter()
@@ -1203,6 +1279,14 @@ fn system_import_execute_state_equivalence() {
             "the oracle is missing the `{arm}` preserveIds arm — regenerate it"
         );
     }
+    assert!(
+        V4_TRANSCRIPT_MAX.load(Ordering::Relaxed) > 0,
+        "v4 left every chat's `transcriptVersion` at zero across the whole \
+         corpus — `subtract_the_deferred_transcript_counter` is then \
+         subtracting a column neither engine moves, and the divergence it \
+         claims to record is vacuous. Check the oracle's ALTER and v4's \
+         message funnel before trusting any row diff above."
+    );
     assert!(
         failures.is_empty(),
         "{} import-state difference(s):\n{}",
@@ -1682,6 +1766,9 @@ fn compare_execute(
             "[{name}] result body differs\n  rust:   {got_norm_result}\n  oracle: {want_norm_result}"
         ));
     }
+    let mut got_norm_state = got_norm_state;
+    let mut want_norm_state = want_norm_state;
+    subtract_the_deferred_transcript_counter(name, &mut got_norm_state, &mut want_norm_state);
     diff_states(name, &got_norm_state, &want_norm_state, failures);
 }
 

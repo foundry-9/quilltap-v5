@@ -596,6 +596,161 @@
           "characters": []
         }
       }
+    },
+    {
+      "name": "file_entry_with_a_generation_key",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "files",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": true,
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "files": 1
+          }
+        },
+        "data": {
+          "files": [
+            {
+              "id": "f0000001-0000-4000-8000-000000000001",
+              "userId": "11111111-0000-4000-8000-0000000000ff",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "originalFilename": "portrait.png",
+              "mimeType": "image/png",
+              "size": 2048,
+              "source": "GENERATED",
+              "category": "IMAGE",
+              "createdAt": "2026-03-02T12:00:30.000Z",
+              "updatedAt": "2026-03-02T12:00:30.000Z",
+              "generationKey": "a3000000-0000-4000-8000-000000000001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "file_entry_with_a_null_generation_key",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "files",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": true,
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "files": 1
+          }
+        },
+        "data": {
+          "files": [
+            {
+              "id": "f0000001-0000-4000-8000-000000000001",
+              "userId": "11111111-0000-4000-8000-0000000000ff",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "originalFilename": "portrait.png",
+              "mimeType": "image/png",
+              "size": 2048,
+              "source": "GENERATED",
+              "category": "IMAGE",
+              "createdAt": "2026-03-02T12:00:30.000Z",
+              "updatedAt": "2026-03-02T12:00:30.000Z",
+              "generationKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "file_entry_without_a_generation_key",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "files",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": true,
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "files": 1
+          }
+        },
+        "data": {
+          "files": [
+            {
+              "id": "f0000001-0000-4000-8000-000000000001",
+              "userId": "11111111-0000-4000-8000-0000000000ff",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "originalFilename": "portrait.png",
+              "mimeType": "image/png",
+              "size": 2048,
+              "source": "GENERATED",
+              "category": "IMAGE",
+              "createdAt": "2026-03-02T12:00:30.000Z",
+              "updatedAt": "2026-03-02T12:00:30.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "file_entry_with_a_numeric_generation_key",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "files",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": true,
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "files": 1
+          }
+        },
+        "data": {
+          "files": [
+            {
+              "id": "f0000001-0000-4000-8000-000000000001",
+              "userId": "11111111-0000-4000-8000-0000000000ff",
+              "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+              "originalFilename": "portrait.png",
+              "mimeType": "image/png",
+              "size": 2048,
+              "source": "GENERATED",
+              "category": "IMAGE",
+              "createdAt": "2026-03-02T12:00:30.000Z",
+              "updatedAt": "2026-03-02T12:00:30.000Z",
+              "generationKey": 17
+            }
+          ]
+        }
+      }
     }
   ]
 }

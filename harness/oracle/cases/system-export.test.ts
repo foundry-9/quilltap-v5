@@ -341,6 +341,34 @@ const P4D171_ROUTE_TRAIL =
   '[{"profileId":"c0000001-0000-4000-8000-000000000001","profileName":"Primary","provider":"OPENAI","modelName":"gpt-4o","via":"primary","outcome":"failed","trigger":"rate-limit","detail":"429 slow down"},{"profileId":"c0000001-0000-4000-8000-0000000000f2","profileName":"Understudy","provider":"ANTHROPIC","modelName":"claude-x","via":"understudy","outcome":"answered"}]';
 const P4D171_CHAT_ID = 'c1000000-0000-4000-8000-000000000001';
 const P4D171_MESSAGE_ID = 'd1000000-0000-4000-8000-000000000002';
+const P4D182_GENERATION_KEY = 'a3000000-0000-4000-8000-000000000001';
+const P4D182_FILE_ID = 'f0000001-0000-4000-8000-000000000001';
+
+/**
+ * P4.D182 (v4 `7fbf8a55b`): plant a NON-NULL `files.generationKey`, so the
+ * export/import legs measure the carry rather than a column of nulls.
+ *
+ * The planted VALUE is deliberately a real UUID that this archive remaps
+ * elsewhere (`PROJECT_1`'s id): the avatar cache key travels AS-IS — v4's
+ * vendored export schema says so in as many words — so a remap-shaped value
+ * coming back out unchanged is the only way to see the difference between
+ * "carried" and "carried and rewritten".
+ *
+ * The other `files` rows keep NULL, which is what proves the omit-when-null
+ * rule at the same time.
+ */
+function plantP4d182Values(db: { exec(sql: string): unknown; prepare(sql: string): { run(...a: unknown[]): unknown } }): void {
+  db.exec(`ALTER TABLE "files" ADD COLUMN "generationKey" TEXT`);
+  db.exec(`CREATE INDEX IF NOT EXISTS "idx_files_generationKey" ON "files" ("generationKey")`);
+  db.exec(`ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0`);
+  db.prepare(`UPDATE "files" SET "generationKey" = ? WHERE "id" = ?`).run(
+    P4D182_GENERATION_KEY,
+    P4D182_FILE_ID,
+  );
+  // …and a bumped transcript counter, which must reach NO export record: v4
+  // keeps the column out of `ChatMetadataSchema`, so nothing serializes it.
+  db.prepare(`UPDATE "chats" SET "transcriptVersion" = 7 WHERE "id" = ?`).run(P4D171_CHAT_ID);
+}
 
 /**
  * [P4.88] Plant NON-DEFAULT values in the two `78b381a96` columns.
@@ -398,6 +426,7 @@ async function runCase(
   {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     plantP4d171Values(getRawDatabase()!);
+    plantP4d182Values(getRawDatabase()!);
   }
 
   try {
