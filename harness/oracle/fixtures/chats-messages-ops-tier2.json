@@ -108,6 +108,75 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000060-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Add-Message Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000070-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Replace-In-Messages Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000080-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Metadata-Patch Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "seedMessages": [
@@ -255,6 +324,49 @@
           "createdAt": "2026-02-02T00:00:02.000Z"
         }
       ]
+    },
+    {
+      "chatId": "c0000060-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000060-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "seed line",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000070-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "hello world",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000070-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "nothing to see",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000080-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000080-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "untouched",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "ops": [
@@ -321,6 +433,57 @@
       "messageIds": [
         "e0000050-0000-4000-8000-000000000001"
       ]
+    },
+    {
+      "kind": "addMessage",
+      "chatId": "c0000060-0000-4000-8000-000000000001",
+      "message": {
+        "type": "message",
+        "id": "e0000060-0000-4000-8000-00000000000a",
+        "role": "ASSISTANT",
+        "content": "one more",
+        "createdAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "addMessages",
+      "chatId": "c0000060-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000060-0000-4000-8000-00000000000b",
+          "role": "USER",
+          "content": "batch one",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000060-0000-4000-8000-00000000000c",
+          "role": "ASSISTANT",
+          "content": "batch two",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "replaceInMessages",
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "searchText": "world",
+      "replaceText": "there"
+    },
+    {
+      "kind": "replaceInMessages",
+      "chatId": "c0000070-0000-4000-8000-000000000001",
+      "searchText": "absent-needle",
+      "replaceText": "x"
+    },
+    {
+      "kind": "chatUpdate",
+      "chatId": "c0000080-0000-4000-8000-000000000001",
+      "data": {
+        "title": "renamed by a metadata patch",
+        "messageCount": 99
+      }
     }
   ]
 }

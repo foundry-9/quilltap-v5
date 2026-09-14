@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
 
   await initializeDatabase();
@@ -61,6 +61,21 @@ async function main(): Promise<void> {
     const { id, createdAt, updatedAt, ...data } = c;
     await repo.create(data as never, { id, createdAt, updatedAt });
   }
+  // P4.D183: `chats.transcriptVersion` arrives by MIGRATION only — v4 keeps it
+  // out of `ChatMetadataSchema` so Zod cannot rewind it, which also means
+  // `generateDDL` never emits it and a freshly created table does not have it
+  // (`add-transcript-version-column-v1`). Added here — AFTER the creates,
+  // because v4's collections are lazy and `chats` does not exist until the
+  // first one lands, and BEFORE the seeding, so the seed's own `addMessages`
+  // bumps are part of the fixture both sides copy. The counter then starts
+  // where v4's own funnel put it rather than at an assumed 0.
+  const chatCols = ((await rawQuery(`PRAGMA table_info(chats)`)) as Array<{ name: string }>).map(
+    (c) => c.name,
+  );
+  if (!chatCols.includes('transcriptVersion')) {
+    await rawQuery(`ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0`);
+  }
+
   for (const seed of spec.seedMessages) {
     await repo.addMessages(seed.chatId, seed.messages as never);
   }

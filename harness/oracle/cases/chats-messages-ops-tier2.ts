@@ -2,6 +2,14 @@
  * Tier-2 oracle case — the chats messages mutation path (Phase-2, the chats repo —
  * sub-unit 4b: updateMessage / deleteMessagesByIds / clearMessages).
  *
+ * P4.D183 widened this to the WHOLE message write funnel — `addMessage`,
+ * `addMessages` and the search-and-replace path join the 4b trio — because
+ * `chats.transcriptVersion` is DB state and this census is what sees it. The
+ * fixture now carries the column (the builder adds it the way v4's migration
+ * does), so every bump, and every write that must NOT bump, is a compared
+ * cell: add/add-batch/edit/delete/clear/replace move it, a not-found edit and
+ * a no-match replace and a plain metadata patch do not.
+ *
  * Runs the fixed op sequence (`chats-messages-ops-tier2.json`) via v4's REAL
  * `ChatsRepository` on a copy of the seed fixture, then dumps BOTH the
  * `chat_messages` rows (the row mutations) and the `chats` rows (the metadata
@@ -27,11 +35,25 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'updateMessage' | 'deleteMessagesByIds' | 'clearMessages';
+  kind:
+    | 'updateMessage'
+    | 'deleteMessagesByIds'
+    | 'clearMessages'
+    // P4.D183: the rest of v4's message write funnel, plus the two arms that
+    // say what must NOT move the counter.
+    | 'addMessage'
+    | 'addMessages'
+    | 'replaceInMessages'
+    | 'chatUpdate';
   chatId: string;
   messageId?: string;
   updates?: Record<string, unknown>;
   messageIds?: string[];
+  message?: Record<string, unknown>;
+  messages?: Array<Record<string, unknown>>;
+  searchText?: string;
+  replaceText?: string;
+  data?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -78,8 +100,25 @@ async function main(): Promise<void> {
       await repo.updateMessage(op.chatId, op.messageId as string, op.updates as never);
     } else if (op.kind === 'deleteMessagesByIds') {
       await repo.deleteMessagesByIds(op.chatId, op.messageIds as string[]);
-    } else {
+    } else if (op.kind === 'clearMessages') {
       await repo.clearMessages(op.chatId);
+    } else if (op.kind === 'addMessage') {
+      await repo.addMessage(op.chatId, op.message as never);
+    } else if (op.kind === 'addMessages') {
+      await repo.addMessages(op.chatId, op.messages as never);
+    } else if (op.kind === 'replaceInMessages') {
+      await repo.replaceInMessages(
+        op.chatId,
+        op.searchText as string,
+        op.replaceText as string,
+      );
+    } else if (op.kind === 'chatUpdate') {
+      // The arm that says what must NOT move: a plain metadata patch. The
+      // counter is outside `ChatMetadataSchema`, so Zod strips it from the
+      // validated whole-row rewrite and this write cannot touch it.
+      await repo.update(op.chatId, op.data as never);
+    } else {
+      throw new Error(`unknown op kind: ${String((op as { kind: string }).kind)}`);
     }
   }
 

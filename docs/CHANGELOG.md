@@ -58,6 +58,44 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — test(chats): the funnel census sees the transcript counter, and finds a v4 bug
+
+_Versions: harness 0.0.792._
+
+`chats_messages_ops_tier2_equivalence` widens from v4's 4b trio to the WHOLE
+message write funnel — `addMessage`, `addMessages` and the search-and-replace
+path join it, alongside two arms that say what must NOT move the counter. The
+fixture builder now adds `chats.transcriptVersion` the way v4's migration does
+(after the creates, since v4's collections are lazy; before the seeding, so the
+seed's own bumps are part of what both sides copy), which makes every bump a
+compared cell. v4's numbers discriminate on their own: the batch add bumps
+ONCE, the no-match replace does not bump, and a metadata patch moves
+`messageCount` to 99 while leaving the counter where it was.
+
+**A v4 bug, found by this and pinned in both directions.**
+`deleteMessagesByIds` counts a requested id as removed whether or not it
+existed: `deleteOne` returns `{deletedCount: 0, acknowledged: true}` on a miss
+— an object, always truthy — so v4's `else if (result) removed += 1` fires and
+`removed` ends up as `messageIds.length`. v4 then takes its `removed > 0` path
+and, since `5029075bb`, bumps the counter and publishes a hint for a delete
+that deleted nothing. v4's own suite cannot see it: its unit test mocks
+`deleteOne` to return a NUMBER, which takes the other branch, so "says nothing
+when nothing was removed" passes against a mock that does not match its own
+production backend. It needed a real-DB oracle to surface, and only became
+visible when the counter arrived — `messageCount` and `lastMessageAt` are
+recomputed from what survives and land on the same values either way.
+
+v5 is left correct rather than regressed to match; the divergence is recorded
+as `DELETE_MISS_DIVERGENCE`, asserted on both sides so the pin fires by name
+when v4 converges. Filed upstream.
+
+NEW `transcript_version_read_order_guard` pins what no differential can see:
+v4 reads the counter BEFORE projecting, because a version newer than the rows
+handed out with it would have a tab answered "unchanged" for a message it
+never received. Both orders produce identical bodies on any sequential corpus,
+so the pin is a source census, mutation-proven by a reordering that still
+compiles.
+
 #### 2026-09-14 — feat(messages): the chatTranscript verb, the message-events listing, and the /api/v1/messages edge
 
 _Versions: core 0.0.903, harness 0.0.791, web 0.0.143._
