@@ -196,6 +196,55 @@ async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
 
 const CHAT_ROUTE = '@/app/api/v1/chats/[id]/route';
 
+/**
+ * P4.D183: bring the committed fixture COPY up to the schema v4's code at the
+ * pin expects, the way v4's migration chain would on a real instance.
+ *
+ * **Why this had to exist.** The v5 side of this family heals the same vintage
+ * through `test_support::ensure_p4d171_columns`; the ORACLE side never gained
+ * the matching heal, so every case that WRITES — v4's scenario change posts a
+ * Host announcement through `addMessage`, into a `chat_messages` table with no
+ * `routeTrail` column — answered a 500 and the family recorded
+ * `{"error":"Internal server error"}` as though that were v4's contract.
+ * 18 of its 50 cases, all of them the ones that change anything.
+ *
+ * It stayed hidden because the family SKIPs (and so passes) when
+ * `QT_ORACLE_CHAT_SCENARIO` is unset, and nothing had regenerated it since
+ * P4.D171 moved the schema. MEASURED identical at both the `f4ad2c8d1`
+ * baseline and the `31436bae4` target — 18 either way — so it is fixture rot,
+ * not this round's drift.
+ *
+ * `transcriptVersion` is planted alongside them because `5029075bb` makes
+ * every one of those writes announce; v4 swallows a failed bump, so it is not
+ * what was breaking this, but a fixture that lies about the schema is what
+ * produced the bug above.
+ */
+function healVintageColumns(mainPath: string, pepperB64: string): void {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Database = require(
+    require('node:path').join(
+      process.cwd(),
+      'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
+    ),
+  );
+  const db = new Database(mainPath);
+  db.pragma(`key="x'${Buffer.from(pepperB64, 'base64').toString('hex')}'"`);
+  const has = (table: string, column: string): boolean =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(
+      (r) => r.name === column,
+    );
+  if (!has('chat_messages', 'routeTrail')) {
+    db.exec('ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT');
+  }
+  if (!has('chats', 'cycleOrderParticipantIds')) {
+    db.exec('ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT');
+  }
+  if (!has('chats', 'transcriptVersion')) {
+    db.exec('ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0');
+  }
+  db.close();
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -210,6 +259,7 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  healVintageColumns(mainWork, spec.testPepperBase64);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 

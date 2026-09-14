@@ -58,6 +58,38 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — fix(harness): the chat-scenario oracle could not write, and the transcript recipe could not run
+
+_Versions: harness 0.0.793._
+
+Two recipe repairs the lane's regen sweep surfaced, neither of them a port
+regression.
+
+**`chat_scenario_routes_equivalence` had recorded a 500 as v4's contract.** Its
+v5 side heals the committed fixture's vintage through
+`test_support::ensure_p4d171_columns`; the ORACLE side never gained the
+matching heal, so every case that WRITES — a scenario change posts a Host
+announcement through `addMessage`, into a `chat_messages` table with no
+`routeTrail` column — answered `{"error":"Internal server error"}`, and the
+corpus had been comparing against that. 18 of its 50 cases, all of them the ones
+that change anything. MEASURED identical at both the `f4ad2c8d1` baseline and
+the `31436bae4` target, which is what identifies it as fixture rot rather than
+this round's drift; it stayed hidden because the family SKIPs (and so passes)
+when its oracle var is unset and nothing had regenerated it since P4.D171 moved
+the schema. A `healVintageColumns` on the per-case copy takes it 18 → 0.
+
+**The new transcript-route recipe could not run under the sweep driver.** Its
+jest filter was anchored on the /tmp mirror path to avoid matching v4's own
+`transcript-route.test.ts` (a real basename collision), but `recipe_sweep.py`
+appends the family name to `TMPO`, so the anchor matched by hand and found
+nothing under the driver — reported as `regen_failed` on a "No tests found"
+that looks nothing like its cause. Loosened between the stem and `cases/`.
+
+The obvious spelling for that looseness is a bracket-star, and it cannot be
+used: the two characters that close the character class and the path separator
+also close the surrounding JSDoc block, and swc then reports a syntax error
+pointing at the following line.
+
 #### 2026-09-14 — test(realtime): the two raw chat-message writers that must stay silent
 
 _Versions: core 0.0.904._

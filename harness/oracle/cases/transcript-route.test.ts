@@ -44,9 +44,18 @@
  *   QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-transcript-route.ndjson TZ=UTC \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
- *       --roots "$PWD" --roots "$TMPO/cases" -- "qt-tr-oracle/cases/transcript-route\.test\.ts$"
+ *       --roots "$PWD" --roots "$TMPO/cases" -- "qt-tr-oracle.*cases/transcript-route\.test\.ts$"
  *
- * ⚠ The filter is anchored on the /tmp MIRROR PATH, not just the basename:
+ * ⚠ The filter is anchored on the /tmp MIRROR PATH, not just the basename,
+ * and it is deliberately loose between the stem and `cases/`, because
+ * `recipe_sweep.py` appends the FAMILY NAME to `TMPO` when it runs a recipe
+ * (`/tmp/qt-tr-oracle-transcript_route_equivalence`). A filter anchored on the
+ * bare stem matches by hand and finds NOTHING under the driver, which then
+ * reports `regen_failed` on a "No tests found" that looks nothing like its
+ * cause. (And the looseness must not be spelled with a bracket-star: the
+ * two characters that would end the class and the slash also END THIS BLOCK
+ * COMMENT, and swc then reports a syntax error pointing at the line after.)
+ *
  * v4 ships its own `__tests__/unit/app/api/v1/messages/transcript-route.test.ts`
  * (the 12 `it` titles this corpus mirrors), and a basename-anchored `--`
  * filter matches BOTH. Harmless today — v4's suite writes no `QT_ORACLE_OUT`,
