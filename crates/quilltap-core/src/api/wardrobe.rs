@@ -1147,6 +1147,7 @@ async fn run_wardrobe_preview_avatar(
                 generation_prompt: Some(prompt_owned.clone()),
                 generation_model: Some(model_name.clone()),
                 generation_revised_prompt: image_for_write.revised_prompt.clone(),
+                generation_key: None,
                 description: Some(description.clone()),
                 tags: vec![character_id.clone()],
                 project_id: None,

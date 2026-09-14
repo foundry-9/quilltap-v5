@@ -621,6 +621,7 @@ fn main_bundles(
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             description: file.description.clone(),
             storage_key: file.storage_key.clone(),
         };
@@ -1171,6 +1172,7 @@ async fn character_archive_tier2_equivalence() {
                             generation_prompt: None,
                             generation_model: None,
                             generation_revised_prompt: None,
+                            generation_key: None,
                             description: entry.description.clone(),
                             storage_key: entry.storage_key.clone(),
                         },

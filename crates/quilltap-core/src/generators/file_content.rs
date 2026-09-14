@@ -328,6 +328,7 @@ pub fn file_entry_of(file: &FileFull) -> FileEntry {
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: file.description.clone(),
         storage_key: file.storage_key.clone(),
     }

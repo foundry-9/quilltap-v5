@@ -542,6 +542,7 @@ async fn restore_archive_bundle(
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: file_row.description.clone(),
         storage_key: file_row.storage_key.clone(),
     };
@@ -1053,6 +1054,7 @@ async fn create_archive_file_record(
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: None,
         tags: Vec::new(),
         project_id: None,

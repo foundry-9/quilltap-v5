@@ -1033,6 +1033,7 @@ fn upload_file_to_project(
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             description: None,
             tags: inherited_tags,
             project_id: file_project_id,

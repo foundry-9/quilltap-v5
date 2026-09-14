@@ -366,6 +366,12 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        // P4.D182 (v4 `7fbf8a55b`): same class, one round later —
+        // `files.generationKey`, which the chat-upload arms now bind on every
+        // INSERT. v4's insert names only the keys its data object carries, so
+        // v4 wrote to the un-healed fixture happily; this port's fixed column
+        // list did not.
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
     }
     Db::open(
         DbPaths {

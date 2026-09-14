@@ -58,6 +58,39 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(files): carry `files.generationKey` through every read and write path
+
+_Versions: core 0.0.897, harness 0.0.784._
+
+The avatar configuration cache key (v4 `7fbf8a55b`) becomes a raw nullable
+string this port stores and returns and never derives, parses or remaps:
+`FileCreate.generation_key` bound on the INSERT in v4's `FileEntrySchema`
+slot, `FileEntry`/`FileFull` marshalled from all three column-list literals,
+and a new indexed `find_by_generation_key` reading exactly as v4's
+`findByGenerationKey` does.
+
+Three things deliberately do NOT move. `FileUpdate` gains no field: v4's is a
+`Partial<FileEntry>` that could carry one, but measured at the target the only
+write in the whole tree is the avatar job's `files.create`. The files-family
+wire shape gains no key: v4's `serializeFileEntry` is an explicit eighteen-key
+list that adding the schema field did not touch, pinned here by a test showing
+a keyed row and a bare row serializing identically. And `find_by_generation_key`
+emits no ORDER BY, because v4's `findByFilter` supplies no sort and its caller
+does the newest-first ordering itself.
+
+The differential spec now carries all three write shapes — a real key, an
+explicit null, and absent — plus a seeded key that survives an update, so both
+the write and the read legs discriminate; the regenerated v4 dump carries both
+planted values.
+
+One asymmetry is worth recording because it caused every venue failure this
+change produced: v4's insert names only the keys its data object carries, so
+v4 writes happily into a pre-4.10 `files` table, while this port's fixed
+column list answers `no such column`. A new `test_support::ensure_p4d182_columns`
+heals a fixture the way boot heals a real instance — the P4.D171 idiom — and
+three venues adopt it, including the migration-vintage restore test, whose
+leaked-sentence tripwire fired exactly as designed.
+
 #### 2026-09-14 — feat(schema): both `31436bae4` columns as boot ensures — `files.generationKey` + its index, `chats.transcriptVersion`
 
 _Versions: core 0.0.896, host 0.0.130._

@@ -360,6 +360,10 @@ pub(super) fn import_files(
                     generation_prompt: os(file, "generationPrompt"),
                     generation_model: os(file, "generationModel"),
                     generation_revised_prompt: os(file, "generationRevisedPrompt"),
+                    // The avatar cache key travels AS-IS: never remapped, never derived
+                    // (v4 `7fbf8a55b` — the vendored `qtap-export.schema.json` says so in
+                    // as many words, and nothing on a receiving instance recomputes one).
+                    generation_key: os(file, "generationKey"),
                     description: os(file, "description"),
                     tags,
                     project_id: project_id.clone(),

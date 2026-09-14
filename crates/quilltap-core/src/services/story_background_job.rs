@@ -998,6 +998,7 @@ fn write_story_file(
             generation_prompt: Some(input.final_prompt.clone()),
             generation_model: Some(input.generation_model.clone()),
             generation_revised_prompt: input.revised_prompt.clone(),
+            generation_key: None,
             // No label here. `description` is what `describe_image` and the
             // blind-model fallback read as "what this picture shows"; a stub
             // such as "Story background for: <title>" shadowed the prompt above

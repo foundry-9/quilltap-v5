@@ -1705,6 +1705,7 @@ pub fn create_file_conns(
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             // v4 `description || null` — an empty string is falsy.
             description: params.description.clone().filter(|d| !d.is_empty()),
             tags: final_tags,
@@ -2144,7 +2145,7 @@ mod tests {
                 "CREATE TABLE files (id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, \
                  mimeType TEXT, size REAL, width REAL, height REAL, category TEXT, \
                  generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
-                 description TEXT, storageKey TEXT);",
+                 generationKey TEXT, description TEXT, storageKey TEXT);",
             )?;
             let mount = ws.mount_index().unwrap().connection();
             mount.execute_batch(
@@ -2175,6 +2176,7 @@ mod tests {
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             description: None,
             storage_key: key.map(str::to_string),
         }

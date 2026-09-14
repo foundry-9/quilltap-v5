@@ -321,6 +321,7 @@ pub async fn almanack_generate(
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: Some("The Almanack — system report".to_string()),
         tags: Vec::new(),
         project_id: None,

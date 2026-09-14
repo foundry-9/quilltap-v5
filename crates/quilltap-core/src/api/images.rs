@@ -1871,6 +1871,7 @@ async fn run_images_generate(
                         generation_prompt: Some(prompt_for_row.clone()),
                         generation_model: model_for_row.clone(),
                         generation_revised_prompt: p.revised_prompt.clone(),
+                        generation_key: None,
                         description: None,
                         tags: inherited,
                         project_id: None,

@@ -143,6 +143,26 @@ pub fn ensure_p4d171_columns(conn: &rusqlite::Connection) {
         .expect("ensure the cycle-order column on a test fixture");
 }
 
+/// P4.D182: heal a fixture's main-partition connection with the two
+/// `31436bae4`-round schema moves (`files.generationKey` + its index,
+/// `chats.transcriptVersion`) — the same repaired-at-boot idiom as
+/// [`ensure_p4d171_columns`], for the committed and hand-rolled `files` /
+/// `chats` fixtures that predate them.
+///
+/// `files.generationKey` is the one that BITES: this port's `files` INSERT is
+/// a fixed column list that now always binds it, where v4's insert names only
+/// the keys its data object carries — so v4 writes happily to a pre-4.10
+/// table and v5 answers `no such column`. That asymmetry is the whole reason
+/// this helper exists; it is not a difference in what either engine stores.
+///
+/// Idempotent; a no-op on a table-less partition or an already-healed one.
+pub fn ensure_p4d182_columns(conn: &rusqlite::Connection) {
+    crate::db::files_generation_key_repair::ensure_files_generation_key_column_and_index(conn)
+        .expect("ensure the generation-key column + index on a test fixture");
+    crate::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(conn)
+        .expect("ensure the transcript-version column on a test fixture");
+}
+
 /// `job_runner.rs`'s holdout idiom: a process-global subscriber, armed once,
 /// with a per-thread buffer — see the module doc for why this is a
 /// genuinely different contract from [`captured`], not a copy that drifted.

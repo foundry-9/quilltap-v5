@@ -118,6 +118,21 @@ fn open(instance: &Path) -> Db {
         )
     })
     .expect("boot-align the vintage main partition");
+    // P4.D182: and the two `31436bae4`-round columns. `files.generationKey` is
+    // the one this file feels: the restore reader now carries the key through
+    // as-is, and this port's `files` INSERT binds every column, so without the
+    // boot repair a restored file row 500s with "table files has no column
+    // named generationKey" — which `no_restore_phase_names_a_column_a_
+    // migrated_table_lacks` then reports as a leaked raw sentence, exactly as
+    // it is meant to.
+    db.write_blocking(|writers| {
+        quilltap_core::db::files_generation_key_repair::
+            ensure_files_generation_key_column_and_index(writers.main().connection())?;
+        quilltap_core::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
+            writers.main().connection(),
+        )
+    })
+    .expect("boot-align the vintage main partition (P4.D182)");
     db
 }
 

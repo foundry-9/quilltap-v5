@@ -493,6 +493,7 @@ mod tests {
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             description: description.map(str::to_string),
             tags: vec![],
             project_id: None,

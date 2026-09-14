@@ -1329,6 +1329,7 @@ fn save_file_entry(
                 generation_prompt: None,
                 generation_model: None,
                 generation_revised_prompt: None,
+                generation_key: None,
                 description: None,
                 tags: link_ids.to_vec(),
                 project_id: project_id.map(str::to_string),
@@ -1844,4 +1845,53 @@ fn project_exists(c: &rusqlite::Connection, project_id: &str) -> Result<bool, Db
             other => Err(other),
         })?;
     Ok(found.is_some())
+}
+
+#[cfg(test)]
+mod generation_key_wire_tests {
+    use super::*;
+
+    fn full_with_key(key: Option<&str>) -> FileFull {
+        FileFull {
+            id: "f1".into(),
+            user_id: "u1".into(),
+            original_filename: "plate.webp".into(),
+            mime_type: "image/webp".into(),
+            sha256: "ab".into(),
+            size: 12,
+            width: None,
+            height: None,
+            category: "IMAGE".into(),
+            description: None,
+            generation_key: key.map(str::to_string),
+            linked_to: vec![],
+            project_id: None,
+            folder_path: None,
+            storage_key: None,
+            file_status: None,
+            created_at: "2026-01-01T00:00:00.000Z".into(),
+            updated_at: "2026-01-01T00:00:00.000Z".into(),
+        }
+    }
+
+    /// P4.D182 — the files-family wire shape does NOT carry the cache key, on
+    /// either side. v4's `serializeFileEntry` (`app/api/v1/files/shared.ts:45`,
+    /// measured at `31436bae4`) is an explicit eighteen-key list that adding
+    /// `generationKey` to `FileEntrySchema` did not touch. So a row that HAS a
+    /// key must serialize byte-identically to one that has none, and the port
+    /// must not "helpfully" surface the column it now reads.
+    #[test]
+    fn serialize_file_entry_never_emits_the_cache_key() {
+        let keyed = serialize_file_entry(&full_with_key(Some("v1:deadbeef")));
+        let bare = serialize_file_entry(&full_with_key(None));
+
+        assert!(
+            keyed.get("generationKey").is_none(),
+            "v4's serializer names no such key: {keyed}"
+        );
+        assert_eq!(
+            keyed, bare,
+            "a keyed row and a bare row serialize identically"
+        );
+    }
 }

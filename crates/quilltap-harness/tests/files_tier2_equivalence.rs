@@ -83,6 +83,12 @@ struct CreateData {
     generation_model: Option<String>,
     #[serde(default, rename = "generationRevisedPrompt")]
     generation_revised_prompt: Option<String>,
+    /// v4 `7fbf8a55b`. The spec carries all three write shapes: a real key, an
+    /// explicit `null`, and ABSENT — `#[serde(default)]` folds the last two
+    /// together here exactly as Zod's `.nullable().optional()` does on v4's
+    /// side, which is the point: both must reach the column as SQL NULL.
+    #[serde(default, rename = "generationKey")]
+    generation_key: Option<String>,
     #[serde(default)]
     description: Option<String>,
     tags: Vec<String>,
@@ -209,6 +215,7 @@ fn files_tier2_matches_oracle() {
                             generation_prompt: data.generation_prompt.clone(),
                             generation_model: data.generation_model.clone(),
                             generation_revised_prompt: data.generation_revised_prompt.clone(),
+                            generation_key: data.generation_key.clone(),
                             description: data.description.clone(),
                             tags: data.tags.clone(),
                             project_id: data.project_id.clone(),

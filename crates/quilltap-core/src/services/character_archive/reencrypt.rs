@@ -165,6 +165,7 @@ async fn reencrypt_one(
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: file.description.clone(),
         storage_key: file.storage_key.clone(),
     };
@@ -254,6 +255,7 @@ mod tests {
             height: None,
             category: ARCHIVE_CATEGORY.to_string(),
             description: None,
+            generation_key: None,
             linked_to: Vec::new(),
             project_id: None,
             folder_path: None,

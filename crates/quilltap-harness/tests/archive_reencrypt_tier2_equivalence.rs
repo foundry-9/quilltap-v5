@@ -165,6 +165,7 @@ async fn plant(work: &Work, spec: &Spec, id: &str, bytes: Option<&[u8]>, filenam
         generation_prompt: None,
         generation_model: None,
         generation_revised_prompt: None,
+        generation_key: None,
         description: None,
         tags: Vec::new(),
         project_id: None,
@@ -230,6 +231,7 @@ fn opens_and_files(work: &Work, spec: &Spec, old_passphrase: &str) -> (Value, Va
             generation_prompt: None,
             generation_model: None,
             generation_revised_prompt: None,
+            generation_key: None,
             description: file.description.clone(),
             storage_key: file.storage_key.clone(),
         };

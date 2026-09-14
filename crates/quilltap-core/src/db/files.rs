@@ -100,6 +100,14 @@ pub struct FileCreate {
     pub generation_model: Option<String>,
     /// `None` => SQL NULL.
     pub generation_revised_prompt: Option<String>,
+    /// The avatar configuration cache key (v4 `7fbf8a55b`,
+    /// `FileEntrySchema.generationKey`) — a RAW nullable string this port never
+    /// derives, parses or remaps. `None` => SQL NULL, which is what every file
+    /// but a cached avatar carries. v4's ONLY writer is `files.create` in
+    /// `lib/background-jobs/handlers/character-avatar.ts` (measured at the
+    /// target: no update path anywhere writes it), which is why the sibling
+    /// [`FileUpdate`] has no counterpart field.
+    pub generation_key: Option<String>,
     /// `None` => SQL NULL.
     pub description: Option<String>,
     /// Stored as compact JSON text (`["id1","id2"]`, `[]` when empty).
@@ -143,6 +151,11 @@ pub struct FileUpdate {
     pub generation_prompt: Option<String>,
     pub generation_model: Option<String>,
     pub generation_revised_prompt: Option<String>,
+    // No `generation_key`: v4's `FileUpdate` is a `Partial<FileEntry>` and so
+    // *could* carry one, but measured at `31436bae4` the only write in the
+    // whole tree is the avatar job's `files.create`. An update arm here would
+    // be a v5 invention, and a settable one would let a later caller rewrite a
+    // key v4 only ever binds at creation.
     pub description: Option<String>,
     /// Re-serialized to compact JSON text when provided.
     pub tags: Option<Vec<String>>,
@@ -279,10 +292,10 @@ impl<'c> FilesRepository<'c> {
             "INSERT INTO files \
                (id, userId, sha256, originalFilename, mimeType, size, width, height, \
                 isPlainText, linkedTo, source, category, generationPrompt, generationModel, \
-                generationRevisedPrompt, description, tags, projectId, folderPath, storageKey, \
-                fileStatus, createdAt, updatedAt) \
+                generationRevisedPrompt, generationKey, description, tags, projectId, folderPath, \
+                storageKey, fileStatus, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-                     ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                     ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             params![
                 opts.id,
                 data.user_id,
@@ -299,6 +312,7 @@ impl<'c> FilesRepository<'c> {
                 data.generation_prompt,
                 data.generation_model,
                 data.generation_revised_prompt,
+                data.generation_key,
                 data.description,
                 tags_json,
                 data.project_id,
@@ -634,6 +648,34 @@ impl<'c> FilesRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findByGenerationKey(generationKey)` (`files.repository.ts:62`, v4
+    /// `7fbf8a55b`) — every file row bound to one avatar configuration cache
+    /// key, hydrated into the [`FileEntry`] subset.
+    ///
+    /// **No ORDER BY, deliberately.** v4's body is `findByFilter({
+    /// generationKey })` with no `QueryOptions`, and its query translator emits
+    /// an `ORDER BY` only when a sort is supplied — so v4's rows arrive in
+    /// whatever order the planner returns them, and the CALLER
+    /// (`lib/wardrobe/avatar-cache.ts:167`) sorts them newest-first itself,
+    /// with the comment "a forced reroll rebinds the key, and the newest holder
+    /// is the one that won it." Inventing an order here would put the policy in
+    /// the wrong place.
+    ///
+    /// Two more things belong to the caller, not here (v4 puts them there):
+    /// the hit/miss policy — a row whose blob is gone counts as a MISS — and
+    /// the swallow. v4 wraps the read in `safeQuery` and its caller wraps the
+    /// call in its own try/catch ("a cache lookup must never be the reason an
+    /// avatar fails to generate"); this returns a `Result`, so the swallow is
+    /// P4.D184's to write at the call site.
+    pub fn find_by_generation_key(&self, generation_key: &str) -> Result<Vec<FileEntry>, DbError> {
+        let sql = format!("{FILE_ENTRY_SELECT_ALL} WHERE generationKey = ?1");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params![generation_key], map_file_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Read a JSON-array column (`linkedTo` / `tags`) for a file. `None` when the
     /// row is missing (v4's `findById` → null); `Some(vec)` otherwise (`[]` when
     /// the column is empty/unparseable, matching the Zod `.default([])`). The
@@ -896,6 +938,10 @@ pub struct FileEntry {
     pub generation_prompt: Option<String>,
     pub generation_model: Option<String>,
     pub generation_revised_prompt: Option<String>,
+    /// The avatar configuration cache key (v4 `7fbf8a55b`). NULL on every file
+    /// but a cached avatar plate; the roll predicate P4.D185 reads is
+    /// `generationKey IS NOT NULL && category == "IMAGE"`.
+    pub generation_key: Option<String>,
     /// The stored image description (W4.4b `generateImageDescription`'s persisted
     /// reuse tier falls back to this after the two generation-prompt columns).
     pub description: Option<String>,
@@ -932,6 +978,13 @@ pub struct FileFull {
     pub height: Option<i64>,
     pub category: String,
     pub description: Option<String>,
+    /// The avatar configuration cache key (v4 `7fbf8a55b`). Carried so a
+    /// `FileFull` reader can see it; **not** part of the files-family wire
+    /// shape — v4's `serializeFileEntry` (`app/api/v1/files/shared.ts:45`) is
+    /// an explicit key list that does not name it, and neither does this
+    /// port's twin (pinned by `serialize_file_entry_never_emits_the_cache_key`
+    /// in `api/files.rs`).
+    pub generation_key: Option<String>,
     /// The `linkedTo` JSON array (entity ids referencing this file).
     pub linked_to: Vec<String>,
     pub project_id: Option<String>,
@@ -969,31 +1022,36 @@ pub struct ProjectFileListRow {
 /// hardcoded SELECTs against drift.
 #[cfg(test)]
 const FILE_ENTRY_COLUMNS: &str = "id, sha256, originalFilename, mimeType, size, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey";
+     category, generationPrompt, generationModel, generationRevisedPrompt, generationKey, \
+     description, storageKey";
 
 const FILE_ENTRY_SELECT: &str =
     "SELECT id, sha256, originalFilename, mimeType, size, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey \
+     category, generationPrompt, generationModel, generationRevisedPrompt, generationKey, \
+     description, storageKey \
      FROM files WHERE id = ?1";
 
 /// The same column list for a filtered/ordered multi-row read (the WHERE + ORDER
 /// BY are appended by the caller). Kept in lockstep with [`FILE_ENTRY_SELECT`].
 const FILE_ENTRY_SELECT_ALL: &str =
     "SELECT id, sha256, originalFilename, mimeType, size, width, height, \
-     category, generationPrompt, generationModel, generationRevisedPrompt, description, storageKey \
+     category, generationPrompt, generationModel, generationRevisedPrompt, generationKey, \
+     description, storageKey \
      FROM files";
 
 /// The [`FileFull`] column projection (by-id form). Kept in lockstep with
 /// [`FILE_FULL_SELECT_ALL`] and [`map_file_full`].
 const FILE_FULL_SELECT: &str =
     "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
-     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256 \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256, \
+     generationKey \
      FROM files WHERE id = ?1";
 
 /// The same projection for a filtered multi-row read (the caller appends WHERE).
 const FILE_FULL_SELECT_ALL: &str =
     "SELECT id, userId, originalFilename, mimeType, size, width, height, category, description, \
-     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256 \
+     linkedTo, projectId, folderPath, storageKey, fileStatus, createdAt, updatedAt, sha256, \
+     generationKey \
      FROM files";
 
 /// Map a `files` row (the [`FILE_FULL_SELECT`] projection) into a [`FileFull`].
@@ -1022,6 +1080,7 @@ fn map_file_full(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileFull> {
         created_at: row.get(14)?,
         updated_at: row.get(15)?,
         sha256: row.get(16)?,
+        generation_key: row.get(17)?,
     })
 }
 
@@ -1041,8 +1100,9 @@ fn map_file_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<FileEntry> {
         generation_prompt: row.get(8)?,
         generation_model: row.get(9)?,
         generation_revised_prompt: row.get(10)?,
-        description: row.get(11)?,
-        storage_key: row.get(12)?,
+        generation_key: row.get(11)?,
+        description: row.get(12)?,
+        storage_key: row.get(13)?,
     })
 }
 
@@ -1079,7 +1139,7 @@ mod find_by_ids_tests {
             "CREATE TABLE files (id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, \
              mimeType TEXT, size REAL, width REAL, height REAL, category TEXT, \
              generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
-             description TEXT, storageKey TEXT);",
+             generationKey TEXT, description TEXT, storageKey TEXT);",
         )
         .unwrap();
         conn
@@ -1160,6 +1220,139 @@ mod find_by_ids_tests {
             sorted_ids(&rows),
             vec!["f1".to_string(), "f2".to_string(), "f3".to_string()],
             "every chunk's rows are concatenated into one result"
+        );
+    }
+}
+
+#[cfg(test)]
+mod generation_key_tests {
+    use super::*;
+
+    /// The reduced DDL with `generationKey` in v4's `FileEntrySchema` slot,
+    /// plus the index the boot ensure creates.
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, \
+             mimeType TEXT, size REAL, width REAL, height REAL, category TEXT, \
+             generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
+             generationKey TEXT, description TEXT, storageKey TEXT); \
+             CREATE INDEX \"idx_files_generationKey\" ON files (generationKey);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed(conn: &Connection, id: &str, key: Option<&str>) {
+        conn.execute(
+            "INSERT INTO files (id, sha256, originalFilename, mimeType, size, category, \
+             generationKey, storageKey) \
+             VALUES (?1, 'sha', 'plate.webp', 'image/webp', 3, 'IMAGE', ?2, 'k/' || ?1)",
+            params![id, key],
+        )
+        .unwrap();
+    }
+
+    /// The indexed read returns every holder of a key and nothing else — and a
+    /// NULL-keyed row is never a holder (SQL `= NULL` is never true, which is
+    /// also why v4's miss path is "no rows", not "a row with a null key").
+    #[test]
+    fn find_by_generation_key_returns_every_holder_and_no_others() {
+        let conn = scratch();
+        seed(&conn, "f1", Some("v1:abc"));
+        seed(&conn, "f2", Some("v1:abc"));
+        seed(&conn, "f3", Some("v1:xyz"));
+        seed(&conn, "f4", None);
+        let repo = FilesRepository::new(&conn);
+
+        let mut hit: Vec<String> = repo
+            .find_by_generation_key("v1:abc")
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        hit.sort();
+        assert_eq!(hit, vec!["f1".to_string(), "f2".to_string()]);
+
+        assert!(repo
+            .find_by_generation_key("v1:nothing")
+            .unwrap()
+            .is_empty());
+        // Every returned row carries the key it was found by — the marshal
+        // reads the column at its own index, not its neighbour's.
+        for row in repo.find_by_generation_key("v1:xyz").unwrap() {
+            assert_eq!(row.generation_key.as_deref(), Some("v1:xyz"));
+            assert_eq!(row.description, None);
+            assert_eq!(row.storage_key.as_deref(), Some("k/f3"));
+        }
+    }
+
+    /// The write leg: `create` binds the column, and `None` reaches SQL NULL
+    /// (v4's `.nullable().optional()` — an absent key and an explicit null are
+    /// one answer on disk).
+    #[test]
+    fn create_binds_the_key_and_none_lands_as_null() {
+        let conn = scratch();
+        let repo = FilesRepository::new(&conn);
+        let base = |key: Option<&str>| FileCreate {
+            user_id: "u1".into(),
+            sha256: "sha".into(),
+            original_filename: "plate.webp".into(),
+            mime_type: "image/webp".into(),
+            size: 3.0,
+            width: None,
+            height: None,
+            is_plain_text: None,
+            linked_to: vec![],
+            source: "GENERATED".into(),
+            category: "IMAGE".into(),
+            generation_prompt: None,
+            generation_model: None,
+            generation_revised_prompt: None,
+            generation_key: key.map(str::to_string),
+            description: None,
+            tags: vec![],
+            project_id: None,
+            folder_path: None,
+            storage_key: Some("k/new".into()),
+            file_status: "ok".into(),
+        };
+        // The reduced DDL above lacks the write-only columns, so exercise the
+        // binding over the full shape the repo's own test table carries.
+        conn.execute_batch(
+            "DROP TABLE files; \
+             CREATE TABLE files (id TEXT PRIMARY KEY, userId TEXT, sha256 TEXT, \
+             originalFilename TEXT, mimeType TEXT, size REAL, width REAL, height REAL, \
+             isPlainText INTEGER, linkedTo TEXT, source TEXT, category TEXT, \
+             generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
+             generationKey TEXT, description TEXT, tags TEXT, projectId TEXT, folderPath TEXT, \
+             storageKey TEXT, fileStatus TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+
+        for (id, key) in [("f1", Some("v1:written")), ("f2", None)] {
+            repo.create(
+                &base(key),
+                &CreateOptions {
+                    id: id.into(),
+                    created_at: "2026-01-01T00:00:00.000Z".into(),
+                    updated_at: "2026-01-01T00:00:00.000Z".into(),
+                },
+            )
+            .unwrap();
+        }
+
+        let read = |id: &str| -> Option<String> {
+            conn.query_row("SELECT generationKey FROM files WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap()
+        };
+        assert_eq!(read("f1").as_deref(), Some("v1:written"));
+        assert_eq!(
+            read("f2"),
+            None,
+            "None binds SQL NULL, not the empty string"
         );
     }
 }

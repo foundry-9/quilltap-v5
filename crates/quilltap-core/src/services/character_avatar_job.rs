@@ -651,6 +651,13 @@ fn write_avatar_file(
             generation_prompt: Some(input.prompt.clone()),
             generation_model: Some(input.generation_model.clone()),
             generation_revised_prompt: input.revised_prompt.clone(),
+            // The avatar configuration cache key stays NULL here. v4 binds it
+            // (`lib/background-jobs/handlers/character-avatar.ts:574`,
+            // `generationKey: cacheKeys.key`) as part of the cache feature
+            // itself — P4.D184's, not this lane's, which carries the column and
+            // nothing that writes it. Until then every avatar plate this port
+            // writes reads NULL, exactly as every pre-4.10 plate does.
+            generation_key: None,
             // No label here — see the matching note in `story_background_job.rs`
             // (bug 132).
             description: None,

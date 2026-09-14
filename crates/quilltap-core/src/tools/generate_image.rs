@@ -1254,6 +1254,7 @@ pub(crate) fn save_generated_image(
                 generation_prompt: Some(metadata.prompt.clone()),
                 generation_model: Some(metadata.model.clone()),
                 generation_revised_prompt: metadata.revised_prompt.clone(),
+                generation_key: None,
                 description: None,
                 tags: inherited_tags,
                 project_id: None,

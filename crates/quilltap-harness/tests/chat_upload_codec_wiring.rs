@@ -144,6 +144,10 @@ fn scratch_instance(tag: &str) -> PathBuf {
         let w =
             quilltap_core::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        // P4.D182: …and the two `31436bae4`-round moves — the upload path
+        // writes a `files` row, and this port's INSERT now binds
+        // `generationKey` on every one.
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
     }
     base
 }

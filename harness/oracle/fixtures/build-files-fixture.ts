@@ -41,6 +41,8 @@ interface SeedRow {
   generationPrompt: string | null;
   generationModel: string | null;
   generationRevisedPrompt: string | null;
+  /** v4 `7fbf8a55b` — the avatar configuration cache key; null on most rows. */
+  generationKey: string | null;
   description: string | null;
   tags: string[];
   projectId: string | null;
@@ -114,6 +116,7 @@ async function main(): Promise<void> {
       generationPrompt: row.generationPrompt,
       generationModel: row.generationModel,
       generationRevisedPrompt: row.generationRevisedPrompt,
+      generationKey: row.generationKey,
       description: row.description,
       tags: row.tags,
       projectId: row.projectId,
