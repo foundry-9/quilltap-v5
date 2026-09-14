@@ -125298,3 +125298,78 @@ activation.
 Two shapes were corrected while writing it: the CLI's mount-partition flag is
 `--mount-points`, not a `--database` value; and the first draft transcribed a
 literal `char-aria`, which the fixture never mints.
+
+### The lane's verification gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`; every
+long command backgrounded with a sentinel and full-log capture, never a poll
+loop and never `| tail`.
+
+- **The §2 probe** passed at lane start (after the human's re-`/driftcheck` —
+  see the lane header), and again immediately before the workspace gate:
+  branch `main`, tree clean, `85813ddd2..main` and `1a2b2164c..bugfix` both
+  empty.
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH
+  feature sets — **exit codes re-measured UNPIPED** after the first run read
+  them through a `| tail`, which reports the pipe's status
+  (`gate-exit-code-after-a-pipe`): default **exit 0**, `--features
+  quilltap-core/native-transport` **exit 0**, zero warning or error lines in
+  either log.
+- `cargo build --workspace --release` clean (5m 30s) — the e2e binary.
+- **No crate differential is owed:** this lane touches no `crates/**` file
+  (`git diff` against the branch base is EMPTY for `crates`, `help`,
+  `docs/v4`, `screens/salon`, `chat`, `core/chat-stream.reducer.ts`,
+  `images/photo-gallery-modal.ts` and `e2e/support`). v4's jest suites and the
+  shipped hunks are the parity oracles; the wardrobe filter's two titles are
+  transcribed 1:1.
+- `cargo test --workspace` with `QT_V4_ROOT=/tmp/qt-v4-pin-p4d188-f4ad2c8d1`
+  (the baseline pin this lane's embed guards need, §R.3): **550 test binaries
+  / 3,192 passed / 0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines** —
+  identical to main's recorded numbers, as a lane that touches no crate
+  should be.
+- SPA: `npm run lint` clean (`check-qt-classes` self-test 5/5, **952** qt-*
+  classes defined, every guarded reference resolving); `npm test` **432 spec
+  files / 7,247 passed**; `npm run build` clean.
+- **Full Playwright: 314 passed / 2 failed / 2 skipped (9.2 m).** Both reds
+  are the documented P4.D161 pause-toast intermittents, on a Salon surface
+  this lane never opened — **re-run by FILE in isolation: 2 passed (53.0 s)**.
+  The two skips are this lane's gated rolls beat and the standing store-probe
+  park. This lane's LIVE beat is green by name (`wardrobe-flow.spec.ts:650`).
+- **The Show-shared beat proved NON-VACUOUS at e2e level.** It ran green in
+  537 ms, which is fast enough to be worth distrusting, so the filter conjunct
+  was deleted, the SPA rebuilt, and the whole (serial, stateful) wardrobe file
+  re-run: the beat reddened FIRST, on its `toHaveCount(0)` after unticking.
+  The three later reds in that run are the documented serial cascade
+  (`e2e-serial-beat-timeout-cascades`) — one broken beat leaves the dialog
+  open for its neighbours. Source restored from the file backup and rebuilt;
+  worktree verified clean.
+
+### Deferrals (Tier 3 — loud, typed, never silent)
+
+- **A generation-prompt viewer for a roll: NOT BUILT.** v4 has none (§R.6(8));
+  its `ImageData` carries no prompt field. The wire DOES carry
+  `generationPrompt`, and the section's spec pins that it reaches no rendered
+  surface — the modal's included.
+- **An empty-state sentence for the section: NOT BUILT.** v4 has none
+  (§R.6(9)); the section renders nothing at all at zero rolls. Pinned by two
+  specs.
+- **Persistence of "Show shared" across dialog opens: NOT BUILT.** v4 has
+  none.
+- **The server half is P4.D185's; the help pages are P4.D182's.** Nothing here
+  stubs either.
+
+### For the unifier
+
+1. **Flip `P4D185_SERVER_LANDED` to `true`** in
+   `apps/web/e2e/character-avatar-rolls-flow.spec.ts` once P4.D185 (the three
+   verbs) AND P4.D182 (`files.generationKey`) are both on the unify branch —
+   and **expect to debug the seed**, which has never been executed (the column
+   does not exist on this branch). Its shape is argued in the spec header.
+2. **Two deliberate deviations from the order's literal text** are recorded
+   under unit 1: the query key's segment order, and `dispatchData` in place of
+   `dispatchExpect`. If P4.D185's server half makes a `characterAvatarRolls`
+   variant worth naming on the SPA's `CoreResponse` union, that is a one-line
+   follow-up outside this lane's fence.
+3. **Spotted, not mine:** nothing. No file outside this lane's OWNS column was
+   touched, and no cross-lane name was needed that §C.6 does not list.
