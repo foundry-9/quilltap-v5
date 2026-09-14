@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(drift): eight v4 commits past the baseline — the Salon transcript subscription, the avatar cache, Avatar Rolls, and the paused-chat hold
+
+_Docs-only change._
+
+`/driftcheck` against a clean v4 `main` checkout: HEAD is `31436bae4`
+(`4.10.0-dev.30`), **eight commits past the `f4ad2c8d1` oracle baseline**, and
+five of them land on already-ported surfaces. `bugfix` is unmoved at
+`1a2b2164c` and carries nothing unabsorbed (the content diff against `main` is
+a pure reverse delta); `release` is unmoved at `8fbf2afe0` — still no
+`release: 4.10.0` squash.
+
+The two large rows are features. `5029075bb` makes the Salon transcript a
+subscribed read: the message write funnel publishes a `chats` hint and bumps a
+new `chats.transcriptVersion` on every write, `GET /api/v1/messages
+?action=transcript&knownVersion=N` answers `{unchanged:true}` on an agreeing
+counter, the chat-GET projection is extracted into `lib/chat/transcript-projection.ts`,
+and the client reconciles rather than replaces — which lands on finding #106's
+ground. `7fbf8a55b` caches character avatars per configuration on a new
+`files.generationKey`, skipping the Concierge call, the image call, the
+transcode and the write on a hit, with a destructive collapse migration behind
+it; `4dcbe0d21` then surfaces that cache as an Avatar Rolls section and moves
+the character photo count onto an album-only predicate. `055cac45a` adds the
+wardrobe dialog's client-side "Show shared" filter.
+
+Two are fixes on ported behavior. `8275b3642` (bugs 135/136) gives a send
+refused mid-turn a sentence instead of silence and deletes a write-only Stop
+latch. `31436bae4` (bugs 137–140) is the one that contradicts us: a pause now
+holds the user's turn server-side through a new `shouldHoldUserTurnForPause`
+seam, and Nudge and Skip no longer clear it — so P4.D160/P4.D161's ported
+"Skip lifts a pause silently", proven live on the 2026-09-06 walk, is now
+wrong and its pins will trip by design. `aecf9de0b` is version-only; the
+already-recorded `4dc48283d` plan row gains the fact that its feature shipped.
+
+The regen rule stays **PIN REQUIRED**. One consequence worth expecting before
+it surprises a gate: `qtap_schema_embed_guard` is RED against the live
+checkout right now, because `7fbf8a55b` added `generationKey` to
+`public/schemas/qtap-export.schema.json` — the re-vendor obligation firing as
+designed. Two D23 re-dump obligations are pending, and eight `help/` files are
+stale by content (the file count is unchanged at 124).
+
 #### 2026-09-11 — docs(drift): one docs-only v4 commit landed mid-unification — recorded as a NO-PORT? candidate, the regen rule back to pin required
 
 _Docs-only change._

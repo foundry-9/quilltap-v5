@@ -24,32 +24,50 @@ probe verifies against._
   -0500, `4.10.0-dev.24`), adopted at the `f4ad2c8d1` In-Their-Own-Words
   drift catch-up round unification (P4.D179 ∥ P4.D180 ∥ P4.D181,
   2026-09-11). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-11 (`/unify`, main checkout, at the round's
-  unification — the §2 probe passed at every lane's start and end and at
-  the START of the unification; the post-merge re-probe found ONE commit
-  landed mid-unification, recorded below. Every regen of the round ran from
-  the `f4ad2c8d1` pinned worktree, so none is affected).
-- **v4 `main` HEAD at check:** `4dc48283d` ("docs: plan for the Salon
-  transcript as a subscribed read (SSE demoted to display-only)",
-  2026-09-11 09:28 -0500) — **ONE commit past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content-checked at
-  the previous check: no `lib/`/`app/`/`packages/` delta unabsorbed by
-  main).
+- **Checked:** 2026-09-14 (`/driftcheck`, main checkout).
+- **v4 `main` HEAD at check:** `31436bae4` ("fix(salon): a paused chat
+  generates nothing on its own (bugs 137-140)", 2026-09-13 22:49 -0500,
+  `4.10.0-dev.30`) — **EIGHT commits past the baseline.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (the branch has not
+  moved since the previous check; the content check `git diff main bugfix
+  -- lib/ app/ packages/ plugins/ help/` is a pure REVERSE delta — main is
+  ahead everywhere, nothing unabsorbed).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
+  Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 1 commit, a `NO-PORT?` candidate.** See §3.
-- **Regen rule: PIN REQUIRED** (v4 HEAD is past the baseline — by the
-  standing rule, even for a docs-only candidate until it is ratified): every
-  oracle regeneration runs from a worktree pinned at `f4ad2c8d1` (§5.1). The
-  checkout is clean, so the pin is the only constraint.
-- **Schema state:** in step. `fresh_schema.json` + `chat_settings_seed.json`
-  re-dumped from v4's live `generateDDL` at `f4ad2c8d1` (P4.D179 — the
-  `chat_settings."impersonationVoiceRewrite" INTEGER DEFAULT 0` column, seed
-  34 → 35, `schema-key-order.json` byte-identical); the boot ensure
-  `chat_settings_impersonation_voice_repair` re-homes v4's
-  `add-impersonation-voice-rewrite-field-v1`. `qtap-export.schema.json`
-  untouched. `llm_logs.type` gained the `VOICE_REWRITE` value (plain TEXT,
-  no DDL move). `help/**` vendored at 124 files (the tip's bytes).
+- **Verdict: DRIFT PENDING — 8 commits**, of which **five are PORT/PORT-NEW
+  on already-ported surfaces** (two of them large features with schema
+  moves), two are version/docs-only NO-PORT candidates, and one is the
+  already-recorded plan doc whose feature has now shipped. See §3.
+- **Regen rule: PIN REQUIRED** — v4 HEAD is eight commits past the baseline,
+  and those commits move `lib/`, `app/`, `components/`, `migrations/` and
+  `public/schemas/`. Every oracle regeneration runs from a worktree pinned
+  at `f4ad2c8d1` (§5.1). The checkout is clean, so the pin is the only
+  constraint.
+- **⚠ The workspace gate is RED against the live checkout right now.**
+  `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+  compares the embedded copy byte-for-byte with
+  `~/source/quilltap-server/public/schemas/qtap-export.schema.json`, and
+  `7fbf8a55b` added a `generationKey` property to it (v5's vendored copy
+  md5 `a347c46b…` still equals v4 at the baseline; v4's tip is
+  `ecde08da…`). This is the re-vendor obligation firing exactly as
+  designed — it clears when the avatar-cache row is ported, not before.
+  Any gate run before then must expect that one named red (and the
+  `VENDORED_BYTES` constant moves with the re-vendor).
+- **Schema state: v4 has MOVED — two D23 re-dump obligations pending.**
+  `chats."transcriptVersion" INTEGER DEFAULT 0` (`5029075bb`, migration
+  `add-transcript-version-column-v1`; **deliberately absent from
+  `ChatMetadataSchema`** — Zod strips it so no `update()` can rewind it,
+  `SET v = v + 1` is its only writer, and it is out of `.qtap` exports and
+  backups for free) and `files."generationKey"` + `CREATE INDEX
+  idx_files_generationKey` (`7fbf8a55b`, migration
+  `add-file-generation-key-column-v1`, plus the destructive
+  `collapse-duplicate-avatar-rolls-v1`). `qtap-export.schema.json` gained
+  `generationKey` on the file-entry shape (re-vendor obligation, above).
+  `help/**` stays at **124 files** — none added, but **eight modified**
+  (`character-gallery`, `chat-multi-character`, `chat-participants`,
+  `chat-settings`, `chat-turn-manager`, `chats`, `tabbed-workspace`,
+  `wardrobe`), so the vendor is stale by content until the next re-vendor.
 
 ## §2 The freshness probe
 
@@ -88,7 +106,14 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `4dc48283d` | 2026-09-11 | docs: plan for the Salon transcript as a subscribed read (SSE demoted to display-only) | **NO-PORT?** — two files, both under `docs/` (`docs/CHANGELOG.md` +18, NEW `docs/developer/features/salon-realtime-transcript.md` +128); no `lib/`, `app/`, `packages/`, `plugins/` or `help/` delta (measured by `git show --stat`). Ratify at the next round with that evidence. ⚠ It is a PLAN: when the feature it describes ships (the Salon transcript read through a subscribed query with SSE demoted to display-only), that commit is a PORT-NEW on the P4.D123–D125 realtime + `chat-view-model` surfaces — watch for it | UNPROCESSED |
+| `4dc48283d` | 2026-09-11 | docs: plan for the Salon transcript as a subscribed read (SSE demoted to display-only) | **NO-PORT?** — two files, both under `docs/` (`docs/CHANGELOG.md` +18, NEW `docs/developer/features/salon-realtime-transcript.md` +128); no `lib/`, `app/`, `packages/`, `plugins/` or `help/` delta (measured by `git show --stat`). Ratify at the next round with that evidence. ⚠ It is a PLAN: when the feature it describes ships (the Salon transcript read through a subscribed query with SSE demoted to display-only), that commit is a PORT-NEW on the P4.D123–D125 realtime + `chat-view-model` surfaces — watch for it. **Appended 2026-09-14: the feature SHIPPED two hours later as `5029075bb` below**, and that commit moved this plan to `docs/developer/features/complete/salon-realtime-transcript.md` (+140). Ratify this row NO-PORT alongside porting that one | UNPROCESSED |
+| `5029075bb` | 2026-09-11 | Salon transcript as subscribed read — realtime updates (#61) | **PORT-NEW (large; the round's centrepiece)** — the transcript stops being the stream's to deliver. **Server:** `chats-messages.ops.ts` (the ONE message write funnel) now publishes `{topic:'chats', id}` on every add / add-batch / edit / delete / clear **and** bumps a new `chats.transcriptVersion` in the same update → v5 `db/chats_messages.rs` + the P4.D123–D125 publish-site census (`realtime/publish_sites.rs`) — a new publish point per write site, and the census is the guard; `chats-search.ops.ts` announces search-and-replace too (the P4.9K1 rename path); `chats.repository.ts` gains `getTranscriptVersion`. NEW `lib/chat/transcript-projection.ts` (+324) is a pure EXTRACTION out of `app/api/v1/chats/[id]/handlers/get.ts` (−271) → v5's chat-GET projection: **measure the neutrality, never assume it** (§5.3). `app/api/v1/messages/route.ts` gains `GET ?action=transcript&knownVersion=N` answering `{unchanged:true}` on an agreeing counter → the v5 messages edge + the P4.67/P4.72 `?action=` reader; the plain listing also gained a real behavior change (`chat.userId !== user.id` now answers `notFound`, not the old find-only check). `child-repositories-proxy.ts` +4 → the single-writer child proxy (the forked-child staff writes — Aurora/Lantern/Commonplace/Suparṇā — are the motivating case). **Schema:** `add-transcript-version-column-v1` → D23 re-dump (and the column is deliberately OUTSIDE `ChatMetadataSchema`, so v5 must keep it out of the validated row rewrite, out of `.qtap`, and out of backups). **SPA:** `useChatData` rewritten (+305) over NEW `transcript-reconcile.ts` (+274 — id-keyed swipe carry, object identity preserved for unchanged rows, the optimistic bubble as a true overlay matched on role+text then on "a new row of the same role, no older than the bubble"), `useSSEStreaming` demoted to tokens, `SalonView`/`types.ts` → v5 `screens/salon/salon-conversation.ts` + `chat/chat-view-model.ts` + the P4.D125 realtime hub. ⚠ This lands squarely on **finding #106's ground** (v5 holds the optimistic bubble in a separate signal appended at render; the round-2 §3 review's id-snapshot echo predicate is the neighbour) — read that finding before designing the port. `help/chats.md` +42, `help/tabbed-workspace.md` +8 | UNPROCESSED |
+| `aecf9de0b` | 2026-09-11 | docs: update version for subscribed salon read | **NO-PORT?** — four files, all version markers (`README.md`, `package.json`, `package-lock.json`, `packages/quilltap/package.json`); no code, no comparand. Ratify with that evidence | UNPROCESSED |
+| `7fbf8a55b` | 2026-09-11 | feat(aurora): cache character avatars per configuration | **PORT-NEW (large)** — an avatar configuration cache keyed on a hash of the (pure) avatar prompt plus the provider-side shape it does not carry (provider, image profile id, model, built `buildImageGenParams`). NEW `lib/wardrobe/avatar-cache.ts` is the ONE derivation/lookup chokepoint; `lib/background-jobs/handlers/character-avatar.ts` (+267/−…) looks it up before spending anything — a hit binds the existing image and stops (no Concierge classification call, no image call, no WebP transcode, no file write), regenerate sets `force` and rebinds → v5's avatar job (`services/avatar_generation.rs`, `image_job_common.rs`, the `avatar_job_tier3` family) + `app/api/v1/chats/[id]/actions/regenerate-avatar.ts`. Two more behavior changes ride along on ported write paths: **avatars now always land in the character's vault** (project context or not — mount blobs are blob-id addressed, so cross-project reuse needs no hard link) and the avatar path **stops minting a legacy `folders` row per image**. A cached row whose blob was deleted counts as a MISS. **Schema:** `files.generationKey` + `CREATE INDEX idx_files_generationKey` (`add-file-generation-key-column-v1`) → D23 re-dump; plus **`collapse-duplicate-avatar-rolls-v1`, which is DESTRUCTIVE and visible** (groups by prompt+model, keeps the newest, repoints `chats.characterAvatars` / `characters.avatarOverrides` / `chat_messages.attachments` / the file uuid the Lantern quotes inline, then deletes — 1785 → 888 rows, ~146 MB, on the instance it was measured against) and backfills a lower-fidelity `v: 0` key: v5 has no migration runner, so this is the boot-ensure/heal shape (cf. the P4.D140 / P4.D152 ledger-row precedents) — ⚠ and the real Friday instance will have been collapsed BY v4 before any v5 walk sees it (§5.5). **`public/schemas/qtap-export.schema.json` gained `generationKey`** → the re-vendor obligation; `qtap_schema_embed_guard` is RED against the live checkout until it lands (§1). `help/wardrobe.md`, `help/chat-participants.md`, `help/chat-settings.md` | UNPROCESSED |
+| `055cac45a` | 2026-09-12 | feat(wardrobe): "Show shared" toggle in the wardrobe dialog | **PORT-NEW (client-only)** — a second tickbox beside "Show archived" hides the borrowed rows a character's merged view inherits from the tiers above (group / project / Quilltap General). Defaults ON. Unlike "Show archived" it is a CLIENT-side filter — ownership is a property of the merge, not something the fetch can ask for — and it reuses `canManageItem`, the same predicate that badges the row, so badge and filter cannot drift; the tickbox is hidden when browsing a shared container directly. `components/wardrobe/wardrobe-control-dialog.tsx` +50 → v5 `apps/web/src/app/wardrobe/wardrobe-control-dialog.ts` (P4.D112/P4.D113's container browser + `canManage` row predicate). `help/wardrobe.md` +2 | UNPROCESSED |
+| `4dcbe0d21` | 2026-09-12 | feat(aurora): Avatar Rolls section in a character's Photo Gallery | **PORT-NEW** — the avatar cache surfaced as a collection: a collapsible Avatar Rolls section under the album listing every portrait the cache holds for that character, one per configuration (set as avatar / keep in album / download / view with its generation prompt / delete). **Depends on `7fbf8a55b` — port the cache first** (membership is `files.generationKey IS NOT NULL` + the character tag, never a path). NEW `app/api/v1/characters/[id]/avatar-rolls/route.ts` + `[fileId]/route.ts`, NEW `lib/photos/avatar-rolls-service.ts` (+447) → v5's characters REST edges + photos services. Two subtle rules to carry: set-as-avatar **hard-links the plate into `photos/`** and points the portrait at that LINK (never a fresh `files` id — `defaultImageId` must stay in step with `removeFromCharacterGallery`, which scrubs by link id), and delete uses `deleteWithGC` on the roll's OWN link (never `deleteMountBlob`, which drops every link to the blob and would take the album copy). Also a behavior change on an already-ported read: `photos-paths.ts` gains `isCharacterAlbumRelativePath` and `app/api/v1/characters/[id]/handlers/get.ts` swaps its photo COUNT onto it, so avatar rolls (`images/history/`) stop being counted as album members → v5's character GET counts. `character-gallery-service.ts`, `lib/query/keys.ts`, and the SPA embedded gallery (`AvatarRollsSection.tsx`, `useAvatarRolls.ts`, `GalleryGrid`/`GalleryImage`/`types`) → v5 `images/photo-gallery-modal.ts` + the character gallery vertical. `help/character-gallery.md` | UNPROCESSED |
+| `8275b3642` | 2026-09-12 | fix(salon): answer a send refused mid-turn, delete a write-only Stop flag | **PORT (client)** — **bug 136**: one `return` in `sendMessage` covered both an empty composer and a send refused because a turn was in flight; split, and the refusal now raises "One moment — the room is still speaking. Your remark waits in the composer." `triggerContinueMode`'s streaming/waiting guard gets the same notice (it refuses a click on an explicit control — Nudge, Continue, Skip); its `isPaused` return stays SILENT, the sidebar having said so. **Bug 135**: `userStoppedStreamRef` had four writers and no readers — deleted, not read (Stop works through the AbortController; `sendMessage` goes 8 args → 7) — so for v5 this half is a **NO-COUNTERPART candidate: measure whether v5 ever carried the latch before writing anything**. → v5 `screens/salon/salon-conversation.ts` + `salon-turn-controls` + the impersonation-voice send args. `help/chats.md` +8, `help/chat-turn-manager.md` +1. ⚠ Both bugs are v4's OWN filings (found diagnosing the incident behind the transcript plan), not this port's — no convergence pins to retire | UNPROCESSED |
+| `31436bae4` | 2026-09-13 | fix(salon): a paused chat generates nothing on its own (bugs 137-140) | **PORT (server + client) — and it SUPERSEDES ported v5 behavior.** Pause stopped the turn chain, not the chat: a paused room still drew exactly one reply per message, and Nudge/Skip silently cleared the pause to work at all. NEW `lib/services/chat-message/paused-hold.ts` (`shouldHoldUserTurnForPause` — a 3-input predicate: an explicit summons runs, `neverPauseForUser` autonomous rooms opt out, otherwise a persisted `isPaused` holds) is consulted ONCE in `orchestrator.service.ts` (+102) and returns through `finishHeldUserTurn` **at the seam between recording the user's message and preparing a character's turn**: attachments, staged tool results, RNG auto-detect, danger flags and inline Carina queries all still fire; `requestFullContextOnNextMessage` is NOT spent and the Prospero cadence whisper is NOT posted → v5's `processMessage` spine (Phase 3 / P4.2). `streaming.service.ts` adds `heldUserTurn` beside P4.D160's `paused` on the chain-complete frame (raised on the FIRST held message of each pause) → v5's `chain_complete` encoder + the P4.D161 toast/banner surface. **Nudge and Skip no longer clear the pause** and `triggerContinueMode`'s `isPaused` guard is deleted — v4 amended `bugs/fixed/bug-123-…md` to say so, so **P4.D160/P4.D161's ported "Skip lifts a pause silently" is now WRONG**, and the 2026-09-06 dogfood walk proved that old behavior live: expect the beat and its pins to trip by design. Three riders: **138** `stableTriggerContinueMode` declared one parameter around a two-parameter ref so `nudge` never reached the server; **139** the all-LLM `Continue` now awaits the resume before requesting the next speaker (the server reads `isPaused` when that request arrives); **140** dead `isPaused`/`onTogglePause` props threaded into every `MessageRow` (deleted — a v5 NO-COUNTERPART candidate, measure first). `useTurnManagement`/`useChatControls`/`SalonView`/`VirtualizedMessageList` → v5's salon turn controls. Four `help/` files. Autonomous rooms (`runState`, `neverPauseForUser`) and the Courier are explicitly unaffected. ⚠ v4's own filings (the operator asked what Pause changes) — not convergences | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
