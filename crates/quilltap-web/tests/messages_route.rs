@@ -176,7 +176,7 @@ async fn messages_get_edges() {
     for path in [
         "/api/v1/messages?action=transcript",
         "/api/v1/messages",
-        &format!("/api/v1/messages?chatId=&action=transcript"),
+        "/api/v1/messages?chatId=&action=transcript",
     ] {
         let (status, body) = get(&client, &addr, path).await;
         assert_eq!(status, 400, "missing chatId is a 400 on both legs: {path}");

@@ -123713,3 +123713,237 @@ tell.
   from a worktree venue). Changed bytes grepped in every NDJSON.
 - **No `apps/web/**` file touched — no e2e owed.**
 - Versions: core 0.0.900, harness 0.0.787, host 0.0.131.
+
+## P4.D183 — the Salon transcript as a subscribed read, the SERVER half (v4 `5029075bb`), 2026-09-14
+
+Lane branch `claude/p4-transcript-subscribed-read-b57837`, stacked on P4.D182's
+recorded tip `6ec9c5c1`. Seven commits. **Every Tier-1 and Tier-2 item landed.**
+
+### The lane start
+
+The §2 freshness probe **FAILED at first contact** and the lane STOPped and
+reported rather than porting: v4's checkout carried a fully-staged, commit-ready
+bug-141 fix (975 insertions across `lib/`, `app/`, `help/` plus version
+markers), and the tree CHANGED between two consecutive probe reads. The human
+re-ran `/driftcheck`; the ledger moved to v4 HEAD `85813ddd2` (ten commits past
+the baseline, two past this round's target) recording that the round's pins are
+unaffected by construction. The probe then PASSED against the new §1 and the
+lane proceeded. Both pins were built and verified by markers in both directions
+(`paused-hold.ts` + two `transcriptVersion` hits present at `31436bae4`, absent
+at `f4ad2c8d1`).
+
+### Unit 0 — the fixture heal (`38e4ee9f`)
+
+`salon_reads_equivalence` was **RED on P4.D182's tip before this lane changed
+anything**: every chat GET answered `sqlite error: no such column:
+generationKey`. P4.D182 put the column into `FILE_ENTRY_COLUMNS`, and this
+family resolves message ATTACHMENTS, so the committed `salon-{main,mount}.db`
+pair could no longer be read. Healed at open, in the block P4.D171 established
+for exactly this, with `test_support::ensure_p4d182_columns` — which P4.D182
+provisioned and named for this use.
+
+**Why a green gate missed it, for the unifier's attention:** this test SKIPs —
+and therefore PASSES — when `QT_ORACLE_SALON_READS` is unset, and cargo captures
+a passing test's output, so the SKIP line never reached the log read for "zero
+SKIP lines". Any lane widening a committed `files`-bearing fixture's readers
+should assume the same class.
+
+### Unit 1 — the neutrality baseline, measured before any edit
+
+Tier-1 item 1, inverted red-first. `salon_reads` regenerated at BOTH pins before
+a line changed. The two NDJSONs differ by **exactly five ADDED
+`transcriptVersion: 0` keys** — one per chat-GET case — with the key ORDER
+identical everywhere else. So §R.6(5) is discharged by measurement: v4's
+`transcript-projection.ts` extraction really is byte-neutral, and v5's move was
+then held to the same bar.
+
+### Unit 2 — the announce machinery (`67efea03`)
+
+`announce_transcript_change` (pub, the ONE writer) + private
+`commit_transcript_change` + the six sites at v4's conditions.
+`ChatsRepository::get_transcript_version` is the reader — raw, outside
+`marshal_row`, answering 0 on a missing row, a NULL cell or a failed read.
+
+Measurements that shaped the port:
+
+- **v4's `$inc` emits `"field" = "field" + ?`** (`query-translator.ts:507`), a
+  plain SQL addition. SQLite's `NULL + 1` is NULL, so a NULL cell stays NULL and
+  the reader goes on seeing 0 — no COALESCE was added.
+- **v4's `updateOne` checks existence before issuing SQL** and returns
+  `matchedCount: 0` otherwise, so a `WHERE id = ?` matching nothing is the same
+  no-op; the guard is not re-spelled. It also does NOT auto-stamp `updatedAt`.
+- **THE ORDER'S FLAGGED QUESTION, ANSWERED:** `chats-search.ops.ts`'s announce
+  looks unconditional in the hunk, but `if (updatedCount === 0) return 0;` sits
+  directly above it at the target. v4's own test title ("says nothing when no
+  message matched") is the true description, and the guard is what shipped.
+
+Fourteen `HintCapture` wiring pins (the only thing in the tree that can see a
+hint), every conditional site pinned in both directions.
+
+### Unit 3 — P4.D182's tripwire, retired (`1d373ba7`)
+
+P4.D182's `subtract_the_deferred_transcript_counter` FIRED on this lane's first
+regen (`execute_overwrite_all`, v5 at 2 where it demanded 0) — exactly as
+designed. Retiring it turns the whole import corpus into a differential of v5's
+bump against v4's real funnel: `transcriptVersion` now diffs cell for cell on
+every arm, three of the 27 chat-carrying arms move it (all at 2), and v5 matches
+them exactly. A new `record_v5_transcript_counters` keeps that from going
+vacuous (24 arms import no message, so zero-vs-zero is the common case); it
+reads the RUST side deliberately, since an assertion on the oracle cannot catch
+a v5 regression. Mutation-proven: `+ 1` → `+ 0` reddens it by name.
+
+### Unit 4 — the projection extraction + the key (`a0d59dc9`)
+
+NEW `api/transcript_projection.rs`, moved not rewritten, with
+`project_message` / `resolve_message_attachments` left in `salon.rs` and called
+from it (v4's module imports its helpers too). GREEN against the BASELINE oracle
+after the move and before the key; then the key at v4's position (directly after
+`messages`, before `projectId`) and green against the TARGET.
+
+**Two harness fidelity fixes, both surfaced by adding the pin §C.1 needed:**
+
+1. **The chat-GET detail body had NO key-order pin.** The order's reading list
+   says "key order the comparand" for `salon_reads`; it is not — `norm` sorts
+   keys, and the existing wire-order pin covers only `list_all`. So
+   `transcriptVersion`'s contractual position was unheld: moving it two slots
+   left the family GREEN. The pin now runs over every `get_` case and reddens
+   all five. **Order-text correction for the unifier.**
+2. **That pin then caught the family's own normalizer corrupting v4's key
+   order.** `strip_rendered_html` used `Map::remove`, which under
+   `preserve_order` is indexmap's SWAP-remove: it moved the last key
+   (`confirmationOriginalContent`) into `renderedHtml`'s slot on every message,
+   so the v4 side's key order was a fiction. `shift_remove` fixes it. v5 was
+   faithful all along — the memory note `serde-json-map-remove-is-swap-remove`,
+   live.
+
+### Unit 5 — the verb, the listing and the edge (`cc472f83`)
+
+`ChatTranscript` + `ChatMessageEvents` in the fence directly after
+`MessageReattribute`; NEW `api/chat_transcript.rs`; NEW
+`quilltap-web/src/messages_routes.rs` registered at `/api/v1/messages`.
+
+`known_version` is an untyped `Value` on the wire on purpose: v4 takes whatever
+the query string carried, runs `Number()`, then gates on `Number.isInteger`.
+A typed `Option<i64>` would turn v4's shrug into a deserialization refusal.
+
+**Two more measurements corrected the order:**
+
+- **The order predicted an unknown `?action=` would fall through to the
+  listing** ("v4's `withCollectionActionDispatch` here has a DEFAULT handler, so
+  an unknown action falls to the listing, not a 400"). It does not.
+  `withActionDispatch` tests `if (action)` FIRST and answers the 400
+  `{error: "Unknown action: X", availableActions: [...]}` envelope for any
+  truthy unknown action; the default runs only for an absent — or JS-falsy
+  empty — parameter. v5 uses the existing `query::unknown_action_response`.
+- **`Number('')` is 0, not NaN**, so a bare `?knownVersion=` is a genuine
+  integer that MATCHES a counter of 0. Pinned on both sides.
+
+**A pre-existing v5 fidelity bug fell out:** `chats_messages_read::
+marshal_message` emitted `createdAt` twenty keys late, between
+`pendingExternalAttachments` and `isSilentMessage`, where v4's
+`MessageEventSchema` declares it directly after `attachments` and v4's hydration
+follows the schema. Nothing could see it — every other consumer of the raw event
+read either sorts keys or re-projects — until the message-events listing gave
+the marshal a wire of its own. The sibling `marshal_context_summary` and
+`marshal_system` always had it in schema position, which identified it as a slip
+rather than a decision. Fixed.
+
+### Unit 6 — the funnel census + a v4 bug (`f07c1413`)
+
+`chats_messages_ops_tier2_equivalence` widened from the 4b trio to the whole
+funnel (`addMessage`, `addMessages`, `replaceInMessages`) plus two
+must-NOT-bump arms (a not-found edit, a plain metadata patch). The builder adds
+the column the way v4's migration does — AFTER the creates (v4's collections are
+lazy; `chats` does not exist until the first one lands) and BEFORE the seeding,
+so the seed's own bumps are part of what both sides copy.
+
+v4's own numbers discriminate: chat 60 reaches 3 (the batch bumps ONCE), chat 70
+reaches 2 (the no-match replace does not bump), chat 80 reaches 1 with
+`messageCount` at 99 (the patch moved one and not the other).
+
+**⚠ A v4 BUG, found here, pinned in both directions, TO FILE UPSTREAM.**
+`deleteMessagesByIds` counts a requested id as removed whether or not it
+existed:
+
+```js
+const result = await messagesCollection.deleteOne({ id: messageId, chatId });
+if (typeof result === 'number') { removed += result; }
+else if (result) { removed += 1; }          // ← an OBJECT is always truthy
+```
+
+The real SQLite backend returns `{ deletedCount: 0, acknowledged: true }` for a
+miss (`backends/sqlite/backend.ts:289`) — never a number — so the second branch
+fires and `removed` ends up as `messageIds.length`. v4 then takes its
+`removed > 0` path: it rewrites `messageCount`/`lastMessageAt` and, since
+`5029075bb`, BUMPS the counter and publishes a hint for a delete that deleted
+nothing. The return value is wrong for every caller too.
+
+**v4's own suite cannot see it.** `chats-messages-transcript-version.test.ts:57`
+mocks `deleteOne` to return a NUMBER (`0`/`1`), which takes the first branch and
+behaves correctly — so v4's "says nothing when nothing was removed" passes
+against a mock that does not match its own production backend. It needed a
+real-DB oracle to surface, and it only became VISIBLE when the counter arrived:
+`messageCount` and `lastMessageAt` are recomputed from what survives and land on
+the same values either way.
+
+**v5 is left correct rather than regressed to match.** Reproducing it would mean
+breaking a v5 path that works and miscounting deletions for every caller.
+Recorded as `DELETE_MISS_DIVERGENCE`, asserted on BOTH sides, so the pin fires by
+name the moment v4 converges.
+
+NEW `transcript_version_read_order_guard` pins what no differential can see —
+v4 reads the counter BEFORE projecting, and both orders produce identical bodies
+unless a write lands between them. A source census, mutation-proven by a
+reordering that still COMPILES (the first attempt was a bad mutation: it broke
+the build, so the red would have been a build failure, not the guard).
+
+### Unit 7 — the two measured silences (`29088615`)
+
+`ChatsRepository::delete`'s raw message sweep and the daily stale-cache collapse
+both announce NOTHING. The second was MEASURED on v4 at the pin rather than
+assumed: `collapse-stale-chat-caches.ts` writes through `rawQuery`, bypassing
+the repository funnel, with no `announceTranscriptChange`, no `publishRealtime`
+and no mention of the counter. Both pins assert the sweep actually wrote
+something first, so neither silence is measured on a no-op.
+
+### Mutation table (each reverted by FILE BACKUP)
+
+| mutation | reddened | vacuous elsewhere |
+|---|---|---|
+| delete `clear_messages`'s announce | `clearing_a_chat_announces_it` + `clearing_a_chat_whose_row_is_gone_still_announces` (2) | 12 others green |
+| gate `clear_messages`'s announce on the row existing | `clearing_a_chat_whose_row_is_gone_still_announces` (1) | 13 green |
+| `delete_messages_by_ids` announces unconditionally | `deleting_nothing_announces_nothing` (1) | 13 green |
+| `+ 1` → `+ 0` in the bump | `system_import_state`'s new vacuity guard, by name | — |
+| `clear_messages` stops announcing (tier-2) | chat 30: v5 1 vs v4 2 | — |
+| `add_messages` bumps per row (tier-2) | chat 60: v5 5 vs v4 3 | — |
+| search announce made unconditional (tier-2) | chat 70: v5 3 vs v4 2 | — |
+| `transcriptVersion` moved two slots in the chat GET | all 5 `get_` key-order pins (silently GREEN before this lane) | — |
+| version read after the projection (still compiling) | both order-guard tests | — |
+
+### Deferrals — loud, typed, none silent
+
+- **`POST /api/v1/messages`** (v4's SSE send) — NO-COUNTERPART by the locked
+  boundary: sends are `chatSend` over dispatch, tokens arrive on the `Event`
+  channel. NOT registered, and no 405 invented as a "port" of it.
+- **`child-repositories-proxy.ts`'s `METHOD_OVERRIDES` entry** and the bus's
+  job-child no-op — NO-COUNTERPART: v5 has no forked child.
+- **The SPA half** — P4.D187's.
+
+### Things spotted, not mine (for the unifier)
+
+1. **§C.2 names the verb `chatMessageEvents` but no `CoreResponse` variant for
+   it.** Landed as `CoreResponse::ChatMessageEvents(Value)`, the mechanical
+   spelling. Flagged per the §C rule.
+2. **The order's `salon_reads` description — "key order the comparand" — is
+   wrong**; the family sorts keys and pinned order only for `list_all`. Fixed by
+   adding the detail pin (unit 4), but the reading list should be corrected.
+3. **The order's `?action=` prediction is wrong in the safe direction** (unit 5).
+4. **`transcript-route.test.ts` shares a basename with v4's own
+   `__tests__/unit/app/api/v1/messages/transcript-route.test.ts`**, so a
+   basename-anchored jest `--` filter matches BOTH. Harmless (v4's suite writes
+   no `QT_ORACLE_OUT`, and its 12 tests passing is a free pin check), but the
+   recipe's filter is anchored on the /tmp mirror path and the header says why.
+5. **The dispatch census delta is +2** (435 → 437), both `chat_id` fields on the
+   new verbs. **P4.D185 moves the same constant** — recount as base + both
+   deltas.
+6. **For the v4-side filing:** the `deleteMessagesByIds` truthy-object bug above.
