@@ -6628,6 +6628,153 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `31436bae4` drift catch-up round (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188) — ORDERED 2026-09-14
+
+**Baseline `f4ad2c8d1`; v4 `main` HEAD `31436bae4` (EIGHT past — the
+ledger's eight §3 rows, every one now `ORDERED(...)`), v4 `bugfix` tip
+`1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on `main`,
+CLEAN at the planning probe; regen rule PIN REQUIRED (every oracle from a
+lane-unique detached worktree at `31436bae4`; the neutrality legs and the
+`QT_V4_ROOT` of the three `main`-branched lanes at `f4ad2c8d1`).** The
+standing rule holds: drift debt clears before new scope, so the whole
+round IS the eight-row catch-up — split by FILE OWNERSHIP and fixture
+ownership, not by v4's commit batching. ONE substrate lane, THREE lanes
+stacked on its tip, THREE from `main`. The round-wide §R meeting points,
+the §C contract, the Ownership table and the verification gate are spliced
+byte-identically into every order (md5 `c5ebc0fe` / `0536ea40` / `08342a1f`
+/ `9cd35c10` over the four blocks, verified at planning). Fresh surveys
+(2026-09-14, at `31436bae4` and on `main` `ecdcf9e5` — five parallel
+survey agents over the shipped hunks and the v5 counterparts) are folded
+into the orders' survey sections.
+
+**Three planning facts that shape the split (each measured, none from
+prose):** `chats.transcriptVersion` is deliberately OUTSIDE v4's Zod chat
+schema, so `generateDDL` never emits it and the D23 re-dump cannot carry
+it — it lands as a boot ensure ONLY (the P4.D145 bug-114 shape), while
+`files.generationKey` IS a schema column and DOES ride the re-dump; the
+"first held message of each pause" throttle is CLIENT-side (the server
+frame carries `heldUserTurn: true` on every held turn); and v4's shipped
+optimistic bubble stays INSIDE the messages array (the feature doc's
+"own slot" plan was abandoned) — which puts the transcript port squarely
+on dogfood finding #106's ground, where v5's separate-signal fix is
+RETIRED in favour of v4's reconcile.
+
+- **P4.D182 — the substrate** (`work-orders/p4.d182-schema-substrate-
+  transcript-version-generation-key.md`, from `main`, FIRST): the D23
+  re-dump from the target (`files.generationKey` in; `chats` provably
+  unmoved), both boot ensures (`files.generationKey` + `idx_files_
+  generationKey`; `chats.transcriptVersion INTEGER DEFAULT 0`) in the
+  P4.D171 idiom on all three entrances, the `files` carry through every
+  read/write/backup/`.qtap`/import/restore surface as-is (never remapped),
+  the `transcriptVersion` NEGATIVE pins (not in `marshal_row`, not on
+  `ChatUpdate`, not in any export), the export-schema re-vendor +
+  `VENDORED_BYTES`, the eight-file `help/**` re-vendor (count stays 124),
+  the reduced-DDL sweep, and the `4dc48283d` / `aecf9de0b` NO-PORT
+  ratifications with evidence. No behaviour; no committed pair.
+- **P4.D183 — the transcript server** (`work-orders/p4.d183-transcript-
+  subscribed-read-server.md`, stacked on P4.D182): the message funnel's
+  ONE announce point (the atomic bump + the chat-scoped `chats` hint) at
+  v4's five per-site conditions + the search-replace path at its MEASURED
+  condition, `HintCapture` wiring pins per site, the `chats_messages_ops`
+  family widened with v4's nine funnel cases RED-FIRST, the projection
+  EXTRACTED into `project_chat_transcript` (proven byte-neutral by
+  `salon_reads` at both pins), the chat GET's `transcriptVersion`, the
+  `chatTranscript` verb (version read BEFORE projection; the integer gate)
+  + the NEW `/api/v1/messages` GET edge through the shared query reader, a
+  NEW 12-case route family over v4's REAL handler; the child proxy and the
+  POST send recorded NO-COUNTERPART.
+- **P4.D184 — the avatar configuration cache server** (`work-orders/
+  p4.d184-avatar-configuration-cache-server.md`, stacked on P4.D182): ONE
+  key-derivation + lookup module (canonical JSON + sha256, v1/v0, the four
+  skip rules, blob-gone = miss) over a NEW tier-1 corpus against v4's real
+  module; the job's lookup-before-spend restructure (a hit binds through
+  the shared helper and returns — no classification, no image, no
+  transcode, no write, no Lantern), `force` from the manual regenerate
+  only, vault-always with the project branch + the legacy `folders` mint
+  DELETED, `generationKey` written on create; `avatar_job_tier3` widened
+  red-first; the collapse pass as a boot heal under v4's own
+  `migrations_state` id (cross-app: a no-op on the already-collapsed
+  Friday copy) over a NEW tier-2 census family driving v4's REAL
+  migration; its ONE fenced `host.rs` block.
+- **P4.D185 — the avatar rolls server** (`work-orders/p4.d185-avatar-
+  rolls-server.md`, stacked on P4.D182): `is_character_album_relative_
+  path` replacing BOTH hand-rolled album predicates (the listing filter
+  + the character GET count — `images/history/` stops counting, RED-FIRST),
+  `_count.photos` landed (a pre-existing v5 gap: `_count` carried only
+  `chats`), the four-fn rolls service (set-avatar via the album LINK id;
+  delete scrubs pointers first and drops the roll's OWN link with GC),
+  three verbs + two REST sub-routes with v4's envelope and ladder, a NEW
+  committed `avatar-rolls-{main,mount}.db` pair + 13-case family.
+- **P4.D186 — the paused hold server** (`work-orders/p4.d186-paused-hold-
+  server.md`, from `main`): the pure predicate (tier-1 over v4's real one),
+  consulted ONCE after the fresh chat read into a local that joins the
+  fairness guard, keeps the full-context flag unspent and the cadence
+  whisper unposted, and returns through `finish_held_user_turn` at the
+  record → prepare-turn seam (`lastTurnParticipantId` NULL; the
+  `{paused:true, heldUserTurn:true}` frame; `hasContent:false`);
+  `held_user_turn` on the frame; `orchestrator_tier3` widened with ≥ 7
+  paused cases, each conjunct pinned with the others OPEN.
+- **P4.D187 — the Salon SPA** (`work-orders/p4.d187-salon-transcript-
+  pause-spa.md`, from `main`): `reconcileTranscript` over a recorded
+  ≥ 30-vector corpus from v4's real module + the 18 titles, the Salon's
+  transcript state with the cheap conditional read on `chats` hints and
+  reconnects, the optimistic bubble back INSIDE the array (the #106
+  signals retired, the beat re-gestured), the two window events
+  retargeted; bug 136's two sentences at v5's MEASURED refusal sites (the
+  round's one mechanism question: v5 disables the whole composer during a
+  turn where v4 keeps the editor typeable); bug 135 measured
+  NO-COUNTERPART; bug 137's client half (both unpause-first legs deleted;
+  the once-per-pause `heldUserTurn` toast), bug 139 (the all-LLM Continue
+  resumes first — a REAL port), bugs 138/140 measured; the `:615` spec
+  inverted and the `:1149` recorded divergence retired; the held-turn
+  injected beats LIVE, the real-server beats gated `P4D186_SERVER_LANDED`,
+  the transcript beat gated `P4D183_SERVER_LANDED`.
+- **P4.D188 — the gallery + wardrobe SPA** (`work-orders/p4.d188-avatar-
+  rolls-show-shared-spa.md`, from `main`): the Avatar Rolls section in the
+  Photo Gallery TAB (measured: `gallery-tab.ts`, NOT the Salon's
+  `photo-gallery-modal.ts`) — default collapsed, the strings byte-exact,
+  nothing rendered at zero rolls, the bookmark button, the two-click
+  delete with the tab's own 3 s disarm, the tooltip builder, NO prompt
+  viewer (v4 has none), three invalidations; the "Show shared" tickbox
+  (default on, client-side over `canManageItem`, character scope only,
+  never persisted, the archived reload effect NOT tracking it); the rolls
+  beat gated `P4D185_SERVER_LANDED`, the Show-shared beat LIVE.
+
+**Deliberately left out:** the owed dogfood pass (item 1 of the previous
+UNIFIED section — a `/dogfood` run after this round unifies, now larger by
+the whole round: the transcript's live re-read on a real multi-tab chat,
+a paused room holding a real send, the cache's first HIT on the Friday
+copy where v4 has already collapsed the rolls — measure the population
+FIRST, ledger §5.5 — the rolls drawer on a real character, "Show shared"
+on a real merged wardrobe); the `name`-field turn-path measurement (item
+2); P4.87's two OPEN coverage items (item 3); the handler-logging
+remainders and maintenance smalls (item 4 — P4.D184 records the
+`[CharacterAvatar]` lines it does not land); the upstream filing
+candidates (human; item 5); every non-drift phase-4 candidate.
+
+Recommended arrangement: P4.D182 starts alone from `main` (Sonnet-
+carriable with a careful reviewer on its re-dump artifacts — the P4.D171
+shape with the memory notes named in its preamble); the moment its tip is
+recorded, P4.D183, P4.D184 and P4.D185 start in three worktrees from that
+tip; P4.D186, P4.D187 and P4.D188 start at once from `main` in three more
+(so up to six worktrees run concurrently — six `target/` dirs,
+`CARGO_INCREMENTAL=0`, `df -h ~` first; Playwright in P4.D187 and P4.D188
+only, one at a time). Opus tier for P4.D183 (the funnel's per-site
+conditions, the neutrality-proven extraction, a route family over v4's
+real handler), P4.D184 (a hashing chokepoint whose params shape must be
+proven equal on both sides, a destructive resumable heal), P4.D186 (a
+seam in a 4,000-line spine with three conjunct pins) and P4.D187 (the
+round's largest and subtlest: a reconcile algorithm, a state machine of
+seven refs, and the composer mechanism question); Sonnet for P4.D185 and
+P4.D188 with the survey sections in hand. Unify in the order P4.D182,
+P4.D183, P4.D184, P4.D185, P4.D186, P4.D187, P4.D188; the unifier flips
+the three gate constants, diffs §C name-for-name across `api/types.rs` /
+the web renderers / `core-contract.ts`, recounts the dispatch census as
+base + both deltas, refreshes the `docs/v4/` mirror (the two feature docs,
+the six bug files, `bugs.md`, `API.md`, `DDL.md`, `CHANGELOG.md`),
+recounts the version bumps as base + total, moves the baseline to
+`31436bae4`, and marks all eight rows ABSORBED / NO-PORT-RATIFIED.
+
 ## The `f4ad2c8d1` In-Their-Own-Words drift catch-up round (P4.D179 ∥ P4.D180 ∥ P4.D181) — UNIFIED 2026-09-11
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `cc65d6bfc` →

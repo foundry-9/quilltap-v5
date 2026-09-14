@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
+
+_Docs-only change._
+
+Plans the round that absorbs the eight v4 commits past the `f4ad2c8d1`
+baseline: the Salon transcript as a subscribed read (`5029075bb`), the
+avatar configuration cache (`7fbf8a55b`), Avatar Rolls (`4dcbe0d21`), the
+wardrobe "Show shared" tickbox (`055cac45a`), bugs 135/136 (`8275b3642`),
+bugs 137–140 (`31436bae4`), and the two docs/version-only rows. One
+substrate lane (P4.D182: the D23 re-dump for `files.generationKey`, boot
+ensures for that column + index and for `chats.transcriptVersion`, the
+export-schema and `help/**` re-vendors) with three server lanes stacked on
+its tip (P4.D183 the transcript funnel + verb + messages edge, P4.D184 the
+avatar cache + the collapse heal, P4.D185 the rolls service + routes) and
+three lanes from `main` (P4.D186 the paused-hold seam, P4.D187 the Salon
+SPA incl. finding #106's ground, P4.D188 the gallery + wardrobe SPA). The
+drift ledger's eight rows are marked `ORDERED(...)`; `phase-4.md` gains the
+round's ORDERED section. Every order carries the byte-identical §C wire
+contract, §R meeting points, Ownership table and verification gate
+(md5-verified across all seven), fresh surveys at `31436bae4`, and the
+regen rule PIN REQUIRED.
+
+
 #### 2026-09-14 — docs(drift): eight v4 commits past the baseline — the Salon transcript subscription, the avatar cache, Avatar Rolls, and the paused-chat hold
 
 _Docs-only change._
