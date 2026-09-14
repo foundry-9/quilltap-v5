@@ -125222,3 +125222,37 @@ pre-existing beat is unaffected): the section mounts and follows the grid in
 document order; with no rolls the HOST mounts but its content does not (the
 `return null` arm, seen from the tab); and promoting a roll to the portrait
 re-reads the character through the shared detail query.
+
+### Unit 4 — the wardrobe dialog's "Show shared" tickbox
+
+v4 `055cac45a` whole. The `showShared` signal (default `true`, doc'd as the
+mirror of the archived toggle and as the contrast the archived signal's own
+doc already draws — that one IS a fetch parameter, this one is not); the
+filter conjunct `!showShared && !canManageItem(i)` at the head of
+`filteredItems`, with v4's comment explaining why archived is NOT re-filtered
+client-side while shared IS; the `flex flex-wrap items-center gap-x-4 gap-y-1`
+wrapper holding "Show archived" first and the new label second, the second
+rendered only in character scope; `onShowShared`. No persistence, no helper
+text, no fetch parameter.
+
+**Specs (5 new).** v4's two jest titles transcribed 1:1 (`lists shared items
+by default and drops them when unticked, keeping the character's own` and
+`leaves the archived toggle alone`), driven the same way v4 drives them — the
+General tier routed to a `characterId: null` row and the character's own tier
+to one of hers, so the four-tier client merge produces the same two-row list.
+Three more: the tickbox hidden in container scope while the archived one
+stays; NO tier read issued when the box flips, with the archived toggle's
+contrasting re-fetch asserted in the same beat; and the badge/filter drift
+guard — in CONTAINER scope `canManageItem` is container membership, so a row
+with a null `characterId` that the browsed container holds survives the
+filter, which a predicate written against `item.characterId` would wrongly
+drop.
+
+**Mutation proofs (four, each reverted by FILE BACKUP):**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M7 | default `showShared` FALSE | the two v4-transcribed rows |
+| M8 | filter by `item.characterId` instead of `canManageItem` | exactly the drift-guard row |
+| M9 | render the tickbox in container scope too | exactly the container-scope row |
+| M10 | make the archived reload effect track `showShared` | exactly the no-fetch row |

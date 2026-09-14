@@ -152,6 +152,7 @@ function inner(component: WardrobeControlDialogInner): {
   handleToggleArchived: (item: WardrobeItemDto) => Promise<void>;
   handleDelete: (item: WardrobeItemDto) => Promise<void>;
   showArchived: { (): boolean; set(v: boolean): void };
+  showShared: { (): boolean; set(v: boolean): void };
   filteredItems: () => WardrobeItemDto[];
   transferringItem: { (): WardrobeItemDto | null; set(v: WardrobeItemDto | null): void };
 } {
@@ -801,5 +802,162 @@ describe('WardrobeControlDialogInner — archived garments (v4 d25dacc1)', () =>
     expect(
       seen.some((r) => (r.type as string) === 'characterWardrobeInstructionsGet'),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Show shared" (P4.D188; v4 `055cac45a` +
+// `__tests__/unit/components/wardrobe/wardrobe-control-dialog.shared-filter.test.tsx`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The character view lists the merge of the character's own garments with
+ * every shared tier above them (group / project / Quilltap General). Those
+ * borrowed rows are badged `· shared` and can't be edited from here, and when
+ * you're dressing a character or building an outfit out of their own clothes
+ * they're just noise. The toggle is on by default — hiding is opt-in — and it
+ * filters after the merge, since ownership isn't something the fetch can ask
+ * the server for.
+ */
+
+/** A Quilltap General archetype merged in from above — badged `· shared`. */
+const SHARED_WATCH = dto({ id: 'watch', title: 'Apple Watch', types: ['accessories'] });
+(SHARED_WATCH as { characterId: string | null }).characterId = null;
+
+/** Alice's own garment — full management, no badge. */
+const OWN_LINEN = dto({ id: 'linen', title: 'Linen Shirt' });
+
+/** c1's own tier answers one row; the General tier answers the shared one. */
+function sharedRoute(req: AnyRequest): Record<string, unknown> | Error {
+  switch (req.type as string) {
+    case 'characterWardrobeList':
+      return {
+        wardrobeItems:
+          (req as { characterId?: string }).characterId === 'c1' &&
+          (req as { scope?: string }).scope === undefined
+            ? [OWN_LINEN]
+            : [],
+      };
+    case 'wardrobeList':
+      return { wardrobeItems: [SHARED_WATCH] };
+    default:
+      return defaultRoute(req);
+  }
+}
+
+const sharedBox = (fixture: ComponentFixture<unknown>): HTMLInputElement | null => {
+  const labels = Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+  ).filter((l) => (l.textContent ?? '').includes('Show shared'));
+  return (labels[0]?.querySelector('input') as HTMLInputElement | undefined) ?? null;
+};
+
+const archivedBox = (fixture: ComponentFixture<unknown>): HTMLInputElement => {
+  const label = Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+  ).find((l) => (l.textContent ?? '').includes('Show archived'))!;
+  return label.querySelector('input') as HTMLInputElement;
+};
+
+const titles = (component: WardrobeControlDialogInner): string[] =>
+  inner(component)
+    .filteredItems()
+    .map((i) => i.title);
+
+describe('WardrobeControlDialogInner — Show shared', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // v4's first test, 1:1.
+  it('lists shared items by default and drops them when unticked, keeping the character’s own', async () => {
+    const { fixture, component } = await renderInner(null, sharedRoute);
+    expect(titles(component)).toEqual(['Apple Watch', 'Linen Shirt']);
+    expect(sharedBox(fixture)!.checked).toBe(true);
+
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Linen Shirt']);
+
+    // And back again — hiding is a view filter, not a fetch.
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Apple Watch', 'Linen Shirt']);
+  });
+
+  // v4's second test, 1:1.
+  it('leaves the archived toggle alone', async () => {
+    const { fixture, component } = await renderInner(null, sharedRoute);
+    expect(archivedBox(fixture).checked).toBe(false);
+
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(titles(component)).toEqual(['Linen Shirt']);
+    expect(archivedBox(fixture).checked).toBe(false);
+  });
+
+  // v4 `:1237-1249` — "Only the character view merges in other tiers".
+  it('hides the tickbox when browsing a shared container directly', async () => {
+    const { fixture, component } = await renderInner(null, sharedRoute);
+    expect(sharedBox(fixture)).not.toBeNull();
+
+    inner(component).selectedContainer.set({ scope: 'general', id: null });
+    await settle(fixture);
+    expect(inner(component).isCharacterScope()).toBe(false);
+    expect(sharedBox(fixture)).toBeNull();
+    // The archived toggle is unconditional and stays.
+    expect(archivedBox(fixture)).not.toBeNull();
+  });
+
+  /**
+   * The contrast the signal's doc draws: "Show archived" is a FETCH parameter
+   * (flipping it re-reads all four tiers), "Show shared" is not. The reload
+   * effect must not track it — if it did, unticking would issue a fresh round
+   * of tier reads for a purely client-side hiding.
+   */
+  it('issues NO fetch when the box flips — the reload effect does not track it', async () => {
+    const { fixture, seen } = await renderInner(null, sharedRoute);
+    const reads = (): number =>
+      seen.filter((r) =>
+        ['characterWardrobeList', 'wardrobeList', 'projectWardrobeList'].includes(
+          r.type as string,
+        ),
+      ).length;
+    const before = reads();
+
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(reads()).toBe(before);
+
+    // The contrast, in the same beat: the archived toggle DOES re-fetch.
+    archivedBox(fixture).click();
+    await settle(fixture);
+    expect(reads()).toBeGreaterThan(before);
+  });
+
+  /**
+   * Badge and filter cannot drift apart, because both ask `canManageItem`.
+   * In CONTAINER scope that predicate is container membership, not
+   * `item.characterId` — so a row with a null `characterId` that the browsed
+   * container holds is manageable, and a filter written against
+   * `item.characterId` directly would wrongly drop it. (The tickbox is hidden
+   * in container scope, so the signal is set directly here.)
+   */
+  it('filters on canManageItem, not on item.characterId', async () => {
+    const { fixture, component } = await renderInner(null, (req) =>
+      (req.type as string) === 'wardrobeList'
+        ? { wardrobeItems: [SHARED_WATCH] }
+        : defaultRoute(req),
+    );
+    inner(component).selectedContainer.set({ scope: 'general', id: null });
+    await settle(fixture);
+
+    // The General container holds the watch, whose `characterId` is null.
+    expect(inner(component).canManageItem(SHARED_WATCH)).toBe(true);
+    expect(SHARED_WATCH.characterId).toBeNull();
+
+    (inner(component) as unknown as { showShared: { set(v: boolean): void } }).showShared.set(
+      false,
+    );
+    await settle(fixture);
+    expect(titles(component)).toContain('Apple Watch');
   });
 });

@@ -313,15 +313,31 @@ type EditorIntent = 'create-single' | 'create-bundle';
                     </button>
                   }
                 </div>
-                <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
-                  <input
-                    type="checkbox"
-                    class="qt-checkbox"
-                    [checked]="showArchived()"
-                    (change)="onShowArchived($event)"
-                  />
-                  Show archived
-                </label>
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
+                    <input
+                      type="checkbox"
+                      class="qt-checkbox"
+                      [checked]="showArchived()"
+                      (change)="onShowArchived($event)"
+                    />
+                    Show archived
+                  </label>
+                  <!-- Only the character view merges in other tiers; browsing a
+                       container, every row already belongs to it, so the toggle
+                       would sit there governing nothing. -->
+                  @if (isCharacterScope()) {
+                    <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
+                      <input
+                        type="checkbox"
+                        class="qt-checkbox"
+                        [checked]="showShared()"
+                        (change)="onShowShared($event)"
+                      />
+                      Show shared
+                    </label>
+                  }
+                </div>
               </div>
 
               <div class="flex-1 overflow-y-auto space-y-1 max-h-[55vh] pb-12">
@@ -637,6 +653,18 @@ export class WardrobeControlDialogInner {
    * owns the hiding, so this list can never disagree with the API.
    */
   protected readonly showArchived = signal(false);
+  /**
+   * "Show shared" (v4 `055cac45a`), the mirror image of the archived toggle:
+   * on by default, and a purely client-side filter. Ownership isn't a fetch
+   * parameter — the character view's list *is* the merge of the character's
+   * own garments with every shared tier above them — so hiding shared items
+   * means dropping the un-manageable rows after the merge, not asking the
+   * server for less. Flipping it must therefore NOT re-fetch: the reload
+   * effect above deliberately does not track it.
+   *
+   * Never persisted: v4 keeps no memory of it across dialog opens.
+   */
+  protected readonly showShared = signal(true);
   protected readonly titleFilter = signal('');
   protected readonly updatingDefaultId = signal<string | null>(null);
 
@@ -935,10 +963,16 @@ export class WardrobeControlDialogInner {
     const term = this.titleFilter().trim().toLowerCase();
     const kindFilter = this.kindFilter();
     const slotFilter = this.slotFilter();
+    const showShared = this.showShared();
     return sorted.filter((i) => {
       // No archived filter here on purpose: the fetch already omitted them
       // unless "Show archived" is ticked, and a second client-side pass would
-      // be a place for the two rules to drift apart (v4 `:463-465`).
+      // be a place for the two rules to drift apart (v4 `:463-465`). Shared
+      // items are the other way round — the server can't omit them without
+      // dismantling the merge, so the one rule for "is this shared" is
+      // `canManageItem`, the same predicate that badges the row, and badge and
+      // filter cannot drift apart.
+      if (!showShared && !this.canManageItem(i)) return false;
       const isComposite = (i.componentItemIds ?? []).length > 0;
       if (kindFilter === 'items' && isComposite) return false;
       if (kindFilter === 'outfits' && !isComposite) return false;
@@ -1001,6 +1035,10 @@ export class WardrobeControlDialogInner {
 
   protected onShowArchived(event: Event): void {
     this.showArchived.set((event.target as HTMLInputElement).checked);
+  }
+
+  protected onShowShared(event: Event): void {
+    this.showShared.set((event.target as HTMLInputElement).checked);
   }
 
   /**

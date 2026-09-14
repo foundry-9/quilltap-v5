@@ -1052,6 +1052,22 @@ a plain one on the same millisecond.
 
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
+#### 2026-09-14 — feat(wardrobe): a "Show shared" tickbox in the wardrobe dialog
+
+_Versions: SPA 0.5.711._
+
+The character view lists the merge of a character's own garments with every
+shared tier above them (group, project, Quilltap General). A second tickbox
+beside "Show archived" hides those borrowed rows. It defaults to on, so the
+dialog shows everything until asked not to.
+
+Unlike "Show archived", which re-fetches every tier and lets the server own
+the hiding, this is a client-side filter: ownership is a property of the
+merge, not something the fetch can ask for. It reuses `canManageItem`, the
+same predicate that badges the row, so the badge and the filter cannot drift
+apart. The tickbox is hidden when browsing a shared container directly, where
+every listed row belongs to the container on display. Nothing is persisted.
+
 #### 2026-09-14 — feat(characters): mount the Avatar Rolls section in the Photo Gallery tab
 
 _Versions: SPA 0.5.710._
