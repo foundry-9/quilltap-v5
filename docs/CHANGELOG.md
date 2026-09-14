@@ -58,6 +58,29 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — test(import): retire P4.D182's transcript-counter tripwire; the column now diffs plainly
+
+_Versions: harness 0.0.789._
+
+P4.D182 recorded the round's one deliberate temporary divergence as a tripwire
+rather than a subtraction: between its ensure and P4.D183's writer, an import
+that added messages left v4's counter above zero and v5's at zero. The tripwire
+FIRED on this lane's first regen (`execute_overwrite_all`, v5 at 2 where the
+assertion demanded 0), which is exactly what it was written to do.
+
+Retiring it buys a stronger claim than either half: `transcriptVersion` now
+diffs cell for cell on every arm, so the whole import corpus is a differential
+of v5's bump against v4's real funnel. Three of the 27 chat-carrying arms move
+the counter (`execute_overwrite_all`, `execute_cross_instance_skip`,
+`route_replace_remap`, all at 2) and v5 matches them exactly.
+
+A new `record_v5_transcript_counters` keeps that from going vacuous: 24 arms
+import no message, so zero-vs-zero is the common case and a v5 that stopped
+bumping would agree trivially. It accumulates the highest counter the RUST side
+produced — not the oracle's, since an assertion on the oracle cannot catch a v5
+regression — and asserts once that it is above zero. Mutation-proven: changing
+the bump to `+ 0` reddens it by name.
+
 #### 2026-09-14 — feat(chats): every transcript-changing write bumps the counter and announces the chat
 
 _Versions: core 0.0.901._

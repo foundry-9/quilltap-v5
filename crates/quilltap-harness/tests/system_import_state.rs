@@ -794,59 +794,54 @@ fn normalize_side(
     (norm_result, norm_state)
 }
 
-/// P4.D182 — the ONE deliberate, TEMPORARY divergence this substrate lane
-/// creates, pinned in both directions rather than hidden.
+/// **P4.D183 retired P4.D182's `subtract_the_deferred_transcript_counter`.**
 ///
-/// The `31436bae4` round splits `chats.transcriptVersion` across two lanes:
-/// P4.D182 gives the column its boot ensure and P4.D183 gives it its single
-/// writer. Between the two, an import that adds messages leaves v4's counter
-/// at the number of message writes (v4's funnel bumps it) and v5's at `0`
-/// (v5 has no bumper yet) — a real difference, visible here because this
-/// family diffs raw table rows.
+/// The `31436bae4` round split `chats.transcriptVersion` across two lanes:
+/// P4.D182 gave the column its boot ensure, P4.D183 its single writer. In
+/// between, an import that added messages left v4's counter at the number of
+/// message writes and v5's at 0 — a real difference this family could see,
+/// so P4.D182 recorded it as a tripwire rather than a subtraction.
 ///
-/// So it is asserted, not normalized away: v4 must be ABOVE zero somewhere
-/// (or the arm has stopped measuring v4's funnel at all) and v5 must be
-/// exactly zero everywhere. The moment P4.D183 lands its bump, the second
-/// assertion trips and this whole function is what that lane deletes — which
-/// is the point of writing it as a tripwire instead of a subtraction.
-fn subtract_the_deferred_transcript_counter(name: &str, got: &mut StateDump, want: &mut StateDump) {
-    const KEY: &str = "transcriptVersion";
-    let mut v4_max = 0i64;
-    for (side, dump, is_v5) in [("rust", &mut *got, true), ("oracle", &mut *want, false)] {
-        for tables in dump.values_mut() {
-            let Some(rows) = tables.get_mut("chats") else {
-                continue;
-            };
-            for row in rows.iter_mut() {
-                let Some(obj) = row.as_object_mut() else {
-                    continue;
-                };
-                let Some(v) = obj.remove(KEY) else { continue };
-                let n = v.as_i64().unwrap_or(0);
-                if is_v5 {
-                    assert_eq!(
-                        n, 0,
-                        "[{name}] v5's `{KEY}` is {n}, not 0 — P4.D183's bump has                          landed, so this subtraction is stale: delete                          `subtract_the_deferred_transcript_counter` and let the                          column diff plainly (side {side})"
-                    );
-                } else {
-                    v4_max = v4_max.max(n);
-                }
+/// The tripwire FIRED at P4.D183's first regen (`execute_overwrite_all`, v5 at
+/// 2 where the assertion demanded 0) and this is what that firing buys: the
+/// column now diffs PLAINLY, cell for cell, on every arm. That is a stronger
+/// claim than either half — it is a differential of v5's bump against v4's
+/// over the whole import corpus, and it costs nothing, because the funnel is
+/// already the thing both sides drive.
+
+/// The retired tripwire's one surviving obligation: keep the plain diff from
+/// going vacuous.
+///
+/// `transcriptVersion` diffs like any other column now, which means it also
+/// AGREES trivially when neither engine moves it — and 24 of the corpus's 27
+/// chat-carrying arms import no message at all, so zero-vs-zero is the common
+/// case. Three arms do move it (`execute_overwrite_all`,
+/// `execute_cross_instance_skip`, `route_replace_remap`, all at 2). This
+/// accumulates the highest counter the RUST side produced and asserts once
+/// that it is above zero.
+///
+/// Deliberately the rust side, not the oracle's: an assertion on the oracle
+/// cannot catch a v5 regression (`an-assertion-on-the-oracle-cannot-catch-a-v5-
+/// regression`). If v5's funnel ever stopped bumping, every arm would still
+/// diff clean against a v4 that bumps — because the subtraction is gone and
+/// the rows would simply both read 0 if the fixture stopped importing
+/// messages. This is what says otherwise.
+static V5_TRANSCRIPT_MAX: AtomicI64 = AtomicI64::new(0);
+
+fn record_v5_transcript_counters(got: &StateDump) {
+    let mut max = 0i64;
+    for tables in got.values() {
+        let Some(rows) = tables.get("chats") else {
+            continue;
+        };
+        for row in rows {
+            if let Some(v) = row.get("transcriptVersion").and_then(|v| v.as_i64()) {
+                max = max.max(v);
             }
         }
     }
-    // The "v4 really does bump" half is a CORPUS-level claim, not a per-case
-    // one: plenty of arms import nothing at all (`execute_skip_all`), and a
-    // case with no new chat has nothing to bump. Accumulate here and let the
-    // test assert once at the end — a per-case assert fails on the arms it has
-    // no business judging, and says nothing about the ones it does.
-    V4_TRANSCRIPT_MAX.fetch_max(v4_max, Ordering::Relaxed);
-    let _ = name;
+    V5_TRANSCRIPT_MAX.fetch_max(max, Ordering::Relaxed);
 }
-
-/// The highest `transcriptVersion` v4 left on any chat across the whole
-/// corpus. Zero at the end means the subtraction above measured nothing —
-/// asserted once by `system_import_execute_state_equivalence`.
-static V4_TRANSCRIPT_MAX: AtomicI64 = AtomicI64::new(0);
 
 fn diff_states(name: &str, got: &StateDump, want: &StateDump, failures: &mut Vec<String>) {
     let all_tables: HashSet<(String, String)> = got
@@ -1280,12 +1275,11 @@ fn system_import_execute_state_equivalence() {
         );
     }
     assert!(
-        V4_TRANSCRIPT_MAX.load(Ordering::Relaxed) > 0,
-        "v4 left every chat's `transcriptVersion` at zero across the whole \
-         corpus — `subtract_the_deferred_transcript_counter` is then \
-         subtracting a column neither engine moves, and the divergence it \
-         claims to record is vacuous. Check the oracle's ALTER and v4's \
-         message funnel before trusting any row diff above."
+        V5_TRANSCRIPT_MAX.load(Ordering::Relaxed) > 0,
+        "v5 left every chat's `transcriptVersion` at zero across the whole \
+         corpus, so the column's agreement with v4 above is vacuous. Either \
+         the import path stopped reaching the message funnel or the funnel \
+         stopped bumping — see `record_v5_transcript_counters`."
     );
     assert!(
         failures.is_empty(),
@@ -1766,9 +1760,7 @@ fn compare_execute(
             "[{name}] result body differs\n  rust:   {got_norm_result}\n  oracle: {want_norm_result}"
         ));
     }
-    let mut got_norm_state = got_norm_state;
-    let mut want_norm_state = want_norm_state;
-    subtract_the_deferred_transcript_counter(name, &mut got_norm_state, &mut want_norm_state);
+    record_v5_transcript_counters(&got_norm_state);
     diff_states(name, &got_norm_state, &want_norm_state, failures);
 }
 
