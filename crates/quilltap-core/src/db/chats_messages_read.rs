@@ -174,6 +174,16 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut o, "swipeGroupId", row.get(8)?);
     put_opt_number(&mut o, "swipeIndex", row.get(9)?);
     o.insert("attachments".into(), array_or_empty(row.get(10)?));
+    // v4's `MessageEventSchema` declares `createdAt` HERE, directly after
+    // `attachments` and before `debugMemoryLogs` (`lib/schemas/chat.types.ts:
+    // 234`), and v4's hydration follows the schema — so this is where the key
+    // lands on the wire. v5 had emitted it 20 keys later, between
+    // `pendingExternalAttachments` and `isSilentMessage`, which nothing could
+    // see until P4.D183's message-EVENTS listing gave the raw marshal a wire
+    // of its own (every other consumer either sorts keys or re-projects). The
+    // sibling `marshal_context_summary` / `marshal_system` always had it in
+    // schema position, which is what identified this as the slip.
+    o.insert("createdAt".into(), Value::String(row.get::<_, String>(37)?));
     put_opt_json(&mut o, "debugMemoryLogs", row.get(11)?);
     put_opt_string(&mut o, "thoughtSignature", row.get(12)?);
     put_opt_string(&mut o, "reasoningContent", row.get(13)?);
@@ -205,7 +215,6 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut o, "pendingExternalPrompt", row.get(26)?);
     put_opt_string(&mut o, "pendingExternalPromptFull", row.get(27)?);
     put_opt_json(&mut o, "pendingExternalAttachments", row.get(28)?);
-    o.insert("createdAt".into(), Value::String(row.get::<_, String>(37)?));
     put_is_silent(&mut o, row.get(38)?);
     put_opt_bool(&mut o, "confirmed", row.get(39)?);
     put_opt_bool(&mut o, "confirmationChecked", row.get(40)?);

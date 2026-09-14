@@ -1732,6 +1732,26 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D183: the Salon transcript as a subscribed read ===
+            Request::ChatTranscript {
+                chat_id,
+                known_version,
+            } => match self.ready_db() {
+                Ok(db) => super::chat_transcript::chat_transcript(
+                    &db,
+                    SINGLE_USER_ID,
+                    &chat_id,
+                    known_version.as_ref(),
+                ),
+                Err(r) => r,
+            },
+            Request::ChatMessageEvents { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_transcript::chat_message_events(&db, SINGLE_USER_ID, &chat_id)
+                }
+                Err(r) => r,
+            },
+            // === end P4.D183 ===
             // === end P4.9E3B ===
             // ── P4.9G5 arms ──
             Request::SystemBackupCreate { compact } => match self.ready_backup_host() {

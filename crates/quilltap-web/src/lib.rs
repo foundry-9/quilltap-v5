@@ -42,6 +42,7 @@ pub mod log_file;
 // === end P4.49 ===
 // === P4.6ar: the llm-logs read surface + system image-aesthetics REST edges ===
 pub mod llm_logs_routes;
+pub mod messages_routes;
 // === P4.9P: the global-search REST edge ===
 pub mod ui_search_routes;
 // === end P4.6ar ===
@@ -355,6 +356,8 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/characters",
             post(characters_routes::characters_import_post),
         )
+        // === P4.D183: the messages collection edge (v4 `5029075bb`) ===
+        .route("/api/v1/messages", get(messages_routes::messages_get))
         .route(
             "/api/v1/terminals",
             post(terminal_routes::terminals_post).get(terminal_routes::terminals_get),

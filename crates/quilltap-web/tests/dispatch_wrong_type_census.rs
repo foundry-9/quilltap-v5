@@ -2482,7 +2482,20 @@ fn is_route_identifier(field: &str) -> bool {
 // adjudicated FAITHFUL in the `in_scene_voiced_tier3_equivalence` action rows,
 // where v4's Zod and v5's decode both refuse with nothing written, rather than
 // here — 431 → 435.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 435;
+//
+// **P4.D183 (+2): 435 → 437.** `ChatTranscript` and `ChatMessageEvents` each
+// carry a `chat_id`, which the heuristic drops as a route identifier — and on
+// this route it genuinely is one: v4 reads `chatId` from the QUERY STRING
+// (`GET /api/v1/messages?chatId=…`), never from a body, so there is no
+// wrong-type body arm to adjudicate. The `knownVersion` field is deliberately
+// NOT excluded: it is a real body key, and its wrong-type behaviour is v4's
+// shrug (anything not an integer means "no known version"), pinned in
+// `chat_transcript.rs` and in the route family's `not_an_integer` arm rather
+// than as a refusal here.
+//
+// ⚠ P4.D185 moves this constant too, in the same round. The unifier recounts
+// as base + both deltas, not as either lane's total.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 437;
 
 #[test]
 fn census_covers_every_typed_request_field() {

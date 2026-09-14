@@ -57,6 +57,7 @@ pub mod mount_points;
 // === P4.83: the prompt-templates verbs ===
 pub mod prompt_templates;
 // === end P4.83 ===
+pub mod chat_transcript;
 pub mod projects;
 pub mod provider_actions;
 pub mod provision;

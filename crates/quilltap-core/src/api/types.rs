@@ -3218,6 +3218,30 @@ pub enum Request {
         message_id: String,
         new_participant_id: String,
     },
+    // === P4.D183: the Salon transcript as a subscribed read (v4 `5029075bb`) ===
+    /// The Salon's conditional transcript read (v4 `GET /api/v1/messages?
+    /// chatId=…&action=transcript&knownVersion=N`, `handleTranscript`).
+    ///
+    /// `known_version` is deliberately an untyped `Value`, not a number: v4
+    /// takes whatever the query string carried, runs it through `Number()`,
+    /// and then gates on `Number.isInteger`. Anything that is not an integer
+    /// — a float, a string, `null`, absent — reads as "no known version" and
+    /// gets a full read. It is never an error, so a typed `Option<i64>` here
+    /// would turn v4's shrug into a deserialization refusal.
+    #[serde(rename_all = "camelCase")]
+    ChatTranscript {
+        chat_id: String,
+        #[serde(default)]
+        known_version: Option<serde_json::Value>,
+    },
+    /// The lightweight message listing (v4 `GET /api/v1/messages?chatId=…`
+    /// with no action, `handleListMessages`) — the stored `type === 'message'`
+    /// events, UNPROJECTED. Not the Salon's read; that is `ChatTranscript`.
+    #[serde(rename_all = "camelCase")]
+    ChatMessageEvents {
+        chat_id: String,
+    },
+    // === end P4.D183 ===
     /// Group document stores reachable from this chat's user-controlled cast
     /// (v4 `GET …/chats/{id}?action=group-stores`, actions/group-stores.ts:16).
     /// NOT part of the §1 freeze — added by the order's tier-2 audit (item 9),
@@ -3913,6 +3937,14 @@ pub enum Response {
     Chat(ChatWrapDto),
     /// v4 `handleHasDangerous`'s body — `{ hasDangerous: boolean }`.
     ChatsHasDangerous(serde_json::Value),
+    // === P4.D183 ===
+    /// v4 `handleTranscript`'s body, BARE — `{unchanged: true, version}` when
+    /// the counter agrees, else `{unchanged: false, version, messages,
+    /// offSceneCharacters, count}`.
+    ChatTranscript(serde_json::Value),
+    /// v4 `handleListMessages`'s body — `{messages, count}`.
+    ChatMessageEvents(serde_json::Value),
+    // === end P4.D183 ===
     /// v4 `GET /api/v1/settings/chat` body (the raw settings object).
     ChatSettings(serde_json::Value),
     /// v4 `handleTurnAction` body.

@@ -58,6 +58,49 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(messages): the chatTranscript verb, the message-events listing, and the /api/v1/messages edge
+
+_Versions: core 0.0.903, harness 0.0.791, web 0.0.143._
+
+The read half of v4 `5029075bb`. `Request::ChatTranscript` answers
+`{unchanged: true, version}` when the caller's counter agrees and the full
+`{unchanged: false, version, messages, offSceneCharacters, count}` otherwise,
+with the version read BEFORE the projection. `Request::ChatMessageEvents` is
+v4's lightweight listing beside it. `GET /api/v1/messages` is the REST edge —
+v5 had no messages edge at all.
+
+`knownVersion` is deliberately an untyped `Value` on the wire: v4 takes
+whatever the query string carried, runs `Number()`, then gates on
+`Number.isInteger`. Anything else — a float, a string, null, absent — reads as
+"no known version" and gets a full read, never an error. A typed `Option<i64>`
+would have turned v4's shrug into a deserialization refusal.
+
+**Two measurements corrected the plan.** v4's dispatcher has a DEFAULT handler,
+so an unrecognised `?action=` looks like it should fall through to the listing;
+it does not — `withActionDispatch` tests `if (action)` first and answers the
+400 `Unknown action` envelope, reserving the default for an absent (or
+JS-falsy empty) parameter. And `Number('')` is 0, not NaN, so a bare
+`?knownVersion=` is a genuine integer that matches a counter of 0.
+
+NEW `transcript_route_equivalence` drives v4's REAL route handler over the
+committed salon fixture — 16 cases, v4's own 12 `it` titles plus the empty-
+action, empty-knownVersion and NULL-counter arms. It reuses the salon fixture
+rather than minting a committed pair so that "the transcript verb's messages
+are byte-identical to the chat GET's" is proven by the two corpora against ONE
+set of bytes. NEW `messages_route.rs` proves the edge over a live server.
+
+**A pre-existing fidelity bug fell out of it:** `marshal_message` emitted
+`createdAt` twenty keys late, between `pendingExternalAttachments` and
+`isSilentMessage`, where v4's `MessageEventSchema` declares it directly after
+`attachments`. Nothing could see it — every other consumer of the raw event
+read either sorts keys or re-projects — until this listing gave the marshal a
+wire of its own. The sibling `marshal_context_summary` and `marshal_system`
+always had it in schema position, which is what identified it as a slip rather
+than a decision.
+
+`POST /api/v1/messages` (v4's SSE send) is NOT registered: NO-COUNTERPART by
+the locked boundary, and no 405 invented as a "port" of it.
+
 #### 2026-09-14 — refactor(salon): the transcript projection becomes one module both readers share, and the chat GET carries transcriptVersion
 
 _Versions: core 0.0.902, harness 0.0.790._
