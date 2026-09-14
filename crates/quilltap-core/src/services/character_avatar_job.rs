@@ -1,19 +1,31 @@
 //! The `CHARACTER_AVATAR_GENERATION` job handler (v4
 //! `lib/background-jobs/handlers/character-avatar.ts`).
 //!
-//! Generates a head-and-shoulders portrait for a character from their equipped
-//! wardrobe + physical descriptions, runs it through the Concierge, generates the
-//! image, and persists it into the character's vault (or the project store), then
-//! updates `chats.characterAvatars` + `characters.avatarOverrides` and posts the
-//! Lantern notification.
+//! Looks the configuration up in the avatar cache — a HIT binds the existing
+//! image and stops, spending nothing — and otherwise generates a
+//! head-and-shoulders portrait for a character from their equipped wardrobe +
+//! physical descriptions, runs it through the Concierge, generates the image,
+//! and persists it into the character's vault, then updates
+//! `chats.characterAvatars` + `characters.avatarOverrides` and posts the Lantern
+//! notification.
+//!
+//! ## Every avatar goes to the character's vault (v4 `7fbf8a55b`)
+//!
+//! Project context or not. Reading a mount blob is addressed by blob id with no
+//! project scoping, so a chat in any project can render a `fileId` whose bytes
+//! live in the vault — which is what lets the configuration cache be shared
+//! across projects without hard-linking anything. The project-store upload
+//! branch and the legacy `folders` find-or-create are GONE from this path (the
+//! `folders` table backs the pre-Scriptorium file tree and is only meaningful
+//! for disk-backed or project-mount-backed writes), and the vault-missing
+//! refusal is now unconditional. `common::ProjectImageUpload` itself stays — the
+//! story-background job still uploads into a project store.
 //!
 //! ## Model boundaries (tier-3 seams — the same ones the v4 oracle mocks)
 //!   - [`ImageProvider`] — `provider.generateImage(params, key)`.
 //!   - [`CompletionProvider`] + [`ModerationProvider`] — the Concierge pre-scan.
 //!   - [`ApiKeyResolver`] — the profile's decrypted API key.
 //!   - [`ImageTranscoder`] — the WebP transcode (`convertToWebP`).
-//!   - [`common::ProjectImageUpload`] — the project-store
-//!     `fileStorageManager.uploadFile` FsSeam (the corpus keeps the vault primary).
 //!
 //! ## Deferrals (documented seams)
 //!   - `logLLMCall` — v4 fire-and-forgets an `IMAGE_GENERATION` llm-logs row
@@ -51,6 +63,10 @@ pub struct CharacterAvatarPayload {
     pub image_profile_id: String,
     /// One-shot `{ top, bottom, footwear, accessories, hair }` override.
     pub equipped_slots_override: Option<Value>,
+    /// Reroll: bypass the avatar configuration cache and generate
+    /// unconditionally. Set by the manual regenerate button; automatic triggers
+    /// leave it unset (v4 `7fbf8a55b`).
+    pub force: bool,
 }
 
 impl CharacterAvatarPayload {
@@ -76,23 +92,30 @@ impl CharacterAvatarPayload {
             .get("equippedSlotsOverride")
             .filter(|v| !v.is_null())
             .cloned();
+        // v4 reads `payload.force` through `if (!payload.force)` — a JS truthy
+        // test, so only a literal `true` (the one shape the trigger writes)
+        // forces. An absent key, `false`, `null` and `0` all leave the cache on.
+        let force = payload
+            .get("force")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         Ok(Self {
             chat_id,
             character_id,
             image_profile_id,
             equipped_slots_override,
+            force,
         })
     }
 }
 
 /// The injected seams the avatar handler needs.
-pub struct AvatarJobDeps<'a, I, C, M, A, T, U> {
+pub struct AvatarJobDeps<'a, I, C, M, A, T> {
     pub image_provider: &'a I,
     pub completion: &'a C,
     pub moderation: &'a M,
     pub api_keys: &'a A,
     pub transcoder: &'a T,
-    pub upload: &'a U,
     /// Injected wall clock (v4's frozen `Date`): drives the `avatar_<ts>` filename
     /// AND every handler-minted timestamp (`files.createdAt`, the
     /// `characterAvatars.generatedAt`), so they match v4 byte-for-byte.
@@ -104,9 +127,9 @@ pub struct AvatarJobDeps<'a, I, C, M, A, T, U> {
 
 /// v4 `handleCharacterAvatarGeneration`. Returns `Ok(())` on success or a benign
 /// skip (WARN+RETURN), `Err(msg)` on a throw (the runner marks the job failed).
-pub async fn handle_character_avatar_generation<I, C, M, A, T, U>(
+pub async fn handle_character_avatar_generation<I, C, M, A, T>(
     db: &Db,
-    deps: &AvatarJobDeps<'_, I, C, M, A, T, U>,
+    deps: &AvatarJobDeps<'_, I, C, M, A, T>,
     user_id: &str,
     payload: &CharacterAvatarPayload,
     // v4 folds `jobId: job.id` into this handler's image-params log context
@@ -120,7 +143,6 @@ where
     M: ModerationProvider,
     A: ApiKeyResolver,
     T: ImageTranscoder,
-    U: common::ProjectImageUpload,
 {
     let chat_id = payload.chat_id.clone();
     let character_id = payload.character_id.clone();
@@ -218,6 +240,83 @@ where
         return Ok(());
     }
 
+    // 7b. The avatar configuration cache (v4 `7fbf8a55b`).
+    //
+    // Built from the ORIGINAL profile, before the Concierge classification
+    // below, so a hit skips that LLM call as well as the image call, the WebP
+    // transcode and the file write. A Concierge reroute therefore stores its
+    // image under the originally-requested key — correct (same inputs, same
+    // outcome), though it means a cached row's `generationModel` need not match
+    // its key's model.
+    //
+    // These params are reused verbatim for generation on a miss; only a reroute
+    // rebuilds them, since the fallback provider's shape mechanism, LoRA support
+    // and stored options are all its own.
+    let original_profile_id = common::str_field(&image_profile, "id")
+        .unwrap_or("")
+        .to_string();
+    let original_provider = common::str_field(&image_profile, "provider")
+        .unwrap_or("")
+        .to_string();
+    let avatar_params = common::build_job_image_params(
+        &original_provider,
+        common::str_field(&image_profile, "modelName").unwrap_or(""),
+        &image_profile
+            .get("parameters")
+            .cloned()
+            .unwrap_or(Value::Null),
+        &prompt,
+        Orientation::Portrait,
+        deps.declarations_for,
+        "background-jobs.character-avatar",
+        Some(&payload.chat_id),
+        Some(job_id),
+        &original_profile_id,
+    );
+    let cache_keys = crate::services::avatar_cache::derive_avatar_cache_keys(
+        &original_provider,
+        &original_profile_id,
+        &avatar_params.to_key_value(),
+    );
+
+    if !payload.force {
+        let keys = cache_keys.clone();
+        let cid = payload.character_id.clone();
+        let cached = common::with_both_conns(db, move |main, mount| {
+            Ok(crate::services::avatar_cache::lookup_cached_avatar(
+                main, mount, &keys, &cid,
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some(cached) = cached {
+            bind_avatar_to_chat(
+                db,
+                &chat,
+                &character,
+                &payload.chat_id,
+                &payload.character_id,
+                &cached.id,
+                &iso_from_unix_ms(deps.now_ms),
+            )
+            .await?;
+
+            // No Lantern notification: nothing was produced. The avatar still
+            // reaches the Salon through the normal realtime path.
+            tracing::info!(
+                target: "quilltap::character_avatar",
+                context = "background-jobs.character-avatar",
+                job_id = job_id,
+                chatId = %payload.chat_id,
+                characterId = %payload.character_id,
+                fileId = %cached.id,
+                "[CharacterAvatar] Reused cached avatar for this configuration"
+            );
+            return Ok(());
+        }
+    }
+
     // 8. Concierge pre-scan (chatSettings → danger settings; classify + reroute).
     let chat_settings = db
         .read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, user_id))
@@ -303,6 +402,18 @@ where
     }
 
     // 9. Generate the portrait (with the post-hoc moderation reroute).
+    //
+    // Reuse the params the cache key was derived from. A pre-generation
+    // Concierge reroute swaps the profile, and the fallback provider's shape
+    // mechanism, LoRA support and stored options are its own — so that case, and
+    // only that case, rebuilds (v4's `effectiveImageProfile.id ===
+    // imageProfile.id ? avatarParams : buildImageGenParams(...)`). Building once
+    // is also what keeps the `[Image LoRA]` lines firing once per attempt.
+    let prebuilt_params = if eff_id == original_profile_id {
+        Some(avatar_params)
+    } else {
+        None
+    };
     let outcome = common::generate_with_reroute(
         db,
         deps.image_provider,
@@ -312,6 +423,7 @@ where
         &eff_model,
         &eff_params,
         &eff_api_key,
+        prebuilt_params,
         &prompt,
         Orientation::Portrait,
         deps.declarations_for,
@@ -363,26 +475,8 @@ where
     let now_iso = iso_from_unix_ms(deps.now_ms);
     let file_id = uuid::Uuid::new_v4().to_string();
 
-    // Storage branch key: chat.projectId. An upload Err is v4 uploadFile's
-    // throw inside the save try-block — the job fails HERE (v4's catch wrap),
-    // before the files row / avatar update / Aurora announcement.
-    let project_upload = if let Some(project_id) = &project_id_opt {
-        Some(
-            deps.upload
-                .upload(
-                    &converted.filename,
-                    &converted.bytes,
-                    &converted.mime_type,
-                    project_id,
-                    "/character-avatars/",
-                )
-                .await
-                .map_err(|e| format!("Failed to save avatar image: {e}"))?,
-        )
-    } else {
-        None
-    };
-
+    // No storage branch: every avatar goes to the character's vault, project
+    // context or not (v4 `7fbf8a55b` — see the module doc).
     let write = AvatarWriteInput {
         user_id: user_id.to_string(),
         character_id: payload.character_id.clone(),
@@ -397,8 +491,7 @@ where
         prompt: prompt.clone(),
         generation_model,
         revised_prompt: image_data.revised_prompt.clone(),
-        project_id: project_id_opt.clone(),
-        project_upload,
+        generation_key: cache_keys.key.clone(),
     };
     common::with_both_conns(db, move |main, mount| {
         write_avatar_file(main, mount, &write)
@@ -406,64 +499,18 @@ where
     .await
     .map_err(|e| format!("Failed to save avatar image: {e}"))?;
 
-    // 11. Update chat.characterAvatars.
-    let message_count = chat
-        .get("messageCount")
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let existing_avatars = chat
-        .get("characterAvatars")
-        .filter(|v| v.is_object())
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    let mut avatars = existing_avatars.as_object().cloned().unwrap_or_default();
-    avatars.insert(
-        payload.character_id.clone(),
-        json!({
-            "imageId": file_id,
-            "generatedAt": now_iso,
-            "afterMessageCount": message_count,
-        }),
-    );
-    let avatars_value = Value::Object(avatars);
-    let chat_id_upd = payload.chat_id.clone();
-    db.write(move |writers| {
-        let update = crate::db::chats::ChatUpdate {
-            character_avatars: Some(avatars_value),
-            ..Default::default()
-        };
-        writers.main().chats().update(&chat_id_upd, &update)?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // 12. Update character.avatarOverrides (filter this chat, push the new one).
-    let existing_overrides = character
-        .get("avatarOverrides")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let mut filtered: Vec<Value> = existing_overrides
-        .into_iter()
-        .filter(|o| o.get("chatId").and_then(Value::as_str) != Some(payload.chat_id.as_str()))
-        .collect();
-    filtered.push(json!({ "chatId": payload.chat_id, "imageId": file_id }));
-    let char_id_upd = payload.character_id.clone();
-    let patch = {
-        let mut m = serde_json::Map::new();
-        m.insert("avatarOverrides".into(), Value::Array(filtered));
-        m
-    };
-    common::with_both_conns(db, move |main, mount| {
-        // avatarOverrides is a slim key — the P4.22 `Unavailable` refusal is
-        // unreachable here; collapse to the closure's DbError.
-        crate::db::vault_character_update::update_character(main, mount, &char_id_upd, &patch)
-            .map_err(crate::db::document_store_overlay::OverlayError::into_db)
-            .map(|_| ())
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    // 11-12. Bind the chat (and the character's per-chat override) to the new
+    // avatar — the same helper the cache-hit path above used.
+    bind_avatar_to_chat(
+        db,
+        &chat,
+        &character,
+        &payload.chat_id,
+        &payload.character_id,
+        &file_id,
+        &now_iso,
+    )
+    .await?;
 
     // 13. Lantern notification (avatar → sender aurora; the built prompt as aim).
     let _ = post_lantern_image_notification(
@@ -482,6 +529,86 @@ where
     Ok(())
 }
 
+/// Point a chat (and the character's per-chat override) at an avatar image
+/// (v4 `bindAvatarToChat`, `7fbf8a55b`).
+///
+/// Shared by the generation path and the configuration-cache hit path: a reused
+/// avatar must bind exactly the way a freshly drawn one does, or the two paths
+/// drift and a cached avatar shows up in one surface but not the other.
+///
+/// `now_iso` is the handler's injected clock (v4 reads `new Date()` here; under
+/// the frozen oracle clock they are the same instant).
+async fn bind_avatar_to_chat(
+    db: &Db,
+    chat: &Value,
+    character: &Value,
+    chat_id: &str,
+    character_id: &str,
+    file_id: &str,
+    now_iso: &str,
+) -> Result<(), String> {
+    // chat.characterAvatars — merge this character's entry into whatever is there.
+    let message_count = chat
+        .get("messageCount")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let existing_avatars = chat
+        .get("characterAvatars")
+        .filter(|v| v.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let mut avatars = existing_avatars.as_object().cloned().unwrap_or_default();
+    avatars.insert(
+        character_id.to_string(),
+        json!({
+            "imageId": file_id,
+            "generatedAt": now_iso,
+            "afterMessageCount": message_count,
+        }),
+    );
+    let avatars_value = Value::Object(avatars);
+    let chat_id_upd = chat_id.to_string();
+    db.write(move |writers| {
+        let update = crate::db::chats::ChatUpdate {
+            character_avatars: Some(avatars_value),
+            ..Default::default()
+        };
+        writers.main().chats().update(&chat_id_upd, &update)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // character.avatarOverrides — filter this chat out, push the new one.
+    let existing_overrides = character
+        .get("avatarOverrides")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut filtered: Vec<Value> = existing_overrides
+        .into_iter()
+        .filter(|o| o.get("chatId").and_then(Value::as_str) != Some(chat_id))
+        .collect();
+    filtered.push(json!({ "chatId": chat_id, "imageId": file_id }));
+    let char_id_upd = character_id.to_string();
+    let patch = {
+        let mut m = serde_json::Map::new();
+        m.insert("avatarOverrides".into(), Value::Array(filtered));
+        m
+    };
+    common::with_both_conns(db, move |main, mount| {
+        // avatarOverrides is a slim key — the P4.22 `Unavailable` refusal is
+        // unreachable here; collapse to the closure's DbError.
+        crate::db::vault_character_update::update_character(main, mount, &char_id_upd, &patch)
+            .map_err(crate::db::document_store_overlay::OverlayError::into_db)
+            .map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 // ===========================================================================
 // The registered JobHandler (the W4.8 runner pattern; the host wires it with
 // real seams, removing CHARACTER_AVATAR_GENERATION from the loud fallback)
@@ -490,27 +617,25 @@ where
 /// A `CHARACTER_AVATAR_GENERATION` [`crate::services::job_runner::JobHandler`] over
 /// owned seams. The host registers one built with the real image/completion/etc.
 /// providers; the differential's runner E2E registers one built with canned seams.
-pub struct CharacterAvatarGenerationHandler<I, C, M, A, T, U, F> {
+pub struct CharacterAvatarGenerationHandler<I, C, M, A, T, F> {
     pub image_provider: I,
     pub completion: C,
     pub moderation: M,
     pub api_keys: A,
     pub transcoder: T,
-    pub upload: U,
     pub now_ms: i64,
     /// `Fn(provider) -> (models, provider-support)` (the plugin-registry seam).
     pub declarations_for: F,
 }
 
-impl<I, C, M, A, T, U, F> crate::services::job_runner::JobHandler
-    for CharacterAvatarGenerationHandler<I, C, M, A, T, U, F>
+impl<I, C, M, A, T, F> crate::services::job_runner::JobHandler
+    for CharacterAvatarGenerationHandler<I, C, M, A, T, F>
 where
     I: ImageProvider + Send + Sync,
     C: CompletionProvider + Send + Sync,
     M: ModerationProvider + Send + Sync,
     A: ApiKeyResolver + Send + Sync,
     T: ImageTranscoder + Send + Sync,
-    U: common::ProjectImageUpload + Send + Sync,
     F: Fn(&str) -> crate::image_gen::params_builder::ImageDeclarations + Send + Sync + 'static,
 {
     fn handle<'a>(
@@ -530,7 +655,6 @@ where
                 moderation: &self.moderation,
                 api_keys: &self.api_keys,
                 transcoder: &self.transcoder,
-                upload: &self.upload,
                 now_ms: self.now_ms,
                 declarations_for: &self.declarations_for as &common::ImageDeclarationsFn,
             };
@@ -559,80 +683,55 @@ struct AvatarWriteInput {
     prompt: String,
     generation_model: String,
     revised_prompt: Option<String>,
-    project_id: Option<String>,
-    project_upload: Option<common::ProjectUploadResult>,
+    /// The v1 cache key of the REQUESTED profile — bound to the new row so this
+    /// configuration is served from cache next time (v4 `7fbf8a55b`).
+    generation_key: String,
 }
 
-/// The storage half of v4 `handleCharacterAvatarGeneration`: the vault-vs-project
-/// branch (branch key: `chat.projectId`) → the `files` row (linkedTo `[chatId,
-/// characterId]`, tags `[characterId]`).
+/// The storage half of v4 `handleCharacterAvatarGeneration`: the character vault
+/// → the `files` row (linkedTo `[chatId, characterId]`, tags `[characterId]`).
+///
+/// v4 `7fbf8a55b` deleted the project branch: every avatar goes to the vault,
+/// project context or not, so the vault-missing refusal is unconditional and no
+/// legacy `folders` row is minted per image any more.
 fn write_avatar_file(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     input: &AvatarWriteInput,
 ) -> Result<(), DbError> {
     let sha256 = sha256_hex(&input.converted_bytes);
-    let (storage_key, stored_mime, stored_size, file_project_id, file_folder_path) = match (
-        &input.project_id,
-        &input.project_upload,
-    ) {
-        // No project → the character vault (refuse if unprovisioned).
-        (None, _) => {
-            if crate::services::image_job_storage::resolve_character_vault_mount(
-                main,
-                mount,
-                &input.character_id,
-            )
-            .is_none()
-            {
-                return Err(DbError::Internal(format!(
-                        "Character {} has no linked database-backed vault; cannot persist wardrobe avatar.",
-                        input.character_id
-                    )));
-            }
-            let written = write_character_avatar_to_vault(
-                main,
-                mount,
-                &input.character_id,
-                &input.converted_filename,
-                &input.converted_bytes,
-                &input.converted_mime,
-                // Bug 132: no label on the vault link either — see the note on
-                // the `files` row below.
-                None,
-            )?;
-            (
-                written.storage_key,
-                written.stored_mime_type,
-                written.size_bytes,
-                None,
-                None,
-            )
-        }
-        // Project → the FsSeam upload result (computed at the async layer).
-        (Some(project_id), Some(upload)) => {
-            // Legacy `folders` find-or-create for the project-mount tree.
-            ensure_legacy_folder(
-                main,
-                &input.user_id,
-                "/character-avatars/",
-                "character-avatars",
-                Some(project_id),
-            )?;
-            (
-                upload.storage_key.clone(),
-                upload.stored_mime_type.clone(),
-                upload.size_bytes,
-                Some(project_id.clone()),
-                Some("/character-avatars/".to_string()),
-            )
-        }
-        (Some(_), None) => {
-            return Err(DbError::Internal(
-                "project upload result missing for project-scoped avatar".to_string(),
-            ))
-        }
-    };
+
+    // The vault is provisioned at character creation and re-asserted by the
+    // startup backfill; if it is somehow missing we refuse to write rather than
+    // leak bytes into the catch-all `_general/`.
+    if crate::services::image_job_storage::resolve_character_vault_mount(
+        main,
+        mount,
+        &input.character_id,
+    )
+    .is_none()
+    {
+        return Err(DbError::Internal(format!(
+            "Character {} has no linked database-backed vault; cannot persist wardrobe avatar.",
+            input.character_id
+        )));
+    }
+    let written = write_character_avatar_to_vault(
+        main,
+        mount,
+        &input.character_id,
+        &input.converted_filename,
+        &input.converted_bytes,
+        &input.converted_mime,
+        // Bug 132: no label on the vault link either — see the note on the
+        // `files` row below.
+        None,
+    )?;
+    let (storage_key, stored_mime, stored_size) = (
+        written.storage_key,
+        written.stored_mime_type,
+        written.size_bytes,
+    );
 
     let files = crate::db::files::FilesRepository::new(main);
     files.create(
@@ -651,19 +750,19 @@ fn write_avatar_file(
             generation_prompt: Some(input.prompt.clone()),
             generation_model: Some(input.generation_model.clone()),
             generation_revised_prompt: input.revised_prompt.clone(),
-            // The avatar configuration cache key stays NULL here. v4 binds it
-            // (`lib/background-jobs/handlers/character-avatar.ts:574`,
-            // `generationKey: cacheKeys.key`) as part of the cache feature
-            // itself — P4.D184's, not this lane's, which carries the column and
-            // nothing that writes it. Until then every avatar plate this port
-            // writes reads NULL, exactly as every pre-4.10 plate does.
-            generation_key: None,
+            // Bind this configuration's cache key to the new image — last write
+            // wins, which is exactly what makes a forced reroll the new
+            // canonical portrait for this character in this outfit. Keyed on the
+            // REQUESTED profile, not the rerouted one.
+            generation_key: Some(input.generation_key.clone()),
             // No label here — see the matching note in `story_background_job.rs`
             // (bug 132).
             description: None,
             tags: vec![input.character_id.clone()],
-            project_id: file_project_id,
-            folder_path: file_folder_path,
+            // No legacy `folders` row and no project scoping: the bytes live in
+            // the vault, addressed by blob id.
+            project_id: None,
+            folder_path: None,
             storage_key: Some(storage_key),
             file_status: "ok".to_string(),
         },
@@ -671,36 +770,6 @@ fn write_avatar_file(
             id: input.file_id.clone(),
             created_at: input.now_iso.clone(),
             updated_at: input.now_iso.clone(),
-        },
-    )?;
-    Ok(())
-}
-
-/// v4 `repos.folders.ensureByPath` — the legacy file-tree folder row (only for
-/// disk-backed / project-mount-backed writes; vault writes own their folder
-/// structure inside `doc_mount_folders`).
-///
-/// v4 `a5df98b3f` (bug 114) replaced the hand-rolled `findByPath` -> `create`
-/// guard here with the repository chokepoint, and discards the return: in v4
-/// this runs in the forked child, where the call is buffered whole and replayed
-/// on the parent's RW connection, so the child's caller only ever sees a
-/// synthetic `undefined`. v5's job runner is in-process, so the row IS available
-/// — but nothing here wants it, and dropping it keeps the two readable side by
-/// side.
-fn ensure_legacy_folder(
-    main: &rusqlite::Connection,
-    user_id: &str,
-    path: &str,
-    name: &str,
-    project_id: Option<&str>,
-) -> Result<(), DbError> {
-    crate::db::folders::FoldersRepository::new(main).ensure_by_path(
-        &crate::db::folders::FolderCreate {
-            user_id: user_id.to_string(),
-            path: path.to_string(),
-            name: name.to_string(),
-            parent_folder_id: None,
-            project_id: project_id.map(str::to_string),
         },
     )?;
     Ok(())

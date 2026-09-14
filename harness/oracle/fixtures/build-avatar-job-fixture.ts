@@ -57,6 +57,17 @@ interface ChatSpec {
   userId: string;
   characterId: string;
   imageProfileId: string;
+  /**
+   * P4.D184: a chat inside a project. v4 `7fbf8a55b` sends its avatar to the
+   * character's VAULT anyway — the project-store branch and the legacy `folders`
+   * row are gone — so this case exists to prove the write lands in the vault
+   * with `projectId: null` and mints no folder. The project row itself is never
+   * created: nothing on the avatar path reads it any more, and the two
+   * project-scoped lookups (`getProjectOfficialMountPointId`,
+   * `resolveProjectMountPointIds`) answer null/[] for an unknown id on both
+   * sides.
+   */
+  projectId?: string;
   equipped: Record<string, string[]>;
   equippedSlotsOverride?: Record<string, string[]>;
   /** Keep the pre-hair FOUR-key stored shape (the v4-crash divergence pin). */
@@ -288,6 +299,7 @@ async function main(): Promise<void> {
         title: 'Avatar Fixture',
         chatType: 'salon',
         alertCharactersOfLanternImages: true,
+        ...(chat.projectId ? { projectId: chat.projectId } : {}),
         participants: [mkParticipant(chat.characterId, charName(chat.characterId))],
         equippedOutfit: {
           [chat.characterId]: fullSlots(chat.equipped, chat.legacySlots === true),

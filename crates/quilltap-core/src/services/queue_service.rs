@@ -582,6 +582,7 @@ pub async fn enqueue_character_avatar_generation(
     character_id: &str,
     image_profile_id: &str,
     equipped_slots_override: Option<Value>,
+    force: bool,
 ) -> Result<(String, bool), DbError> {
     let cid = chat_id.to_string();
     let pending = db.read_main(|conn| {
@@ -617,6 +618,12 @@ pub async fn enqueue_character_avatar_generation(
     );
     if let Some(over) = equipped_slots_override {
         payload.insert("equippedSlotsOverride".into(), over);
+    }
+    // v4 `...(force ? { force: true } : {})` — the key is written ONLY when the
+    // reroll is asked for, so an automatic trigger's job row carries no `force`
+    // key at all and the payload bytes match v4's byte for byte.
+    if force {
+        payload.insert("force".into(), Value::Bool(true));
     }
 
     let job_id = enqueue_job(

@@ -46,7 +46,6 @@ use quilltap_core::services::character_avatar_job::{
 };
 use quilltap_core::services::dangerous_content::gatekeeper::NoModerationProvider;
 use quilltap_core::services::dangerous_content::provider_routing::ApiKeyResolver;
-use quilltap_core::services::image_job_common::NoProjectImageUpload;
 use quilltap_core::services::job_runner::{HandlerRegistry, JobRunner};
 use serde::Deserialize;
 use serde_json::Value;
@@ -79,6 +78,16 @@ struct ChatSpec {
     image_profile_id: String,
     #[serde(default, rename = "equippedSlotsOverride")]
     equipped_slots_override: Option<Value>,
+    /// P4.D184: run the handler TWICE on one fixture copy — run 1 writes the
+    /// keyed row, run 2 meets it.
+    #[serde(default, rename = "runTwice")]
+    run_twice: bool,
+    /// Run 2 carries `force: true` (the manual regenerate button's reroll).
+    #[serde(default, rename = "forceOnSecondRun")]
+    force_on_second_run: bool,
+    /// The surgical change between the runs (see the oracle's ChatSpec doc).
+    #[serde(default, rename = "mutateBetweenRuns")]
+    mutate_between_runs: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -104,12 +113,20 @@ struct CannedImageFailureRow {
 struct ResultRow {
     label: String,
     threw: Option<String>,
+    /// P4.D184: run 2's outcome, for a `runTwice` case.
+    #[serde(default, rename = "threwSecond")]
+    threw_second: Option<String>,
     #[serde(default)]
     dumps: Option<HashMap<String, Value>>,
     #[serde(default, rename = "lanternContent")]
     lantern_content: Option<String>,
     #[serde(default, rename = "lanternOpaque")]
     lantern_opaque: Option<String>,
+    /// P4.D184: how many Lantern avatar notifications the case ended with. A
+    /// cache HIT produces nothing and posts none, so on a `runTwice` case this
+    /// stays at run 1's single row where a regenerate reaches two.
+    #[serde(default, rename = "lanternCount")]
+    lantern_count: Option<i64>,
     #[serde(default, rename = "characterAvatars")]
     character_avatars: Option<String>,
     #[serde(default, rename = "avatarOverrides")]
@@ -366,7 +383,115 @@ const AVATAR_TABLES: &[TableSpec] = &[
         pin_columns: &[],
         norm_string_columns: &["storageKey", "linkedTo"],
     },
+    // P4.D184: v4 `7fbf8a55b` stopped minting a legacy `folders` row per avatar
+    // (the table backs the pre-Scriptorium file tree and is only meaningful for
+    // disk-backed or project-mount-backed writes). Nothing in the census could
+    // see that until the table was dumped; the project-chat case is the arm that
+    // used to carry one.
+    TableSpec {
+        table: "folders",
+        order_by: "id",
+        from_mount: false,
+        id_columns: &["id"],
+        ts_columns: &["createdAt", "updatedAt"],
+        pin_chunk_count: false,
+        pin_columns: &[],
+        norm_string_columns: &[],
+    },
 ];
+
+// ===========================================================================
+// P4.D184: the surgical changes between a `runTwice` case's two runs. Each is
+// the byte-for-byte twin of the oracle's own SQL (`avatar-job.test.ts`), so the
+// two sides meet run 2 with identical state.
+// ===========================================================================
+
+/// `blob-gone`: drop the written row's mount blob, leaving `files.storageKey`
+/// pointing at nothing. A cached row whose blob is gone is a MISS.
+fn mutate_blob_gone(db: &Db) {
+    let keys: Vec<String> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT storageKey FROM files \
+                 WHERE generationKey IS NOT NULL AND storageKey IS NOT NULL",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .expect("read storage keys");
+    for key in keys {
+        let Some(rest) = key.strip_prefix("mount-blob:") else {
+            continue;
+        };
+        let Some(sep) = rest.find(':') else { continue };
+        if sep < 1 {
+            continue;
+        }
+        let blob_id = rest[sep + 1..].to_string();
+        db.write_blocking(move |w| {
+            if let Some(mount) = w.mount_index() {
+                mount
+                    .connection()
+                    .execute("DELETE FROM doc_mount_blobs WHERE id = ?1", [&blob_id])?;
+            }
+            Ok(())
+        })
+        .expect("delete blob");
+    }
+}
+
+/// `legacy-key`: re-key the written row under its v0 key, derived from its OWN
+/// `generationModel`/`generationPrompt` exactly as the collapse heal does — so
+/// run 2 exercises the v0 fallback, and must not upgrade the row to a v1 key.
+fn mutate_legacy_key(db: &Db) {
+    let rows: Vec<(String, Option<String>, Option<String>)> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT id, generationModel, generationPrompt FROM files \
+                 WHERE generationKey IS NOT NULL",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .expect("read keyed rows");
+    for (id, model, prompt) in rows {
+        let legacy = quilltap_core::services::avatar_cache::derive_legacy_avatar_cache_key(
+            model.as_deref(),
+            prompt.as_deref().unwrap_or(""),
+        );
+        db.write_blocking(move |w| {
+            w.main().connection().execute(
+                "UPDATE files SET generationKey = ?1 WHERE id = ?2",
+                rusqlite::params![legacy, id],
+            )?;
+            Ok(())
+        })
+        .expect("re-key row");
+    }
+}
+
+/// `cross-character`: re-tag the written row to somebody else. A key must never
+/// hand one character another's face, so run 2 is a MISS.
+fn mutate_cross_character(db: &Db) {
+    db.write_blocking(|w| {
+        w.main().connection().execute(
+            "UPDATE files SET tags = ?1 WHERE generationKey IS NOT NULL",
+            [r#"["00000000-0000-4000-8000-0000000000ff"]"#],
+        )?;
+        Ok(())
+    })
+    .expect("re-tag row");
+}
 
 fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<String, String>) {
     let rows = dump
@@ -485,7 +610,6 @@ fn avatar_job_matches_oracle() {
     let api_keys = CannedApiKeys(spec.api_keys.clone());
     let moderation = NoModerationProvider;
     let transcoder = PassthroughTranscoder;
-    let upload = NoProjectImageUpload;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -524,7 +648,6 @@ fn avatar_job_matches_oracle() {
             moderation: &moderation,
             api_keys: &api_keys,
             transcoder: &transcoder,
-            upload: &upload,
             now_ms: spec.frozen_now_ms,
             declarations_for: &declarations_for,
         };
@@ -533,6 +656,7 @@ fn avatar_job_matches_oracle() {
             character_id: case.character_id.clone(),
             image_profile_id: case.image_profile_id.clone(),
             equipped_slots_override: case.equipped_slots_override.clone(),
+            force: false,
         };
 
         let outcome = rt.block_on(handle_character_avatar_generation(
@@ -543,6 +667,35 @@ fn avatar_job_matches_oracle() {
             "job-1",
         ));
         let got_threw: Option<String> = outcome.err();
+
+        // P4.D184: the second run, and the surgical change before it.
+        let mut got_threw_second: Option<String> = None;
+        if case.run_twice {
+            match case.mutate_between_runs.as_deref() {
+                Some("blob-gone") => mutate_blob_gone(&db),
+                Some("legacy-key") => mutate_legacy_key(&db),
+                Some("cross-character") => mutate_cross_character(&db),
+                None => {}
+                Some(other) => panic!("{label}: unknown mutateBetweenRuns {other}"),
+            }
+            let second = CharacterAvatarPayload {
+                force: case.force_on_second_run,
+                ..payload.clone()
+            };
+            got_threw_second = rt
+                .block_on(handle_character_avatar_generation(
+                    &db,
+                    &deps,
+                    &case.user_id,
+                    &second,
+                    "job-1",
+                ))
+                .err();
+        }
+        assert_eq!(
+            got_threw_second, want.threw_second,
+            "{label}: the second run's outcome diverged"
+        );
 
         // ── The pre-hair stored-shape arm (P4.D87 → P4.D91): CONVERGED ──────
         // v4 at `979652a9` read `chat.equippedOutfit[cid]` RAW and its five-slot
@@ -585,6 +738,78 @@ fn avatar_job_matches_oracle() {
             label, got_threw, want.threw
         );
 
+        // ── P4.D184: the cache cases say what they are for ──────────────────
+        // The dump diff below would stay green if BOTH sides stopped caching
+        // (two rows each) or started caching everything (one row each). These
+        // read the ORACLE's own row count and assert the shape the case exists
+        // to prove, so a corpus or fixture change that quietly guts a case is a
+        // failure rather than a silent agreement.
+        if label.starts_with("cache") {
+            let oracle_files = want
+                .dumps
+                .as_ref()
+                .and_then(|d| d.get("files"))
+                .and_then(|f| f.get("rows"))
+                .and_then(Value::as_array)
+                .unwrap_or_else(|| panic!("{label}: oracle has no files dump"))
+                .len();
+            let want_files = match label.as_str() {
+                // Run 2 met the key run 1 wrote, bound the existing image and
+                // stopped: nothing was produced, so the row count did not move.
+                "cache_hit_second_run"
+                | "cache_legacy_key_hit"
+                | "cache_reroute_keyed_on_requested_profile"
+                // One run only; the point is WHERE it landed (the vault), not
+                // how many.
+                | "cache_project_chat_lands_in_vault" => 1,
+                // Run 2 generated again — because `force` said to, because the
+                // blob was gone, because the row belonged to someone else, or
+                // because the trigger phrase put the v0 key out of reach.
+                "cache_force_rerolls"
+                | "cache_blob_gone_regenerates"
+                | "cache_cross_character_never_returned"
+                | "cache_legacy_key_trigger_phrase_misses" => 2,
+                other => panic!("{other}: a cache case with no expected row count"),
+            };
+            assert_eq!(
+                oracle_files, want_files,
+                "{label}: the oracle wrote {oracle_files} files rows, not {want_files} \
+                 — the case no longer measures what it was built to measure"
+            );
+            // A hit produces nothing, so it posts no Lantern notification —
+            // independently of the row count above, and the arm that would catch
+            // a bind-without-generate that still announced. A `runTwice` case
+            // keeps run 1's single notification; a case that regenerated has two.
+            let want_lantern = match label.as_str() {
+                "cache_hit_second_run"
+                | "cache_legacy_key_hit"
+                | "cache_reroute_keyed_on_requested_profile"
+                | "cache_project_chat_lands_in_vault" => 1,
+                _ => 2,
+            };
+            assert_eq!(
+                want.lantern_count,
+                Some(want_lantern),
+                "{label}: the oracle posted a different number of Lantern \
+                 notifications than the case was built around"
+            );
+            let got_lantern = db
+                .read_main(|c| {
+                    Ok(c.query_row(
+                        "SELECT COUNT(*) FROM chat_messages \
+                         WHERE systemSender = 'aurora' AND systemKind = 'avatar'",
+                        [],
+                        |r| r.get::<_, i64>(0),
+                    )?)
+                })
+                .expect("count lantern rows");
+            assert_eq!(
+                Some(got_lantern),
+                want.lantern_count,
+                "{label}: Lantern notification count diverged"
+            );
+        }
+
         // Diff the 6 tables (shared-id-map remap form).
         let mut got_dumps: Vec<Value> = AVATAR_TABLES
             .iter()
@@ -594,7 +819,24 @@ fn avatar_job_matches_oracle() {
                 if s.from_mount {
                     db.read_mount_index(move |c| dump_table_json_conn(c, &t, &ob))
                 } else {
-                    db.read_main(move |c| dump_table_json_conn(c, &t, &ob))
+                    let t2 = s.table.to_string();
+                    db.read_main(move |c| {
+                        // P4.D184: v4 creates a collection's table lazily, so a
+                        // table nothing has written is ABSENT rather than empty
+                        // (`folders`, on a fixture whose avatar path no longer
+                        // mints one). An absent table dumps as an empty one on
+                        // BOTH sides — a side that DID mint a row diverges.
+                        let exists: bool = c
+                            .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1")
+                            .and_then(|mut st| st.exists([&t2]))
+                            .unwrap_or(false);
+                        if !exists {
+                            return Ok(serde_json::json!({
+                                "table": t2, "columns": [], "rows": []
+                            }));
+                        }
+                        dump_table_json_conn(c, &t, &ob)
+                    })
                 }
                 .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
             })
@@ -762,6 +1004,7 @@ fn avatar_job_runner_registration_e2e() {
                 &case.character_id,
                 &case.image_profile_id,
                 None,
+                false,
             ),
         )
         .expect("enqueue")
@@ -773,7 +1016,6 @@ fn avatar_job_runner_registration_e2e() {
         moderation: NoModerationProvider,
         api_keys: CannedApiKeys(spec.api_keys.clone()),
         transcoder: PassthroughTranscoder,
-        upload: NoProjectImageUpload,
         now_ms: spec.frozen_now_ms,
         declarations_for,
     };

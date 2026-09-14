@@ -33,6 +33,12 @@ pub struct AvatarGenerationParams {
     /// One-shot equipped-slots override (a JSON `{ top, bottom, footwear,
     /// accessories, hair }` object) forwarded into the job payload.
     pub equipped_slots_override: Option<Value>,
+    /// Reroll: bypass the avatar configuration cache and generate
+    /// unconditionally (v4 `7fbf8a55b`). Set by the manual regenerate button;
+    /// **automatic triggers leave it false**, which is the whole point of the
+    /// cache — a wardrobe change that returns a character to an outfit they have
+    /// worn before costs nothing.
+    pub force: bool,
 }
 
 /// v4 `AvatarGenerationResult` — a structured result so callers can surface a
@@ -131,6 +137,7 @@ async fn trigger_avatar_generation_inner(
         &params.character_id,
         &image_profile_id,
         params.equipped_slots_override.clone(),
+        params.force,
     )
     .await?;
 

@@ -3133,10 +3133,9 @@ impl JobHandler for AvatarJobHandler {
                 ),
                 api_keys: DbApiKeys(db.clone()),
                 transcoder: HostImageCodec,
-                upload: RealProjectImageUpload {
-                    db: db.clone(),
-                    codec: Arc::new(HostImageCodec),
-                },
+                // No project-upload seam: v4 `7fbf8a55b` sends every avatar to
+                // the character's vault, project context or not. The story
+                // background job below still takes one.
                 now_ms: now_unix_ms(),
                 declarations_for: quilltap_core::image_gen_data::image_declarations_for,
             };

@@ -685,6 +685,7 @@ where
         &image_model,
         &image_params,
         &api_key,
+        None,
         &final_prompt,
         Orientation::Landscape,
         deps.declarations_for,

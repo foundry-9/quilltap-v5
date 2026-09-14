@@ -2412,6 +2412,9 @@ async fn post_opening_outfit_and_avatar(
             character_id: character_id.to_string(),
             image_profile_id_override: None,
             equipped_slots_override: None,
+            // Automatic (the opening outfit): cache-served like every other
+            // non-manual trigger.
+            force: false,
         },
     )
     .await;

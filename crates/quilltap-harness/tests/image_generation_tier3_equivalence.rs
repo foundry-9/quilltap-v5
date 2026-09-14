@@ -922,6 +922,12 @@ fn image_generation_matches_oracle() {
                 character_id: spec.char_a_id.clone(),
                 image_profile_id_override: None,
                 equipped_slots_override: None,
+                // P4.D184: the AUTOMATIC trigger never forces, so the enqueued
+                // payload carries no `force` key at all — and this family's
+                // `background_jobs` dump is what proves the payload BYTES did not
+                // move when the field was added (v4's
+                // `...(force ? { force: true } : {})`).
+                force: false,
             };
             rt.block_on(trigger_avatar_generation_if_enabled(&db, &params));
 

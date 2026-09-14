@@ -360,6 +360,11 @@ pub async fn toggle_avatar_generation(
                     &character_id,
                     &image_profile_id,
                     None,
+                    // v4's toggle-avatar-generation action builds the payload
+                    // literal with no `force` key (`toggle-avatar-generation
+                    // .ts:80`), so the cache serves this like every other
+                    // automatic trigger.
+                    false,
                 )
                 .await;
             }

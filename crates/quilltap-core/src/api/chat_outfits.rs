@@ -743,6 +743,9 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
         character_id: character_id.clone(),
         image_profile_id_override: None,
         equipped_slots_override: None,
+        // Automatic (a wardrobe change): the configuration cache is exactly what
+        // should serve this — an outfit worn before costs nothing.
+        force: false,
     };
     trigger_avatar_generation_if_enabled(db, &params).await;
     // v4 wraps the announcement enqueue in try/catch → warn.
@@ -880,6 +883,10 @@ pub async fn chat_regenerate_avatar(
             character_id: parsed.character_id.clone(),
             image_profile_id_override: parsed.image_profile_id.clone(),
             equipped_slots_override: parsed.equipped_slots.clone(),
+            // A manual click is a reroll: bypass the configuration cache and
+            // rebind the key, so the new portrait becomes the canonical one for
+            // this character in this outfit. v4's ONLY `force` setter.
+            force: true,
         },
     )
     .await;

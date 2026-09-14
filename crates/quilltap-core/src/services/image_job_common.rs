@@ -419,6 +419,50 @@ impl RerouteHandler {
     }
 }
 
+/// v4 `buildImageGenParams` as the two image JOBS call it: `n: 1`, `style:
+/// 'natural'`, the handler's orientation, and the profile's LoRAs + residual
+/// options.
+///
+/// Extracted from [`generate_with_reroute`] for P4.D184: the avatar handler must
+/// derive its configuration cache key from the very params object that reaches
+/// the wire, and must do it BEFORE the Concierge classification. Building the
+/// object twice would key one and send the other — and would fire the
+/// `[Image LoRA]` lines twice where v4 fires them once. So the caller builds,
+/// keys, and hands the same object back in.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn build_job_image_params(
+    provider: &str,
+    model_name: &str,
+    parameters: &Value,
+    final_prompt: &str,
+    orientation: Orientation,
+    declarations_for: &ImageDeclarationsFn,
+    log_context: &'static str,
+    chat_id: Option<&str>,
+    job_id: Option<&str>,
+    profile_id: &str,
+) -> crate::model::image::ImageGenParams {
+    build_image_gen_params(
+        ImageProfileLike {
+            provider,
+            model_name: Some(model_name),
+            parameters: Some(parameters),
+        },
+        final_prompt,
+        &job_overrides(),
+        Some(orientation),
+        DEFAULT_IMAGE_MODEL,
+        &declarations_for(provider),
+        &ImageParamsLogContext {
+            context: log_context,
+            chat_id: chat_id.map(str::to_string),
+            job_id: job_id.map(str::to_string),
+            profile_id: Some(profile_id.to_string()),
+        },
+    )
+    .params
+}
+
 /// The generate + post-hoc Concierge reroute flow shared by both handlers.
 /// `fail_prefix` is the handler's error prefix (`"Avatar image generation failed"`
 /// / `"Image generation failed"`); the after-reroute message is
@@ -435,6 +479,10 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     model_name: &str,
     parameters: &Value,
     api_key: &str,
+    // The first attempt's params, when the caller already built them (the
+    // avatar handler keys its cache on this very object). `None` builds here, as
+    // before — the story-background job's shape.
+    prebuilt_params: Option<crate::model::image::ImageGenParams>,
     final_prompt: &str,
     orientation: Orientation,
     declarations_for: &ImageDeclarationsFn,
@@ -457,25 +505,21 @@ pub(crate) async fn generate_with_reroute<I: ImageProvider, A: ApiKeyResolver>(
     // residual options — the same params the Salon's `generate_image` gets, so
     // a LoRA configured for a profile does not work in chat and quietly vanish
     // here. `style: 'natural'` and `n: 1` stay the handler's fixed choices.
-    let params = build_image_gen_params(
-        ImageProfileLike {
+    let params = match prebuilt_params {
+        Some(params) => params,
+        None => build_job_image_params(
             provider,
-            model_name: Some(model_name),
-            parameters: Some(parameters),
-        },
-        final_prompt,
-        &job_overrides(),
-        Some(orientation),
-        DEFAULT_IMAGE_MODEL,
-        &declarations_for(provider),
-        &ImageParamsLogContext {
-            context: log_context,
-            chat_id: chat_id.map(str::to_string),
-            job_id: job_id.map(str::to_string),
-            profile_id: Some(profile_id.to_string()),
-        },
-    )
-    .params;
+            model_name,
+            parameters,
+            final_prompt,
+            orientation,
+            declarations_for,
+            log_context,
+            chat_id,
+            job_id,
+            profile_id,
+        ),
+    };
 
     // v4 `const genStartTime = Date.now()` — a real wall-clock read bracketing
     // the provider attempt (NOT the handlers' pinned `now_ms`, which stamps
@@ -919,6 +963,7 @@ mod tests {
             "gpt-image-1",
             &Value::Null,
             "sk-test",
+            None,
             "a prompt",
             Orientation::Square,
             &declarations,
@@ -1063,6 +1108,7 @@ mod tests {
             "blocked-model",
             &Value::Null,
             "sk-test",
+            None,
             "a prompt",
             Orientation::Square,
             &declarations,

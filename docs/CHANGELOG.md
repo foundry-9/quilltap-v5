@@ -302,6 +302,48 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+#### 2026-09-14 — feat(aurora): look the avatar configuration up before spending anything
+
+_Versions: core 0.0.902, harness 0.0.789, host 0.0.132._
+
+The avatar job now builds its image params ONCE from the requested profile,
+derives the cache key from that very object, and — unless the payload says
+`force` — looks it up before the Concierge classification. A hit binds the
+existing image through the same helper the fresh path uses and returns: no
+classification call, no image call, no transcode, no file write, no Lantern
+notification, and v4's `Reused cached avatar for this configuration` line. A
+miss reuses those same params for generation (only a pre-generation reroute
+rebuilds, as v4 does) and writes `generationKey` on the new `files` row.
+
+Two behaviour changes ride along, both v4 `7fbf8a55b`. Every avatar now lands in
+the character's vault whether or not the chat has a project — mount blobs are
+addressed by blob id with no project scoping, which is what lets one cached
+image serve chats in any project — so the project-upload branch and the legacy
+`folders` find-or-create are gone from this path and the vault-missing refusal
+is unconditional. `common::ProjectImageUpload` itself stays; the story-
+background job still uploads into a project store.
+
+`force` is threaded from the manual regenerate action (v4's only setter) through
+`AvatarGenerationParams` to a payload key written only when true, so an
+automatic trigger's job row carries no `force` key and its payload bytes are
+unmoved.
+
+`avatar_job_tier3` grows 12 → 20 cases, seven of them running the handler twice
+on one fixture copy so run 1 writes the key and run 2 meets it: a hit that binds
+and stops, a `force` reroll, a blob deleted between the runs, a row re-keyed to
+its v0 key, a row re-tagged to another character, a project chat, and a
+Concierge reroute. The census gains the `folders` table (an absent table dumps
+as an empty one, so a side that minted a row diverges) and a Lantern
+notification COUNT, which is what tells a bind-and-stop from a regenerate. Since
+the job now writes `generationKey`, the seven pre-existing cases compare that
+column byte-for-byte — v5's key over v5's own built params against v4's over
+v4's, which is the arm that reddens if the params shape ever drifts.
+
+Measured on the way, and reproduced rather than corrected: the params builder
+appends a LoRA trigger phrase to `params.prompt` while `files.generationPrompt`
+stores the prompt before that append, so for a profile carrying a trigger phrase
+v4's v0 fallback can never hit. Two corpus cases pin both halves.
+
 #### 2026-09-14 — feat(wardrobe): the avatar configuration cache key derivation and lookup chokepoint
 
 _Versions: core 0.0.901, harness 0.0.788._

@@ -25,7 +25,7 @@
     "apply to avatars). The primary corpus (userA) keeps danger mode OFF, so the avatar",
     "path fires NO completion LLM calls (avatars have no LLM rewrite). userB exercises the",
     "post-hoc moderation reroute (mode AUTO_ROUTE + scanImagePrompts false so the pre-scan",
-    "classify is skipped; the primary provider returns a moderation error \u2192 reroute to the",
+    "classify is skipped; the primary provider returns a moderation error → reroute to the",
     "uncensored profile). The pre-scan classify + AUTO_ROUTE prompt reroute is a tracked",
     "deferral proven byte-for-byte by the W4.2 danger differentials + image_generation_tier3",
     "(which compose the identical generate_with_reroute + classify machinery).",
@@ -227,9 +227,18 @@
         "responseFormat": "b64_json",
         "num_inference_steps": 20,
         "loras": [
-          { "source": "owner/portrait-lora", "scale": 0.8, "triggerPhrase": "shou_xin" },
-          { "source": "https://example.test/second.safetensors" },
-          { "source": "owner/third-lora", "triggerPhrase": "dropped_phrase" }
+          {
+            "source": "owner/portrait-lora",
+            "scale": 0.8,
+            "triggerPhrase": "shou_xin"
+          },
+          {
+            "source": "https://example.test/second.safetensors"
+          },
+          {
+            "source": "owner/third-lora",
+            "triggerPhrase": "dropped_phrase"
+          }
         ]
       },
       "isDefault": true,
@@ -482,6 +491,119 @@
         ]
       },
       "legacySlots": true,
+      "expectWrite": true
+    },
+    "cache_hit_second_run": {
+      "id": "ca00000d-0000-4000-8000-00000000000d",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "runTwice": true,
+      "expectWrite": true
+    },
+    "cache_force_rerolls": {
+      "id": "ca00000e-0000-4000-8000-00000000000e",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "runTwice": true,
+      "forceOnSecondRun": true,
+      "expectWrite": true
+    },
+    "cache_blob_gone_regenerates": {
+      "id": "ca00000f-0000-4000-8000-00000000000f",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "runTwice": true,
+      "mutateBetweenRuns": "blob-gone",
+      "expectWrite": true
+    },
+    "cache_cross_character_never_returned": {
+      "id": "ca000011-0000-4000-8000-000000000011",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000002",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "runTwice": true,
+      "mutateBetweenRuns": "cross-character",
+      "expectWrite": true
+    },
+    "cache_project_chat_lands_in_vault": {
+      "id": "ca000012-0000-4000-8000-000000000012",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "projectId": "9a000000-0000-4000-8000-0000000000f1",
+      "expectWrite": true
+    },
+    "cache_reroute_keyed_on_requested_profile": {
+      "id": "cb000013-0000-4000-8000-000000000013",
+      "userId": "bb000000-0000-4000-8000-0000000000bb",
+      "characterId": "c0bb0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0bb0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a3000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "runTwice": true,
+      "expectWrite": true
+    },
+    "cache_legacy_key_trigger_phrase_misses": {
+      "id": "ca000010-0000-4000-8000-000000000010",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "runTwice": true,
+      "mutateBetweenRuns": "legacy-key",
+      "expectWrite": true,
+      "$note": "v4 MISSES here, measured: the params builder APPENDS the LoRA trigger phrase to params.prompt, and files.generationPrompt is the prompt BEFORE that append — so the v0 key a collapse writes from the stored columns can never equal the v0 key a lookup derives from the params. For any profile carrying a trigger phrase v4's legacy fallback is unreachable; this case pins that rather than pretending otherwise. The sibling case below uses a trigger-free profile, where the two prompts agree and the fallback does hit."
+    },
+    "cache_legacy_key_hit": {
+      "id": "cb000014-0000-4000-8000-000000000014",
+      "userId": "bb000000-0000-4000-8000-0000000000bb",
+      "characterId": "c0bb0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0bb0000-0000-4000-8000-000000000002",
+      "equipped": {
+        "top": [
+          "a3000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "runTwice": true,
+      "mutateBetweenRuns": "legacy-key",
       "expectWrite": true
     }
   }

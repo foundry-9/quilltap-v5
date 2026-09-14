@@ -81,9 +81,30 @@ interface ChatSpec {
   userId: string;
   characterId: string;
   imageProfileId: string;
+  projectId?: string;
   equipped: Record<string, string[]>;
   equippedSlotsOverride?: Record<string, string[]>;
   expectWrite: boolean;
+  /**
+   * P4.D184: run the handler TWICE on one fixture copy. Run 1 writes the keyed
+   * row; run 2 meets it. What run 2 does — bind and stop, or generate again —
+   * is the configuration cache, and the `files` census after run 2 says which.
+   */
+  runTwice?: boolean;
+  /** Run 2 carries `force: true` (the manual regenerate button's reroll). */
+  forceOnSecondRun?: boolean;
+  /**
+   * A surgical change between the runs, so run 2 meets a cache the feature must
+   * refuse or accept for a specific reason:
+   *   `blob-gone`       the written row's mount blob is deleted (a MISS).
+   *   `legacy-key`      the row is re-keyed under its v0 key, derived from its
+   *                     OWN generationModel/generationPrompt exactly as the
+   *                     collapse migration does — so run 2 exercises the v0
+   *                     fallback and must NOT upgrade the row to a v1 key.
+   *   `cross-character` the row is re-tagged to another character (a MISS: a
+   *                     key must never hand one character another's face).
+   */
+  mutateBetweenRuns?: 'blob-gone' | 'legacy-key' | 'cross-character';
 }
 interface Spec {
   testPepperBase64: string;
@@ -329,11 +350,54 @@ async function main(): Promise<void> {
         },
       };
 
-      try {
-        await handleCharacterAvatarGeneration(job as never);
-        record.threw = null;
-      } catch (e) {
-        record.threw = e instanceof Error ? e.message : String(e);
+      const runOnce = async (force: boolean): Promise<string | null> => {
+        try {
+          await handleCharacterAvatarGeneration({
+            ...job,
+            payload: { ...job.payload, ...(force ? { force: true } : {}) },
+          } as never);
+          return null;
+        } catch (e) {
+          return e instanceof Error ? e.message : String(e);
+        }
+      };
+
+      record.threw = await runOnce(false);
+
+      if (chat.runTwice) {
+        // P4.D184: the surgical change between the runs, when the case wants one.
+        if (chat.mutateBetweenRuns === 'blob-gone') {
+          const rows = (await rawQuery(
+            `SELECT storageKey FROM files WHERE generationKey IS NOT NULL AND storageKey IS NOT NULL`,
+          )) as Array<{ storageKey: string }>;
+          const midb0 = getRawMountIndexDatabase();
+          for (const r of rows) {
+            const rest = r.storageKey.startsWith('mount-blob:')
+              ? r.storageKey.slice('mount-blob:'.length)
+              : '';
+            const sep = rest.indexOf(':');
+            if (sep < 1) continue;
+            midb0?.prepare('DELETE FROM doc_mount_blobs WHERE id = ?').run(rest.slice(sep + 1));
+          }
+        } else if (chat.mutateBetweenRuns === 'legacy-key') {
+          const { deriveLegacyAvatarCacheKey } = await import('@/lib/wardrobe/avatar-cache');
+          const rows = (await rawQuery(
+            `SELECT id, generationModel, generationPrompt FROM files WHERE generationKey IS NOT NULL`,
+          )) as Array<{ id: string; generationModel: string | null; generationPrompt: string | null }>;
+          for (const r of rows) {
+            const legacy = deriveLegacyAvatarCacheKey({
+              modelName: r.generationModel,
+              prompt: r.generationPrompt ?? '',
+            });
+            await rawQuery(`UPDATE files SET generationKey = ? WHERE id = ?`, [legacy, r.id]);
+          }
+        } else if (chat.mutateBetweenRuns === 'cross-character') {
+          await rawQuery(
+            `UPDATE files SET tags = ? WHERE generationKey IS NOT NULL`,
+            [JSON.stringify(['00000000-0000-4000-8000-0000000000ff'])],
+          );
+        }
+        record.threwSecond = await runOnce(chat.forceOnSecondRun === true);
       }
 
       const midb = getRawMountIndexDatabase();
@@ -345,6 +409,12 @@ async function main(): Promise<void> {
       };
       const dumpMain = async (table: string, orderBy: string) => {
         const columns = ((await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>).map((x) => x.name);
+        // P4.D184: v4 creates a collection's table lazily, so a table nothing has
+        // written is ABSENT rather than empty. `folders` is exactly that case —
+        // and "the avatar path mints no folder row" is most honestly measured as
+        // "the table was never brought into being". An absent table dumps as an
+        // empty one on BOTH sides, so a side that DID mint a row diverges.
+        if (columns.length === 0) return canonicalizeRows(table, [], [], orderBy);
         const rawRows = (await rawQuery(`SELECT * FROM ${table}`)) as Array<Record<string, unknown>>;
         return canonicalizeRows(table, columns, rawRows, orderBy);
       };
@@ -355,6 +425,11 @@ async function main(): Promise<void> {
         doc_mount_file_links: dumpMount('doc_mount_file_links', 'relativePath'),
         doc_mount_folders: dumpMount('doc_mount_folders', 'path'),
         files: await dumpMain('files', 'sha256'),
+        // P4.D184: v4 `7fbf8a55b` stopped minting a legacy `folders` row per
+        // avatar. Nothing in the census could see that until the table was
+        // dumped, so it is dumped — the project-chat case is the arm that
+        // would have carried one before.
+        folders: await dumpMain('folders', 'id'),
       };
 
       // The Lantern avatar notification (sender aurora, systemKind avatar).
@@ -364,6 +439,10 @@ async function main(): Promise<void> {
       )) as Array<{ content: string; opaqueContent: string }>;
       record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
       record.lanternOpaque = lanternRows.length > 0 ? lanternRows[0].opaqueContent : null;
+      // P4.D184: a cache HIT produces nothing, so it posts no notification —
+      // and on a `runTwice` case run 1's own notification is still there. The
+      // COUNT is what tells the two apart; the content of the first row cannot.
+      record.lanternCount = lanternRows.length;
 
       // chat.characterAvatars + character.avatarOverrides (the two JSON updates).
       const chatRows = (await rawQuery(`SELECT characterAvatars FROM chats WHERE id = ?`, [chat.id])) as Array<{ characterAvatars: string | null }>;
