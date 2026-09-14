@@ -794,20 +794,20 @@ fn normalize_side(
     (norm_result, norm_state)
 }
 
-/// **P4.D183 retired P4.D182's `subtract_the_deferred_transcript_counter`.**
-///
-/// The `31436bae4` round split `chats.transcriptVersion` across two lanes:
-/// P4.D182 gave the column its boot ensure, P4.D183 its single writer. In
-/// between, an import that added messages left v4's counter at the number of
-/// message writes and v5's at 0 — a real difference this family could see,
-/// so P4.D182 recorded it as a tripwire rather than a subtraction.
-///
-/// The tripwire FIRED at P4.D183's first regen (`execute_overwrite_all`, v5 at
-/// 2 where the assertion demanded 0) and this is what that firing buys: the
-/// column now diffs PLAINLY, cell for cell, on every arm. That is a stronger
-/// claim than either half — it is a differential of v5's bump against v4's
-/// over the whole import corpus, and it costs nothing, because the funnel is
-/// already the thing both sides drive.
+// **P4.D183 retired P4.D182's `subtract_the_deferred_transcript_counter`.**
+//
+// The `31436bae4` round split `chats.transcriptVersion` across two lanes:
+// P4.D182 gave the column its boot ensure, P4.D183 its single writer. In
+// between, an import that added messages left v4's counter at the number of
+// message writes and v5's at 0 — a real difference this family could see,
+// so P4.D182 recorded it as a tripwire rather than a subtraction.
+//
+// The tripwire FIRED at P4.D183's first regen (`execute_overwrite_all`, v5 at
+// 2 where the assertion demanded 0) and this is what that firing buys: the
+// column now diffs PLAINLY, cell for cell, on every arm. That is a stronger
+// claim than either half — it is a differential of v5's bump against v4's
+// over the whole import corpus, and it costs nothing, because the funnel is
+// already the thing both sides drive.
 
 /// The retired tripwire's one surviving obligation: keep the plain diff from
 /// going vacuous.
