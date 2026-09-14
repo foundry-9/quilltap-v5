@@ -123309,3 +123309,98 @@ applied were reverted; the announcer family's stays as a no-op.
   full Playwright — FOUR runs, the activated beats' first executions: run 1 **309 passed / 6 failed / 1 skipped (9.6 m)** — the three activated beats (gesture defects, no product defect) + the three documented intermittents; run 2, after the shared mock learned to answer non-streaming calls GLOBALLY, **305 / 10 / 1** — the Host's title checkpoints, fed a real verdict for the first time, RE-TITLED the shared fixture chats from the mock's words and six later title-keyed beats lost "Group Expedition" (the answer is now OPT-IN; the rehearsal beats moved onto Group Expedition with its title pinned manual — v4's own skip rule — and wait for the floor before typing); run 3 **314 / 1 / 1** (the attachment-only beat's "first seat" had drifted onto Bram — now by name, and the send is proven by the tray emptying); run 4 **312 passed / 3 failed / 1 skipped (9.2 m)** — the three reds EXACTLY the documented full-suite intermittents (both P4.D161 pause-toast beats, the P4.d17 quill; green in run 3 and 9/9 by file in isolation), the skip the standing store-probe park, **every beat this round touched green**
 
 Versions: **core 0.0.894, harness 0.0.783, host 0.0.129, web 0.0.142, SPA 0.5.707**; cli 0.0.20 / tauri 0.0.7 unchanged. The dogfood pass over this round's live surfaces is the top next candidate (phase-4.md).
+
+---
+
+## P4.D182 — the `31436bae4` round's SUBSTRATE lane: `files.generationKey` end to end, `chats.transcriptVersion` as a boot ensure nobody reads, the export-schema + `help/**` re-vendor, and the two NO-PORT ratifications
+
+**Lane branch `claude/p4-schema-transcript-version-key-cc8f34`, from `main`
+`840ae6c2`.** The round's base lane: P4.D183 / P4.D184 / P4.D185 stack on its
+recorded tip. Baseline `f4ad2c8d1`; target pin `31436bae4`. The drift ledger's
+§2 freshness probe passed at lane start (branch `main`, tree clean, both logs
+empty) and before every regen batch.
+
+### ⚠ The lane opened on a broken toolchain — recorded because it will bite the next lane too
+
+The FIRST regen attempt died before it read a line of v4's code:
+
+```
+The module '…/quilltap-server/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
+was compiled against a different Node.js version using NODE_MODULE_VERSION 147.
+This version of Node.js requires NODE_MODULE_VERSION 137.
+```
+
+Measured, not guessed: `/opt/homebrew/bin/node` is **26.8.1** (ABI 147) and
+every nvm node on this machine is 24.x (ABI 137), so the v4 checkout's native
+SQLite binding has been rebuilt under Homebrew Node 26 while **every one of
+the 525 harness recipes pins `~/.nvm/versions/node/v24.13.1/bin`** — which is
+also what v4's own `.nvmrc` (`v24.13.1`) and `package.json` `engines` declare.
+So **every real-DB oracle regen in the repo is currently broken from a pinned
+recipe**, not just this lane's.
+
+The lane did NOT fix it by moving the oracles to Node 26 (that would change
+the JS engine every fidelity comparand is measured against — ICU, collation,
+`toLocaleString`, V8's `JSON.parse` wording) and did NOT rebuild the human's
+active checkout. It built a **lane-private repair** instead, wholly inside
+`/tmp`, which keeps the Node 24 pin exactly as it was:
+
+```bash
+NM=/tmp/qt-p4d182-nodefix
+cp -R ~/source/quilltap-server/node_modules/better-sqlite3 $NM/better-sqlite3
+cd $NM/better-sqlite3 && rm -rf build
+~/.nvm/versions/node/v24.13.1/bin/node \
+  ~/.nvm/versions/node/v24.13.1/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js \
+  rebuild --release
+# then: a real $NM/node_modules dir of symlinks to every shared entry, with
+# better-sqlite3 the one REAL directory (the rebuilt copy); likewise
+# $NM/pkg-node_modules for packages/quilltap/node_modules, whose
+# better-sqlite3-multiple-ciphers gets the same rebuilt build/ dir; then both
+# pins' node_modules symlinks repointed at those two dirs.
+```
+
+Verified before trusting it: the rebuilt driver reports `sqlite_version
+3.53.2` and `PRAGMA cipher → chacha20` — the same amalgamation and the same
+sqleet cipher v4 bundles. **This is a workaround, not a repair of the
+machine**: the human's checkout still carries an ABI-147 binding, so the next
+lane will hit the same wall. The durable fixes are (a) `npm rebuild
+better-sqlite3` in `~/source/quilltap-server` under Node 24, or (b) a
+deliberate, repo-wide decision to move the oracles to Node 26 — **a decision
+for the human, not a lane.** Flagged for the unifier.
+
+### Unit 1 — the D23 re-dump (`files.generationKey`), RED FIRST
+
+- **Red first, and the sensitivity proved backwards** (the
+  `d23-redump-is-not-only-fresh-schema` note's discipline): the committed
+  `fresh_schema.json` bytes were held against an oracle regenerated FRESH from
+  the `31436bae4` pin, and `provisioning_equivalence::provisioning_matches_v4_
+  fresh_instance` went **RED** (2 passed / 1 failed). A green regen is not a
+  measurement; this is.
+- **The dump moves exactly ONE line**, measured by diffing the regenerated
+  dump against the committed one: `"generationKey" TEXT` inside `CREATE TABLE
+  "files"`, between `generationRevisedPrompt` and `description` — v4's
+  `FileEntrySchema` slot. `main` 81 statements, `mountIndex` 30, `llmLogs` 3;
+  no statement added or removed in any partition; **`chats` does not move.**
+- **The survey premise held and is now measured:** `transcriptVersion` appears
+  **zero** times in the regenerated dump, and `generationKey` exactly **once**
+  (the column — there is NO index in the dump, which is why the ensure in unit
+  2 creates one).
+- `qtap_export/schema-key-order.json` regenerated at the same pin: **byte
+  identical**. `files` is not one of its eleven schema-ordered entities (the
+  file-record key order comes from `backup/collect::FILES`), so this round
+  moves it not at all. Recorded rather than committed.
+- **Order-text correction for the unifier:** the order's Ownership row says
+  `services/provisioning/{fresh_schema.json,schema-key-order.json}`;
+  `schema-key-order.json` actually lives in `services/qtap_export/`. No
+  ownership conflict — no other lane touches either file.
+- Tier 2 landed with it: the re-dump register line in `provisioning/mod.rs`
+  names `31436bae4` as the round's ONE re-dump column and records, with v4's
+  own reason, why `chats.transcriptVersion` can never appear there.
+- **Green:** `provisioning_equivalence` **3 passed / 0 failed**, plus both
+  cross-compat legs from the pin (`verify-v5-provisioned.ts` — "v4 opened and
+  read the v5-provisioned instance"; `verify-dbkey-crosscompat.ts` — "v4
+  unlocked the v5 change-passphrase .dbkey").
+- Regen recipe (this lane's, verbatim):
+  ```bash
+  python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d182-31436bae4 \
+    --run provisioning_equivalence
+  ```

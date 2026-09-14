@@ -58,6 +58,32 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(schema): the `31436bae4` D23 re-dump — `files.generationKey`
+
+_Versions: core 0.0.895._
+
+Re-dumps `provisioning/fresh_schema.json` from v4's live `generateDDL` at
+`31436bae4` (v4 `7fbf8a55b`, migration `add-file-generation-key-column-v1`).
+The dump moves exactly one line: `"generationKey" TEXT` inside `CREATE TABLE
+"files"`, between `generationRevisedPrompt` and `description` — v4's
+`FileEntrySchema` slot. Nothing else in any of the three partitions moves.
+
+Measured, not assumed: the round's OTHER new column,
+`chats."transcriptVersion" INTEGER DEFAULT 0` (v4 `5029075bb`), appears zero
+times in the regenerated dump. v4 keeps it out of `ChatMetadataSchema` on
+purpose — Zod strips what it does not declare, so a whole-row rewrite cannot
+rewind the counter — and `generateDDL` walks the schema, so it can never emit
+the column. It arrives by boot ensure only. The re-dump register in
+`provisioning/mod.rs` records both facts.
+
+Red first: with the old bytes held against the freshly regenerated
+`31436bae4` oracle, `provisioning_matches_v4_fresh_instance` failed on the
+`files` DDL alone (2 passed / 1 failed). After the re-dump the family is
+3 passed / 0 failed, and both cross-compat legs (v4 reads the v5-provisioned
+instance; v4 unlocks the v5 `.dbkey`) pass.
+
+`qtap_export/schema-key-order.json` was regenerated at the same pin and came
+back byte-identical — `files` is not one of its eleven entities.
 
 #### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
 

@@ -71,7 +71,26 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// Re-dump register (append, never restructure): `1766701c2` (P4.D135),
 /// `e30acf4e3` (P4.D78), `8330d3e79` (P4.D77), `0871733bb` (P4.D73),
 /// `0a26dadc5` (P4.D49), `78b381a96` (P4.D171 — `chat_messages.routeTrail` +
-/// `chats.cycleOrderParticipantIds`, one dump landing both).
+/// `chats.cycleOrderParticipantIds`, one dump landing both), `31436bae4`
+/// (P4.D182 — `files.generationKey`, the round's ONE re-dump column).
+///
+/// ## The `31436bae4` round's OTHER column is deliberately absent
+///
+/// That round also added `chats."transcriptVersion" INTEGER DEFAULT 0` (v4
+/// `5029075bb`, migration `add-transcript-version-column-v1`), and it is NOT
+/// in this dump — correctly. v4 keeps `transcriptVersion` out of
+/// `ChatMetadataSchema`/`ChatMetadataBaseSchema` on purpose (two identical
+/// comment blocks say so): a counter carried as a schema field would be
+/// rewound by `_update`'s whole-row rewrite, so Zod strips it from every write
+/// and `SET v = v + 1` is its only writer. `generateDDL` walks the schema, so
+/// it never emits the column, and this dump cannot carry it. It arrives by
+/// boot ensure only — `db::chats_transcript_version_repair` — the same
+/// shape P4.D145's bug-114 unique index took for the opposite reason
+/// (`generateDDL` could not express THAT one either).
+///
+/// `files.generationKey` IS in v4's `FileEntrySchema`, so it lands here; its
+/// index `idx_files_generationKey` is NOT (plain indexes belong to v4's
+/// migration), so `db::files_generation_key_repair` creates both.
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
