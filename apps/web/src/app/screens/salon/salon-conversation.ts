@@ -954,6 +954,17 @@ export class SalonConversation {
       });
     });
 
+    // Bug 137: the held-turn notice is once per PAUSE, so the latch clears the
+    // moment the pause lifts. v4 resets its ref in a `useEffect` keyed on
+    // `isPaused`; this is that effect.
+    effect(() => {
+      if (this.chat()?.isPaused !== true) {
+        untracked(() => {
+          this.heldTurnAnnounced = false;
+        });
+      }
+    });
+
     effect(() => this.terminalMode.hydrate(this.chat()));
     effect(() => this.documentMode.hydrate(this.chat()));
 
@@ -1569,9 +1580,26 @@ export class SalonConversation {
     this.prevAllLLMPauseActive = active;
   });
 
-  /** v4 `handleAllLLMContinue` — dismiss; the chain resumes on the next nudge. */
-  protected onAllLLMContinue(): void {
+  /**
+   * v4 `handleAllLLMContinue` (bug 139).
+   *
+   * "Continue" is the one place in a paused room where the human asks for the
+   * conversation back, so it must actually lift the pause before handing the
+   * floor on — closing the modal alone left the room paused and every later
+   * turn stopping dead after one reply. Resume first and AWAIT the persist: the
+   * server reads `isPaused` when the continue-mode turn arrives, and would
+   * otherwise grant a single turn and stop again.
+   *
+   * v4 then calls `handleContinue`, which queries the server for the next
+   * speaker and names it. v5 has no such twin — its Continue hands the choice
+   * to the server (`runTurn({continueMode: true})` with no seat named), the
+   * pre-existing divergence `runTurn`'s own comment records. The ORDER is what
+   * bug 139 is about, and it is the same.
+   */
+  protected async onAllLLMContinue(): Promise<void> {
     this.showAllLLMPause.set(false);
+    await this.setPauseState(false);
+    await this.runTurn({ continueMode: true });
   }
 
   /** v4 `handleAllLLMStop` — `chatControls.setPauseState(true)`. */
@@ -1886,6 +1914,14 @@ export class SalonConversation {
     }
     return out;
   });
+
+  /**
+   * Whether the "your remark was recorded, nobody answered it" notice has
+   * already been given for the pause currently in force (v4 bug 137's
+   * `heldTurnAnnouncedRef`). Reset whenever the pause lifts, so the first
+   * message into each new pause explains itself.
+   */
+  private heldTurnAnnounced = false;
 
   /** The "All Whispers" toggle (v4 SalonView `showAllWhispers`, default off). */
   protected readonly showAllWhispers = signal(false);
@@ -2398,13 +2434,11 @@ export class SalonConversation {
       return;
     }
 
-    // Skipping is an explicit "let someone else respond" — like a nudge, it
-    // lifts a pause first, or the next speaker it hands the floor to would be
-    // refused by the pause guard and the skip would appear to do nothing.
-    // Through `unpauseChat`, which is silent: v4 does not toast a resume here.
-    if (this.chat()?.isPaused) {
-      await this.unpauseChat();
-    }
+    // Like a nudge, a skip is one explicit turn and nothing more (bug 137): a
+    // paused room answers with the seat the skip hands the floor to, then falls
+    // quiet again. It used to lift the pause first, because
+    // `triggerContinueMode` refused outright while paused; v4 deleted that
+    // guard in the same commit, and v5 never had it.
 
     const resp = await this.core.dispatch({
       type: 'chatTurnAction',
@@ -2788,9 +2822,11 @@ export class SalonConversation {
     // the call falls through to `triggerContinueMode`, which is where the
     // "no longer available" toast lives. v5 used to return here in SILENCE,
     // which is what made that arm unreachable from the sidebar.
-    if (chat?.isPaused) {
-      await this.onTogglePause();
-    }
+    // A nudge never lifts a pause (bug 137). A paused room grants exactly the
+    // turn the human asked for: the server runs this one and declines to chain
+    // past it, so the floor comes straight back to the user. This used to call
+    // `onTogglePause()`, which ALSO announced a resume the operator had not
+    // asked for.
     this.turnState.update((prev) => nudgeParticipant(prev, participantId));
     await this.runTurn({ continueMode: true, respondingParticipantId: participantId, nudge: true });
   }
@@ -3063,27 +3099,19 @@ export class SalonConversation {
 
   /**
    * v4 `setPauseState` (`useChatControls.ts:222-228`) — persist the flag, and
-   * say NOTHING. The toast belongs to `togglePause`, its caller, not here: v4
-   * has a second caller, `unpauseChat`, that must stay silent.
+   * say NOTHING. The toast belongs to `togglePause`, its caller, not here.
+   *
+   * v4 used to have a second, silent caller, `unpauseChat`, for the seams where
+   * Nudge and Skip lifted a pause to work at all. Bug 137 deleted both those
+   * seams and `unpauseChat` with them; the all-LLM Continue (bug 139) is the
+   * one place left that resumes without announcing it, and it calls this
+   * directly.
    */
   private async setPauseState(paused: boolean): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
     await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: paused } });
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
-  }
-
-  /**
-   * v4 `SalonView.tsx:683` — `unpauseChat = useCallback(() => setPauseState(false))`.
-   *
-   * SILENT, and that is the point: v4's `togglePause` is what toasts, and
-   * `unpauseChat` deliberately does not go through it. v5's sidebar nudge lifts
-   * a pause through `onTogglePause()` and so raises "Auto-responses resumed";
-   * this seam must not, or Skip would announce a resume the user did not ask
-   * for on top of the skip itself.
-   */
-  private unpauseChat(): Promise<void> {
-    return this.setPauseState(false);
   }
 
   /** v4 `togglePause` (`useChatControls.ts:230-238`) — persist, then ITS toast. */
@@ -3110,8 +3138,28 @@ export class SalonConversation {
    *     v4's BARE `isAllLLMChat`, not the composite `isAllLLM`;
    *  4. a failed turn warns; anything else informs.
    */
-  private announceChainPause(reason: string, paused: boolean, pausedBefore: boolean): void {
+  private announceChainPause(
+    reason: string,
+    paused: boolean,
+    pausedBefore: boolean,
+    heldUserTurn = false,
+  ): void {
     if (!paused) return;
+    // Bug 137's other silence, and it is checked FIRST: a message typed into an
+    // already-paused room is recorded and answered by nobody, which is the
+    // state the user asked for and still looks exactly like a send that broke.
+    // Announced once per pause — they know they are paused, they just need
+    // telling that this is why nothing happened, and how to get a turn out of
+    // it. The latch is what keeps a long dictation into a paused room from
+    // raising a toast a paragraph.
+    if (heldUserTurn) {
+      if (this.heldTurnAnnounced) return;
+      this.heldTurnAnnounced = true;
+      this.toasts.showInfo(
+        'Your remark is in the record. The room stays paused — nudge a character for a single turn, or press Resume.',
+      );
+      return;
+    }
     if (pausedBefore) return;
     if (this.isAllLLMRoom()) return;
     if (reason === 'error') {
@@ -3362,7 +3410,12 @@ export class SalonConversation {
     // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
     // reconcile point stands in for both. v4 defaults the reason at the
     // callback boundary (`:687`), so `||` — an empty reason falls back too.
-    this.announceChainPause(state.chainReason || 'no_next_speaker', state.chainPaused, pausedBefore);
+    this.announceChainPause(
+      state.chainReason || 'no_next_speaker',
+      state.chainPaused,
+      pausedBefore,
+      state.chainHeldUserTurn,
+    );
     // Wake the queue badges — the turn just enqueued post-turn jobs (v4 fires
     // notifyQueueChange at all four useSSEStreaming completion callbacks
     // (:771/:827/:1018/:1038); v5's single reconcile point covers them).

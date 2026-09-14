@@ -4458,6 +4458,14 @@ export interface ChatStreamFrame {
    * client, which reads `data.paused === true` (v4 `:690`).
    */
   paused?: boolean;
+  /**
+   * `chainComplete` only: the stop is the user's own message — a paused room
+   * recorded it and gave it to nobody (v4 bug 137, `useSSEStreaming.ts:105`).
+   * ABSENT on every frame except the one `finish_held_user_turn` emits, where
+   * it is `true` on EVERY held turn (the once-per-pause throttle is the
+   * CLIENT's, §C.4). It never appears without `paused: true`.
+   */
+  heldUserTurn?: boolean;
 
   // mid-turn posted messages (full MessageEvent objects)
   carinaAnswer?: PostedMessage;

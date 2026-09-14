@@ -260,6 +260,36 @@ describe('chat stream reducer', () => {
     const fresh = initialChatStreamState();
     expect(fresh.chainPaused).toBe(false);
     expect(fresh.chainReason).toBeNull();
+    expect(fresh.chainHeldUserTurn).toBe(false);
+  });
+
+  it('carries `heldUserTurn` off the chain-complete frame (bug 137, §C.4)', () => {
+    // The frame `finish_held_user_turn` emits: a paused room recorded the
+    // user's message and gave it to nobody. It never appears without
+    // `paused: true`, and the once-per-pause throttle is the CLIENT's — the
+    // server raises it on EVERY held turn, so the fold must be literal.
+    const held = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'paused',
+      nextSpeakerId: null,
+      chainDepth: 0,
+      paused: true,
+      heldUserTurn: true,
+    });
+    expect(held.chainHeldUserTurn).toBe(true);
+    expect(held.chainPaused).toBe(true);
+  });
+
+  it('reads an absent or false `heldUserTurn` alike', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { chainComplete: true, paused: true });
+    expect(absent.chainHeldUserTurn).toBe(false);
+
+    const explicitFalse = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      paused: true,
+      heldUserTurn: false,
+    });
+    expect(explicitFalse.chainHeldUserTurn).toBe(false);
   });
 
   it('applies an answer-confirmation revision to the bubble content', () => {

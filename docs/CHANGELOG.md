@@ -857,6 +857,48 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — fix(salon): a paused room grants one turn and no more (P4.D187 unit 5, v4 bugs 137-140)
+
+_Versions: SPA 0.5.711._
+
+Pause stopped the turn chain, not the chat: a paused room still drew exactly one
+reply per message, and Nudge and Skip silently cleared the pause to work at all.
+The client's share of v4 `31436bae4`.
+
+Both unpause-first legs are deleted. The sidebar nudge went through
+`onTogglePause()`, which not only lifted the pause but announced a resume the
+operator never asked for; the skip went through the silent `unpauseChat`, which
+now has no callers and is deleted as v4 deleted it. A summons is one explicit
+turn and nothing more — the server runs it and declines to chain past it.
+
+The held-turn notice (§C.4): `ChatStreamState.chainHeldUserTurn` carries the
+chain-complete frame's `heldUserTurn`, and `announceChainPause` raises "Your
+remark is in the record. The room stays paused — nudge a character for a single
+turn, or press Resume." BEFORE its `pausedBefore` and all-LLM gates, at most
+once per pause. The latch clears through an effect on the chat's own `isPaused`,
+so the first message into each new pause explains itself while a long dictation
+into one does not raise a toast a paragraph. Until P4.D186 lands the server
+half, the frame never carries the key and the notice never fires.
+
+Bug 139: the all-LLM modal's Continue resumes FIRST and awaits the persist, then
+asks for the next speaker — the server reads `isPaused` when that request
+arrives, so closing the modal alone left the room paused and every later turn
+stopping dead after one reply.
+
+Three NO-COUNTERPARTs measured rather than ported. Bug 135: v5 has no
+`userStoppedStream` latch at all — the only mention in the tree is a comment
+naming v4's. Bug 138: both v5 nudge paths already forward `nudge: true` through
+`runTurn`'s one dispatch (now pinned). Bug 140: neither `message-row` nor
+`message-list` declares an `isPaused` or `onTogglePause` input. And v4's fourth
+deletion — `triggerContinueMode`'s `isPaused` return — has no v5 counterpart
+either: `runTurn` never had that guard.
+
+Two spec pins move with v4. `salon-turn-controls.spec.ts`'s "lifts a pause
+BEFORE skipping, and says nothing about it" INVERTS to "skips WITHOUT lifting
+the pause"; the P4.84 RECORDED DIVERGENCE "a paused chat still generates from
+the sidebar Skip" RETIRES to a plain equality — v4 deleted the guard that made
+it a divergence, so v5's behaviour is now v4's.
+
 #### 2026-09-14 — fix(salon): answer a send refused mid-turn instead of swallowing it (P4.D187 unit 4, v4 bug 136)
 
 _Versions: SPA 0.5.710._

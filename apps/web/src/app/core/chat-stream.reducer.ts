@@ -166,6 +166,14 @@ export interface ChatStreamState {
    * the reconcile, long after this frame has been folded away.
    */
   chainPaused: boolean;
+  /**
+   * The `chainComplete` frame's `heldUserTurn` flag (v4 bug 137 — `data
+   * .heldUserTurn === true`, so absent and `false` are one answer). Carried
+   * for the same reason as {@link chainPaused}: the notice it raises is a side
+   * effect the vertical performs after the reconcile, long after this frame has
+   * been folded away.
+   */
+  chainHeldUserTurn: boolean;
   /** The terminal `done` payload for dispatch-reply reconciliation. */
   finalDone: FinalDoneInfo | null;
   // --- internal bookkeeping ---
@@ -189,6 +197,7 @@ export function initialChatStreamState(): ChatStreamState {
     finished: false,
     chainReason: null,
     chainPaused: false,
+    chainHeldUserTurn: false,
     finalDone: null,
     toolBatchSeq: 0,
   };
@@ -318,6 +327,7 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
       // fields it needs ride the state to the vertical instead of a callback.
       chainReason: frame.reason ?? null,
       chainPaused: frame.paused === true,
+      chainHeldUserTurn: frame.heldUserTurn === true,
     };
   }
 

@@ -15,6 +15,7 @@ import type {
   ParticipantDetail,
   ScopedEvent,
 } from '../../core/core-contract';
+import { chatKeys } from '../../chat/chat-keys';
 import { SalonConversation } from './salon-conversation';
 import { ToastService } from '../../ui/toast.service';
 
@@ -612,7 +613,14 @@ describe('Salon turn controls', () => {
   // v4 `:216-221`: "like a nudge, it lifts a pause first, or the next speaker it
   // hands the floor to would be refused by the pause guard". Through
   // `unpauseChat` — SILENT, because v4's toast lives in `togglePause`.
-  it('lifts a pause BEFORE skipping, and says nothing about it', async () => {
+  it('skips WITHOUT lifting the pause (bug 137)', async () => {
+    // INVERTED at P4.D187. This used to pin the opposite — a skip lifted the
+    // pause first, silently, because `triggerContinueMode` refused outright
+    // while paused and the skip would otherwise appear to do nothing. v4
+    // deleted that guard (`31436bae4`) and the two unpause-first seams with
+    // it: a skip is one explicit turn and nothing more, so the room answers
+    // with the seat the skip hands the floor to and then falls quiet again.
+    // The pause the operator set is theirs, and nothing but Resume lifts it.
     const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
       query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
       skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
@@ -628,11 +636,8 @@ describe('Salon turn controls', () => {
           (r.type === 'chatTurnAction' && (r as { action?: string }).action === 'skipUserTurn'),
       )
       .map((r) => r.type);
-    expect(order).toEqual(['chatUpdate', 'chatTurnAction']);
-    const update = dispatch.mock.calls
-      .map((c) => c[0] as CoreRequest)
-      .find((r) => r.type === 'chatUpdate') as { chat?: { isPaused?: boolean } };
-    expect(update.chat?.isPaused).toBe(false);
+    // The skip action alone: no `chatUpdate` at all, in either position.
+    expect(order).toEqual(['chatTurnAction']);
     expect(toasts().map((t) => t.message)).not.toContain('Auto-responses resumed');
   });
 
@@ -1146,22 +1151,16 @@ describe('Salon turn controls', () => {
     expect(calls(dispatch, 'chatSend')).toHaveLength(0);
   });
 
-  it('RECORDED DIVERGENCE — a paused chat still generates from the sidebar Skip', async () => {
-    // P4.84 Tier 2 item 7, MEASURED not ported. v4's `triggerContinueMode`
-    // opens `if (isPaused) return` (`useSSEStreaming.ts:1000`) — a SILENT
-    // refusal. Of v4's four call sites two lift the pause first
-    // (`handleNudge` :137-139, `handleSkipUserTurn` :225-227), so the guard is
-    // a no-op there; the one that does NOT is `handleContinue` (:195-208), the
-    // user card's Continue — v5's `onSidebarSkip`. On a paused chat v4 runs the
-    // turn query, applies the result and then generates NOTHING; v5 sends.
+  it('a paused chat generates ONE turn from the sidebar Skip, and stays paused', async () => {
+    // RETIRED DIVERGENCE (P4.D187). This was a recorded divergence: v4's
+    // `triggerContinueMode` opened `if (isPaused) return`, so a paused chat
+    // reached through the user card's Continue generated nothing, where v5
+    // sent. v4 deleted that guard (bug 137) precisely because it was what
+    // forced Nudge and Skip to clear the pause to work at all — so v5's
+    // behaviour is now v4's, and the pin becomes a plain equality.
     //
-    // Not ported here because the fix is a chokepoint decision this lane cannot
-    // close on its own evidence: `runTurn` is the twin of v4's ONE
-    // `triggerContinueMode`, but v5's unpause-first entrances reach it through
-    // `setPauseState`'s `invalidateQueries`, so a guard there depends on the
-    // refetch having landed in the chat signal before the call — an ordering
-    // this lane did not measure. Pinned so the divergence is visible and the
-    // next lane has its repro.
+    // What it holds now is the whole of bug 137's client half in one gesture:
+    // the turn goes out, and the pause is not touched on the way.
     const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
       query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
     });
@@ -1172,9 +1171,9 @@ describe('Salon turn controls', () => {
     ).onSidebarSkip();
     await new Promise((r) => setTimeout(r, 0));
 
-    // v4 would have stopped at the pause guard; v5 sends.
     expect(calls(dispatch, 'chatSend')).toHaveLength(1);
-    // And it is not one of THIS lane's toasts that let it through.
+    // Nothing rewrote `isPaused` — the room is still the operator's to resume.
+    expect(calls(dispatch, 'chatUpdate')).toHaveLength(0);
     expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
   });
 
@@ -1195,5 +1194,176 @@ describe('Salon turn controls', () => {
 
     expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
     expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+  });
+});
+
+/**
+ * Bugs 137-139, the client half — a paused chat generates nothing on its own.
+ *
+ * Pause stopped the turn chain, not the chat: a paused room still drew exactly
+ * one reply per message, and Nudge and Skip silently cleared the pause to work
+ * at all (v4 `31436bae4`). The rule has two halves — nothing may follow a turn,
+ * and nothing may start one — and only the first was written.
+ *
+ * The client's share: neither summons lifts the pause any more, the first held
+ * message of each pause explains the silence, and the all-LLM modal's Continue
+ * resumes BEFORE it asks for the next speaker.
+ */
+describe('SalonConversation — a paused room grants one turn and no more (bugs 137-139)', () => {
+  it('nudges without lifting the pause', async () => {
+    // The sidebar nudge used to go through `onTogglePause()`, which not only
+    // cleared the pause but ANNOUNCED a resume the operator never asked for.
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }));
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onSidebarNudge(id: string): Promise<void> }
+    ).onSidebarNudge('pA');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+    expect(calls(dispatch, 'chatUpdate')).toHaveLength(0);
+    expect(toasts().map((t) => t.message)).not.toContain('Auto-responses resumed');
+  });
+
+  it('still forwards `nudge: true` on both nudge paths (bug 138 — v5 never had it)', async () => {
+    // v4's `stableTriggerContinueMode` declared ONE parameter around a ref that
+    // took two, so `nudge` never reached the server and a summoned character
+    // could pass the turn — in a paused chat, no turn at all. v5's two nudge
+    // paths both pass the flag through `runTurn`'s one dispatch, so this is a
+    // NO-COUNTERPART pinned rather than a fix ported.
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }));
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onSidebarNudge(id: string): Promise<void> }
+    ).onSidebarNudge('pA');
+    await new Promise((r) => setTimeout(r, 0));
+
+    const send = calls(dispatch, 'chatSend')[0] as unknown as {
+      nudge?: boolean;
+      respondingParticipantId?: string;
+    };
+    expect(send.nudge).toBe(true);
+    expect(send.respondingParticipantId).toBe('pA');
+  });
+
+  it('the all-LLM Continue RESUMES first, then asks for the next speaker (bug 139)', async () => {
+    // Closing the modal alone left the room paused, and every later turn
+    // stopped dead after one reply. The order is the fix: the server reads
+    // `isPaused` when the continue-mode turn arrives, so the resume has to be
+    // persisted before the request goes out.
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }));
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onAllLLMContinue(): Promise<void> }
+    ).onAllLLMContinue();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const order = dispatch.mock.calls
+      .map((c) => c[0] as CoreRequest)
+      .filter((r) => r.type === 'chatUpdate' || r.type === 'chatSend')
+      .map((r) => r.type);
+    expect(order).toEqual(['chatUpdate', 'chatSend']);
+    const update = dispatch.mock.calls
+      .map((c) => c[0] as CoreRequest)
+      .find((r) => r.type === 'chatUpdate') as { chat?: { isPaused?: boolean } };
+    expect(update.chat?.isPaused).toBe(false);
+  });
+});
+
+/**
+ * The held-turn notice (bug 137, §C.4) — once per pause, and never otherwise.
+ *
+ * The server emits `heldUserTurn: true` on the chain-complete frame of EVERY
+ * held turn; the once-per-pause throttle is the client's, so a long dictation
+ * into a paused room does not raise a toast a paragraph. The latch clears when
+ * the pause lifts, so the first message into each NEW pause explains itself.
+ */
+describe('SalonConversation — the held-turn notice is once per pause (bug 137)', () => {
+  const SENTENCE =
+    'Your remark is in the record. The room stays paused — nudge a character for a single turn, or press Resume.';
+
+  type Host = {
+    announceChainPause(
+      reason: string,
+      paused: boolean,
+      pausedBefore: boolean,
+      heldUserTurn?: boolean,
+    ): void;
+  };
+
+  async function pausedRoom(): Promise<ComponentFixture<SalonConversation>> {
+    const { client } = stubClient(groupChat({ isPaused: true }));
+    return render(client);
+  }
+
+  it('announces the first held turn of a pause', async () => {
+    const fixture = await pausedRoom();
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).announceChainPause('paused', true, true, true);
+
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: SENTENCE }]);
+  });
+
+  it('says nothing on the second held turn of the SAME pause', async () => {
+    const fixture = await pausedRoom();
+    const inst = fixture.componentInstance as unknown as Host;
+    inst.announceChainPause('paused', true, true, true);
+    const before = toasts().length;
+
+    inst.announceChainPause('paused', true, true, true);
+
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('announces again once the pause has lifted and a new one begun', async () => {
+    const { client } = stubClient(groupChat({ isPaused: true }));
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    inst.announceChainPause('paused', true, true, true);
+
+    // The pause lifts FOR REAL — through the chat the component reads, so the
+    // reset effect is what clears the latch. Poking the field directly would
+    // pin the latch and leave its wiring untested, and the wiring is the half
+    // that can silently rot.
+    TestBed.inject(QueryClient).setQueryData(chatKeys.detail('chat-1'), (prev: unknown) => ({
+      ...(prev as ChatDetail),
+      isPaused: false,
+    }));
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    const before = toasts().length;
+    inst.announceChainPause('paused', true, true, true);
+
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: SENTENCE }]);
+  });
+
+  it('says nothing for a heldUserTurn frame that is not a pause', async () => {
+    // `heldUserTurn` never appears without `paused: true` on the wire, and the
+    // `!paused` gate still runs first — so a malformed frame raises nothing.
+    const fixture = await pausedRoom();
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).announceChainPause('paused', false, true, true);
+
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('is checked BEFORE the pausedBefore and all-LLM gates', async () => {
+    // v4 checks `heldUserTurn` first. Both later gates are wide open here
+    // (`pausedBefore` true would silence an ordinary pause notice), so only the
+    // ordering can produce this toast.
+    const fixture = await pausedRoom();
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).announceChainPause('error', true, true, true);
+
+    // The held sentence, NOT the chain-error one.
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: SENTENCE }]);
   });
 });
