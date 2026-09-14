@@ -1197,6 +1197,82 @@ mod transcript_publish_sites {
         assert_eq!(version(&path, "chat-1"), 1, "the patch must not rewind it");
     }
 
+    // ── the measured NEGATIVES: raw writers that are NOT announce sites ──────
+
+    /// `ChatsRepository::delete` drops the chat's `chat_messages` rows with a
+    /// raw `DELETE`, and announces NOTHING — v4 does not either. There is no
+    /// transcript left to re-read, and a `chats` hint scoped to a row that no
+    /// longer exists would send every open tab to a 404.
+    ///
+    /// The delete DOES publish through its own chokepoint elsewhere; what this
+    /// pins is that the message sweep inside it does not reach the funnel's
+    /// announce. Asserted as "no hint carrying THIS chat id" rather than "no
+    /// hints at all", so a legitimate collection-level hint cannot make it red.
+    #[tokio::test]
+    async fn deleting_a_chat_does_not_announce_its_transcript() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("chatdel", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("chat-1", &msg("m-1", "a"))
+                .unwrap();
+            let _ = cap.drain().await;
+            assert!(crate::db::chats::ChatsRepository::new(w.connection())
+                .delete("chat-1")
+                .unwrap());
+        }
+        let hints = cap.drain().await;
+        assert!(
+            !hints.contains(&chats("chat-1")),
+            "deleting a chat must not announce its transcript; got {hints:?}"
+        );
+    }
+
+    /// The daily maintenance sweep collapses stale caches — `compressionCache`,
+    /// `renderedMarkdown`, and five discardable `chat_messages` columns — and
+    /// announces NOTHING.
+    ///
+    /// MEASURED on v4 at `31436bae4`: `lib/background-jobs/maintenance/
+    /// collapse-stale-chat-caches.ts` writes through `rawQuery`, bypassing the
+    /// repository funnel entirely, and contains no `announceTranscriptChange`,
+    /// no `publishRealtime` and no mention of the counter. That is deliberate
+    /// on v4's part and not an oversight to "fix": the sweep discards derived
+    /// data no reader depends on, and telling every open tab to re-read its
+    /// whole transcript nightly would be the opposite of maintenance.
+    #[tokio::test]
+    async fn the_stale_cache_sweep_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("collapse", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("chat-1", &msg("m-1", "a"))
+                .unwrap();
+            // Give the sweep something to actually collapse, so the silence is
+            // measured on a pass that DID write rather than one that no-opped.
+            w.connection()
+                .execute(
+                    "UPDATE chats SET compressionCache = 'stale', updatedAt = ?1 WHERE id = 'chat-1'",
+                    rusqlite::params![T0],
+                )
+                .unwrap();
+        }
+        let _ = cap.drain().await;
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        let summary = crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches(
+            &db,
+            crate::clock::now_unix_ms(),
+        )
+        .await
+        .expect("the sweep must run for this pin to mean anything");
+        assert!(
+            summary.chat_rows_cleared > 0,
+            "the sweep must have collapsed something, or the silence is vacuous: {summary:?}"
+        );
+        assert_eq!(cap.drain().await, vec![], "the sweep announces nothing");
+    }
+
     /// A bump that cannot land — a pre-4.10 partition with no such column — is
     /// SWALLOWED (v4's `safeQuery(…, false)` slot) and the hint fires anyway.
     /// A tab told to look once too often is harmless; a tab never told is the

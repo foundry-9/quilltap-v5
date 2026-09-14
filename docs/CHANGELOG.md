@@ -58,6 +58,27 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — test(realtime): the two raw chat-message writers that must stay silent
+
+_Versions: core 0.0.904._
+
+Two measured NEGATIVES beside the funnel's fourteen publish pins. Deleting a
+chat sweeps its `chat_messages` rows with a raw DELETE and must not announce
+the transcript — there is none left, and a `chats` hint scoped to a vanished
+row would send every open tab to a 404. The daily stale-cache sweep collapses
+`compressionCache`, `renderedMarkdown` and five discardable message columns and
+must not announce either.
+
+The second was measured on v4 at the pin rather than assumed: v4's
+`collapse-stale-chat-caches.ts` writes through `rawQuery`, bypassing the
+repository funnel, and carries no `announceTranscriptChange`, no
+`publishRealtime` and no mention of the counter. That is deliberate — the sweep
+discards derived data no reader depends on, and telling every open tab to
+re-read its whole transcript nightly would be the opposite of maintenance.
+
+Both pins assert the sweep actually DID something first, so neither silence is
+measured on a pass that no-opped.
+
 #### 2026-09-14 — test(chats): the funnel census sees the transcript counter, and finds a v4 bug
 
 _Versions: harness 0.0.792._
