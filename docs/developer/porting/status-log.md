@@ -124647,3 +124647,238 @@ space on this machine fell to 11 GB mid-gate with four lanes' `target/`
 directories live (this one peaked near 17 GB). It recovered to 21 GB when a
 sibling finished and nothing failed on `os error 28`, but a fifth concurrent
 lane would not have fit. This lane's `target/` is removed at hand-off.
+## P4.D186 — a paused chat generates nothing on its own, the SERVER half (v4 `31436bae4` bug 137)
+
+**CLOSED.** Branch `claude/p4-d186-paused-hold-<hash>` off `main` `840ae6c2`.
+Oracle baseline `f4ad2c8d1`; regen rule PIN REQUIRED, two lane-unique pins
+(`/tmp/qt-v4-pin-p4d186-31436bae4` for every oracle,
+`/tmp/qt-v4-pin-p4d186-f4ad2c8d1` for `QT_V4_ROOT` and the pre-fix measurement).
+
+**Lane start: the §2 probe FAILED and the lane STOPPED.** v4's checkout was
+dirty in `lib/`, `app/`, `help/` and `packages/` — a complete uncommitted bug-141
+fix ("a stalled provider stream wedges chat creation", 977 insertions across 17
+files) including `lib/services/chat-message/streaming.service.ts`, one of this
+lane's three spec files. Reported rather than ported around; the human ran
+`/driftcheck`, which recorded the work as `f90144ac4` + `85813ddd2` (ten commits
+past the baseline, two past this round's target) and confirmed the round's pins
+are unaffected by construction. The probe was re-run against the updated §1 and
+PASSED (branch `main`, tree clean, both logs empty, HEAD `85813ddd2`).
+Measured on the spec files: `paused-hold.ts` and `orchestrator.service.ts` were
+clean; `streaming.service.ts`'s dirt sat in `streamMessage` (`:18`, `:394-417`),
+not in `encodeChainCompleteEvent` — but the dirt had pushed the encoder from
+`:737` to `:749`, which is why the order's line numbers no longer matched the
+live checkout and why the pin, not the checkout, is the spec.
+
+### Units
+
+1. **`services/paused_hold.rs`** — v4's module whole, comments verbatim (the
+   rule's two halves; the list of what is deliberately NOT consulted).
+   `never_pause_for_user` is `Option<bool>`, not `bool`: v4's field is optional
+   and its guard is `=== true`, so absent and explicit `false` are one answer,
+   and the tri-state is what lets the differential drive v4's whole input grid.
+   NEW tier-1 `paused_hold_equivalence` over `harness/oracle/cases/paused-hold.ts`
+   — v4's REAL export across the exhaustive 2 × 2 × 3 grid, 12 rows, exact
+   booleans, v4's four unit shapes asserted by name, plus a "exactly two
+   coordinates hold" pin so an all-`false` port cannot pass. Pin proof: the case
+   cannot even RUN at the baseline (the module does not exist there).
+
+2. **`ChainCompletePayload.held_user_turn`** — `Option<bool>` +
+   `skip_serializing_if`, v4's doc verbatim. All six existing construction sites
+   (five in `orchestrator.rs`, one in `help_chat/orchestrator.rs`) pass `None`
+   and render byte-identically. Three new frame-test arms: the omitted key on a
+   `paused: true` frame, the whole six-key held frame in v4's order, and a pin
+   that `Some(false)` renders rather than drops.
+   ⚠ **Out-of-ownership edit, one line:** `services/help_chat/orchestrator.rs`
+   gained `held_user_turn: None` — a mechanical consequence of adding a field to
+   a struct this lane owns. No other lane in the round touches that file.
+
+3. **The seam.** ONE consultation off the FRESH chat read at the top of the
+   turn into `hold_for_paused_chat`; the local (never a re-evaluation) joins the
+   fair-rotation guard's conjuncts, the `requestFullContextOnNextMessage` gate
+   and the Prospero cadence gate, and gates the return.
+   `finish_held_user_turn` clears `lastTurnParticipantId` to NULL, emits the one
+   held frame, and returns `hasContent: false` (so neither scene tracking nor
+   the Scriptorium render fires). v4's ONE info line ported, capture-pinned.
+
+4. **`orchestrator_tier3` widened** 42 → 51 calls, 41 → 50 chats.
+
+5. **The wire pin** — NEW `crates/quilltap-web/tests/chain_complete_held_turn_wire.rs`.
+
+### The corpus additions (nine paused rooms, `ed…` prefix — unused by every pre-existing row)
+
+| case | chat | what it pins |
+|---|---|---|
+| (a) `paused_hold_basic` | `ed000001` | the plain held post; seeded `lastTurnParticipantId` so the NULL clear is observable (a chat that starts NULL cannot tell a port that clears it from one that does not) |
+| (b) `paused_hold_attachment` | `ed000002` | the attachment persists — the seam sits below the attachment work |
+| (c) `paused_hold_tool_result` | `ed000003` | the staged TOOL row persists |
+| (d) `paused_hold_rng` | `ed000004` | the auto-detected roll persists |
+| (g) `paused_hold_keeps_full_context_flag` | `ed000005` | `requestFullContextOnNextMessage` survives the held post |
+| (h) `paused_hold_cadence_boundary` | `ed000006` | no Prospero `group-context` whisper at a cadence boundary |
+| (i) `paused_hold_two_user_seats` | `ed000007` | the fair-rotation guard does not also persist a thinner copy |
+| (e) `paused_continue_summons_runs` | `ed000008` | a continue-mode summons still RUNS one turn, then the chain stops paused |
+| (f) `paused_never_pause_for_user_runs` | `ed000009` | an autonomous-room turn RUNS |
+
+New spec fields: `ChatSpec.requestFullContextOnNextMessage`,
+`ChatSpec.lastTurnParticipantId`, `CallSpec.fileIds`,
+`CallSpec.neverPauseForUser` (all optional; every pre-existing row's JSON is
+byte-unchanged — the diff is purely additive, 383 insertions, 0 deletions).
+
+**The held cases carry a `streamLabel` with NO `streams` entry, deliberately.**
+That is the "the model was never called" proof on both sides and it is
+structural rather than a count: v4's `streamMessage` mock throws
+`no streams for <label>` if it is ever reached, and v5's canned provider has no
+key to answer with. To stop a MUTUAL failure reading as green, the Rust side
+additionally pins each held case against the ORACLE's own recorded frames — v4
+must have completed the call and emitted exactly the six-key held frame, with no
+`content` / `done` / `turnComplete` frame anywhere.
+
+### Measurements (taken on v4's own code, not assumed)
+
+**The seam's placement.** v4's seam (`:869`) sits AFTER the inline Carina markup
+pass (`:836-870`). v5 has NEVER wired that pass on the user-message path — it is
+the standing `OrchestratorSeams::user_message_carina` deferral (the module note
+and the fair-rotation helper's doc both name it; grep finds no call site). So
+the side effect v4 runs above its seam exists neither above nor below v5's, and
+the seam goes where the remaining order agrees: after the danger flags reach the
+saved row, before the tool build. Recorded with v4's line numbers, as ordered.
+
+**The full-context conjunct is behaviour-neutral in v5 today.** v4's conjunct
+also withholds the `requestFullContextOnNextMessage: false` reset write. v5 has
+never carried that write — the ported `ChatUpdate` has no setter for the column,
+a pre-existing documented deferral — and `bypass_compression` is only READ below
+the seam (`:1202`, `:2105`, `:2258`), so on a held turn it cannot be observed.
+Ported anyway, so the reset's eventual arrival cannot silently spend a held
+post's flag. **Consequence: mutation M3 SURVIVES BY DESIGN** (below).
+
+**The same widened corpus run against v4 at BOTH pins.** This is what makes the
+three `!hold` conjuncts non-vacuous rather than three guards whose siblings
+happen to be false:
+
+| conjunct | comparand | baseline `f4ad2c8d1` (pre-fix) | target `31436bae4` (post-fix) |
+|---|---|---|---|
+| (ii) full-context flag | `ed000005."requestFullContextOnNextMessage"` | **0** (spent) | **1** (survives) |
+| (iii) Prospero cadence | `ed000006` `group-context` whispers | **1** | **0** |
+| (i) fairness guard | `ed000007."lastTurnParticipantId"` | `ed00007b…` (guard fired) | **NULL** |
+| (i) fairness guard | `paused_hold_two_user_seats` frames | `status` + a `user_turn` chainComplete | `status`/`turnStart`/`status`/`status` + the held frame |
+| the model call | the seven held cases | reached the stream mock (`no streams for …` ×6) | never reached it |
+
+v5's answers at the target are identical to post-fix v4's on all 51 calls.
+
+### Neutrality
+
+Before the corpus grew, the seam + the three conjuncts were run against a FRESH
+`31436bae4` oracle over the UNCHANGED 42-call corpus: **green**. The four
+pre-existing paused chats are all continue-mode calls, so the hold is
+`false` for every one of them and nothing moved.
+
+**The committed `crates/quilltap-web/tests/fixtures/chat-send-{main,mount}.db`
+pair was deliberately NOT regenerated.** It is built from this lane's fixture
+builder, and its header says to re-copy when the spec moves — but this spec
+change is purely additive (no pre-existing row's bytes change), the web tests
+read only rows that already existed, and regenerating a committed pair the web
+venue shares would be a cross-lane hazard under §R.7. Left as it is, verified
+unmodified in `git status`.
+
+### Regen recipes
+
+**`paused_hold_equivalence`** (NEW, tier 1). The predicate does not exist at the
+baseline, so the TARGET pin is mandatory — running the case at the baseline pin
+fails to resolve the module, which is itself the pin proof:
+
+```
+cd /tmp/qt-v4-pin-p4d186-31436bae4
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  ~/source/quilltap-v5/harness/oracle/cases/paused-hold.ts > /tmp/oracle-paused-hold.ndjson
+QT_ORACLE_PAUSED_HOLD=/tmp/oracle-paused-hold.ndjson \
+  cargo test -p quilltap-harness --test paused_hold_equivalence
+```
+
+**`orchestrator_tier3_equivalence`** (widened) — through the sanctioned driver:
+
+```
+python3 harness/tools/recipe_sweep.py --run orchestrator_tier3_equivalence \
+  --v5w "$PWD" --v4 /tmp/qt-v4-pin-p4d186-31436bae4
+```
+
+The driver warns "tracked fixture bytes modified" for the builder + the spec
+JSON — expected, they are this lane's deliverable.
+
+**The pre-fix measurement** (not a committed family; the recipe is recorded so
+the numbers above can be re-derived): the same staging with
+`cd /tmp/qt-v4-pin-p4d186-f4ad2c8d1`, separate fixture paths
+(`/tmp/qt-orch-base-{main,mount}.db`) and `QT_ORACLE_OUT=/tmp/oracle-orchestrator-BASELINE.ndjson`.
+
+### Deferrals + items for the unifier
+
+- **No deferral of ordered scope.** Tier 1 items 1–5 and Tier 2 item 6 all
+  landed. The order's own Tier-3 deferrals (the client half → P4.D187; the four
+  `help/` files → P4.D182; `maybe_pause_for_user_seat_turn` NOT consolidated
+  into the new predicate) stand as written.
+- **Spotted, not mine:** v4's checkout carried an uncommitted bug-141 fix at
+  lane start (now `f90144ac4` in the ledger) touching
+  `lib/llm/fallback/engine.ts` and `lib/chat/initial-greeting.ts` — ported
+  surfaces (P4.D135 failover, the greeting ladder). Next round's row, already
+  recorded by `/driftcheck`.
+- **One-line out-of-ownership edit:** `services/help_chat/orchestrator.rs` gained
+  `held_user_turn: None` (a struct-field consequence). Nobody else in the round
+  edits that file.
+
+### Mutation proofs (each reverted by FILE BACKUP, never `git checkout`)
+
+| # | mutation | result | what caught it |
+|---|---|---|---|
+| M1 | consult the predicate with `continue_mode` ignored | **RED** | event trace — `paused_initial_stop` (the pre-existing P4.D160 arm the fail-fast test reaches first; `paused_continue_summons_runs` is behind it) |
+| M2 | drop the `never_pause_for_user` arm | **RED** | event trace — `paused_never_pause_for_user_runs` (case f) |
+| M3 | spend the full-context flag on a held post | **SURVIVES — by design** | nothing, and the measurement above says why: v5 has no reset write, so the conjunct cannot be observed. The corpus case is still discriminating — against v4, whose pre-fix leg answers 0 where the target answers 1 |
+| M4 | post the cadence whisper on a held post | **RED** | `chat_messages` table diff (case h) — the `group-context` row appears |
+| M5 | let the fairness guard fire on a held post | **RED** | event trace (case i) — the `user_turn` frame replaces the held frame |
+| M6 | emit `heldUserTurn` from the fair-rotation site | **RED ×2** | the tier-3 event trace AND `only_one_site_sets_held_user_turn`, which named both sites in its failure |
+| M7 | return at the seam BEFORE the user message is persisted | **RED** | `chats` table diff (case a) — the held chat's `messageCount` never moves, because no USER row was written. ⚠ The mutation as first written (moving the seam above the whole save block) was a BUILD failure, which proves nothing about the corpus; re-cut to land after `user_message_id`'s declaration so it compiles and the red is behavioural |
+| M8 | keep `lastTurnParticipantId` | **RED** | `chats` table diff (case a) — and only because the corpus seeds the column; on a chat that starts NULL this mutation is invisible |
+| M9 | re-evaluate the predicate at the seam instead of reading the local | tier-3 **GREEN**, census **RED** | exactly the point: no differential can see it (the corpus cannot change a chat row mid-turn), so `the_spine_consults_the_predicate_once` is the only thing that can — and it fired |
+
+Two of the nine are worth keeping in mind as a class: **M3 survives because the
+behaviour it guards does not exist in v5 yet**, and **M9 can only ever be caught
+by a source census**. Both are recorded rather than quietly dropped.
+
+### The gate
+
+Run from the lane worktree, `CARGO_INCREMENTAL=0`, `TZ=UTC`,
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d186-f4ad2c8d1` (the baseline pin — this lane
+branches from `main`, so its embedded `help/` and vendored export schema are at
+the baseline's bytes). The §2 probe passed immediately before it.
+
+- `cargo fmt --all --check` — **CLEAN**
+- `cargo clippy --workspace --all-targets -- -D warnings` — **exit 0**, zero
+  warnings; and again with `--features quilltap-core/native-transport` —
+  **exit 0**, zero warnings
+- **The lane's differentials by NAME**, over oracles regenerated fresh from the
+  `31436bae4` pin through the sweep driver — `paused_hold_equivalence`
+  (12 rows OK, 2 held) + `orchestrator_tier3_equivalence` — **exit 0, zero
+  SKIP lines**
+- `cargo test --workspace` — **exit 0: 552 test binaries / 3,202 passed /
+  0 failed / 2 ignored, ZERO `SKIP:` lines.** All three of this lane's
+  binaries confirmed RUN by name in the log
+  (`orchestrator_tier3_equivalence`, `paused_hold_equivalence`,
+  `chain_complete_held_turn_wire`)
+- `cargo build --workspace --release` — **exit 0** (4m 58s)
+- **No e2e owed** — the lane touches no `apps/web/**` file
+- **Ownership honoured** — `git diff main` names only files inside the
+  P4.D186 row, plus the one-line `help_chat/orchestrator.rs` struct-field
+  consequence recorded above; `db/**`, `api/**`, `turn_orchestrator.rs`,
+  `host.rs`, `photos/**`, `apps/web/**`, `help/**` and `docs/v4/**` are all
+  untouched
+
+⚠ **A disk-pressure note for the round:** five lane worktrees were holding
+~115 GB of `target/` between them and free space fell to 5.2 GB just as the
+release build started. This lane's own `target/debug` (29 GB) was deleted
+mid-gate — the workspace run had already finished and nothing later needed it —
+which recovered 37 GB and let the release build through. Only this lane's own
+tree was touched.
+
+**Versions:** core 0.0.897, harness 0.0.786, web 0.0.143 (base: core 0.0.894,
+harness 0.0.783, web 0.0.142). host / cli / tauri / SPA unchanged.
+
+**Commits (5):** the predicate + its tier-1 family; `held_user_turn` on the
+frame; the seam + `finish_held_user_turn` + the tier-3 widening; the wire pin;
+the Tier-2 jobs arm.

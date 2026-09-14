@@ -712,6 +712,19 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — docs(p4.d186): the lane record for the paused-chat hold server half
+
+_No crate versions bumped (carries `Cargo.lock` into step with the previous
+commit's harness 0.0.786 — the lock had not been regenerated when that commit
+was written)._
+
+The P4.D186 lane record: the probe failure at lane start and what the v4
+checkout was carrying, the five units, the nine-room corpus additions, the
+measurements taken on v4's own code at BOTH pins (which is what makes the three
+`!hold` conjuncts non-vacuous), the ten mutation proofs including the two that
+are honestly recorded rather than claimed — M3 survives by design, and M9 can
+only ever be caught by a source census — the regen recipes, and the gate.
+
 #### 2026-09-14 — test(harness): a held turn enqueues no render and no scene-state job (v4 bug 137, server unit 6)
 
 _Versions: harness 0.0.786._
