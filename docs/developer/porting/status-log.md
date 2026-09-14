@@ -123947,3 +123947,65 @@ something first, so neither silence is measured on a no-op.
    new verbs. **P4.D185 moves the same constant** — recount as base + both
    deltas.
 6. **For the v4-side filing:** the `deleteMessagesByIds` truthy-object bug above.
+
+### Gate
+
+- **§2 freshness probe:** FAILED at lane start (v4's tree carried a staged,
+  commit-ready bug-141 fix and CHANGED between two consecutive reads) — the
+  lane STOPped and reported. After the human's `/driftcheck` moved the ledger
+  to v4 HEAD `85813ddd2`, the probe PASSED and was re-run before each regen
+  batch.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default and `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` clean.
+  ⚠ The first clippy pass reported ONE lint and stopped; the second reported a
+  different one in another crate, masked behind the first ("build failed,
+  waiting for other jobs"). Both fixed; the recorded run is the clean one.
+- **`cargo test --workspace`** with the lane's 9-variable env block +
+  `QT_V4_ROOT` at the target pin: **556 test binaries + 7 doc-test targets /
+  3,236 passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines.** All
+  thirteen of the lane's families confirmed to have RUN by name and non-zero
+  duration, plus the 16 `transcript_publish_sites` pins inside the core lib.
+- **Families regenerated FRESH from `/tmp/qt-v4-pin-p4d183-31436bae4` through
+  `recipe_sweep.py --v4 <pin>`: 9/9 ok**, zero SKIP, every NDJSON non-empty and
+  the CHANGED bytes grepped (`transcriptVersion` ×5 in salon-reads, ×9 in the
+  funnel census, ×112 in the import corpus; `"unchanged"` ×8 in the transcript
+  route; the scenario oracle's 500s 18 → 0).
+- **No `apps/web/**` file touched — no e2e owed.**
+- **Ownership honoured:** `git diff 6ec9c5c1..HEAD` over every MUST-NOT-TOUCH
+  path is EMPTY (diffed against P4.D182's tip, not `main` — this lane is
+  stacked).
+- Versions: core 0.0.904, harness 0.0.793, web 0.0.143.
+
+### Two environment incidents, for the next lane
+
+1. **v4's checkout went dirty mid-session** — the §2 probe's whole purpose,
+   working as designed. Recorded above.
+2. **⚠ `xcode-select` now points at `/Applications/Xcode.app` whose licence has
+   not been accepted**, which took out `clang` AND `/usr/bin/git` partway
+   through this lane (`cc` exit status 69, "You have not agreed to the Xcode
+   license agreements"). It killed one full gate run at the `quilltap-tauri`
+   link step and made every `git` call fail. **The no-sudo workaround is
+   `export DEVELOPER_DIR=/Library/Developer/CommandLineTools`** — it overrides
+   `xcode-select` per process and the CLT is still installed; the recorded gate
+   ran under it. The durable fix needs the human: `sudo xcodebuild -license`,
+   or `sudo xcode-select -s /Library/Developer/CommandLineTools` (which is what
+   CLAUDE.md says this environment used).
+
+### One intermittent, diagnosed and NOT this lane's
+
+`db::memories::tests::delete_with_unlink_logs_v4s_complete_debug` failed once in
+a full-workspace run ("exactly one complete line: []" — zero DEBUG lines
+captured), then passed in isolation and twice more in its own binary, and did
+not recur in the recorded gate.
+
+The mechanism is the one `test_support.rs`'s own module doc names: `captured`
+installs a THREAD-scoped subscriber, and `tracing` caches each callsite's
+`Interest` globally on first use, so a sibling test that reaches the callsite
+first with no subscriber armed can lose it for everyone. `db/memories.rs` has
+exactly that shape — `delete_with_unlink_scrubs_neighbours_and_deletes` (`:891`)
+and `delete_with_unlink_missing_is_noop` (`:921`) both call `delete_with_unlink`
+with nothing capturing. Pre-existing; this lane only changed the scheduling that
+decides who gets there first. The sanctioned fix is the `global_capture` rig
+that doc points at, in a file outside this lane's ownership — **left for the
+unifier or a maintenance pass rather than taken unasked.**
