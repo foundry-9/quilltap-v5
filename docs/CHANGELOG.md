@@ -302,6 +302,23 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+#### 2026-09-14 — test(folders): the avatar's legacy-folder writer is retired, not reverted
+
+_Versions: harness 0.0.791._
+
+P4.D145's `folders_chokepoint_wiring_guard` asserted that
+`character_avatar_job.rs::ensure_legacy_folder` reaches
+`FoldersRepository::ensure_by_path`. v4 `7fbf8a55b` deleted that writer outright
+— every avatar goes to the character's vault now, and vault writes own their
+folder structure inside `doc_mount_folders` — so the census fired at the unified
+gate exactly as designed.
+
+The obligation inverts rather than disappearing: the row moves to a new
+`RETIRED_UPSTREAM` list whose `retired_writers_stay_retired` asserts the function
+stays GONE. A future lane that re-introduces it is caught here instead of
+silently re-growing the duplicate folders bug 114 was about. The other five
+converted sites are untouched.
+
 #### 2026-09-14 — feat(db): collapse duplicate avatar rolls into one image per configuration
 
 _Versions: core 0.0.903, harness 0.0.790, host 0.0.133._

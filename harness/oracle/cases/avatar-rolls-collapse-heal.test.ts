@@ -36,16 +36,16 @@
  *     `quilltapVersion` are nondeterministic and are NOT compared; the row's
  *     PRESENCE and its `itemsAffected`/`message` are).
  *
- * Run (Node 24, from the PINNED v4 worktree — cp to a /tmp mirror; jest ignores
- * .claude/ paths):
+ * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores
+ * .claude/ paths. The migration arrived at `7fbf8a55b`, past the `f4ad2c8d1`
+ * baseline, so pin the checkout at or after it until the baseline moves):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5W=<this worktree root>
- *   PIN=/tmp/qt-v4-pin-p4d184-31436bae4
  *   TMPO=/tmp/qt-avatar-rolls-collapse-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/avatar-rolls-collapse-heal.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/avatar-rolls-collapse-heal.json" "$TMPO/fixtures/"
- *   cd "$PIN"
+ *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-avatar-rolls-collapse.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=180000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- "avatar-rolls-collapse-heal\.test\.ts$"

@@ -124009,3 +124009,166 @@ with nothing capturing. Pre-existing; this lane only changed the scheduling that
 decides who gets there first. The sanctioned fix is the `global_capture` rig
 that doc points at, in a file outside this lane's ownership — **left for the
 unifier or a maintenance pass rather than taken unasked.**
+---
+
+## P4.D184 — the avatar configuration cache, the SERVER half (v4 `7fbf8a55b`)
+
+**CLOSED.** Carried out 2026-09-14 on `claude/avatar-config-cache-server-76c2c5`,
+branched from P4.D182's tip (`6ec9c5c1`). Oracle baseline `f4ad2c8d1`; every
+regen from the lane's own pin `/tmp/qt-v4-pin-p4d184-31436bae4` (`31436bae4`),
+verified by marker (`lib/wardrobe/avatar-cache.ts` exists at the target and not
+at the baseline). The §2 freshness probe passed at lane start and before every
+regen batch.
+
+⚠ **The probe FAILED once, at the very start, and the lane STOPped as designed.**
+The v4 checkout was dirty with an in-flight bug-141 fix (16 files, +975/−31,
+touching `lib/services/chat-message/streaming.service.ts`,
+`lib/chat/initial-greeting.ts`, `lib/llm/fallback/engine.ts`,
+`app/api/v1/chats/route.ts` and two `help/` pages) — and it restaged between two
+reads seconds apart, so it was actively being worked on. The human ran
+`/driftcheck`, which recorded `f90144ac4` + `85813ddd2` as two new UNPROCESSED
+rows and confirmed the round's pins are unaffected by construction. The lane
+resumed against the updated §1.
+
+### Units
+
+1. **`services/avatar_cache.rs`** — the key derivation + lookup chokepoint.
+   `canonical_json` / `derive_avatar_cache_key` / `derive_legacy_avatar_cache_key`
+   / `derive_avatar_cache_keys` / `lookup_cached_avatar`, with v4's four skip
+   rules, the newest-first sort, the v0 fallback that never upgrades, the
+   swallowed read error, and the four `[AvatarCache]` lines.
+2. **The job restructure** — `bind_avatar_to_chat` extracted and shared by both
+   paths; the params built ONCE before the Concierge; the lookup unless `force`;
+   the HIT return with v4's info line; the params reused on the non-reroute
+   generation; `generation_key` on the created row; vault-always.
+3. **`force`** — `AvatarGenerationParams.force` → the conditional payload key →
+   `chat_regenerate_avatar` passing `true`, every automatic trigger `false`.
+4. **The collapse heal** — `db/avatar_rolls_collapse_heal.rs` + the `host.rs`
+   fenced block + `host_boot_avatar_rolls_collapse`.
+
+### Measurements — the things that were NOT what the order assumed
+
+- **The order's "P4.D182 names the tag-indexed `files` read for you" is wrong on
+  one point of fact, and it changed the design.** v5's `FileEntry` is a narrowed
+  projection that carries neither `tags` nor `createdAt` (v4's Zod `FileEntry`
+  carries both), and P4.D182 froze it. So `lookup_cached_avatar` keeps
+  `find_by_generation_key` as the indexed entry point and reads the two missing
+  columns through one extra keyed `SELECT`, joined in memory — the
+  `photos::chat_gallery` precedent for a module owning a purpose-built read. No
+  frozen file was touched.
+- **The key sort is load-bearing, and byte order would have been wrong.** v4
+  sorts object keys with `<`, which is JS string comparison — UTF-16 code units.
+  Rust's `String: Ord` is UTF-8 bytes, and the two DISAGREE whenever a
+  supplementary-plane key meets a BMP key above U+DFFF. A profile's residual
+  `parameters` bag carries operator-chosen keys, so this is reachable, not
+  theoretical. `encode_utf16().cmp()` (the `image_dialects.rs:1310` idiom), pinned
+  by the `astral-vs-bmp-key-order` corpus row and mutation-proven.
+- **v4's `undefined` filter has no v5 counterpart, and the named mutation for it
+  does not exist.** A `serde_json::Value` has no `undefined`; `to_key_value`
+  already omits every `None`. So there is nothing to filter — and nothing that MAY
+  be filtered, because a JSON `null` is a real value. The order's "drop the
+  `undefined` filter" mutation was therefore replaced by its
+  equal-strength converse, **filter nulls**, which reddens the null-valued-key row
+  by collapsing it onto the undefined case's digest — two configurations, one key.
+- **The order's 19 `avatar-cache.test.ts` case names are PRESCRIPTIVE, not
+  transcribed.** v4 has no such test file (`grep -rln avatar-cache __tests__/`
+  matches only the collapse migration's test). The 13 collapse case names ARE
+  v4's real tests and were transcribed verbatim into the corpus.
+- **v4's v0 fallback can never hit for a LoRA-trigger profile — measured, and
+  reproduced rather than fixed.** The params builder APPENDS the trigger phrase to
+  `params.prompt` (measured: 1012 vs 1063 UTF-16 units on the fixture's primary
+  profile, the tail differing by `shou_xin`), while `files.generationPrompt` stores
+  the prompt BEFORE that append. The lookup derives the v0 key from
+  `params.prompt`; the collapse heal derives it from `generationPrompt`. For any
+  profile carrying a trigger phrase the two can never agree. Both halves are
+  pinned: `cache_legacy_key_trigger_phrase_misses` (the A profile, 2 files) and
+  `cache_legacy_key_hit` (a trigger-free B profile, 1 file). **A candidate
+  upstream filing** — v4's own collapsed rolls will be re-generated and re-keyed
+  under v1 rather than found.
+- **v4's runner semantics, measured at the pin** (the order's named question):
+  `migrations/index.ts:125-137` checks `isMigrationCompleted` BEFORE `shouldRun`,
+  so an applied id is skipped outright and `shouldRun` gates only the first run.
+  Unlike the P4.D152 migration this one's `shouldRun` tests for DRIFT, so there is
+  no zero-affected stamp and **no divergence to record** — all three ledger
+  directions match v4 exactly.
+- **`ProjectImageUpload` IS shared with the story-background job** (the order's
+  expected YES, confirmed by grep). The helper stays; only the avatar's use goes.
+
+### The differentials
+
+| family | what moved | result |
+|---|---|---|
+| **NEW `avatar_cache_key_equivalence`** (tier 1) | 31-shape corpus both sides read, driving v4's real module | GREEN first run; exact hex digests + the identities asserted on v5's own |
+| `avatar_job_tier3_equivalence` (tier 3) | 12 → 20 cases; census gains `folders` + a Lantern COUNT; `generationKey` now a live comparand on all 20 | GREEN |
+| **NEW `avatar_rolls_collapse_heal_equivalence`** (tier 2) | 17 scenarios over v4's real migration + real ledger write; nine-table census | GREEN |
+| **NEW `host_boot_avatar_rolls_collapse`** | the wiring: collapse-on-boot, second-boot no-op, v4's row stops it dead | GREEN |
+| `image_generation_tier3_equivalence` | `force: false` on the automatic trigger — its `background_jobs` dump is the payload-bytes pin | GREEN, bytes unmoved |
+
+**The shape-drift arm the order asked for came for free**: the job now writes
+`generationKey`, `generationKey` is in no normalizer, and the tier-3 census dumps
+`files` with `SELECT *` — so all twenty cases compare v5's key over v5's OWN built
+params against v4's over v4's. A params shape drift reddens by construction.
+
+### Mutation table
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | filter JSON nulls out of the preimage | `v1-explicit-null-not-the-same-as-undefined` (collapses onto the undefined digest) |
+| M2 | sort arrays in `canonical_json` | `v1-loras-ab` |
+| M3 | sort keys by UTF-8 byte | `astral-vs-bmp-key-order` |
+| M4 | ignore `force` | `cache_force_rerolls` |
+| M5 | key on the effective (pre-generation) profile | **SURVIVED — recorded, see below** |
+| M5b | key on the profile that ACTUALLY generated | the `files` dump (the reroute case) |
+| M6 | drop the cross-character tag check | `cache_cross_character_never_returned` |
+| M7 | drop the blob-exists check | `cache_blob_gone_regenerates` |
+| M8 | never write the key on a fresh generation | the `files` dump (the hit case) |
+| M9 | never fall back to the v0 key | `cache_legacy_key_hit` |
+| M10 | mint the legacy `folders` row again | the `folders` dump (the project case) |
+
+**M5's survival is a recorded CORPUS GAP, not a port gap.** No case in
+`avatar-job.json` can reach a PRE-generation Concierge profile swap: user A is
+danger-mode `OFF` and user B has `scanImagePrompts: false` (the fixture's own
+`$comment` says the pre-scan is disabled on purpose, and that predates this
+lane). So keying-on-the-requested-profile is proven for the POST-HOC reroute —
+M5b reddens the `files` dump there — and unproven for a pre-generation swap.
+Closing it needs a case with a live cheap-LLM classifier the oracle currently
+throws on; named here rather than left implicit.
+
+### Deferred loudly
+
+- **Tier 2 item 6 — the remaining `[CharacterAvatar]` handler log lines.** v5's
+  avatar handler still carries none of v4's other 18 lines (`grep tracing:: `
+  in `character_avatar_job.rs` was 0 before this lane and is 2 after: the new
+  `Reused cached avatar for this configuration` and nothing else). This lane
+  landed the NEW lines the feature introduces (that one plus the cache's four)
+  and leaves the pre-existing 18 as a row for the handler-logging inventory
+  (P4.74's). Not a regression — a pre-existing gap, now named with its exact
+  size.
+- **Tier 2 item 7 — the `seed_avatars` neutrality regen**: the seeding path
+  writes no `generationKey` (it does not go through the avatar job), so the
+  family is untouched by this lane; recorded, and re-run at the unified gate.
+- **💸 `/dogfood`:** the real Friday instance has ALREADY been collapsed by v4
+  (ledger §5.5), so the boot must write nothing there. Measure the population
+  FIRST: `SELECT COUNT(*) FROM files WHERE generationKey IS NULL AND
+  originalFilename LIKE 'avatar\_%' ESCAPE '\' AND category = 'IMAGE' AND
+  generationPrompt IS NOT NULL AND generationPrompt != ''`, and read
+  `migrations_state` for `collapse-duplicate-avatar-rolls-v1` — v4's row being
+  present IS the expected finding, and `host_boot_avatar_rolls_collapse`'s third
+  arm is the pin that says v5 honours it. The live cache proof is a second
+  avatar request for an outfit already worn: one `files` row, no provider spend.
+
+### Spotted, not mine
+
+- **v4's v0 fallback is dead for trigger-phrase profiles** (above) — a candidate
+  upstream filing, with the measurement in this record.
+- **Four files outside the order's ownership list, owned by NO other lane,
+  edited because the signature changes forced it**: `services/chat_avatars.rs`
+  and `services/chat_create.rs` (an `AvatarGenerationParams` field), and
+  `services/story_background_job.rs` + `crates/quilltap-host/src/spine.rs` (the
+  `generate_with_reroute` argument and the removed `upload` seam). The order
+  granted `image_job_common.rs` only "where the avatar's project-upload branch is
+  deleted"; threading the prebuilt params through `generate_with_reroute` is a
+  second edit to that file, and mandate (b)'s "the params reused on the
+  non-reroute generation" cannot be honoured without it — building twice would
+  key one object and send another, and would fire the `[Image LoRA]` lines twice
+  where v4 fires them once.

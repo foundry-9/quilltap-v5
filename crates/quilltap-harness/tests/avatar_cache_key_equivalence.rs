@@ -16,11 +16,16 @@
 //!   - `modelName` null and `modelName` absent are one v0 key;
 //!   - a v1 key never collides with the v0 key over the same prompt and model.
 //!
-//! Generate the oracle output (Node 24, from the PINNED v4 worktree — this lane
-//! pins `31436bae4`; the module does not exist at the baseline):
+//! ⚠ The module this drives arrived at v4 `7fbf8a55b`, which is PAST the
+//! `f4ad2c8d1` oracle baseline — so until the baseline moves, regenerate through
+//! the sweep driver with a pin at or after that commit
+//! (`recipe_sweep.py --v4 <pinned worktree> --run avatar_cache_key_equivalence`),
+//! which rewrites the `cd` below. Against a checkout still at the baseline the
+//! import fails outright; it cannot pass stale.
+//!
+//! Generate the oracle output (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   PIN=/tmp/qt-v4-pin-p4d184-31436bae4
-//!   cd "$PIN"
+//!   cd ~/source/quilltap-server
 //!   $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/avatar-cache-key.ts \
 //!     > /tmp/oracle-avatar-cache-key.ndjson
 //! Run:

@@ -18,15 +18,21 @@
 //! v4's logger lines are comparands too — the protected-roll arm and the summary
 //! counts are otherwise invisible on the state.
 //!
-//! Generate the oracle output (Node 24, from the PINNED v4 worktree — this lane
-//! pins `31436bae4`; the migration does not exist at the baseline):
+//! ⚠ The migration this drives arrived at v4 `7fbf8a55b`, which is PAST the
+//! `f4ad2c8d1` oracle baseline — so until the baseline moves, regenerate through
+//! the sweep driver with a pin at or after that commit (`recipe_sweep.py --v4
+//! <pinned worktree> --run avatar_rolls_collapse_heal_equivalence`), which
+//! rewrites the `cd` below. Against a checkout still at the baseline the import
+//! fails outright; it cannot pass stale.
+//!
+//! Generate the oracle output (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   V5W=<this worktree root> ; PIN=/tmp/qt-v4-pin-p4d184-31436bae4
+//!   V5W=<this worktree root>
 //!   TMPO=/tmp/qt-avatar-rolls-collapse-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
 //!   cp "$V5W/harness/oracle/cases/avatar-rolls-collapse-heal.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/avatar-rolls-collapse-heal.json" "$TMPO/fixtures/"
-//!   cd "$PIN"
+//!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-avatar-rolls-collapse.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=180000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- "avatar-rolls-collapse-heal\.test\.ts$"

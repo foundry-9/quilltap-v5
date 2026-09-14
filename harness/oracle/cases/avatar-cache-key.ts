@@ -22,9 +22,11 @@
  * Pure functions — no DB, no jest. Emits one NDJSON row per case:
  * `{ name, kind, key }` for v1/v0, `{ name, kind, key, legacyKey }` for a pair.
  *
- * Run (Node 24, from the PINNED v4 worktree — P4.D184 pins `31436bae4`):
+ * Run (Node 24, from the v4 checkout — the module arrived at `7fbf8a55b`, past
+ * the `f4ad2c8d1` baseline, so pin the checkout at or after it until the
+ * baseline moves):
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   cd /tmp/qt-v4-pin-p4d184-31436bae4
+ *   cd ~/source/quilltap-server
  *   $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/avatar-cache-key.ts \
  *     > /tmp/oracle-avatar-cache-key.ndjson
  */

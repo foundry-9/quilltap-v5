@@ -87,11 +87,6 @@ fn provisioning_does_not_create_the_index() {
 /// must sit in. A site reverted to `create` fails here by name.
 const CHOKEPOINT_SITES: &[(&str, &str, &str)] = &[
     (
-        "crates/quilltap-core/src/services/character_avatar_job.rs",
-        "fn ensure_legacy_folder",
-        "v4 `character-avatar.ts`: the `/character-avatars/` legacy row — one of          the two machine-written paths that grew the duplicates",
-    ),
-    (
         "crates/quilltap-core/src/services/story_background_job.rs",
         "fn ensure_legacy_folder",
         "v4 `story-background.ts`: the `/story-backgrounds/` legacy row — the          other one",
@@ -130,6 +125,24 @@ const NO_V5_COUNTERPART: &[(&str, &str)] = &[
         "v4's migration-runner progress screen has no v5 analogue — the          standing deliberate non-port recorded at          db/chat_activity_recompute_heal.rs.",
     ),
 ];
+
+/// Sites v4 later RETIRED outright. The chokepoint obligation does not vanish
+/// when the writer does — it inverts: the function must stay gone, so a future
+/// lane that re-introduces it is caught here rather than silently re-growing the
+/// duplicates bug 114 was about.
+const RETIRED_UPSTREAM: &[(&str, &str, &str)] = &[(
+    "crates/quilltap-core/src/services/character_avatar_job.rs",
+    "fn ensure_legacy_folder",
+    "v4 `7fbf8a55b` (the avatar configuration cache) DELETED the          `/character-avatars/` legacy row along with the whole project-upload          branch: every avatar goes to the character's vault now, and vault writes          own their folder structure inside `doc_mount_folders`. The `folders`          table backs the pre-Scriptorium file tree and is only meaningful for          disk-backed or project-mount-backed writes, so the avatar path mints no          folder row at all. `avatar_job_tier3_equivalence` dumps the `folders`          table to keep it that way (an absent table dumps as an empty one, so a          side that minted a row diverges); this says the CODE is gone too",
+)];
+
+#[test]
+fn retired_writers_stay_retired() {
+    for (file, func, why) in RETIRED_UPSTREAM {
+        let src = read(file);
+        assert!(!src.contains(func), "{file}: `{func}` is BACK — {why}.");
+    }
+}
 
 #[test]
 fn every_converted_writer_goes_through_the_chokepoint() {
