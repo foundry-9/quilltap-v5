@@ -5,7 +5,6 @@ import {
   buildRenderItems,
   resolveMessageAuthor,
   resolveToolRowAttributionMessage,
-  splitSwipeGroups,
 } from './chat-view-model';
 
 function toolContent(extra: Record<string, unknown> = {}): string {
@@ -43,36 +42,6 @@ function msg(over: Partial<MessageDto>): MessageDto {
     ...over,
   };
 }
-
-describe('splitSwipeGroups', () => {
-  it('drops SYSTEM-role messages', () => {
-    const out = splitSwipeGroups([
-      msg({ id: 'a', role: 'USER', createdAt: '2024-01-01T00:00:01.000Z' }),
-      msg({ id: 's', role: 'SYSTEM', createdAt: '2024-01-01T00:00:02.000Z' }),
-    ]);
-    expect(out.messages.map((m) => m.id)).toEqual(['a']);
-  });
-
-  it('collapses a swipe group to the highest swipeIndex and records state', () => {
-    const out = splitSwipeGroups([
-      msg({ id: 'v0', swipeGroupId: 'g', swipeIndex: 0, createdAt: '2024-01-01T00:00:05.000Z' }),
-      msg({ id: 'v2', swipeGroupId: 'g', swipeIndex: 2, createdAt: '2024-01-01T00:00:06.000Z' }),
-      msg({ id: 'v1', swipeGroupId: 'g', swipeIndex: 1, createdAt: '2024-01-01T00:00:07.000Z' }),
-    ]);
-    expect(out.messages.map((m) => m.id)).toEqual(['v2']);
-    expect(out.swipeStates['g']).toMatchObject({ current: 2, total: 3 });
-    // Recorded variants are sorted ascending by swipeIndex.
-    expect(out.swipeStates['g'].messages.map((m) => m.id)).toEqual(['v0', 'v1', 'v2']);
-  });
-
-  it('orders the collapsed flow by createdAt ascending', () => {
-    const out = splitSwipeGroups([
-      msg({ id: 'late', role: 'USER', createdAt: '2024-01-01T00:00:09.000Z' }),
-      msg({ id: 'early', role: 'USER', createdAt: '2024-01-01T00:00:01.000Z' }),
-    ]);
-    expect(out.messages.map((m) => m.id)).toEqual(['early', 'late']);
-  });
-});
 
 describe('buildRenderItems', () => {
   it('packs consecutive Staff announcements into one chip group and keeps Carina full', () => {

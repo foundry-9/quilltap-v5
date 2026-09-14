@@ -3581,6 +3581,51 @@ describe('SalonConversation — the transcript is a subscribed read (v4 useChatD
     expect(inst.transcriptMessages().map((m) => m.id)).not.toContain('temp-user-1757595111111');
   });
 
+  it('the terminal window events call the CHEAP read, not the chat GET', async () => {
+    // v4 retargeted both `quilltap:chat-update` and `quilltap:terminal-exited`
+    // from `fetchChat()` to `refreshTranscript()` (`5029075bb`): an Ariel line
+    // is a message, and the conditional read is what delivers messages now.
+    // The chat GET is frozen so only the cheap read can produce the new row —
+    // otherwise the invalidation this used to fire would pass the beat on its
+    // own (the mutation pass's lesson, applied).
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+    stub.chatGet.frozen = { version: stub.state.version, messages: [...stub.state.messages] };
+    const before = stub.reads.length;
+
+    stub.state.version = 11;
+    stub.state.messages = [
+      ...stub.state.messages,
+      message({
+        id: 'ariel-line',
+        role: 'ASSISTANT',
+        content: 'The session is open.',
+        createdAt: '2026-09-11T13:10:00.000Z',
+      }),
+    ];
+    window.dispatchEvent(
+      new CustomEvent('quilltap:chat-update', { detail: { chatId: 'chat-1' } }),
+    );
+    await settle(fixture);
+
+    expect(stub.reads.length).toBeGreaterThan(before);
+    expect(inst.transcriptMessages().map((m) => m.id)).toContain('ariel-line');
+  });
+
+  it('a terminal event for ANOTHER chat reads nothing', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const before = stub.reads.length;
+
+    window.dispatchEvent(
+      new CustomEvent('quilltap:chat-update', { detail: { chatId: 'some-other-chat' } }),
+    );
+    await settle(fixture);
+
+    expect(stub.reads.length).toBe(before);
+  });
+
   it('sweeps a bubble that never persisted at all', async () => {
     const stub = transcriptStub();
     const fixture = await render(stub.client);

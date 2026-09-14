@@ -1,8 +1,15 @@
 /**
  * Pure transforms turning a `ChatDetail` into a renderable Salon view model:
- * swipe-group collapsing (v4 `useChatData.fetchChat`), per-message author/avatar
- * resolution (v4 `getMessageAvatar`), and the render-item list that groups runs
- * of Staff announcements into chips (v4 `announcement-render-items`).
+ * per-message author/avatar resolution (v4 `getMessageAvatar`) and the
+ * render-item list that groups runs of Staff announcements into chips (v4
+ * `announcement-render-items`).
+ *
+ * Swipe-group collapsing used to live here too, as `splitSwipeGroups` — a port
+ * of v4's pre-`5029075bb` `fetchChat`, which replaced the array wholesale on
+ * every read. `chat/transcript-reconcile.ts` supersedes it: same collapse, but
+ * with the operator's selection carried by variant id, the server's own order
+ * as the tie-break, and object identity preserved. It went with its one caller
+ * (P4.D187 Tier 2 item 7) rather than lingering as an unused export.
  */
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
@@ -20,42 +27,6 @@ export interface SwipeState {
   current: number;
   total: number;
   messages: MessageDto[];
-}
-
-export interface SplitResult {
-  messages: MessageDto[];
-  swipeStates: Record<string, SwipeState>;
-}
-
-/**
- * Collapse swipe groups to their default (highest-`swipeIndex`) variant and sort
- * the visible flow by `createdAt` — a verbatim port of v4 `fetchChat`.
- */
-export function splitSwipeGroups(all: MessageDto[]): SplitResult {
-  const allMessages = all.filter((m) => m.role !== 'SYSTEM');
-
-  const swipeGroups: Record<string, MessageDto[]> = {};
-  const displayMessages: MessageDto[] = [];
-
-  for (const m of allMessages) {
-    if (m.swipeGroupId) {
-      (swipeGroups[m.swipeGroupId] ??= []).push(m);
-    } else {
-      displayMessages.push(m);
-    }
-  }
-
-  const swipeStates: Record<string, SwipeState> = {};
-  for (const [groupId, groupMessages] of Object.entries(swipeGroups)) {
-    const sorted = [...groupMessages].sort((a, b) => (a.swipeIndex || 0) - (b.swipeIndex || 0));
-    const latestIndex = sorted.length - 1;
-    displayMessages.push(sorted[latestIndex]);
-    swipeStates[groupId] = { current: latestIndex, total: sorted.length, messages: sorted };
-  }
-
-  displayMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-  return { messages: displayMessages, swipeStates };
 }
 
 /**

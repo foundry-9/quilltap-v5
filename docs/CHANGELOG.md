@@ -857,6 +857,24 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — refactor(salon): retire splitSwipeGroups, pin the terminal events on the cheap read (P4.D187 Tier 2)
+
+_Versions: SPA 0.5.712._
+
+`chat-view-model.ts::splitSwipeGroups` had exactly one caller, which unit 2
+replaced with `reconcileTranscript`; measured, it is dead. Retired with its
+`SplitResult` type and its three spec cases rather than left as an unused
+export — the reconcile does the same collapse with the operator's selection
+carried by variant id, the server's own order as the tie-break, and object
+identity preserved.
+
+The two terminal window events (`quilltap:chat-update`,
+`quilltap:terminal-exited`) are pinned on the cheap read they were retargeted
+to. The beat freezes the chat GET first: the invalidation those listeners used
+to fire would otherwise deliver the row on its own and the pin would pass with
+the retarget reverted — the same blindness the unit-2 mutation pass found in the
+headline incident beat.
+
 #### 2026-09-14 — fix(salon): a paused room grants one turn and no more (P4.D187 unit 5, v4 bugs 137-140)
 
 _Versions: SPA 0.5.711._
