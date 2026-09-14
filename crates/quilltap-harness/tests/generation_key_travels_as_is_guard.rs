@@ -99,19 +99,47 @@ fn the_export_field_spec_holds_v4s_schema_position() {
     );
 }
 
-/// Nothing anywhere DERIVES a key. v4 has exactly one deriver
-/// (`lib/wardrobe/avatar-cache.ts`, P4.D184's to port) and exactly one writer
-/// (the avatar job's `files.create`); until that lane lands, every v5 write
-/// site binds `None`. This is the absence that makes the round's two halves
-/// separable — and it is worth an assertion, because a lane that quietly
-/// started writing a key here would make P4.D184's cache-hit measurements
-/// meaningless.
+/// **Exactly one** site derives a key and exactly one writes it — v4's shape,
+/// and now v5's.
+///
+/// P4.D182 wrote this as "nothing writes a key yet", naming P4.D184 as the lane
+/// that would edit it. This is that edit, and it keeps the claim rather than
+/// dropping it: the avatar job binds `cache_keys.key` on a fresh generation, the
+/// derivation lives in `services/avatar_cache.rs` (the ONE home — a second
+/// spelling is a second format, and the two drift), and nothing else in the
+/// crate constructs a key at all. A lane that started deriving one elsewhere
+/// would make the cache-hit measurements meaningless in exactly the way
+/// P4.D182's version of this test was written to prevent.
 #[test]
-fn nothing_in_this_lane_writes_a_non_null_key() {
+fn exactly_one_site_writes_the_key_and_one_module_derives_it() {
     let src = core_src("services/character_avatar_job.rs");
     assert!(
-        src.contains("generation_key: None,"),
-        "the avatar job must still bind None — P4.D184 is what changes this \
-         line, and when it does, this assertion is what it edits"
+        src.contains("generation_key: Some(input.generation_key.clone()),"),
+        "the avatar job must bind the cache key it derived (v4 `7fbf8a55b`: \
+         `generationKey: cacheKeys.key`)"
     );
+    assert!(
+        !src.contains("generation_key: None,"),
+        "the avatar job must not ALSO have a None-binding write site"
+    );
+
+    // The derivation is the cache module's, and only the cache module's. The
+    // collapse heal and the job both call in; neither spells out a preimage.
+    for (file, why) in [
+        (
+            "services/character_avatar_job.rs",
+            "the job derives through `avatar_cache::derive_avatar_cache_keys`",
+        ),
+        (
+            "db/avatar_rolls_collapse_heal.rs",
+            "the heal groups through `avatar_cache::derive_legacy_avatar_cache_key`",
+        ),
+    ] {
+        let src = core_src(file);
+        assert!(
+            !src.contains("\"v\": 1") && !src.contains("\"v\": 0"),
+            "{file}: the key preimage is spelled out here — {why}, and a second \
+             derivation is a second format"
+        );
+    }
 }

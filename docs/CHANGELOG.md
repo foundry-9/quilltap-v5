@@ -302,6 +302,18 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+#### 2026-09-14 — test(files): the generation-key tripwire becomes the one-deriver, one-writer claim
+
+_Versions: harness 0.0.792._
+
+P4.D182 wrote `nothing_in_this_lane_writes_a_non_null_key` as "nothing writes a
+key yet", with a message naming P4.D184 as the lane that would edit it. This is
+that edit, and it keeps the claim rather than dropping it: the assertion now says
+the avatar job binds `cache_keys.key`, that no None-binding write site remains
+beside it, and that neither the job nor the collapse heal spells out a key
+preimage of its own — the derivation is `services/avatar_cache.rs`'s alone, since
+a second spelling is a second format and the two drift.
+
 #### 2026-09-14 — test(folders): the avatar's legacy-folder writer is retired, not reverted
 
 _Versions: harness 0.0.791._
