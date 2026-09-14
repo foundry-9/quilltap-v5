@@ -24,7 +24,9 @@ use crate::photos::keep_image_markdown::{
     BuildSlugAndFilenameInput, KeptImageAttributionRole,
 };
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
-use crate::photos::photos_paths::{build_photos_relative_path, PHOTOS_FOLDER};
+use crate::photos::photos_paths::{
+    build_photos_relative_path, is_character_album_relative_path, PHOTOS_FOLDER,
+};
 use crate::photos::resolve_character_avatar::build_mount_file_url;
 use crate::photos::save_image_to_album::{
     chunk_and_insert_extracted_text, resolve_unique_relative_path,
@@ -79,8 +81,10 @@ pub(crate) fn resolve_character_vault(
 }
 
 /// v4 `listCharacterGallery` — every photo in the character's vault `photos/`
-/// folder, plus the historic `images/avatar.webp` portrait + `images/history/*`,
-/// most-recent first. `{ entries, total, hasMore }`. An absent/broken vault →
+/// folder, plus the historic `images/avatar.webp` portrait, most-recent first.
+///
+/// Avatar rolls (`images/history/`) are not part of the album — see
+/// [`crate::photos::avatar_rolls_service::list_avatar_rolls`] (v4 `4dcbe0d21`). `{ entries, total, hasMore }`. An absent/broken vault →
 /// `{ entries: [], total: 0, hasMore: false }`.
 pub fn list_character_gallery(
     main: &Connection,
@@ -102,15 +106,14 @@ pub fn list_character_gallery(
 
     let all_links =
         DocMountFileLinksRepository::new(mount).find_by_mount_point_id(&vault.mount_point_id)?;
+    // v4 `4dcbe0d21`: `is_character_album_relative_path` is the single source of
+    // album membership — the character-detail `photos` figure counts through the
+    // same predicate, so the grid and the count cannot disagree. Avatar rolls
+    // (`images/history/`) are no longer album members; they have their own
+    // section, fed by `photos::avatar_rolls_service`.
     let mut gallery_links: Vec<_> = all_links
         .into_iter()
-        .filter(|l| {
-            if is_photos_relative_path(Some(&l.relative_path)) {
-                return true;
-            }
-            let lower = l.relative_path.to_lowercase();
-            lower == "images/avatar.webp" || lower.starts_with("images/history/")
-        })
+        .filter(|l| is_character_album_relative_path(Some(&l.relative_path)))
         .collect();
 
     // Most-recent first: `b.createdAt.localeCompare(a.createdAt)` — a stable

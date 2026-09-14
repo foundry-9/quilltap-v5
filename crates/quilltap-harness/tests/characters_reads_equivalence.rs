@@ -23,6 +23,12 @@ use serde_json::Value;
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
+/// P4.D185: the planted roll link's pinned id + timestamp, and the album link
+/// whose `fileId`/`mountPointId`/`lastModified` it borrows (Aria's canonical
+/// `images/avatar.webp` portrait). Identical on the oracle side.
+const ARIA_AVATAR_LINK_ID: &str = "d05443d6-16d0-4eed-88de-032dc2981b00";
+const HISTORY_LINK_ID: &str = "d9000000-0000-4000-8000-0000000000a1";
+const HISTORY_LINK_AT: &str = "2026-07-11T03:42:08.000Z";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,6 +150,24 @@ fn characters_reads_match_oracle() {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
+    // Heal the fixture the way boot heals an instance — the `files_routes_
+    // equivalence` idiom, both passes.
+    //
+    // P4.D171 (`chats.cycleOrderParticipantIds`, `chat_messages.routeTrail`) is
+    // a PRE-EXISTING gap this family had never seen: it SKIPs without
+    // `QT_ORACLE_CHARACTERS_READS`, so no workspace gate had ever run it against
+    // the un-healed pair (the same shape P4.D182 found in
+    // `system_import_equivalence`). P4.D182 (`files.generationKey`) is this
+    // round's: v4's insert names only the keys its data object carries, so v4
+    // writes into a pre-4.10 `files` table happily where this port's fixed
+    // `FILE_ENTRY_SELECT` answers `no such column: generationKey` — which made
+    // EVERY read touching a `files` row (the list's `defaultImage` enrichment,
+    // the detail, the stats, the cascade preview) answer a 500 here.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
+        quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -422,6 +446,38 @@ fn characters_reads_match_oracle() {
             )),
         );
     }
+
+    // P4.D185 (v4 `4dcbe0d21`): album membership moved onto
+    // `isCharacterAlbumRelativePath`, so an `images/history/` roll stops being
+    // counted by the character-detail `photos` figure and stops appearing in
+    // the Photo Gallery grid — while Aria's canonical `images/avatar.webp`
+    // portrait stays album material. The committed fixture has NO roll link, so
+    // both arms need one planted; the row hard-links the SAME `doc_mount_files`
+    // row the album link names (a roll and its album copy over one blob is the
+    // real shape), inventing no blob. The oracle plants the identical row on
+    // its own fresh copy. LAST, like the concierge arms — it mutates the shared
+    // Db, and every earlier case must read the un-planted vault.
+    let plant = format!(
+        "INSERT INTO \"doc_mount_file_links\"          (\"id\",\"fileId\",\"mountPointId\",\"relativePath\",\"fileName\",          \"lastModified\",\"createdAt\",\"updatedAt\")          SELECT '{HISTORY_LINK_ID}', \"fileId\", \"mountPointId\",          'images/history/roll-01.webp', 'roll-01.webp', \"lastModified\",          '{HISTORY_LINK_AT}', '{HISTORY_LINK_AT}'          FROM \"doc_mount_file_links\" WHERE \"id\" = '{ARIA_AVATAR_LINK_ID}'"
+    );
+    db.write_blocking(move |w| {
+        w.mount_index()
+            .expect("the mount index is part of this fixture")
+            .connection()
+            .execute_batch(&plant)?;
+        Ok(())
+    })
+    .expect("plant the avatar roll link");
+    push(
+        "stats_with_roll",
+        response_data(&characters::character_stats(&db, uid, ARIA)),
+    );
+    push(
+        "photo_list_with_roll",
+        response_data(&characters::character_photo_list(
+            &db, uid, ARIA, None, None,
+        )),
+    );
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

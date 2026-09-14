@@ -60,7 +60,23 @@ interface CaseSpec {
     isDangerousChat: boolean | null;
     dangerCategories: string[] | null;
   };
+  /** P4.D185 (v4 `4dcbe0d21`): plant an `images/history/` link into Aria's
+   * vault before the read. The committed fixture has no avatar roll, so
+   * `isCharacterAlbumRelativePath`'s one behaviour change — `images/history/`
+   * stops being album material while `images/avatar.webp` stays — is
+   * unmeasurable without one. The row hard-links the SAME `doc_mount_files`
+   * row Aria's `images/avatar.webp` link names (a roll and its album copy over
+   * one blob is the real shape), so no blob or `doc_mount_files` row is
+   * invented. Mirrored verbatim on the Rust side. */
+  plantHistoryLink?: boolean;
 }
+
+/** P4.D185: the planted roll link's pinned id + timestamp, and the album link
+ * whose `fileId`/`mountPointId`/`lastModified` it borrows (Aria's canonical
+ * `images/avatar.webp` portrait). Pinned so both sides plant identical rows. */
+const ARIA_AVATAR_LINK_ID = 'd05443d6-16d0-4eed-88de-032dc2981b00';
+const HISTORY_LINK_ID = 'd9000000-0000-4000-8000-0000000000a1';
+const HISTORY_LINK_AT = '2026-07-11T03:42:08.000Z';
 
 function mockRequest(url: string): unknown {
   return {
@@ -148,6 +164,32 @@ async function runCase(
     ]);
   }
 
+  // P4.D185: the avatar roll the committed fixture cannot express. The links
+  // live in the MOUNT INDEX, which `rawQuery` (main only) cannot reach — the
+  // raw handle is the same one `subprompts-routes` censuses through.
+  if (c.plantHistoryLink) {
+    const { getRawMountIndexDatabase } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    const midb = getRawMountIndexDatabase();
+    if (!midb) throw new Error('mount-index DB handle unavailable');
+    midb
+      .prepare(
+        'INSERT INTO "doc_mount_file_links" ' +
+          '("id","fileId","mountPointId","relativePath","fileName","lastModified","createdAt","updatedAt") ' +
+          'SELECT ?, "fileId", "mountPointId", ?, ?, "lastModified", ?, ? ' +
+          'FROM "doc_mount_file_links" WHERE "id" = ?',
+      )
+      .run(
+        HISTORY_LINK_ID,
+        'images/history/roll-01.webp',
+        'roll-01.webp',
+        HISTORY_LINK_AT,
+        HISTORY_LINK_AT,
+        ARIA_AVATAR_LINK_ID,
+      );
+  }
+
   try {
     const mod = (await import(c.module)) as { GET: (...a: unknown[]) => Promise<unknown> };
     const args: unknown[] = [mockRequest(c.url)];
@@ -214,6 +256,15 @@ async function main(): Promise<void> {
     { name: 'plugin_data_map', module: '@/app/api/v1/characters/[id]/plugin-data/route', url: `${B}/${aria}/plugin-data`, params: { id: aria } },
     { name: 'plugin_data_item', module: '@/app/api/v1/characters/[id]/plugin-data/[pluginName]/route', url: `${B}/${aria}/plugin-data/com.example.notes`, params: { id: aria, pluginName: 'com.example.notes' } },
     { name: 'stats', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=stats`, params: { id: aria } },
+    // P4.D185 (v4 `4dcbe0d21`): album membership moved onto
+    // `isCharacterAlbumRelativePath`, so an `images/history/` roll stops being
+    // counted by the character-detail `photos` figure and stops appearing in
+    // the Photo Gallery grid — while the canonical `images/avatar.webp`
+    // portrait (which Aria has) stays album material. Both arms of the new
+    // predicate ride these two planted-link cases; without the plant the
+    // change is invisible and the family goes vacuously green.
+    { name: 'stats_with_roll', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=stats`, params: { id: aria }, plantHistoryLink: true },
+    { name: 'photo_list_with_roll', module: '@/app/api/v1/characters/[id]/photos/route', url: `${B}/${aria}/photos`, params: { id: aria }, plantHistoryLink: true },
     { name: 'depiction_guidelines', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=depiction-guidelines`, params: { id: aria } },
     // P4.6i: the enriched recent-chats DTO — plain, search (title / content /
     // miss), and pagination (limit / offset) legs.

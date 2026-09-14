@@ -366,10 +366,11 @@ pub async fn character_depiction_guidelines_update(
 /// photos/knowledge/core/characterFiles derived from the link relative paths (the
 /// links fetched once and reused). `{ stats, groups }`.
 pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response {
-    use crate::db::doc_mount_file_links::{is_photos_relative_path, DocMountFileLinksRepository};
+    use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
     use crate::db::group_character_members::GroupCharacterMembersRepository;
     use crate::db::groups::GroupsRepository;
     use crate::db::vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS;
+    use crate::photos::photos_paths::is_character_album_relative_path;
     use std::collections::HashSet;
 
     let cid = character_id.to_string();
@@ -394,17 +395,19 @@ pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response 
         let group_ids =
             GroupCharacterMembersRepository::new(mount).find_group_ids_by_character_id(&cid)?;
 
-        // Photos / knowledge / core from the link relative paths (v4's predicate),
-        // and the present-paths set for the characterFiles health figure.
+        // Photos / knowledge / core from the link relative paths, and the
+        // present-paths set for the characterFiles health figure.
+        //
+        // v4 `4dcbe0d21`: `photos` counts through `is_character_album_relative_
+        // path`, the same predicate `list_character_gallery` filters on, so this
+        // figure and the grid on the Photo Gallery tab cannot disagree. Avatar
+        // rolls (`images/history/`) are not album members and are not counted.
         let mut present_paths: HashSet<String> = HashSet::new();
         let (mut photos, mut knowledge, mut core) = (0i64, 0i64, 0i64);
         for link in &file_links {
             let rel = link.relative_path.to_lowercase();
             present_paths.insert(rel.clone());
-            if is_photos_relative_path(Some(&link.relative_path))
-                || rel == "images/avatar.webp"
-                || rel.starts_with("images/history/")
-            {
+            if is_character_album_relative_path(Some(&link.relative_path)) {
                 photos += 1;
             }
             if rel.starts_with("knowledge/") {

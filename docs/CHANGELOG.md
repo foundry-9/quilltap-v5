@@ -453,6 +453,32 @@ on v5's own digests. Three mutations, each reddening exactly its row — filteri
 nulls collapses the null case onto the undefined case's digest (two
 configurations, one key), sorting arrays reddens the LoRA pair, byte-order key
 sorting reddens the astral-vs-BMP row.
+#### 2026-09-14 — feat(photos): album membership through one predicate, so an avatar roll stops counting as a photo
+
+_Versions: core 0.0.901, harness 0.0.788._
+
+v4 `4dcbe0d21` adds `isCharacterAlbumRelativePath` and points both album
+readers at it: the Photo Gallery listing and the character-detail `photos`
+figure. `images/history/` — the avatar configuration cache's working stock —
+stops being album material; the canonical `images/avatar.webp` portrait stays,
+so a character who has never kept a photo still has a face on the page.
+
+v5 had the same predicate hand-rolled in two places, which is how a grid and a
+count come to disagree. Both sites now call
+`photos::photos_paths::is_character_album_relative_path`.
+
+The behaviour change was unmeasurable against the committed characters fixture,
+which carries no avatar roll, so `characters_reads_equivalence` and its oracle
+case each plant one `images/history/` link into their own fresh copy before the
+`stats` and `photo_list` reads. Both arms ran RED first (v5 answered `photos: 2`
+and listed the roll where v4 answers 1 and lists only the portrait) and are
+green after. Two mutations, each reddening exactly one of the two arms.
+
+Riding along: the family now heals its fixture the way boot heals an instance
+(`ensure_p4d171_columns` + `ensure_p4d182_columns`). The P4.D182 pass is this
+round's; the P4.D171 one is a pre-existing gap the family had never seen,
+because it SKIPs without `QT_ORACLE_CHARACTERS_READS` and no workspace gate had
+ever run it against the un-healed pair.
 
 #### 2026-09-14 — fix(vendor): move the SECOND hard-coded export-schema byte count
 

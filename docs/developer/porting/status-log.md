@@ -124253,3 +124253,102 @@ the v4 checkout went dirty again, docs-only — `docs/developer/bugs.md` plus a 
 `docs/developer/bugs/bug-142-delete-miss-counts-as-removed.md`. No `lib/`,
 `app/`, `packages/` or `plugins/` delta, so no regen was exposed (and none was
 re-run: both oracles above predate it). The next `/driftcheck` should record it.
+## P4.D185 — Avatar Rolls, the server half (v4 `4dcbe0d21`, stacked on P4.D182)
+
+Lane branch `claude/avatar-rolls-server-porting-6be98f`, off P4.D182's tip
+`6ec9c5c1`. Pins: `/tmp/qt-v4-pin-p4d185-31436bae4` (target, every regen) and
+`/tmp/qt-v4-pin-p4d185-f4ad2c8d1` (the baseline neutrality pin). The §2
+freshness probe FAILED at first pickup (v4's checkout was dirty in `lib/` and
+`app/` with its bug-141 work in flight) and the lane STOPped and reported;
+`/driftcheck` then recorded `f90144ac4` + `85813ddd2`, and the re-probe passed
+against the updated §1 (branch `main`, tree clean, both logs empty). Both new
+rows are out of this round's scope by construction — every regen here is pinned
+at `31436bae4`.
+
+### Survey corrections — two order premises REFUTED by measurement
+
+- **The order's `_count.photos` half does not exist.** The order says "the
+  character GET's `_count` gains `photos` (the pre-existing v5 gap the survey
+  found: v5's `_count` carries only `chats`)". Measured at the target: v4's
+  character GET builds `_count: { chats: chats.length }` and NOTHING else
+  (`handlers/get.ts:52`), exactly as v5 does (`api/characters.rs:1463`). The
+  `photos` figure v4 moved onto the new predicate lives in the **`?action=stats`
+  branch's `stats` object** (`:352`), a different response. So there is no gap
+  to fill and no `_count` key to add — Tier 1 item 1's `_count` half and Tier 2
+  item 7 are both MOOT. What the predicate actually moves is `stats.photos`,
+  ported here.
+- **The order names the wrong families for the drop.** It points at
+  `photos_routes_equivalence` / `photos_web_routes` / `characters_photos_routes`
+  ("plant a history link in a `/tmp` copy → red-first"). Measured: those drive
+  the USER photo gallery (`/api/v1/photos`) and the character-photos POST route;
+  the only family that drives `character_photo_list` (→ `list_character_gallery`)
+  or the stats figure is **`characters_reads_equivalence`**, which is where both
+  red-first arms landed. The user gallery filters on `is_photos_relative_path`
+  alone and is untouched by this change — neutral by construction, not by luck.
+
+### Unit 1 — the predicate and its two readers, red-first
+
+`photos::photos_paths` gains `LEGACY_MAIN_AVATAR_PATH` and
+`is_character_album_relative_path` (v4's `photos-paths.ts` +23, byte-faithful:
+`is_photos_relative_path(p) || lower(p) == "images/avatar.webp"`, with
+`images/history/` deliberately excluded). Both hand-rolled copies are gone:
+`character_gallery_service.rs`'s listing filter and `api/characters.rs`'s stats
+loop now call the one predicate, which is the whole point of v4's change — a
+second copy is how the grid and the count come to disagree.
+
+⚠ **`is_photos_relative_path` has TWO homes in v5** (`photos/photos_paths.rs`
+and `db/doc_mount_file_links.rs`, byte-identical bodies, 12 importers split
+across them). Pre-existing, not touched here; the NEW predicate gets ONE home,
+beside the photos one, as the order directs. Recorded for whoever consolidates.
+
+**The measurement that shaped the differential:** the committed
+`characters-{main,mount}.db` pair carries exactly one `images/…` link (Aria's
+`images/avatar.webp`) and NO `images/history/` link, so the behaviour change is
+invisible against it and both cases would have gone vacuously green. Each side
+therefore PLANTS a roll link into its own fresh copy before the read — a row
+that hard-links the same `doc_mount_files` row the album link already names (a
+roll and its album copy over one blob is the real shape), inventing no blob.
+The oracle plants through `getRawMountIndexDatabase()` (`rawQuery` reaches main
+only); the Rust side plants the identical row through `db.write_blocking`, LAST
+in the case list, because it mutates the shared `Db` the earlier cases read.
+
+| | before the port | after |
+|---|---|---|
+| `stats_with_roll` | v5 `photos: 2`, v4 `photos: 1` — **RED** | green |
+| `photo_list_with_roll` | v5 lists `images/history/roll-01.webp`, v4 lists `images/avatar.webp` — **RED** | green |
+
+Mutations (file backup, never `git checkout`), each reddening **exactly** its
+row and nothing else:
+
+| mutation | reddens |
+|---|---|
+| the listing filter keeps `starts_with("images/history/")` | `photo_list_with_roll` only |
+| the stats loop counts `images/history/` | `stats_with_roll` only |
+
+The reverted tree is green: 34/34 cases.
+
+### A cross-lane finding the unit surfaced — the fixture-vintage gap, and how P4.D182 already answered it
+
+The family's first run against the fresh oracle went red on **24 of 34 cases**
+with `kind: internal`, which looks exactly like a broken port and is nothing of
+the kind. P4.D182's `FILE_ENTRY_SELECT` now names `generationKey`, and NOT ONE
+committed fixture carries the column (measured across all 47 `*-main.db`
+fixtures: 25 have a `files` table, 0 have `generationKey`) — so every v5 read
+touching a `files` row answers `no such column: generationKey`. v4 never
+notices, because its insert and select name only the keys its data object
+carries; the difference is in how the two engines BUILD a statement.
+
+P4.D182 anticipated this and shipped `test_support::ensure_p4d182_columns`
+(three venues already adopt it). This family adopts it too — **and
+`ensure_p4d171_columns` with it**, because the same pair also predates
+`chats.cycleOrderParticipantIds` / `chat_messages.routeTrail`. That P4.D171 gap
+is PRE-EXISTING and had never been seen: the family SKIPs without
+`QT_ORACLE_CHARACTERS_READS`, so no workspace gate had ever run it against the
+un-healed pair — the same shape P4.D182 found in `system_import_equivalence`.
+With both heals the 22 collateral reds vanish and only the two new arms remain,
+which is also a free neutrality proof that the `31436bae4` oracle moves nothing
+else in this family.
+
+**For the unifier:** other families reading a committed pair with a `files`
+table need the same heal, and nothing in this lane can measure which — they
+SKIP without their own oracle env vars. The census above is the worklist.
