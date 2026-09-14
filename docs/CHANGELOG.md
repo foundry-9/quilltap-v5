@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(drift): two more v4 commits mid-round — a stalled provider stream wedges chat creation (bug 141), and v4's ABI heal
+
+_Docs-only change._
+
+A same-day re-check: v4 landed two commits while the `31436bae4` catch-up
+round's seven lanes were in flight, putting `main` at `85813ddd2`
+(`4.10.0-dev.32`), ten past the baseline and two past the round's target. The
+round's pins are unaffected — every lane pins `31436bae4` explicitly rather
+than tracking `main` — so no order needs repointing and no lane needs to stop;
+these are the next round's rows. The first eight rows keep the `ORDERED(...)`
+dispositions `/setupphase` wrote.
+
+`f90144ac4` is bug 141, and v5 very likely has it by the same mechanism. A
+provider answered with headers and then sent no body, so the `for await` never
+advanced and chat creation hung behind the non-dismissable Green Room. Every
+existing budget missed it because an SDK-backed provider's own timeout stops at
+the response headers — which is exactly P4.D42's shape in v5, where the
+streaming bound is deliberately first-byte-only. v4's fix is a new stall
+watchdog that budgets each `next()` separately (240 s to the first chunk,
+120 s between, per-gap and never cumulative; 90/60 for the greeting), a named
+`LLMStreamStalledError` the fallback classifier reads as `network`, and a
+greeting ladder that ends on the first stall on the participant's own profile.
+v4's own bugs index marks the v5 status "Applies".
+
+`85813ddd2` is v4's Node toolchain only and has no v5 analog — we link
+SQLite3MC statically. Two notes recorded anyway: it repairs the native-ABI heal
+our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
+REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
+Node upgrade before this row is ratified would produce a rebuild that claims
+success and does nothing.
+
 #### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
 
 _Docs-only change._

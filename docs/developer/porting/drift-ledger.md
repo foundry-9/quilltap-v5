@@ -24,26 +24,38 @@ probe verifies against._
   -0500, `4.10.0-dev.24`), adopted at the `f4ad2c8d1` In-Their-Own-Words
   drift catch-up round unification (P4.D179 ∥ P4.D180 ∥ P4.D181,
   2026-09-11). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-14 (`/driftcheck`, main checkout). **Ordered 2026-09-14** (`/setupphase`): all eight §3 rows carry `ORDERED(...)` — the `31436bae4` drift catch-up round, P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188 (`work-orders/p4.d18[2-8]-*.md`); every lane regenerates from a pin at `31436bae4` (the target) with `f4ad2c8d1` as the neutrality/`QT_V4_ROOT` pin for lanes branched from `main`.
-- **v4 `main` HEAD at check:** `31436bae4` ("fix(salon): a paused chat
-  generates nothing on its own (bugs 137-140)", 2026-09-13 22:49 -0500,
-  `4.10.0-dev.30`) — **EIGHT commits past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (the branch has not
-  moved since the previous check; the content check `git diff main bugfix
-  -- lib/ app/ packages/ plugins/ help/` is a pure REVERSE delta — main is
-  ahead everywhere, nothing unabsorbed).
+- **Checked:** 2026-09-14, **re-checked the same day at 16:3x** (`/driftcheck`,
+  main checkout) — v4 landed two more commits WHILE the catch-up round's seven
+  lanes were in flight. **Ordered 2026-09-14** (`/setupphase`): the first eight
+  §3 rows carry `ORDERED(...)` — the `31436bae4` drift catch-up round,
+  P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188
+  (`work-orders/p4.d18[2-8]-*.md`); every lane regenerates from a pin at
+  `31436bae4` (the target) with `f4ad2c8d1` as the neutrality/`QT_V4_ROOT` pin
+  for lanes branched from `main`.
+- **v4 `main` HEAD at check:** `85813ddd2` ("fix(tooling): the native-binding
+  ABI heal now actually rebuilds", 2026-09-14 16:12 -0500, `4.10.0-dev.32`) —
+  **TEN commits past the baseline, TWO past the in-flight round's target.**
+- **⚠ Mid-round drift, and the round's pins are UNAFFECTED.** The two new rows
+  (`f90144ac4`, `85813ddd2`) landed after `/setupphase` wrote the orders, so
+  they are **out of the round's scope by construction**: every lane pins
+  `31436bae4` explicitly rather than tracking `main`, so no regen can have
+  seen them (§5.1). No order needs repointing and no lane needs to STOP — the
+  §2 probe now matches this §1, so a lane re-probing mid-flight passes. They
+  are the NEXT round's rows.
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content-checked:
+  `git diff main bugfix -- lib/ app/ packages/ plugins/ help/` is a pure
+  REVERSE delta — main is ahead everywhere, nothing unabsorbed).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 8 commits**, of which **five are PORT/PORT-NEW
-  on already-ported surfaces** (two of them large features with schema
-  moves), two are version/docs-only NO-PORT candidates, and one is the
-  already-recorded plan doc whose feature has now shipped. See §3.
-- **Regen rule: PIN REQUIRED** — v4 HEAD is eight commits past the baseline,
-  and those commits move `lib/`, `app/`, `components/`, `migrations/` and
-  `public/schemas/`. Every oracle regeneration runs from a worktree pinned
-  at `f4ad2c8d1` (§5.1). The checkout is clean, so the pin is the only
-  constraint.
+- **Verdict: DRIFT PENDING — 10 commits.** Eight are ORDERED into the
+  in-flight catch-up round; **two are new and UNPROCESSED** — one PORT on the
+  provider-streaming + failover + greeting-ladder surfaces (bug 141), one
+  NO-PORT? on v4's Node toolchain. See §3.
+- **Regen rule: PIN REQUIRED** (unchanged, and now doubly so) — v4 HEAD is ten
+  commits past the baseline and two past the round's target. Round lanes pin
+  `31436bae4`; anything else pins `f4ad2c8d1` (§5.1). The checkout is clean,
+  so the pin is the only constraint.
 - **⚠ The workspace gate is RED against the live checkout right now.**
   `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
   compares the embedded copy byte-for-byte with
@@ -51,12 +63,12 @@ probe verifies against._
   `7fbf8a55b` added a `generationKey` property to it (v5's vendored copy
   md5 `a347c46b…` still equals v4 at the baseline; v4's tip is
   `ecde08da…`). This is the re-vendor obligation firing exactly as
-  designed — it clears when the avatar-cache row is ported, not before.
-  Any gate run before then must expect that one named red (and the
-  `VENDORED_BYTES` constant moves with the re-vendor).
-- **Schema state: v4 has MOVED — two D23 re-dump obligations pending.**
-  `chats."transcriptVersion" INTEGER DEFAULT 0` (`5029075bb`, migration
-  `add-transcript-version-column-v1`; **deliberately absent from
+  designed — it clears when P4.D184 re-vendors, not before. Any gate run
+  before then must expect that one named red (and the `VENDORED_BYTES`
+  constant moves with the re-vendor).
+- **Schema state: v4 has MOVED — two D23 re-dump obligations, both ORDERED
+  into P4.D182.** `chats."transcriptVersion" INTEGER DEFAULT 0` (`5029075bb`,
+  migration `add-transcript-version-column-v1`; **deliberately absent from
   `ChatMetadataSchema`** — Zod strips it so no `update()` can rewind it,
   `SET v = v + 1` is its only writer, and it is out of `.qtap` exports and
   backups for free) and `files."generationKey"` + `CREATE INDEX
@@ -64,10 +76,10 @@ probe verifies against._
   `add-file-generation-key-column-v1`, plus the destructive
   `collapse-duplicate-avatar-rolls-v1`). `qtap-export.schema.json` gained
   `generationKey` on the file-entry shape (re-vendor obligation, above).
-  `help/**` stays at **124 files** — none added, but **eight modified**
-  (`character-gallery`, `chat-multi-character`, `chat-participants`,
-  `chat-settings`, `chat-turn-manager`, `chats`, `tabbed-workspace`,
-  `wardrobe`), so the vendor is stale by content until the next re-vendor.
+  The two new rows move no schema. `help/**` stays at **124 files** — none
+  added, but **ten modified** since the baseline (the round's eight, plus
+  `chats.md` again and `connection-profiles.md` in `f90144ac4`), so the vendor
+  is stale by content until the next re-vendor.
 
 ## §2 The freshness probe
 
@@ -114,6 +126,8 @@ when absorbed/ratified.
 | `4dcbe0d21` | 2026-09-12 | feat(aurora): Avatar Rolls section in a character's Photo Gallery | **PORT-NEW** — the avatar cache surfaced as a collection: a collapsible Avatar Rolls section under the album listing every portrait the cache holds for that character, one per configuration (set as avatar / keep in album / download / view with its generation prompt / delete). **Depends on `7fbf8a55b` — port the cache first** (membership is `files.generationKey IS NOT NULL` + the character tag, never a path). NEW `app/api/v1/characters/[id]/avatar-rolls/route.ts` + `[fileId]/route.ts`, NEW `lib/photos/avatar-rolls-service.ts` (+447) → v5's characters REST edges + photos services. Two subtle rules to carry: set-as-avatar **hard-links the plate into `photos/`** and points the portrait at that LINK (never a fresh `files` id — `defaultImageId` must stay in step with `removeFromCharacterGallery`, which scrubs by link id), and delete uses `deleteWithGC` on the roll's OWN link (never `deleteMountBlob`, which drops every link to the blob and would take the album copy). Also a behavior change on an already-ported read: `photos-paths.ts` gains `isCharacterAlbumRelativePath` and `app/api/v1/characters/[id]/handlers/get.ts` swaps its photo COUNT onto it, so avatar rolls (`images/history/`) stop being counted as album members → v5's character GET counts. `character-gallery-service.ts`, `lib/query/keys.ts`, and the SPA embedded gallery (`AvatarRollsSection.tsx`, `useAvatarRolls.ts`, `GalleryGrid`/`GalleryImage`/`types`) → v5 `images/photo-gallery-modal.ts` + the character gallery vertical. `help/character-gallery.md` | ORDERED(P4.D185, P4.D188) |
 | `8275b3642` | 2026-09-12 | fix(salon): answer a send refused mid-turn, delete a write-only Stop flag | **PORT (client)** — **bug 136**: one `return` in `sendMessage` covered both an empty composer and a send refused because a turn was in flight; split, and the refusal now raises "One moment — the room is still speaking. Your remark waits in the composer." `triggerContinueMode`'s streaming/waiting guard gets the same notice (it refuses a click on an explicit control — Nudge, Continue, Skip); its `isPaused` return stays SILENT, the sidebar having said so. **Bug 135**: `userStoppedStreamRef` had four writers and no readers — deleted, not read (Stop works through the AbortController; `sendMessage` goes 8 args → 7) — so for v5 this half is a **NO-COUNTERPART candidate: measure whether v5 ever carried the latch before writing anything**. → v5 `screens/salon/salon-conversation.ts` + `salon-turn-controls` + the impersonation-voice send args. `help/chats.md` +8, `help/chat-turn-manager.md` +1. ⚠ Both bugs are v4's OWN filings (found diagnosing the incident behind the transcript plan), not this port's — no convergence pins to retire | ORDERED(P4.D187) |
 | `31436bae4` | 2026-09-13 | fix(salon): a paused chat generates nothing on its own (bugs 137-140) | **PORT (server + client) — and it SUPERSEDES ported v5 behavior.** Pause stopped the turn chain, not the chat: a paused room still drew exactly one reply per message, and Nudge/Skip silently cleared the pause to work at all. NEW `lib/services/chat-message/paused-hold.ts` (`shouldHoldUserTurnForPause` — a 3-input predicate: an explicit summons runs, `neverPauseForUser` autonomous rooms opt out, otherwise a persisted `isPaused` holds) is consulted ONCE in `orchestrator.service.ts` (+102) and returns through `finishHeldUserTurn` **at the seam between recording the user's message and preparing a character's turn**: attachments, staged tool results, RNG auto-detect, danger flags and inline Carina queries all still fire; `requestFullContextOnNextMessage` is NOT spent and the Prospero cadence whisper is NOT posted → v5's `processMessage` spine (Phase 3 / P4.2). `streaming.service.ts` adds `heldUserTurn` beside P4.D160's `paused` on the chain-complete frame (raised on the FIRST held message of each pause) → v5's `chain_complete` encoder + the P4.D161 toast/banner surface. **Nudge and Skip no longer clear the pause** and `triggerContinueMode`'s `isPaused` guard is deleted — v4 amended `bugs/fixed/bug-123-…md` to say so, so **P4.D160/P4.D161's ported "Skip lifts a pause silently" is now WRONG**, and the 2026-09-06 dogfood walk proved that old behavior live: expect the beat and its pins to trip by design. Three riders: **138** `stableTriggerContinueMode` declared one parameter around a two-parameter ref so `nudge` never reached the server; **139** the all-LLM `Continue` now awaits the resume before requesting the next speaker (the server reads `isPaused` when that request arrives); **140** dead `isPaused`/`onTogglePause` props threaded into every `MessageRow` (deleted — a v5 NO-COUNTERPART candidate, measure first). `useTurnManagement`/`useChatControls`/`SalonView`/`VirtualizedMessageList` → v5's salon turn controls. Four `help/` files. Autonomous rooms (`runState`, `neverPauseForUser`) and the Courier are explicitly unaffected. ⚠ v4's own filings (the operator asked what Pause changes) — not convergences | ORDERED(P4.D186, P4.D187) |
+| `f90144ac4` | 2026-09-14 | fix(llm): a silent provider no longer wedges chat creation (bug 141) | **PORT — and v5 very likely HAS the bug, by the same mechanism.** A provider accepted the streaming request, answered with headers, and then sent no body; the `for await` never advanced, `POST /api/v1/chats` never responded, and the non-dismissable Green Room held the window (observed on `Friday`: one ESTABLISHED DeepSeek socket on the same fd for eleven minutes, empty queues, idle loop, no `llm_logs` row). **Why every existing budget missed it:** an SDK-backed provider's own timeout stops at the response HEADERS — which is what makes it safe to apply on a streaming path and useless once they have landed. That is precisely **P4.D42's shape in v5** (the streaming bound is deliberately first-byte-only; `TransportPolicy` + the 300 s default sit on the REQUEST), so the gap is inherited — v4's own `bugs.md` marks the v5 status "**Applies**". NEW `lib/llm/stream-watchdog.ts` (+139) wraps the stream and budgets each `next()` separately: first chunk generous (240 s — a long context with extended thinking legitimately takes minutes), gaps tight (120 s), **per-gap and never cumulative** so a long generation is never cut for being long and a thinking model's reasoning deltas count as chunks; the greeting takes 90 s/60 s, being short and running behind the blocking dialog. Applied at BOTH `provider.streamMessage` call sites → v5's primary stream + the greeting path (`lib/chat/initial-greeting.ts`, which v4 notes is the one streaming consumer that bypasses `streaming.service.ts`). `LLMStreamStalledError` is NAMED, not merely messaged, and that buys three things to port together: `classifyFallbackTrigger` reads it as `network` beside `CheapLLMTimeoutError` so a Salon turn reaches its understudy → v5 `classify_fallback_trigger` (P4.D135/P4.D136); the greeting ladder in `app/api/v1/chats/route.ts` (+36) **ends on the first stall on the participant's own profile** (attempts 1, 2 and 4 are that one profile three times over) while a stall at the Concierge's uncensored desk is scoped OUT (different profile, different provider) → v5's greeting ladder + the `chat_create_capstone` family, whose `stream_calls`/attempt comparands are exactly what measures this; and a silence becomes distinguishable in the logs from a refusal. ⚠ The stalled request is **abandoned, not cancelled** — the plugin owns its SDK client and a generator suspended at an `await` cannot be resumed from outside; real cancellation needs an `AbortSignal` on `LLMParams` and a plugin-types contract change, explicitly NOT done here (v5's abort-arming deferral from P4.44 is the neighbour). Two `help/` files. ⚠ Overlaps the in-flight round: `streaming.service.ts` is also P4.D186's file — neighbouring hunks, not a conflict. Not a convergence (the human reported it from the Electron shell; v4 filed and fixed it the same day) | UNPROCESSED |
+| `85813ddd2` | 2026-09-14 | fix(tooling): the native-binding ABI heal now actually rebuilds | **NO-PORT?** — v4's Node toolchain only: `jest.global-setup.js` and `packages/quilltap/lib/native-modules.js`, plus one new test. No `lib/`, `app/`, `components/`, `migrations/` or `public/` delta. The concern has **no v5 analog** — v5 links the SQLite3MC amalgamation statically through `quilltap-sqlite3mc-sys`, so there is no `NODE_MODULE_VERSION` to mismatch and the CLI's Rust `db` family cannot reach this code (the new console sentences fire only on an ABI mismatch, so Tier R is unmoved — confirm 188/188 or the then-current count at ratification). **Two things it is worth knowing about, though:** (1) it repairs a heal our own oracle runs depend on — `harness/oracle/lib/jest-zone-globalsetup.cjs` deliberately CHAINS v4's `jest.global-setup.js` resolved from the regen cwd, and v4's heal had been announcing success while rebuilding a phantom directory (`npm rebuild` refused with EALLOWSCRIPTS for the root alias, and allowed-but-inert for the other spelling); the new `rebuildNativePackage` addresses the package by DIRECTORY, runs its own `prebuild-install || node-gyp rebuild` chain in place, and **verifies the compiled ABI actually moved** rather than trusting the exit code. (2) ⚠ **Under PIN REQUIRED a pinned worktree chains the PINNED tree's copy** — i.e. the old, silently-inert heal — so if a Node upgrade lands before this row is ratified, a pinned regen will hit the stale-binding failure with a heal that claims success and does nothing (v4's own "worse than an error"). Symptom to recognize: real-binding oracle cases failing at setup with `NODE_MODULE_VERSION`, after a green-looking rebuild line. Workaround: rebuild by directory from the MAIN checkout before regenerating | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
