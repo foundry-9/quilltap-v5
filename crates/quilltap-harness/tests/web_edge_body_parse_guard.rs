@@ -127,13 +127,20 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-web/src/characters_routes.rs",
-        6,
-        "FAITHFUL, measured (P4.60 unit 2): NONE of the six reads caller input. \
-         The export leg's `format` is a QUERY parameter and \
-         `defaultImageId`/`name` are ENTITY fields v4 reads off the typed \
-         character record (v4 `handlers/get.ts:72-98`); the ST-import PNG leg's \
-         three read the server's OWN echo. The sixth occurrence is the comment \
-         naming what `parse_photo_save_by_id_body` replaced.",
+        7,
+        "FAITHFUL, measured (P4.60 unit 2, + P4.D185's seventh): NONE of the \
+         seven reads caller input. The export leg's `format` is a QUERY \
+         parameter and `defaultImageId`/`name` are ENTITY fields v4 reads off \
+         the typed character record (v4 `handlers/get.ts:72-98`); the ST-import \
+         PNG leg's three read the server's OWN echo; the sixth occurrence is \
+         the comment naming what `parse_photo_save_by_id_body` replaced. The \
+         SEVENTH (P4.D185, v4 `4dcbe0d21`) is `avatar_roll_item_delete` reading \
+         `deleted` off the CORE'S OWN response to turn v4's `if (!result. \
+         deleted) return notFound('Avatar roll')` into a 404 — the value was \
+         built by `DeleteAvatarRollOutput::to_json` two frames earlier, so \
+         there is no caller and no wrong type to collapse. The avatar-rolls \
+         edges read no request body at all: the collection GET is a QUERY gate \
+         and both item routes carry their input in the PATH and `?action=`.",
     ),
     (
         "crates/quilltap-web/src/qtap_target_route.rs",

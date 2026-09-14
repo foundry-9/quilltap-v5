@@ -124498,6 +124498,18 @@ three `character_id`s and two `file_id`s), plus THREE new census rows —
 envelope, never a parse). ⚠ P4.D183 moves the same constant; the unifier
 recounts as base + both deltas.
 
+**A SECOND census moved, and the guard caught it at the unified gate rather
+than at the unit:** `web_edge_body_parse_guard`'s `COLLAPSE_CENSUS` row for
+`characters_routes.rs` goes **6 → 7**. The new site is
+`avatar_roll_item_delete` reading `deleted` off the CORE'S OWN response, to
+turn v4's `if (!result.deleted) return notFound('Avatar roll')` into a 404 —
+the value was built by `DeleteAvatarRollOutput::to_json` two frames earlier, so
+there is no caller and no wrong type to collapse. Adjudicated FAITHFUL in the
+row's prose, which now also records that the avatar-rolls edges read **no
+request body at all**: the collection GET is a query gate and both item routes
+carry their input in the PATH and `?action=`. Flagged for the unifier because
+the file is shared, exactly like the dispatch census.
+
 ### Deferrals — loud, typed, named
 
 - **The SPA section is P4.D188's** (§C.6's client half). Nothing in this lane
@@ -124532,3 +124544,106 @@ recounts as base + both deltas.
   rewrite_fixture_user_ids` wrapper (the venue's existing private helper, made
   reachable). Flagged because the file is shared scaffolding, not because it is
   contested.
+
+### Regen recipes (P4.D185)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d185-31436bae4      # the target pin (every regen here)
+V5W=<this worktree> ; N=~/.nvm/versions/node/v24.13.1/bin
+
+# 1. the NEW committed fixture (rebuild → fresh minted ids; the sidecar carries
+#    them, and the oracle MUST be regenerated after any rebuild)
+cd "$PIN"
+TZ=UTC \
+QT_FIXTURE_AR_MAIN=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-main.db \
+QT_FIXTURE_AR_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-avatar-rolls-fixture.ts
+rm -f $V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-*.db-journal
+
+# 2. the avatar-rolls oracle — 23 service cases + 21 route cases, ONE file
+TMPO=/tmp/qt-avatar-rolls-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/avatar-rolls-tier2.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/avatar-rolls.json       "$TMPO/fixtures/"
+cd "$PIN"
+TZ=UTC \
+QT_FIXTURE_AR_MAIN=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-main.db \
+QT_FIXTURE_AR_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-mount.db \
+QT_FIXTURE_AR_META=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-main.db.meta.json \
+QT_ORACLE_OUT=/tmp/oracle-avatar-rolls.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "cases/avatar-rolls-tier2\.test\.ts$"
+
+# 3. the characters-reads oracle (the predicate's red-first arms live here)
+TMPC=/tmp/qt-p4d185-chars-oracle
+rm -rf "$TMPC"; mkdir -p "$TMPC/cases" "$TMPC/fixtures"
+cp $V5W/harness/oracle/cases/characters-reads.test.ts "$TMPC/cases/"
+cp $V5W/harness/oracle/fixtures/characters.json       "$TMPC/fixtures/"
+cd "$PIN"
+TZ=UTC \
+QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
+QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-characters-reads.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPC/cases" -- "cases/characters-reads\.test\.ts$"
+
+# 4. the three diffs
+cd "$V5W"
+QT_ORACLE_AVATAR_ROLLS=/tmp/oracle-avatar-rolls.ndjson \
+  cargo test -p quilltap-harness --test avatar_rolls_tier2_equivalence
+QT_ORACLE_AVATAR_ROLLS=/tmp/oracle-avatar-rolls.ndjson \
+  cargo test -p quilltap-web --test avatar_rolls_routes
+QT_ORACLE_CHARACTERS_READS=/tmp/oracle-characters-reads.ndjson \
+  cargo test -p quilltap-harness --test characters_reads_equivalence
+```
+
+⚠ The jest `--` filters are ANCHORED on purpose: an unanchored `avatar-rolls`
+also matches v4's OWN `__tests__/unit/lib/photos/avatar-rolls-service.test.ts`
+and runs it alongside.
+
+⚠ **Rebuilding the fixture invalidates the oracle** (fresh vault mount ids and
+link ids) — always run step 2 after step 1. No OTHER family reads the
+`avatar-rolls-*` pair, so nothing else is invalidated by a rebuild.
+
+⚠ `avatar_rolls_routes` needs `ProductionSpineFactory` in its `HostConfig` — the
+venue has no spine by default and the one byte-copying case then answers
+`has empty bytes`. That wiring is deliberate and doubles as the seam's probe.
+
+### The lane gate (P4.D185)
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0 TZ=UTC` and
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d185-31436bae4`; the §2 freshness probe re-run
+immediately before it and passing (branch `main`, tree clean, both logs empty).
+
+| step | result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace` | **561 test binaries / 3,218 passed / 0 failed / 2 ignored**, exit 0, **ZERO `SKIP:` lines** |
+
+The lane's five affected families confirmed RUN by name and by non-zero work,
+not by silence: `avatar_rolls_tier2_equivalence` 2 passed (0.15 s),
+`avatar_rolls_routes` 1 passed (22.19 s — twenty-one servers), 
+`characters_reads_equivalence` 1 passed (0.07 s), `web_edge_body_parse_guard`
+2 passed, `dispatch_wrong_type_census` 4 passed.
+
+⚠ A naive `grep -c FAILED` over the log answers **4**, and all four are the
+boot WARN line `…; FAILED-status exclusion disabled`. `grep -c "test result:
+FAILED"` is **0** and cargo's exit is 0 — the standing lying-grep trap, firing
+live.
+
+**The first gate run went RED on one test, and it was the guard working:**
+`web_edge_body_parse_guard` counted a seventh `and_then(Value::as_` in
+`characters_routes.rs` and refused to let the number move without an argument.
+Adjudicated (above) rather than spelled around, which is the whole point of
+the census.
+
+No `apps/web/**` file is touched, so **no e2e is owed** by this lane.
+
+⚠ **Disk pressure is a shared, cross-lane condition, not a finding:** free
+space on this machine fell to 11 GB mid-gate with four lanes' `target/`
+directories live (this one peaked near 17 GB). It recovered to 21 GB when a
+sibling finished and nothing failed on `os error 28`, but a fifth concurrent
+lane would not have fit. This lane's `target/` is removed at hand-off.

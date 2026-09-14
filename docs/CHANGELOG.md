@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — test(web-edge): adjudicate the avatar-rolls delete route's response read into the collapse census
+
+_Versions: harness 0.0.790._
+
+`web_edge_body_parse_guard`'s `COLLAPSE_CENSUS` row for `characters_routes.rs`
+goes 6 to 7. The seventh site is `avatar_roll_item_delete` reading `deleted` off
+the core's OWN response, to turn v4's `if (!result.deleted) return
+notFound('Avatar roll')` into a 404 — the value was built by
+`DeleteAvatarRollOutput::to_json` two frames earlier, so there is no caller and
+no wrong type to collapse. Adjudicated FAITHFUL in the row's prose, which now
+also records that the avatar-rolls edges read no request body at all.
+
+The guard caught this at the unified gate and refused to let the number move
+without an argument, which is exactly its job.
+
+Also here: the lane record's gate block and the order's status header.
+
 #### 2026-09-14 — docs(drift): two more v4 commits at the round's unification — bug 142 filed and fixed, a convergence onto P4.D183's pin
 
 _Docs-only change._
