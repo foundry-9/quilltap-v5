@@ -1052,6 +1052,20 @@ a plain one on the same millisecond.
 
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
+#### 2026-09-14 — feat(characters): mount the Avatar Rolls section in the Photo Gallery tab
+
+_Versions: SPA 0.5.710._
+
+The section goes where v4 puts it: below the album grid, above the album's own
+detail modal, as a sibling of the grid rather than a child of the tab's
+`space-y-4` stack — v4's parent there is a plain div, and the stack's
+`margin-top` would override the section's own `mt-8`.
+
+v4 passes the gallery's own `onAvatarChange` / `onRefresh` straight down. v5's
+tab holds the portrait pointer in the shared `characterKeys.detail` query
+rather than in a prop, so "the avatar changed" is "re-read the character", and
+"refresh" is the album re-read.
+
 #### 2026-09-14 — feat(characters): the Avatar Rolls section in a character's Photo Gallery tab
 
 _Versions: SPA 0.5.709._

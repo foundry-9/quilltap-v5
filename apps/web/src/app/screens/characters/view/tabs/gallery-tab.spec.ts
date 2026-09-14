@@ -33,6 +33,9 @@ interface SeenRequest {
 function stubClient(options: {
   photos: CharacterPhoto[];
   defaultImageId?: string | null;
+  /** Avatar rolls for the mounted section (P4.D188); default: none. */
+  rolls?: Record<string, unknown>[];
+  rollActionReply?: Record<string, unknown>;
   onRequest?: (req: SeenRequest) => void;
 }): Partial<CoreClient> {
   return {
@@ -40,6 +43,13 @@ function stubClient(options: {
       options.onRequest?.(req);
       if (req.type === 'characterPhotoList') {
         return { entries: options.photos, total: options.photos.length, hasMore: false };
+      }
+      if (req.type === 'characterAvatarRollList') {
+        const rolls = options.rolls ?? [];
+        return { entries: rolls, total: rolls.length, hasMore: false };
+      }
+      if (req.type === 'characterAvatarRollAction') {
+        return options.rollActionReply ?? {};
       }
       if (req.type === 'characterGet') {
         return {
@@ -394,5 +404,98 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
       entityId: 'c1',
       imageId: 'link-1',
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // The Avatar Rolls section (P4.D188) — v4 `EmbeddedPhotoGallery.tsx:178-184`
+  // -------------------------------------------------------------------------
+
+  it('mounts the rolls section below the album grid and above the album modal', async () => {
+    const fixture = await render(
+      stubClient({
+        photos: [entry({ linkId: 'a' })],
+        rolls: [
+          {
+            fileId: 'f1',
+            rollLinkId: 'rl1',
+            albumLinkId: null,
+            fileName: 'plate.webp',
+            url: '/api/v1/mount-points/mp-1/blobs/images%2Fhistory%2Fa.webp',
+            mimeType: 'image/webp',
+            fileSizeBytes: 10,
+            width: null,
+            height: null,
+            createdAt: '2026-09-12T00:00:00.000Z',
+            generationPrompt: null,
+            generationModel: null,
+            sha256: 'x',
+            isPortrait: false,
+            usedInChatCount: 0,
+          },
+        ],
+      }),
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    const section = host.querySelector('qt-avatar-rolls-section');
+    expect(section).not.toBeNull();
+    expect(section!.textContent).toContain('Avatar Rolls');
+    // Order: the album grid comes first in document order, the section after.
+    const grid = host.querySelector('.grid')!;
+    expect(grid.compareDocumentPosition(section!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('stays silent when the character has no rolls — the section renders nothing', async () => {
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'a' })] }));
+    const section = (fixture.nativeElement as HTMLElement).querySelector(
+      'qt-avatar-rolls-section',
+    );
+    // The host element mounts; its content does not.
+    expect(section).not.toBeNull();
+    expect(section!.textContent!.trim()).toBe('');
+  });
+
+  it('re-reads the character when the section promotes a roll to the portrait', async () => {
+    const seen: SeenRequest[] = [];
+    const fixture = await render(
+      stubClient({
+        photos: [entry({ linkId: 'a' })],
+        rolls: [
+          {
+            fileId: 'f1',
+            rollLinkId: 'rl1',
+            albumLinkId: null,
+            fileName: 'plate.webp',
+            url: '/blob',
+            mimeType: 'image/webp',
+            fileSizeBytes: 10,
+            width: null,
+            height: null,
+            createdAt: '2026-09-12T00:00:00.000Z',
+            generationPrompt: null,
+            generationModel: null,
+            sha256: 'x',
+            isPortrait: false,
+            usedInChatCount: 0,
+          },
+        ],
+        rollActionReply: { linkId: 'album-9', addedToAlbum: true },
+        onRequest: (r) => seen.push(r),
+      }),
+    );
+    const before = seen.filter((r) => r.type === 'characterGet').length;
+    const header = (fixture.nativeElement as HTMLElement).querySelector(
+      'qt-avatar-rolls-section button[aria-expanded]',
+    ) as HTMLButtonElement;
+    header.click();
+    await flush(fixture);
+    (
+      (fixture.nativeElement as HTMLElement).querySelector(
+        'qt-avatar-rolls-section button[title="Set as avatar"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flush(fixture);
+    // `avatarChange` invalidates the shared detail query, so the character is
+    // read again — v4 hands the section this tab's own `onAvatarChange`.
+    expect(seen.filter((r) => r.type === 'characterGet').length).toBeGreaterThan(before);
   });
 });

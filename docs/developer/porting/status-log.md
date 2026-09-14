@@ -125200,3 +125200,25 @@ reaches the delete tooltip and appears nowhere in the tile's text.
 | M4 | single-click delete | the seven delete-sequence rows |
 | M5 | a 2 000 ms disarm | exactly the disarm-boundary row |
 | M6 | drop the `; ` joiner in the tooltip | exactly the both-clauses row |
+
+### Unit 3 — the mount
+
+`gallery-tab.ts` mounts `<qt-avatar-rolls-section>` where v4 mounts it
+(`EmbeddedPhotoGallery.tsx:178-184`): below the album grid, above the album's
+own `ImageDetailModal`. It is a SIBLING of the `space-y-4` stack rather than
+its last child — v4's parent there is a plain `<div>`, and Tailwind's
+`space-y-4 > :not([hidden]) ~ :not([hidden])` selector out-specifies `.mt-8`,
+so mounting inside the stack would have silently halved the section's top
+margin.
+
+v4 hands the section the gallery's own `onAvatarChange` / `onRefresh` props.
+v5's tab holds the portrait pointer in the shared `characterKeys.detail`
+query rather than in a prop, so the two map to `refreshCharacter()` and the
+`characterKeys.photos` invalidation respectively.
+
+Specs (3 new in `gallery-tab.spec.ts`; the file's `stubClient` gained
+`rolls` / `rollActionReply` options, both defaulting to "no rolls" so every
+pre-existing beat is unaffected): the section mounts and follows the grid in
+document order; with no rolls the HOST mounts but its content does not (the
+`return null` arm, seen from the tab); and promoting a roll to the portrait
+re-reads the character through the shared detail query.

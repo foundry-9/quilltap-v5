@@ -26,6 +26,7 @@ import {
   uploadCharacterPhoto,
 } from '../../characters.api';
 import { ToastService } from '../../../../ui/toast.service';
+import { AvatarRollsSection } from './avatar-rolls-section';
 
 /** v4 `EmbeddedPhotoGallery` THUMBNAIL_SIZES / DEFAULT_THUMBNAIL_INDEX (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
@@ -59,7 +60,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
 @Component({
   selector: 'qt-character-gallery-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, LoadingState, ImageDetailModal],
+  imports: [Icon, LoadingState, ImageDetailModal, AvatarRollsSection],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -228,6 +229,19 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
         </div>
       }
     </div>
+
+    <!-- v4 EmbeddedPhotoGallery:178-184 — the rolls section sits BELOW the
+         album grid and ABOVE the album's own detail modal. It is a sibling of
+         the grid rather than a child of the space-y-4 stack, because v4's
+         parent is a plain div and the stack's own margin-top would override
+         the section's mt-8. -->
+    <qt-avatar-rolls-section
+      [characterId]="characterId()"
+      [entityName]="entityName()"
+      [thumbnailSize]="thumbnailSize()"
+      (avatarChange)="onRollAvatarChange()"
+      (refresh)="onRollRefresh()"
+    />
 
     <!-- v4 EmbeddedPhotoGallery:170-196 — the deep detail modal; the ONLY
          host passing onAvatarSet, and linkId = the tile's own id, so the
@@ -437,6 +451,24 @@ export class CharacterGalleryTab {
     } finally {
       this.deletingImage.set(null);
     }
+  }
+
+  /**
+   * v4 passes this tab's OWN `onAvatarChange` / `onRefresh` straight down to
+   * the rolls section (`EmbeddedPhotoGallery.tsx:178-184`). v5's tab holds the
+   * portrait pointer in the shared `characterKeys.detail` query rather than in
+   * a prop, so "the avatar changed" IS "re-read the character", and "refresh"
+   * is the album re-read the section's own three invalidations do not cover
+   * from here.
+   */
+  protected async onRollAvatarChange(): Promise<void> {
+    await this.refreshCharacter();
+  }
+
+  protected async onRollRefresh(): Promise<void> {
+    await this.queryClient.invalidateQueries({
+      queryKey: characterKeys.photos(this.characterId()),
+    });
   }
 
   /** v4 `:189-195` — the modal set an avatar: refetch photos + the character. */
