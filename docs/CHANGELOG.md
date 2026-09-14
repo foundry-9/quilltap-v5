@@ -1052,6 +1052,26 @@ a plain one on the same millisecond.
 
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
+#### 2026-09-14 — test(e2e): the Show shared walk, and the gated Avatar Rolls walk
+
+_Versions: SPA 0.5.712._
+
+`wardrobe-flow.spec.ts` gains a LIVE Show-shared beat, placed directly after
+the container-selector beat that creates a garment in Quilltap General: that
+row is what appears badged in Aria's merged view, so the toggle has a
+population to govern. It asserts the badged count before, zero after
+unticking, the same count restored, the archived checkbox untouched
+throughout, and the tickbox absent when browsing a shared container.
+
+NEW `character-avatar-rolls-flow.spec.ts` walks the rolls section end to end —
+expand, keep, set as avatar, discard twice, and the section's disappearance
+with the last plate, which is the `return null` arm. It is gated on
+`P4D185_SERVER_LANDED` and skips at describe level, since the three verbs are
+P4.D185's and the `files.generationKey` column its seed plants is P4.D182's.
+The seed shape is spelled out in the spec header: a keyed, character-tagged
+`files` row plus a mount blob and an `images/history/` vault link, planted
+with the CLI before the server boots.
+
 #### 2026-09-14 — feat(wardrobe): a "Show shared" tickbox in the wardrobe dialog
 
 _Versions: SPA 0.5.711._

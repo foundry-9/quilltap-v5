@@ -125256,3 +125256,45 @@ drop.
 | M8 | filter by `item.characterId` instead of `canManageItem` | exactly the drift-guard row |
 | M9 | render the tickbox in container scope too | exactly the container-scope row |
 | M10 | make the archived reload effect track `showShared` | exactly the no-fetch row |
+
+### Unit 5 — the e2e beats
+
+**LIVE: the Show-shared beat** (`wardrobe-flow.spec.ts`, serial position
+directly after the container-selector beat). That neighbour creates a garment
+in Quilltap General; the merged character view then carries it badged
+`· shared`, which is the population the toggle governs. The beat asserts the
+badged count before (> 0, with the reason named in the assertion message), 0
+after unticking with her own row still there, the archived checkbox unchecked
+throughout (v4's second jest title), the same count restored on re-ticking,
+and — after switching to the General container — the tickbox gone while the
+archived one stays. The counts are asserted rather than the garment names,
+because what the preceding beats leave in the shared tiers is their business;
+the contract is "every badged row goes, every unbadged row stays".
+
+**GATED: `character-avatar-rolls-flow.spec.ts`** behind
+`P4D185_SERVER_LANDED = false`, at DESCRIBE level (the `P4.6t — Memories tab`
+precedent), so no hook runs and no server is spawned while it is false. One
+walk, because every beat depends on the last: expand → keep (the toast, the
+filled-and-disabled bookmark, the album gaining a tile, the tooltip acquiring
+its album-copy clause) → set as avatar (the toast, the Avatar badge, the
+Set-as-avatar button disappearing from the portrait tile) → discard twice (the
+kept-copy sentence, the section vanishing with the last plate — the `return
+null` arm — and the album copy still standing).
+
+**⚠ The seed is UNVALIDATED and the unifier must run it.** The beat plants a
+roll with the CLI before the server boots — three rows, spelled out in the
+spec header: a `files` row with `category = 'IMAGE'`, a non-null
+`generationKey` and Aria's id inside the JSON `tags` array (v4's whole
+definition of a roll: `avatar-rolls-service.ts:329-331` plus
+`findRollsForCharacter`'s `files.findByTag`, with NO path predicate); a
+`doc_mount_blobs` row; and a `doc_mount_file_links` row under
+`images/history/` in her vault. **`files.generationKey` does not exist on this
+branch** — it is P4.D182's column — so the INSERT cannot be executed here and
+the SQL has not been run even once. It was written against the schema's own
+DDL (`fresh_schema.json`) and Aria's ids are resolved by NAME rather than
+transcribed, since the fixture builder mints them. Expect to debug it at
+activation.
+
+Two shapes were corrected while writing it: the CLI's mount-partition flag is
+`--mount-points`, not a `--database` value; and the first draft transcribed a
+literal `char-aria`, which the fixture never mints.

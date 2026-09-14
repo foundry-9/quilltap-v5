@@ -635,6 +635,74 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
   });
 
   /**
+   * P4.D188 — the "Show shared" tickbox (v4 `055cac45a`), LIVE.
+   *
+   * Serial position matters: this beat runs directly after the container
+   * selector beat, which creates a garment in Quilltap General. That row then
+   * appears in Aria's MERGED character view badged `· shared`, which is the
+   * whole population the toggle governs. Her own garments carry no badge.
+   *
+   * The assertions are counts rather than names on purpose — the shared
+   * population is whatever the preceding beats have left in the shared tiers,
+   * and the contract is "every badged row goes, every unbadged row stays",
+   * not "this particular garment goes".
+   */
+  test('the Show shared tickbox hides the merged shared rows and leaves the archived toggle alone (P4.D188)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const dialog = page.getByRole('dialog');
+    const rows = dialog.locator('.qt-card-interactive');
+    const sharedRows = rows.filter({ hasText: '· shared' });
+    const ownRows = dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' });
+
+    const sharedBox = dialog.locator('label').filter({ hasText: 'Show shared' }).locator('input');
+    const archivedBox = dialog
+      .locator('label')
+      .filter({ hasText: 'Show archived' })
+      .locator('input');
+
+    // Default ON, and the merged view carries at least one borrowed row.
+    await expect(sharedBox).toBeChecked();
+    await expect(ownRows).toHaveCount(1);
+    const sharedBefore = await sharedRows.count();
+    expect(
+      sharedBefore,
+      'the container-selector beat should have left a Quilltap General garment for Aria to inherit',
+    ).toBeGreaterThan(0);
+
+    // Untick: every badged row goes, her own stays.
+    await sharedBox.uncheck();
+    await expect(sharedRows).toHaveCount(0);
+    await expect(ownRows).toHaveCount(1);
+    // The archived toggle is untouched by all of this (v4's second test).
+    await expect(archivedBox).not.toBeChecked();
+
+    // Re-tick: the borrowed rows come back. Hiding is a view filter, not a
+    // fetch — the same count, from the list already in hand.
+    await sharedBox.check();
+    await expect(sharedRows).toHaveCount(sharedBefore);
+    await expect(archivedBox).not.toBeChecked();
+
+    // Browsing a shared container directly, the tickbox is not there at all:
+    // every listed row already belongs to the container on display.
+    await dialog.locator('#wardrobe-container-select').selectOption('general:');
+    await expect(dialog.getByText('Browsing a shared wardrobe', { exact: false })).toBeVisible();
+    await expect(
+      dialog.locator('label').filter({ hasText: 'Show shared' }),
+    ).toHaveCount(0);
+    await expect(dialog.locator('label').filter({ hasText: 'Show archived' })).toHaveCount(1);
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  /**
    * P4.D113 tier-2 (c) — the component prompt and the copy+move refusal, LIVE
    * in the character view (where this fixture DOES have a writable container).
    * v4 makes the illegal combination unreachable rather than surfacing it as
