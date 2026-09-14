@@ -22,7 +22,8 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `f4ad2c8d1`: 124 files — the
+/// The shipped tree at the vendored pin (v4 `31436bae4`: still 124 files —
+/// that round modified EIGHT and added none; v4 `f4ad2c8d1`: 124 files — the
 /// P4.D179 re-vendor added `help/impersonation-voice.md` and re-took four
 /// edited files across `686954937` + `f4ad2c8d1`; 123 at `78b381a96` after
 /// P4.D175's `help/chat-gallery.md`; 122 at `25f534c0b` after P4.D168's

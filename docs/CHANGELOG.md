@@ -58,6 +58,31 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — chore(vendor): re-vendor the `.qtap` export schema and the eight edited help pages at `31436bae4`
+
+_Versions: core 0.0.898, harness 0.0.785, host 0.0.131._
+
+Two vendored artifacts catch up with the round's target. `qtap-export.schema.json`
+gains v4's `generationKey` property on the file-entry shape (92,797 → 93,384
+bytes), which clears the standing red the drift ledger recorded: the embed
+guard has been failing against the live checkout since `7fbf8a55b` landed, by
+design, and that redness was the obligation. It is green at the target pin and
+red at the baseline pin — both measured.
+
+The `help/` tree takes the eight files the round's commits edited
+(`character-gallery`, `chat-multi-character`, `chat-participants`,
+`chat-settings`, `chat-turn-manager`, `chats`, `tabbed-workspace`, `wardrobe`)
+— 162 insertions, 39 deletions, and a file count that stays at 124 because
+none was added. All fifteen help families were regenerated from the pin and
+pass, with the new content reaching the content oracle.
+
+A correction rides along: `help_tree_embed_guard` compares the embedded table
+with the repo's own tree, not with `QT_V4_ROOT`, so it stays green through a
+v4 commit that edits help files without adding one — which is exactly what
+this round did. Its header now says so and names `help_tree_equivalence` as
+the content comparand, so the next reader does not mistake a green size guard
+for a fresh vendor.
+
 #### 2026-09-14 — feat(files): carry `files.generationKey` through every read and write path
 
 _Versions: core 0.0.897, harness 0.0.784._

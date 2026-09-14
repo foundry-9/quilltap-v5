@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 
 /// The vendored size at v4 `78b381a96` (P4.D171 — the route-trail message
 /// field, `5841a8c62`; was 89,769 at `2f4254b42`).
-const VENDORED_BYTES: usize = 92_797;
+const VENDORED_BYTES: usize = 93_384;
 
 fn v4_root() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("QT_V4_ROOT") {

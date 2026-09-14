@@ -123442,3 +123442,36 @@ for the human, not a lane.** Flagged for the unifier.
   | drop the `ensure_chats_transcript_version_column` call from `host.rs` | all THREE host arms RED |
   | drop `main.execute_batch(GENERATION_KEY_INDEX_DDL)` | all three host arms RED + 4 of 5 module unit tests RED |
   | drop only the COLUMN arm of the files ensure | the two legacy arms RED, **setup GREEN** — which is the proof the two arms are measured independently, and that setup's green is not vacuous coverage of the column arm |
+
+### Units 6 + 7 — the two re-vendors
+
+- **`qtap-export.schema.json`**: 92,797 → **93,384 bytes**, the one added
+  property being v4's file-entry `generationKey` ("Travels as-is … Only avatar
+  rows carry one" — the sentence this lane's non-remap rule is written from).
+  `VENDORED_BYTES` and the `qtap_schema.rs` module-doc byte count move with
+  it. **Both directions measured:** GREEN with `QT_V4_ROOT` at the target pin,
+  RED at the baseline pin ("v4 92797 bytes, vendored 93384"). The standing red
+  the drift ledger's §1 recorded against the LIVE checkout is CLEARED.
+- **`help/**`**: the eight files `git diff --stat f4ad2c8d1 31436bae4 --
+  help/` names, byte-copied from the target pin — **162 insertions, 39
+  deletions, count still 124** (matching the survey exactly), `diff -r <pin>/
+  help help` EMPTY afterwards. All FIFTEEN help families regenerated at the
+  pin through the sweep driver: **15/15 ok**, and the new content is IN the
+  content oracle (`the room is still speaking` ×1 in
+  `/tmp/oracle-help-tree.ndjson`).
+- **Order-text correction #2 (for the unifier):** the order says
+  `help_tree_embed_guard` "compares CONTENT against `QT_V4_ROOT` — it is RED
+  against the target until the copies land". It does not. It compares the
+  build-time EMBEDDED table against the repo's OWN `help/` tree and pins the
+  file COUNT; with eight files edited and none added it was green before the
+  re-vendor and green after. Measured in both directions; the guard's header
+  now says so and names `help_tree_equivalence` (which does read v4's tree
+  from the pin) as the content comparand. The count constant's comment moves
+  to `31436bae4`.
+- **Mutations:** one byte of the vendored schema (`Travels as-is` →
+  `Travels as-was`) reddens BOTH `qtap_schema_embed_guard` arms; one byte of
+  `help/chats.md` reddens `help_tree_equivalence` at `docs[30]`. ⚠ The help
+  mutation first appeared to SURVIVE — because the family SKIPs silently
+  without `QT_ORACLE_HELP_TREE`, printing `ok` in 0.00 s. With the variable
+  set it reddens and the restored run takes 1.02 s. The
+  `a-family-env-var-is-not-its-regen-var` note, caught live.

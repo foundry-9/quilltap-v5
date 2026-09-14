@@ -18,7 +18,9 @@
 //!
 //! `qtap-export.schema.json` beside this file is a byte-copy of v4's
 //! `public/schemas/qtap-export.schema.json` at the oracle baseline
-//! (89,769 bytes, `$schema` draft 2020-12), embedded with `include_str!` —
+//! (93,384 bytes at `31436bae4`, which added the file-entry
+//! `generationKey` property — v4 `7fbf8a55b`; `$schema` draft 2020-12),
+//! embedded with `include_str!` —
 //! the `help/**` arrangement. **A v4 commit that touches that file is a
 //! re-vendor obligation**, and `qtap_schema_embed_guard` (harness) fires the
 //! moment the two diverge. Its 37 distinct `$ref`s are ALL local
