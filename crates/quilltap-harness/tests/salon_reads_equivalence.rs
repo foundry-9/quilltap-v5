@@ -110,7 +110,16 @@ fn strip_rendered_html(v: &mut Value) {
     {
         for m in msgs {
             if let Some(o) = m.as_object_mut() {
-                o.remove("renderedHtml");
+                // `shift_remove`, NOT `remove`: serde_json is built with
+                // `preserve_order`, so `Map::remove` is indexmap's SWAP-remove
+                // — it moves the LAST key into the removed slot. Stripping
+                // `renderedHtml` that way silently relocated
+                // `confirmationOriginalContent` from the end of every message
+                // to position 11, which made the v4 side's key order a
+                // fiction. Invisible until P4.D183 added the detail key-order
+                // pin below, because `norm` sorts keys away
+                // (`serde-json-map-remove-is-swap-remove`).
+                o.shift_remove("renderedHtml");
             }
         }
     }
@@ -524,6 +533,44 @@ fn salon_reads_match_oracle() {
         }
     } else {
         failed.push("list_all:keyOrder-case-missing".into());
+    }
+
+    // P4.D183: the same wire-order claim over the chat GET's DETAIL body.
+    //
+    // §C.1 places `transcriptVersion` "at v4's position" — directly after
+    // `messages`, before `projectId` (v4 `handlers/get.ts:375`) — and until
+    // this pin existed nothing held it there: `norm` sorts keys away, and the
+    // `list_all` pin above covers only the LIST. Measured by mutation at the
+    // lane: moving the key two slots later left the family GREEN.
+    //
+    // Pinned over every detail case, not just one, because the five differ in
+    // which optional keys they carry and a single case would let the others
+    // drift.
+    {
+        let detail_cases: Vec<&(String, Value, Value)> = cases
+            .iter()
+            .filter(|(n, _, _)| n.starts_with("get_"))
+            .collect();
+        assert!(
+            detail_cases.len() >= 4,
+            "the chat-GET key-order pin found only {} detail case(s) — it is \
+             named by the `get_` prefix and has gone vacuous",
+            detail_cases.len()
+        );
+        for (name, got, want) in detail_cases {
+            let mut got_paths = Vec::new();
+            key_paths(got, "", &mut got_paths);
+            let mut want_paths = Vec::new();
+            key_paths(want, "", &mut want_paths);
+            if got_paths != want_paths {
+                eprintln!(
+                    "[{name}] KEY ORDER MISMATCH:\n got {got_paths:#?}\n want {want_paths:#?}"
+                );
+                failed.push(format!("{name}:keyOrder"));
+            } else {
+                eprintln!("[{name}] key order OK ({} objects).", got_paths.len());
+            }
+        }
     }
 
     // P4.D143 §H: v4's unknown-action refusal on the same collection route. The

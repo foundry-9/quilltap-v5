@@ -65,6 +65,7 @@ pub mod roleplay_templates;
 pub mod salon;
 pub mod scenarios;
 pub mod settings;
+pub mod transcript_projection;
 // === P4.6z: system ===
 pub mod system;
 // === end P4.6z ===

@@ -58,6 +58,43 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — refactor(salon): the transcript projection becomes one module both readers share, and the chat GET carries transcriptVersion
+
+_Versions: core 0.0.902, harness 0.0.790._
+
+v4 `5029075bb` extracted `projectChatTranscript` out of the chat-GET handler
+(+324/−271) so the handler and the new conditional re-read cannot drift apart.
+v5 moves the same block — the message projection and the off-scene author
+cards — out of `assemble_chat_get` into `api/transcript_projection.rs`, moved
+rather than rewritten, with `project_message` / `resolve_message_attachments`
+left in `salon.rs` and called from it (v4's module imports its helpers too).
+
+**The neutrality was measured, not assumed** (§R.6(5)). The `salon_reads`
+oracle regenerated at the baseline and at the target differs by exactly five
+ADDED `transcriptVersion` keys with key order identical everywhere else, so v4
+moved the code without changing a byte; v5 is then held to the same bar —
+GREEN against the baseline oracle after the move and before the key, then
+green against the target once the key lands at v4's position (directly after
+`messages`, before `projectId`). The counter is read before the projection,
+after the pre-read side effects, for v4's stated reason: a version newer than
+the rows beside it would have a tab answered "unchanged" for a message it
+never received.
+
+Two harness fidelity fixes ride along, both found by adding the pin the
+contract needed:
+
+- **The chat-GET detail body had no key-order pin at all.** The family's `norm`
+  sorts keys away and the existing wire-order pin covers only `list_all`, so
+  `transcriptVersion`'s contractual position was unheld — proven by mutation
+  (moving it two slots left the family green). The pin now runs over every
+  `get_` case and reddens all five.
+- **That pin then caught the family's own normalizer corrupting v4's key
+  order.** `strip_rendered_html` used `Map::remove`, which under
+  `preserve_order` is indexmap's SWAP-remove: it moved the last key
+  (`confirmationOriginalContent`) into `renderedHtml`'s slot on every message,
+  so the v4 side's order was a fiction. `shift_remove` fixes it. v5 was
+  faithful all along.
+
 #### 2026-09-14 — test(import): retire P4.D182's transcript-counter tripwire; the column now diffs plainly
 
 _Versions: harness 0.0.789._

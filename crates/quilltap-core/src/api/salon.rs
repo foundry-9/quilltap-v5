@@ -16,7 +16,6 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
-use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
 use crate::services::dangerous_content::chat_override::{
     should_use_uncensored_route, ConciergeState,
 };
@@ -63,7 +62,7 @@ fn read_main_mount<T>(
     db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
 }
 
-fn s(v: &Value, key: &str) -> Option<String> {
+pub(super) fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
@@ -248,7 +247,7 @@ fn assemble_chat_get(
     chat_id: &str,
     user_id: &str,
 ) -> Result<Value, DbError> {
-    use crate::db::{chats_messages_read, projects::ProjectsRepository};
+    use crate::db::projects::ProjectsRepository;
 
     // Enriched participants (detail).
     let mut enriched_participants = Vec::with_capacity(participants.len());
@@ -258,67 +257,24 @@ fn assemble_chat_get(
         )?);
     }
 
-    // All messages, projected (minus renderedHtml). Attachments are resolved from
-    // linked `files` (+ image sha256/linkSummary); the mount-file (Scriptorium)
-    // `event.attachments` probe is a tracked deferral.
-    let events = chats_messages_read::get_messages(main, chat_id)?;
-    let mut messages: Vec<Value> = Vec::new();
-    for e in &events {
-        if e.get("type").and_then(Value::as_str) != Some("message") {
-            continue;
-        }
-        let attachments = match e.get("id").and_then(Value::as_str) {
-            Some(mid) => resolve_message_attachments(main, mount, mid)?,
-            None => Value::Array(Vec::new()),
-        };
-        messages.push(project_message(e, attachments));
-    }
+    // The counter is read HERE rather than taken from the `chat` row loaded
+    // before the terminal reconciliation and the operator-mail sweep above —
+    // both of which can post a message. Reading it now, still BEFORE the
+    // projection, keeps the version no newer than the rows it is handed out
+    // with: too old only ever costs the tab a redundant read, while too new
+    // would have it answered "unchanged" for a message it never received
+    // (v4 `handlers/get.ts:300-308`).
+    let transcript_version =
+        crate::db::chats::ChatsRepository::new(main).get_transcript_version(chat_id);
 
-    // Off-scene characters (customAnnouncer.characterId + carinaMeta.answererId
-    // non-participants), resolved via getCharacterDetail (4-field subset).
-    let participant_char_ids: std::collections::HashSet<String> = participants
-        .iter()
-        .filter_map(|p| s(p, "characterId"))
-        .collect();
-    let mut off_scene_ids: Vec<String> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    let push_off =
-        |id: &str, seen: &mut std::collections::HashSet<String>, out: &mut Vec<String>| {
-            if !participant_char_ids.contains(id) && seen.insert(id.to_string()) {
-                out.push(id.to_string());
-            }
-        };
-    for m in &messages {
-        if let Some(id) = m
-            .get("customAnnouncer")
-            .and_then(|c| c.get("characterId"))
-            .and_then(Value::as_str)
-        {
-            push_off(id, &mut seen, &mut off_scene_ids);
-        }
-        if let Some(id) = m
-            .get("carinaMeta")
-            .and_then(|c| c.get("answererId"))
-            .and_then(Value::as_str)
-        {
-            if id != BRAHMA_CARINA_ANSWERER_ID {
-                push_off(id, &mut seen, &mut off_scene_ids);
-            }
-        }
-    }
-    let mut off_scene_characters: Vec<Value> = Vec::new();
-    for cid in &off_scene_ids {
-        if let Some(detail) =
-            chat_enrichment::get_character_detail(main, mount, cid, Some(chat_id))?
-        {
-            off_scene_characters.push(json!({
-                "id": detail.id,
-                "name": detail.name,
-                "title": detail.title,
-                "avatarUrl": detail.avatar_url,
-            }));
-        }
-    }
+    // The transcript itself — attachments and the off-scene author cards — is
+    // projected by the one module the conditional re-read
+    // (`GET /api/v1/messages?chatId=…&action=transcript`) also uses, so the two
+    // reads of the same conversation cannot drift apart (v4 `5029075bb`).
+    let super::transcript_projection::TranscriptProjection {
+        messages,
+        off_scene_characters,
+    } = super::transcript_projection::project_chat_transcript(main, mount, participants, chat_id)?;
 
     // projectName + agent-mode cascade.
     let project = match s(chat, "projectId") {
@@ -452,6 +408,12 @@ fn assemble_chat_get(
     out.insert("participants".into(), enriched_participants_v);
     out.insert("user".into(), user);
     out.insert("messages".into(), Value::Array(messages));
+    // The counter that came back with this transcript. The Salon keeps it and
+    // hands it to `?action=transcript` on the next realtime hint, which is how
+    // an unchanged conversation is answered without being serialized again.
+    // v4 places it here — directly after `messages`, before `projectId`
+    // (`handlers/get.ts:375`) — and this family compares key ORDER.
+    out.insert("transcriptVersion".into(), json!(transcript_version));
     out.insert(
         "projectId".into(),
         get_v("projectId")
@@ -565,7 +527,7 @@ fn assemble_chat_get(
 /// Reproduces v4's `X || null` (falsy→null) vs `X ?? null`/`?? undefined`
 /// (nullish) operators exactly. `attachments` is resolved by the caller
 /// ([`resolve_message_attachments`]).
-fn project_message(e: &Value, attachments: Value) -> Value {
+pub(super) fn project_message(e: &Value, attachments: Value) -> Value {
     // `X || null` — falsy (null/false/0/"") collapses to null.
     let or_null = |k: &str| -> Value {
         match e.get(k) {
@@ -716,7 +678,7 @@ fn read_user_block(main: &rusqlite::Connection, user_id: &str) -> Result<Value, 
 /// and `linkSummary` for images via
 /// [`crate::photos::photo_link_summary::get_photo_link_summary_by_sha256`]). The
 /// mount-file (Scriptorium `event.attachments`) branch is a tracked deferral.
-fn resolve_message_attachments(
+pub(super) fn resolve_message_attachments(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     message_id: &str,
