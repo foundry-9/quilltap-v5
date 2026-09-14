@@ -1,0 +1,192 @@
+{
+  "$note": [
+    "Corpus for the tier-2 collapse-duplicate-avatar-rolls differential (P4.D184,",
+    "v4 7fbf8a55b). Read by BOTH sides: harness/oracle/cases/avatar-rolls-collapse-",
+    "heal.test.ts drives v4's REAL migration + REAL ledger write, and",
+    "crates/quilltap-harness/tests/avatar_rolls_collapse_heal_equivalence.rs drives",
+    "quilltap_core::db::avatar_rolls_collapse_heal over the same seeds.",
+    "",
+    "Scenarios 1-13 are v4's OWN thirteen test cases from",
+    "__tests__/unit/migrations/collapse-duplicate-avatar-rolls.test.ts, rebuilt as",
+    "data so the two implementations walk identical state. Three more (14-16) ask",
+    "the questions v4's suite does not: the cross-app ledger row, a pass with",
+    "nothing to collapse, and a roll whose storageKey names no blob.",
+    "",
+    "A roll seeds a `files` row PLUS its vault file/blob/link/chunk, exactly as",
+    "v4's `seedRoll` does. `noBlob: true` seeds the files row alone."
+  ],
+  "mountPointId": "mount-1",
+  "nowIso": "2026-09-14T12:00:00.000Z",
+  "scenarios": [
+    {
+      "name": "keeps-the-newest-and-deletes-the-rest",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "mid", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-03-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "keeps-configurations-apart",
+      "rolls": [
+        { "id": "coat-old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "coat-new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" },
+        { "id": "scarf", "prompt": "Solo portrait of a single woman: Friday. Wearing a red scarf.", "createdAt": "2026-02-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "same-prompt-different-model-is-a-different-configuration",
+      "rolls": [
+        { "id": "flux", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        {
+          "id": "sdxl",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z",
+          "model": "sdxl"
+        }
+      ]
+    },
+    {
+      "name": "keys-a-lone-roll-without-deleting-it",
+      "rolls": [{ "id": "only", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "name": "repoints-chat-avatars-and-character-overrides",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "chats": [
+        {
+          "id": "chat-1",
+          "characterAvatars": {
+            "char-1": { "imageId": "old", "generatedAt": "x", "afterMessageCount": 4 }
+          }
+        }
+      ],
+      "characters": [
+        {
+          "id": "char-1",
+          "avatarOverrides": [{ "chatId": "chat-1", "imageId": "old" }],
+          "defaultImageId": null
+        }
+      ]
+    },
+    {
+      "name": "repoints-a-lantern-announcement-and-the-uuid-it-quotes-inline",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "messages": [
+        {
+          "id": "msg-1",
+          "attachments": ["old"],
+          "content": "The new one is attached here, catalogued under uuid `old`, should anyone care to look.",
+          "opaqueContent": "A new portrait has been commissioned, catalogued under uuid `old`."
+        }
+      ]
+    },
+    {
+      "name": "leaves-unrelated-attachments-and-messages-alone",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "messages": [
+        {
+          "id": "msg-other",
+          "attachments": ["some-other-file"],
+          "content": "untouched",
+          "opaqueContent": null
+        }
+      ]
+    },
+    {
+      "name": "takes-the-deleted-rolls-chunks-link-blob-and-content-row-with-it",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "never-deletes-a-roll-a-character-names-as-its-portrait",
+      "rolls": [
+        { "id": "portrait", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "char-1", "avatarOverrides": null, "defaultImageId": "link-portrait" }
+      ]
+    },
+    {
+      "name": "ignores-rows-with-no-prompt-to-key-on",
+      "rolls": [{ "id": "no-prompt", "prompt": "", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "name": "ignores-files-that-are-not-avatars",
+      "rolls": [
+        {
+          "id": "backdrop",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "filename": "background_scene.webp"
+        }
+      ]
+    },
+    {
+      "name": "is-idempotent-a-second-pass-finds-nothing-left-to-do",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "runTwice": true
+    },
+    {
+      "name": "should-run-is-true-while-an-unkeyed-avatar-remains",
+      "rolls": [{ "id": "only", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" }]
+    },
+    {
+      "name": "a-ledger-row-from-the-other-app-runs-nothing",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "preCompleted": true
+    },
+    {
+      "name": "an-already-keyed-instance-has-nothing-to-run",
+      "rolls": [],
+      "chats": [{ "id": "chat-empty", "characterAvatars": null }]
+    },
+    {
+      "name": "a-roll-whose-storage-key-names-no-blob-still-collapses",
+      "rolls": [
+        {
+          "id": "ghost",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "noBlob": true
+        },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ]
+    },
+    {
+      "name": "a-null-model-and-a-missing-one-are-one-configuration",
+      "rolls": [
+        {
+          "id": "null-model-old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "model": null
+        },
+        {
+          "id": "null-model-new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z",
+          "model": null
+        }
+      ]
+    }
+  ]
+}

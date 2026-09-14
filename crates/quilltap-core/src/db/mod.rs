@@ -25,6 +25,7 @@ use crate::dbkey;
 
 pub mod api_keys;
 pub mod archetype_wardrobe;
+pub mod avatar_rolls_collapse_heal;
 pub mod background_jobs;
 pub mod character_archive_repair;
 pub mod character_plugin_data;

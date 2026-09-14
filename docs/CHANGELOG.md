@@ -302,6 +302,49 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+#### 2026-09-14 — feat(db): collapse duplicate avatar rolls into one image per configuration
+
+_Versions: core 0.0.903, harness 0.0.790, host 0.0.133._
+
+`db/avatar_rolls_collapse_heal.rs` is v5's home for v4's
+`collapse-duplicate-avatar-rolls-v1` (`7fbf8a55b`) — the data pass that brings
+existing avatars into the configuration cache. It groups every pre-cache roll by
+its v0 key through `avatar_cache::derive_legacy_avatar_cache_key` (the one
+derivation, never a second spelling), keys the newest of each configuration,
+repoints `chats.characterAvatars`, `characters.avatarOverrides` and
+`chat_messages.attachments` — plus the uuid a Lantern announcement quotes inline
+in `content`/`opaqueContent` — and then deletes the rest, taking each victim's
+chunks, links, document, blob and mount file with it.
+
+Two of v4's design decisions are carried rather than tidied. The pass is NOT one
+transaction: v4 says so in its own header, and grouping reads every avatar row
+whether or not it is already keyed, so an interrupted pass re-runs to the same
+survivor. And a blob that refuses to go leaves its `files` row in place with a
+warn, so the pair never drifts apart — which a rollback would undo.
+
+Rolls a character still names as its portrait are excluded from the victim list
+BEFORE grouping, not skipped at deletion time; skipping late would either strand
+a row whose bytes survived or leave it unkeyed and re-trigger the pass on every
+startup.
+
+The once-only guard is v4's own `migrations_state` ledger, and here there is no
+divergence to record: v4's runner checks the completed row before it calls
+`shouldRun`, and this migration's `shouldRun` tests for drift, so all three
+directions match — a row from either app skips the pass entirely, nothing unkeyed
+runs nothing and writes nothing, and a real pass writes one row a later v4 boot
+honours. The real Friday instance has already been collapsed by v4, so a v5 boot
+there must find that row and do nothing at all.
+
+NEW tier-2 `avatar_rolls_collapse_heal_equivalence` over a 17-scenario corpus —
+v4's own thirteen test cases rebuilt as data, plus four its suite does not ask
+(the cross-app ledger row, an instance with nothing to run, a roll whose storage
+key names no blob, and a null-vs-missing model) — driving v4's REAL migration and
+REAL ledger write at the `31436bae4` pin. The whole post-pass state of all nine
+tables is diffed, along with the ledger row's claims and both log-line sets.
+`host_boot_avatar_rolls_collapse` adds the wiring: a planted population IS
+collapsed on boot, a second boot changes nothing, and v4's own ledger row stops
+the pass dead.
+
 #### 2026-09-14 — feat(aurora): look the avatar configuration up before spending anything
 
 _Versions: core 0.0.902, harness 0.0.789, host 0.0.132._

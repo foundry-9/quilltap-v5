@@ -1456,6 +1456,48 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                     );
                 }
                 // === end P4.D152 ===
+                // === P4.D184 (v4 `7fbf8a55b`, migration
+                // `collapse-duplicate-avatar-rolls-v1`) ===
+                // The avatar configuration cache's data pass: group every pre-cache
+                // avatar roll by its v0 key, keep the newest of each configuration,
+                // repoint every reference to the rest, and delete them. DESTRUCTIVE
+                // and visible — the duplicates are different seeds of one prompt, and
+                // a chat that displayed an older roll now displays the survivor.
+                //
+                // It must run AFTER P4.D182's `files` ensure directly above: the pass
+                // reads and writes `generationKey`, which on a pre-4.10 instance does
+                // not exist until that call. Its once-only guard is v4's own
+                // `migrations_state` ledger, honoured in both directions — the real
+                // Friday instance has already been collapsed BY v4, so a v5 boot
+                // there must find the row and do nothing at all.
+                if let quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
+                    avatar_rows,
+                    configurations,
+                    rows_keyed,
+                    victims_deleted,
+                    blobs_deleted,
+                    chats_changed,
+                    characters_changed,
+                    messages_changed,
+                } = quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
+                    main,
+                    Some(mount_index),
+                    &quilltap_core::clock::now_iso(),
+                )? {
+                    tracing::info!(
+                        target: "quilltap::boot",
+                        avatar_rows,
+                        configurations,
+                        rows_keyed,
+                        victims_deleted,
+                        blobs_deleted,
+                        chats_changed,
+                        characters_changed,
+                        messages_changed,
+                        "Collapsed duplicate avatar rolls into one image per configuration"
+                    );
+                }
+                // === end P4.D184 ===
                 // === P4.D175 (v4 `78b381a96`, migration
                 // `clear-generated-image-placeholder-descriptions-v1`, bug 132) ===
                 // Two image jobs stamped a LABEL into `description` — "Story
