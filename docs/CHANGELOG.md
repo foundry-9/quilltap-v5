@@ -712,6 +712,56 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — port(salon): a paused chat records the user's message and answers it with nobody (v4 bug 137, server unit 3)
+
+_Versions: core 0.0.897, harness 0.0.785._
+
+The seam. `process_message` consults `should_hold_user_turn_for_pause` ONCE,
+immediately after the fresh chat read at the top of the turn, into a local
+`hold_for_paused_chat`; that local — never a re-evaluation — joins three guards
+and gates the return:
+
+- the fair-rotation guard's conjuncts, so a held post is not persisted twice
+  (v4's comment: a paused chat holds it more completely);
+- `requestFullContextOnNextMessage`, so a held post does not spend the flag;
+- the Prospero cadence gate, so no context whisper briefs a character who is
+  not about to speak.
+
+`finish_held_user_turn` runs at the seam AFTER the user's message and its side
+effects are persisted (attachments, staged tool results, auto-detected rolls,
+the danger flags on the saved row) and BEFORE anything of a character's turn:
+it clears `lastTurnParticipantId` to NULL, emits one chain-complete
+`{reason:'paused', nextSpeakerId:null, chainDepth:0, paused:true,
+heldUserTurn:true}`, and returns `hasContent: false`, so neither scene tracking
+nor the Scriptorium render fires for the held message.
+
+`orchestrator_tier3` grows 42 → 51 calls and 41 → 50 chats over nine new paused
+rooms: the plain held post, one with an attachment, one with a staged tool
+result, one with an auto-detected roll, one carrying
+`requestFullContextOnNextMessage`, one at a Prospero cadence boundary, one where
+the fair-rotation guard would have fired, and the two that must still RUN — a
+continue-mode summons and an autonomous-room turn.
+
+Two measurements the port leans on, both taken on v4's own code rather than
+assumed. **The seam's placement:** v4's seam sits after the inline Carina markup
+pass, which v5 has never wired on the user-message path (the standing
+`OrchestratorSeams::user_message_carina` deferral — no call site exists), so
+that side effect is neither above nor below v5's seam, and the seam goes after
+the danger flags reach the saved row and before the tool build. **The
+full-context conjunct is behaviour-neutral in v5 today:** v4's conjunct also
+withholds the `requestFullContextOnNextMessage: false` reset write, which v5 has
+never carried (`ChatUpdate` has no setter — a pre-existing documented deferral),
+and `bypass_compression` is only read below the seam. It is ported anyway, so
+the reset's eventual arrival cannot silently spend a held post's flag.
+
+The same widened corpus was run against v4 at BOTH pins. At the baseline
+(`f4ad2c8d1`, before the fix) all seven held cases run a model turn,
+`requestFullContextOnNextMessage` is spent 1 → 0, the cadence room gains a
+`group-context` whisper, and the two-user-seat room's fair-rotation guard fires
+(`lastTurnParticipantId` = the next seat, a `user_turn` frame). At the target all
+four flip. That is what makes the three `!hold` conjuncts non-vacuous rather than
+three guards whose siblings happen to be false.
+
 #### 2026-09-14 — port(salon): `heldUserTurn` on the chain-complete frame (v4 bug 137, server unit 2)
 
 _Versions: core 0.0.896._

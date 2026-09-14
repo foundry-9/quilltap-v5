@@ -93,6 +93,37 @@ mod tests {
         )));
     }
 
+    /// A production-zone census: the spine consults this predicate EXACTLY ONCE.
+    ///
+    /// v4's `processMessage` computes `holdForPausedChat` off the FRESH chat read
+    /// at the top of the turn and then reads the LOCAL four more times. A port
+    /// that re-evaluated the predicate at the seam instead would be invisible to
+    /// every differential — the corpus cannot change a chat row mid-turn, so both
+    /// spellings agree on every case that can be written. The single consultation
+    /// is therefore pinned structurally, in the `db_error_key_guard` idiom.
+    #[test]
+    fn the_spine_consults_the_predicate_once() {
+        let src = include_str!("orchestrator.rs");
+        let zone = src.split("\n#[cfg(test)]\n").next().unwrap_or(src);
+        assert_eq!(
+            zone.matches("should_hold_user_turn_for_pause(").count(),
+            1,
+            "the orchestrator must call the predicate exactly once (v4 computes \
+             `holdForPausedChat` once and reads the local thereafter)"
+        );
+        // …and the local is what the four guards + the seam read: the binding, the
+        // log branch, the three `!hold` conjuncts, and the seam's own `if`.
+        let reads = zone
+            .lines()
+            .filter(|l| l.contains("hold_for_paused_chat") && !l.trim_start().starts_with("//"))
+            .count();
+        assert_eq!(
+            reads, 6,
+            "expected the binding plus five reads of the local (log branch, three \
+             `!hold` conjuncts, the seam); found {reads}"
+        );
+    }
+
     /// The `=== true` guard: an explicit `false` is the same answer as absent.
     #[test]
     fn an_explicit_false_never_pause_flag_reads_as_absent() {

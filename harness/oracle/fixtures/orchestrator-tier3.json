@@ -1452,6 +1452,249 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "ed000001-0000-4000-8000-0000000000a1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "lastTurnParticipantId": "ed00001b-0000-4000-8000-000000000b1b",
+   "participants": [
+    {
+     "id": "ed00001a-0000-4000-8000-000000000b1a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00001b-0000-4000-8000-000000000b1b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000002-0000-4000-8000-0000000000a2",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00002a-0000-4000-8000-000000000b2a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00002b-0000-4000-8000-000000000b2b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000003-0000-4000-8000-0000000000a3",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00003a-0000-4000-8000-000000000b3a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00003b-0000-4000-8000-000000000b3b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000004-0000-4000-8000-0000000000a4",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00004a-0000-4000-8000-000000000b4a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00004b-0000-4000-8000-000000000b4b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000005-0000-4000-8000-0000000000a5",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "requestFullContextOnNextMessage": true,
+   "participants": [
+    {
+     "id": "ed00005a-0000-4000-8000-000000000b5a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00005b-0000-4000-8000-000000000b5b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000006-0000-4000-8000-0000000000a6",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00006a-0000-4000-8000-000000000b6a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00006b-0000-4000-8000-000000000b6b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ed000106-0000-4000-8000-000000000100",
+     "role": "ASSISTANT",
+     "content": "Cadence turn 1.",
+     "participantId": "ed00006a-0000-4000-8000-000000000b6a",
+     "createdAt": "2026-01-02T03:04:00.000Z"
+    },
+    {
+     "id": "ed000106-0000-4000-8000-000000000101",
+     "role": "USER",
+     "content": "Cadence turn 2.",
+     "participantId": null,
+     "createdAt": "2026-01-02T03:04:01.000Z"
+    },
+    {
+     "id": "ed000106-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "Cadence turn 3.",
+     "participantId": "ed00006a-0000-4000-8000-000000000b6a",
+     "createdAt": "2026-01-02T03:04:02.000Z"
+    },
+    {
+     "id": "ed000106-0000-4000-8000-000000000103",
+     "role": "USER",
+     "content": "Cadence turn 4.",
+     "participantId": null,
+     "createdAt": "2026-01-02T03:04:03.000Z"
+    },
+    {
+     "id": "ed000106-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "Cadence turn 5.",
+     "participantId": "ed00006a-0000-4000-8000-000000000b6a",
+     "createdAt": "2026-01-02T03:04:04.000Z"
+    }
+   ]
+  },
+  {
+   "id": "ed000007-0000-4000-8000-0000000000a7",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "impersonatingParticipantIds": [
+    "ed00007b-0000-4000-8000-000000000b7b"
+   ],
+   "participants": [
+    {
+     "id": "ed00007a-0000-4000-8000-000000000b7a",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    },
+    {
+     "id": "ed00007b-0000-4000-8000-000000000b7b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00007c-0000-4000-8000-000000000b7c",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ed000107-0000-4000-8000-000000000107",
+     "role": "ASSISTANT",
+     "content": "Kumar surveys the paused room and waits.",
+     "participantId": "ed00007c-0000-4000-8000-000000000b7c"
+    }
+   ]
+  },
+  {
+   "id": "ed000008-0000-4000-8000-0000000000a8",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00008a-0000-4000-8000-000000000b8a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00008b-0000-4000-8000-000000000b8b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ed000009-0000-4000-8000-0000000000a9",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "ed00009a-0000-4000-8000-000000000b9a",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ed00009b-0000-4000-8000-000000000b9b",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -1933,6 +2176,117 @@
    "streamLabel": "route_via_concierge",
    "cheapLLMSettings": true,
    "summaryCheck": false
+  },
+  {
+   "name": "paused_hold_basic",
+   "kind": "single",
+   "chatId": "ed000001-0000-4000-8000-0000000000a1",
+   "content": "A remark into the quiet room.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_basic",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "paused_hold_attachment",
+   "kind": "single",
+   "chatId": "ed000002-0000-4000-8000-0000000000a2",
+   "content": "The ledger, for the record.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_attachment",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "fileIds": [
+    "fe000001-0000-4000-8000-0000000000e1"
+   ]
+  },
+  {
+   "name": "paused_hold_tool_result",
+   "kind": "single",
+   "chatId": "ed000003-0000-4000-8000-0000000000a3",
+   "content": "Given the roll, what happens next?",
+   "continueMode": false,
+   "streamLabel": "paused_hold_tool_result",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "pendingToolResults": [
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 2d6: [3, 5] = 8",
+     "prompt": "roll 2d6",
+     "arguments": {
+      "notation": "2d6"
+     },
+     "createdAt": "2026-01-02T03:04:05.000Z"
+    }
+   ]
+  },
+  {
+   "name": "paused_hold_rng",
+   "kind": "single",
+   "chatId": "ed000004-0000-4000-8000-0000000000a4",
+   "content": "Roll 2d6 for initiative.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_rng",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "rngBytes": [
+    3,
+    4
+   ]
+  },
+  {
+   "name": "paused_hold_keeps_full_context_flag",
+   "kind": "single",
+   "chatId": "ed000005-0000-4000-8000-0000000000a5",
+   "content": "A remark while the full-context flag stands.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_full_context",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "paused_hold_cadence_boundary",
+   "kind": "single",
+   "chatId": "ed000006-0000-4000-8000-0000000000a6",
+   "content": "A remark on the cadence beat.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_cadence",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "paused_hold_two_user_seats",
+   "kind": "single",
+   "chatId": "ed000007-0000-4000-8000-0000000000a7",
+   "content": "Charlie steps forward into the paused room.",
+   "continueMode": false,
+   "streamLabel": "paused_hold_two_seats",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "paused_continue_summons_runs",
+   "kind": "chain",
+   "chatId": "ed000008-0000-4000-8000-0000000000a8",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "paused_continue_summons",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "ed00008a-0000-4000-8000-000000000b8a"
+  },
+  {
+   "name": "paused_never_pause_for_user_runs",
+   "kind": "single",
+   "chatId": "ed000009-0000-4000-8000-0000000000a9",
+   "content": "An autonomous beat into a paused room.",
+   "continueMode": false,
+   "streamLabel": "paused_never_pause",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "neverPauseForUser": true
   }
  ],
  "streams": {
@@ -2975,6 +3329,36 @@
       "promptTokens": 22,
       "completionTokens": 8,
       "totalTokens": 30
+     }
+    }
+   ]
+  ],
+  "paused_continue_summons": [
+   [
+    {
+     "content": "Friday answers the summons, and the room goes quiet again."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 42,
+      "completionTokens": 10,
+      "totalTokens": 52
+     }
+    }
+   ]
+  ],
+  "paused_never_pause": [
+   [
+    {
+     "content": "The autonomous beat lands regardless of the pause."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 44,
+      "completionTokens": 9,
+      "totalTokens": 53
      }
     }
    ]

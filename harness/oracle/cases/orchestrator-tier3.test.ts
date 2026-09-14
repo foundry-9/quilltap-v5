@@ -111,6 +111,13 @@ interface CallSpec {
   /** P4.6c: user-initiated tool results pre-inserted as TOOL messages before the
    * user message (orchestrator.service.ts:601–624). */
   pendingToolResults?: unknown[];
+  /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
+   *  persists them, so the corpus needed a way to hang one on a call. */
+  fileIds?: string[];
+  /** P4.D186 (v4 bug 137): `options.neverPauseForUser` — the autonomous-room
+   *  opt-out the hold predicate consults. `undefined` on every other call, so
+   *  the key is absent exactly as it is in production. */
+  neverPauseForUser?: boolean;
   /**
    * P4.87: this case's ordered `Math.random()` pin. Absent → `[0]`, which is
    * byte-identical to the file-wide frozen zero every pre-rotation row was
@@ -754,6 +761,8 @@ async function main(): Promise<void> {
         respondingParticipantId: call.respondingParticipant,
         nudge: call.nudge,
         pendingToolResults: call.pendingToolResults,
+        fileIds: call.fileIds,
+        neverPauseForUser: call.neverPauseForUser,
       } as never);
       // Drain the ReadableStream.
       const reader = stream.getReader();

@@ -122,6 +122,15 @@ struct CallW {
     /// the user message (orchestrator.service.ts:601–624).
     #[serde(default)]
     pending_tool_results: Vec<PtrW>,
+    /// P4.D186 (v4 bug 137): attachment ids on the send. A held post still
+    /// persists them (the seam sits below the attachment work), so the corpus
+    /// needed a way to hang one on a call.
+    #[serde(default)]
+    file_ids: Vec<String>,
+    /// P4.D186 (v4 bug 137): `options.neverPauseForUser` — the autonomous-room
+    /// opt-out the hold predicate consults.
+    #[serde(default)]
+    never_pause_for_user: bool,
     /// P4.87: this case's ordered `Math.random()` pin, mirroring the oracle's
     /// per-case `pinned.reset(call.draws ?? [0])`. Absent → `[0]`, which is the
     /// frozen zero every pre-rotation row was written against.
@@ -883,6 +892,8 @@ fn orchestrator_tier3_matches_oracle() {
     // error — the ONLY two corpus cases that reach the chain loop's two
     // stop-with-a-line branches; every other case must stay silent on both.
     let mut chain_logs: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.D186: the INITIAL `process_message`'s tracing output, per case.
+    let mut initial_logs: HashMap<String, Vec<String>> = HashMap::new();
 
     // P4.D154 (bug 121): the host byte layer the re-hydration reads through.
     // The corpus's planted files are text / pdf / zip, so nothing image-shaped
@@ -986,6 +997,9 @@ fn orchestrator_tier3_matches_oracle() {
         let case_draws = DrawSource::sequence(call.draws.clone().unwrap_or_else(|| vec![0.0]));
 
         let call_nudge = call.nudge;
+        // P4.D186: the send's attachments and the autonomous-room opt-out.
+        let call_file_ids = call.file_ids.clone();
+        let call_never_pause = call.never_pause_for_user;
         let call_ptrs: Vec<orchestrator::PendingToolResult> = call
             .pending_tool_results
             .iter()
@@ -1017,6 +1031,18 @@ fn orchestrator_tier3_matches_oracle() {
                     } else {
                         call_ptrs.clone()
                     },
+                    // P4.D186: attachments ride only the INITIAL non-continue
+                    // turn, as v4's chained `processMessage` passes none.
+                    file_ids: if continue_mode {
+                        Vec::new()
+                    } else {
+                        call_file_ids.clone()
+                    },
+                    // P4.D186: v4's `handleSendMessage` forwards
+                    // `neverPauseForUser` to EVERY chained turn too
+                    // (`orchestrator.service.ts:218`), so this one is not gated
+                    // on `continue_mode`.
+                    never_pause_for_user: call_never_pause,
                     ..Default::default()
                 },
                 clock: ProcessClock {
@@ -1033,16 +1059,25 @@ fn orchestrator_tier3_matches_oracle() {
             }
         };
 
-        // Initial processMessage.
-        let initial = rt.block_on(orchestrator::process_message(
-            &mut deps,
-            &make_input(
-                &call.chat_id,
-                &call.content,
-                call.continue_mode,
-                call.responding_participant.as_deref(),
-            ),
-        ));
+        // Initial processMessage. P4.D186: captured, so the paused-hold info line
+        // (a log-only change every frame and row diff is blind to) is pinned per
+        // case — on its own branch AND silent on every sibling.
+        let initial = {
+            let mut out = None;
+            let initial_lines = quilltap_core::test_support::captured(|| {
+                out = Some(rt.block_on(orchestrator::process_message(
+                    &mut deps,
+                    &make_input(
+                        &call.chat_id,
+                        &call.content,
+                        call.continue_mode,
+                        call.responding_participant.as_deref(),
+                    ),
+                )));
+            });
+            initial_logs.insert(call.name.clone(), initial_lines);
+            out.expect("process_message ran")
+        };
 
         match initial {
             Ok(result) => {
@@ -1059,6 +1094,7 @@ fn orchestrator_tier3_matches_oracle() {
                     let frozen = spec.frozen_now_ms;
                     let offset = spec.local_offset_minutes;
                     let chain_draws = case_draws.clone();
+                    let chain_never_pause = call_never_pause;
                     let make_chain_input = move |pid: String| ProcessMessageInput {
                         log_context: LogContext::none(),
                         chat_id: chat_id.clone(),
@@ -1067,6 +1103,9 @@ fn orchestrator_tier3_matches_oracle() {
                             continue_mode: true,
                             content: String::new(),
                             responding_participant_id: Some(pid),
+                            // P4.D186: v4 spreads the autonomous-room flags into
+                            // every chained turn (`orchestrator.service.ts:216–222`).
+                            never_pause_for_user: chain_never_pause,
                             ..Default::default()
                         },
                         clock: ProcessClock {
@@ -1094,7 +1133,10 @@ fn orchestrator_tier3_matches_oracle() {
                                 user_id: spec.user_id.clone(),
                                 initial_result: result,
                                 initial_continue_mode: call.continue_mode,
-                                never_pause_for_user: false,
+                                // P4.D186: v4's `handleSendMessage` passes
+                                // `options.neverPauseForUser === true` straight
+                                // into `executeTurnChain` (`:226`).
+                                never_pause_for_user: call_never_pause,
                                 single_turn: false,
                                 chain_start_time_ms: frozen,
                                 config: ChainConfig::default(),
@@ -1144,6 +1186,129 @@ fn orchestrator_tier3_matches_oracle() {
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         assert_events_eq(name, got, want);
+    }
+
+    // --- P4.D186 (v4 `31436bae4` bug 137): the held user turn ---
+    // The frame + table diffs above already compare these cases end to end. What
+    // they cannot do alone is prove the case is MEANINGFUL: if both sides failed
+    // the same way (v5 with no hold would ask the canned provider for a key the
+    // corpus deliberately does not carry, and the oracle's `streamMessage` mock
+    // throws `no streams for <label>` for the same reason), a mutual failure
+    // would compare equal. So each held case is pinned against the ORACLE's own
+    // recorded frames: v4 must have completed the call and emitted exactly the
+    // six-key held frame, and must NOT have streamed a reply.
+    //
+    // Measured on v4's own code at both pins: at the baseline (`f4ad2c8d1`, before
+    // the fix) every one of these seven cases runs a model turn, `ed000005`'s
+    // `requestFullContextOnNextMessage` is reset 1 → 0, `ed000006` gains a
+    // `group-context` Prospero whisper, and `ed000007`'s fair-rotation guard fires
+    // (`lastTurnParticipantId` = the next seat, a `user_turn` frame). At the
+    // target all four answers flip. That is what makes the three `!hold` conjuncts
+    // non-vacuous rather than three guards whose siblings happen to be false.
+    let held_cases = [
+        "paused_hold_basic",
+        "paused_hold_attachment",
+        "paused_hold_tool_result",
+        "paused_hold_rng",
+        "paused_hold_keeps_full_context_flag",
+        "paused_hold_cadence_boundary",
+        "paused_hold_two_user_seats",
+    ];
+    let held_frame = json!({
+        "chainComplete": true,
+        "reason": "paused",
+        "nextSpeakerId": null,
+        "chainDepth": 0,
+        "paused": true,
+        "heldUserTurn": true
+    });
+    for name in held_cases {
+        let want = want_events
+            .get(name)
+            .unwrap_or_else(|| panic!("oracle events missing for {name}"));
+        let chain_frames: Vec<&Value> = want
+            .iter()
+            .filter(|e| e.get("chainComplete").is_some())
+            .collect();
+        assert_eq!(
+            chain_frames.len(),
+            1,
+            "{name}: v4 must emit exactly one chainComplete on a held turn, got {chain_frames:?}"
+        );
+        assert_eq!(
+            *chain_frames[0], held_frame,
+            "{name}: v4's held frame is not the six-key shape"
+        );
+        for forbidden in ["content", "done", "turnComplete"] {
+            assert!(
+                !want.iter().any(|e| e.get(forbidden).is_some()),
+                "{name}: v4 must not emit a `{forbidden}` frame on a held turn — the \
+                 model was called, so this case is measuring the wrong thing"
+            );
+        }
+    }
+    // The two paused cases that RUN keep v4's older frame: `paused` with no
+    // `heldUserTurn` key at all (the chain's own early return, P4.D160).
+    for name in [
+        "paused_continue_summons_runs",
+        "paused_never_pause_for_user_runs",
+    ] {
+        let want = want_events
+            .get(name)
+            .unwrap_or_else(|| panic!("oracle events missing for {name}"));
+        assert!(
+            want.iter().any(|e| e.get("content").is_some()),
+            "{name}: a summons into a paused room must still stream a reply"
+        );
+        let chain_frames: Vec<&Value> = want
+            .iter()
+            .filter(|e| e.get("chainComplete").is_some())
+            .collect();
+        assert_eq!(chain_frames.len(), 1, "{name}: one chainComplete expected");
+        assert!(
+            chain_frames[0].get("heldUserTurn").is_none(),
+            "{name}: `heldUserTurn` must be ABSENT on a frame v4 did not hold: {:?}",
+            chain_frames[0]
+        );
+    }
+
+    // --- P4.D186: the ONE info line, capture-pinned ---
+    // v4 `logger.info('[Orchestrator] Chat paused — recording the user message
+    // without a reply', { chatId, userId, hasContent, attachmentCount })`. A
+    // log-only line is invisible to every frame and row comparand above, and its
+    // silence on the sibling branches is half the contract.
+    for call in &spec.calls {
+        let lines = initial_logs
+            .get(&call.name)
+            .unwrap_or_else(|| panic!("no captured initial log for {}", call.name));
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[Orchestrator] Chat paused"))
+            .collect();
+        if held_cases.contains(&call.name.as_str()) {
+            assert_eq!(
+                hits.len(),
+                1,
+                "{}: the paused-hold line must fire exactly once: {lines:?}",
+                call.name
+            );
+            let want_line = format!(
+                "INFO quilltap_core::services::orchestrator [Orchestrator] Chat paused — \
+                 recording the user message without a reply chat_id={} user_id={} \
+                 has_content={} attachment_count={}",
+                call.chat_id,
+                spec.user_id,
+                !call.content.is_empty(),
+                call.file_ids.len(),
+            );
+            assert_eq!(*hits[0], want_line, "{}: info-line shape", call.name);
+        } else {
+            assert!(
+                hits.is_empty(),
+                "{}: a turn that is not held must not log the paused-hold line: {lines:?}",
+                call.name
+            );
+        }
     }
 
     // --- P4.81 item 4: the chain-stop log lines, pinned per case ---

@@ -955,6 +955,54 @@ mod tests {
             json!(false)
         );
     }
+
+    /// A production-zone census: `held_user_turn` is constructed as anything but
+    /// `None` at exactly ONE site in the crate — `finish_held_user_turn`. v4
+    /// passes the key from one of its six `encodeChainCompleteEvent` callers and
+    /// omits it at the other five, and no differential can see a SIXTH site that
+    /// started sending it: the extra key would only ever surface on a frame no
+    /// corpus case reaches. Mirrors the `db_error_key_guard` idiom.
+    #[test]
+    fn only_one_site_sets_held_user_turn() {
+        let sources = [
+            ("orchestrator.rs", include_str!("orchestrator.rs")),
+            (
+                "help_chat/orchestrator.rs",
+                include_str!("help_chat/orchestrator.rs"),
+            ),
+        ];
+        let mut setters: Vec<String> = Vec::new();
+        for (name, src) in sources {
+            // Strip the file's own `#[cfg(test)]` module by braces, so a test
+            // fixture frame is never counted as a production emit.
+            let zone = src.split("\n#[cfg(test)]\n").next().unwrap_or(src);
+            for line in zone.lines() {
+                let t = line.trim();
+                if let Some(rest) = t.strip_prefix("held_user_turn:") {
+                    if !rest.trim_start().starts_with("None") {
+                        setters.push(format!("{name}: {t}"));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            setters.len(),
+            1,
+            "expected exactly one non-None held_user_turn site (finish_held_user_turn); found {setters:?}"
+        );
+        assert!(
+            setters[0].starts_with("orchestrator.rs:"),
+            "the one setter must live in orchestrator.rs, found {:?}",
+            setters[0]
+        );
+        // Non-vacuity: the census must actually be reading files that mention the
+        // field at all, or a rename would make it silently pass on zero matches.
+        let mentions = sources
+            .iter()
+            .filter(|(_, src)| src.contains("held_user_turn"))
+            .count();
+        assert_eq!(mentions, 2, "both orchestrators should name the field");
+    }
     #[test]
     fn empty_response_done_carries_the_reason() {
         let ev = ChatEvent::done(DonePayload {

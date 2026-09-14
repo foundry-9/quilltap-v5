@@ -720,6 +720,57 @@ pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionC
     )
 }
 
+/// Close out a user turn that a paused chat held (v4 `finishHeldUserTurn`,
+/// `orchestrator.service.ts:1830–1874`).
+///
+/// The message and its side effects are already persisted by the time this is
+/// called; all that remains is to leave the floor empty and tell the Salon why
+/// the room said nothing. The `paused` chain-complete is the same event a
+/// mid-chain pause emits, so the client reconciles its pause flag through the one
+/// path it already has (bug 123) — it just arrives at depth 0, before any
+/// character has spoken.
+async fn finish_held_user_turn<SNK>(
+    db: &Db,
+    sink: &SNK,
+    chat_id: &str,
+    is_multi_character: bool,
+    user_message_id: Option<String>,
+    user_participant_id: Option<String>,
+) -> Result<ProcessMessageResult, DbError>
+where
+    SNK: EventSink + Sync,
+{
+    // Nobody is on deck: the rotation resumes from wherever the user left it, and
+    // a stale pending seat would have the Salon announce a turn that isn't coming.
+    turn_orchestrator::persist_turn_participant_id(db, chat_id, None).await?;
+
+    sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
+        reason: "paused".to_string(),
+        next_speaker_id: None,
+        chain_depth: 0,
+        paused: Some(true),
+        // The ONE site in the whole crate that sets this key
+        // (`only_one_site_sets_held_user_turn` in `chat_events.rs` is the census).
+        held_user_turn: Some(true),
+    }));
+
+    Ok(ProcessMessageResult {
+        is_multi_character,
+        // No character took the floor, so the turn chain stops before it starts and
+        // neither scene tracking nor the Scriptorium render fires for this message.
+        has_content: false,
+        // v4's field is `string | null`; v5's is a bare `String`, so an absent id
+        // reads as `""` — the same mapping the courier and fair-rotation returns
+        // already use. A held send always has content or attachments in practice.
+        message_id: user_message_id.unwrap_or_default(),
+        user_participant_id,
+        is_paused: true,
+        scene_tracking_character_ids: None,
+        skipped: false,
+        skipped_participant_id: None,
+    })
+}
+
 /// Fair-rotation pause for rooms where the human drives two or more seats (v4
 /// `maybePauseForUserSeatTurn`, orchestrator.service.ts:1703–1853, Bug 50).
 ///
@@ -967,6 +1018,40 @@ where
         .read_main(move |c| chats_read::find_by_id(c, &chat_id_owned))?
         .ok_or_else(|| DbError::Internal("Chat not found".into()))?;
 
+    // ============================================================================
+    // Paused chat — hold the user's turn (orchestrator.service.ts:293–315)
+    // ============================================================================
+    // A paused conversation never moves on its own. A typed message is still
+    // recorded in full (attachments, staged tool results, auto-detected rolls,
+    // inline Carina queries) — it simply draws no reply: the floor stays where the
+    // user left it until they nudge a specific character (one turn, still paused)
+    // or press Resume. Continue-mode turns are the explicit summons themselves —
+    // Nudge, Skip, the all-LLM modal's Continue, an autonomous-room turn — so they
+    // are never held; the chain that would follow one is what `execute_turn_chain`
+    // stops while `isPaused` stands.
+    //
+    // The predicate is consulted ONCE, here, off the FRESH chat row read above —
+    // never the caller's copy and never re-evaluated at the seam, so a row that
+    // changes underneath the turn cannot make the spine hold half a message.
+    // `paused_hold_equivalence` pins the predicate; the four references below are
+    // to this local.
+    let hold_for_paused_chat = crate::services::paused_hold::should_hold_user_turn_for_pause(
+        crate::services::paused_hold::PausedHoldInput {
+            is_continue_mode,
+            chat_is_paused: chat.get("isPaused").and_then(Value::as_bool) == Some(true),
+            never_pause_for_user: Some(input.options.never_pause_for_user),
+        },
+    );
+    if hold_for_paused_chat {
+        tracing::info!(
+            chat_id = %chat_id,
+            user_id = %user_id,
+            has_content = !input.options.content.is_empty(),
+            attachment_count = input.options.file_ids.len(),
+            "[Orchestrator] Chat paused — recording the user message without a reply",
+        );
+    }
+
     // --- Resolve responding participant (orchestrator.service.ts:269–297) ---
     // respondingId = respondingParticipantId || targetParticipantIds[0].
     let responding_id = input.options.responding_participant_id.clone().or_else(|| {
@@ -1005,6 +1090,10 @@ where
         crate::participant_filters::is_multi_character_chat(&filter_parts)
     };
     if !is_continue_mode
+        // A paused chat already holds every user post below — and holds it more
+        // completely (staged tool results, auto-detected rolls, danger flags). The
+        // fairness guard would persist a thinner copy of the same message first.
+        && !hold_for_paused_chat
         && input.options.responding_participant_id.is_none()
         && input
             .options
@@ -1191,10 +1280,18 @@ where
     // ported `ChatUpdate` carries no setter for this column (no ported op writes
     // it), so a chat that HAD it set is a documented deferral; the corpus keeps
     // it clear, so the flag reset never fires and no write is missed.
+    // Held posts build no request, so the flag must survive to be spent by the turn
+    // the user eventually asks for. ⚠ MEASURED: in v4 this conjunct also withholds
+    // the `requestFullContextOnNextMessage: false` reset write; v5 has never
+    // carried that write (the ported `ChatUpdate` has no setter for the column —
+    // the deferral noted above), so on v5 the conjunct is behaviour-neutral today:
+    // `bypass_compression` is only read BELOW the seam. Ported anyway, so the
+    // reset's eventual arrival cannot silently spend a held post's flag.
     let bypass_compression = chat
         .get("requestFullContextOnNextMessage")
         .and_then(Value::as_bool)
-        == Some(true);
+        == Some(true)
+        && !hold_for_paused_chat;
     // The cheap-LLM selection (compression / danger / recall) is resolved above
     // the seam and threaded via the settings' `cheap_llm_settings_present` flag;
     // the corpus keeps a selection present whenever settings are present.
@@ -1468,8 +1565,12 @@ where
         .iter()
         .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
         .count() as i64;
-    let should_inject_context =
-        reinject_interval > 0 && message_count > 0 && message_count % reinject_interval == 0;
+    // Both whispers below brief the character about to take the floor. On a held
+    // post nobody does, so the cadence waits for the turn the user asks for.
+    let should_inject_context = reinject_interval > 0
+        && message_count > 0
+        && message_count % reinject_interval == 0
+        && !hold_for_paused_chat;
     if should_inject_context {
         use crate::services::prospero_notifications as prospero;
         // v4 loads the project + general Prospero context (best-effort), posts the
@@ -1705,6 +1806,33 @@ where
         }
     }
     let _ = user_message_id;
+
+    // ============================================================================
+    // Paused chat — the user's turn is recorded; nobody answers it
+    // (orchestrator.service.ts:872–887)
+    // ============================================================================
+    // Everything above belongs to the message the user just wrote. Everything
+    // below belongs to a character's turn, and a paused room grants none. Stop
+    // here, before a single token is spent on tools, context or the model.
+    //
+    // ⚠ MEASURED against v4's seam placement: v4's `:869` sits after the inline
+    // Carina markup pass (`:836–870`), which v5 has NEVER wired on the
+    // user-message path — it is the standing `OrchestratorSeams`
+    // `user_message_carina` deferral (see the module note). So the side effect v4
+    // runs above its seam does not exist above or below v5's, and the seam goes
+    // where the remaining order agrees: after the danger flags are attached to the
+    // saved row, before the tool build.
+    if hold_for_paused_chat {
+        return finish_held_user_turn(
+            db,
+            sink,
+            &chat_id,
+            is_multi_character,
+            user_message_id.clone(),
+            user_participant_id.clone(),
+        )
+        .await;
+    }
 
     // Build the final user-message content for the context (prefix from
     // attachments, corpus keeps prefix absent).

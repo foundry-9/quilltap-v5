@@ -120,6 +120,20 @@ interface ChatSpec {
    * early-return needs a chat whose `isPaused` is already set when the initial
    * turn lands — the corpus had no way to say so before. */
   isPaused?: boolean;
+  /**
+   * P4.D186 (v4 bug 137): the operator asked for the next turn to bypass
+   * compression. On a HELD post v4 must not spend the flag, so a paused chat
+   * that carries it is the discriminator for that conjunct — and the corpus had
+   * no way to set it before.
+   */
+  requestFullContextOnNextMessage?: boolean;
+  /**
+   * P4.D186 (v4 bug 137): the seat the Salon currently announces as "on deck".
+   * `finishHeldUserTurn` clears it to NULL, and a chat that starts NULL cannot
+   * tell a port that clears it from one that does not — so the held corpus seeds
+   * one.
+   */
+  lastTurnParticipantId?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -428,6 +442,12 @@ async function main(): Promise<void> {
           ? { activeTypingParticipantId: chat.activeTypingParticipantId }
           : {}),
         ...(chat.isPaused !== undefined ? { isPaused: chat.isPaused } : {}),
+        ...(chat.requestFullContextOnNextMessage !== undefined
+          ? { requestFullContextOnNextMessage: chat.requestFullContextOnNextMessage }
+          : {}),
+        ...(chat.lastTurnParticipantId !== undefined
+          ? { lastTurnParticipantId: chat.lastTurnParticipantId }
+          : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
