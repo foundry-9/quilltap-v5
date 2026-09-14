@@ -24,6 +24,10 @@ import type {
   CharacterTagDetail,
   ConnectionProfileDto,
   TagDto,
+  AvatarRollActionDto,
+  AvatarRollDeleteDto,
+  AvatarRollEntry,
+  AvatarRollsListDto,
 } from '../../core/core-contract';
 
 /**
@@ -63,6 +67,18 @@ export const characterKeys = {
   subprompts: (id: string) => ['characters', 'subprompts', id] as const,
   scenarios: (id: string) => ['characters', 'scenarios', id] as const,
   defaultPartner: (id: string) => ['characters', 'default-partner', id] as const,
+  /**
+   * Avatar rolls — the plates the avatar configuration cache holds for this
+   * character (v4 `queryKeys.characters.avatarRolls`, `lib/query/keys.ts:33`).
+   * A separate key from {@link characterKeys.photos} because they are a
+   * separate collection with a separate endpoint, not a filtered view of the
+   * album. Segment ORDER follows this file's convention (`['characters',
+   * '<what>', id]`) rather than v4's `['characters', id, '<what>']` — the same
+   * deliberate deviation `prompts`/`subprompts` above record; only the
+   * DISTINCTNESS is contractual, and the `['characters']` prefix that
+   * mutations invalidate reaches both spellings identically.
+   */
+  avatarRolls: (id: string) => ['characters', 'avatar-rolls', id] as const,
 };
 
 export const tagKeys = {
@@ -140,6 +156,124 @@ export async function fetchCharacterPhotos(
   const data = await core.dispatchData({ type: 'characterPhotoList', characterId });
   // The pinned P4.6i envelope: `{ entries, total, hasMore }`.
   return (data['entries'] as CharacterPhoto[]) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Avatar rolls (§C.6; v4 `hooks/useAvatarRolls.ts`, server half P4.D185)
+// ---------------------------------------------------------------------------
+
+/**
+ * One plate as the rolls section consumes it — v4's `AvatarRoll`
+ * (`embedded-gallery/types.ts`), which extends `GalleryImage`. v5 has no
+ * `GalleryImage` type (the gallery tab's tile is an inline template over
+ * {@link CharacterPhoto}), so the base fields are spelled out here.
+ *
+ * `id` is a `files.id`, NOT a link id — see {@link AvatarRollEntry}.
+ */
+export interface AvatarRoll {
+  id: string;
+  filename: string;
+  /** Mount-blob URL the UI drops straight into `<img src>` (v4 `filepath`). */
+  filepath: string;
+  mimeType: string | null;
+  size: number;
+  width?: number;
+  height?: number;
+  createdAt: string;
+  caption: string | null;
+  tags: string[];
+  /** Link id in the character's album, when this roll has been kept there. */
+  albumLinkId: string | null;
+  /** True when the character's portrait is this plate. */
+  isPortrait: boolean;
+  /** How many of the character's chats are currently displaying it. */
+  usedInChatCount: number;
+  generationPrompt: string | null;
+  generationModel: string | null;
+}
+
+/**
+ * The wire row → the view row (v4 `toAvatarRoll`, `useAvatarRolls.ts:35-53`).
+ *
+ * Four renames and two constants, all v4's: `fileId` → `id`, `fileName` →
+ * `filename`, `url` → `filepath`, `fileSizeBytes` → `size`; `caption` is
+ * always `null` and `tags` always empty, a roll carrying neither. The nullable
+ * dimensions collapse to `undefined` because v4's `GalleryImage` spells them
+ * optional rather than nullable.
+ */
+export function toAvatarRoll(entry: AvatarRollEntry): AvatarRoll {
+  return {
+    id: entry.fileId,
+    filename: entry.fileName,
+    filepath: entry.url,
+    mimeType: entry.mimeType,
+    size: entry.fileSizeBytes,
+    width: entry.width ?? undefined,
+    height: entry.height ?? undefined,
+    createdAt: entry.createdAt,
+    caption: null,
+    tags: [],
+    albumLinkId: entry.albumLinkId,
+    isPortrait: entry.isPortrait,
+    usedInChatCount: entry.usedInChatCount,
+    generationPrompt: entry.generationPrompt,
+    generationModel: entry.generationModel,
+  };
+}
+
+/**
+ * v4 `useAvatarRolls`'s query fn — `GET …/avatar-rolls?limit=200`
+ * (`:71-78`). v5 dispatches the verb instead of the REST edge; the 200 is
+ * v4's, and §C.6 clamps it to the server's 1..=200 ceiling.
+ *
+ * The response is the BARE `{ entries, total, hasMore }` (v4's
+ * `successResponse` does not wrap in `data`), read through `dispatchData` as
+ * every sibling helper in this file does.
+ */
+export async function fetchAvatarRolls(
+  core: CoreClient,
+  characterId: string,
+): Promise<AvatarRollsListDto> {
+  const data = await core.dispatchData({
+    type: 'characterAvatarRollList',
+    characterId,
+    limit: 200,
+  });
+  return {
+    entries: (data['entries'] as AvatarRollEntry[]) ?? [],
+    total: (data['total'] as number) ?? 0,
+    hasMore: (data['hasMore'] as boolean) ?? false,
+  };
+}
+
+/** v4 `runAction` (`:95-120`) — `POST …/{fileId}?action=<action>`. */
+export async function avatarRollAction(
+  core: CoreClient,
+  characterId: string,
+  fileId: string,
+  action: 'save-to-album' | 'set-avatar',
+): Promise<AvatarRollActionDto> {
+  const data = await core.dispatchData({
+    type: 'characterAvatarRollAction',
+    characterId,
+    fileId,
+    action,
+  });
+  return data as unknown as AvatarRollActionDto;
+}
+
+/** v4 `deleteRoll`'s fetch (`:152-155`) — `DELETE …/{fileId}`. */
+export async function deleteAvatarRoll(
+  core: CoreClient,
+  characterId: string,
+  fileId: string,
+): Promise<AvatarRollDeleteDto> {
+  const data = await core.dispatchData({
+    type: 'characterAvatarRollDelete',
+    characterId,
+    fileId,
+  });
+  return data as unknown as AvatarRollDeleteDto;
 }
 
 export async function fetchCharacterChats(

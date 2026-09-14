@@ -1053,6 +1053,28 @@ a plain one on the same millisecond.
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
 
+#### 2026-09-14 — feat(characters): the avatar-rolls query key, wire DTOs and the three dispatch helpers
+
+_Versions: SPA 0.5.708._
+
+The SPA half of §C.6 (v4 `4dcbe0d21`, server half P4.D185): `AvatarRollEntry`
+and the three response bodies join `core-contract.ts` beside the
+`CharacterPhoto*` requests, with the three `characterAvatarRoll*` request types
+on the `CoreRequest` union.
+
+`characters.api.ts` gains `characterKeys.avatarRolls`, the `AvatarRoll` view
+row, the pure `toAvatarRoll` mapper (v4's four renames plus the hardcoded
+`caption: null` / `tags: []`), and `fetchAvatarRolls` / `avatarRollAction` /
+`deleteAvatarRoll` over the three verbs. The list helper asks for v4's
+`?limit=200`.
+
+Two recorded deviations from the order's literal text, both following this
+file's own documented convention rather than v4's: the key's segment order is
+`['characters', 'avatar-rolls', id]` (the `prompts` / `subprompts` precedent —
+only the distinctness is contractual), and the helpers read through
+`dispatchData` rather than `dispatchExpect`, because no `characterAvatarRolls`
+variant exists on the SPA's `CoreResponse` union and every sibling helper in
+the file reads the bare `data` for exactly the reason v4's own comment gives.
 
 #### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
 

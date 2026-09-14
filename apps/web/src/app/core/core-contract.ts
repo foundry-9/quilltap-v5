@@ -1384,6 +1384,87 @@ export interface CharacterPhotoRemoveRequest {
   linkId: string;
 }
 
+/**
+ * §C.6 Avatar rolls — the plates the avatar configuration cache has already
+ * developed for a character (v4 `4dcbe0d21`; the server half is P4.D185).
+ *
+ * One row per configuration of outfit, provider, profile and model. Unlike a
+ * {@link CharacterPhoto}, whose `linkId` is the vault
+ * `doc_mount_file_links.id`, a roll is addressed by its `files.id` (`fileId`):
+ * the cache is keyed in the files table, and that is also the id a chat's
+ * `characterAvatars` entry binds (v4 `types.ts` `AvatarRoll` doc).
+ * `albumLinkId` is the link the roll has in the character's `photos/` folder
+ * once it has been kept — what makes the keep action idempotent.
+ *
+ * Key order is the Shared contract's, which is v4's `AvatarRollEntry`.
+ */
+export interface AvatarRollEntry {
+  fileId: string;
+  rollLinkId: string | null;
+  albumLinkId: string | null;
+  fileName: string;
+  url: string;
+  mimeType: string | null;
+  fileSizeBytes: number;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+  generationPrompt: string | null;
+  generationModel: string | null;
+  sha256: string;
+  isPortrait: boolean;
+  usedInChatCount: number;
+}
+
+/**
+ * The `characterAvatarRollList` body. v4's `successResponse` answers with the
+ * payload BARE, not wrapped in `data` (v4 `useAvatarRolls.ts:108` comment), so
+ * this is what the dispatch `data` carries directly.
+ */
+export interface AvatarRollsListDto {
+  entries: AvatarRollEntry[];
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * The `characterAvatarRollAction` body. `alreadyInAlbum` comes back from
+ * `save-to-album`, `addedToAlbum` from `set-avatar`; both carry `linkId` — the
+ * ALBUM link id, never a `files` id (§C.6: set-avatar points `defaultImageId`
+ * at the link).
+ */
+export interface AvatarRollActionDto {
+  linkId: string;
+  alreadyInAlbum?: boolean;
+  addedToAlbum?: boolean;
+}
+
+/** The `characterAvatarRollDelete` body. */
+export interface AvatarRollDeleteDto {
+  deleted: boolean;
+  blobRemoved: boolean;
+  chatsScrubbed: number;
+  keptInAlbum: boolean;
+}
+
+export interface CharacterAvatarRollListRequest {
+  type: 'characterAvatarRollList';
+  characterId: string;
+  limit?: number;
+  offset?: number;
+}
+export interface CharacterAvatarRollActionRequest {
+  type: 'characterAvatarRollAction';
+  characterId: string;
+  fileId: string;
+  action: 'save-to-album' | 'set-avatar';
+}
+export interface CharacterAvatarRollDeleteRequest {
+  type: 'characterAvatarRollDelete';
+  characterId: string;
+  fileId: string;
+}
+
 /** Tags CRUD (v4 `/tags`). */
 export interface TagListRequest {
   type: 'tagList';
@@ -2602,6 +2683,9 @@ export type CoreRequest =
   | CharacterPhotoListRequest
   | CharacterPhotoSaveByIdRequest
   | CharacterPhotoRemoveRequest
+  | CharacterAvatarRollListRequest
+  | CharacterAvatarRollActionRequest
+  | CharacterAvatarRollDeleteRequest
   | TagListRequest
   | TagCreateRequest
   | TagGetRequest

@@ -125037,3 +125037,70 @@ before vitest starts. Both were green on the identical tree minutes earlier
 (the unit-5 and Tier-2 gates); `npm run build` and the full Playwright run,
 which do not invoke git, both passed AFTER the breakage. Restoring it needs
 `sudo xcodebuild -license`.
+## P4.D188 — the gallery + wardrobe SPA half: Avatar Rolls in the Photo Gallery tab, and the wardrobe dialog's "Show shared" tickbox
+
+**Lane record.** The `31436bae4` drift catch-up round (P4.D182 →
+{P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188), branched from
+`main` `ecdcf9e5`. Ports the CLIENT half of v4 `4dcbe0d21` ("Avatar Rolls
+section in a character's Photo Gallery") and the whole of `055cac45a`
+("'Show shared' toggle in the wardrobe dialog"). Oracle baseline
+`f4ad2c8d1`; spec strings read from the `31436bae4` pin. No crate touched,
+so no crate differential is owed — v4's jest suites and the shipped hunks are
+the parity oracles.
+
+**Lane start (2026-09-14).** The ledger's §2 freshness probe **FAILED on the
+first run** — v4 `main` had moved one commit past the ledger's recorded HEAD
+(`f90144ac4`, "a silent provider no longer wedges chat creation (bug 141)") —
+and the lane STOPped and reported rather than porting against unrecorded
+drift. The human re-ran `/driftcheck` from the main checkout; the refreshed §1
+records HEAD `85813ddd2` (ten past the baseline, two past this round's target),
+rules the round's pins **unaffected by construction** (every lane pins
+`31436bae4` explicitly rather than tracking `main`), and the re-run probe
+passed clean. Lane pin: `/tmp/qt-v4-pin-p4d188-f4ad2c8d1`, verified by the two
+markers only the target has — `lib/services/chat-message/paused-hold.ts`
+ABSENT, `transcriptVersion` in `chats-messages.ops.ts` at 0 occurrences — and
+`help/` at the baseline's 124 files.
+
+### Unit 1 — the key, the wire DTOs and the three dispatch helpers
+
+`core-contract.ts` gains, inside this lane's fence (immediately after
+`CharacterPhotoRemoveRequest`): `AvatarRollEntry` in §C.6's key order,
+`AvatarRollsListDto` / `AvatarRollActionDto` / `AvatarRollDeleteDto`, and the
+three `characterAvatarRoll*` request types, which also join the `CoreRequest`
+union directly after `CharacterPhotoRemoveRequest`.
+
+`characters.api.ts` gains `characterKeys.avatarRolls`, the `AvatarRoll` view
+row, the pure `toAvatarRoll` mapper and the three helpers.
+
+**Two deviations from the order's literal text, both deliberate, both
+following this file's own documented convention (`an-orders-prescribed-shape-
+may-fight-the-files-idiom`):**
+
+1. **The key's segment order.** §C.6 spells `['characters', id,
+   'avatar-rolls']` (v4's shape). v5 has spelled every per-character sub-key
+   `['characters', '<what>', id]` since the vertical landed, and the
+   `subprompts` key's own comment already records that deviation as
+   deliberate — "only the DISTINCTNESS is contractual, and the `['characters']`
+   prefix that mutations invalidate reaches both spellings identically". This
+   key follows the file. Pinned by a spec asserting distinctness from
+   `characterKeys.photos(id)` and that the prefix segment is `characters`.
+2. **`dispatchData`, not `dispatchExpect`.** The order suggests
+   `dispatchExpect(…, 'characterAvatarRolls')`, but the SPA's `CoreResponse`
+   union carries no such variant (nor one for `characterPhotoList`, the
+   immediate neighbour), and widening that union sits OUTSIDE this lane's
+   contract fence — which is the `CharacterPhoto*` REQUEST section. The file's
+   header documents why: the Shared contract pins response BODIES via the
+   differentials, not a narrowed Rust `Response` type. `dispatchData` reads
+   the bare body, which is exactly what v4's own `useAvatarRolls` comment
+   means by "`successResponse` answers with the payload bare, not wrapped in
+   `data`". **For the unifier:** if P4.D185's server half makes a
+   `characterAvatarRolls` response variant worth naming on the SPA union, that
+   is a one-line follow-up outside this fence.
+
+**Specs (`characters.api.spec.ts`, 11 new):** the mapper's four renames, the
+five roll-only fields carried through, `caption: null` / `tags: []`
+hardcoded, the nullable dimensions collapsing to `undefined`, and
+`rollLinkId` / `sha256` deliberately NOT reaching the view row; the key's
+distinctness and prefix; the list helper's `limit: 200` and its
+empty-body defaults; both action arms sending `action` verbatim; the delete
+verb addressed by FILE id.

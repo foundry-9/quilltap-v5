@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CoreClient } from '../../core/core-client';
+import type { AvatarRollEntry } from '../../core/core-contract';
 import {
   archiveCharacter,
+  avatarRollAction,
   characterKeys,
   countArchiveBundles,
   deleteArchiveBundle,
+  deleteAvatarRoll,
+  fetchAvatarRolls,
   fetchCharacterList,
   rehydrateCharacter,
+  toAvatarRoll,
 } from './characters.api';
 
 /** A `CoreClient` stub recording every dispatched request. */
@@ -118,5 +123,125 @@ describe('countArchiveBundles — the courtesy count (P4.D64 §3)', () => {
   it('reports null when the body carries no files array', async () => {
     const { client } = recorder({ notFiles: true });
     expect(await countArchiveBundles(client as CoreClient)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Avatar rolls (§C.6; v4 `useAvatarRolls.ts`)
+// ---------------------------------------------------------------------------
+
+/** The §C.6 wire row, every key populated so a dropped rename is visible. */
+const WIRE_ROLL: AvatarRollEntry = {
+  fileId: 'file-1',
+  rollLinkId: 'roll-link-1',
+  albumLinkId: 'album-link-1',
+  fileName: 'plate.webp',
+  url: '/api/v1/mount-blobs/abc',
+  mimeType: 'image/webp',
+  fileSizeBytes: 4096,
+  width: 512,
+  height: 512,
+  createdAt: '2026-09-12T00:00:00.000Z',
+  generationPrompt: 'a plate',
+  generationModel: 'flux',
+  sha256: 'deadbeef',
+  isPortrait: true,
+  usedInChatCount: 3,
+};
+
+describe('toAvatarRoll — the wire row → the view row (v4 `:35-53`)', () => {
+  it('applies v4’s four renames', () => {
+    const roll = toAvatarRoll(WIRE_ROLL);
+    expect(roll.id).toBe('file-1');
+    expect(roll.filename).toBe('plate.webp');
+    expect(roll.filepath).toBe('/api/v1/mount-blobs/abc');
+    expect(roll.size).toBe(4096);
+  });
+
+  it('carries the five roll-only fields through unchanged', () => {
+    const roll = toAvatarRoll(WIRE_ROLL);
+    expect(roll.albumLinkId).toBe('album-link-1');
+    expect(roll.isPortrait).toBe(true);
+    expect(roll.usedInChatCount).toBe(3);
+    expect(roll.generationPrompt).toBe('a plate');
+    expect(roll.generationModel).toBe('flux');
+  });
+
+  it('hardcodes caption null and tags empty — a roll carries neither', () => {
+    const roll = toAvatarRoll(WIRE_ROLL);
+    expect(roll.caption).toBeNull();
+    expect(roll.tags).toEqual([]);
+  });
+
+  it('collapses the nullable dimensions to undefined (v4’s `?? undefined`)', () => {
+    const roll = toAvatarRoll({ ...WIRE_ROLL, width: null, height: null });
+    expect(roll.width).toBeUndefined();
+    expect(roll.height).toBeUndefined();
+  });
+
+  it('does NOT carry rollLinkId or sha256 into the view row', () => {
+    // v4's `AvatarRoll` has neither: the section addresses a plate by
+    // `files.id`, and the roll's own link id is the server's business.
+    const roll = toAvatarRoll(WIRE_ROLL) as unknown as Record<string, unknown>;
+    expect(roll['rollLinkId']).toBeUndefined();
+    expect(roll['sha256']).toBeUndefined();
+  });
+});
+
+describe('characterKeys.avatarRolls', () => {
+  it('is DISTINCT from the photos key for the same character', () => {
+    // v4 `keys.ts:33`: "a separate collection with a separate endpoint, not a
+    // filtered view of the album".
+    expect(JSON.stringify(characterKeys.avatarRolls('c1'))).not.toEqual(
+      JSON.stringify(characterKeys.photos('c1')),
+    );
+  });
+
+  it('sits under the `characters` prefix mutations invalidate', () => {
+    expect(characterKeys.avatarRolls('c1')[0]).toBe('characters');
+  });
+});
+
+describe('the three avatar-roll dispatch helpers', () => {
+  it('asks for 200 rows, v4’s `?limit=200`', async () => {
+    const { client, seen } = recorder({ entries: [WIRE_ROLL], total: 1, hasMore: false });
+    const res = await fetchAvatarRolls(client as CoreClient, 'c1');
+    expect(seen[0]).toEqual({ type: 'characterAvatarRollList', characterId: 'c1', limit: 200 });
+    expect(res.entries).toHaveLength(1);
+    expect(res.total).toBe(1);
+    expect(res.hasMore).toBe(false);
+  });
+
+  it('defaults an empty body rather than throwing', async () => {
+    const { client } = recorder({});
+    expect(await fetchAvatarRolls(client as CoreClient, 'c1')).toEqual({
+      entries: [],
+      total: 0,
+      hasMore: false,
+    });
+  });
+
+  it('sends the action verbatim on both arms', async () => {
+    const { client, seen } = recorder({ linkId: 'l1', alreadyInAlbum: false });
+    await avatarRollAction(client as CoreClient, 'c1', 'f1', 'save-to-album');
+    await avatarRollAction(client as CoreClient, 'c1', 'f1', 'set-avatar');
+    expect(seen[0]).toEqual({
+      type: 'characterAvatarRollAction',
+      characterId: 'c1',
+      fileId: 'f1',
+      action: 'save-to-album',
+    });
+    expect(seen[1]!['action']).toBe('set-avatar');
+  });
+
+  it('dispatches the delete verb by FILE id', async () => {
+    const { client, seen } = recorder({ deleted: true, keptInAlbum: true });
+    const res = await deleteAvatarRoll(client as CoreClient, 'c1', 'f1');
+    expect(seen[0]).toEqual({
+      type: 'characterAvatarRollDelete',
+      characterId: 'c1',
+      fileId: 'f1',
+    });
+    expect(res.keptInAlbum).toBe(true);
   });
 });
