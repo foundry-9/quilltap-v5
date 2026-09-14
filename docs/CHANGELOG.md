@@ -712,6 +712,29 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — port(salon): the paused-chat hold predicate (v4 bug 137, server unit 1)
+
+_Versions: core 0.0.895, harness 0.0.784._
+
+Ports v4 `31436bae4`'s `lib/services/chat-message/paused-hold.ts` as
+`quilltap_core::services::paused_hold`. `should_hold_user_turn_for_pause`
+answers `false` for a continue-mode summons (Nudge, Skip, the all-LLM modal's
+Continue, an autonomous-room turn), `false` when `neverPauseForUser === true`,
+and otherwise the chat's persisted `isPaused`. v4's module doc — the rule's two
+halves, and the list of what is deliberately NOT consulted — is carried
+verbatim, because the second half ("nothing starts a turn either") is the whole
+point of the fix and the first half already lived in `execute_turn_chain`.
+
+`never_pause_for_user` is an `Option<bool>` rather than a `bool`: v4's field is
+optional and its guard is `=== true`, so absent and explicit `false` are one
+answer, and modelling the tri-state is what lets the differential drive v4's
+whole input grid.
+
+New tier-1 family `paused_hold_equivalence` over `harness/oracle/cases/
+paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
+grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
+and are asserted by name; the test also pins that exactly two coordinates hold,
+so an all-`false` port cannot pass.
 
 #### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
 

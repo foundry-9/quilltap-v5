@@ -140,6 +140,7 @@ pub mod orchestrator;
 pub mod outfit_selections;
 pub mod participant_resolver;
 pub mod pascal_writer;
+pub mod paused_hold;
 pub mod pre_compute;
 pub mod pricing_fetcher;
 pub mod primary_stream;
