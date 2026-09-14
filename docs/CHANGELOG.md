@@ -857,6 +857,37 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — feat(salon): reconcile a transcript read instead of replacing the array (P4.D187 unit 1)
+
+_Versions: SPA 0.5.708._
+
+`chat/transcript-reconcile.ts` is a character-faithful port of v4's
+`app/salon/[id]/hooks/transcript-reconcile.ts` (`5029075bb`). The Salon's
+transcript is about to become a subscribed read, so a refetch can land at any
+instant — mid-stream, mid-swipe, mid-scroll — and has to be merged rather than
+swapped in. The module holds three properties: the read is the authority
+(a provisional `temp-` bubble is retired the moment a row answers it), the
+operator's swipe selection survives by VARIANT ID rather than index, and an
+unchanged read hands back the very array it was given so nothing re-renders.
+
+Pinned two ways. `transcript-reconcile.spec.ts` transcribes v4's own 18 test
+titles 1:1; `transcript-reconcile.oracle.spec.ts` compares 38 recorded vectors
+against v4's REAL module, recorded by `oracle/transcript-reconcile.recorder.ts`
+from a `31436bae4` pin. The corpus records object identity as an index map into
+`previous` — the one property a port cannot fake, since rebuilding every row
+returns the right ids and an all-null map.
+
+Two corpus rows exist because the first draft could not falsify the mutations
+the work order named: carrying the swipe selection by index survived every
+scenario until one deleted a variant ABOVE the selected one (v4's own "a delete
+doesn't yank the view onto a different reply"), and dropping the server-order
+tiebreak survived all of them, because a stable sort with no tiebreak only
+disagrees when the collapse pass has reordered rows that tie — a grouped row and
+a plain one on the same millisecond.
+
+Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
+feeds the Salon until unit 2 moves it.
+
 
 #### 2026-09-14 — docs(setupphase): the `31436bae4` drift catch-up round — seven work orders (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188)
 
