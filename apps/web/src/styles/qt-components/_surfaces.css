@@ -1210,6 +1210,21 @@
   }
 
   /**
+   * Avatar Rolls section HOST (`screens/characters/view/tabs/
+   * avatar-rolls-section.ts`, `host: { class: 'qt-avatar-rolls-section' }`) —
+   * the same narrow invariant as the two rows above. v4 renders the section as
+   * a plain `<section>` sibling of the album grid with no custom element in
+   * between (`EmbeddedPhotoGallery.tsx:178-184`); v5 interposes an Angular
+   * host, and an unstyled one defaults to `display: inline`, which is the
+   * #97 / #107 shape. Declared here rather than left to inherit so the
+   * section's own `mt-8 border-t pt-6` frame sits in a block box, as v4's
+   * does.
+   */
+  .qt-avatar-rolls-section {
+    display: block;
+  }
+
+  /**
    * Markdown form-field HOST element (`editor/markdown-field.ts`,
    * `host: { class: 'qt-markdown-field' }`) — the same inline-host bug class
    * as above (dogfood finding #107). Unlike the bare `display: block` fixes

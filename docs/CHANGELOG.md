@@ -1052,6 +1052,32 @@ a plain one on the same millisecond.
 
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
+#### 2026-09-14 — feat(characters): the Avatar Rolls section in a character's Photo Gallery tab
+
+_Versions: SPA 0.5.709._
+
+The new `avatar-rolls-section.ts` is v4's `AvatarRollsSection.tsx` plus its
+`useAvatarRolls.ts` hook in one component (v5's gallery tab has no hook layer
+to split them across). Collapsed by default; renders nothing at all — not even
+the header — when the character has no rolls, and there is no empty-state
+string because v4 has none. The count badge reads `…` while loading and
+`<total> plate(s)` after; the description paragraph is byte-exact.
+
+Per tile: Set as avatar, Keep in the photo album (filled and disabled once
+kept), Download (the album's bytes-then-blob dance), and a two-click delete
+that disarms after 3 000 ms. The delete tooltip is built by v4's
+`describeDelete` — the plain sentence, plus an in-use clause from
+`usedInChatCount` and an album-copy clause from `albumLinkId`, joined with
+`; ` inside one parenthetical. Clicking a tile opens the same
+`ImageDetailModal` the album uses, with no generation-prompt field: v4 ships
+none. Every mutation invalidates `avatarRolls`, `photos` and `detail`.
+
+Two recorded structural divergences: the tile markup is a copy rather than a
+shared component, because v5's gallery tab never factored its tile out, and
+the spinner arms are not built, because the rolls section passes v4's
+`settingAvatar`/`deletingImage` as `null` and they are therefore unreachable
+there. The host carries a `display: block` rule, the #97 / #107 inline-host
+invariant.
 
 #### 2026-09-14 — feat(characters): the avatar-rolls query key, wire DTOs and the three dispatch helpers
 

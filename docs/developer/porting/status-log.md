@@ -125104,3 +125104,99 @@ hardcoded, the nullable dimensions collapsing to `undefined`, and
 distinctness and prefix; the list helper's `limit: 200` and its
 empty-body defaults; both action arms sending `action` verbatim; the delete
 verb addressed by FILE id.
+
+### Unit 2 — the Avatar Rolls section component
+
+NEW `screens/characters/view/tabs/avatar-rolls-section.ts` — v4's
+`AvatarRollsSection.tsx` and its `hooks/useAvatarRolls.ts` in ONE component,
+because v5's gallery tab has no hook layer to split them across. Everything
+the mandate names: the collapsible header (`Avatar Rolls` + the count badge,
+`…` while loading and `<total> plate(s)` after — read from `data.total`, not
+the page), the byte-exact description paragraph, DEFAULT COLLAPSED, the
+`return null` arm at zero rolls with no empty-state sentence (§R.6(9)); the
+tile grid at the album's own thumbnail size; Set as avatar / Keep in the photo
+album / Download / the two-click delete with the 3 000 ms disarm;
+`describeDelete`'s four shapes; the `ImageDetailModal` hand-off with no prompt
+field (§R.6(8)); the busy latch; the three invalidations.
+
+**Two structural divergences, both recorded in the component's own doc
+comment:**
+
+1. **The tile markup is a COPY, not a shared component.** v4 extends its
+   `GalleryImage` with four optional props (`onSaveToAlbum`, `isInAlbum`,
+   `isBusy`, `deleteTitle`) and reuses it through `GalleryGrid`. v5's gallery
+   tab never factored its tile out — it is an inline template — so the section
+   carries its own copy with the SAME class strings. The order anticipated
+   exactly this and asked for the divergence to be recorded rather than for
+   the tab to be refactored.
+2. **No spinner branches.** v4's tile spins when `settingAvatar` /
+   `deletingImage` name the tile, but the rolls section passes BOTH as `null`
+   (`AvatarRollsSection.tsx:152-153`), so `isUpdating` and `isDeletingImage`
+   are false for every roll and both spinner arms are structurally
+   unreachable. The busy state is carried entirely by `busyRollId`, as v4
+   intends. Building dead arms would have been an invention.
+
+**One NO-COUNTERPART, recorded at the call site:** v4's `runAction` falls back
+to `Request failed (<status>)` when a non-OK body carries no `error`. The
+dispatch boundary has no HTTP status to name, and every `CoreDispatchError`
+carries the core's own message (a transport failure becomes a synthetic
+`internal` error that carries one too), so the fallback has nothing to
+express. The DELETE path's fallback — `Failed to delete the avatar roll` — is
+a named string in the mandate and IS carried, pinned by its own spec.
+
+**One observation, not a change:** v4's `GalleryImage` logs
+`console.warn('Image failed to load in gallery', …)` from the `<img>`'s own
+error handler, which v5's gallery tab has never carried. The section mirrors
+the tab rather than reintroducing it alone; `handleRollError`'s warn — this
+hunk's own — IS carried and pinned.
+
+**The host class.** `host: { class: 'qt-avatar-rolls-section' }` with a
+`display: block` rule in `styles/qt-components/_surfaces.css`, beside
+`qt-equipped-slot-row` / `qt-wardrobe-item-row`. v4 renders the section as a
+plain `<section>` sibling of the album grid with no custom element in between;
+v5 interposes an Angular host, and an unstyled one defaults to
+`display: inline` — the #97 / #107 shape. `check-qt-classes` green at 952
+classes.
+
+**Specs (`avatar-rolls-section.spec.ts`, 35 cases):** the null arm and the
+absent empty state; the header, both count numbers, the pending `…`, the
+byte-exact paragraph; collapsed-by-default; `limit: 200`; the thumbnail size;
+the portrait badge coming from `isPortrait` (never a raw `defaultImageId`);
+the keep button's two labels, `aria-label` and disabled state, and its two
+class pairs; `describeDelete`'s four shapes as rendered tooltips; all four
+actions with their toasts; the silent `!linkId` bail; a refused action
+toasting the server's sentence; the download's fetch and its FIXED failure
+sentence; arm-then-confirm; the kept-copy delete sentence; the fallback
+sentence; the three invalidations on both a keep and a delete; the `refresh`
+output firing after a keep / set-avatar / delete but NOT after a download or
+an arming click; the portalled modal carrying a FILE id, no `linkId`, and no
+prompt anywhere in the document; the load-error path's warn and the missing
+tile losing its Download button; and the 3 000 ms disarm at its exact
+boundary. Tier 2 (order item 6) is the `usedInChatCount` case: the count
+reaches the delete tooltip and appears nowhere in the tile's text.
+
+**Two spec-instrument notes worth carrying:**
+
+- The inline template is a TS template literal, so a **backtick inside an HTML
+  comment terminates it** — six `file:line` backticks in the template's
+  comments produced a cascade of `TS1005` errors blaming the wrong lines
+  (the standing `backtick-in-an-angular-inline-template-comment` note).
+- The detail modal **portals to `document.body`**, so a `fixture.nativeElement`
+  query for it would have passed vacuously forever. The gallery tab's own spec
+  records the same trap; this spec asserts `modal.parentElement ===
+  document.body`.
+- `expand()` is IDEMPOTENT by design. The header is a toggle, so a plain click
+  collapses an already-open section — which made the "default expanded"
+  mutation redden 27 rows instead of the one that measures the default. With
+  the helper guarded, M1 reddens exactly that row.
+
+**Mutation proofs (six, each reverted by FILE BACKUP, never `git checkout`):**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M1 | default the section EXPANDED | exactly `is COLLAPSED by default` |
+| M2 | render the header at zero rolls | the two null-arm rows |
+| M3 | skip the `detail` invalidation | both invalidation rows |
+| M4 | single-click delete | the seven delete-sequence rows |
+| M5 | a 2 000 ms disarm | exactly the disarm-boundary row |
+| M6 | drop the `; ` joiner in the tooltip | exactly the both-clauses row |
