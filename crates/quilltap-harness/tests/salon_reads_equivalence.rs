@@ -216,6 +216,15 @@ fn salon_reads_match_oracle() {
             w.connection(),
         )
         .expect("ensure the cycle-order column on the vintage fixture");
+        // P4.D183, same idiom, one round later: `31436bae4` moved the schema
+        // again (`files.generationKey`, `chats.transcriptVersion`). The
+        // generation-key half is not optional here — P4.D182 put the column in
+        // `FILE_ENTRY_COLUMNS`, and this family resolves message ATTACHMENTS,
+        // so without the heal every chat GET answers `no such column:
+        // generationKey` and the whole family reds. It stayed invisible at
+        // P4.D182's gate because this test SKIPs (and passes) when its oracle
+        // var is unset, and cargo captures a passing test's output.
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
     }
     let db = Db::open(
         DbPaths {

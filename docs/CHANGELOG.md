@@ -58,6 +58,24 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — test(salon): heal the vintage salon fixture for P4.D182's two columns
+
+_Versions: harness 0.0.788._
+
+`salon_reads_equivalence` was RED on P4.D182's tip: every chat GET answered
+`sqlite error: no such column: generationKey`. P4.D182 put `generationKey`
+into `FILE_ENTRY_COLUMNS`, and this family resolves message attachments, so
+the committed `salon-{main,mount}.db` pair — which predates the column —
+could no longer be read. On a real instance the boot ensure has already run
+before any Salon read; in the harness venue nothing boots, so the fixture is
+healed at open, in the block P4.D171 established for exactly this.
+
+The break survived P4.D182's green gate because this test SKIPs (and
+therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
+passing test's output — so the SKIP line never reached the log that was read
+for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
+which P4.D182 provisioned and named for this use.
+
 #### 2026-09-14 — fix(vendor): move the SECOND hard-coded export-schema byte count
 
 _Versions: core 0.0.900, harness 0.0.787._
