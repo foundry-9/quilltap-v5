@@ -453,6 +453,57 @@ on v5's own digests. Three mutations, each reddening exactly its row — filteri
 nulls collapses the null case onto the undefined case's digest (two
 configurations, one key), sorting arrays reddens the LoRA pair, byte-order key
 sorting reddens the astral-vs-BMP row.
+#### 2026-09-14 — feat(characters): the avatar-rolls verbs and their two REST sub-routes
+
+_Versions: core 0.0.902, harness 0.0.789, web 0.0.143._
+
+The three `characterAvatarRoll*` verbs (list / action / delete) and
+`GET /api/v1/characters/{id}/avatar-rolls` + `POST|DELETE …/{fileId}`. The
+Response variant names are wire-visible — `Response` is tagged — so §C.6 names
+them and the SPA reads them.
+
+What the REST edges add over the verbs is route-layer in v4 too: the Zod query
+gate (`limit` int 1..=200, `offset` >= 0, over `Number()`, issues joined with
+`; `) and `withActionDispatch`'s two refusal envelopes with their
+`availableActions`. Both are pinned by `avatar_rolls_routes`, a wire test that
+serves the REAL router over the committed fixture and diffs 21 cases against
+v4's own handlers — so Zod 4.5.4's sentences are measured, never transcribed.
+
+Two measured facts worth keeping: v4's item route answers `Avatar roll not
+found` (not `Character not found`) for a character that does not exist, because
+`requireRoll` runs first; and the test venue has no spine by default, so the one
+case that copies bytes needs `ProductionSpineFactory` — which makes it a wiring
+probe for the byte seam as well.
+
+Census: `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 435 → 440, plus three rows.
+
+#### 2026-09-14 — feat(photos): the avatar-rolls service over a new committed fixture
+
+_Versions: core 0.0.902, harness 0.0.789, web 0.0.143._
+
+`photos::avatar_rolls_service` ports v4's `lib/photos/avatar-rolls-service.ts`:
+list the plates the avatar configuration cache holds for a character, keep one
+in the album, promote one to the portrait, throw one away. A roll is a `files`
+row with a non-null `generationKey` and the character's tag — no path predicate
+anywhere.
+
+Two rules carry the weight. Set-as-avatar points `defaultImageId` at the ALBUM
+LINK, never at a `files` id, so the album's own delete path (which scrubs by
+link id) stays in step. And delete uses `delete_with_gc` on the roll's OWN link,
+never `delete_mount_blob`, which would take the album copy with it.
+
+v4's one save function becomes two halves here: the bytes come from the injected
+`FileBytesStore`, which cannot run on the writer thread, so the read half plans
+and the write half commits — the split `characters_photos_post` already makes
+for v4's `{fileId}` leg. v4's guard order survives it.
+
+NEW committed `avatar-rolls-{main,mount}.db` + sidecar, and a 23-case
+differential where every mutating case is judged on a whole-table census as well
+as its answer. Six mutations; the one that deleted the newest-first sort
+survived the first run, because the fixture's rows had been inserted in an order
+that already was newest-first — the builder now scrambles them, with a comment
+saying why.
+
 #### 2026-09-14 — feat(photos): album membership through one predicate, so an avatar roll stops counting as a photo
 
 _Versions: core 0.0.901, harness 0.0.788._

@@ -13,6 +13,11 @@
 //!   built-in pair (v4 `handlers/post.ts` `handleResetBuiltins`). Lives here,
 //!   not on `/api/dispatch`: the avatar re-seed needs the host pixel codec,
 //!   which (like every codec-needing leg) is wired at the web edge.
+//! - `GET /api/v1/characters/{id}/avatar-rolls` + `POST|DELETE
+//!   …/avatar-rolls/{fileId}` (P4.D185, v4 `4dcbe0d21`) — v4-faithful REST
+//!   parity for a surface the SPA reaches over `/api/dispatch`. They live here
+//!   because what they add over the verbs is route-layer: v4's Zod query gate
+//!   and its `withActionDispatch` envelope are both route middleware.
 
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header::CONTENT_TYPE, StatusCode};
@@ -288,6 +293,162 @@ where
         .await
         .map_err(|e| PhotoErr::Gallery(GalleryError::Db(e)))?;
     inner.map_err(PhotoErr::Gallery)
+}
+
+// ===========================================================================
+// P4.D185: the avatar-rolls sub-routes (v4 `4dcbe0d21`)
+// ===========================================================================
+
+/// v4's `listQuerySchema` — `z.number().int().min(1).max(200).optional()` for
+/// `limit`, `.min(0)` for `offset` — over `has(k) ? Number(get(k)) : undefined`.
+///
+/// The messages are Zod 4.5.4's own and are pinned by `avatar_rolls_routes`
+/// against v4's REAL handler, not transcribed: `Number('')` is 0 (so `?limit=`
+/// trips the minimum, it does not read as absent) and `Number('abc')` is NaN,
+/// which `z.number()` refuses before any refinement runs.
+fn avatar_roll_query_issues(query: &std::collections::HashMap<String, String>) -> Vec<String> {
+    let mut issues: Vec<String> = Vec::new();
+    // v4's key order in the object literal: `limit`, then `offset`; Zod reports
+    // issues in that order and the route joins them with `; `.
+    for (key, min, max) in [("limit", 1.0_f64, Some(200.0_f64)), ("offset", 0.0, None)] {
+        let Some(raw) = query.get(key) else { continue };
+        let n = quilltap_core::jsnum::number_from_str(raw);
+        if n.is_nan() {
+            issues.push("Invalid input: expected number, received NaN".to_string());
+            continue;
+        }
+        if n.fract() != 0.0 || !n.is_finite() {
+            issues.push("Invalid input: expected int, received number".to_string());
+            continue;
+        }
+        if n < min {
+            issues.push(format!("Too small: expected number to be >={}", min as i64));
+            continue;
+        }
+        if let Some(max) = max {
+            if n > max {
+                issues.push(format!("Too big: expected number to be <={}", max as i64));
+            }
+        }
+    }
+    issues
+}
+
+fn avatar_roll_query_value(
+    query: &std::collections::HashMap<String, String>,
+    key: &str,
+) -> Option<i64> {
+    query
+        .get(key)
+        .map(|raw| quilltap_core::jsnum::number_from_str(raw) as i64)
+}
+
+/// v4 `GET /api/v1/characters/[id]/avatar-rolls`.
+pub async fn avatar_rolls_collection_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    // v4 reads through `url.searchParams.get` — FIRST wins.
+    let query = crate::query::first_map(&pairs);
+    if id.is_empty() {
+        return bad_request("Missing character id");
+    }
+    let issues = avatar_roll_query_issues(&query);
+    if !issues.is_empty() {
+        // v4 `badRequest(parsed.error.issues.map(i => i.message).join('; '))`.
+        return bad_request(&issues.join("; "));
+    }
+    let req = quilltap_core::api::Request::CharacterAvatarRollList {
+        character_id: id,
+        limit: avatar_roll_query_value(&query, "limit"),
+        offset: avatar_roll_query_value(&query, "offset"),
+    };
+    avatar_roll_dispatch(&state, req).await
+}
+
+/// v4 `POST /api/v1/characters/[id]/avatar-rolls/[fileId]?action=` — the
+/// `withActionDispatch` envelope is a ROUTE-layer artifact in v4 too (it is
+/// middleware, not service code), so it is rendered here through the shared
+/// helpers rather than carried through the dispatch channel.
+pub async fn avatar_roll_item_post(
+    State(state): State<SharedState>,
+    Path((id, file_id)): Path<(String, String)>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    if id.is_empty() {
+        return bad_request("Missing character id");
+    }
+    if file_id.is_empty() {
+        return bad_request("Missing avatar roll id");
+    }
+    let available = &quilltap_core::api::characters::AVATAR_ROLL_ACTIONS;
+    let path = "/api/v1/characters/[id]/avatar-rolls/[fileId]";
+    // `?action=` is JS-falsy, so it lands on the no-action leg — and this route
+    // passes NO default handler.
+    let Some(action) = crate::query::action(&pairs) else {
+        return crate::query::action_required_response(available, "POST", path);
+    };
+    if !available.contains(&action) {
+        return crate::query::unknown_action_response(action, available, "POST", path);
+    }
+    let req = quilltap_core::api::Request::CharacterAvatarRollAction {
+        character_id: id,
+        file_id,
+        action: action.to_string(),
+    };
+    avatar_roll_dispatch(&state, req).await
+}
+
+/// v4 `DELETE /api/v1/characters/[id]/avatar-rolls/[fileId]` — a `deleted:
+/// false` answer is `notFound('Avatar roll')`, not a 200.
+pub async fn avatar_roll_item_delete(
+    State(state): State<SharedState>,
+    Path((id, file_id)): Path<(String, String)>,
+) -> AxumResponse {
+    if id.is_empty() {
+        return bad_request("Missing character id");
+    }
+    if file_id.is_empty() {
+        return bad_request("Missing avatar roll id");
+    }
+    let req = quilltap_core::api::Request::CharacterAvatarRollDelete {
+        character_id: id,
+        file_id,
+    };
+    match crate::text_replacements_routes::dispatch_core(&state, req).await {
+        Ok(Response::CharacterAvatarRollDelete(v)) => {
+            // v4 `if (!result.deleted) return notFound('Avatar roll')`.
+            if v.get("deleted").and_then(Value::as_bool) == Some(false) {
+                return error_json(StatusCode::NOT_FOUND, "Avatar roll not found");
+            }
+            json_response(StatusCode::OK, &v)
+        }
+        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
+}
+
+/// The three avatar-roll success variants → v4's BARE bodies at 200.
+async fn avatar_roll_dispatch(
+    state: &SharedState,
+    req: quilltap_core::api::Request,
+) -> AxumResponse {
+    match crate::text_replacements_routes::dispatch_core(state, req).await {
+        Ok(Response::CharacterAvatarRolls(v))
+        | Ok(Response::CharacterAvatarRollAction(v))
+        | Ok(Response::CharacterAvatarRollDelete(v)) => json_response(StatusCode::OK, &v),
+        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
 }
 
 // ===========================================================================

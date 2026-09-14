@@ -619,6 +619,17 @@ pub fn build_router(state: SharedState) -> Router {
             get(images_routes::images_list).post(images_routes::images_post),
         )
         // === end P4.73 ===
+        // === P4.D185: the avatar-rolls REST edges (v4 `4dcbe0d21`) ===
+        .route(
+            "/api/v1/characters/{id}/avatar-rolls",
+            get(characters_routes::avatar_rolls_collection_get),
+        )
+        .route(
+            "/api/v1/characters/{id}/avatar-rolls/{file_id}",
+            post(characters_routes::avatar_roll_item_post)
+                .delete(characters_routes::avatar_roll_item_delete),
+        )
+        // === end P4.D185 ===
         // === P4.D163: the character-subprompts REST edges (v4 `2f4254b42`) ===
         .route(
             "/api/v1/characters/{id}/subprompts",

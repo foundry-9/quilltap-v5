@@ -2515,6 +2515,59 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D185: avatar rolls (v4 `4dcbe0d21`) ===
+            Request::CharacterAvatarRollList {
+                character_id,
+                limit,
+                offset,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_avatar_roll_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    limit,
+                    offset,
+                ),
+                Err(r) => r,
+            },
+            // The save legs read the roll's bytes through the host seam, so this
+            // arm takes the same readiness gate `messageSaveImage` does; a host
+            // with no byte store falls back to `NotConfiguredBytes`, which
+            // answers v4's own `has empty bytes` refusal.
+            Request::CharacterAvatarRollAction {
+                character_id,
+                file_id,
+                action,
+            } => match self.ready_save_image() {
+                Ok((db, bytes)) => {
+                    super::characters::character_avatar_roll_action(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &file_id,
+                        &action,
+                        bytes,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterAvatarRollDelete {
+                character_id,
+                file_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_avatar_roll_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &file_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D185 ===
             Request::TagList { search } => match self.ready_db() {
                 Ok(db) => super::characters::tag_list(&db, SINGLE_USER_ID, search.as_deref()),
                 Err(r) => r,

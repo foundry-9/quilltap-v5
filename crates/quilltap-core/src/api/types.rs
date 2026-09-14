@@ -723,6 +723,37 @@ pub enum Request {
         character_id: String,
         link_id: String,
     },
+    // === P4.D185: avatar rolls (v4 `4dcbe0d21`) ===
+    /// v4 `GET /characters/[id]/avatar-rolls` — every plate the avatar
+    /// configuration cache holds for this character, newest first. The BARE
+    /// `{ entries, total, hasMore }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterAvatarRollList {
+        character_id: String,
+        #[serde(default)]
+        limit: Option<i64>,
+        #[serde(default)]
+        offset: Option<i64>,
+    },
+    /// v4 `POST /characters/[id]/avatar-rolls/[fileId]?action=` — `save-to-album`
+    /// (hard-link the plate into the album) or `set-avatar` (save, then point
+    /// `defaultImageId` at the album LINK). Any other `action` is refused with
+    /// v4's `Unknown action: <x>` sentence.
+    #[serde(rename_all = "camelCase")]
+    CharacterAvatarRollAction {
+        character_id: String,
+        file_id: String,
+        action: String,
+    },
+    /// v4 `DELETE /characters/[id]/avatar-rolls/[fileId]` — scrub every pointer,
+    /// drop the roll's OWN link, delete the cache row. An album copy of the same
+    /// bytes is never a casualty.
+    #[serde(rename_all = "camelCase")]
+    CharacterAvatarRollDelete {
+        character_id: String,
+        file_id: String,
+    },
+    // === end P4.D185 ===
     // --- Tags (v4 tags/route.ts + tags/[id]/route.ts) ---
     #[serde(rename_all = "camelCase")]
     TagList {
@@ -4003,6 +4034,15 @@ pub enum Response {
     Character(serde_json::Value),
     /// v4 `GET /api/v1/characters` body (`{characters, count}`).
     Characters(serde_json::Value),
+    // === P4.D185: avatar rolls (v4 `4dcbe0d21`) ===
+    /// The BARE `{ entries, total, hasMore }` of `characterAvatarRollList`.
+    CharacterAvatarRolls(serde_json::Value),
+    /// `{ linkId, alreadyInAlbum }` for `save-to-album`, `{ linkId,
+    /// addedToAlbum }` for `set-avatar`.
+    CharacterAvatarRollAction(serde_json::Value),
+    /// `{ deleted, blobRemoved, chatsScrubbed, keptInAlbum }`.
+    CharacterAvatarRollDelete(serde_json::Value),
+    // === end P4.D185 ===
     /// v4 tags list body (`{tags, count}`).
     Tags(serde_json::Value),
     /// v4 single-tag body (`{tag}`).

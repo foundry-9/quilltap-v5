@@ -24,6 +24,9 @@
 //!   `chatFilesList` shares with it (P4.D174).
 
 pub mod auto_describe_attachment;
+// === P4.D185 ===
+pub mod avatar_rolls_service;
+// === /P4.D185 ===
 pub mod character_gallery_service;
 // === P4.D174 ===
 pub mod chat_gallery;

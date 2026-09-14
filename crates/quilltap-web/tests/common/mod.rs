@@ -44,6 +44,13 @@ const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
 /// Rewrite the fixture builder's user id to the engine's `SINGLE_USER_ID`
 /// (a real v4 instance's rows all belong to it; the oracle fixture minted its
 /// own). Generic: every table with a `userId` column, plus `users.id`.
+/// P4.D185: the same rewrite, for a family that materializes its own instance
+/// dir rather than adding a `materialize_*` twin here.
+#[allow(dead_code)]
+pub fn rewrite_fixture_user_ids(conn: &rusqlite::Connection) {
+    rewrite_user_ids(conn)
+}
+
 fn rewrite_user_ids(conn: &rusqlite::Connection) {
     let tables: Vec<String> = {
         let mut stmt = conn

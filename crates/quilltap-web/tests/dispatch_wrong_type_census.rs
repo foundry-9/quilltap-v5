@@ -632,6 +632,39 @@ const CENSUS: &[Row] = &[
             "into `listQuerySchema.safeParse`"
         ),
     },
+    // === P4.D185: avatar rolls (v4 `4dcbe0d21`) ===
+    Row {
+        variant: "CharacterAvatarRollList",
+        field: "limit",
+        rust_type: "Option<i64>",
+        v4: V4::Query,
+        note: concat!(
+            "`characters/[id]/avatar-rolls/route.ts:30` `searchParams`, then ",
+            "`Number()` into `listQuerySchema.safeParse`"
+        ),
+    },
+    Row {
+        variant: "CharacterAvatarRollList",
+        field: "offset",
+        rust_type: "Option<i64>",
+        v4: V4::Query,
+        note: concat!(
+            "`characters/[id]/avatar-rolls/route.ts:34` `searchParams`, then ",
+            "`Number()` into `listQuerySchema.safeParse`"
+        ),
+    },
+    Row {
+        variant: "CharacterAvatarRollAction",
+        field: "action",
+        rust_type: "String",
+        v4: V4::Query,
+        note: concat!(
+            "`avatar-rolls/[fileId]/route.ts:93` `withActionDispatch` reads ",
+            "`?action=` (`middleware/actions.ts:90`); an unknown value is the ",
+            "`Unknown action: <x>` envelope, never a parse"
+        ),
+    },
+    // === end P4.D185 ===
     Row {
         variant: "TagList",
         field: "search",
@@ -2493,9 +2526,11 @@ fn is_route_identifier(field: &str) -> bool {
 // `chat_transcript.rs` and in the route family's `not_an_integer` arm rather
 // than as a refusal here.
 //
-// ⚠ P4.D185 moves this constant too, in the same round. The unifier recounts
-// as base + both deltas, not as either lane's total.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 437;
+// **P4.D185 (+5): 437 → 442** — recounted at the `31436bae4` round's
+// unification as base 435 + P4.D183's 2 + P4.D185's 5 (the three
+// `CharacterAvatarRoll*` verbs' `character_id`s and the two `file_id`s;
+// see P4.D185's block above). Neither lane's own total is the answer.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 442;
 
 #[test]
 fn census_covers_every_typed_request_field() {

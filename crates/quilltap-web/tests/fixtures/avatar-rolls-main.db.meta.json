@@ -1,0 +1,39 @@
+{
+  "rolfVault": "8f353b9e-bfbf-450e-8f05-a08552b67aac",
+  "sageVault": "0c93ea5e-6d1e-4fcd-a51d-7fd0bba6eae6",
+  "projectMp": "83000000-0000-4000-8000-000000000001",
+  "linkIds": {
+    "rollNew": "21c49385-f71f-46be-aef1-c752e77a091a",
+    "rollKept": "4b71e38e-d8e2-4a25-89c2-11da94f690d7",
+    "rollKeptAlbum": "58ccefd4-623a-4a0d-b143-f649d034b102",
+    "rollAlbum": "231bb5b0-918d-4403-a324-239d17b220a3",
+    "rollLegacy": "3fc4639d-e8d5-46e5-8ee8-5406e53a3d0a",
+    "rollSage": "2ae25164-dfb2-440c-a08d-b7a4b095c4ba",
+    "notRoll": "9f027ff0-5743-4377-8bfb-c50a6c007e4a"
+  },
+  "shas": {
+    "rollNew": "9e682fea692fb84998d2da30eec075af8127fdec54c73ea0a4cf72b144e9b514",
+    "rollKept": "16a7edd5272523dab430f265e75899efbcae9e527a972bf8389dc341cc366a7a",
+    "rollKeptAlbum": "16a7edd5272523dab430f265e75899efbcae9e527a972bf8389dc341cc366a7a",
+    "rollAlbum": "08cfa147edd252f21fb5f4965c906e69816368850b5ad84250d8fb34764af701",
+    "rollLegacy": "512580bcbd307fa5591d088ce2eaac0ed432371d4b705a0cfbe64588e3d6eb1c",
+    "rollSage": "24197a7417418ff509331f61412aae83e038b0ebdf66096714c85858ad3aafde",
+    "notRoll": "cba5daa134a63de4d6ed1c5ecdf451459d26d158e10aaf9e7b053ac6cd9dc283"
+  },
+  "blobIds": {
+    "rollNew": "74e116b0-15f0-4324-84d3-9208c992f90b",
+    "rollKept": "c8a575e5-25b7-4d83-8904-2722fdb21e66",
+    "rollKeptAlbum": "c8a575e5-25b7-4d83-8904-2722fdb21e66",
+    "rollAlbum": "3874e930-4e9f-4d91-8ada-5c076456647b",
+    "rollLegacy": "ad56b4e5-dce0-4c42-bdb8-47044822c296",
+    "rollSage": "77a0cbfb-5cfc-4462-a4cb-05d6cd0a5514",
+    "notRoll": "6cc3333a-0ad6-4909-8567-082cb716ac73"
+  },
+  "rollNewLinkId": "21c49385-f71f-46be-aef1-c752e77a091a",
+  "rollKeptLinkId": "4b71e38e-d8e2-4a25-89c2-11da94f690d7",
+  "rollKeptAlbumLinkId": "58ccefd4-623a-4a0d-b143-f649d034b102",
+  "rollAlbumLinkId": "231bb5b0-918d-4403-a324-239d17b220a3",
+  "rollLegacyLinkId": "3fc4639d-e8d5-46e5-8ee8-5406e53a3d0a",
+  "rollSageLinkId": "2ae25164-dfb2-440c-a08d-b7a4b095c4ba",
+  "notRollLinkId": "9f027ff0-5743-4377-8bfb-c50a6c007e4a"
+}

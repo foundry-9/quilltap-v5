@@ -1732,6 +1732,277 @@ pub async fn character_photo_save_by_id(
 }
 
 // ===========================================================================
+// P4.D185: avatar rolls (v4 `4dcbe0d21`)
+// ===========================================================================
+
+/// The actions `POST …/avatar-rolls/[fileId]` serves, in v4's handler-map
+/// insertion order (`avatar-rolls/[fileId]/route.ts:93`) — which is what its
+/// `withActionDispatch` reports as `availableActions`.
+pub const AVATAR_ROLL_ACTIONS: [&str; 2] = ["save-to-album", "set-avatar"];
+
+/// v4's `respondToError` ladder (`avatar-rolls/[fileId]/route.ts:37`), which
+/// classifies by reading the thrown message. The port carries a typed error, so
+/// the arms match on the variant — but each variant's `Display` is v4's message
+/// byte-for-byte, and that is what reaches the caller.
+fn avatar_roll_err(e: crate::photos::avatar_rolls_service::AvatarRollError) -> Response {
+    use crate::photos::avatar_rolls_service::AvatarRollError as E;
+    match e {
+        // v4 `notFound('Character')` / `notFound('Avatar roll')` — the resource
+        // name, not the thrown sentence with its id.
+        E::CharacterNotFound(_) => not_found("Character"),
+        E::RollNotFound(_) => not_found("Avatar roll"),
+        // v4's `includes(...)` arm: the message itself is the 400 body.
+        E::NoVault(_) => bad_request(e.to_string()),
+        E::BadRequest(msg) => bad_request(msg),
+        E::Db(err) => {
+            // v4 logs `[Characters/AvatarRolls v1] Avatar roll action failed`
+            // beside the 500 (a differential cannot see a log line).
+            tracing::error!(
+                error = %err,
+                "[Characters/AvatarRolls v1] Avatar roll action failed"
+            );
+            internal(err)
+        }
+    }
+}
+
+/// v4 `GET /characters/[id]/avatar-rolls` — `listAvatarRolls` → the BARE
+/// `{ entries, total, hasMore }`.
+///
+/// The collection route's ladder is SHORTER than the item route's: only
+/// `Character not found` maps to a 404; everything else is a 500 beside
+/// `[Characters/AvatarRolls v1] Error listing avatar rolls`
+/// (`avatar-rolls/route.ts:57`).
+pub fn character_avatar_roll_list(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Response {
+    let cid = character_id.to_string();
+    let out = read_main_mount(db, move |main, mount| {
+        Ok(crate::photos::avatar_rolls_service::list_avatar_rolls(
+            main, mount, &cid, limit, offset,
+        ))
+    });
+    match out {
+        Ok(Ok(v)) => Response::CharacterAvatarRolls(v),
+        Ok(Err(e)) => match e {
+            crate::photos::avatar_rolls_service::AvatarRollError::CharacterNotFound(_) => {
+                not_found("Character")
+            }
+            other => {
+                tracing::error!(
+                    character_id,
+                    error = %other,
+                    "[Characters/AvatarRolls v1] Error listing avatar rolls"
+                );
+                Response::error(ErrorKind::Internal, other.to_string())
+            }
+        },
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `POST /characters/[id]/avatar-rolls/[fileId]?action=save-to-album|set-avatar`.
+///
+/// `set-avatar` ALWAYS goes through the save first (idempotent) and then points
+/// `defaultImageId` at the album LINK, never at a `files` id.
+///
+/// The bytes are read BETWEEN the two halves, off the writer thread — see
+/// `photos::avatar_rolls_service`'s module doc for why the port splits v4's one
+/// function there.
+pub async fn character_avatar_roll_action(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    file_id: &str,
+    action: &str,
+    bytes: std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
+) -> Response {
+    if !AVATAR_ROLL_ACTIONS.contains(&action) {
+        // v4's `withActionDispatch` sentence. The `availableActions` array rides
+        // the REST edge's envelope (v4's is route middleware, not service code);
+        // this channel carries the sentence.
+        return bad_request(format!("Unknown action: {action}"));
+    }
+    let set_avatar = action == "set-avatar";
+
+    let saved = match save_avatar_roll_to_album(db, character_id, file_id, bytes).await {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    if !set_avatar {
+        return Response::CharacterAvatarRollAction(json!({
+            "linkId": saved.link_id,
+            "alreadyInAlbum": saved.already_in_album,
+        }));
+    }
+
+    let added_to_album = !saved.already_in_album;
+    let cid = character_id.to_string();
+    let fid = file_id.to_string();
+    let link_id = saved.link_id.clone();
+    let out = db
+        .write(move |w| {
+            let mount = match w.mount_index() {
+                Some(m) => m.connection(),
+                None => {
+                    return Err(crate::db::DbError::Internal(
+                        "the avatar rolls surface requires the mount-index database".to_string(),
+                    ))
+                }
+            };
+            let main = w.main().connection();
+            Ok(crate::photos::avatar_rolls_service::point_portrait_at_link(
+                main,
+                mount,
+                &cid,
+                &fid,
+                &link_id,
+                added_to_album,
+            ))
+        })
+        .await;
+    match out {
+        Ok(Ok(())) => Response::CharacterAvatarRollAction(json!({
+            "linkId": saved.link_id,
+            "addedToAlbum": added_to_album,
+        })),
+        Ok(Err(e)) => avatar_roll_err(e),
+        Err(e) => db_error_response(e),
+    }
+}
+
+struct SavedRoll {
+    link_id: String,
+    already_in_album: bool,
+}
+
+/// v4 `saveAvatarRollToAlbum`, assembled from the service's two halves.
+async fn save_avatar_roll_to_album(
+    db: &Db,
+    character_id: &str,
+    file_id: &str,
+    bytes: std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
+) -> Result<SavedRoll, Response> {
+    use crate::photos::avatar_rolls_service as svc;
+
+    let cid = character_id.to_string();
+    let fid = file_id.to_string();
+    let plan = match read_main_mount(db, move |main, mount| {
+        Ok(svc::plan_album_save(main, mount, &cid, &fid))
+    }) {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => return Err(avatar_roll_err(e)),
+        Err(e) => return Err(db_error_response(e)),
+    };
+
+    let needs = match plan {
+        svc::AlbumSavePlan::AlreadyInAlbum { link_id } => {
+            return Ok(SavedRoll {
+                link_id,
+                already_in_album: true,
+            })
+        }
+        svc::AlbumSavePlan::NeedsBytes(n) => n,
+    };
+
+    // v4 `saveFileToCharacterGallery` reads the bytes through
+    // `fileStorageManager.downloadFile` and refuses an empty read with
+    // `Image ${fileId} has empty bytes`.
+    let entry = {
+        let fid = needs.file_id.clone();
+        match db
+            .read_main(move |conn| crate::db::files::FilesRepository::new(conn).find_by_id(&fid))
+        {
+            Ok(Some(e)) => e,
+            Ok(None) => {
+                return Err(avatar_roll_err(svc::AvatarRollError::RollNotFound(
+                    needs.file_id.clone(),
+                )))
+            }
+            Err(e) => return Err(db_error_response(e)),
+        }
+    };
+    let data = bytes
+        .read_image_buffer(&entry)
+        .unwrap_or_default()
+        .unwrap_or_default();
+    if data.is_empty() {
+        return Err(avatar_roll_err(svc::AvatarRollError::BadRequest(format!(
+            "Image {} has empty bytes",
+            needs.file_id
+        ))));
+    }
+
+    let kept_at = crate::clock::now_iso();
+    let cid = character_id.to_string();
+    let fid = needs.file_id.clone();
+    let name = needs.original_filename.clone();
+    let mime = needs.mime_type.clone();
+    let out = db
+        .write(move |w| {
+            let mount = match w.mount_index() {
+                Some(m) => m.connection(),
+                None => {
+                    return Err(crate::db::DbError::Internal(
+                        "the avatar rolls surface requires the mount-index database".to_string(),
+                    ))
+                }
+            };
+            let main = w.main().connection();
+            Ok(svc::commit_album_save(
+                main, mount, &cid, &fid, &data, &name, &mime, &kept_at,
+            ))
+        })
+        .await;
+    match out {
+        Ok(Ok(link_id)) => Ok(SavedRoll {
+            link_id,
+            already_in_album: false,
+        }),
+        Ok(Err(e)) => Err(avatar_roll_err(e)),
+        Err(e) => Err(db_error_response(e)),
+    }
+}
+
+/// v4 `DELETE /characters/[id]/avatar-rolls/[fileId]` — the whole scrub, in v4's
+/// order. `deleted: false` is a MISS, not a throw; the REST edge turns it into
+/// `notFound('Avatar roll')`.
+pub async fn character_avatar_roll_delete(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    file_id: &str,
+) -> Response {
+    let cid = character_id.to_string();
+    let fid = file_id.to_string();
+    let out = db
+        .write(move |w| {
+            let mount = match w.mount_index() {
+                Some(m) => m.connection(),
+                None => {
+                    return Err(crate::db::DbError::Internal(
+                        "the avatar rolls surface requires the mount-index database".to_string(),
+                    ))
+                }
+            };
+            let main = w.main().connection();
+            Ok(crate::photos::avatar_rolls_service::delete_avatar_roll(
+                main, mount, &cid, &fid,
+            ))
+        })
+        .await;
+    match out {
+        Ok(Ok(v)) => Response::CharacterAvatarRollDelete(v.to_json()),
+        Ok(Err(e)) => avatar_roll_err(e),
+        Err(e) => db_error_response(e),
+    }
+}
+
+// ===========================================================================
 // Cascade delete + preview (v4 cascade-delete.ts)
 // ===========================================================================
 

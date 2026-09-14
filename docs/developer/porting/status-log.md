@@ -124352,3 +124352,183 @@ else in this family.
 **For the unifier:** other families reading a committed pair with a `files`
 table need the same heal, and nothing in this lane can measure which — they
 SKIP without their own oracle env vars. The census above is the worklist.
+
+### Units 2–3 — the committed fixture and `photos/avatar_rolls_service.rs`
+
+**NEW committed `crates/quilltap-web/tests/fixtures/avatar-rolls-{main,mount}.db`
++ the `.meta.json` sidecar**, built by `harness/oracle/fixtures/
+build-avatar-rolls-fixture.ts` (the builder's header carries the runnable
+command; the family's `.rs` header points at it as PROSE, so the sweep driver
+does not classify the family as a repo writer). Three characters — ROLF (the
+subject, portrait = an ALBUM LINK id), SAGE (one roll of her own, portrait = a
+LEGACY `files.id`), TALL (vault pointer AND mount point removed after creation)
+— five ROLF rolls covering every link shape, two negatives, and three chats of
+which two wear the same roll.
+
+Two things about it are worth a later reader's time:
+
+- **The storage key names `doc_mount_blobs.id`, not the link's `fileId`.**
+  `readMountBlob` reads the blob table BY ID; the link's `fileId` is the
+  `doc_mount_files` row the blob hangs off. Getting that wrong made every album
+  save fail with `Mount-blob not found for storageKey: …` — loudly, on both
+  sides, which is the only reason it was cheap to find.
+- **The INSERT order is deliberately NOT the read order** — see the mutation
+  table below.
+
+`photos/avatar_rolls_service.rs` ports the four public functions and the six
+private helpers. `FileEntry` carries neither `createdAt` nor `tags` and `db/**`
+is read-only to this lane, so the roll rows are read with raw SQL in the module
+— the `photos::chat_gallery` precedent for a photos module reading `files`
+directly. v4's `findByTag` is `{tags: {$in: [id]}}`, which its translator emits
+as a `json_each` membership test (`find_sweep_rows_by_linked_to`'s shape over
+the sibling JSON array column), with no `ORDER BY`.
+
+**One shape differs from v4 by necessity, and the module doc says why:** v4's
+`saveAvatarRollToAlbum` is one function that reads the roll's bytes through
+`fileStorageManager.downloadFile` mid-flight. In this port those bytes come from
+the injected `FileBytesStore`, which cannot run on the writer thread — so the
+save is `plan_album_save` (read half) → the caller's byte fetch →
+`commit_album_save` (write half), exactly the split `quilltap-web`'s
+`characters_photos_post` already makes for v4's `{fileId}` leg. v4's guard ORDER
+survives the seam, which is what the differential checks.
+
+`invalidateMountPoint` is a **NO-COUNTERPART**: v5 has no mount chunk cache (the
+recorded no-op `services::embedding_reapply_profile` already names for v4's
+`invalidateMountChunkCacheAll`). `refreshStats` is real and is called, with v4's
+`.catch(() => {})` swallow reproduced.
+
+### The differential — `avatar_rolls_tier2_equivalence` + `avatar_rolls_routes`
+
+23 service cases and 21 REST cases over ONE oracle
+(`harness/oracle/cases/avatar-rolls-tier2.test.ts`), each case reading a fresh
+copy of the committed pair. Every mutating case is judged on TWO comparands: the
+answer, and a whole-table census of `files`, the characters' two avatar
+pointers, `chats.characterAvatars`, `doc_mount_file_links`, `doc_mount_blobs`
+and `doc_mount_files` afterwards — because the answer alone cannot tell
+"dropped the roll's link" from "dropped every link to the blob", which is the
+single most expensive way to get this module wrong.
+
+**The oracle un-mocks `jest.setup`'s storage stub**, deliberately. Every roll
+carries a `mount-blob:` storage key and v4's real `downloadFile` serves those
+straight out of the mount index with no backend and no config; keeping the stub
+would have made every album save hash the same seventeen bytes, so the saved
+blob would carry a sha no roll row names and `classifyRollLinks` could never see
+its own album copy afterwards. The Rust side reads the same blob through the
+`FileBytesStore` seam, which is what the host does in production.
+
+**Measured, not transcribed — v4's guard ORDER on the item route.** A save or a
+delete for a character that does not exist answers **`Avatar roll not found`**,
+not `Character not found`: `requireRoll` runs first, and a tag cannot match a
+character with no rows. Both `route_post_missing_character` and
+`route_delete_missing_character` pin it.
+
+**The Zod query gate's sentences are Zod 4.5.4's own, measured through v4's real
+handler** — `Too small: expected number to be >=1`, `Invalid input: expected
+number, received NaN`, `Invalid input: expected int, received number`, `Too big:
+expected number to be <=200`, and the `; ` join when both keys fail. `?limit=`
+is `Number('') === 0`, so it trips the MINIMUM rather than reading as absent.
+
+The `availableActions` envelope is rendered at the REST edge through the
+existing `query::{action_required_response, unknown_action_response}` helpers,
+not carried through the dispatch channel: in v4 it is `withActionDispatch` —
+route middleware, not service code — and `CoreError` has no flat-sibling
+carrier for an array (the P4.D174 lesson: `details` renders NESTED). The verb
+answers v4's `Unknown action: <x>` sentence; the route answers the whole
+envelope. Recorded as a deliberate split.
+
+#### Mutation table — each reverted by FILE BACKUP
+
+| mutation | reddens |
+|---|---|
+| `point_portrait_at_link` writes the `files` id | `set_avatar_saves_first`, `set_avatar_already_kept` |
+| the delete drops the ALBUM link too (the `delete_mount_blob` shape) | `delete_keeps_the_album_copy`, `delete_album_only_roll` |
+| the chat scrub is skipped | `delete_scrubs_everything` |
+| the roll query drops the character tag scoping | every listing case + `save_other_characters_roll` + `delete_other_characters_roll` (9) |
+| a non-roll delete throws instead of reporting a miss | `delete_miss_is_not_a_throw`, `delete_other_characters_roll` |
+| the newest-first sort is DELETED | `list_page`, `list_limit_offset`, `list_limit_clamped_low`, `list_limit_clamped_high` — *but only after the fixture fix below* |
+| the page is sliced BEFORE the sort | `list_limit_offset`, `list_limit_clamped_low` |
+
+⚠ **The sort mutation SURVIVED the first time, and that is the unit's most
+useful finding.** The fixture's `files` rows had been inserted in id order,
+which happened to be exactly newest-first — so the query's rowid order already
+equalled the sorted order and `sort_by` was unobservable. The fixture builder
+now inserts them SCRAMBLED (LEGACY, ALBUM, NEW, NOLINK, KEPT against a read
+order of NEW, KEPT, ALBUM, NOLINK, LEGACY) with a comment saying why, the
+fixture and oracle were rebuilt, and the mutation reddens as it should. A
+differential that cannot see an ordering is worth exactly as much as one that
+cannot see a value.
+
+### Units 4–5 — the three verbs and the two REST sub-routes
+
+`api/types.rs` gains the three `CharacterAvatarRoll*` `Request` pairs at the
+fence (`CharacterPhotoRemove`) and the three `Response` variants §C.6 names.
+The Response variant NAME is wire-visible — `Response` is `#[serde(tag = "type",
+content = "data")]`, so `{"type":"characterAvatarRolls","data":{…}}` is what the
+SPA reads — which is why §C.6 names them and why they are not folded into the
+existing `Response::Character`.
+
+`api/engine.rs` gains the three arms. The ACTION arm takes `ready_save_image()`,
+the same readiness gate `messageSaveImage` uses, because the album save reads
+the roll's bytes through the host seam; a host without one falls back to
+`NotConfiguredBytes`, which answers v4's own `has empty bytes` refusal rather
+than inventing a new one.
+
+The REST edges are `GET /api/v1/characters/{id}/avatar-rolls` and
+`POST|DELETE …/avatar-rolls/{file_id}`, registered beside the P4.D163
+subprompts pair. What they add over the verbs is route-layer in v4 too:
+
+- **The Zod query gate.** v4's `listQuerySchema` lives in the ROUTE file, over
+  `has(k) ? Number(get(k)) : undefined`, and the issue list is joined with
+  `; `. The edge reproduces it through the canonical
+  `jsnum::number_from_str` (the `photos_routes` precedent), and every sentence
+  is pinned against v4's real handler rather than transcribed.
+- **The `withActionDispatch` envelope.** `Action parameter required` /
+  `Unknown action: <x>`, each with `availableActions` — rendered through the
+  existing `query::{action_required_response, unknown_action_response}`
+  helpers. `?action=` is JS-falsy and lands on the no-action leg; this route
+  passes NO default handler, so that leg is a refusal, not a listing.
+- **The DELETE 404.** `deleted: false` is a MISS at the service and
+  `notFound('Avatar roll')` at the edge.
+
+**Census delta:** `dispatch_wrong_type_census.rs`'s
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` **435 → 440** (five `*_id` fields: the
+three `character_id`s and two `file_id`s), plus THREE new census rows —
+`CharacterAvatarRollList.{limit,offset}` (v4 `Query` → `Number()` → Zod) and
+`CharacterAvatarRollAction.action` (v4 `Query`, and an unknown value is the
+envelope, never a parse). ⚠ P4.D183 moves the same constant; the unifier
+recounts as base + both deltas.
+
+### Deferrals — loud, typed, named
+
+- **The SPA section is P4.D188's** (§C.6's client half). Nothing in this lane
+  renders a roll.
+- **"View with generation prompt" is NOT implemented in v4** (§R.6(8)): the
+  modal's `ImageData` carries no prompt field. Nothing to port, recorded.
+- **`generationPrompt` / `generationModel` ride the entry and are rendered by
+  nothing** — as in v4. Carried because v4 carries them, recorded so a later
+  reader does not take the silence for a gap.
+- **`invalidateMountPoint` has NO COUNTERPART** (above). `refreshStats` is real
+  and swallowed, as v4 swallows it.
+- **The `!id` / `!fileId` 400 arms are unreachable through routing** on both
+  sides — axum's `{id}` will not match an empty segment and neither will
+  Next's. Ported anyway (they are two lines and v4 has them), not cased.
+
+### Spotted, not mine — for the unifier
+
+- ⚠ **Every committed fixture with a `files` table predates
+  `files.generationKey`.** Measured across all 47 `*-main.db` fixtures: 25 carry
+  a `files` table, **0** carry the column, and P4.D182 (correctly, per R.7)
+  regenerated none of them. Any family that reads a `files` row against one of
+  those pairs answers `no such table`-class internals until its venue adopts
+  `test_support::ensure_p4d182_columns`. This lane healed the one venue it
+  owns; the rest cannot be found from here, because a family without its oracle
+  env var SKIPs rather than failing. The unified gate is where they will
+  surface.
+- `is_photos_relative_path` has TWO byte-identical homes in v5
+  (`photos/photos_paths.rs` and `db/doc_mount_file_links.rs`), with the twelve
+  importers split across them. Pre-existing; the NEW predicate deliberately got
+  ONE home. A consolidation is a small, safe follow-up nobody owns.
+- `crates/quilltap-web/tests/common/mod.rs` gained ONE additive `pub fn
+  rewrite_fixture_user_ids` wrapper (the venue's existing private helper, made
+  reachable). Flagged because the file is shared scaffolding, not because it is
+  contested.
