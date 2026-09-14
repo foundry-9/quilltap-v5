@@ -80,6 +80,37 @@ export interface ChatGetRequest {
 }
 
 /**
+ * The cheap conditional transcript read (P4.D183 §C.2, v4 `GET
+ * /api/v1/messages?chatId=…&action=transcript&knownVersion=N`).
+ *
+ * The Salon subscribes to the `chats` topic and calls this on every hint, so
+ * the common case — a hint fired for something that was not a message — must
+ * cost a round trip and the word "unchanged", not a re-serialized
+ * conversation. `knownVersion` counts only when it is an integer; anything
+ * else reads as "no known version" and answers a full read, never an error.
+ */
+export interface ChatTranscriptRequest {
+  type: 'chatTranscript';
+  chatId: string;
+  knownVersion?: number | null;
+}
+
+/**
+ * The transcript read's bare body (P4.D183 §C.2). `unchanged: true` carries
+ * `version` and nothing else — the version is read BEFORE the projection, so
+ * an agreeing counter never pays for one. When it is false, `messages` and
+ * `offSceneCharacters` are byte-identical to the chat GET's (ONE projection
+ * function feeds both).
+ */
+export interface ChatTranscriptDto {
+  unchanged: boolean;
+  version: number;
+  messages?: MessageDto[];
+  offSceneCharacters?: OffSceneCharacter[];
+  count?: number;
+}
+
+/**
  * The four-state per-chat Concierge status on the wire (P4.D141, widened at
  * P4.D144). The canonical derivation from the two stored fields lives in
  * `app/chat/concierge-state.ts`; this union is both the manual-flip PUT's
@@ -2420,6 +2451,7 @@ export type CoreRequest =
   | ChatCreateRequest
   // --- The Salon conversation surface (P4.6a implements the server side) ---
   | ChatGetRequest
+  | ChatTranscriptRequest
   | { type: 'chatSettings' }
   | ChatUpdateRequest
   | ChatTurnActionRequest
@@ -3203,6 +3235,13 @@ export interface ChatDetail {
    * (3, 6, 12, 24…). Projected since `bd419ae9` (bug 37); consumers default 0.
    */
   allLLMPauseTurnCount?: number;
+  /**
+   * The transcript counter (P4.D183 §C.1) — bumped by the ONE message write
+   * funnel, projected here so the first load has a version to be conditional
+   * about. Optional on purpose: a server without P4.D183 omits it and the
+   * client reads `null`, which means "ask for everything".
+   */
+  transcriptVersion?: number;
   offSceneCharacters: OffSceneCharacter[];
   lastTurnParticipantId: string | null;
   activeTypingParticipantId?: string | null;

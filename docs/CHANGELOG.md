@@ -857,6 +857,45 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — feat(salon): the transcript becomes a subscribed read, and the optimistic bubble moves into it (P4.D187 units 2-3)
+
+_Versions: SPA 0.5.709._
+
+The Salon's transcript stops being derived from `chatQuery.data().messages` and
+becomes state the chat GET seeds and a cheap conditional read maintains. The
+Salon subscribes `realtime.onTopic('chats', …)` and, on every hint, dispatches
+the new `chatTranscript` verb with the last-seen `knownVersion`; an agreeing
+counter answers `unchanged` and costs a round trip rather than a re-serialized
+conversation. Ports v4 `useChatData` (`5029075bb`) field for field: the
+first-load gate (the open-fire at mount reads nothing — the chat GET owns that
+read), read serialization with a single trailing pass, the stale-version guard,
+`lastReadOk` and the held-over sweep. The two window events
+(`quilltap:chat-update`, `quilltap:terminal-exited`) now call the cheap read.
+
+The optimistic user bubble moves INSIDE the transcript as a `temp-` row —
+v4's design, and the ground of dogfood finding #106. `optimisticUser`,
+`optimisticPriorIds` and `messageIsOptimisticEcho` are retired: reconciliation
+retires the bubble in the same pass that folds in the row it stood for, so
+rendering both is not prevented but unreachable. `clearProvisionalMessages()`
+runs at the turn boundary and on Stop, for the send that never persisted at all.
+
+New: `chat/chat-transcript.api.ts`, `ChatTranscriptRequest`/`ChatTranscriptDto`
+and `ChatDetail.transcriptVersion?` (§C.1/§C.2 names). The verb's server half is
+P4.D183; until it lands the cheap read throws, is swallowed exactly as v4
+swallows a non-ok response, and the chat GET keeps seeding.
+
+Pinned by v4's own `useChatData` titles. FIVE of its fourteen pin the per-chat
+memory count, which v5 does not have — `chat/sidebar/edit-section.ts`'s Delete
+Memories affordance is a standing tier-3 deferral and
+`realtime-topic-map.ts:122-132` already records the mapping divergence (P4.D177
+§C.4). The nine transcript titles are here; those five belong to the deferral.
+
+The mutation pass found a blind spot and fixed it: the headline "delivers a
+reply that no stream carried — the incident" beat passed with the subscription
+DELETED, because the `chats` topic map invalidates `chatKeys.detail` on the same
+hint and the refetch delivered the row. Its stub now freezes the chat GET, so
+only the cheap read can produce the new row.
+
 #### 2026-09-14 — feat(salon): reconcile a transcript read instead of replacing the array (P4.D187 unit 1)
 
 _Versions: SPA 0.5.708._

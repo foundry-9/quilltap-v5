@@ -45,7 +45,7 @@ import {
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
 import { ChatComposer, type ToolExecutionStatus } from '../../chat/chat-composer';
-import { SalonConversation, messageIsOptimisticEcho } from './salon-conversation';
+import { SalonConversation } from './salon-conversation';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
@@ -73,6 +73,17 @@ function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...over,
   };
+}
+
+/**
+ * The provisional (`temp-`) bubble currently on screen, if any.
+ *
+ * Since P4.D187 the optimistic user bubble is a row INSIDE the transcript
+ * rather than a signal of its own (v4's design, dogfood #106), so every beat
+ * that used to read `optimisticUser()` asks the rendered flow instead.
+ */
+function provisionalBubble(inst: { displayMessages(): MessageDto[] }): MessageDto | undefined {
+  return inst.displayMessages().find((m) => m.id.startsWith('temp-'));
 }
 
 function message(over: Partial<MessageDto>): MessageDto {
@@ -1301,7 +1312,7 @@ describe('SalonConversation — the user-turn banner honours the impersonation o
 describe('SalonConversation — the optimistic bubble matches server attribution (v4 Bug 45)', () => {
   type SendHost = {
     send(p: { content: string; fileIds: string[] }): void;
-    optimisticUser(): MessageDto | null;
+    displayMessages(): MessageDto[];
   };
 
   it('attributes to an impersonated LLM seat via the overlay (matches the server)', async () => {
@@ -1312,7 +1323,7 @@ describe('SalonConversation — the optimistic bubble matches server attribution
     const inst = fixture.componentInstance as unknown as SendHost;
 
     inst.send({ content: 'as Friday, then', fileIds: [] });
-    expect(inst.optimisticUser()?.participantId).toBe('p1');
+    expect(provisionalBubble(inst)?.participantId).toBe('p1');
   });
 
   it('falls back to the owner user seat when the active id is not user-driven', async () => {
@@ -1325,7 +1336,7 @@ describe('SalonConversation — the optimistic bubble matches server attribution
     const inst = fixture.componentInstance as unknown as SendHost;
 
     inst.send({ content: 'back to me', fileIds: [] });
-    expect(inst.optimisticUser()?.participantId).toBe('pu');
+    expect(provisionalBubble(inst)?.participantId).toBe('pu');
   });
 });
 
@@ -1350,7 +1361,7 @@ describe('SalonConversation — the optimistic bubble matches server attribution
 describe('SalonConversation — the optimistic seat is the seat the server is told (P4.69)', () => {
   type SendHost = {
     send(p: { content: string; fileIds: string[] }): void;
-    optimisticUser(): MessageDto | null;
+    displayMessages(): MessageDto[];
   };
 
   const sentSeat = (client: Partial<CoreClient>): unknown => {
@@ -1375,7 +1386,7 @@ describe('SalonConversation — the optimistic seat is the seat the server is to
     // Read the bubble BEFORE letting the send settle — the optimistic row is
     // cleared once the turn completes, so a `whenStable()` first would find
     // nothing and the assertion would measure the teardown, not the seat.
-    const seat = inst.optimisticUser()?.participantId;
+    const seat = provisionalBubble(inst)?.participantId;
     await fixture.whenStable();
 
     // The bubble is attributed to the impersonated seat...
@@ -1404,7 +1415,7 @@ describe('SalonConversation — the optimistic seat is the seat the server is to
     const inst = fixture.componentInstance as unknown as SendHost;
 
     inst.send({ content: 'back to me', fileIds: [] });
-    const seat = inst.optimisticUser()?.participantId;
+    const seat = provisionalBubble(inst)?.participantId;
     await fixture.whenStable();
 
     expect(seat).toBe('pu');
@@ -1460,7 +1471,7 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     controlledCharacters(): ReadonlyArray<{ participantId: string; name: string }>;
     speakingAsSeat(): { name: string; avatarUrl: string | null } | null;
     send(p: { content: string; fileIds: string[] }): void;
-    optimisticUser(): MessageDto | null;
+    displayMessages(): MessageDto[];
   };
 
   function impersonationClient(chat: ChatDetail): Partial<CoreClient> {
@@ -1516,7 +1527,7 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     // Bug 45: a just-sent message is optimistically authored as it (matching the
     // server), with no flicker to Bertie.
     inst.send({ content: 'as Friday', fileIds: [] });
-    expect(inst.optimisticUser()?.participantId).toBe('p1');
+    expect(provisionalBubble(inst)?.participantId).toBe('p1');
   });
 
   it('reverts to the owner seat when impersonation stops (via the hand-off confirm)', async () => {
@@ -1560,7 +1571,7 @@ describe('SalonConversation — impersonation applies the reply, not a phantom c
     expect(inst.speakingAsSeat()).toEqual({ name: 'Bertie', avatarUrl: null });
     // A message typed now is authored as the owner seat, not the impersonated one.
     inst.send({ content: 'back as myself', fileIds: [] });
-    expect(inst.optimisticUser()?.participantId).toBe('pu');
+    expect(provisionalBubble(inst)?.participantId).toBe('pu');
   });
 });
 
@@ -3019,142 +3030,32 @@ describe('SalonConversation rescue-stage toasts (65f5021c8)', () => {
 });
 
 /**
- * `messageIsOptimisticEcho` — the reconcile predicate behind {@link
- * SalonConversation.displayMessages} (dogfood finding #106, P4.66). Pure-
- * function cases; the wiring itself is proven separately below against the
- * real component.
- */
-describe('messageIsOptimisticEcho (dogfood #106)', () => {
-  const NONE: ReadonlySet<string> = new Set();
-  function temp(over: Partial<MessageDto> = {}): MessageDto {
-    return message({
-      id: 'temp-user-1000',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:10.000Z',
-      ...over,
-    });
-  }
-
-  it('matches the persisted row a send is standing in for', () => {
-    const persisted = message({
-      id: 'srv-1',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:11.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(true);
-  });
-
-  it('matches whatever the clocks say — a persisted row stamped EARLIER than the bubble (server clock behind the browser)', () => {
-    // The two stamps come from two clocks; a Docker host a few seconds behind
-    // the browser makes the echo sort BEFORE the send. The match must not care.
-    const persisted = message({
-      id: 'srv-1',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:03.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(true);
-  });
-
-  it('does not match a non-USER row', () => {
-    const persisted = message({
-      id: 'srv-1',
-      role: 'ASSISTANT',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:11.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
-  });
-
-  it('does not match a different seat — multi-user chats, or an impersonated author', () => {
-    const persisted = message({
-      id: 'srv-1',
-      role: 'USER',
-      participantId: 'other-user',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:11.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
-  });
-
-  it('does not match different content', () => {
-    const persisted = message({
-      id: 'srv-1',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Almost there.',
-      createdAt: '2026-01-01T00:00:11.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
-  });
-
-  it('does not match a row that was already on screen at send time (a REPEATED message keeps its own bubble)', () => {
-    // The user sent the identical content earlier in the conversation; that
-    // persisted row must not eat the new bubble it now looks like a duplicate
-    // of. It is excluded by IDENTITY (it was on screen when the send was
-    // made), not by timestamp.
-    const earlier = message({
-      id: 'srv-0',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:05.000Z',
-    });
-    expect(messageIsOptimisticEcho(earlier, temp(), new Set(['srv-0']))).toBe(false);
-  });
-
-  it('an earlier duplicate whose server stamp is LATER than the bubble (server clock ahead) still does not eat it', () => {
-    // The shape a timestamp scope gets wrong: the same earlier row, but the
-    // server's clock runs ahead of the browser's, so it sorts AFTER the send.
-    const earlier = message({
-      id: 'srv-0',
-      role: 'USER',
-      participantId: 'pu',
-      content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:15.000Z',
-    });
-    expect(messageIsOptimisticEcho(earlier, temp(), new Set(['srv-0']))).toBe(false);
-  });
-
-  it('matches an attachments-only send (empty content on both sides)', () => {
-    const bubble = temp({ content: '' });
-    const persisted = message({
-      id: 'srv-1',
-      role: 'USER',
-      participantId: 'pu',
-      content: '',
-      createdAt: '2026-01-01T00:00:11.000Z',
-    });
-    expect(messageIsOptimisticEcho(persisted, bubble, NONE)).toBe(true);
-  });
-
-  it('never matches itself', () => {
-    const t = temp();
-    expect(messageIsOptimisticEcho(t, t, NONE)).toBe(false);
-  });
-});
-
-/**
- * `displayMessages` end to end (dogfood #106, P4.66): a mid-turn refetch —
- * the exact shape `realtime/job_topics.rs:81-88` fires while a turn is still
- * streaming (TITLE_UPDATE / CONTEXT_SUMMARY / CHAT_DANGER_CLASSIFICATION /
+ * `displayMessages` end to end (dogfood #106): a mid-turn refetch — the exact
+ * shape `realtime/job_topics.rs:81-88` fires while a turn is still streaming
+ * (TITLE_UPDATE / CONTEXT_SUMMARY / CHAT_DANGER_CLASSIFICATION /
  * SCENE_STATE_TRACKING / WARDROBE_OUTFIT_ANNOUNCEMENT → `chatKeys.detail(id)`)
  * — must not render the human's own message twice. `chatSend` never resolves
  * in this client, so the turn genuinely looks "still running" while the
  * invalidation lands, matching the shape a real streaming reply has.
+ *
+ * P4.D187 changed the MECHANISM these beats guard, not the promise. The bubble
+ * no longer lives in a separate signal appended at render and cleared at the
+ * turn boundary (P4.66's `optimisticUser` / `messageIsOptimisticEcho`, both
+ * retired): it is a `temp-` row inside the transcript itself, and
+ * `reconcileTranscript` retires it in the very pass that folds in the row it
+ * stood for. Rendering both is therefore not prevented — it is unreachable.
+ *
+ * The exclusion that keeps a REPEATED send its own bubble moved with it: v4
+ * gates both match passes on "a row the previous display did not already
+ * hold", where v5 used to snapshot the ids on screen at send time. Same
+ * answer, and neither one crosses a clock.
  */
-describe('SalonConversation — the optimistic bubble reconciles against a mid-turn refetch (dogfood #106)', () => {
+describe('SalonConversation — the provisional bubble reconciles against a mid-turn refetch (dogfood #106)', () => {
   type Host = {
     send(p: { content: string; fileIds: string[] }): void;
     displayMessages(): MessageDto[];
-    optimisticUser(): MessageDto | null;
   };
+
 
   function reconcileClient(state: { messages: MessageDto[] }): Partial<CoreClient> {
     const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
@@ -3199,7 +3100,7 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
     const inst = fixture.componentInstance as unknown as Host;
 
     inst.send({ content: 'Are we there yet?', fileIds: [] });
-    const temp = inst.optimisticUser();
+    const temp = provisionalBubble(inst);
     expect(temp?.content).toBe('Are we there yet?');
 
     const echoes = () => inst.displayMessages().filter((m) => m.content === 'Are we there yet?');
@@ -3242,6 +3143,41 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
       .displayMessages()
       .filter((m) => m.content === 'Steady as she goes.');
     expect(echoes).toHaveLength(1);
+  });
+
+  it('retires an attachment-only send by pass 2 — the bubble and its row do NOT read alike', async () => {
+    // Pass 1 matches on content and cannot fire here: the composer's bubble
+    // shows what the operator typed (nothing), while the server stores
+    // "Please look at the attached file(s)." for a send that was all
+    // attachment. Pass 2 — same role, newly arrived, within the clock slack —
+    // is the fallback that exists for exactly this shape.
+    const state = { messages: [...chatDetail().messages] };
+    const fixture = await render(reconcileClient(state));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    inst.send({ content: '', fileIds: ['file-1'] });
+    const temp = provisionalBubble(inst);
+    expect(temp).toBeDefined();
+
+    state.messages = [
+      ...state.messages,
+      message({
+        id: 'srv-attach',
+        role: 'USER',
+        participantId: temp!.participantId,
+        content: 'Please look at the attached file(s).',
+        createdAt: temp!.createdAt,
+      }),
+    ];
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: chatKeys.detail('chat-1') });
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    // The bubble is gone and the persisted row stands in its place.
+    expect(provisionalBubble(inst)).toBeUndefined();
+    expect(inst.displayMessages().map((m) => m.id)).toContain('srv-attach');
   });
 
   it('keeps its own bubble when the user repeats an earlier message mid-conversation', async () => {
@@ -3308,5 +3244,354 @@ describe("SalonConversation — the composer's hasActiveCharacters input is the 
     expect(composer).toBeTruthy();
     const composerInst = composer.componentInstance as ChatComposer;
     expect(composerInst.hasActiveCharacters()).toBe(true);
+  });
+});
+
+/**
+ * The Salon's transcript as a SUBSCRIBED read — v4 `useChatData` (`5029075bb`),
+ * whose own suite these nine titles transcribe.
+ *
+ * Before this, the only way a message could reach an open tab was the read loop
+ * of the stream the tab itself opened: a stream that dropped during a long
+ * generation lost the reply outright (it stayed in the database, waiting for a
+ * reload), and anything written out-of-band — an Aurora wardrobe note, a
+ * Lantern backdrop, a Commonplace whisper from the writer task — arrived only
+ * if it happened to be enqueued into an open stream at the right moment. The
+ * write funnel now publishes `{topic:'chats', id}` on every add, edit and
+ * delete, and the Salon listens.
+ *
+ * "delivers a reply that no stream carried" is the discriminator: it is the
+ * incident this whole mechanism was built for.
+ *
+ * SCOPE, measured: v4's suite has fourteen titles, five of which pin the
+ * per-chat MEMORY count's subscription (bug 128). v5 has no per-chat memory
+ * count reader at all — `chat/sidebar/edit-section.ts`'s Delete Memories
+ * affordance is a standing tier-3 deferral with no query key of its own, and
+ * `core/realtime-topic-map.ts:122-132` records the resulting mapping
+ * divergence (P4.D177 §C.4: the `memories` topic resolves to `chatKeys.all`,
+ * the Salon LIST card's badge being the one v5 surface such a hint un-stales).
+ * There is nothing here to pin those five against; they belong to the deferral,
+ * not to this lane.
+ */
+describe('SalonConversation — the transcript is a subscribed read (v4 useChatData)', () => {
+  type Host = {
+    transcriptMessages(): MessageDto[];
+    displayMessages(): MessageDto[];
+    refreshTranscript(): Promise<void>;
+    clearProvisionalMessages(): void;
+  };
+
+  interface Stub {
+    client: Partial<CoreClient>;
+    frames: Subject<ScopedEvent>;
+    connection: ReturnType<typeof signal<ConnectionState>>;
+    /** `knownVersion` as each transcript read asked for it, oldest first. */
+    reads: (number | null)[];
+    state: { version: number; messages: MessageDto[] };
+    /** When set, every transcript read throws — the outage. */
+    failReads: { on: boolean };
+    /** When set, reads park here until released — the overlap window. */
+    gate: { hold: Promise<void> | null; release: (() => void) | null };
+    /**
+     * `hang`: the chat GET never resolves (the mount race).
+     * `frozen`: the chat GET keeps answering the transcript as it was at
+     * render, so a row that appears later can ONLY have come from the cheap
+     * read. Without it the `chats` topic map's own `chatKeys.detail`
+     * invalidation would deliver the row too, and a beat meant to prove the
+     * subscription would pass with the subscription deleted.
+     */
+    chatGet: { hang: boolean; frozen: { version: number; messages: MessageDto[] } | null };
+  }
+
+  function transcriptStub(): Stub {
+    const frames = new Subject<ScopedEvent>();
+    const connection = signal<ConnectionState>('idle');
+    const reads: (number | null)[] = [];
+    const state = { version: 4, messages: [...chatDetail().messages] };
+    const failReads = { on: false };
+    const gate: Stub['gate'] = { hold: null, release: null };
+    const chatGet: Stub['chatGet'] = { hang: false, frozen: null };
+
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') {
+        if (chatGet.hang) return new Promise<CoreResponse>(() => {});
+        const seen = chatGet.frozen ?? state;
+        return {
+          type: 'chat',
+          data: {
+            chat: {
+              ...chatDetail(),
+              transcriptVersion: seen.version,
+              messages: seen.messages,
+            },
+          },
+        } as unknown as CoreResponse;
+      }
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+        } as unknown as CoreResponse;
+      }
+      return { type: 'ack', data: {} } as unknown as CoreResponse;
+    });
+
+    const dispatchData = vi.fn(async (req: CoreRequest): Promise<Record<string, unknown>> => {
+      if (req.type === 'chatTranscript') {
+        const known = (req as unknown as { knownVersion?: number }).knownVersion ?? null;
+        reads.push(known);
+        if (gate.hold) await gate.hold;
+        if (failReads.on) throw new Error('offline');
+        if (known !== null && known === state.version) {
+          return { unchanged: true, version: state.version };
+        }
+        return {
+          unchanged: false,
+          version: state.version,
+          messages: state.messages,
+          count: state.messages.length,
+        };
+      }
+      return {};
+    });
+
+    return {
+      client: {
+        events$: frames.asObservable(),
+        connection,
+        resyncCounter: signal(0),
+        dispatch,
+        dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+        dispatchExpect: (async (req: CoreRequest, expected: string) => {
+          const resp = await dispatch(req);
+          if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+          return resp;
+        }) as CoreClient['dispatchExpect'],
+      },
+      frames,
+      connection,
+      reads,
+      state,
+      failReads,
+      gate,
+      chatGet,
+    };
+  }
+
+  async function settle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  function hint(stub: Stub, id: string): void {
+    stub.frames.next({ v: 1, topic: 'chats', id, at: 1 } as unknown as ScopedEvent);
+  }
+
+  function bubble(over: Partial<MessageDto> = {}): MessageDto {
+    return message({
+      id: 'temp-user-1757594999999',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'And the orchard?',
+      createdAt: '2026-09-11T12:50:00.000Z',
+      ...over,
+    });
+  }
+
+  it('delivers a reply that no stream carried — the incident', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+    const seeded = inst.transcriptMessages().map((m) => m.id);
+    // Freeze the chat GET at what the tab already has. The `chats` topic map
+    // invalidates `chatKeys.detail` on the same hint, so without this the row
+    // could arrive by refetch and the beat would pass with the subscription
+    // removed — measured, not assumed (the mutation pass found it).
+    stub.chatGet.frozen = { version: stub.state.version, messages: [...stub.state.messages] };
+
+    // 34 seconds of generation later, with the operator's tab long since
+    // backgrounded and its stream gone, the reply persists — and the write
+    // funnel publishes the hint this subscription is listening for.
+    stub.state.version = 5;
+    stub.state.messages = [
+      ...stub.state.messages,
+      message({
+        id: '71369b19-0000-4000-8000-000000000002',
+        role: 'ASSISTANT',
+        content: 'As you like.',
+        createdAt: '2026-09-11T12:49:59.812Z',
+      }),
+    ];
+    hint(stub, 'chat-1');
+    await settle(fixture);
+
+    expect(inst.transcriptMessages().map((m) => m.id)).toEqual([...seeded, '71369b19-0000-4000-8000-000000000002']);
+  });
+
+  it('hands back the version it last saw, and takes "unchanged" for an answer', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+    const before = inst.transcriptMessages();
+
+    // A Lantern backdrop lands. It publishes the same `chats` topic, but the
+    // transcript has not moved — so the read costs a round trip and the word
+    // "unchanged", not a re-serialized conversation.
+    hint(stub, 'chat-1');
+    await settle(fixture);
+
+    expect(stub.reads.length).toBeGreaterThan(0);
+    expect(stub.reads.at(-1)).toBe(4);
+    expect(inst.transcriptMessages()).toBe(before);
+  });
+
+  it('ignores a chats event that names a different chat', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const before = stub.reads.length;
+
+    hint(stub, '5f13a7b0-2c41-4a8e-9f77-2b6b0e6a1d22');
+    await settle(fixture);
+
+    expect(stub.reads.length).toBe(before);
+  });
+
+  it('re-reads for free on socket open — a tab that slept', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+
+    stub.state.version = 6;
+    stub.state.messages = [
+      ...stub.state.messages,
+      message({
+        id: '9be06466-0000-4000-8000-000000000003',
+        role: 'ASSISTANT',
+        content: 'Welcome back.',
+        createdAt: '2026-09-11T13:02:00.000Z',
+      }),
+    ];
+    stub.connection.set('open');
+    await settle(fixture);
+
+    expect(inst.transcriptMessages().map((m) => m.content)).toContain('Welcome back.');
+  });
+
+  it('keeps an optimistic bubble until the read carries its persisted row', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+
+    (inst as unknown as { transcriptMessages: { update(f: (p: MessageDto[]) => MessageDto[]): void } }).transcriptMessages.update(
+      (prev) => [...prev, bubble()],
+    );
+    expect(inst.transcriptMessages().at(-1)?.id).toBe('temp-user-1757594999999');
+
+    // A hint fires for something else entirely; the transcript has not moved,
+    // and the bubble must survive an "unchanged" answer.
+    hint(stub, 'chat-1');
+    await settle(fixture);
+    expect(stub.reads.length).toBeGreaterThan(0);
+    expect(inst.transcriptMessages().at(-1)?.id).toBe('temp-user-1757594999999');
+
+    // Now the send persists.
+    stub.state.version = 7;
+    stub.state.messages = [
+      ...stub.state.messages,
+      message({
+        id: 'c0ffee00-0000-4000-8000-000000000004',
+        role: 'USER',
+        participantId: 'pu',
+        content: 'And the orchard?',
+        createdAt: '2026-09-11T12:50:01.000Z',
+      }),
+    ];
+    hint(stub, 'chat-1');
+    await settle(fixture);
+
+    expect(inst.transcriptMessages().at(-1)?.id).toBe('c0ffee00-0000-4000-8000-000000000004');
+  });
+
+  it('leaves the first load to the chat GET — the mount open-fire reads nothing', async () => {
+    // `onTopic` fires on channel open as well as on a hint, which is what makes
+    // a reconnect re-read for free. At mount that would race the initial chat
+    // read, and both would project the whole transcript for one chat opening.
+    const stub = transcriptStub();
+    stub.chatGet.hang = true;
+    const fixture = await render(stub.client);
+
+    stub.connection.set('open');
+    await settle(fixture);
+
+    expect(stub.reads).toEqual([]);
+  });
+
+  it('serializes overlapping reads, taking one trailing pass', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+    const before = stub.reads.length;
+
+    // Two hints inside the bus's coalescing window, against a read slower than
+    // it. Applying the older rows last would walk the transcript backwards.
+    stub.gate.hold = new Promise<void>((resolve) => {
+      stub.gate.release = resolve;
+    });
+    const all = Promise.all([
+      inst.refreshTranscript(),
+      inst.refreshTranscript(),
+      inst.refreshTranscript(),
+    ]);
+    await new Promise((r) => setTimeout(r, 0));
+    stub.gate.hold = null;
+    stub.gate.release?.();
+    await all;
+
+    // The first read, plus exactly one trailing pass for the two that queued
+    // behind it — not three.
+    expect(stub.reads.length - before).toBe(2);
+  });
+
+  it('holds the sweep when no read backs it up, and takes it on the next one', async () => {
+    // The send path sweeps at the turn boundary. If the turn's own read failed
+    // too, the server may well have persisted the line and the bubble is the
+    // operator's only copy of it — so the sweep waits for a read that came back.
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+
+    (inst as unknown as { transcriptMessages: { update(f: (p: MessageDto[]) => MessageDto[]): void } }).transcriptMessages.update(
+      (prev) => [...prev, bubble({ id: 'temp-user-1757595111111', content: 'a send during an outage' })],
+    );
+
+    // The network is down: the turn's own read fails, then the sweep is asked for.
+    stub.failReads.on = true;
+    await inst.refreshTranscript();
+    inst.clearProvisionalMessages();
+    expect(inst.transcriptMessages().map((m) => m.id)).toContain('temp-user-1757595111111');
+
+    // The network returns and the transcript does not carry the line.
+    stub.failReads.on = false;
+    stub.state.version = 9;
+    await inst.refreshTranscript();
+    await settle(fixture);
+
+    expect(inst.transcriptMessages().map((m) => m.id)).not.toContain('temp-user-1757595111111');
+  });
+
+  it('sweeps a bubble that never persisted at all', async () => {
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host;
+
+    (inst as unknown as { transcriptMessages: { update(f: (p: MessageDto[]) => MessageDto[]): void } }).transcriptMessages.update(
+      (prev) => [...prev, bubble({ id: 'temp-user-1757595000000', content: 'a send that 400ed' })],
+    );
+
+    inst.clearProvisionalMessages();
+
+    expect(inst.transcriptMessages().map((m) => m.id)).not.toContain('temp-user-1757595000000');
   });
 });

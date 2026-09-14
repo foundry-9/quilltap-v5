@@ -83,7 +83,12 @@ import {
 } from '../../chat/chat-cast.api';
 import type { ConnectionProfileOption } from '../../chat/sidebar/participant-card';
 import { Modal } from '../../ui/modal';
-import { splitSwipeGroups, type SwipeState } from '../../chat/chat-view-model';
+import { type SwipeState } from '../../chat/chat-view-model';
+import { fetchChatTranscript } from '../../chat/chat-transcript.api';
+import {
+  isProvisionalMessage,
+  reconcileTranscript,
+} from '../../chat/transcript-reconcile';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
 import { type ControlledCharacter } from '../../chat/speaker-selector';
@@ -181,51 +186,6 @@ export function readActiveTyping(data: Record<string, unknown>): string | null {
   return typeof id === 'string' ? id : null;
 }
 
-/**
- * True when `candidate` is the persisted row {@link displayMessages}'s
- * optimistic user bubble is standing in for — dogfood finding #106.
- *
- * v4 holds ONE array (`useChatData.ts:14`); `fetchChat()` (`:83`) replaces it
- * wholesale on every refetch, which overwrites the temp bubble
- * (`useSSEStreaming.ts:728-751`) out of existence by construction — a
- * mid-turn refetch can never show it twice. v5's optimistic bubble instead
- * lives in the separate {@link optimisticUser} signal, appended at render
- * over the canonical server list; a mid-turn `chatKeys.detail(id)`
- * invalidation (`realtime/job_topics.rs:81-88`, ~15 further call sites in
- * this file) now refetches that canonical list while the turn is still
- * running, and once the sent message lands in it, both the persisted row and
- * the still-uncleared bubble rendered — the user's own message appeared
- * twice. This is the documented mechanism divergence (the {@link
- * turnOverride} precedent): rather than v4's wholesale replace, v5 drops the
- * bubble the moment a matching persisted row exists, by content rather than
- * id (a temp id never matches a server id) — same author, same content, and
- * NOT one of the rows that were already on screen when the send was made
- * (`priorIds`, snapshotted at send time), so a repeated send mid-conversation
- * gets its OWN bubble rather than being eaten by the earlier persisted row of
- * the same content.
- *
- * Why an id snapshot and not a timestamp: the first draft scoped the match to
- * `candidate.createdAt >= temp.createdAt`, but those two stamps come from two
- * CLOCKS — the browser's `Date.now()` and the server's `clock::now_iso()` —
- * and the first-class HTTP/Docker deployment puts them on different machines.
- * A server behind the browser makes the echo sort before the bubble (finding
- * #106 returns for the whole turn); a server ahead makes an EARLIER duplicate
- * sort after it (the live bubble vanishes). The set of ids already displayed
- * crosses no clock (the unification review's catch).
- */
-export function messageIsOptimisticEcho(
-  candidate: MessageDto,
-  temp: MessageDto,
-  priorIds: ReadonlySet<string>,
-): boolean {
-  return (
-    candidate.role === 'USER' &&
-    candidate.id !== temp.id &&
-    !priorIds.has(candidate.id) &&
-    candidate.participantId === temp.participantId &&
-    candidate.content === temp.content
-  );
-}
 
 /**
  * The LLM document tools whose success invalidates an open pane's cached
@@ -959,6 +919,41 @@ export class SalonConversation {
       this.destroyRef.onDestroy(() => sub.unsubscribe());
     });
 
+    // The transcript is a subscribed read (v4 `useChatData.ts:307`). Until it
+    // was, the only way a message could reach an open tab was the read loop of
+    // the stream the tab itself opened — so a stream that dropped during a long
+    // generation lost the reply outright (it stayed in the database, waiting for
+    // a reload), and anything written out-of-band arrived only if it happened to
+    // be enqueued into an open stream at the right moment. The write funnel
+    // publishes `{topic:'chats', id}` on every add, edit and delete, and this is
+    // what listens. `onTopic` also fires on every (re)connect, so a tab that
+    // slept re-reads for free, and the offline fallback is the next mount — no
+    // poll, per the standing rule.
+    this.realtime.onTopic('chats', () => void this.refreshTranscript(), () => this.chatId());
+
+    // The chat GET seeds the transcript (v4 `fetchChat`). It runs untracked:
+    // the apply reads the transcript it is about to write, which would make the
+    // effect its own dependency.
+    effect(() => {
+      const status = this.chatQuery.status();
+      // Read the data here so the effect re-runs when it changes, not only when
+      // the status does — a refetch that settles on new rows keeps the status
+      // at 'success'.
+      this.chatQuery.data();
+      if (status === 'pending') return;
+      untracked(() => {
+        if (status === 'error') {
+          this.lastReadOk = false;
+          // Open the gate anyway: a failed first load has no version to be
+          // conditional about, so the next hint or reconnect performs a full
+          // read — the only recovery such a tab is going to get.
+          this.hasTranscript = true;
+          return;
+        }
+        this.seedTranscriptFromChat();
+      });
+    });
+
     effect(() => this.terminalMode.hydrate(this.chat()));
     effect(() => this.documentMode.hydrate(this.chat()));
 
@@ -1021,7 +1016,10 @@ export class SalonConversation {
     const onTerminalChatUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ chatId?: string }>).detail;
       if (detail?.chatId && detail.chatId === this.chatId()) {
-        void this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+        // v4 `SalonView.tsx` retargeted both listeners from `fetchChat()` to
+        // `refreshTranscript()` (`5029075bb`): an Ariel line is a message, and
+        // the conditional read is what delivers messages now.
+        void this.refreshTranscript();
       }
     };
     // Cmd/Ctrl+Shift+T toggles the terminal pane; Escape exits focus back to split (v4).
@@ -1401,12 +1399,55 @@ export class SalonConversation {
   // --- streaming ---
   protected readonly stream = signal<ChatStreamState | null>(null);
   protected readonly busy = computed(() => this.stream() != null);
-  private readonly optimisticUser = signal<MessageDto | null>(null);
+
+  // --- the subscribed transcript (v4 `useChatData`, `5029075bb`) ----------
+  //
+  // The transcript is no longer derived from `chatQuery.data().messages`. It is
+  // state the chat GET SEEDS and the cheap conditional read maintains, folded
+  // by `reconcileTranscript` so a read landing mid-stream or mid-swipe merges
+  // rather than replaces. The optimistic user bubble lives IN this array as a
+  // `temp-` row — v4's design, and the ground of dogfood finding #106: the
+  // bubble and its persisted row can never render together, because retiring
+  // the bubble is the same act as folding the row in.
+  //
+  // Two signals rather than one, mirroring v4's two `useState`s: Angular's
+  // default `Object.is` equality then gives each half React's identity
+  // bail-out for free, which is what makes "an unchanged read re-renders
+  // nothing" true rather than merely intended.
+  private readonly transcriptMessages = signal<MessageDto[]>([]);
+  private readonly transcriptSwipeStates = signal<Record<string, SwipeState>>({});
+
   /**
-   * The ids on screen when {@link optimisticUser} was minted — the rows a
-   * persisted echo can never be ({@link messageIsOptimisticEcho}).
+   * The transcript counter as of the last applied read, or null when we have
+   * never read one. Null means "ask for everything" — right on the first read
+   * and after any response we could not make sense of.
+   *
+   * These are plain fields, not signals: they are v4's refs, read *while*
+   * computing the next state and never rendered.
    */
-  private readonly optimisticPriorIds = signal<ReadonlySet<string>>(new Set());
+  private transcriptVersion: number | null = null;
+  /**
+   * Whether any read has put a transcript on screen yet. `onTopic` fires on
+   * socket open as well as on a hint, which is what makes a reconnect re-read
+   * for free; at mount that open-fire would race the chat GET and both would
+   * project the whole transcript for one chat being opened. The first load is
+   * the chat GET's.
+   */
+  private hasTranscript = false;
+  /** One read at a time, with a single trailing pass for whatever queued. */
+  private readInFlight = false;
+  private readAgain = false;
+  /**
+   * Whether the last authoritative read actually came back. Retiring a bubble
+   * is only safe on the word of a read that did: if it failed, the server may
+   * well have persisted the line, and sweeping would take the operator's only
+   * visible copy off the screen.
+   */
+  private lastReadOk = false;
+  /** A sweep asked for while no successful read backed it up. */
+  private sweepPending = false;
+  /** The chat this transcript belongs to, so a tab switched to another resets. */
+  private transcriptChatId: string | null = null;
 
   // --- client-side swipe switching (v4 `switchSwipe`) ---
   private readonly swipeOverride = signal<Record<string, number>>({});
@@ -1834,13 +1875,9 @@ export class SalonConversation {
     return p?.character ? { id: p.character.id, name: p.character.name } : null;
   });
 
-  private readonly split = computed(() =>
-    this.chat() ? splitSwipeGroups(this.chat()!.messages) : { messages: [], swipeStates: {} },
-  );
-
   /** Swipe states with the client-side override applied to `current`. */
   protected readonly effectiveSwipeStates = computed<Record<string, SwipeState>>(() => {
-    const base = this.split().swipeStates;
+    const base = this.transcriptSwipeStates();
     const override = this.swipeOverride();
     const out: Record<string, SwipeState> = {};
     for (const [gid, st] of Object.entries(base)) {
@@ -1880,19 +1917,21 @@ export class SalonConversation {
   );
 
   /**
-   * The rendered flow: the collapsed messages (with swipe override), whisper-
-   * filtered for the operator (v4 SalonView `visibleMessages`), + the optimistic
-   * user bubble (always the human's own, so it never filters out) — UNLESS a
-   * mid-turn refetch has already landed the persisted row it stands in for
-   * ({@link messageIsOptimisticEcho}, dogfood #106): rendering both would
-   * show the human's own message twice.
+   * The rendered flow: the reconciled transcript (with the swipe override
+   * applied), whisper-filtered for the operator (v4 SalonView
+   * `visibleMessages`).
+   *
+   * The optimistic user bubble is NOT appended here any more. It is a `temp-`
+   * row inside {@link transcriptMessages}, which is what makes rendering it
+   * twice impossible: reconciliation retires the bubble in the same pass that
+   * folds in the row it stood for (dogfood finding #106).
    */
   protected readonly displayMessages = computed<MessageDto[]>(() => {
     const states = this.effectiveSwipeStates();
     const showAll = this.showAllWhispers();
     const userIds = this.userParticipantIdSet();
-    const msgs = this.split()
-      .messages.map((m) => {
+    return this.transcriptMessages()
+      .map((m) => {
         if (m.swipeGroupId && states[m.swipeGroupId]) {
           const st = states[m.swipeGroupId];
           return st.messages[st.current] ?? m;
@@ -1902,11 +1941,6 @@ export class SalonConversation {
       .filter((m) =>
         isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
       );
-    const temp = this.optimisticUser();
-    if (!temp) return msgs;
-    const prior = this.optimisticPriorIds();
-    const alreadyPersisted = msgs.some((m) => messageIsOptimisticEcho(m, temp, prior));
-    return alreadyPersisted ? msgs : [...msgs, temp];
   });
 
   /**
@@ -3224,8 +3258,11 @@ export class SalonConversation {
     const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
     const pending = opts.pending ?? [];
     if (opts.content || hasAttachments || pending.length > 0) {
-      this.optimisticPriorIds.set(new Set((this.chat()?.messages ?? []).map((m) => m.id)));
-      this.optimisticUser.set(this.makeTempUserMessage(opts.content ?? ''));
+      // v4 `useSSEStreaming.ts:728-751` — the bubble is pushed into the SAME
+      // array the read reconciles into, so it is retired by the fold rather
+      // than by a separate clear.
+      const bubble = this.makeTempUserMessage(opts.content ?? '');
+      this.transcriptMessages.update((prev) => [...prev, bubble]);
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
     }
@@ -3298,6 +3335,12 @@ export class SalonConversation {
     // v5 has no such lag, so the snapshot is explicit and taken here.
     const pausedBefore = this.chat()?.isPaused === true;
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+    // v4's `fetchChat()` applies its rows through a SYNCHRONOUS ref mirror, so
+    // the sweep at the end of this turn already sees them; v5's seeding effect
+    // is deferred to the next change detection, which would let the sweep run
+    // first and drop a bubble whose row had in fact landed. Apply here too —
+    // the effect's later pass then reconciles to the very same array.
+    this.seedTranscriptFromChat();
     // v4 calls `announceChainPause(event)` immediately after `fetchChat()` at
     // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
     // reconcile point stands in for both. v4 defaults the reason at the
@@ -3316,7 +3359,11 @@ export class SalonConversation {
     // the outcome.
     this.clearPendingToolExecutionStatus();
     this.stream.set(null);
-    this.optimisticUser.set(null);
+    // v4 `useSSEStreaming.ts:1031-1039`, the last act of the streaming
+    // `finally`: the turn is over, so every provisional bubble has had its
+    // chance. The reads above retired the ones the server persisted; anything
+    // still standing belongs to a send that never landed at all.
+    this.clearProvisionalMessages();
 
     // Refresh the LLM logs now the turn is done (v4 `SalonView.tsx:769-781` —
     // the effect that fires when generation stops calls `llmLogs.refreshLogs()`).
@@ -3551,7 +3598,184 @@ export class SalonConversation {
     this.dismissToolExecutionStatus();
     if (this.stream()?.content) this.toasts.showInfo('Response stopped - chat paused');
     this.stream.set(null);
-    this.optimisticUser.set(null);
+    this.clearProvisionalMessages();
+  }
+
+  // -------------------------------------------------------------------------
+  // The transcript as a subscribed read (v4 `useChatData`, `5029075bb`)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fold a freshly-read transcript into the display.
+   *
+   * Everything interesting happens in `reconcileTranscript`: the read is the
+   * authority, the operator's swipe selection is carried across, a provisional
+   * bubble the read has not caught up with stays on screen, and an unchanged
+   * transcript hands back the very arrays it was given so nothing re-renders.
+   */
+  private applyTranscriptRows(rows: MessageDto[]): void {
+    const next = reconcileTranscript(
+      rows,
+      this.transcriptMessages(),
+      this.transcriptSwipeStates(),
+    );
+    this.transcriptMessages.set(next.messages);
+    this.transcriptSwipeStates.set(next.swipeStates);
+  }
+
+  /**
+   * Seed (or re-seed) the transcript from the chat GET — v4 `fetchChat`'s
+   * transcript half.
+   *
+   * The chat object is always the newer answer for its own fields, but its
+   * transcript half may not be: a hinted read can have applied a higher version
+   * while this request was out, and re-applying older rows would undo it.
+   */
+  private seedTranscriptFromChat(): void {
+    const chat = this.chatQuery.data();
+    if (!chat) return;
+    const chatId = this.chatId();
+    // A tab pointed at another conversation starts from nothing: its version,
+    // its rows and any bubble still standing belong to the chat it left.
+    if (chatId && this.transcriptChatId !== chatId) {
+      this.transcriptChatId = chatId;
+      this.transcriptVersion = null;
+      this.hasTranscript = false;
+      this.sweepPending = false;
+      this.transcriptMessages.set([]);
+      this.transcriptSwipeStates.set({});
+    }
+    this.lastReadOk = true;
+    if (!this.isStaleVersion(chat.transcriptVersion)) {
+      this.transcriptVersion =
+        typeof chat.transcriptVersion === 'number' ? chat.transcriptVersion : null;
+      this.applyTranscriptRows(chat.messages ?? []);
+    }
+    this.runPendingSweep();
+    this.hasTranscript = true;
+  }
+
+  /**
+   * Would applying a response carrying `version` walk the transcript backwards?
+   *
+   * The chat GET and the hinted read run independently and can overlap, so
+   * either may come back after a newer one has already been applied. Rows
+   * without their version are meaningless together, so the pair is taken or
+   * dropped whole.
+   */
+  private isStaleVersion(version: unknown): boolean {
+    const applied = this.transcriptVersion;
+    return typeof version === 'number' && applied !== null && version < applied;
+  }
+
+  /**
+   * One conditional round trip. The body {@link refreshTranscript} runs; call
+   * that, not this, so reads stay serialised.
+   */
+  private async readTranscriptOnce(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    try {
+      const data = await fetchChatTranscript(this.core, chatId, this.transcriptVersion);
+      this.lastReadOk = true;
+      if (data.unchanged) {
+        this.runPendingSweep();
+        return;
+      }
+
+      // A read that overlapped a newer one — a chat GET that landed while this
+      // was out — must not walk the transcript backwards.
+      if (this.isStaleVersion(data.version)) return;
+
+      this.transcriptVersion = typeof data.version === 'number' ? data.version : null;
+      this.hasTranscript = true;
+      this.applyTranscriptRows(data.messages ?? []);
+      this.runPendingSweep();
+
+      // Announcement bubbles and Carina answers can be authored by someone who
+      // is not a participant; without their card the renderer has no avatar to
+      // draw. They ride along with the transcript for exactly that reason.
+      if (data.offSceneCharacters) {
+        const offScene = data.offSceneCharacters;
+        this.queryClient.setQueryData(chatKeys.detail(chatId), (prev: ChatDetail | undefined) =>
+          prev ? { ...prev, offSceneCharacters: offScene } : prev,
+        );
+      }
+    } catch (err) {
+      // A failed re-read is not a failed conversation: the next hint, the
+      // channel's own reconnect catch-up, or the next mount will try again.
+      this.lastReadOk = false;
+      console.error('Failed to refresh chat transcript:', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
+   * Re-read the transcript, conditionally.
+   *
+   * This is the authoritative delivery path for every message in the room. The
+   * event stream still carries tokens for the turn being generated, but it no
+   * longer decides what the room *contains*.
+   *
+   * Every hint and every reconnect comes through here. It runs at most one read
+   * at a time and takes a trailing pass for anything that arrived while that
+   * read was out, so two hints in quick succession can never apply their rows
+   * out of order.
+   */
+  private async refreshTranscript(): Promise<void> {
+    if (!this.hasTranscript) return;
+    if (this.readInFlight) {
+      this.readAgain = true;
+      return;
+    }
+    this.readInFlight = true;
+    try {
+      do {
+        this.readAgain = false;
+        await this.readTranscriptOnce();
+      } while (this.readAgain);
+    } finally {
+      this.readInFlight = false;
+    }
+  }
+
+  /**
+   * Drop every provisional bubble still on screen — the turn boundary's broom.
+   *
+   * Reconciliation retires a bubble the moment the authoritative read carries a
+   * row for it, which covers every turn that actually reached the server. What
+   * it cannot cover is a send that never persisted at all — a 400, a chat that
+   * vanished, a network failure before the request landed — where there is no
+   * row coming and the bubble would otherwise sit in the transcript forever,
+   * showing the operator a line that is not in the room.
+   *
+   * It sweeps only on the word of a read that came back. If the turn's own read
+   * failed too, a bubble on screen may well be a line the server did persist,
+   * and dropping it would take the operator's only copy with it. So the sweep
+   * is held over, and the next successful read performs it once reconciliation
+   * has had its say.
+   */
+  private clearProvisionalMessages(): void {
+    if (!this.lastReadOk) {
+      this.sweepPending = true;
+      return;
+    }
+    this.sweepPending = false;
+    this.sweepProvisionals();
+  }
+
+  /** Perform a sweep that was held over for want of a successful read. */
+  private runPendingSweep(): void {
+    if (!this.sweepPending) return;
+    this.sweepPending = false;
+    this.sweepProvisionals();
+  }
+
+  private sweepProvisionals(): void {
+    this.transcriptMessages.update((prev) =>
+      prev.some(isProvisionalMessage) ? prev.filter((m) => !isProvisionalMessage(m)) : prev,
+    );
   }
 
   private makeTempUserMessage(content: string): MessageDto {
