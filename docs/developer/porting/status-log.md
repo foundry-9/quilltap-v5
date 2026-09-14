@@ -123404,3 +123404,41 @@ for the human, not a lane.** Flagged for the unifier.
   python3 harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d182-31436bae4 \
     --run provisioning_equivalence
   ```
+
+### Unit 2 — the two boot ensures, and all three entrances measured
+
+- NEW `db/files_generation_key_repair.rs` —
+  `ensure_files_generation_key_column_and_index(main)`, TWO independent arms
+  (v4's migration issues an ALTER *and* a `CREATE INDEX IF NOT EXISTS`, and
+  `generateDDL` can express only the first). Column absent → ALTER then index;
+  column present / index absent → the index alone, with a planted key left
+  intact; both present → two cheap reads, nothing written. Five unit tests.
+- NEW `db/chats_transcript_version_repair.rs` —
+  `ensure_chats_transcript_version_column(main)`, `INTEGER DEFAULT 0`, no
+  backfill. Its header records the thing that makes it unlike every sibling:
+  **it is the column's only source on EVERY instance, fresh included**, and it
+  names the negative pins (`chats_read`'s census, `ChatUpdate`'s guard) that
+  keep the column out of every read, projection and export. Four unit tests.
+- Both registered in `db/mod.rs` inside fenced `=== P4.D182 ===` blocks, and
+  wired in `host.rs` as TWO self-contained fenced blocks after
+  `=== end P4.D171 ===` and before P4.D97 — left self-contained so P4.D184's
+  authorised single `=== P4.D184 ===` append cannot conflict.
+- NEW `crates/quilltap-host/tests/host_boot_p4d182_columns.rs` — **the three
+  entrances measured, not claimed**: `boot_heals_both_p4d182_schema_moves`
+  (env pepper), `unlock_heals_both_p4d182_schema_moves` (locked boot + a
+  `.dbkey`, `core.db()` proven `None` first, then the `Unlock` dispatch), and
+  `setup_provisions_what_the_dump_carries_and_ensures_the_rest`. Each legacy
+  arm asserts all three artifacts ABSENT before the boot (the P4.88
+  vacuous-fixture shape). The setup arm is the sharpest: on a freshly
+  provisioned instance the index and `transcriptVersion` can only have come
+  from the ensures, because the dump provably carries neither — and it also
+  pins the provisioned column's POSITION (between `generationRevisedPrompt`
+  and `description`), which is what proves the dump rather than the ensure
+  placed it.
+- **Mutation table** (each reverted by file backup, never `git checkout`):
+
+  | mutation | effect |
+  |---|---|
+  | drop the `ensure_chats_transcript_version_column` call from `host.rs` | all THREE host arms RED |
+  | drop `main.execute_batch(GENERATION_KEY_INDEX_DDL)` | all three host arms RED + 4 of 5 module unit tests RED |
+  | drop only the COLUMN arm of the files ensure | the two legacy arms RED, **setup GREEN** — which is the proof the two arms are measured independently, and that setup's green is not vacuous coverage of the column arm |

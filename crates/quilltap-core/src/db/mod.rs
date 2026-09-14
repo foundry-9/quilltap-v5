@@ -44,6 +44,9 @@ pub mod chats;
 // === P4.D171 ===
 pub mod chats_cycle_order_repair;
 // === end P4.D171 ===
+// === P4.D182 ===
+pub mod chats_transcript_version_repair;
+// === end P4.D182 ===
 pub mod chats_impersonation;
 pub mod chats_messages;
 pub mod chats_messages_read;
@@ -72,6 +75,9 @@ pub mod embedding_status;
 pub mod ensure_official_store;
 pub mod fictional_clock_anchor_repair;
 pub mod files;
+// === P4.D182 ===
+pub mod files_generation_key_repair;
+// === end P4.D182 ===
 pub mod files_sha256_realign_heal;
 pub mod folders;
 pub mod folders_unique_path_repair;

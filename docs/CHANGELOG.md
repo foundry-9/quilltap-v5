@@ -58,6 +58,42 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(schema): both `31436bae4` columns as boot ensures — `files.generationKey` + its index, `chats.transcriptVersion`
+
+_Versions: core 0.0.896, host 0.0.130._
+
+Two new repair passes in the standing re-homed-migration idiom, wired into
+`host.rs::seed_built_ins` after the P4.D171 blocks and before the P4.D97 data
+pass, so they run on every boot, every unlock and first-run setup.
+
+`db/files_generation_key_repair.rs` has two independent arms because v4's
+migration issues two statements and `generateDDL` can only express one of
+them: the column (which the D23 re-dump now carries) and
+`CREATE INDEX IF NOT EXISTS "idx_files_generationKey"` (which it cannot). So a
+freshly provisioned instance arrives with the column and no index, an existing
+instance with neither, and a half-migrated table heals the index alone without
+touching a planted key.
+
+`db/chats_transcript_version_repair.rs` is the first ensure here that is the
+column's ONLY source on every instance, fresh included — v4 keeps
+`transcriptVersion` out of `ChatMetadataSchema` so that a whole-row rewrite
+cannot rewind the counter, which also means `generateDDL` never emits it.
+Existing chats read `0`; v4 backfills nothing and neither does this.
+
+A new `host_boot_p4d182_columns` test proves all three entrances separately
+rather than claiming "assemble calls it": an env-pepper boot and an unlock
+both heal a legacy instance (asserted absent first), and first-run setup —
+the discriminating arm — shows the index and the counter column present on an
+instance whose dump could not have carried either, with `generationKey` in
+v4's `FileEntrySchema` slot between `generationRevisedPrompt` and
+`description`.
+
+Mutations, each reddening exactly what it should: dropping the
+`transcriptVersion` ensure call reddens all three arms; dropping the index
+statement reddens all three plus four of the five module unit tests; dropping
+only the column arm reddens the two legacy arms and leaves setup green — which
+is what proves the arms are measured independently.
+
 #### 2026-09-14 — feat(schema): the `31436bae4` D23 re-dump — `files.generationKey`
 
 _Versions: core 0.0.895._

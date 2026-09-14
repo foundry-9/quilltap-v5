@@ -1182,6 +1182,37 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // manager writes it.
             quilltap_core::db::chats_cycle_order_repair::ensure_chats_cycle_order_column(main)?;
             // === end P4.D171 ===
+            // === P4.D182 (v4 `7fbf8a55b`, migration
+            // `add-file-generation-key-column-v1`) ===
+            // The `files.generationKey` column AND its `idx_files_generationKey`
+            // index, re-homed from v4's migration runner for the same reason as
+            // the ensures above. Two arms, because `generateDDL` emits the
+            // column (v4's `FileEntrySchema` declares it, so the D23 re-dump
+            // carries it) but cannot express a plain index — so a FRESH v5
+            // instance arrives here with the column and no index, and an
+            // existing one with neither. Load-bearing on an existing instance:
+            // the `files` INSERT this port performs now always binds the
+            // column, so without it the first file write would 500; the index
+            // is what keeps P4.D184's pre-generation avatar-cache lookup cheap.
+            quilltap_core::db::files_generation_key_repair::
+                ensure_files_generation_key_column_and_index(main)?;
+            // === end P4.D182 ===
+            // === P4.D182 (v4 `5029075bb`, migration
+            // `add-transcript-version-column-v1`) ===
+            // The `chats.transcriptVersion` counter column. Unlike every
+            // sibling here, this pass is the column's ONLY source on EVERY
+            // instance, fresh included: v4 keeps the field out of
+            // `ChatMetadataSchema` on purpose (Zod strips what it does not
+            // declare, so a whole-row rewrite cannot rewind the counter), and
+            // `generateDDL` walks the schema — measured at the `31436bae4`
+            // re-dump, the column appears nowhere in `fresh_schema.json`.
+            // Load-bearing: without it P4.D183's atomic
+            // `SET transcriptVersion = transcriptVersion + 1` on the message
+            // funnel would 500 on every message written. Nothing else in v5
+            // may read, project or export the column — see the module header.
+            quilltap_core::db::chats_transcript_version_repair::
+                ensure_chats_transcript_version_column(main)?;
+            // === end P4.D182 ===
             // === P4.D97 (v4 `97d2fcb5`, migration
             // `retire-prefill-on-thinking-profiles-v1`) ===
             // The data pass that turns the multi-character [Name] prefill off
