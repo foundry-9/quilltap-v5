@@ -892,6 +892,7 @@ where
         // v4 left `orchestrator.service.ts:1892` untouched at `fef7ce4f7` — this
         // frame carries NO `paused` key. `None` omits it.
         paused: None,
+        held_user_turn: None,
     }));
 
     Ok(Some(ProcessMessageResult {
@@ -3879,6 +3880,7 @@ where
                 next_speaker_id: None,
                 chain_depth: 0,
                 paused: Some(true),
+                held_user_turn: None,
             }));
         return Ok(());
     }
@@ -3926,6 +3928,7 @@ where
                     next_speaker_id: final_next_speaker,
                     chain_depth,
                     paused: Some(decision.reason == ChainReason::Paused),
+                    held_user_turn: None,
                 }));
             break;
         }
@@ -3981,6 +3984,7 @@ where
                             // explicitly so the client never infers a pause from
                             // `reason: 'error'` alone.
                             paused: Some(false),
+                            held_user_turn: None,
                         }));
                     break;
                 }
@@ -4016,6 +4020,7 @@ where
                         next_speaker_id: None,
                         chain_depth,
                         paused: Some(true),
+                        held_user_turn: None,
                     }));
                 break;
             }

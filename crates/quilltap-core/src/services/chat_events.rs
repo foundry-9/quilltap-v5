@@ -443,6 +443,17 @@ pub struct ChainCompletePayload {
     /// at `fef7ce4f7`, so a bare `bool` would add a key v4 never sends.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paused: Option<bool>,
+    /// The stop IS the user's own message: a paused chat recorded what they typed
+    /// and gave it to nobody. Distinguishes that from a chain that ran and then
+    /// stopped, which is the difference between "your remark is in, the room is
+    /// still paused" and no explanation at all.
+    ///
+    /// `Option` for the same reason as `paused`, and more narrowly: v4
+    /// (`31436bae4` bug 137) passes this key from EXACTLY ONE of the six
+    /// `encodeChainCompleteEvent` call sites — `finishHeldUserTurn` — and the
+    /// other five omit it. It never appears without `paused: true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub held_user_turn: Option<bool>,
 }
 
 /// The `pendingExternalTurn` frame payload (v4 `encodePendingExternalTurnEvent`'s
@@ -866,6 +877,7 @@ mod tests {
                 next_speaker_id: None,
                 chain_depth: 2,
                 paused: None,
+                held_user_turn: None,
             }))
             .unwrap(),
             json!({ "chainComplete": true, "reason": "cycle_complete", "nextSpeakerId": null, "chainDepth": 2 })
@@ -878,6 +890,7 @@ mod tests {
                 next_speaker_id: None,
                 chain_depth: 0,
                 paused: Some(true),
+                held_user_turn: None,
             }))
             .unwrap(),
             json!({ "chainComplete": true, "reason": "paused", "nextSpeakerId": null, "chainDepth": 0, "paused": true })
@@ -888,12 +901,60 @@ mod tests {
                 next_speaker_id: None,
                 chain_depth: 3,
                 paused: Some(false),
+                held_user_turn: None,
             }))
             .unwrap(),
             json!({ "chainComplete": true, "reason": "error", "nextSpeakerId": null, "chainDepth": 3, "paused": false })
         );
+        // P4.D186 (v4 `31436bae4` bug 137): `held_user_turn: None` omits the key —
+        // the shape ALL FIVE of the pre-existing emits keep, so the frames above
+        // are byte-identical before and after the field existed.
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "paused".into(),
+                next_speaker_id: None,
+                chain_depth: 0,
+                paused: Some(true),
+                held_user_turn: None,
+            }))
+            .unwrap(),
+            json!({ "chainComplete": true, "reason": "paused", "nextSpeakerId": null, "chainDepth": 0, "paused": true })
+        );
+        // …and `finishHeldUserTurn`'s one frame, the whole six-key shape v4 sends
+        // (`{ chainComplete: true, ...data }` over the literal at
+        // `orchestrator.service.ts:1837-1843`).
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "paused".into(),
+                next_speaker_id: None,
+                chain_depth: 0,
+                paused: Some(true),
+                held_user_turn: Some(true),
+            }))
+            .unwrap(),
+            json!({
+                "chainComplete": true,
+                "reason": "paused",
+                "nextSpeakerId": null,
+                "chainDepth": 0,
+                "paused": true,
+                "heldUserTurn": true
+            })
+        );
+        // The key is never sent as `false`: v4 either passes `true` or omits it.
+        // Pinned so a future `Some(false)` spelling has to be a deliberate choice.
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "error".into(),
+                next_speaker_id: None,
+                chain_depth: 1,
+                paused: Some(true),
+                held_user_turn: Some(false),
+            }))
+            .unwrap()["heldUserTurn"],
+            json!(false)
+        );
     }
-
     #[test]
     fn empty_response_done_carries_the_reason() {
         let ev = ChatEvent::done(DonePayload {

@@ -712,6 +712,28 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — port(salon): `heldUserTurn` on the chain-complete frame (v4 bug 137, server unit 2)
+
+_Versions: core 0.0.896._
+
+`ChainCompletePayload` gains the optional `held_user_turn`, carrying v4
+`31436bae4`'s doc verbatim: the stop IS the user's own message, which is what
+distinguishes "your remark is in, the room is still paused" from a chain that
+ran and then stopped.
+
+`Option<bool>` with `skip_serializing_if`, exactly as `paused` is, and for a
+sharper reason: v4 passes the key from EXACTLY ONE of the six
+`encodeChainCompleteEvent` call sites (`finishHeldUserTurn`, landing in unit 3)
+and omits it at the other five, so a bare `bool` would add a key v4 never sends
+to every other frame. All six existing construction sites — the five in
+`services/orchestrator.rs` and the help-chat orchestrator's `cycle_complete` —
+pass `None` and render byte-identically to before.
+
+The frame test gains three arms: the omitted key on a `paused: true` frame (the
+shape the five keep), the whole six-key held frame in v4's order, and a pin that
+`Some(false)` would render `false` rather than being dropped — so a future
+`false` spelling has to be a deliberate choice rather than a silent one.
+
 #### 2026-09-14 — port(salon): the paused-chat hold predicate (v4 bug 137, server unit 1)
 
 _Versions: core 0.0.895, harness 0.0.784._
