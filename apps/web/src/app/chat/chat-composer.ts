@@ -641,16 +641,23 @@ export class ChatComposer implements OnInit {
   protected readonly resolving = signal(false);
   private pendingFile: File | null = null;
 
+  /**
+    * v4 `sendMessage`'s emptiness test (`useSSEStreaming.ts:744`), extracted so
+    * the Send gate and bug 136's silent arm cannot drift apart.
+    *
+    * v4 `:456`: a pending tool result is enough to send on its own — the roll
+    * IS the message, and the text is optional commentary.
+    */
+  protected readonly hasContentToSend = computed(
+    () =>
+      this.text().trim().length > 0 ||
+      this.attachedFiles().length > 0 ||
+      this.pendingToolResults().length > 0,
+  );
+
   protected readonly canSend = computed(
     () =>
-      !this.disabled() &&
-      !this.busy() &&
-      // v4 `:456`: a pending tool result is enough to send on its own — the
-      // roll IS the message, and the text is optional commentary.
-      (this.text().trim().length > 0 ||
-        this.attachedFiles().length > 0 ||
-        this.pendingToolResults().length > 0) &&
-      this.hasActiveCharacters(),
+      !this.disabled() && !this.busy() && this.hasContentToSend() && this.hasActiveCharacters(),
   );
 
   /**
@@ -854,6 +861,28 @@ export class ChatComposer implements OnInit {
 
   /** Enter (via the editor's submit) or the Send button both land here. */
   protected submit(): void {
+    // v4 `sendMessage`'s two refusals, deliberately told apart (bug 136,
+    // `8275b3642`). One `return` used to cover both an empty composer and a
+    // send refused because a turn was still in flight; the second is a real
+    // request declined, and it said nothing — the same silence a genuinely
+    // broken send produces. The empty half stays silent; the in-flight half
+    // says so. The text survives either way: this returns long before
+    // `clearAfterSend`, which is what lets the remark wait in the composer.
+    //
+    // v4 refuses at its ONE door, `sendMessage`. v5 interposes a second gate
+    // the editor's Enter hits first (`canSend`, which the Send button also
+    // reads), so the refusal lands at BOTH — here for the keystroke, and at
+    // `postComposedMessage` for the doors that bypass this component. A
+    // recorded mechanism divergence; the sentence is v4's, byte for byte.
+    if (!this.hasContentToSend()) {
+      return;
+    }
+    if (this.busy()) {
+      this.toasts.showInfo(
+        'One moment — the room is still speaking. Your remark waits in the composer.',
+      );
+      return;
+    }
     if (!this.canSend()) {
       return;
     }

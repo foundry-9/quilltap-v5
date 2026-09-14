@@ -3595,3 +3595,127 @@ describe('SalonConversation — the transcript is a subscribed read (v4 useChatD
     expect(inst.transcriptMessages().map((m) => m.id)).not.toContain('temp-user-1757595000000');
   });
 });
+
+/**
+ * Bug 136, the Salon's half — the explicit controls refuse aloud too.
+ *
+ * v4 gives `triggerContinueMode`'s streaming/waiting guard the same notice as
+ * `sendMessage`, in a SHORTER form: it refuses a click on an explicit control
+ * (Nudge, Continue, Skip), where there is no remark waiting anywhere. v5's
+ * `runTurn` is the chokepoint both paths pass through, so the two sentences are
+ * told apart by `continueMode` — a plain send has already been answered at its
+ * own door, and must not be answered twice.
+ */
+describe('SalonConversation — an explicit control refused mid-turn says so (bug 136)', () => {
+  type Host = {
+    send(p: { content: string; fileIds: string[] }): void;
+    continueTurn(): void;
+    postComposedMessage(content: string, fileIds: string[]): void;
+  };
+
+  function heldClient(): Partial<CoreClient> {
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') {
+        return { type: 'chat', data: { chat: chatDetail() } } as unknown as CoreResponse;
+      }
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+        } as unknown as CoreResponse;
+      }
+      // Held for the life of the test — the turn stays "in flight".
+      if (req.type === 'chatSend') return new Promise<CoreResponse>(() => {});
+      return { type: 'ack', data: {} } as unknown as CoreResponse;
+    });
+    return {
+      events$: new Subject<ScopedEvent>().asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: vi.fn(async () => ({})) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  async function busySalon(): Promise<ComponentFixture<SalonConversation>> {
+    const fixture = await render(heldClient());
+    const inst = fixture.componentInstance as unknown as Host;
+    inst.send({ content: 'Off we go.', fileIds: [] });
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('answers a Continue clicked mid-turn with the SHORT sentence', async () => {
+    const fixture = await busySalon();
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).continueTurn();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(toasts().slice(before)).toEqual([
+      { type: 'info', message: 'One moment — the room is still speaking.' },
+    ]);
+  });
+
+  it('answers a composed send arriving mid-turn with the LONG sentence, and posts nothing', async () => {
+    const fixture = await busySalon();
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).postComposedMessage('a second remark', []);
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    expect(toasts().slice(before)).toEqual([
+      {
+        type: 'info',
+        message: 'One moment — the room is still speaking. Your remark waits in the composer.',
+      },
+    ]);
+  });
+
+  it('a NON-continue turn refused mid-turn says nothing — the short sentence is for controls only', async () => {
+    // The branch's own pin. In production a composed send is refused one door
+    // earlier (`postComposedMessage`, the LONG sentence), so `runTurn` is
+    // never reached that way while busy — which would leave `opts.continueMode`
+    // untested if it were only exercised through the send path. Drive it
+    // directly: a non-continue turn arriving mid-flight must be silent, or a
+    // send would be answered twice in two different voices.
+    const fixture = await busySalon();
+    const before = toasts().length;
+
+    await (
+      fixture.componentInstance as unknown as {
+        runTurn(o: { content?: string }): Promise<void>;
+      }
+    ).runTurn({ content: 'a direct retry' });
+    fixture.detectChanges();
+
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('says nothing when there is no turn in flight', async () => {
+    const fixture = await render(heldClient());
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as Host).continueTurn();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+
+    // Whatever else a continue does with an empty roster, it does not raise
+    // the in-flight notice.
+    expect(
+      toasts()
+        .slice(before)
+        .filter((t) => t.message.startsWith('One moment')),
+    ).toEqual([]);
+  });
+});

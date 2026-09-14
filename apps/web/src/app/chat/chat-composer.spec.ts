@@ -7,6 +7,7 @@ import { CoreClient } from '../core/core-client';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
 import { ChatComposer, type ComposerSend, type PendingToolResultChip } from './chat-composer';
+import { ToastService } from '../ui/toast.service';
 
 // Draft persistence keys off chatId in localStorage; keep every test isolated.
 beforeEach(() => localStorage.clear());
@@ -583,5 +584,97 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
   it('…and leaves the portrait bare when it is not armed', async () => {
     const fixture = await armed({ voiceRehearsalArmed: false });
     expect(fixture.nativeElement.querySelector('.qt-speaking-as-avatar-voice-badge')).toBeNull();
+  });
+});
+
+/**
+ * Bug 136 — a send refused because a turn is in flight is answered ALOUD.
+ *
+ * v4 `sendMessage` had one `return` covering both an empty composer and a send
+ * declined mid-turn (`8275b3642`). The second is a real request refused, and it
+ * said nothing: the operator pressed Enter, the line stayed put, and nothing
+ * distinguished that from a send that had simply broken. Split in two — the
+ * empty half stays silent, the in-flight half says so, and the text waits in
+ * the composer either way.
+ *
+ * v5's editor is typeable during a turn exactly as v4's is (only the Send
+ * button swaps for Stop), so this refusal is reachable by pressing Enter —
+ * which is the gesture the bug is about.
+ */
+describe('ChatComposer — a mid-turn send is refused aloud (bug 136)', () => {
+  function toasts(): { type: string; message: string }[] {
+    return TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message }));
+  }
+
+  async function composerWithText(busy: boolean): Promise<ComponentFixture<ChatComposer>> {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.componentRef.setInput('busy', busy);
+    richEditor(fixture).setMarkdown('Are we there yet?');
+    richEditor(fixture).contentChange.emit('Are we there yet?');
+    await settle(fixture);
+    return fixture;
+  }
+
+  it('says so, and keeps the remark, when a turn is still in flight', async () => {
+    const fixture = await composerWithText(true);
+    const sends: ComposerSend[] = [];
+    fixture.componentInstance.send.subscribe((p: ComposerSend) => sends.push(p));
+
+    (fixture.componentInstance as unknown as { submit(): void }).submit();
+    await settle(fixture);
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'info',
+      message: 'One moment — the room is still speaking. Your remark waits in the composer.',
+    });
+    // Nothing went out, and the draft is still there to wait in.
+    expect(sends).toEqual([]);
+    expect(
+      (fixture.componentInstance as unknown as { text(): string }).text(),
+    ).toBe('Are we there yet?');
+  });
+
+  it('stays SILENT on an empty composer — the operator’s own doing', async () => {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.componentRef.setInput('busy', false);
+    await settle(fixture);
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as { submit(): void }).submit();
+    await settle(fixture);
+
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('stays SILENT on an empty composer even mid-turn — emptiness is checked first', async () => {
+    // v4 checks the empty arm BEFORE the `sending` arm, so a stray Enter on an
+    // empty composer during a turn raises nothing at all.
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.componentRef.setInput('busy', true);
+    await settle(fixture);
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as { submit(): void }).submit();
+    await settle(fixture);
+
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('sends normally when no turn is in flight', async () => {
+    const fixture = await composerWithText(false);
+    const sends: ComposerSend[] = [];
+    fixture.componentInstance.send.subscribe((p: ComposerSend) => sends.push(p));
+    const before = toasts().length;
+
+    (fixture.componentInstance as unknown as { submit(): void }).submit();
+    await settle(fixture);
+
+    expect(sends).toHaveLength(1);
+    expect(toasts().slice(before)).toEqual([]);
   });
 });

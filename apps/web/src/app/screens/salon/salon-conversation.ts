@@ -3179,6 +3179,15 @@ export class SalonConversation {
     fileIds: string[],
     pendingOverride?: readonly PendingToolResultChip[],
   ): void {
+    // v4 `sendMessage`'s in-flight refusal (bug 136) at v4's own site — the ONE
+    // door a composed message goes out by. It MUST precede `clearAfterSend`
+    // below: the remark has to still be in the composer for it to wait there.
+    if (this.busy()) {
+      this.toasts.showInfo(
+        'One moment — the room is still speaking. Your remark waits in the composer.',
+      );
+      return;
+    }
     const pending = [...(pendingOverride ?? this.pendingToolResults())];
     this.pendingToolResults.set([]);
     this.composer()?.clearAfterSend();
@@ -3209,7 +3218,15 @@ export class SalonConversation {
     pending?: PendingToolResultChip[];
   }): Promise<void> {
     const chatId = this.chatId();
-    if (!chatId || this.busy()) {
+    if (!chatId) return;
+    if (this.busy()) {
+      // v4 `triggerContinueMode`'s streaming/waiting guard (bug 136): it
+      // refuses a click on an EXPLICIT control — Nudge, Continue, Skip — and
+      // so answers aloud. A plain send has its own, longer sentence at its own
+      // door (`postComposedMessage`), so it must not be answered twice.
+      if (opts.continueMode) {
+        this.toasts.showInfo('One moment — the room is still speaking.');
+      }
       return;
     }
     // v4 `triggerContinueMode` (`useSSEStreaming.ts:997-1012`) — the two guards

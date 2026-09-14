@@ -857,6 +857,39 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — fix(salon): answer a send refused mid-turn instead of swallowing it (P4.D187 unit 4, v4 bug 136)
+
+_Versions: SPA 0.5.710._
+
+v4's `sendMessage` had one `return` covering both an empty composer and a send
+declined because a turn was still in flight (`8275b3642`). The second is a real
+request refused, and it said nothing — the same silence a genuinely broken send
+produces. Split in two: the empty half stays silent, the in-flight half raises
+"One moment — the room is still speaking. Your remark waits in the composer.",
+and the text survives either way. `triggerContinueMode`'s streaming guard gets
+the shorter "One moment — the room is still speaking." — it refuses a click on
+an explicit control (Nudge, Continue, Skip), where no remark is waiting.
+
+A work-order premise was refuted by measurement. The order recorded that v5
+"disables the WHOLE composer while a turn is in flight (`[disabled]="busy()"` at
+`salon-conversation.ts:469`)" and asked whether bug 136 had a reachable site at
+all. That binding is on `qt-turn-controls`, not the composer; `ChatComposer`'s
+`disabled` input is never bound anywhere in the app, and only the Send button
+swaps for Stop while busy. v5 already keeps the editor typeable during a turn —
+v4's shape — so no mechanism change was needed and the refusal lands at the
+refusing predicate, as the order's second branch directed.
+
+It lands at TWO doors, a recorded mechanism divergence: v4 refuses at its one
+`sendMessage`, while v5 interposes `canSend` (the Enter keystroke's gate, which
+used to return in silence — the bug's exact symptom) ahead of
+`postComposedMessage` (v4's own site, guarded BEFORE `clearAfterSend` so the
+remark is still there to wait in). Both sentences are byte-exact.
+
+The `opts.continueMode` branch in `runTurn` is pinned directly rather than
+through the send path: in production a composed send is refused a door earlier,
+so that path never reaches `runTurn` while busy and the branch would otherwise
+have gone untested.
+
 #### 2026-09-14 — feat(salon): the transcript becomes a subscribed read, and the optimistic bubble moves into it (P4.D187 units 2-3)
 
 _Versions: SPA 0.5.709._
