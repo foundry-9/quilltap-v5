@@ -851,3 +851,379 @@ mod memory_gate_tests {
         assert_eq!(cap.drain().await, vec![]);
     }
 }
+
+// ===========================================================================
+// P4.D183 — the message write funnel (v4 `5029075bb`)
+// ===========================================================================
+
+/// The transcript-change publish points: every write that changes what the
+/// Salon renders announces the `chats` topic, scoped to the chat.
+///
+/// These are the ONLY thing in the tree that can see these hints. A hint is
+/// not DB state, so the tier-2 funnel differential — which compares the
+/// `chats` and `chat_messages` tables cell by cell — stays green with every
+/// `publish_realtime` call deleted. The counter it bumps IS DB state and is
+/// pinned there; the hint is pinned here.
+///
+/// Each conditional site is pinned in BOTH directions, because v4's conditions
+/// are the interesting part and a guard with only its positive leg asserted is
+/// a guard nothing tested (`a-guard-whose-other-conjuncts-are-false-is-untested`).
+#[cfg(test)]
+mod transcript_publish_sites {
+    use super::*;
+    use crate::db::chats_messages::ChatEventInput;
+    use crate::db::chats_search::ChatSearchRepository;
+    use crate::db::runtime::Db;
+    use crate::db::Writer;
+    use crate::realtime::types::RealtimeTopic;
+    use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const T0: &str = "2020-01-01T00:00:00.000Z";
+
+    fn chats(id: &str) -> (String, Option<String>) {
+        (
+            RealtimeTopic::Chats.as_str().to_string(),
+            Some(id.to_string()),
+        )
+    }
+
+    /// A REAL provisioned main partition plus P4.D182's boot ensure — the
+    /// column arrives by ensure only (it is outside v4's `ChatMetadataSchema`,
+    /// so `generateDDL` never emits it and `fresh_schema.json` cannot carry
+    /// it: §R.5(a)). Without the ensure every bump here would take the
+    /// swallowed-failure arm and the pins would still pass, measuring nothing
+    /// about the counter.
+    fn venue(tag: &str, chat_ids: &[&str]) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join(tag);
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let path = data.join("quilltap.db");
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            crate::db::chats_transcript_version_repair::ensure_chats_transcript_version_column(
+                w.connection(),
+            )
+            .unwrap();
+            for id in chat_ids {
+                w.connection()
+                    .execute(
+                        "INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
+                         VALUES (?1, 'u-1', 'T', ?2, ?2)",
+                        rusqlite::params![id, T0],
+                    )
+                    .unwrap();
+            }
+        }
+        (dir, path)
+    }
+
+    fn msg(id: &str, content: &str) -> ChatEventInput {
+        serde_json::from_value(json!({
+            "type": "message",
+            "id": id,
+            "role": "USER",
+            "content": content,
+            "createdAt": T0,
+        }))
+        .unwrap()
+    }
+
+    /// The counter, read the way the chat GET reads it.
+    fn version(path: &std::path::Path, chat_id: &str) -> i64 {
+        let db = Db::open_main(path, PEPPER).unwrap();
+        let id = chat_id.to_string();
+        db.read_main(move |c| {
+            Ok(crate::db::chats::ChatsRepository::new(c).get_transcript_version(&id))
+        })
+        .unwrap()
+    }
+
+    // ── add / add-batch: always, even with the chat row gone ────────────────
+
+    #[tokio::test]
+    async fn adding_a_message_announces_the_chat() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("add", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("chat-1", &msg("m-1", "hello"))
+                .unwrap();
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(version(&path, "chat-1"), 1, "the bump is the other half");
+    }
+
+    #[tokio::test]
+    async fn adding_a_batch_announces_once() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("addb", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_messages("chat-1", &[msg("m-1", "a"), msg("m-2", "b")])
+                .unwrap();
+        }
+        // ONE announce for the batch, not one per row — v4 commits once after
+        // the loop. (The bus coalesces inside its window, so the COUNTER is the
+        // discriminator that a per-row announce would move to 2.)
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(version(&path, "chat-1"), 1);
+    }
+
+    /// v4's `commitTranscriptChange` sits OUTSIDE the `if (chat)` that guards
+    /// the bookkeeping: a message written into a chat whose row is already gone
+    /// still changed a transcript, and still announces.
+    #[tokio::test]
+    async fn adding_to_a_missing_chat_row_still_announces() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("addmissing", &[]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("ghost", &msg("m-1", "hello"))
+                .unwrap();
+        }
+        assert_eq!(cap.drain().await, vec![chats("ghost")]);
+        // …and the bump found no row to move, exactly as v4's `updateOne`
+        // returns `matchedCount: 0`.
+        assert_eq!(version(&path, "ghost"), 0);
+    }
+
+    // ── update: after the row write, and NOT when the row is not there ──────
+
+    #[tokio::test]
+    async fn editing_a_message_announces_the_chat() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("upd", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.add_message("chat-1", &msg("m-1", "before")).unwrap();
+            let _ = cap.drain().await; // the add's own hint
+            assert!(repo
+                .update_message("chat-1", "m-1", &json!({"content": "after"}))
+                .unwrap());
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+    }
+
+    /// v4's test "says nothing when the message is not there" — the not-found
+    /// early return is above the announce.
+    #[tokio::test]
+    async fn editing_a_message_that_is_not_there_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("updmissing", &["chat-1"]);
+        let before;
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.add_message("chat-1", &msg("m-1", "x")).unwrap();
+            let _ = cap.drain().await;
+            before = version(&path, "chat-1");
+            assert!(!repo
+                .update_message("chat-1", "nope", &json!({"content": "y"}))
+                .unwrap());
+        }
+        assert_eq!(cap.drain().await, vec![], "no row written, no hint");
+        assert_eq!(version(&path, "chat-1"), before, "and no bump either");
+    }
+
+    // ── delete: only when something was removed ─────────────────────────────
+
+    #[tokio::test]
+    async fn deleting_a_message_announces_the_chat() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("del", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.add_messages("chat-1", &[msg("m-1", "a"), msg("m-2", "b")])
+                .unwrap();
+            let _ = cap.drain().await;
+            assert_eq!(
+                repo.delete_messages_by_ids("chat-1", &["m-1".to_string()])
+                    .unwrap(),
+                1
+            );
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+    }
+
+    /// v4's test "says nothing when nothing was removed" — `if (removed > 0)`
+    /// wraps the whole commit, not just the bookkeeping.
+    #[tokio::test]
+    async fn deleting_nothing_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("delnone", &["chat-1"]);
+        let before;
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
+            let _ = cap.drain().await;
+            before = version(&path, "chat-1");
+            assert_eq!(
+                repo.delete_messages_by_ids("chat-1", &["ghost".to_string()])
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(cap.drain().await, vec![]);
+        assert_eq!(version(&path, "chat-1"), before);
+    }
+
+    // ── clear: UNCONDITIONAL (the commit's one observable guard change) ──────
+
+    #[tokio::test]
+    async fn clearing_a_chat_announces_it() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("clr", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
+            let _ = cap.drain().await;
+            assert!(repo.clear_messages("chat-1").unwrap());
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+    }
+
+    /// `5029075bb` lifted `clearMessages`'s commit out of its old `if (chat)`,
+    /// so a clear on a chat with no row left announces anyway. This arm is the
+    /// difference between the old shape and the new one.
+    #[tokio::test]
+    async fn clearing_a_chat_whose_row_is_gone_still_announces() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("clrmissing", &[]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            assert!(w.chat_messages().clear_messages("ghost").unwrap());
+        }
+        assert_eq!(cap.drain().await, vec![chats("ghost")]);
+    }
+
+    // ── search-and-replace: the one path outside the funnel ─────────────────
+
+    #[tokio::test]
+    async fn replacing_text_announces_the_chat() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("rep", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("chat-1", &msg("m-1", "hello world"))
+                .unwrap();
+            let _ = cap.drain().await;
+            assert_eq!(
+                ChatSearchRepository::new(w.connection())
+                    .replace_in_messages("chat-1", "world", "there")
+                    .unwrap(),
+                1
+            );
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+    }
+
+    /// The MEASURED condition (see `chats_search.rs`): v4's hunk looks
+    /// unconditional, but `if (updatedCount === 0) return 0;` sits above the
+    /// announce — so v4's test "says nothing when no message matched" is what
+    /// actually ships.
+    #[tokio::test]
+    async fn replacing_nothing_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, path) = venue("repnone", &["chat-1"]);
+        let before;
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages()
+                .add_message("chat-1", &msg("m-1", "hello world"))
+                .unwrap();
+            let _ = cap.drain().await;
+            before = version(&path, "chat-1");
+            assert_eq!(
+                ChatSearchRepository::new(w.connection())
+                    .replace_in_messages("chat-1", "absent", "x")
+                    .unwrap(),
+                0
+            );
+        }
+        assert_eq!(cap.drain().await, vec![]);
+        assert_eq!(version(&path, "chat-1"), before);
+    }
+
+    // ── the counter's own contract ──────────────────────────────────────────
+
+    /// "Bumps relative to the stored value, never to a snapshot it read": two
+    /// announces land at +2 because `SET v = v + 1` reads and writes in one
+    /// statement. A read-modify-write through the validated row rewrite could
+    /// not promise this — which is why the column is outside
+    /// `ChatMetadataSchema` and `$inc` is its only writer.
+    #[tokio::test]
+    async fn two_bumps_land_at_plus_two() {
+        let _cap = HintCapture::start();
+        let (_dir, path) = venue("inc", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            let repo = w.chat_messages();
+            repo.announce_transcript_change("chat-1");
+            repo.announce_transcript_change("chat-1");
+        }
+        assert_eq!(version(&path, "chat-1"), 2);
+    }
+
+    /// "Never writes the counter through a metadata patch": the bookkeeping
+    /// `update()` this funnel performs cannot move the counter, because
+    /// `ChatUpdate` has no field for it (P4.D182's source census is the other
+    /// half of this guard; this is the behavioural leg).
+    #[tokio::test]
+    async fn a_metadata_patch_leaves_the_counter_alone() {
+        let _cap = HintCapture::start();
+        let (_dir, path) = venue("patch", &["chat-1"]);
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.chat_messages().announce_transcript_change("chat-1");
+            let patch = crate::db::chats::ChatUpdate {
+                message_count: Some(7.0),
+                title: Some("moved".into()),
+                ..Default::default()
+            };
+            assert!(crate::db::chats::ChatsRepository::new(w.connection())
+                .update("chat-1", &patch)
+                .unwrap());
+        }
+        assert_eq!(version(&path, "chat-1"), 1, "the patch must not rewind it");
+    }
+
+    /// A bump that cannot land — a pre-4.10 partition with no such column — is
+    /// SWALLOWED (v4's `safeQuery(…, false)` slot) and the hint fires anyway.
+    /// A tab told to look once too often is harmless; a tab never told is the
+    /// bug the announce exists to prevent.
+    #[tokio::test]
+    async fn a_failed_bump_is_swallowed_and_the_hint_still_fires() {
+        let mut cap = HintCapture::start();
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("nocol");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let path = data.join("quilltap.db");
+        {
+            // Deliberately NO `ensure_chats_transcript_version_column` — this is
+            // what a 4.9 instance looks like to a 4.10 binary before boot heals it.
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection()
+                .execute(
+                    "INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
+                     VALUES ('chat-1', 'u-1', 'T', ?1, ?1)",
+                    rusqlite::params![T0],
+                )
+                .unwrap();
+            w.chat_messages().announce_transcript_change("chat-1");
+        }
+        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        // …and the reader answers 0 rather than propagating the error.
+        assert_eq!(version(&path, "chat-1"), 0);
+    }
+}

@@ -421,6 +421,72 @@ impl<'c> ChatMessagesRepository<'c> {
         Self { conn }
     }
 
+    /// `announceTranscriptChange` (v4 `chats-messages.ops.ts:272`, `5029075bb`)
+    /// — bump the chat's transcript counter, then publish the realtime hint.
+    ///
+    /// **Three separate operations, deliberately not one transaction** (v4's
+    /// shape, carried): the `$inc` is atomic on its own, and folding the
+    /// counter into the bookkeeping `update()` beside it would route it through
+    /// the validated whole-row rewrite — where a stale in-memory snapshot could
+    /// rewind a bump another writer had already landed. `SET v = v + 1` reads
+    /// and writes in one statement, so two concurrent writes land at +2.
+    ///
+    /// A failed bump is **swallowed** (v4's `safeQuery(…, false)` fallback
+    /// slot) and the hint still fires: an open tab that re-reads once too often
+    /// is harmless, while a tab never told to look again is the bug this
+    /// exists to prevent.
+    ///
+    /// `pub` because the funnel is not quite the whole story — the
+    /// search-and-replace path ([`super::chats_search::ChatSearchRepository::
+    /// replace_in_messages`]) rewrites message rows directly, and a transcript
+    /// change is a transcript change.
+    pub fn announce_transcript_change(&self, chat_id: &str) {
+        // v4's `$inc` through its SQLite backend's `translateUpdate`
+        // (`query-translator.ts:507`) emits exactly `"field" = "field" + ?`.
+        // SQLite's `NULL + 1` is NULL, so a NULL cell stays NULL and
+        // `get_transcript_version` goes on reading it as 0 — v4 behaves
+        // identically, and no COALESCE may be "helpfully" added here.
+        //
+        // v4's `updateOne` checks the row exists before issuing any SQL and
+        // returns `matchedCount: 0` otherwise; a `WHERE id = ?` that matches
+        // nothing is the same no-op, so the guard is not re-spelled.
+        if let Err(e) = self.conn.execute(
+            "UPDATE chats SET \"transcriptVersion\" = \"transcriptVersion\" + 1 WHERE id = ?1",
+            rusqlite::params![chat_id],
+        ) {
+            tracing::warn!(chat_id, error = %e, "Failed to bump transcript version");
+        }
+
+        tracing::debug!(chat_id, "Transcript change announced");
+        crate::realtime::bus::publish_realtime(
+            crate::realtime::types::RealtimeTopic::Chats,
+            Some(chat_id),
+        );
+    }
+
+    /// `commitTranscriptChange` (v4 `:301`) — write the chat-row bookkeeping
+    /// this message write computed, then announce the change.
+    ///
+    /// The two halves have different conditions and that asymmetry is the
+    /// point: the bookkeeping needs a chat row to write to, the announcement
+    /// does not. A message written into a chat whose row has already been
+    /// deleted still changed a transcript, and an open tab still deserves to
+    /// hear about it.
+    ///
+    /// `write_bookkeeping` is v4's `chat && Object.keys(updateData).length > 0`
+    /// collapsed to the one bit the caller already knows — v5 folded v4's
+    /// per-site `updateData` assembly into [`Self::update_chat_metadata`],
+    /// which applies v4's `if (chat)` guard itself.
+    fn commit_transcript_change(
+        &self,
+        chat_id: &str,
+        write_bookkeeping: impl FnOnce() -> Result<(), DbError>,
+    ) -> Result<(), DbError> {
+        write_bookkeeping()?;
+        self.announce_transcript_change(chat_id);
+        Ok(())
+    }
+
     /// `addMessage` — insert one event, then update the owning chat's metadata
     /// (`messageCount`; for a `type:'message'` event `updatedAt` minted `now` and
     /// `spokenThisCycle`; `lastMessageAt` only when the row is CHARACTER-AUTHORED
@@ -428,7 +494,12 @@ impl<'c> ChatMessagesRepository<'c> {
     /// the chat is gone (v4's `if (chat)` guard).
     pub fn add_message(&self, chat_id: &str, event: &ChatEventInput) -> Result<(), DbError> {
         insert_event(self.conn, chat_id, event)?;
-        self.update_chat_metadata(chat_id, std::slice::from_ref(event))
+        // v4 `:439` — `commitTranscriptChange` sits OUTSIDE the `if (chat)`
+        // that guards the bookkeeping, so the announce fires even when the
+        // chat row is gone.
+        self.commit_transcript_change(chat_id, || {
+            self.update_chat_metadata(chat_id, std::slice::from_ref(event))
+        })
     }
 
     /// `addMessages` — insert each event in order, then ONE metadata update with
@@ -437,7 +508,8 @@ impl<'c> ChatMessagesRepository<'c> {
         for e in events {
             insert_event(self.conn, chat_id, e)?;
         }
-        self.update_chat_metadata(chat_id, events)
+        // v4 `:509` — same shape as `addMessage`: announce regardless of the row.
+        self.commit_transcript_change(chat_id, || self.update_chat_metadata(chat_id, events))
     }
 
     /// `updateMessage` — merge `updates` onto the existing event, re-validate, and
@@ -476,6 +548,12 @@ impl<'c> ChatMessagesRepository<'c> {
             rusqlite::params![message_id],
         )?;
         insert_event(self.conn, chat_id, &event)?;
+        // v4 `:539` / `:567` — BOTH the modern-row and legacy-array branches
+        // announce directly (not through `commitTranscriptChange`: an edit
+        // computes no chat-row bookkeeping). Reached only past the not-found
+        // early return above, which is v4's test "says nothing when the
+        // message is not there".
+        self.announce_transcript_change(chat_id);
         Ok(true)
     }
 
@@ -499,7 +577,20 @@ impl<'c> ChatMessagesRepository<'c> {
             )?;
             removed += n as i64;
         }
-        if removed > 0 && chats_read::find_by_id(self.conn, chat_id)?.is_some() {
+        if removed > 0 {
+            // v4 `:665-681`: the whole block is inside `if (removed > 0)`, the
+            // bookkeeping inside a further `if (chat)`, and
+            // `commitTranscriptChange` between the two — so a delete from a
+            // chat whose row is gone still announces. "Says nothing when
+            // nothing was removed" is this outer guard.
+            self.commit_transcript_change(chat_id, || self.delete_bookkeeping(chat_id))?;
+        }
+        Ok(removed)
+    }
+
+    /// The `deleteMessagesByIds` chat-row bookkeeping — v4's inner `if (chat)`.
+    fn delete_bookkeeping(&self, chat_id: &str) -> Result<(), DbError> {
+        if chats_read::find_by_id(self.conn, chat_id)?.is_some() {
             let all = chats_messages_read::get_messages(self.conn, chat_id)?;
             // Deleting the newest character-authored message must walk
             // `lastMessageAt` *backwards*, not leave it pointing at a row that
@@ -525,7 +616,7 @@ impl<'c> ChatMessagesRepository<'c> {
             };
             ChatsRepository::new(self.conn).update(chat_id, &update)?;
         }
-        Ok(removed)
+        Ok(())
     }
 
     /// `clearMessages` — delete all of a chat's messages and reset its metadata
@@ -536,14 +627,21 @@ impl<'c> ChatMessagesRepository<'c> {
             "DELETE FROM chat_messages WHERE chatId = ?1",
             rusqlite::params![chat_id],
         )?;
-        if chats_read::find_by_id(self.conn, chat_id)?.is_some() {
-            let update = ChatUpdate {
-                message_count: Some(0.0),
-                last_message_at: Some(None),
-                ..Default::default()
-            };
-            ChatsRepository::new(self.conn).update(chat_id, &update)?;
-        }
+        // v4 `:713-717` — `commitTranscriptChange` is called UNCONDITIONALLY
+        // here (`5029075bb` lifted it out of the old `if (chat)`), so a clear
+        // announces even when the chat row has already gone. This is the
+        // commit's one observable guard change on this path.
+        self.commit_transcript_change(chat_id, || {
+            if chats_read::find_by_id(self.conn, chat_id)?.is_some() {
+                let update = ChatUpdate {
+                    message_count: Some(0.0),
+                    last_message_at: Some(None),
+                    ..Default::default()
+                };
+                ChatsRepository::new(self.conn).update(chat_id, &update)?;
+            }
+            Ok(())
+        })?;
         Ok(true)
     }
 

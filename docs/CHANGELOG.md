@@ -58,6 +58,39 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+#### 2026-09-14 — feat(chats): every transcript-changing write bumps the counter and announces the chat
+
+_Versions: core 0.0.901._
+
+v4 `5029075bb`'s server half, the write side. `ChatMessagesRepository` gains
+`announce_transcript_change` (the ONE writer of `chats.transcriptVersion`) and
+a private `commit_transcript_change` wrapping v4's "bookkeeping when the row
+exists, announce always". Six sites now call them at v4's per-site conditions:
+`add_message` and `add_messages` always (even with the chat row gone),
+`update_message` after the row write but never on the not-found return,
+`delete_messages_by_ids` only when something was removed, `clear_messages`
+UNCONDITIONALLY (the commit's one observable guard change), and
+`ChatSearchRepository::replace_in_messages` — the one message-writing path
+outside the funnel.
+
+The bump is `SET "transcriptVersion" = "transcriptVersion" + 1`, which is what
+v4's `$inc` emits through its SQLite backend's `translateUpdate`. It reads and
+writes in one statement, so two concurrent bumps land at +2; a NULL cell stays
+NULL, as v4 leaves it, and no COALESCE is added. A failed bump is swallowed
+with v4's `Failed to bump transcript version` warn and the hint fires anyway.
+`ChatsRepository::get_transcript_version` is the reader — raw, outside
+`marshal_row`, answering 0 for a missing row, a NULL cell or a failed read.
+
+**The search path's condition was MEASURED, not transcribed.** v4's hunk shows
+an unconditional announce after the rewrite loop while v4's own test says "says
+nothing when no message matched"; at `31436bae4` an `if (updatedCount === 0)
+return 0;` sits directly above the announce, so the test title is the true
+description and the guard is what shipped.
+
+Fourteen `HintCapture` wiring pins in `realtime/publish_sites.rs` — the only
+thing in the tree that can see a hint, since no differential can. Every
+conditional site is pinned in both directions.
+
 #### 2026-09-14 — test(salon): heal the vintage salon fixture for P4.D182's two columns
 
 _Versions: harness 0.0.788._

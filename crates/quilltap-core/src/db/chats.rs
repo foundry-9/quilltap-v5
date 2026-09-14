@@ -1395,6 +1395,48 @@ impl<'c> ChatsRepository<'c> {
             .map_err(DbError::from)
     }
 
+    /// `getTranscriptVersion` (v4 `chats.repository.ts:525`, `5029075bb`) — the
+    /// chat's transcript counter, or **0** when it has never changed.
+    ///
+    /// Read straight off the row rather than through the entity projection,
+    /// because the column is deliberately not part of it: `transcriptVersion`
+    /// is outside v4's `ChatMetadataSchema`, so Zod strips it from every
+    /// whole-row rewrite and [`ChatMessagesRepository::announce_transcript_change`]
+    /// stays its ONE writer. That is what makes the counter safe against a
+    /// concurrent writer — and it is why this read does NOT go through
+    /// `chats_read::marshal_row` (whose column census must not move).
+    ///
+    /// v4 reads the whole row and then applies `typeof version === 'number' ?
+    /// version : 0`, so a missing row, a SQL `NULL` cell and a failed read all
+    /// answer 0. The three arms are spelled out below rather than collapsed,
+    /// because each is reachable for a different reason: no row (the chat was
+    /// deleted under us), NULL (a bump landed on a row whose cell was NULL —
+    /// SQLite's `NULL + 1` is NULL, exactly as v4's `$inc` leaves it), and an
+    /// error (a pre-4.10 partition with no such column at all).
+    pub fn get_transcript_version(&self, id: &str) -> i64 {
+        let read: Result<Option<i64>, rusqlite::Error> = self
+            .conn
+            .query_row(
+                "SELECT \"transcriptVersion\" FROM chats WHERE id = ?1",
+                params![id],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            });
+        match read {
+            Ok(Some(v)) => v,
+            // v4's `safeQuery(…, 0)` fallback slot, and its `typeof` guard:
+            // both a NULL cell and a failed read answer 0.
+            Ok(None) => 0,
+            Err(e) => {
+                tracing::error!(chat_id = id, error = %e, "Failed to read transcript version");
+                0
+            }
+        }
+    }
+
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
         let found: Option<i64> = self
             .conn

@@ -246,6 +246,22 @@ impl<'c> ChatSearchRepository<'c> {
             )?;
             updated_count += 1;
         }
+        // v4 `chats-search.ops.ts:234-248` (`5029075bb`) — a transcript change,
+        // and the one message-writing path that does NOT go through the
+        // add/update/delete funnel. Without it an open Salon tab would go on
+        // being told "unchanged" while every line it is displaying had its text
+        // rewritten underneath it.
+        //
+        // MEASURED at `31436bae4`, because the hunk and v4's own test title
+        // disagree at a glance: the announce statement is unconditional *in the
+        // diff*, but an `if (updatedCount === 0) return 0;` sits directly above
+        // it, so v4's test "says nothing when no message matched" is the true
+        // description. The guard is reproduced here rather than the hunk.
+        if updated_count == 0 {
+            return Ok(0);
+        }
+        super::chats_messages::ChatMessagesRepository::new(self.conn)
+            .announce_transcript_change(chat_id);
         Ok(updated_count)
     }
 }
