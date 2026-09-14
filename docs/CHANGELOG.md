@@ -712,6 +712,24 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+#### 2026-09-14 — test(web): the held chain-complete frame at the wire (v4 bug 137, server unit 5)
+
+_Versions: web 0.0.143._
+
+A web-venue pin for the frame `finish_held_user_turn` emits. v4 writes
+`data: ${JSON.stringify({ chainComplete: true, ...data })}\n\n`, so the wire key
+order is the literal's: `chainComplete, reason, nextSpeakerId, chainDepth,
+paused, heldUserTurn`.
+
+The core serde pins prove the payload's own bytes; what they cannot see is the
+trip through `quilltap-web::events`, because v5's chat frames ride the one
+`Event` channel rather than v4's per-request stream, and a transport that
+re-serialized through a map or dropped an `Option` would be invisible to every
+core test. Both directions are pinned: the held frame arrives with all six keys
+in v4's order under the `chatId` scope tag, and a chain-complete that was NOT
+held carries no `heldUserTurn` key at all — absent, not `false`, which is what
+five of v4's six emit sites send.
+
 #### 2026-09-14 — port(salon): a paused chat records the user's message and answers it with nobody (v4 bug 137, server unit 3)
 
 _Versions: core 0.0.897, harness 0.0.785._
