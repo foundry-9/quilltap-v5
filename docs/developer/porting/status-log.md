@@ -126165,3 +126165,129 @@ QT_ORACLE_OUT=/tmp/oracle-greeting.ndjson \
 # then:  QT_ORACLE_GREETING=/tmp/oracle-greeting.ndjson \
 #          cargo test -p quilltap-harness --test initial_greeting_equivalence
 ```
+
+### Unit 3 — the ladder's own-profile gate (`services/chat_create.rs`)
+
+v4's doc comment carried verbatim; `own_profile_stalled` declared immediately
+before attempt 0; `note_own_profile_outcome(&mut flag, &e)` at the THREE
+own-profile catch arms (attempts 1, 2, 4) and NOWHERE else; `give_up_on_stall`
+at v4's three positions (after attempt 1, after attempt 3's block, after
+attempt 4). Attempt 4's `if let Ok(res)` became a `match` so its `Err` has an
+arm at all.
+
+**The four `[Chats v1]` lines v5 never carried land with it** (the
+#103/#110 silent-arm class — `chat_create.rs:2739/2757/2802` were
+`Err(_) => { /* swallowed */ }`): the two `Greeting generation attempt failed`
+warns with `attempt = "full context"` / `"without memories"`, `Final greeting
+generation retry failed`, and `All greeting generation attempts exhausted,
+falling back to static greeting` — plus the new `Greeting abandoned — the
+provider accepted the request and then went quiet`.
+
+- **Recorded deviation from the order's §Tier-1 item 3:** the order asks for
+  v4's own field spellings (`characterId`, `contentFilterHit`); the file's
+  established idiom for every ported `[Chats v1]` bag is snake_case
+  (`character_id`, `uncensored_model`, `settings_source`), and the capture-layer
+  pins across the port read snake_case. The lines use `character_id`, `chat_id`,
+  `provider`, `model_name`, `attempt`, `error`, `content_filter_hit`
+  (`an-orders-prescribed-shape-may-fight-the-files-idiom`).
+- Seven capture-pinned tests drive the REAL `auto_generate_first_message`
+  against a freshly PROVISIONED instance and a per-model posed provider, each
+  asserting the SILENCE of the lines it must not fire:
+  `a_stall_on_the_own_profile_ends_the_ladder_and_names_the_silence`,
+  `an_ordinary_failure_runs_the_whole_ladder_and_never_abandons`,
+  `the_first_gate_spares_the_memory_stripping_rung`,
+  `the_second_gate_catches_a_stall_on_the_memory_stripping_rung`,
+  `the_third_gate_names_a_stall_on_the_final_retry`,
+  `a_stall_at_the_chat_state_desk_never_condemns_the_own_profile` +
+  `a_desk_stall_does_not_end_a_ladder_that_reaches_the_gate`, and
+  `a_stall_at_the_content_filter_desk_never_condemns_the_own_profile`.
+  **The third gate is capture-ONLY by construction**: its DB state is
+  byte-identical to an exhausted ladder's, so the only observable difference is
+  which of the two lines gets said.
+- Two venue traps the first drafts hit, both worth knowing: the mount-index
+  partition is NOT optional (`build_first_message_context` resolves the other
+  participants through the vault-overlaid reader, and a missing partition makes
+  the whole call `Err`, which reads as "no memories" and silently skips the
+  rung); and `provision_fresh_instance` already seeds a `chat_settings` row, so
+  an INSERT of a second one is simply shadowed — `find_by_user_id` kept
+  answering the schema default (`mode: "OFF"`) and the desk was never asked,
+  with nothing saying why. The venue UPDATEs, and asserts one row changed.
+
+### Unit 4 — `chat_create_capstone`, 121 → 129 cases
+
+The §C.4 vocabulary at both mocks: a `greetingByModel` entry may carry `stall`
+(the oracle throws v4's REAL `LLMStreamStalledError`; the Rust side registers
+`StreamError::stalled(…)`) or `error`, and may be `{ attempts: [...] }`
+consumed one per CALL. On the Rust side that is a new `PerCallGreetings`
+wrapper between the ordered `StreamCallLog` and the keyed canned map, each
+queued answer paired with the KEY of the recording it belongs to — so the
+prompt-byte proof survives: a call whose prompt is not the one v4 sent on the
+same rung answers a loud `Err`, exactly as a canned miss does.
+
+The eight arms, with v4's measured `stream_calls`:
+
+| case | shape | v4 |
+|---|---|---|
+| `gs_own_stall_ends_ladder` | attempt 1 stalls, no memories | 1 call, scripted greeting |
+| `gs_own_stall_ends_the_ladder_before_the_memory_strip` | attempt 1 stalls, WITH memories | 1 call — gate 1's own discriminator |
+| `gs_ordinary_failure_keeps_retrying` | `502` on the own model | 2 calls, scripted |
+| `gs_healthy_greeting` | the control | 1 call, canned line |
+| `gs_desk_stall_does_not_condemn_own_profile` | Uncensored; desk stalls, own answers | 2 calls, `Well then.` |
+| `gs_desk_stall_then_own_profile_recovers_on_the_final_retry` | desk stalls, attempt 1 `502`, attempt 4 answers | 3 calls — the attempt-0 scoping's own discriminator |
+| `gs_stall_after_memory_strip` | attempt 1 `502`, attempt 2 stalls | 2 calls — gate 2 |
+| `gs_content_filter_desk_stall_then_own_retry` | attempt 1 content-filters, attempt 3's desk stalls, attempt 4 answers | 3 calls — the arm v4's own tests never reach |
+
+The first two of v4's five `route.greeting-stall.test.ts` assertions (201 + one
+call; the scripted opener) and cases 3–5 are all reproduced; case (f) and the
+two discriminators are arms this port ADDS.
+
+### Unit 5 — neutrality
+
+The 121 pre-existing cases were regenerated at the SAME `ffb6b3119` pin from
+HEAD copies of the corpus, builder and oracle case, and compared field by field
+on every order-stable comparand (status; the ordered `stream`/`send` call
+sequences; the four tables' UUID/timestamp-scrubbed row multisets; the frames;
+the 201 body): **0 differences**. The memories seeding is inert by
+construction — `loadParticipantMemories` only loads a speaking character's
+memories about the OTHER participants, and every pre-existing multi-character
+case seats ARIA, whose `firstMessage` short-circuits the ladder before a memory
+is read. (A raw line-for-line NDJSON diff is meaningless here: rows are dumped
+sorted by freshly-minted UUIDs, so 121 of 121 "differ" on row order alone.)
+
+### Tier 2
+
+- **Item 6 — `chat_context_init_equivalence`: NOT REACHED.** That family drives
+  `buildChatContext` only; `grep -n "generate_greeting_message\|generateGreetingMessage\|initial-greeting"`
+  over its `.rs` and its oracle case returns nothing. No change.
+- **Item 7 — the `[LLMStream]` warn's greeting bag** is pinned
+  (`the_abandonment_warn_names_the_greeting_and_its_character`):
+  `context=initial-greeting`, `character_id=char-1`, provider/model,
+  `budget_ms=90000`, `chunks_received=0`, and the three ids that have nothing
+  to carry asserted ABSENT.
+
+### Mutation battery — 11 shapes, all reverted by FILE BACKUP
+
+| mutation | expected red | result |
+|---|---|---|
+| greeting budgets → the Salon defaults | the three greeting stall pins | RED ×3 |
+| drop gate 1 | `the_first_gate_spares_the_memory_stripping_rung` + `gs_own_stall_ends_the_ladder_before_the_memory_strip` | **SURVIVED as first written** → RED after the new arms |
+| drop gate 2 | `the_second_gate_catches_…` + `gs_stall_after_memory_strip` | RED ×2 |
+| drop gate 3 | `the_third_gate_names_…` (capture only, by construction) | RED |
+| note at attempt 0's arm | `a_desk_stall_does_not_end_a_ladder_that_reaches_the_gate` + `gs_desk_stall_then_own_profile_recovers_on_the_final_retry` | **SURVIVED as first written** → RED after the new arms |
+| note at attempt 3's arm | `a_stall_at_the_content_filter_desk_…` + `gs_content_filter_desk_stall_then_own_retry` | RED ×2 |
+| a stall returns `Ok` instead of `Err` | the greeting family's name comparand + `gs_own_stall_ends_ladder` + 5 core ladder tests + 3 greeting pins | RED across all four venues |
+| drop the attempt-1 warn | its two capture arms | RED ×2 |
+| drop the attempt-2 warn | its capture arm | RED |
+| drop the attempt-4 warn | its two capture arms | RED ×2 |
+| drop the exhaustion warn | its capture arm | RED |
+| drop the `Greeting abandoned` warn | its three capture arms | RED ×3 |
+
+**The two survivors are the round's methodological find, and both are the same
+shape — a mutation of a WRITE that no arm makes the code READ.** Dropping gate
+1 is invisible whenever attempt 2 is skipped, because gate 2 then catches
+everything gate 1 would have; arming the flag at attempt 0 is invisible
+whenever attempt 1 succeeds, because gate 1 sits AFTER attempt 1. **v4's own
+`route.greeting-stall.test.ts` shares the first blind spot exactly** — its
+fixture carries no participant memories, so its "exactly one call" assertion
+passes with gate 1 deleted. Both are closed by an arm that forces the read.
+

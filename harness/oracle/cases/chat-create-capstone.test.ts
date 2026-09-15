@@ -16,6 +16,11 @@
  * to the REAL modules (past jest.setup) + the real cipher binding, so the create
  * runs genuinely against a FRESH copy of the baked fixture per case.
  *
+ * P4.D190 — a `greetingByModel` entry may pose a FAILURE (`stall` throws v4's
+ * REAL `LLMStreamStalledError`; `error` a plain `Error`) and may be an ORDERED
+ * `attempts` list consumed one per CALL. ⚠ That import means this case only
+ * runs against a v4 tree at or past `ffb6b3119`.
+ *
  * Emits one NDJSON line per case:
  *   { name, status, ok, body, tables:{chats,chatMessages,projects,backgroundJobs},
  *     frames, messageOrder, recordings:[{kind,provider,model,temperature,messages,...}] }
@@ -38,6 +43,37 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+
+import type { LLMStreamStalledError as LLMStreamStalledErrorType } from '@/lib/llm/stream-watchdog';
+
+/**
+ * P4.D190 — the class the CURRENT module registry holds.
+ *
+ * `runCase` calls `jest.resetModules()`, so the route below imports its own
+ * fresh copy of `@/lib/llm/stream-watchdog`. A class captured by a top-level
+ * `import` here belongs to the registry generation BEFORE that reset, and
+ * `error instanceof LLMStreamStalledError` inside the route is then FALSE
+ * against it — v4's ladder would silently behave as if no stall had happened
+ * and the oracle would record the pre-fix ladder as v4's contract. Resolved
+ * per case, after the reset, from the same generation the route gets.
+ */
+let StalledError: typeof LLMStreamStalledErrorType;
+
+/**
+ * One canned answer from the greeting stream.
+ *
+ * P4.D190 (§C.4): besides content, an entry may pose a FAILURE — `stall` throws
+ * v4's REAL `LLMStreamStalledError` (so the ladder's `instanceof` test is the
+ * thing under measurement), `error` throws a plain `Error` (the arm that proves
+ * a failure is not over-classified as a silence).
+ */
+interface CannedGreeting {
+  content?: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  reasoning?: string[];
+  stall?: { budgetMs: number; chunksReceived: number };
+  error?: string;
+}
 
 interface Spec {
   testPepperBase64: string;
@@ -73,14 +109,7 @@ interface CaseSpec {
    * content-filter signature (`initial-greeting.ts`: tokens consumed, nothing
    * returned); an empty `content` with no `usage` is a plain empty answer.
    */
-  greetingByModel?: Record<
-    string,
-    {
-      content: string;
-      usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
-      reasoning?: string[];
-    }
-  >;
+  greetingByModel?: Record<string, CannedGreeting | { attempts: CannedGreeting[] }>;
   /** Canned outfit-choice content the cheap-LLM boundary returns. */
   outfitContent?: string;
 }
@@ -137,6 +166,8 @@ async function runCase(
   fixtures: { main: string; mount: string; llm: string },
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
+  // Same registry generation as the route's own import (see `StalledError`).
+  StalledError = (await import('@/lib/llm/stream-watchdog')).LLMStreamStalledError;
 
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
@@ -196,6 +227,8 @@ async function runCase(
   // Records every model call's exact prompt (the Rust side keys its canned
   // providers off these) and yields the case's canned content.
   const recordings: Array<Record<string, unknown>> = [];
+  /** P4.D190: how many times each model has been streamed in THIS case. */
+  const attemptCursor = new Map<string, number>();
 
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
@@ -229,10 +262,44 @@ async function runCase(
           // P4.D148: a per-model entry wins over the case-level canned answer,
           // so one create can have the uncensored desk and the participant's own
           // profile answer differently.
-          const perModel = c.greetingByModel?.[params.model];
+          //
+          // P4.D190: a per-model entry may instead be an ORDERED `attempts`
+          // list, consumed one per CALL by a per-case counter. Two rungs of the
+          // ladder on the SAME model can carry byte-identical prompts (attempt 1
+          // and attempt 4 with no memories), so a keyed map cannot make them
+          // answer differently — and telling "attempt 4 recovered" from "attempt
+          // 4 filtered again" is the whole point of the arms this vocabulary
+          // exists for.
+          const entry = c.greetingByModel?.[params.model];
+          let perModel: CannedGreeting | undefined;
+          if (entry && 'attempts' in entry) {
+            const n = attemptCursor.get(params.model) ?? 0;
+            attemptCursor.set(params.model, n + 1);
+            perModel = entry.attempts[n];
+            if (perModel === undefined) {
+              throw new Error(
+                `case ${c.name}: model ${params.model} was called ${n + 1} time(s) but only ` +
+                  `${entry.attempts.length} attempt(s) are canned`,
+              );
+            }
+          } else {
+            perModel = entry;
+          }
           const content = perModel ? perModel.content : c.greetingContent;
           const usage = perModel ? (perModel.usage ?? null) : (c.greetingUsage ?? null);
           const reasoning = perModel ? (perModel.reasoning ?? []) : (c.greetingReasoning ?? []);
+          if (perModel?.stall) {
+            // The chunks the consumer saw before the silence, so the count the
+            // error carries is the count it observed.
+            for (let i = 0; i < perModel.stall.chunksReceived; i++) yield { content: `chunk-${i} ` };
+            throw new StalledError(
+              perModel.stall.budgetMs,
+              perModel.stall.chunksReceived,
+              provider,
+              params.model,
+            );
+          }
+          if (perModel?.error) throw new Error(perModel.error);
           if (content === undefined) {
             throw new Error(`unexpected streamMessage call in case ${c.name}`);
           }

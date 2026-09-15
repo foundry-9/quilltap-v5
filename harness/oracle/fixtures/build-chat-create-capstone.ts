@@ -15,7 +15,9 @@
  *     borrow from the character's own profile is measurable),
  *   - two api keys,
  *   - three roleplay templates + the user/global and project defaults that name
- *     two of them (P4.D44 — the create-time template picker).
+ *     two of them (P4.D44 — the create-time template picker),
+ *   - two memories Bram holds about Cleo (P4.D190 — the only way a corpus case
+ *     can reach the memory-stripping rung, and with it the second stall gate).
  * Both v4's real `handleCreate` and the Rust port read a FRESH COPY of the SAME
  * baked fixture per case, so the created-chat ids/timestamps are minted afresh on
  * each side and remapped in the diff.
@@ -67,6 +69,29 @@ interface Spec {
     connectionProfileId: string;
     messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
   };
+  /**
+   * P4.D190 — memories BRAM carries about CLEO, and nothing else.
+   *
+   * They exist for one reason: `loadParticipantMemories` only ever loads a
+   * speaking character's memories about the OTHER participants, so without a
+   * two-character chat whose greeting character is the one holding memories,
+   * `participantMemories` is empty on every rung and the memory-stripping
+   * attempt (v4's attempt 2) is skipped — which makes the SECOND of the three
+   * stall gates unreachable by any corpus case. Bram is the only character
+   * with an empty `firstMessage` (so the only one whose create runs the
+   * greeting ladder at all), and no pre-existing case pairs him with another
+   * character, so these rows are inert everywhere else: every multi-character
+   * case in the corpus seats ARIA, whose `firstMessage` short-circuits the
+   * ladder before a memory is read.
+   */
+  participantMemories: Array<{
+    id: string;
+    characterId: string;
+    aboutCharacterId: string;
+    content: string;
+    summary: string;
+    importance: number;
+  }>;
 }
 
 const TS = '2026-02-01T00:00:00.000Z';
@@ -446,6 +471,32 @@ async function main(): Promise<void> {
       // — which is not a thing two implementations must agree on.
       createdAt: m.createdAt,
     } as never);
+  }
+
+  // 7. P4.D190 — Bram's memories about Cleo (see `participantMemories` above).
+  const { MemorySchema } = await import('@/lib/schemas/memory.types');
+  await ensureCollection('memories', MemorySchema);
+  for (const m of spec.participantMemories) {
+    await repos.memories.create(
+      {
+        characterId: m.characterId,
+        aboutCharacterId: m.aboutCharacterId,
+        // `chatId` is nullable and carries no FK: these memories belong to the
+        // pair, not to any chat, and hanging them off the continuation source
+        // chat would put them inside that case's replay reads for no reason.
+        chatId: null,
+        content: m.content,
+        summary: m.summary,
+        keywords: [],
+        tags: [],
+        // Distinct per memory: `findByCharacterAboutCharacter` sorts by
+        // importance desc, and a tie would leave the order to the scan.
+        importance: m.importance,
+        embedding: null,
+        source: 'AUTO',
+      } as never,
+      { id: m.id, createdAt: TS, updatedAt: TS } as never,
+    );
   }
 
   closeMountIndexSQLiteClient();

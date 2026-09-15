@@ -424,6 +424,55 @@ mod tests {
         ));
     }
 
+    /// The watchdog's own `[LLMStream]` warn, at the ONE site whose `logContext`
+    /// v4 spells differently from the funnel's: `context: 'initial-greeting'`
+    /// plus the character id (the Salon's funnel passes `'streaming.service'`
+    /// and a message id). Log-only, so nothing else can see it.
+    #[tokio::test(start_paused = true)]
+    async fn the_abandonment_warn_names_the_greeting_and_its_character() {
+        use crate::test_support::CaptureLayer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let provider = SilentAfter::default();
+        let err = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            generate_greeting_message(&provider, &greeting_request(), None).await
+        }
+        .expect_err("a provider that never speaks must not resolve");
+        assert!(err.is_stalled(), "{err:?}");
+
+        let captured = logs.lock().unwrap().join("\n");
+        let line = captured
+            .lines()
+            .find(|l| {
+                l.starts_with("WARN quilltap::llm_stream ")
+                    && l.contains("[LLMStream] Abandoned a stalled provider stream")
+            })
+            .unwrap_or_else(|| {
+                panic!("the greeting's stall must not be silent; captured:\n{captured}")
+            });
+        for field in [
+            "context=initial-greeting",
+            "character_id=char-1",
+            "provider=DEEPSEEK",
+            "model_name=deepseek-v4-flash",
+            "budget_ms=90000",
+            "chunks_received=0",
+        ] {
+            assert!(line.contains(field), "missing {field} in:\n{line}");
+        }
+        // `log` was `None`, so the two chat-scoped ids have nothing to carry —
+        // v4's JSON drops an `undefined` key the same way.
+        for absent in ["user_id=", "chat_id=", "message_id="] {
+            assert!(
+                !line.contains(absent),
+                "{absent} must be absent in:\n{line}"
+            );
+        }
+    }
+
     /// The `llm_logs` row v4 writes in its `finally` carries the stall's own
     /// sentence — the only place a silence is distinguishable from a refusal
     /// after the fact. v5 already spelled `error: streamError.message`; bug 141

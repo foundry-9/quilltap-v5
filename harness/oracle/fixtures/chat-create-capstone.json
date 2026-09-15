@@ -2872,6 +2872,267 @@
           }
         ]
       }
+    },
+    {
+      "name": "gs_own_stall_ends_ladder",
+      "progressId": "e0000000-0000-4000-8000-0000000001a1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "stall": {
+            "budgetMs": 90000,
+            "chunksReceived": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "gs_ordinary_failure_keeps_retrying",
+      "progressId": "e0000000-0000-4000-8000-0000000001a2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "error": "502 Bad Gateway"
+        }
+      }
+    },
+    {
+      "name": "gs_healthy_greeting",
+      "progressId": "e0000000-0000-4000-8000-0000000001a3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "content": "Bram steps out of the treeline. You came.",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      }
+    },
+    {
+      "name": "gs_desk_stall_does_not_condemn_own_profile",
+      "progressId": "e0000000-0000-4000-8000-0000000001a4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a4",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "uncensored"
+      },
+      "greetingByModel": {
+        "frank-model": {
+          "stall": {
+            "budgetMs": 90000,
+            "chunksReceived": 0
+          }
+        },
+        "claude-sonnet-4-5": {
+          "content": "Well then.",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      }
+    },
+    {
+      "name": "gs_stall_after_memory_strip",
+      "progressId": "e0000000-0000-4000-8000-0000000001a5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a5",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "attempts": [
+            {
+              "error": "502 Bad Gateway"
+            },
+            {
+              "stall": {
+                "budgetMs": 90000,
+                "chunksReceived": 0
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "gs_content_filter_desk_stall_then_own_retry",
+      "progressId": "e0000000-0000-4000-8000-0000000001a6",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a6",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "attempts": [
+            {
+              "content": "",
+              "usage": {
+                "promptTokens": 40,
+                "completionTokens": 9,
+                "totalTokens": 49
+              }
+            },
+            {
+              "content": "At last. The wood remembers you.",
+              "usage": {
+                "promptTokens": 40,
+                "completionTokens": 9,
+                "totalTokens": 49
+              }
+            }
+          ]
+        },
+        "frank-model": {
+          "stall": {
+            "budgetMs": 90000,
+            "chunksReceived": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "gs_own_stall_ends_the_ladder_before_the_memory_strip",
+      "progressId": "e0000000-0000-4000-8000-0000000001a7",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a7",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "stall": {
+            "budgetMs": 90000,
+            "chunksReceived": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "gs_desk_stall_then_own_profile_recovers_on_the_final_retry",
+      "progressId": "e0000000-0000-4000-8000-0000000001a8",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000001a8",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "uncensored"
+      },
+      "greetingByModel": {
+        "frank-model": {
+          "stall": {
+            "budgetMs": 90000,
+            "chunksReceived": 0
+          }
+        },
+        "claude-sonnet-4-5": {
+          "attempts": [
+            {
+              "error": "502 Bad Gateway"
+            },
+            {
+              "content": "Well then.",
+              "usage": {
+                "promptTokens": 40,
+                "completionTokens": 9,
+                "totalTokens": 49
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "dangerousContentSettings": {
@@ -2885,5 +3146,23 @@
     "displayMode": "SHOW",
     "showWarningBadges": true,
     "customClassificationPrompt": null
-  }
+  },
+  "participantMemories": [
+    {
+      "id": "a9000000-0000-4000-8000-000000000001",
+      "characterId": "a3000000-0000-4000-8000-0000000000a3",
+      "aboutCharacterId": "a2000000-0000-4000-8000-0000000000a2",
+      "content": "Cleo copied out the whole ledger by candlelight.",
+      "summary": "Cleo copies ledgers by candlelight.",
+      "importance": 0.9
+    },
+    {
+      "id": "a9000000-0000-4000-8000-000000000002",
+      "characterId": "a3000000-0000-4000-8000-0000000000a3",
+      "aboutCharacterId": "a2000000-0000-4000-8000-0000000000a2",
+      "content": "Cleo will not cross the river after dark.",
+      "summary": "Cleo avoids the river after dark.",
+      "importance": 0.4
+    }
+  ]
 }

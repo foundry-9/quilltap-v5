@@ -17,6 +17,21 @@
 //! finding #115's measurement); 14 more answered a downstream sentence instead
 //! of v4's `Validation error`.
 //!
+//! P4.D190 (v4 `f90144ac4`, bug 141) added EIGHT `gs_*` arms for the greeting
+//! ladder's own-profile stall gate, and the `§C.4` vocabulary they need: a
+//! `greetingByModel` entry may pose a FAILURE (`stall`, which throws v4's REAL
+//! `LLMStreamStalledError`, or `error`) instead of content, and may be an
+//! ORDERED `attempts` list consumed one per CALL — two rungs on the same model
+//! can carry byte-identical prompts, so the keyed canned map cannot make them
+//! answer differently. `stream_calls` is what makes the attempt COUNTS
+//! falsifiable, and the corpus also grew two memories (Bram about Cleo) so the
+//! memory-stripping rung, and with it the SECOND of the three gates, is
+//! reachable at all.
+//!
+//! ⚠ Both the oracle case and the corpus now need `@/lib/llm/stream-watchdog`,
+//! which does not exist at the `31436bae4` baseline — every regen of this
+//! family runs from a worktree pinned at `ffb6b3119` or later.
+//!
 //! P4.D44 extended the fixture with three roleplay templates plus the two
 //! defaults that name them (`chat_settings.defaultRoleplayTemplateId` and the
 //! Lantern project's `defaultRoleplayTemplateId`), and added the five `rt_*`
@@ -64,8 +79,8 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
-    canned_stream_key, CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamParams,
-    StreamUsage, StreamingCompletionProvider,
+    canned_stream_key, CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamError,
+    StreamParams, StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::chat_create::{
     handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult, HandleCreateError,
@@ -105,23 +120,59 @@ struct CaseSpec {
     #[serde(default)]
     greeting_reasoning: Vec<String>,
     /// P4.D148: per-MODEL canned greeting (see the oracle case). Any model not
-    /// named here falls back to the case-level trio above.
+    /// named here falls back to the case-level trio above. P4.D190: an entry may
+    /// instead be an ORDERED `attempts` list, one per CALL.
     #[serde(default)]
-    greeting_by_model: HashMap<String, CannedGreeting>,
+    greeting_by_model: HashMap<String, GreetingEntry>,
     #[serde(default)]
     outfit_content: Option<String>,
 }
 
+/// What `greetingByModel[model]` may hold: one answer, or — P4.D190 — an
+/// ORDERED list consumed one per CALL.
+///
+/// Two rungs of the ladder on the SAME model can carry byte-identical prompts
+/// (attempt 1 and the final plain retry, on a seat with no memories), so the
+/// keyed canned map cannot make them answer differently — and telling "attempt
+/// 4 recovered" from "attempt 4 filtered again" is exactly what the stall arms
+/// need. `Attempts` is listed FIRST: `serde(untagged)` tries the variants in
+/// order, and a bare `{content: …}` cannot satisfy the required `attempts` key.
+#[derive(Deserialize, Clone)]
+#[serde(untagged)]
+enum GreetingEntry {
+    Attempts { attempts: Vec<CannedGreeting> },
+    One(CannedGreeting),
+}
+
 /// One model's canned greeting answer. An empty `content` WITH a `usage` whose
 /// `completion_tokens > 0` is v4's content-filter signature.
+///
+/// P4.D190 (§C.4): instead of content, an entry may pose a FAILURE — `stall`
+/// (the watchdog fired; v4's mock throws its REAL `LLMStreamStalledError`) or
+/// `error` (an ordinary provider failure).
 #[derive(Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct CannedGreeting {
-    content: String,
+    /// Absent is NOT the empty string: v4's mock throws `unexpected
+    /// streamMessage call` when a named model answers with neither content nor
+    /// a posed failure.
+    #[serde(default)]
+    content: Option<String>,
     #[serde(default)]
     usage: Option<UsageSpec>,
     #[serde(default)]
     reasoning: Vec<String>,
+    #[serde(default)]
+    stall: Option<StallSpec>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StallSpec {
+    budget_ms: u64,
+    chunks_received: u64,
 }
 
 #[derive(Deserialize, Clone)]
@@ -179,6 +230,137 @@ impl<P: StreamingCompletionProvider> StreamingCompletionProvider for StreamCallL
             .push(json!([provider, params.model]));
         self.inner.stream_message(provider, base_url, params)
     }
+}
+
+/// P4.D190 — the per-CALL greeting override, above the keyed canned map.
+///
+/// A model whose corpus entry carries `attempts` answers from an ORDERED queue
+/// instead of the map. Each queued answer is paired with the key of the
+/// recording it corresponds to, so the prompt-byte proof is not lost: a call
+/// whose key does not match what v4 sent on that same rung answers a loud
+/// `Err` exactly as a canned miss does.
+/// Per model: the answers still owed, each paired with the key of the recording
+/// it belongs to.
+type GreetingQueues = HashMap<String, std::collections::VecDeque<(String, Vec<StreamChunkResult>)>>;
+
+struct PerCallGreetings<P> {
+    inner: P,
+    queues: std::sync::Mutex<GreetingQueues>,
+}
+
+impl<P: StreamingCompletionProvider> StreamingCompletionProvider for PerCallGreetings<P> {
+    fn stream_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &StreamParams,
+    ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+    {
+        let queued = self
+            .queues
+            .lock()
+            .unwrap()
+            .get_mut(&params.model)
+            .and_then(|q| q.pop_front());
+        let key = canned_stream_key(
+            provider,
+            &params.model,
+            params.temperature,
+            &params.messages,
+        );
+        let model = params.model.clone();
+        // Two futures, one type: resolve the sequence synchronously and hand
+        // the inner provider only the calls it still owns.
+        let overridden: Option<Vec<StreamChunkResult>> = queued.map(|(want_key, chunks)| {
+            if want_key == key {
+                chunks
+            } else {
+                vec![Err(StreamError::new(format!(
+                    "per-call canned miss for model {model}: this call's prompt is not the one \
+                     v4 sent on the same rung"
+                )))]
+            }
+        });
+        let inner =
+            (overridden.is_none()).then(|| self.inner.stream_message(provider, base_url, params));
+        async move {
+            match (overridden, inner) {
+                (Some(items), _) => {
+                    let (tx, rx) = tokio::sync::mpsc::channel(items.len().max(1));
+                    for i in items {
+                        let _ = tx.send(i).await;
+                    }
+                    rx
+                }
+                (None, Some(fut)) => fut.await,
+                (None, None) => unreachable!("one of the two arms is always built"),
+            }
+        }
+    }
+}
+
+/// The canned sequence one recorded stream call must answer with: the
+/// per-model entry when there is one, else the case-level trio — and, P4.D190,
+/// a posed failure instead of content.
+fn greeting_chunks(
+    c: &CaseSpec,
+    per_model: Option<&CannedGreeting>,
+    rec: &Recording,
+) -> Vec<StreamChunkResult> {
+    let mut chunks: Vec<StreamChunkResult> = Vec::new();
+    let reasoning: &[String] = match per_model {
+        Some(g) => &g.reasoning,
+        None => &c.greeting_reasoning,
+    };
+    for r in reasoning {
+        chunks.push(Ok(StreamChunk {
+            reasoning_content: Some(r.clone()),
+            ..Default::default()
+        }));
+    }
+    if let Some(g) = per_model {
+        if let Some(st) = &g.stall {
+            for i in 0..st.chunks_received {
+                chunks.push(Ok(StreamChunk::content(format!("chunk-{i} "))));
+            }
+            chunks.push(Err(StreamError::stalled(
+                st.budget_ms,
+                st.chunks_received,
+                Some(&rec.provider),
+                Some(&rec.model),
+            )));
+            return chunks;
+        }
+        if let Some(e) = &g.error {
+            chunks.push(Err(StreamError::new(e)));
+            return chunks;
+        }
+    }
+    let content: Option<&str> = match per_model {
+        Some(g) => Some(g.content.as_deref().unwrap_or_else(|| {
+            panic!(
+                "case {}: model {} is named in greetingByModel with neither content nor a posed                  failure — v4's mock throws `unexpected streamMessage call` on exactly this",
+                c.name, rec.model
+            )
+        })),
+        None => c.greeting_content.as_deref(),
+    };
+    let usage_spec: Option<&UsageSpec> = match per_model {
+        Some(g) => g.usage.as_ref(),
+        None => c.greeting_usage.as_ref(),
+    };
+    if let Some(content) = content {
+        if !content.is_empty() {
+            chunks.push(Ok(StreamChunk::content(content)));
+        }
+    }
+    let usage = usage_spec.map(|u| StreamUsage {
+        prompt_tokens: u.prompt_tokens,
+        completion_tokens: u.completion_tokens,
+        total_tokens: u.total_tokens,
+    });
+    chunks.push(Ok(StreamChunk::done(usage)));
+    chunks
 }
 
 fn to_messages(m: &[RecMsg]) -> Vec<CompletionMessage> {
@@ -510,6 +692,10 @@ fn chat_create_capstone_matches_oracle() {
         let mut completion = CannedCompletionProvider::new();
         let mut streaming = CannedStreamingProvider::new();
         let mut expected_stream_sampling: HashMap<String, Value> = HashMap::new();
+        // P4.D190: the per-CALL greeting queues, and how far each `attempts`
+        // model has been walked.
+        let mut per_call: GreetingQueues = HashMap::new();
+        let mut attempt_cursor: HashMap<String, usize> = HashMap::new();
         for rec in &recordings {
             let msgs = to_messages(&rec.messages);
             if rec.kind == "stream" {
@@ -526,44 +712,48 @@ fn chat_create_capstone_matches_oracle() {
                 // P4.D148: a per-model canned answer wins over the case-level
                 // one, so one create can have the uncensored desk and the
                 // participant's own profile answer differently.
-                let per_model = c.greeting_by_model.get(&rec.model);
-                let content: Option<&str> = match per_model {
-                    Some(g) => Some(g.content.as_str()),
-                    None => c.greeting_content.as_deref(),
-                };
-                let usage_spec: Option<&UsageSpec> = match per_model {
-                    Some(g) => g.usage.as_ref(),
-                    None => c.greeting_usage.as_ref(),
-                };
-                let reasoning: &[String] = match per_model {
-                    Some(g) => &g.reasoning,
-                    None => &c.greeting_reasoning,
-                };
-                let mut chunks: Vec<StreamChunkResult> = Vec::new();
-                for r in reasoning {
-                    chunks.push(Ok(StreamChunk {
-                        reasoning_content: Some(r.clone()),
-                        ..Default::default()
-                    }));
-                }
-                if let Some(content) = content {
-                    if !content.is_empty() {
-                        chunks.push(Ok(StreamChunk::content(content)));
+                //
+                // P4.D190: a per-model `attempts` list answers per CALL instead
+                // — walked here in recording order, which IS call order, and
+                // queued against the key of the recording it belongs to.
+                let per_model: Option<&CannedGreeting> = match c.greeting_by_model.get(&rec.model) {
+                    Some(GreetingEntry::One(g)) => Some(g),
+                    Some(GreetingEntry::Attempts { attempts }) => {
+                        let n = attempt_cursor.entry(rec.model.clone()).or_insert(0);
+                        let g = attempts.get(*n).unwrap_or_else(|| {
+                            panic!(
+                                "case {}: model {} was called {} time(s) but only {} attempt(s)                                  are canned",
+                                c.name,
+                                rec.model,
+                                *n + 1,
+                                attempts.len()
+                            )
+                        });
+                        *n += 1;
+                        Some(g)
                     }
-                }
-                let usage = usage_spec.map(|u| StreamUsage {
-                    prompt_tokens: u.prompt_tokens,
-                    completion_tokens: u.completion_tokens,
-                    total_tokens: u.total_tokens,
-                });
-                chunks.push(Ok(StreamChunk::done(usage)));
-                streaming = streaming.with_stream(
-                    &rec.provider,
-                    &rec.model,
-                    rec.temperature,
-                    &msgs,
-                    chunks,
+                    None => None,
+                };
+                let is_per_call = matches!(
+                    c.greeting_by_model.get(&rec.model),
+                    Some(GreetingEntry::Attempts { .. })
                 );
+                let chunks = greeting_chunks(c, per_model, rec);
+                let key = canned_stream_key(&rec.provider, &rec.model, rec.temperature, &msgs);
+                if is_per_call {
+                    per_call
+                        .entry(rec.model.clone())
+                        .or_default()
+                        .push_back((key, chunks));
+                } else {
+                    streaming = streaming.with_stream(
+                        &rec.provider,
+                        &rec.model,
+                        rec.temperature,
+                        &msgs,
+                        chunks,
+                    );
+                }
             } else {
                 let usage: Option<CompletionUsage> = None;
                 completion = completion.with_response(
@@ -576,6 +766,13 @@ fn chat_create_capstone_matches_oracle() {
                 );
             }
         }
+        // P4.D190: the per-call greeting override sits between the ordered call
+        // log and the keyed map, so a `stream_calls` count still counts every
+        // call and an overridden model never reaches the map.
+        let streaming = PerCallGreetings {
+            inner: streaming,
+            queues: std::sync::Mutex::new(per_call),
+        };
         // P4.D148: log every stream call in ORDER (below the sampling capture,
         // which is a keyed map and cannot count).
         let stream_calls: Arc<std::sync::Mutex<Vec<Value>>> =

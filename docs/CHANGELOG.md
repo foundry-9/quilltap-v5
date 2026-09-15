@@ -171,6 +171,49 @@ of production files reaching the seam (the twelfth row is the trait's own
 `Arc<T>` delegation). A second test pins every Salon-side wrap to
 `StallBudgets::default()` and `StallWatchdogContext::streaming_service(`, which
 the counts alone cannot see. Unwrapping one site reddens both by file name.
+#### 2026-09-15 — fix(salon): the greeting ladder ends on the participant's own silence (bug 141)
+
+_Versions: core 0.0.916, harness 0.0.807._
+
+P4.D190 units 3–5, ported from v4 `f90144ac4`'s `app/api/v1/chats/route.ts`
+hunk. `auto_generate_first_message` tracks `own_profile_stalled`, set by
+`note_own_profile_outcome` in the catch arms of attempts 1, 2 and 4 — the
+participant's own profile, three times over — and `give_up_on_stall` fires at
+v4's three positions: after attempt 1, after attempt 3's block, and after
+attempt 4. A profile that answered with headers and then went quiet will not
+start speaking inside the next budget, so the scripted greeting takes over,
+which is where an exhausted ladder ends up anyway.
+
+The two uncensored-desk attempts are scoped OUT: a different profile on a
+different provider, whose going quiet says nothing about the character's own.
+
+The four `[Chats v1]` lines v5's silent `Err(_) => { /* swallowed */ }` arms
+never carried land with the gate — the two `Greeting generation attempt failed`
+warns (`attempt: full context` / `without memories`), `Final greeting
+generation retry failed`, and the exhaustion warn — plus the new `Greeting
+abandoned — the provider accepted the request and then went quiet`. All five
+are log-only, so each is pinned by a thread-scoped capture layer over the REAL
+ladder, with the silence of the lines it must not fire asserted alongside.
+
+The capstone corpus gains eight `gs_*` arms and the vocabulary they need: a
+`greetingByModel` entry may pose a `stall` (v4's REAL `LLMStreamStalledError`)
+or an `error` instead of content, and may be an ordered `attempts` list
+consumed one per CALL — two rungs on the same model can carry byte-identical
+prompts, so the keyed canned map cannot make them answer differently. The
+fixture gains two memories Bram holds about Cleo, which is the only way any
+case reaches the memory-stripping rung, and with it the second gate. All 121
+pre-existing cases are unmoved, compared field by field on every order-stable
+comparand.
+
+Two mutations survived as first written and are now closed by two further arms.
+Dropping the FIRST gate changed nothing: on a seat with no memories the
+memory-stripping rung is skipped anyway and the second gate catches everything
+the first would have — which is why v4's own `route.greeting-stall.test.ts`
+cannot tell them apart either. Arming the flag at attempt 0 changed nothing
+either: that gate sits AFTER attempt 1, so when the own profile answers
+straight away the wrongly-armed flag is never read. Both arms now put a
+failure where the ladder must actually consult the gate.
+
 #### 2026-09-15 — feat(llm): the greeting wears the stall watchdog, at its own tighter budgets (bug 141)
 
 _Versions: core 0.0.915, harness 0.0.806._

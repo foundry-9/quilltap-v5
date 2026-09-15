@@ -2449,6 +2449,34 @@ impl GeneratedGreeting {
     }
 }
 
+/// v4 `noteOwnProfileOutcome` (bug 141): a stall on the participant's OWN
+/// profile arms the ladder's give-up. Only the three rungs that ask THAT
+/// profile call it — see the `own_profile_stalled` comment at its declaration.
+fn note_own_profile_outcome(own_profile_stalled: &mut bool, error: &StreamError) {
+    if error.is_stalled() {
+        *own_profile_stalled = true;
+    }
+}
+
+/// v4 `giveUpOnStall` (bug 141): name the silence and hand the turn to the
+/// scripted greeting, which is where an exhausted ladder ends up anyway
+/// (v4 `NO_GREETING`).
+fn give_up_on_stall(
+    character_id: &str,
+    chat_id: &str,
+    provider: &str,
+    model_name: &str,
+) -> GeneratedGreeting {
+    tracing::warn!(
+        character_id = %character_id,
+        chat_id = %chat_id,
+        provider = %provider,
+        model_name = %model_name,
+        "[Chats v1] Greeting abandoned \u{2014} the provider accepted the request and then went quiet"
+    );
+    GeneratedGreeting::none()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn auto_generate_first_message<EMB, CMP, STR>(
     db: &Db,
@@ -2677,6 +2705,18 @@ where
         }
     };
 
+    // v4 bug 141: a stall on the participant's OWN profile ends the ladder.
+    // Attempts 1, 2 and 4 are the same profile three times over, and one that
+    // has answered with headers and then gone silent will not start speaking
+    // inside the next budget — spending two more on the same silence is the
+    // whole of the wedge this guards against. The scripted greeting takes over
+    // instead, which is where an exhausted ladder ends up anyway.
+    //
+    // Deliberately NOT set by the two uncensored-desk attempts: that is a
+    // different profile on a different provider, and its going quiet says
+    // nothing about whether this character's own one will.
+    let mut own_profile_stalled = false;
+
     // Attempt 0 (v4 `303288fb4`): a Flagged or Uncensored chat opens at the
     // uncensored desk. The three-attempt ladder below (with memories → without →
     // uncensored on a content filter) stays the path for Monitored and Vouched
@@ -2735,8 +2775,20 @@ where
                     content_filter_hit = true;
                 }
             }
-            Err(_) => { /* swallowed */ }
+            Err(e) => {
+                note_own_profile_outcome(&mut own_profile_stalled, &e);
+                tracing::warn!(
+                    character_id = %character_id,
+                    attempt = "full context",
+                    error = %e.message,
+                    "[Chats v1] Greeting generation attempt failed"
+                );
+            }
         }
+    }
+
+    if own_profile_stalled {
+        return give_up_on_stall(&character_id, chat_id, &provider, &model_name);
     }
 
     // Attempt 2: strip memories (they may be triggering the content filter).
@@ -2753,7 +2805,15 @@ where
                     content_filter_hit = true;
                 }
             }
-            Err(_) => { /* swallowed */ }
+            Err(e) => {
+                note_own_profile_outcome(&mut own_profile_stalled, &e);
+                tracing::warn!(
+                    character_id = %character_id,
+                    attempt = "without memories",
+                    error = %e.message,
+                    "[Chats v1] Greeting generation attempt failed"
+                );
+            }
         }
     }
 
@@ -2796,16 +2856,41 @@ where
         }
     }
 
+    // v4's SECOND gate sits here, after attempt 3's block and before attempt 4 —
+    // so it is attempt 2's stall (the memory-stripping rung) that it catches.
+    if own_profile_stalled {
+        return give_up_on_stall(&character_id, chat_id, &provider, &model_name);
+    }
+
     // Attempt 4: final plain retry (v4's 1s delay is host-timing — skipped).
     {
         let r = base_request();
-        if let Ok(res) = generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
-            if !res.content.is_empty() {
-                return GeneratedGreeting::from_result(&res);
+        match generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
+            Ok(res) => {
+                if !res.content.is_empty() {
+                    return GeneratedGreeting::from_result(&res);
+                }
+            }
+            Err(e) => {
+                note_own_profile_outcome(&mut own_profile_stalled, &e);
+                tracing::warn!(
+                    character_id = %character_id,
+                    error = %e.message,
+                    "[Chats v1] Final greeting generation retry failed"
+                );
             }
         }
     }
 
+    if own_profile_stalled {
+        return give_up_on_stall(&character_id, chat_id, &provider, &model_name);
+    }
+
+    tracing::warn!(
+        character_id = %character_id,
+        content_filter_hit = content_filter_hit,
+        "[Chats v1] All greeting generation attempts exhausted, falling back to static greeting"
+    );
     GeneratedGreeting::none()
 }
 
@@ -3170,6 +3255,7 @@ fn build_outfit_selections(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::dangerous_content::provider_routing::NoApiKeys;
 
     #[test]
     fn ramp_limit_boundaries() {
@@ -3386,5 +3472,688 @@ mod tests {
             "notAField": "whatever",
         });
         assert!(validate_create_body(raw.as_object().unwrap()).is_ok());
+    }
+    // =======================================================================
+    // P4.D190 (v4 `f90144ac4`, bug 141) — the greeting ladder's own-profile
+    // stall gate, and the four `[Chats v1]` warn lines v5's silent `Err(_)`
+    // arms never carried.
+    //
+    // Every one of the five lines is log-only: no differential can see it (the
+    // DB state after `giveUpOnStall` is byte-identical to the state after an
+    // exhausted ladder), so each is pinned here with a thread-scoped capture
+    // layer, and each arm asserts the SILENCE of the lines it must not fire.
+    // The desk arms' scoping is proven twice over — here by the absence of the
+    // abandonment line, and differentially by the capstone's
+    // `gs_desk_stall_does_not_condemn_own_profile` /
+    // `gs_content_filter_desk_stall_then_own_retry`.
+    // =======================================================================
+
+    const LADDER_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const OWN_CP: &str = "b1000000-0000-4000-8000-000000000001";
+    const DESK_CP: &str = "b3000000-0000-4000-8000-000000000003";
+    const DESK_KEY: &str = "d2000000-0000-4000-8000-000000000002";
+    const BRAM: &str = "a3000000-0000-4000-8000-0000000000a3";
+    const CLEO: &str = "a2000000-0000-4000-8000-0000000000a2";
+    const LADDER_CHAT: &str = "cc000000-0000-4000-8000-0000000000cc";
+
+    /// One posed answer from the greeting stream.
+    #[derive(Clone)]
+    enum Posed {
+        /// The watchdog fired (v4 `LLMStreamStalledError`).
+        Stall,
+        /// An ordinary provider failure.
+        Fail(&'static str),
+        /// Content, with `completion_tokens` — an empty string plus tokens is
+        /// v4's content-filter signature.
+        Answer(&'static str, i64),
+    }
+
+    /// A streaming provider that answers per MODEL, one posed outcome per call
+    /// in order, and records the `(provider, model)` sequence — the same
+    /// ordered comparand the capstone's `stream_calls` is.
+    #[derive(Clone, Default)]
+    struct PosedByModel {
+        queues: std::sync::Arc<
+            std::sync::Mutex<std::collections::HashMap<String, std::collections::VecDeque<Posed>>>,
+        >,
+        calls: std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    }
+
+    impl PosedByModel {
+        fn with(self, model: &str, answers: Vec<Posed>) -> Self {
+            self.queues
+                .lock()
+                .unwrap()
+                .insert(model.to_string(), answers.into());
+            self
+        }
+        fn calls(&self) -> Vec<(String, String)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    impl StreamingCompletionProvider for PosedByModel {
+        fn stream_message(
+            &self,
+            provider: &str,
+            _base_url: Option<&str>,
+            params: &crate::model::stream::StreamParams,
+        ) -> impl std::future::Future<
+            Output = tokio::sync::mpsc::Receiver<crate::model::stream::StreamChunkResult>,
+        > + Send {
+            use crate::model::stream::{StreamChunk, StreamChunkResult, StreamUsage};
+            self.calls
+                .lock()
+                .unwrap()
+                .push((provider.to_string(), params.model.clone()));
+            let posed = self
+                .queues
+                .lock()
+                .unwrap()
+                .get_mut(&params.model)
+                .and_then(|q| q.pop_front());
+            let provider = provider.to_string();
+            let model = params.model.clone();
+            async move {
+                let items: Vec<StreamChunkResult> = match posed {
+                    Some(Posed::Stall) => vec![Err(StreamError::stalled(
+                        90_000,
+                        0,
+                        Some(&provider),
+                        Some(&model),
+                    ))],
+                    Some(Posed::Fail(m)) => vec![Err(StreamError::new(m))],
+                    Some(Posed::Answer(text, completion_tokens)) => {
+                        let mut v: Vec<StreamChunkResult> = Vec::new();
+                        if !text.is_empty() {
+                            v.push(Ok(StreamChunk::content(text)));
+                        }
+                        v.push(Ok(StreamChunk::done(Some(StreamUsage {
+                            prompt_tokens: 40,
+                            completion_tokens,
+                            total_tokens: 40 + completion_tokens,
+                        }))));
+                        v
+                    }
+                    None => vec![Err(StreamError::new(format!(
+                        "no posed answer left for model {model}"
+                    )))],
+                };
+                let (tx, rx) = tokio::sync::mpsc::channel(items.len().max(1));
+                for i in items {
+                    let _ = tx.send(i).await;
+                }
+                rx
+            }
+        }
+    }
+
+    /// Resolves exactly the uncensored desk's key.
+    struct DeskKey;
+    impl crate::services::dangerous_content::provider_routing::ApiKeyResolver for DeskKey {
+        fn resolve(&self, api_key_id: &str, _user_id: &str) -> Option<String> {
+            (api_key_id == DESK_KEY).then(|| "frank-key".to_string())
+        }
+    }
+
+    /// A freshly provisioned instance carrying the participant's own connection
+    /// profile, and (when `desk`) the Concierge's uncensored desk plus the
+    /// global AUTO_ROUTE settings that name it.
+    fn ladder_venue(desk: bool) -> (tempfile::TempDir, Db, crate::db::Writer) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), LADDER_PEPPER)
+            .expect("provision");
+        let main_path = dir.path().join("quilltap.db");
+        let w = crate::db::Writer::open_writable(&main_path, LADDER_PEPPER).expect("writer");
+        let c = w.connection();
+        c.execute(
+            "INSERT INTO connection_profiles (id, userId, name, provider, modelName, \
+             parameters, createdAt, updatedAt) VALUES (?1, ?2, 'Own', 'ANTHROPIC', \
+             'claude-sonnet-4-5', '{}', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+            rusqlite::params![OWN_CP, SINGLE_USER_ID],
+        )
+        .unwrap();
+        if desk {
+            c.execute(
+                "INSERT INTO api_keys (id, userId, label, provider, key_value, createdAt, \
+                 updatedAt) VALUES (?1, ?2, 'Frank', 'OPENROUTER', 'frank-key', \
+                 '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![DESK_KEY, SINGLE_USER_ID],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO connection_profiles (id, userId, name, provider, modelName, \
+                 apiKeyId, parameters, createdAt, updatedAt) VALUES (?1, ?2, 'The frank desk', \
+                 'OPENROUTER', 'frank-model', ?3, '{}', '2026-02-01T00:00:00.000Z', \
+                 '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![DESK_CP, SINGLE_USER_ID, DESK_KEY],
+            )
+            .unwrap();
+            // Every field: `DangerousContentSettings` is a strict deserialize
+            // (only the three `.nullable().optional()` ones default), so a thin
+            // bag silently parses to `None` and the desk is never asked.
+            let bag = serde_json::json!({
+                "mode": "AUTO_ROUTE",
+                "threshold": 0.7,
+                "scanTextChat": true,
+                "scanImagePrompts": true,
+                "scanImageGeneration": false,
+                "uncensoredTextProfileId": DESK_CP,
+                "displayMode": "SHOW",
+                "showWarningBadges": true,
+            })
+            .to_string();
+            // UPDATE, not INSERT: `provision_fresh_instance` already seeds the
+            // user's settings row, and a second one would simply be shadowed by
+            // it — `find_by_user_id` would keep answering the schema default
+            // (`mode: "OFF"`, no uncensored profile) and the desk would never be
+            // asked, with nothing in the test saying why.
+            let changed = c
+                .execute(
+                    "UPDATE chat_settings SET dangerousContentSettings = ?2 WHERE userId = ?1",
+                    rusqlite::params![SINGLE_USER_ID, bag],
+                )
+                .unwrap();
+            assert_eq!(
+                changed, 1,
+                "the provisioned settings row must be the one we move"
+            );
+        }
+        // The mount-index partition is NOT optional here:
+        // `build_first_message_context` resolves the other participants through
+        // the vault-overlaid character reader, and a missing partition makes
+        // that whole call `Err` — which reads as "this seat has no memories"
+        // and silently skips the memory-stripping rung.
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: main_path,
+                mount_index: Some(dir.path().join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            LADDER_PEPPER,
+        )
+        .expect("open db");
+        (dir, db, w)
+    }
+
+    /// Two memories Bram holds about Cleo — the only way the memory-stripping
+    /// rung (v4's attempt 2) runs at all, and so the only way the SECOND stall
+    /// gate is reachable.
+    fn seed_bram_remembers_cleo(c: &Connection) {
+        c.execute(
+            "INSERT INTO characters (id, userId, name, description, personality, \
+             systemPrompts, createdAt, updatedAt) VALUES (?1, ?2, 'Cleo', 'A scholar.', \
+             'Wry.', '[]', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+            rusqlite::params![CLEO, SINGLE_USER_ID],
+        )
+        .unwrap();
+        for (n, summary, importance) in [
+            (
+                "a9000000-0000-4000-8000-000000000001",
+                "Cleo copies ledgers by candlelight.",
+                0.9,
+            ),
+            (
+                "a9000000-0000-4000-8000-000000000002",
+                "Cleo avoids the river after dark.",
+                0.4,
+            ),
+        ] {
+            c.execute(
+                "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, \
+                 importance, createdAt, updatedAt) VALUES (?1, ?2, ?3, ?4, ?4, ?5, \
+                 '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![n, BRAM, CLEO, summary, importance],
+            )
+            .unwrap();
+        }
+    }
+
+    fn ladder_participants(with_cleo: bool) -> Vec<Value> {
+        let mut v = vec![json!({
+            "type": "CHARACTER", "characterId": BRAM,
+            "connectionProfileId": OWN_CP, "displayOrder": 0, "controlledBy": "llm",
+        })];
+        if with_cleo {
+            v.push(json!({
+                "type": "CHARACTER", "characterId": CLEO,
+                "connectionProfileId": OWN_CP, "displayOrder": 1, "controlledBy": "llm",
+            }));
+        }
+        v
+    }
+
+    fn ladder_context() -> ChatContext {
+        ChatContext {
+            system_prompt: "You embody Bram, the ranger.".to_string(),
+            first_message: String::new(),
+            character: json!({ "id": BRAM, "name": "Bram" }),
+            user_character: None,
+        }
+    }
+
+    /// Drive the REAL `auto_generate_first_message` against a posed provider,
+    /// capturing every tracing event on the calling thread.
+    async fn run_ladder(
+        db: &Db,
+        main: &Connection,
+        streaming: &PosedByModel,
+        api_keys: &dyn crate::services::dangerous_content::provider_routing::ApiKeyResolver,
+        with_cleo: bool,
+        chat_id: &str,
+        logs: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> GeneratedGreeting {
+        use tracing_subscriber::layer::SubscriberExt;
+        let embedding = crate::model::embedding::CannedEmbeddingProvider::new();
+        let completion = crate::model::completion::CannedCompletionProvider::new();
+        let executor = CheapLlmTaskExecutor::new();
+        let now_fn = crate::enclave::announce::system_now_ms;
+        let mint_fn = crate::enclave::announce::system_mint_uuid;
+        let cron_seam = |_expr: &str, _anchor: i64| -> Result<Option<i64>, String> { Ok(None) };
+        let lifecycle = LifecycleDeps {
+            now_ms: &now_fn,
+            mint_uuid: &mint_fn,
+            next_occurrence: &cron_seam,
+        };
+        let deps = ChatCreateDeps {
+            embedding: &embedding,
+            completion: &completion,
+            streaming,
+            executor: &executor,
+            api_keys,
+            tz: "UTC".to_string(),
+            now_ms: 1_793_664_000_000,
+            random01: DrawSource::constant(0.0),
+            lifecycle: &lifecycle,
+            greeting_log: false,
+        };
+        let context = ladder_context();
+        let participants = ladder_participants(with_cleo);
+        let subscriber =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs));
+        let _guard = tracing::subscriber::set_default(subscriber);
+        auto_generate_first_message(
+            db,
+            main,
+            &deps,
+            &context,
+            &participants,
+            chat_id,
+            None,
+            None,
+        )
+        .await
+    }
+
+    fn fresh_logs() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()))
+    }
+
+    /// Exactly one captured line is a WARN on `quilltap::services::chat_create`
+    /// carrying `needle`. (`contains` on a target is a PREFIX match — the
+    /// P4.D127 finding — so the target is matched as a whole token.)
+    fn one_warn<'a>(captured: &'a [String], needle: &str) -> &'a String {
+        let hits: Vec<&String> = captured
+            .iter()
+            .filter(|l| {
+                l.starts_with("WARN quilltap_core::services::chat_create ") && l.contains(needle)
+            })
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one WARN carrying {needle:?}; captured:\n{}",
+            captured.join("\n")
+        );
+        hits[0]
+    }
+
+    fn no_line_with(captured: &[String], needle: &str) {
+        assert!(
+            !captured.iter().any(|l| l.contains(needle)),
+            "{needle:?} must be ABSENT; captured:\n{}",
+            captured.join("\n")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stall_on_the_own_profile_ends_the_ladder_and_names_the_silence() {
+        let (_d, db, w) = ladder_venue(false);
+        let streaming = PosedByModel::default().with("claude-sonnet-4-5", vec![Posed::Stall]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "", "the scripted greeting takes over");
+        assert_eq!(
+            streaming.calls(),
+            vec![("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string())],
+            "the first gate stops the ladder — one call, not three"
+        );
+        let captured = logs.lock().unwrap().clone();
+        let attempt = one_warn(&captured, "[Chats v1] Greeting generation attempt failed");
+        for f in [
+            "character_id=a3000000-0000-4000-8000-0000000000a3",
+            "attempt=full context",
+            "error=Provider stream never sent a first chunk within 90000ms",
+        ] {
+            assert!(attempt.contains(f), "missing {f} in:\n{attempt}");
+        }
+        let abandoned = one_warn(&captured, "Greeting abandoned");
+        for f in [
+            "character_id=a3000000-0000-4000-8000-0000000000a3",
+            "chat_id=cc000000-0000-4000-8000-0000000000cc",
+            "provider=ANTHROPIC",
+            "model_name=claude-sonnet-4-5",
+            "[Chats v1] Greeting abandoned \u{2014} the provider accepted the request and then went quiet",
+        ] {
+            assert!(abandoned.contains(f), "missing {f} in:\n{abandoned}");
+        }
+        // The ladder ENDED — it did not merely fail.
+        no_line_with(&captured, "Final greeting generation retry failed");
+        no_line_with(&captured, "All greeting generation attempts exhausted");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_ordinary_failure_runs_the_whole_ladder_and_never_abandons() {
+        let (_d, db, w) = ladder_venue(false);
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![
+                Posed::Fail("502 Bad Gateway"),
+                Posed::Fail("502 Bad Gateway"),
+            ],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "");
+        assert_eq!(
+            streaming.calls().len(),
+            2,
+            "attempt 1 and the final plain retry; only a silence ends the ladder"
+        );
+        let captured = logs.lock().unwrap().clone();
+        assert!(one_warn(&captured, "attempt=full context").contains("error=502 Bad Gateway"));
+        assert!(one_warn(
+            &captured,
+            "[Chats v1] Final greeting generation retry failed"
+        )
+        .contains("error=502 Bad Gateway"));
+        let exhausted = one_warn(
+            &captured,
+            "[Chats v1] All greeting generation attempts exhausted, falling back to static greeting",
+        );
+        assert!(
+            exhausted.contains("content_filter_hit=false"),
+            "in:\n{exhausted}"
+        );
+        no_line_with(&captured, "Greeting abandoned");
+    }
+
+    /// v4's THIRD gate. Its DB state is byte-identical to an exhausted
+    /// ladder's — both answer `NO_GREETING` and the scripted greeting takes
+    /// over — so no differential can see it at all: the only observable
+    /// difference is which of the two lines gets said.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_third_gate_names_a_stall_on_the_final_retry() {
+        let (_d, db, w) = ladder_venue(false);
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![Posed::Fail("502 Bad Gateway"), Posed::Stall],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "");
+        assert_eq!(streaming.calls().len(), 2);
+        let captured = logs.lock().unwrap().clone();
+        assert!(one_warn(
+            &captured,
+            "[Chats v1] Final greeting generation retry failed"
+        )
+        .contains("error=Provider stream never sent a first chunk within 90000ms"));
+        one_warn(&captured, "Greeting abandoned");
+        // The ladder was ABANDONED, not exhausted — the one thing that tells
+        // them apart.
+        no_line_with(&captured, "All greeting generation attempts exhausted");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_second_gate_catches_a_stall_on_the_memory_stripping_rung() {
+        let (_d, db, w) = ladder_venue(false);
+        seed_bram_remembers_cleo(w.connection());
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![Posed::Fail("502 Bad Gateway"), Posed::Stall],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            true,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "");
+        assert_eq!(
+            streaming.calls().len(),
+            2,
+            "attempt 1 + the memory-stripping rung; the second gate stops there"
+        );
+        let captured = logs.lock().unwrap().clone();
+        let stripped = one_warn(&captured, "attempt=without memories");
+        assert!(
+            stripped.contains("error=Provider stream never sent a first chunk within 90000ms"),
+            "in:\n{stripped}"
+        );
+        one_warn(&captured, "Greeting abandoned");
+        no_line_with(&captured, "Final greeting generation retry failed");
+        no_line_with(&captured, "All greeting generation attempts exhausted");
+    }
+
+    /// Gate 1's OWN discriminator, and the reason it is not redundant with
+    /// gate 2: the first gate exists so a stall at attempt 1 does not spend the
+    /// memory-stripping rung on the same silence. On a seat with NO memories
+    /// that rung is skipped anyway and gate 2 catches everything gate 1 would
+    /// have — which is why v4's own `route.greeting-stall.test.ts` (whose
+    /// fixture carries no participant memories) cannot tell the two apart
+    /// either. Drop gate 1 with memories in play and this test goes to two
+    /// calls.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_first_gate_spares_the_memory_stripping_rung() {
+        let (_d, db, w) = ladder_venue(false);
+        seed_bram_remembers_cleo(w.connection());
+        let streaming = PosedByModel::default().with("claude-sonnet-4-5", vec![Posed::Stall]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            true,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "");
+        assert_eq!(
+            streaming.calls().len(),
+            1,
+            "the first gate stops the ladder BEFORE the memory-stripping rung"
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_warn(&captured, "attempt=full context");
+        no_line_with(&captured, "attempt=without memories");
+        one_warn(&captured, "Greeting abandoned");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stall_at_the_chat_state_desk_never_condemns_the_own_profile() {
+        let (_d, db, w) = ladder_venue(true);
+        w.connection()
+            .execute(
+                "INSERT INTO chats (id, userId, title, conciergeOverride, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'T', 'UNCENSORED', '2026-02-01T00:00:00.000Z', \
+                 '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![LADDER_CHAT, SINGLE_USER_ID],
+            )
+            .unwrap();
+        let streaming = PosedByModel::default()
+            .with("frank-model", vec![Posed::Stall])
+            .with("claude-sonnet-4-5", vec![Posed::Answer("Well then.", 9)]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "Well then.");
+        assert_eq!(
+            streaming.calls(),
+            vec![
+                ("OPENROUTER".to_string(), "frank-model".to_string()),
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+            ]
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_warn(
+            &captured,
+            "[Chats v1] Concierge uncensored greeting attempt failed",
+        );
+        // The desk is a different profile on a different provider: its silence
+        // says nothing about the character's own.
+        no_line_with(&captured, "Greeting abandoned");
+    }
+
+    /// The chat-state desk's scoping needs attempt 1 to FAIL to be observable
+    /// at all: gate 1 sits AFTER attempt 1, so when the participant's own
+    /// profile answers straight away (the case above) a wrongly-armed flag is
+    /// never read. Here attempt 1 fails ordinarily, the ladder reaches the
+    /// gate, and the desk's earlier silence must not be what ends it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_desk_stall_does_not_end_a_ladder_that_reaches_the_gate() {
+        let (_d, db, w) = ladder_venue(true);
+        w.connection()
+            .execute(
+                "INSERT INTO chats (id, userId, title, conciergeOverride, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'T', 'UNCENSORED', '2026-02-01T00:00:00.000Z', \
+                 '2026-02-01T00:00:00.000Z')",
+                rusqlite::params![LADDER_CHAT, SINGLE_USER_ID],
+            )
+            .unwrap();
+        let streaming = PosedByModel::default()
+            .with("frank-model", vec![Posed::Stall])
+            .with(
+                "claude-sonnet-4-5",
+                vec![
+                    Posed::Fail("502 Bad Gateway"),
+                    Posed::Answer("Well then.", 9),
+                ],
+            );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "Well then.");
+        assert_eq!(
+            streaming.calls().len(),
+            3,
+            "the desk, attempt 1's ordinary failure, and the final retry"
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_warn(
+            &captured,
+            "[Chats v1] Concierge uncensored greeting attempt failed",
+        );
+        no_line_with(&captured, "Greeting abandoned");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_stall_at_the_content_filter_desk_never_condemns_the_own_profile() {
+        let (_d, db, w) = ladder_venue(true);
+        let streaming = PosedByModel::default()
+            // Attempt 1 burns completion tokens and returns nothing — v4's
+            // content-filter signature — then attempt 4 recovers.
+            .with(
+                "claude-sonnet-4-5",
+                vec![
+                    Posed::Answer("", 9),
+                    Posed::Answer("At last. The wood remembers you.", 9),
+                ],
+            )
+            .with("frank-model", vec![Posed::Stall]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &DeskKey,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "At last. The wood remembers you.");
+        assert_eq!(
+            streaming.calls(),
+            vec![
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+                ("OPENROUTER".to_string(), "frank-model".to_string()),
+                ("ANTHROPIC".to_string(), "claude-sonnet-4-5".to_string()),
+            ]
+        );
+        let captured = logs.lock().unwrap().clone();
+        one_warn(
+            &captured,
+            "[Chats v1] Concierge fallback for greeting generation failed",
+        );
+        no_line_with(&captured, "Greeting abandoned");
     }
 }
