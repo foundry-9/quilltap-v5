@@ -239,6 +239,14 @@ impl<P: StreamingCompletionProvider> StreamingCompletionProvider for StreamCallL
 /// recording it corresponds to, so the prompt-byte proof is not lost: a call
 /// whose key does not match what v4 sent on that same rung answers a loud
 /// `Err` exactly as a canned miss does.
+///
+/// One residual, recorded (the `ffb6b3119` round's §3 review): that miss is a
+/// `Provider`-kind `Err`, indistinguishable downstream from a POSED `error`
+/// rung — so on an `error`-posed rung a prompt drift would leave the ladder,
+/// `stream_calls` and the tables unchanged. A `stall`-posed rung still catches
+/// it (a `Provider` `Err` does not arm the gate → extra calls), and the
+/// greeting prompt's bytes are separately pinned by
+/// `initial_greeting_equivalence`'s key-as-assertion.
 /// Per model: the answers still owed, each paired with the key of the recording
 /// it belongs to.
 type GreetingQueues = HashMap<String, std::collections::VecDeque<(String, Vec<StreamChunkResult>)>>;
@@ -308,16 +316,10 @@ fn greeting_chunks(
     rec: &Recording,
 ) -> Vec<StreamChunkResult> {
     let mut chunks: Vec<StreamChunkResult> = Vec::new();
-    let reasoning: &[String] = match per_model {
-        Some(g) => &g.reasoning,
-        None => &c.greeting_reasoning,
-    };
-    for r in reasoning {
-        chunks.push(Ok(StreamChunk {
-            reasoning_content: Some(r.clone()),
-            ..Default::default()
-        }));
-    }
+    // A posed FAILURE ends the sequence BEFORE any reasoning, in the order
+    // v4's mock throws (`chat-create-capstone.test.ts`: `stall`/`error` are
+    // checked ahead of the reasoning loop) — the two sides must deliver the
+    // same chunks in the same order (the `ffb6b3119` round's §3 review).
     if let Some(g) = per_model {
         if let Some(st) = &g.stall {
             for i in 0..st.chunks_received {
@@ -336,10 +338,20 @@ fn greeting_chunks(
             return chunks;
         }
     }
+    let reasoning: &[String] = match per_model {
+        Some(g) => &g.reasoning,
+        None => &c.greeting_reasoning,
+    };
+    for r in reasoning {
+        chunks.push(Ok(StreamChunk {
+            reasoning_content: Some(r.clone()),
+            ..Default::default()
+        }));
+    }
     let content: Option<&str> = match per_model {
         Some(g) => Some(g.content.as_deref().unwrap_or_else(|| {
             panic!(
-                "case {}: model {} is named in greetingByModel with neither content nor a posed                  failure — v4's mock throws `unexpected streamMessage call` on exactly this",
+                "case {}: model {} is named in greetingByModel with neither content nor a posed failure — v4's mock throws `unexpected streamMessage call` on exactly this",
                 c.name, rec.model
             )
         })),
@@ -722,7 +734,7 @@ fn chat_create_capstone_matches_oracle() {
                         let n = attempt_cursor.entry(rec.model.clone()).or_insert(0);
                         let g = attempts.get(*n).unwrap_or_else(|| {
                             panic!(
-                                "case {}: model {} was called {} time(s) but only {} attempt(s)                                  are canned",
+                                "case {}: model {} was called {} time(s) but only {} attempt(s) are canned",
                                 c.name,
                                 rec.model,
                                 *n + 1,

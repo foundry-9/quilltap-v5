@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — fix(unify): the `ffb6b3119` round's §3 review findings — a provider `Err` no longer counts as a chunk, the converged delete-miss chat is presence-pinned, the capstone's posed failures precede reasoning
+
+_Versions: core 0.0.921, harness 0.0.813._
+
+Three parallel reviewers read the round's whole diff against v4's real code
+and found no blocking defect; the should-fixes land here. `WatchedStream::
+recv` counted a source `Err` item as a received chunk where v4's
+`chunksReceived++` sits after a successful `next()` and a throw never
+reaches it — unreachable today (every consumer stops at the first `Err`),
+now faithful and pinned (`a_provider_error_is_not_counted_as_a_chunk`); the
+watchdog's module doc records that v5's header bound and the first-chunk
+budget are SEQUENTIAL (v4's lazy generator covers the headers inside the
+240 s; v5 awaits the transport's headers first), and the write-only
+`stalled` field says it is kept for `Debug`. `chats_messages_ops_tier2`
+gains a presence pin for the converged delete-miss chat, so the equality
+the retirement made comparable cannot go vacuous if the chat leaves the
+corpus. The capstone's `greeting_chunks` delivers a posed `stall`/`error`
+BEFORE any reasoning chunks, the order the jest mock throws in (no current
+case pairs them; the trap is closed before one does), its `PerCallGreetings`
+doc records the one residual the reviewers named (an `error`-posed rung's
+prompt drift is invisible downstream), and two panic messages lose a run of
+spaces.
+
+
 #### 2026-09-15 — chore(unify): recount the round's version bumps as base plus every lane's delta
 
 _Versions: core 0.0.920, harness 0.0.812._

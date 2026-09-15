@@ -37,6 +37,18 @@
 //! `stream_message` call is armed with an abort today, and this module does not
 //! arm one.
 //!
+//! ## Where the budget starts — one sentence v4 does not need
+//!
+//! v4's `provider.streamMessage(...)` is a LAZY generator, so the SDK's
+//! connect + headers happen inside the first `next()` and the 240 s first-chunk
+//! budget covers them too. v5's `stream_message` is an `async fn` that awaits
+//! the transport's `execute_stream` — bounded by the transport's own
+//! time-to-headers budget ([`crate::model::transport`], P4.D42) — BEFORE it
+//! hands back the receiver this module wraps, so the two bounds are SEQUENTIAL
+//! here: the worst case with no first token is the transport budget plus the
+//! first-chunk budget, where v4's is the first-chunk budget alone. Nothing is
+//! unbounded either way; the window is merely wider, and recorded.
+//!
 //! ## The time driver is a load-bearing invariant
 //!
 //! [`tokio::time::timeout`] needs a runtime with a TIME DRIVER at the await.
@@ -145,7 +157,8 @@ pub struct WatchedStream<'a> {
     chunks_received: u64,
     started_at: Instant,
     /// One stall, one `Err`: the stalled error is answered exactly once and the
-    /// stream is over.
+    /// stream is over. Kept for the `Debug` rendering — the live state the
+    /// `recv` path consults is `rx.is_none()`.
     stalled: bool,
 }
 
@@ -208,8 +221,14 @@ impl WatchedStream<'_> {
             Ok(None) => None,
             Ok(Some(item)) => {
                 // v4 counts `result.value`s: EVERY yielded chunk, reasoning-only
-                // and usage-only and `done` included.
-                self.chunks_received += 1;
+                // and usage-only and `done` included — and NOT a thrown error,
+                // which never reaches `chunksReceived++`. v5's seam carries a
+                // provider error as a channel ITEM, so the `Err` is what a v4
+                // throw is: passed through, never counted (the `ffb6b3119`
+                // round's §3 review).
+                if item.is_ok() {
+                    self.chunks_received += 1;
+                }
                 Some(item)
             }
             Err(_elapsed) => {
@@ -453,6 +472,29 @@ mod tests {
         assert!(matches!(s.recv().await, Some(Err(ref e)) if e.is_stalled()));
         assert!(s.recv().await.is_none());
         assert!(s.recv().await.is_none());
+    }
+
+    /// A provider `Err` is NOT a chunk: v4's `chunksReceived++` sits after a
+    /// successful `next()`, and a throw never reaches it. So a source that
+    /// errors and then stays open is still on the FIRST-chunk budget, and the
+    /// stall it eventually reports says `never sent a first chunk`.
+    #[tokio::test(start_paused = true)]
+    async fn a_provider_error_is_not_counted_as_a_chunk() {
+        let (tx, rx) = mpsc::channel(1);
+        tx.try_send(Err(StreamError::new("429 rate limit exceeded")))
+            .unwrap();
+        let mut s = watch_stream(rx, BUDGETS, ctx());
+        assert!(matches!(s.recv().await, Some(Err(ref e)) if !e.is_stalled()));
+        assert_eq!(s.chunks_received(), 0);
+        let err = match s.recv().await {
+            Some(Err(e)) => e,
+            other => panic!("expected a stall, got {other:?}"),
+        };
+        assert_eq!(
+            err.message,
+            "Provider stream never sent a first chunk within 60ms"
+        );
+        drop(tx);
     }
 
     /// A reasoning-only chunk COUNTS — v4 counts `result.value`s, and a model

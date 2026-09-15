@@ -140,6 +140,14 @@ enum Op {
 /// dropped, so a NULL or an empty string still reds.
 const ADD_MINTS_TIMESTAMPS_ON: &str = "c0000060-0000-4000-8000-000000000001";
 
+/// The chat whose delete-miss op used to be `DELETE_MISS_DIVERGENCE` (retired
+/// at P4.D191 when v4 converged at `ffb6b3119`). Its `transcriptVersion` is
+/// the cell that now DISCRIMINATES a v5 regression that counts a miss again —
+/// but only while the chat and its miss op stay in the corpus, so its presence
+/// is pinned exactly as the mint carve-out's is: an equality whose row has left
+/// the corpus is measuring nothing (the `ffb6b3119` round's §3 review).
+const CONVERGED_DELETE_MISS_CHAT: &str = "c0000020-0000-4000-8000-000000000001";
+
 /// Apply the ONE remaining carve-out to a `chats` dump, asserting it is REAL
 /// (present and of the expected shape) before neutralizing it — a carve-out
 /// nothing exercises is a hole, not an exemption. (Its sibling,
@@ -147,6 +155,7 @@ const ADD_MINTS_TIMESTAMPS_ON: &str = "c0000060-0000-4000-8000-000000000001";
 /// that chat's `transcriptVersion` is now compared like any other cell.)
 fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
     let mut saw_mint = false;
+    let mut saw_converged = false;
     for (side, dump) in [("rust", &mut *got), ("oracle", &mut *oracle)] {
         let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
             continue;
@@ -160,6 +169,14 @@ fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
+            if id == CONVERGED_DELETE_MISS_CHAT {
+                assert!(
+                    o.get("transcriptVersion").and_then(Value::as_i64).is_some(),
+                    "[{side}] the converged delete-miss chat carries no integer \
+                     transcriptVersion — the cell the retirement made comparable"
+                );
+                saw_converged = true;
+            }
             if id == ADD_MINTS_TIMESTAMPS_ON {
                 for key in ["updatedAt", "lastMessageAt"] {
                     let v = o.get(key).and_then(Value::as_str).unwrap_or("");
@@ -174,9 +191,11 @@ fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
         }
     }
     assert!(
-        saw_mint,
-        "the mint carve-out row must be PRESENT in the dump — a carve-out \
-         whose row has left the corpus is measuring nothing"
+        saw_mint && saw_converged,
+        "the mint carve-out row and the converged delete-miss chat must both be \
+         PRESENT in the dump (mint: {saw_mint}, converged: {saw_converged}) — a \
+         carve-out or an equality whose row has left the corpus is measuring \
+         nothing"
     );
 }
 
