@@ -24,19 +24,29 @@ probe verifies against._
   20:06 -0500, `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 +
   bug-142 drift catch-up round unification (P4.D189 → P4.D190 ∥ P4.D191,
   2026-09-15). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-15 at 13:33 CDT, by `/dogfood` — the walk FILED a v4
-  bug, which is what moved HEAD (see §3). Previously checked 2026-09-15 at the
+- **Checked:** 2026-09-15 at ~16:20 CDT, by `/dogfood` — the walk FILED TWO v4
+  bugs, which is what moved HEAD (see §3), and the human began editing v4
+  concurrently (see the checkout posture below). Previously checked 2026-09-15 at the
   unification (~09:20 and ~09:40 CDT).
-- **v4 `main` HEAD at check:** `064ba85df` — **ONE commit past the baseline**,
-  and it is this port's own filing: `docs(bugs): file bug 143 — the avatar-roll
-  collapse left duplicate generationKey rows` (2026-09-15, written by the
-  `/dogfood` walk). **Docs-only** — `docs/developer/bugs.md` +
-  `docs/developer/bugs/bug-143-*.md`, 2 files, +139/−2, no `lib/`, `app/`,
-  `packages/`, `plugins/`, `migrations/` or `help/`.
+- **v4 `main` HEAD at check:** `81e02f7a2` — **TWO commits past the baseline**,
+  both this port's own filings from the `/dogfood` walk, both **docs-only**:
+  `064ba85df` (bug 143, the avatar-roll collapse's duplicate `generationKey`
+  rows) and `81e02f7a2` (bug 144, `--lock-clean` claiming a dead holder is
+  alive). Together: `docs/developer/bugs.md` + two `bugs/bug-14*.md` files, no
+  `lib/`, `app/`, `packages/`, `plugins/`, `migrations/` or `help/`.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
+- ⚠ **Checkout at check:** branch **`main`**, tree **DIRTY** —
+  `migrations/scripts/collapse-duplicate-avatar-rolls-v1.ts` (+127/−22),
+  **the human's in-progress fix for bug 143** (`blobIdFromStorageKey` reworked
+  into `parseMountBlobKey`, new `isPhotosRelativePath` +
+  `gcOrphanedFileRow` imports). **Not the port's to touch or revert.** It
+  poisons any regen whose oracle reads that migration — which is the
+  avatar-roll collapse family and anything staging a migration-vintage
+  fixture. The 2026-09-15 Tier R run (223/0) is unaffected and stands: the
+  dirt is confined to `migrations/`, while that suite drives
+  `packages/quilltap/bin/quilltap.js`, which is clean.
 - **Verdict: NO FUNCTIONAL DRIFT.** The one commit past the baseline is the
   v5 walk's own bug filing — documentation, with no code, schema or `help/`
   delta — so nothing is owed a port. It is carried in §3 as NO-PORT? pending
@@ -45,11 +55,14 @@ probe verifies against._
   the previous round left UNPROCESSED (bug 141 PORT, the ABI-heal NO-PORT?, the
   bug-142 filing NO-PORT?, the bug-142 fix CONVERGENCE) are ABSORBED /
   NO-PORT-RATIFIED at the `ffb6b3119` unification and retired to §6.
-- **Regen rule: NO PIN REQUIRED** — the checkout is clean and its one commit
-  past the baseline touches only `docs/developer/bugs*`, which no oracle, no
-  fixture and no embed guard reads. A regen from the checkout is still a regen
-  at the baseline. (Verified: `git diff --stat ffb6b3119..064ba85df -- lib/ app/
-  packages/ plugins/ migrations/ help/ public/schemas/` is empty.) (The round's own regens were run from the checkout in exactly
+- ⚠ **Regen rule: PIN REQUIRED while the tree stays dirty.** The two commits
+  past the baseline are docs-only and harmless on their own (verified:
+  `git diff --stat ffb6b3119..81e02f7a2 -- lib/ app/ packages/ plugins/
+  migrations/ help/ public/schemas/` is empty), so HEAD is not the problem —
+  **the uncommitted `migrations/` edit is**. Any oracle regenerated from the
+  live checkout now sees a half-finished bug-143 fix. Pin a worktree at
+  `ffb6b3119` until the human's edit lands, then re-probe: if the tree is clean
+  again and the only delta is still docs, this returns to NO PIN REQUIRED. (The round's own regens were run from the checkout in exactly
   that state; the lanes had pinned because the baseline was still
   `31436bae4` at their time.) The ⚠ ABI note on the retired `85813ddd2`
   row is now moot for every pin at or past the baseline: the fixed
@@ -102,6 +115,7 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 | `064ba85df` | 2026-09-15 | docs(bugs): file bug 143 — the avatar-roll collapse left duplicate generationKey rows | NO-PORT? | Nothing. Docs-only (`docs/developer/bugs.md` + the new `bugs/bug-143-*.md`); written BY this port's 2026-09-15 dogfood walk, recording a v4-side data-hygiene residue that v5 does not reproduce. | UNPROCESSED — ratify at the next `/driftcheck` |
+| `81e02f7a2` | 2026-09-15 | docs(bugs): file bug 144 — --lock-clean says the holder is alive when it has just died | NO-PORT? | Nothing to port. Docs-only, written BY this port's walk. ⚠ **But v5 is deliberately PINNED to the buggy wording** (`quilltap-cli/src/db_cmd.rs`, `a_fresh_heartbeat_keeps_v4s_false_liveness_claim`): when v4 lands the fix, that test reddens BY DESIGN and Tier R's five `lock clean …` cases move — absorb both together. | UNPROCESSED — ratify at the next `/driftcheck` |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

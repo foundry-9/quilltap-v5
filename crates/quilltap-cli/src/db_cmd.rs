@@ -505,8 +505,62 @@ struct LockAssessment {
     heartbeat_fresh: bool,
 }
 
+/// How long a heartbeat stays "fresh". A lock whose heartbeat is younger than
+/// this counts as HELD whatever its process is doing — see
+/// [`lock_clean_refusal_lines`] for why that distinction is load-bearing in the
+/// wording.
+const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
+
+/// The two lines `--lock-clean` prints when it refuses, or `None` when the lock
+/// is cleanable. Pure so the WORDING can be pinned against v4's launcher
+/// (`packages/quilltap/bin/quilltap.js:626-634`), which is this verb's oracle.
+///
+/// ⚠ **The second arm carries a v4 sentence that is FALSE, on purpose.**
+///
+///  - `alive && is_node` — a real Quilltap process is running. "Held by a live
+///    process" is TRUE, and stopping it is the remedy.
+///  - `heartbeat_fresh` alone — the lock was refreshed recently, but its process
+///    may be **gone**. This arm fires precisely when a server was killed less
+///    than five minutes ago, and it announces *"its holder is alive"* — which
+///    [`assess_lock`] has just computed to be FALSE one line earlier, and which
+///    the BOOT path contradicts outright (it reclaims the same lock, logging
+///    `PID <n> is no longer running`). An operator who has just killed the
+///    server is told to go stop a process that does not exist.
+///
+/// That is **v4's own text, byte for byte**, and the port keeps it: v4 bug 144
+/// is filed against the launcher, and v5 converges when v4 does. The 2026-09-15
+/// dogfood walk (finding #119) briefly "fixed" it here and Tier R caught the
+/// divergence across five cases — the record of why this reads wrong and stays
+/// is the point of this comment.
+fn lock_clean_refusal_lines(
+    alive: bool,
+    is_node: bool,
+    pid: f64,
+    heartbeat_age_ms: f64,
+    heartbeat_fresh: bool,
+) -> Option<[String; 2]> {
+    if alive && is_node {
+        return Some([
+            format!(
+                "Lock is held by a live Quilltap process (PID {}). Cannot clean.",
+                crate::nodefmt::js_num_string(pid)
+            ),
+            "Stop the running instance first, or use --lock-override to force.".to_string(),
+        ]);
+    }
+    if heartbeat_fresh {
+        return Some([
+            format!(
+                "Lock is still being refreshed (heartbeat {}s ago) — its holder is alive. Cannot clean.",
+                quilltap_core::jsnum::math_round(heartbeat_age_ms / 1000.0) as i64
+            ),
+            "Stop the running instance first, or use --lock-override to force.".to_string(),
+        ]);
+    }
+    None
+}
+
 fn assess_lock(lock: &Map<String, Value>, hostname: &str) -> LockAssessment {
-    const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
     let pid = lock_num(lock, "pid");
     let alive = pid.is_finite() && is_pid_alive(pid as u32);
     let heartbeat_age_ms = heartbeat_age_ms(lock);
@@ -720,19 +774,11 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
         // refuses to delete a lock that is still being refreshed whatever its
         // recorded name says; the old `Lock is held by a live <env> instance`
         // and `Lock was held by a different host` arms are gone (bug 126).
-        if alive && is_node {
-            out::log(&format!(
-                "Lock is held by a live Quilltap process (PID {}). Cannot clean.",
-                crate::nodefmt::js_num_string(pid)
-            ));
-            out::log("Stop the running instance first, or use --lock-override to force.");
-            out::exit(1);
-        } else if heartbeat_fresh {
-            out::log(&format!(
-                "Lock is still being refreshed (heartbeat {}s ago) — its holder is alive. Cannot clean.",
-                quilltap_core::jsnum::math_round(age_ms / 1000.0) as i64
-            ));
-            out::log("Stop the running instance first, or use --lock-override to force.");
+        if let Some([first, second]) =
+            lock_clean_refusal_lines(alive, is_node, pid, age_ms, heartbeat_fresh)
+        {
+            out::log(&first);
+            out::log(&second);
             out::exit(1);
         } else if alive && !is_node {
             out::log(&format!(
@@ -856,4 +902,88 @@ fn format_history_ts(ts: &str) -> String {
         }
     }
     spaced
+}
+
+#[cfg(test)]
+mod lock_clean_wording_tests {
+    use super::*;
+
+    /// v4's launcher, `packages/quilltap/bin/quilltap.js:626-634`, transcribed.
+    /// These are the bytes Tier R compares against; both arms are v4's.
+    const V4_LIVE_PROCESS: &str =
+        "Lock is held by a live Quilltap process (PID 4242). Cannot clean.";
+    const V4_FRESH_HEARTBEAT: &str =
+        "Lock is still being refreshed (heartbeat 82s ago) — its holder is alive. Cannot clean.";
+    const V4_SECOND_LINE: &str =
+        "Stop the running instance first, or use --lock-override to force.";
+
+    #[test]
+    fn a_live_quilltap_process_is_named_as_such() {
+        let [first, second] =
+            lock_clean_refusal_lines(true, true, 4242.0, 1_000.0, true).expect("refuses");
+        assert_eq!(first, V4_LIVE_PROCESS);
+        assert_eq!(second, V4_SECOND_LINE);
+    }
+
+    /// The 2026-09-15 walk's exact scenario: the server was SIGKILLed 82 s ago,
+    /// so the PID is DEAD but the heartbeat is still young.
+    ///
+    /// ⚠ **This test pins a sentence that is FALSE, deliberately.** v4 says the
+    /// holder is alive here and it is not — filed as v4 bug 144. The port stays
+    /// faithful until v4 converges, and this assertion is what stops a
+    /// well-meaning fix from diverging again: the walk tried exactly that, and
+    /// Tier R failed five cases (`lock clean suspect but fresh heartbeat
+    /// refuses`, `… docker fresh refuses`, `… retired lima env`, `… foreign
+    /// fresh local refuses`, and one more) because this verb's oracle is v4's
+    /// real launcher.
+    #[test]
+    fn a_fresh_heartbeat_keeps_v4s_false_liveness_claim() {
+        let [first, second] =
+            lock_clean_refusal_lines(false, false, 24346.0, 82_000.0, true).expect("refuses");
+        assert_eq!(first, V4_FRESH_HEARTBEAT);
+        assert_eq!(second, V4_SECOND_LINE);
+        // The claim really is about liveness, and the PID really is dead — the
+        // two halves of v4 bug 144, pinned together so the convergence is
+        // measurable when v4 fixes it.
+        assert!(first.contains("its holder is alive"));
+    }
+
+    /// v4's branch ORDER: a confirmed live process is named before the
+    /// heartbeat arm, even when both hold.
+    #[test]
+    fn a_live_process_outranks_a_fresh_heartbeat() {
+        let [first, _] = lock_clean_refusal_lines(true, true, 7.0, 1_000.0, true).expect("refuses");
+        assert_eq!(
+            first,
+            "Lock is held by a live Quilltap process (PID 7). Cannot clean."
+        );
+        assert!(!first.contains("still being refreshed"));
+    }
+
+    /// A stale heartbeat over a dead PID is exactly what `--lock-clean` exists
+    /// for — no refusal, so the caller proceeds to remove it.
+    #[test]
+    fn a_stale_lock_is_not_refused() {
+        assert!(lock_clean_refusal_lines(false, false, 9.0, 6.0 * 60.0 * 1000.0, false).is_none());
+    }
+
+    /// An alive PID that is NOT Quilltap falls through to the reused-PID arm
+    /// below, not to either refusal.
+    #[test]
+    fn a_reused_pid_is_not_refused_when_the_heartbeat_is_stale() {
+        assert!(lock_clean_refusal_lines(true, false, 11.0, 6.0 * 60.0 * 1000.0, false).is_none());
+    }
+
+    /// The freshness window the refusal rests on is v4's five minutes.
+    #[test]
+    fn the_freshness_window_is_v4s_five_minutes() {
+        assert_eq!(FRESH_MS, 5.0 * 60.0 * 1000.0);
+        // 4m59s still refuses; 5m01s does not.
+        assert!(
+            lock_clean_refusal_lines(false, false, 1.0, 299_000.0, 299_000.0 < FRESH_MS).is_some()
+        );
+        assert!(
+            lock_clean_refusal_lines(false, false, 1.0, 301_000.0, 301_000.0 < FRESH_MS).is_none()
+        );
+    }
 }

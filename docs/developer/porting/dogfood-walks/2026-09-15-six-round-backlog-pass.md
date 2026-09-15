@@ -218,6 +218,8 @@ The arithmetic checks out to the day (42 days elapsed = 6 weeks 0 days; 230 rema
 | I2 | CLAUDE | Kill the server ungracefully, leaving a stale lock; boot again. | The stale lock is reclaimed (dead PID) without the hostname mattering; the ordered teardown means no orphaned PTY children. | ⭐ **PASS — bug 126's point, exactly.** The live server was SIGKILLed (no teardown, lock left behind: PID 17168, host `Mac`). A fresh boot reclaimed it and the lock file's own history tells the story: `acquired 17168 — Clean acquisition — no prior lock` → **`stale-detected 24346 — PID 17168 is no longer running`** → `stale-claimed 24346 — Claimed by PID 24346`. The hostname plays no part; the reclaim is keyed on PID liveness. |
 | I3 | **HUMAN** | Rename the host (or otherwise flip the hostname) under a running instance. | bug 126's headline: a renamed host **no longer kills its own DB**. Needs a real hostname change — Claude will read `combined.log` and the lock file as you go. | DEFERRED-TO-HUMAN |
 
+| I3 | CLAUDE | Close-out tidy-up: stop the server, then `--lock-clean` the leftover lock. | **RAN → found #119.** Two things surfaced. (a) `quilltap-web` has **no SIGTERM handler** — the log ends mid-request with zero shutdown lines, so a graceful `kill` leaves exactly the state an ungraceful one does. Not obviously wrong (Node does not handle SIGTERM by default either) and NOT filed, but it means "stop cleanly" and "kill -9" are the same operation today. (b) `--lock-clean` refused with a false claim → **finding #119** — which this walk first mis-filed as a v5 defect and "fixed", until **Tier R failed 5 of 223 cases** and proved the sentence is v4's own. Reverted, pinned both ways, filed upstream as **v4 bug 144**. | **PASS (found #119)** |
+
 ### Part J — standing 💸 (human, cost/judgment)
 
 | # | Owner | Item | Status |
@@ -233,6 +235,18 @@ The arithmetic checks out to the day (42 days elapsed = 6 weeks 0 days; 230 rema
 
 - **#118 — the paused-room notice promises an answer that never comes.** FIXED,
   commit `6e11605a`, SPA 0.5.722. Full row in `dogfood-findings.md`.
+- **#119 — `--lock-clean` claims a dead process is alive.** **NOT a v5 defect —
+  a faithfully ported v4 bug, filed upstream as v4 bug 144 and pinned both
+  ways.** Found by the close-out gesture (I3, below): kill the server, then
+  clean the lock. ⚠ **This walk got it wrong first**: it filed the sentence as
+  v5-invented and changed it, on a grep of the v4 repo's `scripts/`, `lib/` and
+  `bin/` that never looked in `packages/quilltap/bin/quilltap.js:630-634`, where
+  v4 emits both lines verbatim — a failed grep reported as proof of absence on a
+  question that HAD an oracle. **Tier R, which drives v4's real launcher, failed
+  5 of 223 cases** and the change was reverted. The refusal itself is correct in
+  both apps (bug 126's deliberate five-minute freshness fallback for every
+  environment); only the sentence is wrong, and it is v4's to fix. Full row in
+  `dogfood-findings.md`.
 
 ### Free proofs the walk picked up along the way
 

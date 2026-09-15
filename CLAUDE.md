@@ -3585,7 +3585,17 @@ records THERE. Update this summary only when a phase or round completes.
   **stale-lock reclaim** after a SIGKILL, the lock's own history reading
   `stale-detected … PID 17168 is no longer running` with the hostname playing
   no part; the gallery 409's **four FLAT siblings**; `?download=1`; the Almanack
-  row; and the memory-gate lines on both arms. **Final: 30 rows run, all PASS.**
+  row; and the memory-gate lines on both arms. **Final: 31 rows run, all PASS.** The close-out
+  tidy-up became a row of its own and found **#119**: `quilltap db --lock-clean`
+  refuses with *"its holder is alive"* over a PID `assess_lock` has just
+  computed dead, and that the BOOT path reclaims. ⚠ **The walk mis-filed it as a
+  v5-invented string and changed the wording — wrong.** v4 emits both lines
+  verbatim (`packages/quilltap/bin/quilltap.js:630-634`); the grep that
+  "established" otherwise never looked in `packages/quilltap/bin/`, and **Tier R
+  failed 5 of 223 cases**. Reverted, **pinned both ways**, filed upstream as
+  **v4 bug 144**; Tier R back to 223/0. cli 0.0.21, zero behaviour change. The
+  standing lesson: **run the oracle BEFORE changing a user-facing string** — a
+  failed grep is not proof of absence where an oracle exists.
   ⚠ **That session also CORRECTED this walk's own claim and then FILED it
   upstream as v4 bug 143** — the 10 duplicate `generationKey` groups all PREDATE
   v4's 2026-09-11 collapse (newest 2026-09-07), so they are survivors, not

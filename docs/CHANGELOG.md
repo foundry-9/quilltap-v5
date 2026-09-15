@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(cli): pin v4's `--lock-clean` wording and file it as v4 bug 144 (dogfood #119)
+
+_Versions: cli 0.0.21._
+
+`quilltap db --lock-clean` refuses a fresh-heartbeat lock with "Lock is still
+being refreshed (heartbeat Ns ago) — its holder is alive. Cannot clean." The arm
+is reached only when `alive` is false, so it asserts liveness in exactly the
+case the code has just disproved, and the boot path reclaims that same lock
+logging `PID <n> is no longer running`.
+
+The 2026-09-15 dogfood walk filed this as a v5-invented string and changed the
+wording. That was wrong: v4's launcher emits both lines verbatim at
+`packages/quilltap/bin/quilltap.js:630-634`, and the grep that concluded
+otherwise searched the v4 repo's `scripts/`, `lib/` and `bin/` without looking
+in `packages/quilltap/bin/`. The CLI differential — which drives v4's real
+launcher — failed 5 of 223 cases on the divergence, and the change was reverted.
+
+v5 now keeps v4's bytes deliberately. The refusal lines moved into a pure
+`lock_clean_refusal_lines()` whose doc comment records that the text is false
+and why it stays, and `a_fresh_heartbeat_keeps_v4s_false_liveness_claim` asserts
+the false claim on purpose, so v4's eventual fix reddens it by design and the
+port converges at the next drift catch-up. Filed upstream as v4 bug 144. No
+behaviour change; Tier R back to 223/0.
+
 #### 2026-09-15 — docs(dogfood): file v4 bug 143 and record the filing in the drift ledger
 
 _Docs-only change._

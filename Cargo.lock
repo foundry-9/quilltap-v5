@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-cli"
-version = "0.0.20"
+version = "0.0.21"
 dependencies = [
  "jiff",
  "libc",

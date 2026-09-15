@@ -125815,6 +125815,46 @@ verbatim**. v5's cache is unaffected; C1 proved it hits. ⚠ The filing moved v4
 ledger's §3 as NO-PORT?, with the regen rule left at NO PIN REQUIRED on a
 verified-empty functional diff.
 
+**Close-out: finding #119 — and the walk's own worst call, caught by the gate.**
+`quilltap db --lock-clean` refuses with a sentence the surrounding code has just
+disproved: *"Lock is still being refreshed (heartbeat 82s ago) — its holder is
+alive. Cannot clean."* over a reaped PID, plus *"Stop the running instance
+first…"* when there is no instance. The arm is reached ONLY when `alive` is
+false, and the BOOT path reclaims that same lock logging `PID 17168 is no longer
+running` (row I2) — the two halves of the product disagree in writing about one
+lock file.
+
+⚠ **The walk filed this as a v5-invented string and changed the wording. That
+was wrong.** v4's launcher emits both lines verbatim at
+`packages/quilltap/bin/quilltap.js:630-634`; the grep that "established"
+otherwise searched the v4 repo's `scripts/`, `lib/` and `bin/` and never looked
+in `packages/quilltap/bin/`. A failed grep was reported as proof of absence on a
+question that **had an oracle** — and Tier R is that oracle for every `quilltap`
+CLI surface. Run after the change, it failed **5 of 223 cases** (`lock clean
+suspect but fresh heartbeat refuses`, `lock clean docker fresh refuses`, `lock
+clean retired lima env`, `lock clean foreign fresh local refuses`, +1), all the
+same diff.
+
+**Reverted to v4's bytes; PINNED BOTH WAYS; filed upstream as v4 bug 144.** The
+refusal itself is correct in both apps — bug 126's deliberate freshness fallback,
+five minutes, every environment — so only the sentence is at issue and it is
+v4's to fix. The refusal lines were kept in a pure `lock_clean_refusal_lines()`,
+whose doc comment now records that the text is false and why it stays, and
+`a_fresh_heartbeat_keeps_v4s_false_liveness_claim` asserts
+`first.contains("its holder is alive")` **on purpose** so v4's eventual fix
+reddens it by design. Tier R back to **223/0** (330 s — not a 0.00 s skip).
+cli 0.0.21, zero behaviour change.
+
+**The standing lesson:** run the oracle BEFORE changing a user-facing string, not
+after. Tier R answers "does v4 say this?" in one step, and would have cost five
+minutes instead of a wrong filing, a wrong fix and a revert.
+
+**Recorded, not filed:** `quilltap-web` has no SIGTERM handler — the log ends
+mid-request with no shutdown lines, so a graceful `kill` leaves the same state an
+ungraceful one does. Node does not handle SIGTERM by default either, and the
+stale-lock reclaim covers the consequence (proven in I2), so this is an
+observation rather than a defect.
+
 **Two more instrument traps banked:** the server logs at `info` by default, so
 every `debug`-level comparand (all three memory-gate lines) is invisible until
 `RUST_LOG=debug` — the API answering correctly while the log shows nothing reads
