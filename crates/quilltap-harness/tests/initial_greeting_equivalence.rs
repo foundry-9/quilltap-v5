@@ -9,8 +9,18 @@
 //!
 //! Cases: a plain success; content-filter (empty content + completion tokens);
 //! empty content with no usage (not a filter); a whitespace-only response (trims
-//! to empty → filter); and a with-context case (memories + project +
-//! recent-conversations block folded into the augmented prompt).
+//! to empty → filter); a with-context case (memories + project +
+//! recent-conversations block folded into the augmented prompt); and — P4.D190,
+//! v4 `f90144ac4` bug 141 — the two FAILURE shapes, where v4 rethrows out of
+//! `generateGreetingMessage` and the comparand is the rejection's `name` +
+//! message: a stalled provider (v4's REAL `LLMStreamStalledError`, thrown by the
+//! mock so v4's own `instanceof` is what is measured) and an ordinary `502 Bad
+//! Gateway`, the arm that proves the port does not over-classify a failure as a
+//! silence.
+//!
+//! ⚠ The oracle imports `@/lib/llm/stream-watchdog`, which does not exist at the
+//! `31436bae4` baseline — every regen of this family runs from a worktree pinned
+//! at `ffb6b3119` or later.
 //!
 //! Build the oracle (Node 24, from the v4 checkout; jest ignores `.claude/`
 //! venues, so the case stages through a /tmp mirror):
@@ -31,7 +41,7 @@ use std::collections::HashMap;
 
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
-    CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamUsage,
+    CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamError, StreamUsage,
 };
 use quilltap_core::services::initial_greeting::{
     generate_greeting_message, GreetingRequest, ParticipantMemory, ProjectContext,
@@ -62,6 +72,23 @@ struct CaseSpec {
     /// rather than concatenates).
     #[serde(rename = "cannedReasoning", default)]
     canned_reasoning: Vec<String>,
+    /// P4.D190 (§C.4): pose a stalled provider. The canned sequence yields
+    /// `chunks_received` content chunks and then the stalled `Err` the watchdog
+    /// would have raised, so the count the error carries is the count the
+    /// consumer saw.
+    #[serde(default)]
+    stall: Option<StallSpec>,
+    /// P4.D190 (§C.4): pose an ORDINARY provider failure.
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct StallSpec {
+    #[serde(rename = "budgetMs")]
+    budget_ms: u64,
+    #[serde(rename = "chunksReceived")]
+    chunks_received: u64,
 }
 
 #[derive(Deserialize)]
@@ -90,7 +117,19 @@ struct UsageSpec {
 struct OracleRow {
     id: String,
     request: OracleRequest,
-    result: OracleResult,
+    /// `None` when v4 REJECTED (see `error`).
+    result: Option<OracleResult>,
+    /// P4.D190: v4's rejection, `{name, message}` — `name` is the byte v4's own
+    /// greeting ladder reads with `instanceof`, and the port answers with
+    /// [`StreamError::v4_name`].
+    #[serde(default)]
+    error: Option<OracleError>,
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+struct OracleError {
+    name: String,
+    message: String,
 }
 #[derive(Deserialize)]
 struct OracleRequest {
@@ -167,15 +206,32 @@ async fn initial_greeting_matches_oracle() {
                 ..Default::default()
             }));
         }
-        if !c.canned_content.is_empty() {
-            chunks.push(Ok(StreamChunk::content(&c.canned_content)));
+        // P4.D190 (§C.4): a failure case ENDS the sequence — the terminal item
+        // is the error the watchdog (or the provider) would have raised, in the
+        // shape the oracle's mock threw on v4's side.
+        if let Some(st) = &c.stall {
+            for i in 0..st.chunks_received {
+                chunks.push(Ok(StreamChunk::content(format!("chunk-{i} "))));
+            }
+            chunks.push(Err(StreamError::stalled(
+                st.budget_ms,
+                st.chunks_received,
+                Some(&c.provider),
+                Some(&c.model),
+            )));
+        } else if let Some(e) = &c.error {
+            chunks.push(Err(StreamError::new(e)));
+        } else {
+            if !c.canned_content.is_empty() {
+                chunks.push(Ok(StreamChunk::content(&c.canned_content)));
+            }
+            let usage = c.canned_usage.as_ref().map(|u| StreamUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            });
+            chunks.push(Ok(StreamChunk::done(usage)));
         }
-        let usage = c.canned_usage.as_ref().map(|u| StreamUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-        });
-        chunks.push(Ok(StreamChunk::done(usage)));
         let provider = CannedStreamingProvider::new().with_stream(
             &row.request.provider,
             &row.request.model,
@@ -212,30 +268,66 @@ async fn initial_greeting_matches_oracle() {
             character_id: Some("char-1".to_string()),
         };
 
-        let result = generate_greeting_message(&provider, &req, None)
-            .await
-            .unwrap_or_else(|e| {
-                panic!(
-                    "case {}: greeting errored (canned miss?): {}",
-                    c.id, e.message
-                )
-            });
-
-        let got = OracleResult {
-            content: result.content,
-            reasoning_content: result.reasoning_content,
-            content_filter_detected: result.content_filter_detected,
-        };
-        assert_eq!(got, row.result, "case {}: rust != oracle", c.id);
+        match generate_greeting_message(&provider, &req, None).await {
+            Ok(result) => {
+                assert!(
+                    row.error.is_none(),
+                    "case {}: v4 rejected with {:?} and the port resolved",
+                    c.id,
+                    row.error
+                );
+                let got = OracleResult {
+                    content: result.content,
+                    reasoning_content: result.reasoning_content,
+                    content_filter_detected: result.content_filter_detected,
+                };
+                let want = row.result.as_ref().unwrap_or_else(|| {
+                    panic!("case {}: oracle row has neither result nor error", c.id)
+                });
+                assert_eq!(&got, want, "case {}: rust != oracle", c.id);
+            }
+            Err(e) => {
+                // P4.D190: v4 rethrows; the comparand is the CLASS (v4's
+                // `error.name`, which its greeting ladder reads by
+                // `instanceof`) plus the message bytes.
+                let want = row.error.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "case {}: the port errored ({}) where v4 resolved",
+                        c.id, e.message
+                    )
+                });
+                let got = OracleError {
+                    name: e.v4_name().to_string(),
+                    message: e.message.clone(),
+                };
+                assert_eq!(&got, want, "case {}: rust error != oracle error", c.id);
+                assert!(
+                    row.result.is_none(),
+                    "case {}: oracle carries both a result and an error",
+                    c.id
+                );
+            }
+        }
     }
     assert_eq!(oracle.len(), cases.len(), "oracle case count drifted");
     // P4.D79: a stale oracle predating the reasoning capture would carry no
     // `reasoningContent` key at all and every case would compare empty-to-empty.
     // At least one case must actually have captured some.
     assert!(
+        oracle.values().any(|r| r
+            .result
+            .as_ref()
+            .is_some_and(|x| !x.reasoning_content.is_empty())),
+        "no case captured reasoning — regenerate the oracle"
+    );
+    // P4.D190: an oracle regenerated at the BASELINE cannot import
+    // `stream-watchdog` at all, and one regenerated from a tree whose mock
+    // still resolved the class across `jest.resetModules()` would record
+    // `Error` for the stall. Both read as a stale oracle, not as a port bug.
+    assert!(
         oracle
             .values()
-            .any(|r| !r.result.reasoning_content.is_empty()),
-        "no case captured reasoning — regenerate the oracle"
+            .any(|r| r.error.as_ref().is_some_and(|e| e.name == "LLMStreamStalledError")),
+        "no case recorded a stalled rejection — regenerate the oracle from a pin at or past `ffb6b3119`"
     );
 }

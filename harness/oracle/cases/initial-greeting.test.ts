@@ -29,6 +29,18 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import type { LLMStreamStalledError as LLMStreamStalledErrorType } from '@/lib/llm/stream-watchdog';
+
+/**
+ * P4.D190 — the class the CURRENT module registry holds. The `it()` below
+ * calls `jest.resetModules()` before importing `generateGreetingMessage`, so
+ * the watchdog it wraps the stream with is a FRESH copy of
+ * `@/lib/llm/stream-watchdog`; a class captured by a top-level `import` here
+ * is from the previous generation and `instanceof` against it is false, which
+ * would silently take the watchdog's non-stall branch.
+ */
+let StalledError: typeof LLMStreamStalledErrorType;
+
 interface CaseSpec {
   id: string;
   systemPrompt: string;
@@ -48,6 +60,22 @@ interface CaseSpec {
    * content, the way the real providers interleave them.
    */
   cannedReasoning?: string[];
+  /**
+   * P4.D190 (§C.4): pose a stalled provider. The mock throws v4's REAL
+   * `LLMStreamStalledError` from inside the generator, so `withStallWatchdog`
+   * sees it as its own class (sets `stalled`, logs, rethrows) and
+   * `generateGreetingMessage` logs it onto the `llm_logs` row and rethrows —
+   * the whole path a silent provider actually takes. `chunksReceived` content
+   * chunks are yielded first, so the count on the error agrees with what the
+   * consumer saw.
+   */
+  stall?: { budgetMs: number; chunksReceived: number };
+  /**
+   * P4.D190 (§C.4): pose an ORDINARY provider failure — a plain `Error`, which
+   * the ladder must NOT read as a silence. The arm that proves the port does
+   * not over-classify.
+   */
+  error?: string;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +88,8 @@ const recorded = new Map<string, unknown>();
 
 it('generates greetings (records prompt bytes + result)', async () => {
   jest.resetModules();
+  // Same registry generation as `generateGreetingMessage`'s own import.
+  StalledError = (await import('@/lib/llm/stream-watchdog')).LLMStreamStalledError;
 
   jest.doMock('@/lib/services/llm-logging.service', () => {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
@@ -85,6 +115,18 @@ it('generates greetings (records prompt bytes + result)', async () => {
           }
           void key;
           for (const r of c.cannedReasoning ?? []) yield { reasoningContent: r };
+          if (c.stall) {
+            // The chunks the consumer had already seen before the silence, so
+            // the count carried on the error is the count it observed.
+            for (let i = 0; i < c.stall.chunksReceived; i++) yield { content: `chunk-${i} ` };
+            throw new StalledError(
+              c.stall.budgetMs,
+              c.stall.chunksReceived,
+              provider,
+              params.model,
+            );
+          }
+          if (c.error) throw new Error(c.error);
           if (c.cannedContent) yield { content: c.cannedContent };
           if (c.cannedUsage) yield { usage: c.cannedUsage };
         },
@@ -97,27 +139,43 @@ it('generates greetings (records prompt bytes + result)', async () => {
   const lines: string[] = [];
   for (const c of spec.cases) {
     currentCase = c;
-    const result = await generateGreetingMessage({
-      systemPrompt: c.systemPrompt,
-      characterName: c.characterName,
-      provider: c.provider,
-      modelName: c.model,
-      apiKey: 'test-key',
-      temperature: c.temperature ?? undefined,
-      participantMemories: c.memories.length > 0 ? c.memories : undefined,
-      projectContext: c.project,
-      recentConversationsBlock: c.recentConversationsBlock ?? undefined,
-      characterId: 'char-1',
-    });
+    // P4.D190: v4 rethrows a stream failure out of `generateGreetingMessage`
+    // (after logging it), so a case can REJECT. Record the rejection's `name`
+    // — the byte v4's ladder reads with `instanceof` and v5 reads as
+    // `StreamError::v4_name()` — beside its message.
+    let result: Awaited<ReturnType<typeof generateGreetingMessage>> | null = null;
+    let error: { name: string; message: string } | null = null;
+    try {
+      result = await generateGreetingMessage({
+        systemPrompt: c.systemPrompt,
+        characterName: c.characterName,
+        provider: c.provider,
+        modelName: c.model,
+        apiKey: 'test-key',
+        temperature: c.temperature ?? undefined,
+        participantMemories: c.memories.length > 0 ? c.memories : undefined,
+        projectContext: c.project,
+        recentConversationsBlock: c.recentConversationsBlock ?? undefined,
+        characterId: 'char-1',
+      });
+    } catch (err) {
+      error = {
+        name: err instanceof Error ? err.name : 'Error',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
     lines.push(
       JSON.stringify({
         id: c.id,
         request: recorded.get(c.id),
-        result: {
-          content: result.content,
-          reasoningContent: result.reasoningContent,
-          contentFilterDetected: result.contentFilterDetected,
-        },
+        result: result
+          ? {
+              content: result.content,
+              reasoningContent: result.reasoningContent,
+              contentFilterDetected: result.contentFilterDetected,
+            }
+          : null,
+        error,
       }),
     );
   }

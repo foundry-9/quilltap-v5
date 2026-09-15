@@ -126067,3 +126067,101 @@ unchanged.
   understudy answering, rather than hanging.
 - The MID-STREAM arm on real data (a socket that dies after a few chunks):
   v4 and v5 both keep the partial and do NOT substitute.
+## P4.D190 — the greeting stall watchdog + the greeting ladder's own-profile gate (v4 `f90144ac4`, bug 141)
+
+Lane branch `claude/p4-d190-greeting-stall-ladder-b555d2`, stacked on
+P4.D189's substrate commit `73546827`. Oracle baseline `31436bae4`; **every
+regen pinned at `/tmp/qt-v4-pin-p4d190-ffb6b3119`** (both this lane's oracles
+import `@/lib/llm/stream-watchdog`, which does not exist at the baseline), with
+`QT_V4_ROOT=/tmp/qt-v4-pin-p4d190-31436bae4` for the embed guards. §2 freshness
+probe at lane start: branch `main`, tree clean, `ffb6b3119..main` empty,
+`1a2b2164c..bugfix` empty — PASS.
+
+### Unit 1 — the greeting wears the watchdog (`services/initial_greeting.rs`)
+
+`GREETING_FIRST_CHUNK_TIMEOUT_MS = 90_000` / `GREETING_IDLE_TIMEOUT_MS =
+60_000` with v4's doc carried, and `watch_stream(rx, …, StallWatchdogContext {
+context: "initial-greeting", user_id, chat_id, character_id, message_id: None
+})` around the existing loop. The loop itself is UNCHANGED: a stall arrives as
+an ordinary mid-stream `Err`, lands on the `llm_logs` row's `response.error`
+(which already spelled `stream_error.message`) and propagates — v4's
+`catch { streamError = …; throw err }` + `finally { logLLMCall(…) }`.
+
+- The two chat-scoped ids ride the `GreetingLog` seam (v5's home for v4's
+  `userId`/`chatId` params), `character_id` comes off the request. Recorded:
+  when `log` is `None` the watchdog's bag carries neither id, which is the same
+  set v4 has when its own optionals are undefined.
+- **Handoff to P4.D189's wrap census (its Tier 1 item 2): `initial_greeting.rs`
+  now contains ONE `watch_stream` call.** The eleventh site. The unifier moves
+  that count.
+- Three unit pins (no NDJSON corpus can observe a wall-clock timeout — the
+  transport module's own falsifiability ruling): a never-speaking provider
+  (`SilentAfter`, the sender HELD so the channel never closes) stalls at
+  `90000ms` / 0 chunks with `StreamErrorKind::Stalled` carrying provider+model;
+  one content chunk then silence stalls at `60000ms` / 1 chunk; and a real
+  two-partition DB proves the stalled sentence reaches the `llm_logs` row's
+  `response.error`.
+
+### Unit 2 — `initial_greeting_equivalence`, 6 → 8 cases + an `error` comparand
+
+The oracle now records a REJECTION (`{name, message}`) beside `result`, and the
+Rust side compares `StreamError::v4_name()` + `message` on the `Err`.
+
+- `greet_stalled_first_chunk` (`stall: {budgetMs: 90000, chunksReceived: 0}`):
+  both sides answer `LLMStreamStalledError` /
+  `Provider stream never sent a first chunk within 90000ms`.
+- `greet_provider_error_as_itself` (`error: "502 Bad Gateway"`): both answer
+  `Error` / `502 Bad Gateway` — the arm that proves the port does not
+  over-classify an ordinary failure as a silence.
+- A stale-oracle guard: at least one case must have recorded a
+  `LLMStreamStalledError` rejection, so an oracle regenerated at the baseline
+  (where the module does not exist) or from a tree with the `instanceof` trap
+  below reads as stale rather than as a port bug.
+
+### ⚠ The finding this unit's first regen produced: a jest oracle's `instanceof` across `jest.resetModules()`
+
+Both oracle cases originally imported `LLMStreamStalledError` at module top
+level and threw it from the mocked `streamMessage`. `runCase` /
+the `it()` body call `jest.resetModules()` **before** importing the code under
+test, so the route and `generateGreetingMessage` resolve their OWN copy of
+`@/lib/llm/stream-watchdog`; a class captured by a top-level import belongs to
+the PREVIOUS registry generation and `error instanceof LLMStreamStalledError`
+inside v4 is then **false**.
+
+The first capstone regen recorded it exactly as that: `gs_own_stall_ends_ladder`
+made **two** stream calls (v4's own `route.greeting-stall.test.ts` asserts ONE)
+and `gs_stall_after_memory_strip` made three. The oracle was faithfully
+recording v4's **pre-fix** ladder. Both cases now resolve the class after the
+reset, from the same generation, and the counts are 1 and 2.
+
+### Mutation proof (unit 1)
+
+| mutation | expected red | result |
+|---|---|---|
+| greeting budgets → `StallBudgets::default()` (the Salon's 240s/120s) | the three `initial_greeting.rs` stall pins | RED — all three (`…within 240000ms`), reverted by file backup |
+
+### Gate (at this commit)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+clean; `cargo test --workspace` with `QT_ORACLE_GREETING` + `QT_V4_ROOT`:
+**569 test binaries / 3,286 passed / 0 failed / 2 ignored — exit 0**
+(`initial_greeting_equivalence` confirmed RUN by name against a pin-fresh
+oracle, 8 rows). No SPA change; no e2e owed.
+
+### Regen recipe (unit 2)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+PIN=/tmp/qt-v4-pin-p4d190-ffb6b3119        # MUST be at/after ffb6b3119
+TMPO=/tmp/qt-greeting-oracle-p4d190
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/initial-greeting.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/initial-greeting.json" "$TMPO/fixtures/"
+cd "$PIN"
+QT_ORACLE_OUT=/tmp/oracle-greeting.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- initial-greeting
+# then:  QT_ORACLE_GREETING=/tmp/oracle-greeting.ndjson \
+#          cargo test -p quilltap-harness --test initial_greeting_equivalence
+```

@@ -24,11 +24,22 @@ use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 use crate::model::stream::StreamMessage;
 use crate::model::stream::{StreamError, StreamParams, StreamUsage, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::llm_logging::{
     self, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage, LogResponse,
     LogUsage,
 };
 use serde_json::Value;
+
+/// The greeting's own stall budgets, tighter than the Salon's defaults (v4
+/// `GREETING_FIRST_CHUNK_TIMEOUT_MS` / `GREETING_IDLE_TIMEOUT_MS`, bug 141).
+///
+/// This call is short and low-context — a sentence or two, no history — and it
+/// runs inside the blocking Green Room dialog, where every second is a second
+/// the operator spends looking at a dialog they cannot dismiss. A model that has
+/// not begun a two-sentence opener in ninety seconds is not going to.
+const GREETING_FIRST_CHUNK_TIMEOUT_MS: u64 = 90_000;
+const GREETING_IDLE_TIMEOUT_MS: u64 = 60_000;
 
 /// A memory about another participant, for the greeting context (v4
 /// `ParticipantMemoryForGreeting`).
@@ -195,9 +206,36 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
     let mut final_usage: Option<StreamUsage> = None;
     let mut stream_error: Option<StreamError> = None;
 
-    let mut rx = streaming
+    // v4 `f90144ac4` (bug 141): the greeting is the ONE streaming consumer that
+    // bypasses the Salon's funnel, so it wears the watchdog itself — a provider
+    // that took the request, answered with headers and then went quiet used to
+    // hold the whole create open, and with it the Green Room dialog the operator
+    // cannot dismiss. The loop below is unchanged: a stall arrives as an
+    // ordinary mid-stream `Err`, which is logged onto the `llm_logs` row and
+    // rethrown exactly like any other (v4 `catch { streamError = …; throw err }`).
+    let rx = streaming
         .stream_message(&req.provider, req.base_url.as_deref(), &params)
         .await;
+    let mut rx = watch_stream(
+        rx,
+        StallBudgets {
+            first_chunk_ms: GREETING_FIRST_CHUNK_TIMEOUT_MS,
+            idle_ms: GREETING_IDLE_TIMEOUT_MS,
+        },
+        StallWatchdogContext {
+            provider: &req.provider,
+            model_name: &req.model_name,
+            context: "initial-greeting",
+            // v4's `logContext` spells the ids from `generateGreetingMessage`'s
+            // own optional params; in v5 the two chat-scoped ones ride the
+            // `GreetingLog` seam, which is `Some` on exactly the calls v4 has
+            // them on.
+            user_id: log.map(|l| l.user_id),
+            chat_id: log.and_then(|l| l.chat_id),
+            character_id: req.character_id.as_deref(),
+            message_id: None,
+        },
+    );
     while let Some(item) = rx.recv().await {
         match item {
             Ok(chunk) => {
@@ -290,6 +328,169 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::stream::{StreamChunk, StreamChunkResult, StreamErrorKind};
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::mpsc;
+
+    /// A provider that yields what it was given and then goes quiet FOREVER —
+    /// the shape bug 141 is about. The `Sender`s are HELD (a dropped one closes
+    /// the channel, which is the one thing a stalled socket does not do).
+    #[derive(Default)]
+    struct SilentAfter {
+        prefix: Vec<String>,
+        held: Arc<Mutex<Vec<mpsc::Sender<StreamChunkResult>>>>,
+    }
+
+    impl StreamingCompletionProvider for SilentAfter {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl std::future::Future<Output = mpsc::Receiver<StreamChunkResult>> + Send {
+            let prefix = self.prefix.clone();
+            let held = Arc::clone(&self.held);
+            async move {
+                let (tx, rx) = mpsc::channel(prefix.len().max(1));
+                for c in &prefix {
+                    tx.try_send(Ok(StreamChunk::content(c))).unwrap();
+                }
+                held.lock().unwrap().push(tx);
+                rx
+            }
+        }
+    }
+
+    fn greeting_request() -> GreetingRequest {
+        GreetingRequest {
+            system_prompt: "You are Aria, a knight.".into(),
+            character_name: "Aria".into(),
+            provider: "DEEPSEEK".into(),
+            model_name: "deepseek-v4-flash".into(),
+            api_key: "test-key".into(),
+            character_id: Some("char-1".into()),
+            ..Default::default()
+        }
+    }
+
+    /// v4 bug 141: the greeting wears its OWN budgets (90s / 60s), not the
+    /// Salon's 240s / 120s. Nothing else in this file can tell them apart, and
+    /// no NDJSON corpus can observe a wall-clock timeout at all, so this is the
+    /// pin for both numbers.
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_provider_stalls_the_greeting_at_the_first_chunk_budget() {
+        let provider = SilentAfter::default();
+        let err = generate_greeting_message(&provider, &greeting_request(), None)
+            .await
+            .expect_err("a provider that never speaks must not resolve");
+        assert!(err.is_stalled(), "{err:?}");
+        assert_eq!(
+            err.message,
+            "Provider stream never sent a first chunk within 90000ms"
+        );
+        assert_eq!(
+            err.kind,
+            StreamErrorKind::Stalled {
+                budget_ms: GREETING_FIRST_CHUNK_TIMEOUT_MS,
+                chunks_received: 0,
+                provider: Some("DEEPSEEK".into()),
+                model_name: Some("deepseek-v4-flash".into()),
+            }
+        );
+    }
+
+    /// Once a chunk has landed the tighter between-chunks budget applies, and
+    /// the count on the error is what the consumer actually saw.
+    #[tokio::test(start_paused = true)]
+    async fn a_provider_that_goes_quiet_mid_greeting_stalls_at_the_idle_budget() {
+        let provider = SilentAfter {
+            prefix: vec!["Well met".into()],
+            ..Default::default()
+        };
+        let err = generate_greeting_message(&provider, &greeting_request(), None)
+            .await
+            .expect_err("a provider that goes quiet must not resolve");
+        assert_eq!(
+            err.message,
+            "Provider stream went quiet for 60000ms after 1 chunk(s)"
+        );
+        assert!(matches!(
+            err.kind,
+            StreamErrorKind::Stalled {
+                budget_ms: GREETING_IDLE_TIMEOUT_MS,
+                chunks_received: 1,
+                ..
+            }
+        ));
+    }
+
+    /// The `llm_logs` row v4 writes in its `finally` carries the stall's own
+    /// sentence — the only place a silence is distinguishable from a refusal
+    /// after the fact. v5 already spelled `error: streamError.message`; bug 141
+    /// changes what can land there, so this pins the pair.
+    #[tokio::test(start_paused = true)]
+    async fn the_stall_reaches_the_llm_logs_row() {
+        use crate::db::runtime::DbPaths;
+        use crate::db::Writer;
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let ll_path = dir.path().join("llm-logs.db");
+        drop(Writer::open_writable(&main_path, PEPPER).unwrap());
+        {
+            let w = Writer::open_writable(&ll_path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE llm_logs (\
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
+                       chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+                       modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
+                       request TEXT, response TEXT, usage TEXT, \
+                       cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
+                       durationMs REAL, createdAt TEXT, updatedAt TEXT);",
+                )
+                .unwrap();
+        }
+        let db = crate::db::runtime::Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: Some(ll_path),
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let log = GreetingLog {
+            db: &db,
+            user_id: "user-1",
+            chat_id: Some("chat-7"),
+            log_context: LogContext::none(),
+        };
+        let provider = SilentAfter::default();
+        let err = generate_greeting_message(&provider, &greeting_request(), Some(&log))
+            .await
+            .expect_err("a provider that never speaks must not resolve");
+        assert!(err.is_stalled(), "{err:?}");
+
+        let responses: Vec<String> = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn.prepare("SELECT response FROM llm_logs")?;
+                let out = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(out)
+            })
+            .unwrap();
+        assert_eq!(responses.len(), 1, "one CHAT_MESSAGE row: {responses:?}");
+        let response: Value = serde_json::from_str(&responses[0]).unwrap();
+        assert_eq!(
+            response["error"].as_str(),
+            Some("Provider stream never sent a first chunk within 90000ms"),
+            "the greeting row must carry the stall\u{2019}s own sentence: {response}"
+        );
+    }
 
     #[test]
     fn context_section_layout() {

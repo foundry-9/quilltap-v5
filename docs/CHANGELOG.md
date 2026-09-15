@@ -171,6 +171,38 @@ of production files reaching the seam (the twelfth row is the trait's own
 `Arc<T>` delegation). A second test pins every Salon-side wrap to
 `StallBudgets::default()` and `StallWatchdogContext::streaming_service(`, which
 the counts alone cannot see. Unwrapping one site reddens both by file name.
+#### 2026-09-15 — feat(llm): the greeting wears the stall watchdog, at its own tighter budgets (bug 141)
+
+_Versions: core 0.0.915, harness 0.0.806._
+
+P4.D190 unit 1–2, ported from v4 `f90144ac4`'s `lib/chat/initial-greeting.ts`
+hunk. `generate_greeting_message` consumes its stream through `watch_stream`
+with the greeting's own budgets — 90 s to the first chunk, 60 s between chunks,
+against the Salon's 240 s / 120 s — and a `context: "initial-greeting"` log bag
+carrying the user, chat and character ids. The greeting is the one streaming
+consumer that bypasses the Salon's funnel, and it runs behind the Green Room
+dialog the operator cannot dismiss, so a provider that took the request and then
+went quiet held the whole chat creation open.
+
+The consumer loop is unchanged: a stall arrives as an ordinary mid-stream `Err`,
+is logged onto the `llm_logs` row (`response.error` already carried
+`streamError.message`; now a stall's own sentence can land there) and is
+propagated, exactly as v4 logs it and rethrows.
+
+`initial_greeting_equivalence` gains the two FAILURE shapes and an `error`
+comparand: `greet_stalled_first_chunk` throws v4's REAL `LLMStreamStalledError`
+from the oracle's mock and both sides answer the class
+(`StreamError::v4_name()`) plus the message bytes, and
+`greet_provider_error_as_itself` proves a plain `502 Bad Gateway` is NOT
+over-classified as a silence. The oracle's own stall class is now resolved
+AFTER `jest.resetModules()`: a top-level `import` of it belongs to the previous
+registry generation, and v4's `instanceof` against that copy is false — which
+would have recorded the pre-fix ladder as v4's contract.
+
+Three unit pins carry what no NDJSON can see: a never-speaking provider stalls
+at 90 s with zero chunks, one that goes quiet after a chunk stalls at 60 s with
+one, and the stalled sentence reaches the `llm_logs` row. Swapping the greeting
+budgets for the Salon defaults reddens all three.
 
 #### 2026-09-14 — feat(llm): a provider that goes quiet mid-stream now fails inside a budget (bug 141, substrate)
 

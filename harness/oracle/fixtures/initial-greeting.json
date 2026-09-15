@@ -126,6 +126,37 @@
         "thought one and two",
         ""
       ]
+    },
+    {
+      "id": "greet_stalled_first_chunk",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "DEEPSEEK",
+      "model": "deepseek-v4-flash",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "",
+      "cannedUsage": null,
+      "stall": {
+        "budgetMs": 90000,
+        "chunksReceived": 0
+      }
+    },
+    {
+      "id": "greet_provider_error_as_itself",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "DEEPSEEK",
+      "model": "deepseek-v4-flash",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "",
+      "cannedUsage": null,
+      "error": "502 Bad Gateway"
     }
   ]
 }
