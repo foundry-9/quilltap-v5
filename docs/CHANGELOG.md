@@ -290,6 +290,37 @@ the source) and the warn's field bag pinned through a thread-scoped capture
 layer. Five mutations each reddened exactly their named tests: a cumulative
 budget, a reasoning-only chunk that stops counting, answering the stall on
 every `recv`, dropping the warn, and rendering `chunk(s)` as `chunks`.
+#### 2026-09-15 — docs(p4.d191): ratify `85813ddd2` + `364b04ac4` NO-PORT, and the lane's gate record
+
+_Versions: no crate versions bumped._
+
+The two remaining drift rows this lane owns are ratified on their FILE
+LISTS, never on a subject line. `85813ddd2` (v4's native-binding ABI heal)
+touches eight files and has a zero delta on `lib/`, `app/`, `components/`,
+`migrations/`, `public/`, `help/` and `plugins/`; the concern has no v5
+analog, because v5 links the SQLite3MC amalgamation statically through
+`quilltap-sqlite3mc-sys` — there is no `NODE_MODULE_VERSION` to mismatch,
+and a grep of `crates/` for the relevant names returns one comment and no
+code. Tier R at the target pin confirms the CLI's Node-facing arms are
+unmoved: 223 cases, 0 failures. The main checkout's binding was measured
+rather than assumed — it loads under Node 24 (ABI 137) and answers `PRAGMA
+cipher = chacha20` — so the ledger's inert-heal trap is now a
+baseline-pin-only concern. `364b04ac4` is two `docs/` files: the upstream
+filing of the bug this port found, whose own Provenance row credits the
+tier-2 funnel census and whose v5 status reads "does not reproduce —
+deliberately".
+
+Also recorded: the `docs/v4/**` paths that move at the baseline move, with
+their target-pin byte counts, so the unifier copies rather than re-derives;
+and the committed 16-family sweep artifact (`{'ok': 16}`, exit 0) proving
+the convergence and help families regenerate and run at the pin.
+
+Gate: fmt clean; clippy clean in both feature sets; release build clean;
+`cargo test --workspace` 569 test binaries / 3,271 passed / 0 failed / 0
+ignored, exit 0, zero `SKIP:` lines, with each of the lane's families
+confirmed run by name and non-zero duration. No SPA change, so no
+Playwright.
+
 #### 2026-09-15 — docs(help): re-vendor `chats.md` + `connection-profiles.md` from v4 `ffb6b3119` (bug 141's prose)
 
 _Versions: harness 0.0.807, host 0.0.135._

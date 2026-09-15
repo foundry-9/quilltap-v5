@@ -126562,3 +126562,185 @@ python3 harness/tools/recipe_sweep.py \
   --v4 /tmp/qt-v4-pin-p4d191-ffb6b3119 --run help_tree_equivalence
 # (--v4 /tmp/qt-v4-pin-p4d191-31436bae4 for the RED leg)
 ```
+
+### Unit 3 — `85813ddd2` ratified NO-PORT (v4's native-binding ABI heal)
+
+**The file list, not the subject line** (`git show --stat --format= 85813ddd2`):
+
+```
+ README.md                                          |   2 +-
+ .../unit/packages/quilltap/native-rebuild.test.js  | 167 +++++++++++++++++++++
+ docs/CHANGELOG.md                                  |  29 ++++
+ jest.global-setup.js                               |  32 ++--
+ package-lock.json                                  |   4 +-
+ package.json                                       |   2 +-
+ packages/quilltap/lib/native-modules.js            | 103 ++++++++++++-
+ packages/quilltap/package.json                     |   2 +-
+ 8 files changed, 318 insertions(+), 23 deletions(-)
+```
+
+`git show --stat --format= 85813ddd2 -- lib/ app/ components/ migrations/
+public/ help/ plugins/` is **EMPTY** — zero delta on every surface this port
+mirrors. What moved is v4's Node toolchain: `jest.global-setup.js` and
+`packages/quilltap/lib/native-modules.js` (a new `rebuildNativePackage` that
+addresses the package by DIRECTORY, runs `prebuild-install || node-gyp
+rebuild` in place, and VERIFIES the compiled ABI actually moved instead of
+trusting the exit code), plus its unit test, `README.md` and the three
+`4.10.0-dev.35` version markers.
+
+**No v5 analog, measured.** `grep -rn 'native-modules\|NODE_MODULE_VERSION\|
+prebuild-install\|node-gyp' crates/` returns exactly ONE hit and it is a
+COMMENT — `terminal_tools_equivalence.rs:32` citing the memory note. v5 links
+the SQLite3MC amalgamation statically through `quilltap-sqlite3mc-sys`, so
+there is no `NODE_MODULE_VERSION` to mismatch, and the CLI's `db` family is
+Rust reaching `quilltap-core` directly; it cannot reach `native-modules.js`.
+The commit's new sentences fire only on an ABI mismatch, so nothing v5 ships
+can observe them.
+
+**Tier R at the target pin — the only conceivable v5 surface.**
+
+```
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d191-ffb6b3119 QT_NODE=$N/node \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+→ CLI differential: 223 cases, 0 failures        (348.75 s, exit 0)
+```
+
+**223/0** — the count is read from the `--nocapture` line because Tier R
+hides it on PASS (`tier-r-case-count-hidden-on-pass`). Unmoved, as predicted.
+
+**The ABI note — v4's answer to the memory note's open question.** The
+`ffb6b3119` pin carries the FIXED heal, so the ledger §3 trap ("a pinned
+worktree chains the PINNED tree's copy — the old, silently-inert heal")
+applies to this round only at the `31436bae4` NEUTRALITY pin, and after the
+baseline move it stops applying anywhere. **The main checkout's binding is
+currently ABI-matched**, measured rather than assumed: from
+`~/source/quilltap-server/packages/quilltap`, Node 24 (v24.13.1, ABI **137**)
+loads `better-sqlite3-multiple-ciphers` and answers `PRAGMA cipher =
+chacha20`. Consistent with the lane's real-DB runs — the
+`build-chats-messages-ops-fixture.ts` builder (v4's REAL `addMessages` over
+the cipher driver) and the `help-tree-sync` jest oracle both ran from the pin
+with no heal line and no `NODE_MODULE_VERSION` failure. So the memory note
+`oracle-node-abi-gotcha`'s "the durable fix is the human's call" now has v4's
+answer, and the remaining exposure is baseline-pin-only.
+
+### Unit 4 — `364b04ac4` ratified NO-PORT (the bug-142 filing)
+
+**The file list** (`git show --stat --format= 364b04ac4`):
+
+```
+ docs/developer/bugs.md                             |   1 +
+ .../bugs/bug-142-delete-miss-counts-as-removed.md  | 151 +++++++++++++++++++++
+ 2 files changed, 152 insertions(+)
+```
+
+Two files, both under `docs/`. `git show --stat --format= 364b04ac4 -- lib/
+app/ packages/ plugins/ help/ public/ migrations/` is **EMPTY**.
+
+It is the upstream filing of the bug **this port found** — v4's own doc says
+so in its Provenance row: "**Pinned.** Found by the v5 port's tier-2 funnel
+census (`chats_messages_ops_tier2_equivalence`) when `transcriptVersion`
+became a compared cell: v4 reached 3 on a chat where v5 reached 2, and the
+extra bump was a delete of an id that was not there." Its **v5 status** row
+reads "**Does not reproduce — deliberately**", and its "v5 coordination"
+section names `DELETE_MISS_DIVERGENCE` and instructs the v5 side to retire it
+to a plain equality when the fix lands — which unit 1 did, on measurement.
+Nothing to port.
+
+### Tier 2 — the docs mirror (§R.11: the UNIFIER's, listed here so it copies rather than re-derives)
+
+`git diff --name-status 31436bae4 ffb6b3119 -- docs/` at the target pin, with
+the pin's byte counts:
+
+| status | path (in v4) | target-pin bytes | v5 mirror today |
+|---|---|---|---|
+| M | `docs/CHANGELOG.md` | 66,230 | `docs/v4/CHANGELOG.md` 58,531 |
+| M | `docs/developer/bugs.md` | 253,704 | `docs/v4/developer/bugs.md` 246,110 |
+| A | `docs/developer/bugs/fixed/bug-141-stalled-stream-wedges-chat-creation.md` | 9,550 | absent |
+| A | `docs/developer/bugs/fixed/bug-142-delete-miss-counts-as-removed.md` | 9,681 | absent |
+
+The mirror's newest `bugs/fixed/` entry is `bug-140-dead-pause-props.md`, so
+these are the two files to add plus the two to overwrite. No other `docs/`
+path moved in the span.
+
+### Tier 2 — the sweep artifact
+
+`harness/tools/recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d191-ffb6b3119 --run-all
+--families <the sixteen> --results …` — the durable proof that the round's
+convergence + help families regenerate and run at the pin. Committed as
+`harness/tools/sweep-results/2026-09-15-ffb6b3119-p4.d191-convergence-help.json`.
+
+**`totals: {'ok': 16}`, exit 0** — `chats_messages_ops_tier2_equivalence`,
+`help_tree_equivalence`, `help_docs_tier2_equivalence`,
+`help_docs_upsert_tier2_equivalence`, `help_doc_chunking_equivalence`,
+`help_context_resolver_equivalence`,
+`help_chat_orchestrator_tier3_equivalence`, `help_snippet_equivalence`,
+`help_doc_sync_equivalence`, `help_doc_ensure_equivalence`,
+`help_doc_sync_guards_equivalence`, `help_doc_slug_equivalence`,
+`help_system_prompt_equivalence`, `help_tools_equivalence`,
+`help_chats_routes_equivalence`, `help_docs_routes_equivalence`. No family
+regen_failed, no family skipped.
+
+### Gate + lane summary
+
+The ledger's §2 probe PASSED at lane start and before every regen batch
+(branch `main`, tree clean, `ffb6b3119..main` and `1a2b2164c..bugfix` both
+empty) — re-run four times across the lane, never once stale.
+
+| step | result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean (1 m 06 s) |
+| …`--features quilltap-core/native-transport` | clean (2.12 s) |
+| `cargo build --workspace --release` | clean (4 m 20 s) |
+| `cargo test --workspace` (lane env block, `TZ=UTC`, `CARGO_INCREMENTAL=0`) | **569 test binaries / 3,271 passed / 0 failed / 0 ignored — exit 0, ZERO `SKIP:` lines** |
+| the 16-family sweep at the pin | `{'ok': 16}`, exit 0 |
+| Tier R (`cli_differential`, target pin) | **223 cases, 0 failures** |
+
+The lane's families are confirmed RUN BY NAME with non-zero duration inside
+the workspace run, not inferred from the absence of a red:
+`cli_differential` 394.14 s (2 passed via `public_schemas_vendor_guard`'s
+pair), `help_tree_equivalence` 1.14 s,
+`chats_messages_ops_tier2_equivalence` 0.02 s, `help_tree_embed_guard`
+0.02 s, `qtap_schema_embed_guard` 2 passed, `public_schemas_vendor_guard`
+2 passed, `spelling_guard` 1.05 s. The binary/test totals are IDENTICAL to
+the `31436bae4` round's (569 / 3,271), which is the expected shape: this
+lane adds no test and deletes none — the retirement widened one existing
+assertion rather than adding an arm.
+
+**Env block used for the workspace run** (the untouched families' oracle
+vars deliberately withheld, per the gate spec):
+
+```
+QT_ORACLE_CHATSMSGOPS=<scratch>/oracle-chatsmsgops-tgt.ndjson
+QT_FIXTURE_CHATSMSGOPS=<scratch>/qt-chatsmsgops-fixture-tgt.db
+QT_ORACLE_HELP_TREE=<scratch>/oracle-help-tree-tgt.ndjson
+QT_V4_ROOT=/tmp/qt-v4-pin-p4d191-ffb6b3119
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d191-ffb6b3119
+QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node
+```
+
+Lane-scratch paths were used in place of the recipes' shared `/tmp` ones for
+the gate itself, so a sibling lane regenerating into the same canonical path
+could not clobber the run mid-flight. The recipe headers are unchanged and
+still name the canonical paths.
+
+**Ownership honoured:** `git diff main` is EMPTY on every MUST-NOT-TOUCH
+path — `services/**`, `model/**`, `llm_fallback/**`, `api/**`,
+`crates/quilltap-web/src/**`, `crates/quilltap-host/src/**`, `apps/web/**`,
+`docs/v4/**`. The only `db/**` delta is the comment-only one proven in
+unit 1.
+
+**No SPA change; no e2e owed** — no Playwright was run (ONE at a time
+repo-wide stands for whoever does).
+
+**Version bumps (§R.8):** harness 0.0.805 → **0.0.807**, host 0.0.134 →
+**0.0.135**. `core` deliberately NOT bumped (unit 1's note).
+
+**Spotted, not mine:** none — this lane found no cross-lane issue.
+
+**Deferrals:** none. Every Tier-1 and Tier-2 item in the order landed. The
+Tier-3 deferrals stand as written: the bug-141 PORT itself is
+P4.D189/P4.D190's (this lane carried only its help prose);
+`qtap_schema_embed_guard` is unmoved — stated with the measurement
+(`git diff --stat 31436bae4 ffb6b3119 -- public/` EMPTY), and re-run as part
+of the workspace gate rather than as a re-vendor; no SPA change.
