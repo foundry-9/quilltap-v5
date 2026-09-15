@@ -909,14 +909,22 @@ describe('Salon turn controls', () => {
     });
     const fixture = await render(client);
     const text = (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
-    // The CLAIM is pinned, not just the opening words (dogfood #83): the notice
-    // promised that no character would speak until you resumed, which is not
-    // what pause does in either app — a message you send is still answered
-    // once, by whoever's turn it is. Only the chain stops.
+    // The CLAIM is pinned, not just the opening words — this sentence has been
+    // wrong twice in opposite directions (dogfood #83, then #118), and both
+    // times an opening-words assertion stayed green through it.
+    //
+    // Since v4 bug 137 (`31436bae4`, ported as P4.D186) the pause is consulted
+    // on the SEND path too: a message typed into a paused room is recorded and
+    // answered by nobody. The notice must say so, and must name the two ways
+    // out, because it is the only persistent explanation on screen.
     expect(text).toContain(
       "Auto-responses are paused — characters won't carry on by themselves, " +
-        'but whoever\'s turn it is will still answer a message you send.',
+        'and a message you send is recorded without an answer. ' +
+        'Nudge a character for a single turn, or press Resume.',
     );
+    // The guard: the retired promise must not come back. A port that reverts to
+    // the #83 wording would still pass an "Auto-responses are paused" check.
+    expect(text).not.toContain('will still answer a message you send');
     const resumeBtn = fixture.nativeElement.querySelector(
       'qt-chat-sidebar .qt-chat-pause-button',
     ) as HTMLButtonElement;

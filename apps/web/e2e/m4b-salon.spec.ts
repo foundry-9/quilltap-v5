@@ -64,7 +64,14 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
       await expect(pausedBanner).toHaveCount(0);
       await expect(pauseButton).toContainText('Pause');
     } else {
-      await expect(pausedBanner).toContainText('Auto-responses are paused');
+      // Pin the CLAIM, not the opening words. Dogfood #118: the notice kept the
+      // pre-bug-137 promise that "whoever's turn it is will still answer a
+      // message you send" long after P4.D186 made a paused room answer nobody,
+      // and an 'Auto-responses are paused' assertion stayed green through it.
+      await expect(pausedBanner).toContainText(
+        'a message you send is recorded without an answer',
+      );
+      await expect(pausedBanner).not.toContainText('will still answer a message you send');
       await expect(pauseButton).toContainText('Resume');
     }
     // Toggle back to the original state.

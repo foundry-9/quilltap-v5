@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — fix(salon): the paused-room notice no longer promises an answer that never comes (dogfood #118)
+
+_Versions: SPA 0.5.722._
+
+Found on the 2026-09-15 dogfood walk, by consequence: a message typed into a
+real paused chat was recorded and answered by nobody — correctly, per v4 bug 137
+(`31436bae4`, ported as P4.D186) — while the banner directly below the
+unanswered message still read "characters won't carry on by themselves, but
+whoever's turn it is will still answer a message you send."
+
+That sentence is v5's own (v4 renders no such notice) and was written
+deliberately by dogfood #83 in August, when it was accurate: v4 then consulted
+`isPaused` only in `shouldChainNext`, never on the send path. Bug 137 moved
+exactly that line. P4.D187 shipped the accurate held-turn toast but nobody
+revisited the persistent banner, and the component's doc comment still cited
+v4's retired `turn-orchestrator.service.ts:77` as its justification.
+
+The notice now states both halves of the rule and names the two ways out,
+agreeing with the toast. Its doc comment records both wrong directions. The unit
+spec pins the CLAIM and guards the retired promise with an explicit
+`not.toContain` — mutation-proven: reverting the template reds the spec and
+restoring it greens it. The `m4b-salon` e2e beat that renders the banner now
+pins the claim instead of the opening words, which is what let this survive:
+both tests asserted only "Auto-responses are paused".
+
 #### 2026-09-15 — docs(unify): the `ffb6b3119` bug-141 + bug-142 drift catch-up round — three orders unified, the baseline moves to `ffb6b3119`
 
 _Docs-only change._
