@@ -9,6 +9,7 @@
 
 use serde_json::Value;
 
+use crate::model::stream::StreamError;
 use crate::services::llm_errors::LlmErrorKind;
 
 /// Why a call failed, in the only granularity the chain cares about.
@@ -273,12 +274,30 @@ impl<'a> FallbackError<'a> {
         }
     }
 
-    /// One of the two classes v4 tests by `name` rather than by `instanceof`.
+    /// One of the classes v4 tests by `name` rather than by `instanceof`.
     pub fn named(name: &'a str, message: &'a str) -> FallbackError<'a> {
         FallbackError {
             kind: None,
             name: Some(name),
             message,
+        }
+    }
+
+    /// The production shape for a stream failure (P4.D189, v4 `f90144ac4`).
+    ///
+    /// v4 walks `error.name` before `error.message`, and the one stream-seam
+    /// name it tests is `LLMStreamStalledError` — so a stall has to reach the
+    /// classifier AS a name, not as text. Its message matches none of the
+    /// network patterns (`Provider stream never sent a first chunk within
+    /// 240000ms`), so a stall handed over as a bare message classifies as the
+    /// unattributed `provider-error` fall-through and the turn never reaches its
+    /// understudy. Every site that builds a [`FallbackError`] from a
+    /// [`StreamError`] goes through here.
+    pub fn from_stream_error(e: &'a StreamError) -> FallbackError<'a> {
+        if e.is_stalled() {
+            FallbackError::named(e.v4_name(), &e.message)
+        } else {
+            FallbackError::message(&e.message)
         }
     }
 }

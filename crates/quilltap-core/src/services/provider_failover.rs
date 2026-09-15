@@ -375,10 +375,13 @@ where
             Err(retry_error) => {
                 // v4 swallows the throw (it only logs); the trail is where it
                 // now leaves a trace.
-                let retry_message = retry_error.message;
+                // P4.D189: through `from_stream_error`, so a stalled retry
+                // classifies by v4's NAME rather than by its message (which
+                // matches no network pattern).
                 let retry_trigger =
-                    classify_fallback_trigger(FallbackError::message(&retry_message))
+                    classify_fallback_trigger(FallbackError::from_stream_error(&retry_error))
                         .unwrap_or(FallbackTrigger::ProviderError);
+                let retry_message = retry_error.message;
                 record_route_failure(
                     state,
                     &same_profile,
@@ -551,10 +554,10 @@ where
                     }
                 }
                 Err(reroute_error) => {
-                    let reroute_message = reroute_error.message;
                     let reroute_trigger =
-                        classify_fallback_trigger(FallbackError::message(&reroute_message))
+                        classify_fallback_trigger(FallbackError::from_stream_error(&reroute_error))
                             .unwrap_or(FallbackTrigger::ProviderError);
+                    let reroute_message = reroute_error.message;
                     record_route_failure(
                         state,
                         &route.connection_profile,
@@ -1092,7 +1095,7 @@ where
         .await
         {
             let understudy_trigger =
-                classify_fallback_trigger(FallbackError::message(&understudy_error.message))
+                classify_fallback_trigger(FallbackError::from_stream_error(&understudy_error))
                     .unwrap_or(FallbackTrigger::ProviderError);
             attempts.push(record_attempt(
                 understudy,

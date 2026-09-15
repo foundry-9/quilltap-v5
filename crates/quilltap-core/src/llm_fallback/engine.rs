@@ -151,6 +151,13 @@ pub fn classify_fallback_trigger(error: FallbackError<'_>) -> Option<FallbackTri
         return Some(FallbackTrigger::Network);
     }
 
+    // Likewise the stream watchdog: the provider took the request, answered with
+    // headers and then went quiet. A silence is not a refusal, and the understudy
+    // is exactly what a chain is for.
+    if error.name == Some("LLMStreamStalledError") {
+        return Some(FallbackTrigger::Network);
+    }
+
     let message = error.message;
     if NETWORK_ERROR_RE.iter().any(|p| p.is_match(message)) {
         return Some(FallbackTrigger::Network);

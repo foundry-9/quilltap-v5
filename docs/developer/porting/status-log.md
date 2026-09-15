@@ -125750,3 +125750,50 @@ listed at ZERO wraps; **P4.D190's order moves that to one.**
 
 **Mutation:** unwrapping `text_tool_loop`'s site reddened BOTH census tests by
 file name (`0 production watch_stream( call(s), census says 1`).
+
+### Unit 3 — the classifier arm (§C.3)
+
+`FallbackError::from_stream_error(&StreamError)` — `named("LLMStreamStalledError",
+msg)` when `is_stalled()`, else `message(msg)` — and the arm in
+`classify_fallback_trigger` at v4's exact position (after `CheapLLMTimeoutError`,
+before the message probes) with v4's comment carried. All FOUR production sites
+that build a `FallbackError` from a `StreamError` go through it:
+`primary_stream.rs`'s hard-error entry, and `provider_failover.rs`'s
+`retry_error` / `reroute_error` / `understudy_error`. `cheap_llm_exec.rs` is
+untouched — v4's watchdog is streaming-only.
+
+Two of the failover sites had moved the message out of the error
+(`let m = e.message;`) before classifying; the classify call now runs first, on
+the whole error, and the move follows it.
+
+**The corpus** (`harness/oracle/cases/fallback-engine.ts`) grows three rows built
+from v4's REAL class, imported from `@/lib/llm/stream-watchdog`:
+`stalled-first-chunk` (`(240000, 0, 'DEEPSEEK', 'deepseek-v4-flash')`),
+`stalled-mid-stream` (`(120000, 37)`, no provider/model), and
+`stalled-name-beats-4xx-message` (the class with its message replaced by
+`400 Bad Request` — the ladder-order row). The harness needed no code change
+beyond the floor: `kind_for` returns `None` for the name, so it rides
+`FallbackError::name` exactly as v4's classifier reads it.
+
+**RED-FIRST, measured** — the oracle regenerated fresh from
+`/tmp/qt-v4-pin-p4d189-ffb6b3119` and run against the pre-arm tree:
+
+```
+3 of 175 case(s) failed:
+classify/stalled-first-chunk:          rust "provider-error" != oracle "network"
+classify/stalled-mid-stream:           rust "provider-error" != oracle "network"
+classify/stalled-name-beats-4xx-message: rust null != oracle "network"
+```
+
+— which IS the "delete the `LLMStreamStalledError` arm" mutation, run before the
+arm existed. The third row failing as `null` (not `provider-error`) is the
+ladder-order proof: without the named arm the `400 Bad Request` message reaches
+the unattributed-4xx non-trigger. With the arm: **175/175 green, 48 `classify`
+rows.**
+
+**Stale-oracle floor 35 → 48.** Load-bearing here in a way it was not before:
+the case file now imports `@/lib/llm/stream-watchdog`, which does not exist at
+or before `31436bae4`, so a regen pinned at the baseline dies at import and —
+per §5.1's empty-file trap — leaves a zero-byte NDJSON. A floor that predates
+the three rows would let a truncated corpus pass having measured none of them.
+Recorded in the test header as well.

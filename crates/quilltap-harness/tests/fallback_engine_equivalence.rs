@@ -38,6 +38,19 @@
 //! the name back to an [`LlmErrorKind`] where it is one of v4's eight classes —
 //! so both sides classify from the same two strings.
 //!
+//! ## The stalled stream (bug 141)
+//!
+//! P4.D189 (v4 `f90144ac4`): three rows built from v4's REAL
+//! `LLMStreamStalledError`, so they carry the constructor's own message bytes.
+//! Those bytes match NONE of `NETWORK_ERROR_PATTERNS`, which makes the NAMED
+//! classifier arm a real discriminator — before it, `stalled-first-chunk` and
+//! `stalled-mid-stream` classified as the unattributed `provider-error` tail and
+//! `stalled-name-beats-4xx-message` as `null`. ⚠ The case file therefore
+//! IMPORTS `@/lib/llm/stream-watchdog`, which **does not exist at or before the
+//! `31436bae4` baseline**: a regen pinned earlier than `f90144ac4` dies at
+//! import, and — per the pinned-worktree recipe's empty-file trap — leaves a
+//! zero-byte NDJSON that reads like real drift. Regen from `f90144ac4` or later.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout; pin a detached worktree
 //! via `recipe_sweep.py --v4` when v4 HEAD has moved past the baseline):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -149,8 +162,9 @@ impl FallbackRepos for MemoryRepos {
 }
 
 /// v4's class `name` → the normalized kind. Anything else (`Error`, `ZodError`,
-/// `CheapLLMTimeoutError`) rides `FallbackError::name`, exactly as v4's
-/// classifier reads it.
+/// `CheapLLMTimeoutError`, `LLMStreamStalledError`) rides `FallbackError::name`,
+/// exactly as v4's classifier reads it — which is why the bug-141 rows need no
+/// harness change beyond the corpus.
 fn kind_for(name: &str) -> Option<LlmErrorKind> {
     match name {
         "LLMProviderError" => Some(LlmErrorKind::Base),
@@ -492,7 +506,11 @@ fn fallback_engine_matches_oracle() {
     for (kind, floor) in [
         ("transport", 10usize),
         ("apiKeyCapability", 10),
-        ("classify", 35),
+        // P4.D189 raised this from 35: the three `LLMStreamStalledError` rows
+        // are the whole proof of the bug-141 classifier arm, and a floor that
+        // predates them would let an oracle regenerated from the BASELINE pin
+        // (where `stream-watchdog.ts` does not exist) pass having measured none.
+        ("classify", 48),
         ("tierMatches", 30),
         ("pick", 15),
         ("chain", 18),

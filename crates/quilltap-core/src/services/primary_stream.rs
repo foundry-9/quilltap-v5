@@ -1352,7 +1352,7 @@ where
                     character_id: character_id.clone(),
                     character_name: character_name.clone(),
                 },
-                &crate::llm_fallback::FallbackError::message(&err.message),
+                &crate::llm_fallback::FallbackError::from_stream_error(&err),
                 stream_log
                     .as_ref()
                     .map(|l| super::provider_failover::FailoverLogCtx {

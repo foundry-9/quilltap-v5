@@ -66,6 +66,7 @@ import {
   TokenLimitError,
 } from '@/lib/llm/errors';
 import { providerCanTransportImages } from '@/lib/llm/image-transport';
+import { LLMStreamStalledError } from '@/lib/llm/stream-watchdog';
 import { verifyImageReachedModel } from '@/lib/chat/file-attachment-fallback';
 import { acceptsApiKey, requiresApiKey } from '@/lib/plugins/provider-validation';
 import {
@@ -241,6 +242,22 @@ const CLASSIFY: Array<[string, unknown]> = [
   ['unattributed-403', new Error('403 Forbidden')],
   // The cheap path's own deadline.
   ['cheap-deadline', named('CheapLLMTimeoutError', 'Cheap LLM task exceeded its 45000ms budget')],
+  // The stream watchdog (bug 141, v4 `f90144ac4`). Built from v4's REAL class,
+  // not from a `named()` stand-in, so the rows carry the constructor's own
+  // message bytes — which match NONE of the network patterns, making the NAMED
+  // arm a real discriminator rather than a formality: without it both of these
+  // fall through to the unattributed `provider-error` tail.
+  ['stalled-first-chunk', new LLMStreamStalledError(240000, 0, 'DEEPSEEK', 'deepseek-v4-flash')],
+  ['stalled-mid-stream', new LLMStreamStalledError(120000, 37)],
+  // Ladder ORDER, the round-1 lesson: the name is tested BEFORE the message
+  // probes, so a stall whose message would otherwise read as an unattributed
+  // 4xx (a non-trigger) is still `network`. Without this row a mutation moving
+  // the arm below the message ladder stays green.
+  ['stalled-name-beats-4xx-message', (() => {
+    const e = new LLMStreamStalledError(240000, 0, 'DEEPSEEK', 'deepseek-v4-flash');
+    e.message = '400 Bad Request';
+    return e;
+  })()],
   // Message-pattern arms, in the order the classifier tries them.
   ['bare-503', new Error('503 Service Unavailable')],
   ['overloaded', new Error('upstream is overloaded')],

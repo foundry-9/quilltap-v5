@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — fix(llm): a stalled provider stream classifies as `network`, so the turn reaches its understudy (bug 141)
+
+_Versions: core 0.0.916, harness 0.0.807._
+
+P4.D189 Tier 1 item 3, ported from `f90144ac4`'s `lib/llm/fallback/engine.ts`
+hunk. `classifyFallbackTrigger` gains
+`if (name === 'LLMStreamStalledError') return 'network'` at v4's exact position
+— directly after the `CheapLLMTimeoutError` arm and BEFORE the message-pattern
+probes — with v4's comment carried: a silence is not a refusal, and the
+understudy is exactly what a chain is for.
+
+The arm has to be NAMED. A stall's message (`Provider stream never sent a first
+chunk within 240000ms`) matches none of the network patterns, so before this
+commit v5 classified one as the unattributed `provider-error` fall-through and
+a Salon turn whose primary went quiet died instead of failing over.
+`FallbackError::from_stream_error` is the production shape that carries the
+name across: it reads `StreamError::is_stalled()` and hands the classifier
+`named("LLMStreamStalledError", …)`, else the bare message. All four sites that
+build a `FallbackError` from a `StreamError` now go through it — the primary
+stream's hard-error entry, the empty-response same-provider retry, the
+Concierge reroute and an understudy chain leg. The cheap-LLM completion path is
+untouched: v4's watchdog is streaming-only.
+
+`fallback_engine_equivalence` grows three rows built from v4's REAL
+`LLMStreamStalledError` (so they carry the constructor's own bytes):
+`stalled-first-chunk`, `stalled-mid-stream`, and `stalled-name-beats-4xx-message`
+— the last a stall whose message was replaced with `400 Bad Request`, which
+pins the ladder ORDER, since the name is read before the message probes. Run
+red-first against the pre-arm tree over an oracle freshly regenerated from a
+worktree pinned at `ffb6b3119`, all three failed (`provider-error`,
+`provider-error`, `null`); with the arm, 175/175 green with 48 `classify` rows.
+The stale-oracle floor moves 35 → 48, because the case file now imports
+`@/lib/llm/stream-watchdog` and a regen pinned at the baseline — where that
+module does not exist — would die at import and leave a zero-byte NDJSON.
+
 #### 2026-09-14 — fix(salon): every Salon-side provider stream now wears the stall watchdog (bug 141)
 
 _Versions: core 0.0.915, harness 0.0.806._
