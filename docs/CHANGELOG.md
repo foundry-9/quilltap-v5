@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — chore(unify): recount the round's version bumps as base plus every lane's delta
+
+_Versions: core 0.0.912, harness 0.0.804, web 0.0.145, SPA 0.5.718._
+
+Cherry-picking seven lanes off two bases auto-merged the identical bumps
+silently, as it does every round. Recounted from the base (core 0.0.894,
+harness 0.0.783, host 0.0.129, web 0.0.142, SPA 0.5.707): core +18 (6 + 4 +
+3 + 2 + 3), harness +21 (4 + 6 + 5 + 3 + 3), host +4 (already correct on the
+branch), web +3 (one each from P4.D183, P4.D185, P4.D186), SPA +11 (6 + 5).
+`Cargo.lock` and `package-lock.json` re-resolved offline.
+
 #### 2026-09-14 — test(web-edge): adjudicate the avatar-rolls delete route's response read into the collapse census
 
 _Versions: harness 0.0.790._
