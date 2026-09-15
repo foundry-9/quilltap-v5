@@ -124213,35 +124213,43 @@ throws on; named here rather than left implicit.
    `cache_keys.key`, no None-binding site remains beside it, and neither the job
    nor the heal spells out a key preimage of its own.
 
-#### ⚠ Two named regens the lane could NOT complete — an ENVIRONMENT blocker
+#### The two named regens — blocked mid-lane, then CLOSED
 
 `character_avatar_write_tier2_equivalence` and `seed_avatars_equivalence` (the
-order's Tier-2 item 7 and its named `character_avatar_write_tier2` regen). **Both
-oracles WERE regenerated fresh from the pin** (`/tmp/oracle-avatar-write.ndjson`
-18:13, `/tmp/oracle-seed-avatars.ndjson` 18:14), but the Rust halves cannot be
-LINKED: an Xcode update landed mid-session and reset the licence, so every
-`cc` link on this machine now fails with
+order's Tier-2 item 7 and its named `character_avatar_write_tier2` regen). Both
+oracles were regenerated fresh from `/tmp/qt-v4-pin-p4d184-31436bae4` (18:13 and
+18:14), and then the Rust halves could not be LINKED: an Xcode update landed
+mid-session and reset the licence, so every `cc` link on this machine — and
+`/usr/bin/git` itself — began refusing with
 
 > You have not agreed to the Xcode license agreements. Please run
 > `sudo xcodebuild -license` …
 
-It is machine-wide (a trivial `outfit_hash_equivalence` link fails identically)
-and needs the human's `sudo`. **The full workspace gate above finished at
-18:13:13, immediately BEFORE the blocker appeared, so it is unaffected and
-stands as the gate of record** — but note that in THAT run these two families
-ran without their oracle env vars in the block, so their 0.00 s passes are
-silent SKIPs, not measurements. Neither family is claimed as verified by this
-lane. **The unifier must accept the licence before re-gating**, then run:
+It was machine-wide (a trivial `outfit_hash_equivalence` link failed
+identically) and needed the human's `sudo`. **The full workspace gate above
+finished at 18:13:13, immediately BEFORE the blocker appeared, so it was
+unaffected and stands as the gate of record.** The human accepted the licence;
+both families then ran against those same pin-fresh oracles:
 
-```
-QT_ORACLE_AVATAR_WRITE=/tmp/oracle-avatar-write.ndjson \
-  cargo test -p quilltap-harness --test character_avatar_write_tier2_equivalence
-QT_ORACLE_SEED_AVATARS=/tmp/oracle-seed-avatars.ndjson \
-QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-seed-avatars-main.db \
-QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-seed-avatars-mount.db \
-  cargo test -p quilltap-harness --test seed_avatars_equivalence
-```
+- `character_avatar_write_tier2_equivalence` — **1 passed / 0 failed** (0.01 s).
+  Neutral, as expected: it drives the vault write helper, not the handler.
+- `seed_avatars_equivalence` — **1 passed / 0 failed** (0.13 s).
 
-The expectation for `seed_avatars` is that the seeding path writes NO key (it
-does not go through the avatar job); `character_avatar_write_tier2` should be
-neutral (it drives the vault write helper, not the handler).
+⚠ Note for the unifier: in the 562-binary gate run these two executed WITHOUT
+their oracle env vars, so their 0.00 s passes there were silent SKIPs. The
+passes recorded here are the real measurements, run by name afterwards.
+
+**The order's "measure whether the seed path writes keys; expected NOT" —
+CONFIRMED, and positively:** `services/quilltap_import/seed.rs` contains no
+`generation_key` at all, and a whole-crate census of every binding shows exactly
+ONE site writing a non-`None` key (`services/character_avatar_job.rs:494`,
+`cache_keys.key.clone()`); the other eleven production sites bind `None`. That is
+v4's one-deriver/one-writer shape, and it is what
+`generation_key_travels_as_is_guard::exactly_one_site_writes_the_key_and_one_module_derives_it`
+now asserts mechanically.
+
+**An in-flight v4 observation, recorded not acted on:** at the end of the lane
+the v4 checkout went dirty again, docs-only — `docs/developer/bugs.md` plus a new
+`docs/developer/bugs/bug-142-delete-miss-counts-as-removed.md`. No `lib/`,
+`app/`, `packages/` or `plugins/` delta, so no regen was exposed (and none was
+re-run: both oracles above predate it). The next `/driftcheck` should record it.
