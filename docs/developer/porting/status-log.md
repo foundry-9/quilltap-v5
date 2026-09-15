@@ -125792,15 +125792,28 @@ metadata.json could not be read and is being skipped: probe. Editing the file
 directly is the way to mend it."* — while Pregnancy rendered beside it. v4's
 entry was restored byte-for-byte afterwards, `updatedAt` included.
 
-**A claim of this walk's own, CORRECTED (C3).** Session 1 recorded that 10
+**A claim of this walk's own, CORRECTED — then FILED as v4 bug 143 (C3).** Session 1 recorded that 10
 duplicate `generationKey` groups had "re-accumulated since v4's collapse". That
 is **wrong**: all 10 are same-character, but **every one of the 20 rows predates
 v4's 2026-09-11 collapse** (newest 2026-09-07), so they are survivors of it and
 **nothing has duplicated in the four days since**. v4's `selectAvatarRows` had
-them in scope (it does not filter on `generationKey IS NULL`), and the portrait
-keep-list explains only some pairs — a **v4-side question, not a v5 defect**, and
-the "worth an order" framing is withdrawn. v5's cache is unaffected; C1 proved
-it hits.
+them in scope (it does not filter on `generationKey IS NULL`). Reading the
+migration settles most of it: its victim loop **deliberately keeps** a row whose
+blob is still a character's portrait and keys it alongside the survivor, logging
+`Keeping avatar roll still serving as a character portrait` — and the 43
+protected blob ids (`characters.defaultImageId` → link → file → blob) cover
+exactly **7 of the 10** groups' non-newest row. The remaining **three**
+(`058a0214…`, `17bb35a0…`, `59192685…`) match `selectAvatarRows`, are NOT
+protected, are referenced by no chat's `characterAvatars`, and still have live
+blobs — the loop should have remapped and deleted them. **Filed as v4 bug 143**
+(`bugs/bug-143-collapse-leaves-unprotected-duplicates.md`, v4 `064ba85df`), low
+severity: no read is affected, because v4's `lookupCachedAvatar` sorts newest-
+first and then verifies the character tag and the blob — **and v5's
+`lookup_cached_avatar` was checked and carries both guards and the same sort
+verbatim**. v5's cache is unaffected; C1 proved it hits. ⚠ The filing moved v4's
+`main` HEAD off the baseline; it is docs-only and is recorded in the drift
+ledger's §3 as NO-PORT?, with the regen rule left at NO PIN REQUIRED on a
+verified-empty functional diff.
 
 **Two more instrument traps banked:** the server logs at `info` by default, so
 every `debug`-level comparand (all three memory-gate lines) is invisible until

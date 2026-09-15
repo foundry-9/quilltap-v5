@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(dogfood): file v4 bug 143 and record the filing in the drift ledger
+
+_Docs-only change._
+
+The walk's C3 row is filed upstream as v4 bug 143 (v4 commit `064ba85df`,
+`docs/developer/bugs/bug-143-collapse-leaves-unprotected-duplicates.md`): ten
+`files` groups share a `generationKey` after v4's avatar-roll collapse. Seven
+are the migration's deliberate protected-portrait branch, which keys a kept row
+alongside its survivor on purpose; three are an unprotected, unreferenced older
+row with a live blob that its victim loop should have remapped and deleted.
+
+Low severity and no v5 exposure — both apps' cache lookup sorts newest-first and
+then verifies the character tag and the blob, so a duplicate key cannot serve
+the wrong face. v5's `lookup_cached_avatar` was checked against v4's and carries
+both guards and the same sort.
+
+The filing moves v4's `main` HEAD off the oracle baseline, so the drift ledger
+records it in §3 as NO-PORT? with the regen rule left at NO PIN REQUIRED — the
+functional diff (`lib/ app/ packages/ plugins/ migrations/ help/
+public/schemas/`) is verified empty.
+
 #### 2026-09-15 — docs(dogfood): session 2 of the backlog pass — the watchdog's idle arm, the lock reclaim, and a correction
 
 _Docs-only change._

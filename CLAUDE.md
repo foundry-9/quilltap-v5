@@ -3586,11 +3586,16 @@ records THERE. Update this summary only when a phase or round completes.
   `stale-detected … PID 17168 is no longer running` with the hostname playing
   no part; the gallery 409's **four FLAT siblings**; `?download=1`; the Almanack
   row; and the memory-gate lines on both arms. **Final: 30 rows run, all PASS.**
-  ⚠ **That session also CORRECTED this walk's own claim** — the 10 duplicate
-  `generationKey` groups all PREDATE v4's 2026-09-11 collapse (newest
-  2026-09-07), so they are survivors, not re-accumulation, and nothing has
-  duplicated since; a v4-side question, not a v5 defect, and the
-  "worth an order" framing is withdrawn. 💸 still owed (human): the Brahma deep
+  ⚠ **That session also CORRECTED this walk's own claim and then FILED it
+  upstream as v4 bug 143** — the 10 duplicate `generationKey` groups all PREDATE
+  v4's 2026-09-11 collapse (newest 2026-09-07), so they are survivors, not
+  re-accumulation; **seven are the migration's deliberate protected-portrait
+  branch** and three are an unprotected, unreferenced older row with a live blob
+  its victim loop should have deleted. Low severity, no read affected — v4's
+  `lookupCachedAvatar` and v5's `lookup_cached_avatar` both sort newest-first
+  then verify the character tag and the blob. v4 commit `064ba85df`; **docs-only,
+  so the drift ledger carries it as NO-PORT? with the regen rule still NO PIN
+  REQUIRED.** 💸 still owed (human): the Brahma deep
   query, dedup/summaries, #101, and the bug-133 reroute trio + the two
   image-spend rows.
 - **Oracle baseline: `ffb6b3119` (2026-09-14, v4 main — "fix(db): a delete
