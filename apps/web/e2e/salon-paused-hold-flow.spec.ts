@@ -194,8 +194,8 @@ test.describe('P4.D187 — a summons leaves the pause standing', () => {
 test.describe('P4.D187 — the server holds a user turn in a paused room', () => {
   test('a send into a paused room draws no reply, and says why once', async ({ page }) => {
     test.skip(
-      !P4D186_SERVER_LANDED,
-      'finish_held_user_turn is P4.D186’s — until it lands a paused send still generates',
+      SHARED_FIXTURE_TITLE_CHECKPOINT_PARK,
+      'MEASURED at the unification gate: a HELD send still leaves a pending title checkpoint on the shared fixture chat, and a later real verdict renames it. Parked on the named hazard, with its two siblings.',
     );
 
     await openGroupExpedition(page);

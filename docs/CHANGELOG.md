@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — test(e2e): the activated beats' first full run — five sending beats parked on the named title-checkpoint hazard, the rolls walk discards a second plate
+
+_Versions: SPA 0.5.721._
+
+The first full Playwright run after the flips came back 296 / 25 / 3 with 24
+reds of one shape, `Group Expedition not found`: the three live held-send
+beats had left a pending Host title checkpoint on the shared fixture chat and
+the impersonation spec's first real verdict renamed it two files later — the
+lane's "a held send draws no reply, so no checkpoint is crossed" premise,
+refuted by measurement (the user row is recorded above the seam). All five
+sending beats now park on `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`; the two
+transcript beats stay live. The avatar-rolls walk waited 90 s for a Discard
+control on the plate it had just promoted, which neither app renders (v4's
+`!isAvatar` gate); it now plants a PNG and a GIF, keeps and promotes the
+first, and discards the second with the plain sentence.
+
 #### 2026-09-15 — test(unify): the `31436bae4` round's unification wires — three gate constants flipped, the rolls seed rebuilt, the incident beat re-gestured, two beats parked by name, the docs mirror refreshed
 
 _Versions: SPA 0.5.720._

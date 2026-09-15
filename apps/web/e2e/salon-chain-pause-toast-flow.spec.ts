@@ -351,8 +351,8 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
     page,
   }) => {
     test.skip(
-      !P4D186_SERVER_LANDED,
-      'the sends these beats need re-title the shared fixture chat — see the describe note',
+      SHARED_FIXTURE_TITLE_CHECKPOINT_PARK,
+      'MEASURED at the unification gate: a HELD send still leaves a pending title checkpoint on the shared fixture chat (the user row is recorded above the seam), and a later real verdict renames it — 24 title-keyed beats lost Group Expedition. Parked on the named hazard.',
     );
     await injectPausedChainComplete(page, 'paused', { paused: true, heldUserTurn: true });
     await openGroupExpedition(page);
@@ -381,8 +381,8 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
 
   test('a NEW pause earns its own notice', async ({ page }) => {
     test.skip(
-      !P4D186_SERVER_LANDED,
-      'the sends these beats need re-title the shared fixture chat — see the describe note',
+      SHARED_FIXTURE_TITLE_CHECKPOINT_PARK,
+      'MEASURED at the unification gate: a HELD send still leaves a pending title checkpoint on the shared fixture chat (the user row is recorded above the seam), and a later real verdict renames it — 24 title-keyed beats lost Group Expedition. Parked on the named hazard.',
     );
     await injectPausedChainComplete(page, 'paused', { paused: true, heldUserTurn: true });
     await openGroupExpedition(page);

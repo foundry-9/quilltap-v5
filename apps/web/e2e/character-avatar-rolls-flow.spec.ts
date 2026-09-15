@@ -63,11 +63,26 @@ const ROLLS_SERVER_LOG = resolve(ARTIFACTS_DIR, 'avatar-rolls-server.log');
 /** Every fixture table the walk reads is filtered by userId — rewrite them all. */
 const USER_TABLES = ['characters', 'chats', 'tags', 'files'];
 
+/**
+ * TWO planted rolls, because the walk's two halves cannot share one plate: a
+ * roll promoted to the portrait loses its Discard control (v4 `GalleryImage`'s
+ * `!isAvatar` gate — the first activation waited 90 s for a button the
+ * portrait plate cannot have), so A is kept and promoted, and B is discarded.
+ * Different bytes (a PNG and a GIF) so the two blobs carry different shas.
+ */
 const ROLL_FILE_ID = 'p4d188-roll-1';
 const ROLL_MOUNT_FILE_ID = 'p4d188-roll-mount-file-1';
 const ROLL_LINK_ID = 'p4d188-roll-link-1';
 const ROLL_BLOB_ID = 'p4d188-roll-blob-1';
 const ROLL_NAME = 'plate-of-aria.png';
+const ROLL2_FILE_ID = 'p4d188-roll-2';
+const ROLL2_MOUNT_FILE_ID = 'p4d188-roll-mount-file-2';
+const ROLL2_LINK_ID = 'p4d188-roll-link-2';
+const ROLL2_BLOB_ID = 'p4d188-roll-blob-2';
+const ROLL2_NAME = 'second-plate-of-aria.gif';
+/** A real 1×1 GIF, for the second plate. */
+const ROLL2_BYTES = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64');
+const ROLL2_SHA = createHash('sha256').update(ROLL2_BYTES).digest('hex');
 /**
  * A real 1×1 PNG: the tile is an `<img>`, and four bytes of "RIFF" would fire
  * its `error` handler, mark the roll missing, and take the Download button
@@ -135,47 +150,68 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     // the same way first (idempotent — the boot ensure then finds it present).
     runCliWrite(cli, `ALTER TABLE files ADD COLUMN generationKey TEXT;`);
 
-    // (1) the keyed, tagged files row — v4's whole definition of a roll. The
-    //     storage key is the `mount-blob:<mountPointId>:<blobId>` shape every
-    //     reader parses (`parse_mount_blob_storage_key`); a `mount:` prefix
-    //     parses as nothing and silently skips the mount-point scoping.
-    runCliWrite(
-      cli,
-      `INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, width, height,
-         linkedTo, source, category, generationPrompt, generationModel, tags, storageKey,
-         generationKey, createdAt, updatedAt)
-       VALUES ('${ROLL_FILE_ID}', '${SINGLE_USER_ID}', '${ROLL_SHA}', '${ROLL_NAME}',
-         'image/png', ${ROLL_BYTES.length}, 1, 1, '[]', 'GENERATED', 'IMAGE',
-         'Aria in her flying coat', 'flux-1', '["${ariaId}"]',
-         'mount-blob:${vaultId}:${ROLL_BLOB_ID}', 'p4d188-config-key-v1',
-         '${now}', '${now}');`,
-    );
-
-    // (2) the bytes. `doc_mount_blobs.fileId` and `doc_mount_file_links.fileId`
-    //     both name a `doc_mount_files` row (mount-index-local, NOT `files.id`),
-    //     and the blob table's FK enforces it — so that row comes first, and the
-    //     roll's link is later resolved BY SHA through it (`find_by_sha256`).
-    runCliMountWrite(
-      cli,
-      `INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt)
-       VALUES ('${ROLL_MOUNT_FILE_ID}', '${ROLL_SHA}', ${ROLL_BYTES.length}, 'image/png', 'UPLOAD',
-         '${now}', '${now}');`,
-    );
-    runCliMountWrite(
-      cli,
-      `INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt)
-       VALUES ('${ROLL_BLOB_ID}', '${ROLL_MOUNT_FILE_ID}', '${ROLL_SHA}', ${ROLL_BYTES.length},
-         'image/png', x'${ROLL_BYTES.toString('hex')}', '${now}', '${now}');`,
-    );
-    // (3) the vault link under images/history/ — what gives the tile a URL.
-    runCliMountWrite(
-      cli,
-      `INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName,
-         originalFileName, originalMimeType, lastModified, createdAt, updatedAt)
-       VALUES ('${ROLL_LINK_ID}', '${ROLL_MOUNT_FILE_ID}', '${vaultId}',
-         'images/history/${ROLL_NAME}', '${ROLL_NAME}', '${ROLL_NAME}', 'image/png',
-         '${now}', '${now}', '${now}');`,
-    );
+    const plantRoll = (r: {
+      fileId: string;
+      mountFileId: string;
+      linkId: string;
+      blobId: string;
+      name: string;
+      mime: string;
+      bytes: Buffer;
+      sha: string;
+      key: string;
+    }): void => {
+      // (1) the keyed, tagged files row — v4's whole definition of a roll. The
+      //     storage key is the `mount-blob:<mountPointId>:<blobId>` shape every
+      //     reader parses (`parse_mount_blob_storage_key`); a `mount:` prefix
+      //     parses as nothing and silently skips the mount-point scoping.
+      runCliWrite(
+        cli,
+        `INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, width, height,
+           linkedTo, source, category, generationPrompt, generationModel, tags, storageKey,
+           generationKey, createdAt, updatedAt)
+         VALUES ('${r.fileId}', '${SINGLE_USER_ID}', '${r.sha}', '${r.name}',
+           '${r.mime}', ${r.bytes.length}, 1, 1, '[]', 'GENERATED', 'IMAGE',
+           'Aria in her flying coat', 'flux-1', '["${ariaId}"]',
+           'mount-blob:${vaultId}:${r.blobId}', '${r.key}',
+           '${now}', '${now}');`,
+      );
+      // (2) the bytes. `doc_mount_blobs.fileId` and `doc_mount_file_links.fileId`
+      //     both name a `doc_mount_files` row (mount-index-local, NOT `files.id`),
+      //     and the blob table's FK enforces it — so that row comes first, and the
+      //     roll's link is later resolved BY SHA through it (`find_by_sha256`).
+      runCliMountWrite(
+        cli,
+        `INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt)
+         VALUES ('${r.mountFileId}', '${r.sha}', ${r.bytes.length}, '${r.mime}', 'UPLOAD',
+           '${now}', '${now}');`,
+      );
+      runCliMountWrite(
+        cli,
+        `INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt)
+         VALUES ('${r.blobId}', '${r.mountFileId}', '${r.sha}', ${r.bytes.length},
+           '${r.mime}', x'${r.bytes.toString('hex')}', '${now}', '${now}');`,
+      );
+      // (3) the vault link under images/history/ — what gives the tile a URL.
+      runCliMountWrite(
+        cli,
+        `INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName,
+           originalFileName, originalMimeType, lastModified, createdAt, updatedAt)
+         VALUES ('${r.linkId}', '${r.mountFileId}', '${vaultId}',
+           'images/history/${r.name}', '${r.name}', '${r.name}', '${r.mime}',
+           '${now}', '${now}', '${now}');`,
+      );
+    };
+    plantRoll({
+      fileId: ROLL_FILE_ID, mountFileId: ROLL_MOUNT_FILE_ID, linkId: ROLL_LINK_ID,
+      blobId: ROLL_BLOB_ID, name: ROLL_NAME, mime: 'image/png', bytes: ROLL_BYTES,
+      sha: ROLL_SHA, key: 'p4d188-config-key-v1',
+    });
+    plantRoll({
+      fileId: ROLL2_FILE_ID, mountFileId: ROLL2_MOUNT_FILE_ID, linkId: ROLL2_LINK_ID,
+      blobId: ROLL2_BLOB_ID, name: ROLL2_NAME, mime: 'image/gif', bytes: ROLL2_BYTES,
+      sha: ROLL2_SHA, key: 'p4d188-config-key-v2',
+    });
 
     const logFd = openSync(ROLLS_SERVER_LOG, 'w');
     server = spawn(
@@ -216,7 +252,7 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
    * expand → keep → promote → discard, and the section's disappearance at the
    * end IS the `return null` arm, which only the last roll's removal can show.
    */
-  test('expand → keep → set as avatar → discard, and the section disappears with the last plate', async ({
+  test('expand → keep → set as avatar → discard the other plate; the portrait plate cannot be discarded', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -230,7 +266,7 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     await expect(header).toBeVisible({ timeout: 10_000 });
     await expect(header).toHaveAttribute('aria-expanded', 'false');
     await expect(header).toContainText('Avatar Rolls');
-    await expect(header).toContainText('1 plate');
+    await expect(header).toContainText('2 plates');
     await expect(
       page.getByText('Portraits the house has already developed for Aria', { exact: false }),
     ).toBeVisible();
@@ -238,47 +274,54 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     const section = page.locator('qt-avatar-rolls-section');
     await expect(section.locator('img')).toHaveCount(0);
     await header.click();
-    await expect(section.locator('img')).toHaveCount(1);
+    await expect(section.locator('img')).toHaveCount(2);
+    // Newest first: plate B (the GIF) was planted second at the same stamp, so
+    // the tiles are addressed by their alt text rather than by position.
+    const plateA = section.locator('.relative.group').filter({ has: page.locator(`img[alt="${ROLL_NAME}"]`) });
+    const plateB = section.locator('.relative.group').filter({ has: page.locator(`img[alt="${ROLL2_NAME}"]`) });
+    await expect(plateA).toHaveCount(1);
+    await expect(plateB).toHaveCount(1);
 
-    // Keep: the bookmark flips to the done state and the album gains a photo.
+    // Keep A: the bookmark flips to the done state and the album gains a photo.
     // The album grid's tiles ONLY: the section's tile is a copy of the album's
     // markup with the same class string, so an unscoped `button.aspect-square`
-    // counts the roll too and the arithmetic below passes by accident until
-    // the roll is discarded.
-    const albumTiles = page.locator('button.aspect-square').filter({
-      hasNot: page.locator('qt-avatar-rolls-section button.aspect-square'),
-    });
-    const albumBefore = await albumTiles.count();
-    await section.getByTitle('Keep in the photo album').click();
+    // counts the rolls too and the arithmetic below passes by accident.
+    // A `hasNot` filter asks whether the BUTTON contains a section tile, which
+    // no button does — the first draft excluded nothing and counted the rolls.
+    const allTiles = page.locator('button.aspect-square');
+    const sectionTiles = section.locator('button.aspect-square');
+    const albumCount = async (): Promise<number> =>
+      (await allTiles.count()) - (await sectionTiles.count());
+    const albumBefore = await albumCount();
+    await plateA.getByTitle('Keep in the photo album').click();
     await expect(page.getByText('Kept in the photo album')).toBeVisible({ timeout: 10_000 });
-    await expect(section.getByTitle('Already in the photo album')).toBeDisabled();
-    await expect(albumTiles).toHaveCount(albumBefore + 1, { timeout: 10_000 });
+    await expect(plateA.getByTitle('Already in the photo album')).toBeDisabled();
+    await expect.poll(albumCount, { timeout: 10_000 }).toBe(albumBefore + 1);
+    // ...and A's tooltip now says the album copy would survive a discard.
+    await expect(plateA.getByTitle('Discard this plate (the album copy stays)')).toBeVisible();
 
-    // ...and the tooltip now says the album copy would survive a discard.
-    await expect(
-      section.getByTitle('Discard this plate (the album copy stays)'),
-    ).toBeVisible();
-
-    // Promote: the portrait pointer moves to the ALBUM link the keep minted,
-    // and the section badges the plate the server resolved as the portrait.
-    await section.getByTitle('Set as avatar').click();
+    // Promote A: the portrait pointer moves to the ALBUM link the keep minted,
+    // the section badges the plate the server resolved as the portrait, and
+    // — v4's `!isAvatar` gate — the portrait plate loses both its Set-as-avatar
+    // and its Discard controls (the first activation waited on the latter).
+    await plateA.getByTitle('Set as avatar').click();
     await expect(page.getByText('Avatar updated!')).toBeVisible({ timeout: 10_000 });
-    await expect(section.getByText('Avatar', { exact: true })).toBeVisible();
-    await expect(section.getByTitle('Set as avatar')).toHaveCount(0);
+    await expect(plateA.getByText('Avatar', { exact: true })).toBeVisible();
+    await expect(plateA.getByTitle('Set as avatar')).toHaveCount(0);
+    await expect(plateA.getByTitle('Discard this plate (the album copy stays)')).toHaveCount(0);
+    await expect(plateB.getByTitle('Set as avatar')).toHaveCount(1);
 
-    // Discard: two clicks, and the section goes with the last plate.
-    await section.getByTitle('Discard this plate (the album copy stays)').click();
-    await section.getByTitle('Click again to confirm delete').click();
-    await expect(page.getByText('Roll discarded; the album copy stays')).toBeVisible({
+    // Discard B: two clicks, the plain sentence (no album copy), and the
+    // section stays with the one plate it still has.
+    await plateB.getByTitle('Discard this plate').click();
+    await plateB.getByTitle('Click again to confirm delete').click();
+    await expect(page.getByText('Roll discarded', { exact: true })).toBeVisible({
       timeout: 10_000,
     });
-    // The `return null` arm: no header, no description, nothing at all.
-    await expect(page.locator('qt-avatar-rolls-section button[aria-expanded]')).toHaveCount(0, {
-      timeout: 10_000,
-    });
-    await expect(section).toHaveText('');
-    // The album copy stayed — that is what the sentence promised.
-    await expect(albumTiles).toHaveCount(albumBefore + 1);
+    await expect(section.locator('img')).toHaveCount(1, { timeout: 10_000 });
+    await expect(header).toContainText('1 plate');
+    // The album copy of A stayed — nothing here touched the album.
+    await expect.poll(albumCount, { timeout: 10_000 }).toBe(albumBefore + 1);
   });
 });
 

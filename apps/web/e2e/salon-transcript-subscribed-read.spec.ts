@@ -153,10 +153,13 @@ test.describe('P4.D187 — the transcript is re-read on a hint', () => {
     // later title-keyed beat. (An earlier draft posted a `chatMessageAdd` verb
     // that exists on neither side; the 400 tripped its own `test.skip`, so the
     // beat would have parked silently forever — the vacuously green class.)
-    const detail = await request.get(`/api/v1/chats/${chatId}`);
-    expect(detail.ok()).toBeTruthy();
-    const messages = ((await detail.json()) as { chat?: { messages?: Array<{ id: string; role: string }> } })
-      .chat?.messages ?? [];
+    // The chat GET rides the dispatch channel (`GET /api/v1/chats/{id}` serves
+    // only the get-background and cost actions on this transport).
+    const detail = await request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+    expect(detail.ok(), await detail.text()).toBeTruthy();
+    const messages =
+      ((await detail.json()) as { data?: { chat?: { messages?: Array<{ id: string; role: string }> } } })
+        .data?.chat?.messages ?? [];
     const target = [...messages].reverse().find((m) => m.role === 'ASSISTANT');
     expect(target, 'Group Expedition must hold an assistant row to edit').toBeTruthy();
 
