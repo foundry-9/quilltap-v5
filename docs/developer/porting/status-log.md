@@ -125373,3 +125373,241 @@ loop and never `| tail`.
    follow-up outside this lane's fence.
 3. **Spotted, not mine:** nothing. No file outside this lane's OWNS column was
    touched, and no cross-lane name was needed that §C.6 does not list.
+
+---
+
+## Round record — the `31436bae4` drift catch-up round unification (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188), 2026-09-15
+
+**ALL SEVEN ORDERS CLOSED; the oracle baseline MOVES `f4ad2c8d1` → `31436bae4`;
+the drift ledger's eight rows are ABSORBED / NO-PORT-RATIFIED, and the four
+rows v4 landed after the round was ordered (`f90144ac4` bug 141 PORT,
+`85813ddd2` NO-PORT?, `364b04ac4` NO-PORT?, `ffb6b3119` CONVERGENCE) stay
+UNPROCESSED for the next round — the regen rule stays PIN REQUIRED at
+`31436bae4`.** Unified on `unify/31436bae4-round` from `main` `cb71f25a` and
+fast-forwarded.
+
+### The survey
+
+- Seven worktrees, seven lane branches. Six clean and CLOSED at their tips;
+  **P4.D187's worktree carried its final unit uncommitted** — the four e2e
+  beats, the lane record, the order header and the SPA bump — because
+  `/usr/bin/git` had died host-wide mid-session (the Xcode-licence sentence;
+  the lane's own record says so, and three sibling lanes recorded the same
+  blocker). The lane's session transcript ended in a final report, not
+  mid-turn; the human confirmed git was back; the unit was committed on the
+  lane branch as the lane left it (`c0d41b75`) and picked with the rest.
+- **The §2 probe FAILED at the opening**: v4 `main` had moved two more
+  commits past the ledger's recorded `85813ddd2` — `364b04ac4` (the bug-142
+  filing, docs-only) and `ffb6b3119` (the bug-142 fix: one `lib/` hunk,
+  `removed += result.deletedCount`, plus tests-only riders). Bug 142 IS the
+  `deleteMessagesByIds` miscount **P4.D183 found with its widened funnel
+  census earlier the same day** and pinned as `DELETE_MISS_DIVERGENCE`; v4's
+  bug doc credits the port's census as provenance. `/driftcheck` recorded both
+  rows on `main` first (`cb71f25a`) — a CONVERGENCE whose pin trips by design at
+  the baseline move that passes `ffb6b3119`, not at this one (this round
+  regenerates at `31436bae4`, before it). The round's pins were unaffected by
+  construction.
+- The Node-ABI incident P4.D182 recorded (the checkout's `better-sqlite3`
+  rebuilt under Homebrew Node 26) was RESOLVED in the checkout before the
+  unification: both bindings load under Node 24 there now, so the unifier pin
+  took the three ordinary symlink classes and nothing more.
+
+### The reconcile
+
+- `unify/31436bae4-round`; picks in dependency order — P4.D182's seven, then
+  P4.D183 / P4.D184 / P4.D185's own commits off D182's tip, then P4.D186,
+  P4.D187 (incl. the lane's final unit), P4.D188 — 46 commits. `merge=union`
+  on the two append-only docs (one CHANGELOG union resolved by hand after the
+  attribute was dropped early). Version files: every lane's non-version delta
+  audited FIRST (all five Cargo manifests and the SPA manifest version-only —
+  no dependency block to lose), then `--ours` and **a recount as base + total
+  bumps** (core +18, harness +21, host +4, web +3, SPA +11 — identical bumps
+  had auto-merged silently, as they do every round): core 0.0.912, harness
+  0.0.804, host 0.0.133, web 0.0.145, SPA 0.5.718, both locks re-resolved
+  offline (`be93bb83`).
+- **The one source conflict was the predicted one**: the dispatch
+  wrong-type census constant, moved by P4.D183 (+2) and P4.D185 (+5) off one
+  base — resolved as 435 + 2 + 5 = **442**, both lanes' prose kept.
+- **Three committed recipes named lane-private `/tmp` pins**
+  (`paused_hold_equivalence`, `avatar_rolls_tier2_equivalence`,
+  `public_schemas_vendor_guard` from P4.D170) — repointed at the checkout so
+  the sweep driver's `--v4` rewrite can reach them (the standing "dead on
+  arrival" class, three more instances).
+
+### The §3 review — what it found
+
+Seven parallel readers (one per lane) over each order, each lane record, each
+lane's diff and v4's REAL code at the pin, the verdict owned at the unify.
+**Five blocking findings across four lanes; three would have shipped a wrong
+behaviour, all fixed on the unify branch (``7b017a04``) with pins:**
+
+1. **P4.D185 — a swap-remove reaching disk.** `scrub_chat_avatars` used
+   `Map::remove` under `preserve_order` (indexmap's SWAP-remove) on the
+   `chats.characterAvatars` map it re-serializes, so any chat wearing three or
+   more seats whose scrubbed seat was not last came back in an order v4 never
+   writes (v4 spreads the map and `delete`s one key). Invisible because every
+   fixture chat wore ONE key and the family's `sorted()` normalizer is blind to
+   key order. Fixed with `shift_remove`; the committed `avatar-rolls-*` pair
+   REBUILT at the pin with chat A wearing three seats and ROLF's in the middle;
+   the family now pins the raw surviving-key sequence in
+   `delete_scrubs_everything`. Mutation-proven (`remove` → RED).
+2. **P4.D187 — the turn tail claimed a read it never had.** The reconcile tail
+   called `seedTranscriptFromChat()` unconditionally after `invalidateQueries`,
+   which resolves whether or not the refetch succeeded, and the query keeps its
+   last good chat — so a chat GET that FAILED at the turn boundary set
+   `lastReadOk = true` and the sweep deleted the operator's own line (v4 sets
+   the flag inside the try and clears it in the catch, and says why). Fixed:
+   `settleTranscriptAfterTurn()` leaves the flag false on an errored query;
+   spec-pinned by putting the query into the error state a refused refetch
+   leaves it in (invalidating through the client retries with backoff and
+   outlives the test). Mutation-proven.
+3. **P4.D187 — the headline e2e beat could never run.** The transcript
+   incident beat posted a `chatMessageAdd` verb that exists on neither side; the
+   400 tripped its own `test.skip`, so flipping its gate would have parked it
+   silently forever (the vacuously green class). Re-gestured onto `messageEdit`
+   from a second client — the one dispatch verb that moves a transcript row
+   THROUGH THE FUNNEL without drawing a turn (a send would cross a Host title
+   checkpoint in the shared fixture chat). LIVE at the gate.
+4. **P4.D184 — Tier-1 item 5 neither built nor recorded.** The five NEW log
+   lines (the cache's four, the job's `Reused …`) had no capture pin: deleting
+   all five reddened nothing, on a path whose only observable trace they are.
+   The cache's lines are pinned on raw connections (`avatar_cache.rs` unit
+   tests — they fire on the writer thread in production, where a thread-scoped
+   capture cannot see them); the job's line is captured on the tier-3 hit case
+   with its silence asserted on the forced reroll. Mutation-proven both.
+5. **P4.D186 — a census that scanned a sixth of a file.** The `heldUserTurn`
+   source census split each file at its FIRST `#[cfg(test)]`;
+   `help_chat/orchestrator.rs` has a mid-file test module with production code
+   (its one emit site) BELOW it, and the non-vacuity check filtered the whole
+   file, masking it. Now stripped by brace balance with the ZONE asserted.
+   Mutation-proven (`Some(true)` at that site → RED).
+
+Should-fixes landed at the wire (all in ``7b017a04``): the chat GET's
+`transcriptVersion` VALUE was unpinned — `salon_reads`' oracle never gained
+the column, so both sides read 0 and a hard-coded 0 passed the whole gate
+(now planted at 7 on BOTH sides of that family; mutation-proven); the
+read-before-project guard's chat-GET arm; the collapse heal's error arm (v4
+logs `Failed to collapse duplicate avatar rolls` and BOOTS ON where v5's `?`
+aborted the boot); the `force` wire's write half through the real enqueue
+(the tier-3 family built its payload in Rust, so a deleted `payload.insert`
+was invisible); `leafCounts` on the reuse line; the `…concierge-route` build
+context on a pre-generation swap; the three `[AvatarRolls]` lines under
+capture — one logged `""` where v4 logs `null`; the rolls query gate's
+`Infinity` and safe-integer arms (`?offset=1e30` answered 200; three oracle
+cases added, measured against v4's own zod); a failed byte read answering the
+empty-bytes 400 where v4 answers 500 (STATUS pinned at the wire — the two
+bodies are two engines' storage prose, recorded); bug 139's second half now
+calls the `handleContinue` twin (`onSidebarSkip` — the order named it; the
+lane's comment asserted no twin existed); the `swipeOverride` layer that
+shadowed the reconcile's id-carry retired (the swipe writes into the one map,
+v4's shape); a delete MISS toasting `Roll discarded` where v4 toasts the 404
+sentence (the dispatch path has no REST edge to 404 — judged client-side);
+the never-executed rolls e2e seed rebuilt on the reviewer's recipe (a
+`doc_mount_files` row both `fileId`s hang off, a `mount-blob:` key, a real
+PNG, the column healed before the plant) and its album-tile locator scoped;
+two reduced `files` DDL mirrors the sweep missed (`CREATE TABLE IF NOT
+EXISTS`); the `m4b` sub-beat's `finally`; the fresh-instance
+`idx_files_generationKey` recorded as a divergence (a fresh v4 never creates
+it — `shouldRun` gates the whole migration on the column being absent);
+comment/count corrections in six files.
+
+**Recorded, not fixed** (in the order headers and phase-4.md): P4.D184's
+corpus cannot reach a PRE-generation Concierge swap — no case classifies at
+all, so the lookup-vs-Concierge position is unmeasurable, not merely
+unproven; `is_photos_relative_path` has two byte-identical homes; the
+`db::memories` tracing-Interest intermittent P4.D183 diagnosed; the 18
+pre-existing `[CharacterAvatar]` lines; `SCENE_STATE_TRACKING` stays unported
+(named as a forward guard); the `loading()`/`isLoading` edge on the rolls
+section; the gallery mounting the section before the album finishes loading.
+
+### The unification wires (``7e3a585f``)
+
+- The three gate constants flipped: `P4D183_SERVER_LANDED`,
+  `P4D186_SERVER_LANDED` (both files), `P4D185_SERVER_LANDED`. **Of P4.D187's
+  seven gated beats, TWO are LIVE (the transcript pair) and FIVE are parked on
+  the NAMED `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`.** The review had parked
+  two by argument (the nudge in a paused room and the send into an unpaused
+  room both COMPLETE an interchange); **the first full run then REFUTED the
+  lane's premise for the other three** — "a held send draws no reply, so no
+  checkpoint is crossed" — measurably: with the three held-send beats live the
+  suite came back 296 / 25 / 3 with 24 of the reds `Group Expedition not
+  found`, the chat renamed by the impersonation spec's first real verdict two
+  files later, the lane's own 296/22/4 shape. A held send still records the
+  user row above the seam, and the pending checkpoint is a fact of that row,
+  not of the reply. Named, not hidden behind the server gate; the hazard is
+  phase-4.md's item 3 and it now owns five beats.
+- **The activated rolls walk's first run caught its own gesture defect**:
+  after "Set as avatar" it waited 90 s for a Discard control on the portrait
+  plate — which neither app renders (v4 `GalleryImage`'s `!isAvatar` gate,
+  copied faithfully). Re-gestured over TWO planted plates (a PNG and a GIF, so
+  the blobs carry different shas): A is kept and promoted and then provably
+  has neither Set-as-avatar nor Discard; B is discarded with the plain sentence
+  and the section stays at one plate (its album-tile count is now a
+  subtraction — a `hasNot` filter on the button excluded nothing). The
+  `return null` arm stays unit-pinned.
+- **The incident beat's first full run caught a second gesture defect of its
+  own**: it looked the chat's rows up on `GET /api/v1/chats/{id}`, which on
+  this transport serves only the get-background and cost actions (400) — the
+  chat GET rides the dispatch channel. The same trap took the unifier's first
+  `messages_route` venue pin an hour earlier. Now `chatGet` over
+  `/api/dispatch`; green by file (2/2, the incident LIVE: a row edited by a
+  second client reached the tab on the hint alone) and in the run of record.
+- Instrument note: a full Playwright run launched from the REPO ROOT scans
+  the harness's `*.test.ts` jest files and dies on `test is not defined` /
+  `No tests found` — launch from `apps/web`.
+- §C diffed name-for-name across the sides — `chatTranscript` / `chatId` /
+  `knownVersion` / `unchanged` / `version` / `messages` /
+  `offSceneCharacters` / `count`, `transcriptVersion`, `heldUserTurn`, and all
+  fifteen `AvatarRollEntry` keys in name, nullability AND order against the
+  Rust `to_json`, the three request tags and their `camelCase` fields —
+  **zero mismatches**.
+- `docs/v4/` refreshed with the fourteen files the eight v4 commits changed
+  (the two feature docs, the six bug files, `bugs.md`, `API.md`, `DDL.md`,
+  `CHANGELOG.md`, the realtime-updates doc, bug 123's amendment).
+- Two committed-pair readers the `FILE_ENTRY_COLUMNS` widening reddened
+  behind their SKIPs (`archive_reencrypt_tier2`, `character_archive_tier2` —
+  P4.D185 predicted the class; the unified sweep found the instances) healed
+  on BOTH sides (`ensure_p4d182_columns` on the copy; the oracle's own
+  `ALTER`s — the "oracle side needs the vintage heal too" shape).
+
+### The gate (the gate of record)
+
+- §2 probe re-run at the baseline move: `main`, clean, HEAD `ffb6b3119`,
+  `1a2b2164c..bugfix` empty.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean.
+- **The 46-family regen sweep from ONE unifier pin
+  `/tmp/qt-v4-pin-unify-31436bae4`** (marker-verified: `paused-hold.ts`
+  present, `transcriptVersion` ×2 in the funnel, `help/` 124): 44/44 ok on
+  the first pass + the two archive families 2/2 after the heal, + `salon_reads`
+  and `avatar_rolls_tier2` re-regenerated after the review's plants (the
+  rebuilt rolls fixture, the three query cases, the planted counter) — every
+  NDJSON non-empty, changed bytes grepped (`transcriptVersion` in salon-reads
+  and the funnel census, `"unchanged"` in the transcript route, the three new
+  route cases, `Reused` in the job oracle).
+- **Mutation battery at the wire**: seven mutations, each reddening exactly its pin — the `heldUserTurn` census with `Some(true)` planted at the help orchestrator's emit site; a held turn claiming `has_content: true` (the ordered Tier-2 proof P4.D186 had not run — `orchestrator_tier3` red); `shift_remove` → `remove` (the key-order pin red); the chat GET's counter multiplied by zero (`salon_reads` red on every `get_` case); the lookup sort collapsed to `Equal` (the newest-holder test red); the `Reused …` sentence changed (the tier-3 hit case red); the tail seeding unconditionally (the failed-GET spec red). **Two of the seven SURVIVED as first written and were repaired**: the swap-remove pin over THREE seats (the scrubbed key second-to-last — the two deletes agree; four seats now) and a mutation whose `cargo test` filter matched ZERO tests (`running 0 tests … ok` read as green — the filter named the file, not a test fn); the sort test had also inserted its rows newest-first, so rowid order was already the sorted order.
+- `cargo test --workspace` with the 91-variable env block + `QT_V4_ROOT` at
+  the pin: **569 test binaries (incl. doc-test targets) / 3,271 passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines; the round's families confirmed RUN by name and duration (`character_archive_tier2` 81.8 s, `archive_reencrypt_tier2` 40.5 s, `provisioning` 13.4 s, `system_import_state` 4.4 s, `orchestrator_tier3` 3.2 s, `avatar_job_tier3` 0.46 s, the rolls family 3 passed, `salon_reads`/`characters_reads`/`transcript_route` non-zero)**.
+- SPA: `npm run lint` clean (952 qt-* classes); `npm test` **434 spec files / 7,325 passed / 0 failed (the two new specs included, after their first drafts' own failures — a mount-time turn query counted in an order assertion; a client-side invalidate that retried past the timeout)**;
+  `npm run build` clean.
+- Full Playwright against the fresh release build — FIRST run **296 passed /
+  25 failed / 3 skipped / 1 did not run (12.3 m)**: 24 of the reds one shape
+  (`Group Expedition not found`, the title-checkpoint hazard the three live
+  held-send beats had armed) and the rolls walk's own gesture defect; after
+  the five parks and the walk's re-gesture, the run of record: **318 passed / 1 failed / 6 skipped (8.6 m) — the one red the documented P4.d17 waiting-quill full-suite intermittent on a surface this round never opened (green by file in isolation, see below); the six skips the five named `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK` beats + the standing chat-gallery park; every activated beat of the round green — the two transcript beats incl. the LIVE incident, the rolls walk over two plates, the `m4b` skip sub-beat, the Show-shared beat**.
+
+Versions: **core 0.0.913, harness 0.0.805, host 0.0.134, web 0.0.146, SPA
+0.5.721**; cli 0.0.20 / tauri 0.0.7 unchanged.
+
+### Deferred loud / next
+
+See phase-4.md's "What is next" under the round: the four-row catch-up (bug
+141 — v5 has it by P4.D42's first-byte-only bound — and the bug-142
+convergence, whose pin trips at that move), the owed dogfood pass now carrying
+this whole round, the shared-fixture title-checkpoint hazard, and the
+maintenance smalls. 💸 the dogfood queue gains: the transcript's live
+re-read on a real multi-tab chat, a paused room holding a real send, Nudge /
+Skip leaving the pause standing, the cache's first HIT on an outfit already
+worn (measure the collapsed population FIRST — ledger §5.5), the Avatar Rolls
+drawer on a real character, "Show shared" on a real merged wardrobe.

@@ -6628,7 +6628,67 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
-## The `31436bae4` drift catch-up round (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188) — ORDERED 2026-09-14
+## The `31436bae4` drift catch-up round (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188) — UNIFIED 2026-09-15
+
+**ALL SEVEN ORDERS CLOSED; the oracle baseline MOVES `f4ad2c8d1` →
+`31436bae4`; the ledger's eight rows are ABSORBED / NO-PORT-RATIFIED, and
+FOUR rows landed after the round was ordered and stay UNPROCESSED (bug 141
+PORT, the ABI heal NO-PORT?, the bug-142 filing NO-PORT?, the bug-142 fix
+CONVERGENCE — the regen rule stays PIN REQUIRED at `31436bae4`).** Round
+record: `status-log.md` → "Round record — the `31436bae4` drift catch-up
+round unification" (the §3 review's findings — three would have shipped —
+the wires, the gate numbers). CHANGELOG: the unification entries of
+2026-09-15. Every order's status header names what the review fixed on it.
+
+**What is next, in order:**
+
+1. **The four-row drift catch-up** (`/setupphase` from the ledger): bug 141
+   (`f90144ac4` — the stream watchdog + `LLMStreamStalledError` through the
+   failover classifier and the greeting ladder; v5 has the bug by P4.D42's
+   first-byte-only bound; `help/chats.md` + `help/connection-profiles.md`
+   re-vendor), the `85813ddd2` / `364b04ac4` NO-PORT ratifications, and the
+   `ffb6b3119` CONVERGENCE — at that baseline move `chats_messages_ops_tier2`'s
+   `DELETE_MISS_DIVERGENCE` pin trips by design; retire it by measurement
+   (ledger §5.4).
+2. **The owed dogfood pass** on the Friday copy, now carrying this whole
+   round: the transcript's live re-read on a real multi-tab chat (edit a row
+   from a second tab; watch it land with no stream), a paused room holding a
+   real send with the once-per-pause notice, Nudge/Skip leaving the pause
+   standing, the cache's first HIT on an outfit already worn (measure the
+   population FIRST — v4 has already collapsed Friday's rolls, so the boot
+   must write nothing; ledger §5.5), the Avatar Rolls section on a real
+   character incl. keep / set-as-avatar / discard, "Show shared" on a real
+   merged wardrobe, plus the standing 💸 queue.
+3. **The shared-fixture title-checkpoint hazard** — FIVE P4.D187 beats
+   (the three held-send beats, the nudge in a paused room, and the send into
+   an unpaused room) are parked on the named
+   `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`. Any SEND into Group Expedition —
+   held or answered — leaves a pending Host title checkpoint that a later
+   spec's real non-streaming verdict renames (measured twice: the lane's
+   296/22/4 and the unification's 296/25/3 with 24 reds of that one shape;
+   the lane's "a held send crosses no checkpoint" premise is REFUTED — the
+   user row is recorded above the seam). Wants its own small fix: a
+   checkpoint-free fixture chat with a message list (Ridge Reunion is
+   autonomous and renders none), or a suite-wide manual-title pin that holds
+   across spec files, or the checkpoint made to honour `isManuallyRenamed`
+   at enqueue. Every behaviour those five beats assert is unit-pinned and
+   mutation-proven meanwhile.
+4. **Maintenance smalls surfaced by the round:** `is_photos_relative_path`
+   has two byte-identical homes (`photos/photos_paths.rs`,
+   `db/doc_mount_file_links.rs`) — consolidate; the `db::memories`
+   `delete_with_unlink_logs_v4s_complete_debug` tracing-Interest intermittent
+   (P4.D183's diagnosis — the `global_capture` rig is the sanctioned fix); the
+   18 pre-existing `[CharacterAvatar]` handler lines P4.D184 measured
+   (handler-logging inventory); the `SCENE_STATE_TRACKING` trigger stays
+   unported (the forward guard in `orchestrator_tier3` names it); P4.D184's
+   corpus cannot reach a PRE-generation Concierge profile swap (no case
+   classifies at all — the lookup-vs-Concierge position is unmeasured); the
+   rolls save's 500-vs-400 body text is two engines' own prose (status
+   pinned).
+5. The standing items: the `name`-field turn-path measurement, P4.87's two
+   OPEN coverage items, the upstream filing candidates (v4's v0 fallback is
+   dead for trigger-phrase profiles — P4.D184; the fresh-instance
+   `idx_files_generationKey` a fresh v4 never creates — P4.D182).
 
 **Baseline `f4ad2c8d1`; v4 `main` HEAD `31436bae4` (EIGHT past — the
 ledger's eight §3 rows, every one now `ORDERED(...)`), v4 `bugfix` tip

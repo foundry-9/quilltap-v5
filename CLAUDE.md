@@ -3448,10 +3448,59 @@ records THERE. Update this summary only when a phase or round completes.
   Versions: core 0.0.894, harness 0.0.783, host 0.0.129, web 0.0.142, SPA 0.5.707; cli/tauri unchanged. **Next: the owed dogfood pass, then the
   `name`-field turn-path measurement** — see phase-4.md. Round record:
   `status-log.md`.
-- **Oracle baseline: `f4ad2c8d1` (2026-09-10, v4 main — "Fix bug 134: a chat
-  setting changed while a Salon tab is open never reached it",
-  `4.10.0-dev.24`), adopted at the `f4ad2c8d1` In-Their-Own-Words drift
-  catch-up round unification (2026-09-11).**
+- **The `31436bae4` drift catch-up round (P4.D182 → {P4.D183 ∥ P4.D184 ∥
+  P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188): UNIFIED on main (2026-09-15) —
+  ALL SEVEN CLOSED; the oracle baseline MOVES to `31436bae4`; the ledger's
+  eight rows are ABSORBED / NO-PORT-RATIFIED, and FOUR rows v4 landed after
+  the round was ordered stay UNPROCESSED (bug 141 PORT, the ABI heal NO-PORT?,
+  the bug-142 filing NO-PORT?, the bug-142 fix CONVERGENCE onto P4.D183's own
+  `DELETE_MISS_DIVERGENCE` pin — trips at the next move) — PIN REQUIRED at
+  `31436bae4`.** Absorbed whole: the substrate (`files.generationKey` via the
+  D23 re-dump + column/index ensure through every read/write/export/import
+  surface; `chats.transcriptVersion` as a boot ensure ONLY — outside v4's Zod
+  chat schema by design — with its negatives pinned; the export-schema +
+  eight-file `help/**` re-vendor); the Salon transcript as a subscribed read
+  (the funnel's ONE announce point at v4's six conditions incl. the measured
+  search-replace guard, the projection extraction proven byte-neutral at both
+  pins, the `chatTranscript` verb + `/api/v1/messages` GET edge, the chat-GET
+  key; the SPA's `reconcileTranscript` over a 38-vector corpus from v4's real
+  module, the cheap conditional read on `chats` hints, the optimistic bubble
+  back INSIDE the array — **dogfood #106's separate-signal fix retired for
+  v4's shape**); the avatar configuration cache (the key chokepoint over a
+  31-shape tier-1 corpus with the UTF-16 key sort measured, lookup-before-
+  spend, `force` from the manual regenerate only, vault-always with the legacy
+  `folders` mint deleted, the collapse as a boot heal under v4's own ledger id
+  over a 17-scenario tier-2 family — a no-op on the already-collapsed Friday);
+  Avatar Rolls (the album predicate replacing both hand-rolled copies, the
+  rolls service with set-as-avatar via the album LINK and delete via the
+  roll's OWN link, three verbs + two REST sub-routes over a new committed
+  pair; the gallery-tab section + "Show shared"); the paused-chat hold (the
+  predicate consulted ONCE at the record → prepare-turn seam, the three
+  `!hold` conjuncts each pinned with the others OPEN by a baseline-vs-target
+  v4 measurement, `heldUserTurn` on the frame; the client's once-per-pause
+  notice, Nudge/Skip leaving the pause standing, bug 139's resume-then-ask).
+  **The §3 review (seven parallel readers) caught FIVE blocking findings,
+  THREE would have shipped:** a `Map::remove` swap-remove reaching
+  `chats.characterAvatars` (hidden by one-key fixtures + a key-sorting
+  normalizer — the pin needed FOUR seats), the Salon's turn tail seeding off
+  the query's last good data so a FAILED turn-boundary read let the sweep
+  delete the operator's own line, and the transcript incident beat posting a
+  verb that exists on neither side (activation would have parked it forever —
+  re-gestured onto `messageEdit` through the funnel); plus five new log lines
+  with no capture pin and a source census that scanned a sixth of a file.
+  Two of the seven mutation proofs SURVIVED as first written (a three-seat map;
+  a test filter that ran zero tests) and were repaired — recorded. Gate: the
+  46-family sweep from one pin; fmt + clippy both sets; release build; 569
+  test binaries / 3,271 / 0 / 2 ignored, zero SKIP; ng 434 files / 7,325;
+  full Playwright 318 passed / 1 failed / 6 skipped (the red the documented quill intermittent, green in isolation; the skips the five named parks + the standing gallery park). Versions: core 0.0.913, harness
+  0.0.805, host 0.0.134, web 0.0.146, SPA 0.5.721. 💸 the dogfood queue gains
+  the whole round on the Friday copy (the cache's first HIT — measure the
+  collapsed population first). Two P4.D187 beats stay parked on the named
+  shared-fixture title-checkpoint hazard (phase-4.md). Round record:
+  `status-log.md`.
+- **Oracle baseline: `31436bae4` (2026-09-13, v4 main — "fix(salon): a paused
+  chat generates nothing on its own (bugs 137-140)", `4.10.0-dev.30`),
+  adopted at the `31436bae4` drift catch-up round unification (2026-09-15).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(unify): the `31436bae4` drift catch-up round — seven orders unified, the baseline moves to `31436bae4`
+
+_Docs-only change._
+
+P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188 unified
+on `main`; all seven CLOSED. The oracle baseline moves `f4ad2c8d1` →
+`31436bae4`; the ledger's eight rows are absorbed or ratified and the four
+rows v4 landed after the round was ordered stay unprocessed (bug 141 is a
+port v5 very likely needs; the bug-142 fix is a convergence onto P4.D183's
+own pin). The §3 review found five blocking findings across four lanes, three
+of which would have shipped — a swap-remove reaching `chats.characterAvatars`,
+a transcript sweep on a failed turn-boundary read, and an e2e beat posting a
+verb that exists on neither side — all fixed on the unify branch with pins,
+plus five unpinned log lines and eleven smaller repairs. Gate: the 46-family
+regen sweep from one pin at `31436bae4` (44 + 2 after a both-sides fixture
+heal); fmt and clippy clean in both feature sets; release build; 569 test
+binaries / 3,271 passed / 0 failed / 2 ignored with zero SKIP lines; SPA lint
+clean, 434 spec files / 7,325 passed, build clean; full Playwright
+318 passed / 1 failed / 6 skipped (the red the documented quill intermittent, green in isolation; the skips the five named parks + the standing gallery park). Order status headers, the phase plan, the drift ledger
+(§1 rewritten, §3 to §6) and the CLAUDE.md status bullet updated; the round
+record is in `status-log.md`.
+
+_Versions: core 0.0.913, harness 0.0.805, host 0.0.134, web 0.0.146, SPA 0.5.721._
+
 #### 2026-09-15 — test(e2e): the activated beats' first full run — five sending beats parked on the named title-checkpoint hazard, the rolls walk discards a second plate
 
 _Versions: SPA 0.5.721._
