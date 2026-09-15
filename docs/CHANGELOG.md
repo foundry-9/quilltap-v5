@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — test(harness): the primary-stream corpus can pose a stalled provider stream (bug 141)
+
+_Versions: harness 0.0.808._
+
+P4.D189 Tier 1 item 4. A chunk in `primary-stream-tier3.json` may now carry
+`stall: { budgetMs, chunksReceived }` beside the existing `error: string`. The
+jest mock throws v4's REAL `LLMStreamStalledError` — resolved from the same
+module registry the real `withStallWatchdog` is loaded into, so the wrapper's
+own `instanceof` holds — and the Rust twin registers the exact
+`StreamError::stalled(...)` the watchdog would have produced, carrying the
+recorded canned row's provider and model. The watchdog's TIMING stays unit-tier
+on both sides (wall-clock behaviour no NDJSON corpus can observe); what this
+vocabulary measures is everything downstream of the failure.
+
+Five cases, each grepped in the fresh NDJSON for the stalled bytes:
+the primary stalls before its first chunk and the chain hands the turn to the
+understudy (`network`, the trail's answering entry naming it); the primary
+stalls after two content chunks and there is NO substitution, the stall
+surfacing as the turn's error with the partial preserved; an understudy leg
+stalls and the walk moves on to the tier spare; the empty-response
+same-provider retry stalls; and the Concierge reroute stalls.
+
+Proven by mutation at each of the FOUR production classify sites rather than by
+deleting the classifier arm once — reverting one site to
+`FallbackError::message` reddens exactly its own case by name: the primary's
+hard-error entry → `hard_error_stall_before_first_chunk`, the retry →
+`empty_retry_stalls_then_chain`, the reroute → `empty_reroute_stalls_then_chain`,
+an understudy leg → `empty_walk_understudy_stalls_then_tier_ok`. That is a
+wiring proof the blunt mutation could not give, since the family's assertion is
+fail-fast per call.
+
 #### 2026-09-14 — fix(llm): a stalled provider stream classifies as `network`, so the turn reaches its understudy (bug 141)
 
 _Versions: core 0.0.916, harness 0.0.807._

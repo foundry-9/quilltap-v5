@@ -520,6 +520,109 @@
           }
         }
       ]
+    ],
+    "stall_then_understudy_ok": [
+      [
+        {
+          "stall": {
+            "budgetMs": 240000,
+            "chunksReceived": 0
+          }
+        }
+      ],
+      [
+        {
+          "content": "The understudy carries the scene."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "content_then_stall": [
+      [
+        {
+          "content": "Half a sentence"
+        },
+        {
+          "content": " and then silence"
+        },
+        {
+          "stall": {
+            "budgetMs": 120000,
+            "chunksReceived": 2
+          }
+        }
+      ]
+    ],
+    "empty_walk_understudy_stalls_then_tier_ok": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "stall": {
+            "budgetMs": 240000,
+            "chunksReceived": 0
+          }
+        }
+      ],
+      [
+        {
+          "content": "The tier spare picks up the thread."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "retry_stalls_then_understudy_ok": [
+      [
+        {
+          "stall": {
+            "budgetMs": 240000,
+            "chunksReceived": 0
+          }
+        }
+      ],
+      [
+        {
+          "content": "The understudy carries the scene."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 21,
+            "completionTokens": 6,
+            "totalTokens": 27
+          }
+        }
+      ]
+    ],
+    "reroute_stalls_then_understudy_ok": [
+      [
+        {
+          "stall": {
+            "budgetMs": 240000,
+            "chunksReceived": 0
+          }
+        }
+      ],
+      [
+        {
+          "content": "The understudy answers instead."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 23,
+            "completionTokens": 5,
+            "totalTokens": 28
+          }
+        }
+      ]
     ]
   },
   "calls": [
@@ -840,6 +943,72 @@
       "dangerMode": "AUTO_ROUTE",
       "contentWasFlaggedDangerous": true,
       "comment": "P4.D173: the uncensored reroute arm that THREW. Flagged content skips the same-profile retry, so the opener is recorded with the INFERRED moderation verdict; the reroute's own call falls over and is recorded against `route.connection_profile` (the swap only happens on success, so nothing else would name it); the chain then answers."
+    },
+    {
+      "name": "hard_error_stall_before_first_chunk",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000025-0000-4000-8000-000000000025",
+      "hasTools": false,
+      "streamLabel": "stall_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "the provider takes the request and says nothing at all",
+      "comment": "P4.D189 (v4 f90144ac4, bug 141): the primary answers with headers and then goes quiet before its first chunk. classifyFallbackTrigger reads LLMStreamStalledError by NAME as `network` \u2014 its message matches no network pattern \u2014 so the chain runs and the understudy answers. Without the named arm this records `provider-error`."
+    },
+    {
+      "name": "hard_error_stall_mid_stream",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000026-0000-4000-8000-000000000026",
+      "hasTools": false,
+      "streamLabel": "content_then_stall",
+      "attachedFiles": [],
+      "originalMessage": "two lines land and then the wire goes dead",
+      "comment": "P4.D189: the stall arrives AFTER content reached the user, so `hasStartedStreaming` skips the chain exactly as it does for any other mid-stream hard error (restreamInto appends and SSE has no reset). The turn's error is the stall itself and the partial is preserved. The `content_then_error` sibling is the same shape with an ordinary provider error."
+    },
+    {
+      "name": "empty_walk_understudy_stalls_then_tier_ok",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000027-0000-4000-8000-000000000027",
+      "hasTools": false,
+      "streamLabel": "empty_walk_understudy_stalls_then_tier_ok",
+      "attachedFiles": [],
+      "originalMessage": "the understudy goes quiet and the spare recovers it",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D189: a stall INSIDE the walk. The understudy leg records `network` \u2014 not the `provider-error` its sibling empty_walk_understudy_errors_then_tier_ok records \u2014 and the walk continues to the tier spare."
+    },
+    {
+      "name": "empty_retry_stalls_then_chain",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000028-0000-4000-8000-000000000028",
+      "hasTools": false,
+      "streamLabel": "retry_stalls_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "the same-provider retry goes quiet",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.D189: the empty-response same-provider retry STALLS. The trail records retry/failed with the stalled message as its detail and `network` as its trigger; the chain then walks and the understudy answers. Its sibling empty_retry_throws_then_chain uses a network-PATTERNED message, so the trigger alone would not discriminate \u2014 this one's message matches nothing, and only the named arm makes it `network`."
+    },
+    {
+      "name": "empty_reroute_stalls_then_chain",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000029-0000-4000-8000-000000000029",
+      "hasTools": false,
+      "streamLabel": "reroute_stalls_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "the uncensored desk goes quiet",
+      "dangerMode": "AUTO_ROUTE",
+      "contentWasFlaggedDangerous": true,
+      "comment": "P4.D189: the Concierge reroute STALLS. Flagged content skips the same-profile retry, so the opener carries the inferred moderation verdict; the reroute is recorded against route.connection_profile with `network`, and the chain then answers."
     }
   ],
   "authPrimaryProfile": {

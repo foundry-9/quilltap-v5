@@ -125797,3 +125797,60 @@ or before `31436bae4`, so a regen pinned at the baseline dies at import and —
 per §5.1's empty-file trap — leaves a zero-byte NDJSON. A floor that predates
 the three rows would let a truncated corpus pass having measured none of them.
 Recorded in the test header as well.
+
+### Unit 4 — `primary_stream_tier3` learns to pose a stall (§C.4)
+
+A `ChunkSpec` may carry `stall: { budgetMs, chunksReceived }` beside the
+existing `error: string`. The jest mock throws v4's REAL `LLMStreamStalledError`
+— `await import('@/lib/llm/stream-watchdog')` AFTER `jest.resetModules()`, so
+the class comes from the same registry the real `withStallWatchdog` is loaded
+into and the wrapper's own `error instanceof` holds — and the Rust
+`chunk_to_result` registers `StreamError::stalled(budget, chunks,
+Some(&row.provider), Some(&row.model))`, the recorded canned row's pair being
+exactly what v4's wrapper hands its own constructor. The `stall` arm is checked
+BEFORE `error` on both sides.
+
+**Five new cases** (corpus 24 → 29 calls, 21 → 26 stream labels; the
+committed fixture grew by pure insertion, 169 added lines and none removed):
+
+| case | what v4 does, as measured |
+|---|---|
+| `hard_error_stall_before_first_chunk` | trail `primary/failed/network` with the stalled message as `detail`; the chain runs; `routeVia: understudy`; `fullResponse` is the understudy's |
+| `hard_error_stall_mid_stream` | `has_started_streaming` skips the chain — `routeFailures: []`, `routeVia: primary`, the turn THROWS `Provider stream went quiet for 120000ms after 2 chunk(s)` and the partial `Half a sentence and then silence` is preserved |
+| `empty_walk_understudy_stalls_then_tier_ok` | the understudy leg records `network` (its sibling with an ordinary error records `provider-error`); the walk continues to the tier spare |
+| `empty_retry_stalls_then_chain` | trail `retry/failed/network` with the stalled detail; the chain then answers |
+| `empty_reroute_stalls_then_chain` | the opener keeps its INFERRED moderation verdict; the reroute records `concierge/failed/network` against `route.connection_profile` |
+
+Regenerated FRESH from `/tmp/qt-v4-pin-p4d189-ffb6b3119` through
+`recipe_sweep.py --run primary_stream_tier3_equivalence --v4 <pin>`: **29 calls
+/ 25 `llm_logs` rows, green on the first run**; the NDJSON carries
+`never sent a first chunk` ×4 and `went quiet for` ×2.
+
+**Mutations — per SITE, not per arm.** The family's assertion is fail-fast per
+call, so deleting the classifier arm only ever reddens the first stall case. The
+stronger proof, run instead: revert ONE of the four production classify sites to
+`FallbackError::message` and watch exactly its own case redden by name.
+
+| site reverted | case that reddened |
+|---|---|
+| `primary_stream.rs` hard-error entry | `hard_error_stall_before_first_chunk` |
+| `provider_failover.rs` `retry_error` | `empty_retry_stalls_then_chain` |
+| `provider_failover.rs` `reroute_error` | `empty_reroute_stalls_then_chain` |
+| `provider_failover.rs` `understudy_error` | `empty_walk_understudy_stalls_then_tier_ok` |
+
+Restored, 2/2 green. The blunt "delete the arm" mutation was ALSO run (it
+reddens `hard_error_stall_before_first_chunk` with `provider-error` against
+`network`), and unit 3's red-first run is the same mutation at the tier-1 tier
+across all three of its rows.
+
+**Recorded honestly:** case (b)'s `has_started_streaming` guard was ALREADY
+pinned — mutating it to `false` reddens the pre-existing `mid_stream_error_preserve`
+first. (b)'s own contribution is narrower and worth having anyway: it is the arm
+the order names, and it proves a STALL takes that same road with its own message
+bytes reaching `threw` and the partial surviving.
+
+**Item 5 (the `[Failover]` bags).** No key set moved: v4's bag at
+`f90144ac4` is unchanged from the baseline (the commit touches no failover log
+line), and the stall's `error` field carries v4's message bytes through the
+existing P4.87 pins — visible in the trail `detail` on four of the five cases
+above, which is the same string.

@@ -81,6 +81,19 @@ interface ChunkSpec {
   done?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   error?: string;
+  /**
+   * P4.D189 (v4 `f90144ac4`, bug 141): pose a STALL at this point in the
+   * sequence. The mock throws v4's REAL `LLMStreamStalledError`, which is the
+   * only way a stall can be posed — the watchdog's TIMING is wall-clock
+   * behaviour no NDJSON corpus can observe, so it is pinned unit-tier on both
+   * sides (v4's `stream-watchdog.test.ts`; v5's `model/stream_watchdog.rs`).
+   * What this measures is everything DOWNSTREAM of the throw: the classifier,
+   * the chain, the trail, the frames and the rows.
+   *
+   * `chunksReceived` must equal the number of chunks yielded before this entry
+   * — the error's own bytes name it, and both sides build it the same way.
+   */
+  stall?: { budgetMs: number; chunksReceived: number };
 }
 interface ApiKeySpec {
   id: string;
@@ -264,6 +277,12 @@ async function main(): Promise<void> {
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
 
+  // P4.D189: v4's REAL stall class, resolved from the SAME module registry the
+  // real `withStallWatchdog` will be loaded into below (after `resetModules`),
+  // so the wrapper's own `error instanceof LLMStreamStalledError` holds and its
+  // catch behaves exactly as it does in production.
+  const { LLMStreamStalledError } = await import('@/lib/llm/stream-watchdog');
+
   // W4.11b: relocate the model mock BELOW the wrapper. The REAL service-level
   // `streamMessage` (streaming.service.ts) now runs — and with it its terminal
   // CHAT_MESSAGE `logLLMCall` (:407, gated `if (userId)`) — while ONLY the
@@ -318,6 +337,17 @@ async function main(): Promise<void> {
           }
 
           for (const chunk of chunks) {
+            // P4.D189: a posed stall throws v4's REAL class, carrying the
+            // wrapper's own provider/model exactly as `withStallWatchdog` does.
+            // Checked BEFORE `error` so a chunk carrying both is unambiguous.
+            if (chunk.stall) {
+              throw new LLMStreamStalledError(
+                chunk.stall.budgetMs,
+                chunk.stall.chunksReceived,
+                providerName,
+                params.model
+              );
+            }
             if (chunk.error) throw new Error(chunk.error);
             if (chunk.reasoning) {
               yield { reasoningContent: chunk.reasoning };

@@ -272,6 +272,20 @@ struct ChunkW {
     usage: Option<UsageW>,
     #[serde(default)]
     error: Option<String>,
+    /// P4.D189: a posed stall (v4 `f90144ac4`, bug 141). The jest mock throws
+    /// v4's REAL `LLMStreamStalledError` here; this side registers the exact
+    /// `StreamError::stalled` the watchdog would have produced. The watchdog's
+    /// TIMING is unit-tier on both sides — what this corpus measures is
+    /// everything downstream of the failure.
+    #[serde(default)]
+    stall: Option<StallW>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+struct StallW {
+    budget_ms: u64,
+    chunks_received: u64,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -326,7 +340,11 @@ impl QueuedStreamingProvider {
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
             let q = queues.entry(key).or_default();
             for seq in &row.sequences {
-                q.push_back(seq.iter().map(chunk_to_result).collect());
+                q.push_back(
+                    seq.iter()
+                        .map(|c| chunk_to_result(c, &row.provider, &row.model))
+                        .collect(),
+                );
             }
         }
         Self {
@@ -335,7 +353,18 @@ impl QueuedStreamingProvider {
     }
 }
 
-fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
+fn chunk_to_result(c: &ChunkW, provider: &str, model: &str) -> StreamChunkResult {
+    // P4.D189: the stall arm FIRST, mirroring the jest mock's own order. The
+    // provider/model are the recorded canned row's, which are exactly what v4's
+    // wrapper hands its `new LLMStreamStalledError(...)`.
+    if let Some(stall) = &c.stall {
+        return Err(StreamError::stalled(
+            stall.budget_ms,
+            stall.chunks_received,
+            Some(provider),
+            Some(model),
+        ));
+    }
     if let Some(err) = &c.error {
         return Err(StreamError::new(err.clone()));
     }
