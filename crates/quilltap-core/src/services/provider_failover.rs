@@ -37,6 +37,7 @@ use crate::db::runtime::Db;
 use crate::model::stream::{
     StreamCacheUsage, StreamError, StreamParams, StreamUsage, StreamingCompletionProvider,
 };
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::fallback_repos::FallbackChainRepos;
@@ -793,9 +794,28 @@ where
     let mut last_cache_usage: Option<StreamCacheUsage> = None;
     let mut last_raw_provider_usage: Option<Value> = None;
 
-    let mut rx = provider
-        .stream_message(&profile.provider, profile.base_url.as_deref(), params)
-        .await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err`, which the fallback engine
+    // reads as `network` and routes to the understudy (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers).
+    //
+    // v4's `restreamInto` DOES pass `characterId: opts.character.id` to the
+    // wrapper (`provider-failover.service.ts:492`) — it is only the CHAT_MESSAGE
+    // log row that carries none — so the warn names the character here.
+    let mut rx = watch_stream(
+        provider
+            .stream_message(&profile.provider, profile.base_url.as_deref(), params)
+            .await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(&profile.provider, &params.model).with_ids(
+            log.map(|l| l.user_id),
+            log.map(|l| l.chat_id),
+            Some(character_id),
+            log.map(|l| l.message_id),
+        ),
+    );
     while let Some(item) = rx.recv().await {
         let chunk = item?;
         apply_reasoning_chunk(state, &chunk, sink);

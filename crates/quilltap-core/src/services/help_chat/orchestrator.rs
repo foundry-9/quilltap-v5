@@ -89,6 +89,7 @@ use crate::db::{
 };
 use crate::message_formatter::strip_character_name_prefix;
 use crate::model::stream::{StreamMessage, StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
@@ -906,6 +907,11 @@ where
             &effective_tools,
             cache_key.clone(),
             stream_log.as_ref(),
+            HelpWatchdogIds {
+                user_id,
+                chat_id,
+                character_id: &character_id,
+            },
         )
         .await;
         // v4 `:352`: a throw inside the `for await` propagates out of
@@ -1335,6 +1341,16 @@ struct HelpStreamLog<'a> {
     profile: crate::services::primary_stream::EffectiveProfile,
 }
 
+/// The three ids v4's help call hands the stall watchdog's `logContext`
+/// (`help-chat/orchestrator.service.ts:368-370`: `userId`, `chatId`,
+/// `characterId: character.id` — and no `messageId`).
+#[derive(Clone, Copy)]
+struct HelpWatchdogIds<'a> {
+    user_id: &'a str,
+    chat_id: &'a str,
+    character_id: &'a str,
+}
+
 struct StreamTurnResult {
     content: String,
     raw_response: Option<Value>,
@@ -1360,6 +1376,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     tools: &[Value],
     cache_key: Option<String>,
     log: Option<&HelpStreamLog<'_>>,
+    watchdog: HelpWatchdogIds<'_>,
 ) -> StreamTurnResult {
     // v4 `const startTime = Date.now()` immediately before the provider loop.
     let started_at_ms = crate::clock::now_unix_ms();
@@ -1385,7 +1402,21 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
         stop: Vec::new(),
         request_timeout_ms: None,
     };
-    let mut rx = streaming.stream_message(provider, base_url, &params).await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers).
+    let mut rx = watch_stream(
+        streaming.stream_message(provider, base_url, &params).await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(provider, model).with_ids(
+            Some(watchdog.user_id),
+            Some(watchdog.chat_id),
+            Some(watchdog.character_id),
+            None,
+        ),
+    );
     let mut content = String::new();
     let mut raw: Option<Value> = None;
     let mut usage: Option<crate::model::stream::StreamUsage> = None;

@@ -53,6 +53,7 @@ use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
@@ -463,6 +464,8 @@ where
             &effective_tools,
             &prior_reasoning,
             stream_log.as_ref(),
+            user_id,
+            chat_id,
         )
         .await;
         // v4 `:343`: a throw inside the `for await` propagates out of
@@ -841,6 +844,8 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     tools: &[Value],
     prior_reasoning: &str,
     log: Option<&BrahmaStreamLog<'_>>,
+    watchdog_user_id: &str,
+    watchdog_chat_id: &str,
 ) -> StreamTurnResult {
     // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
     // immediately before the provider loop.
@@ -868,7 +873,22 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
     };
-    let mut rx = streaming.stream_message(provider, base_url, &params).await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers). v4's console calls pass `userId` + `chatId` only — the console
+    // has neither a `messageId` nor a `characterId` to carry.
+    let mut rx = watch_stream(
+        streaming.stream_message(provider, base_url, &params).await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(provider, model).with_ids(
+            Some(watchdog_user_id),
+            Some(watchdog_chat_id),
+            None,
+            None,
+        ),
+    );
     let mut content = String::new();
     let mut raw: Option<Value> = None;
     let mut turn_reasoning = String::new();

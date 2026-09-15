@@ -42,6 +42,7 @@ use crate::db::runtime::Db;
 use crate::db::{chats, DbError};
 use crate::finish_reason::extract_finish_reason;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::agent_mode::{build_force_final_message, generate_iteration_summary, ResolvedAgentMode};
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
@@ -227,6 +228,10 @@ where
         character_name: character_name.clone(),
         character_id: character_id.clone(),
     };
+    // v4's `messageId: preGeneratedAssistantMessageId` on both re-stream calls.
+    // Copied out of the preserver because the stall watchdog's context outlives
+    // the loop body, which needs `&mut preserve` for the partial save.
+    let watchdog_message_id = preserve.pre_generated_assistant_message_id().to_string();
 
     // Initial state: the primary stream's slate + response is what the loop's first
     // iteration sees (v4 :123–126).
@@ -461,9 +466,27 @@ where
         let mut params = base_params.clone();
         params.messages = to_stream_messages(&current_messages);
         let mut emitted_streaming_status = false;
-        let mut rx = provider
-            .stream_message(&provider_name, base_url.as_deref(), &params)
-            .await;
+        // A provider that answers with headers and then goes silent would
+        // otherwise hold this loop open forever — the SDK's own timeout stops at
+        // the headers. The watchdog turns that into an ordinary `Err`, which the
+        // fallback engine reads as `network` and routes to the understudy (v4
+        // `f90144ac4`, bug 141; v4 wraps its ONE `streamMessage` funnel, v5
+        // wraps each of its own consumers).
+        //
+        // v4's re-stream call (`native-tool-loop.service.ts:340`) passes all four
+        // ids, `characterId: character.id` included.
+        let mut rx = watch_stream(
+            provider
+                .stream_message(&provider_name, base_url.as_deref(), &params)
+                .await,
+            StallBudgets::default(),
+            StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(
+                Some(&tool_context.user_id),
+                Some(&chat_id),
+                Some(&character_id),
+                Some(&watchdog_message_id),
+            ),
+        );
         loop {
             let Some(item) = rx.recv().await else { break };
             let chunk = match item {
@@ -554,9 +577,21 @@ where
 
             let mut params = base_params.clone();
             params.messages = to_stream_messages(&current_messages);
-            let mut rx = provider
-                .stream_message(&provider_name, base_url.as_deref(), &params)
-                .await;
+            // The watchdog, as above. v4's force-final call
+            // (`native-tool-loop.service.ts:421`) passes NO `characterId` — only
+            // `userId`, `messageId` and `chatId`.
+            let mut rx = watch_stream(
+                provider
+                    .stream_message(&provider_name, base_url.as_deref(), &params)
+                    .await,
+                StallBudgets::default(),
+                StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(
+                    Some(&tool_context.user_id),
+                    Some(&chat_id),
+                    None,
+                    Some(&watchdog_message_id),
+                ),
+            );
             loop {
                 let Some(item) = rx.recv().await else { break };
                 let chunk = match item {

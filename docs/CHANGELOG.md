@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — fix(salon): every Salon-side provider stream now wears the stall watchdog (bug 141)
+
+_Versions: core 0.0.915, harness 0.0.806._
+
+P4.D189 Tier 1 item 2. v4 has ONE funnel — every Salon-side consumer calls
+`streaming.service.ts`'s `streamMessage`, which `f90144ac4` wraps once. v5 has
+no funnel: each consumer drives the streaming seam itself, so v4's two wrapped
+call sites are ELEVEN here. Ten land in this commit (the eleventh, the
+greeting, is P4.D190's, and takes its own tighter budgets):
+`primary_stream.rs`'s `consume_stream` (v4's primary AND its tool-unsupported
+retry), `provider_failover.rs`'s `restream_into`, `recovery.rs`'s
+`drain_recovery_stream`, both `native_tool_loop.rs` re-streams,
+`text_tool_loop.rs`'s `stream_continuation`, `carina_query.rs`'s `run_stream`,
+the help-chat orchestrator's `stream_turn`, and both Brahma Console streams.
+Each takes `StallBudgets::default()` and `context: "streaming.service"`; the
+loop bodies are untouched.
+
+The warn's four ids are v4's `logContext` bag, measured per call site rather
+than assumed: v4's recovery call passes none of them, its force-final tool
+re-stream and its text-tool continuation pass no `characterId`, Carina and the
+help chat pass no `messageId`, and both Brahma services pass only `userId` and
+`chatId`. The primary stream reads all four off the same `StreamLogCtx` v4's
+wrapper receives them in, which is how the tool-unsupported retry's absent
+`characterId` reaches the warn too.
+
+`stream_watchdog_wrap_census.rs` is the wire proof. An unwrapped twelfth site
+is invisible to every differential in the repo — a canned sequence is
+pre-pushed into its channel and closes, so `recv()` never pends and the
+watchdog has nothing to fire on. The census strips `#[cfg(test)]` items by
+brace balance, counts `.stream_message(` and `watch_stream(` per production
+file, asserts the exact pairs, and asserts the twelve-row file list IS the set
+of production files reaching the seam (the twelfth row is the trait's own
+`Arc<T>` delegation). A second test pins every Salon-side wrap to
+`StallBudgets::default()` and `StallWatchdogContext::streaming_service(`, which
+the counts alone cannot see. Unwrapping one site reddens both by file name.
+
 #### 2026-09-14 — feat(llm): a provider that goes quiet mid-stream now fails inside a budget (bug 141, substrate)
 
 _Versions: core 0.0.914._

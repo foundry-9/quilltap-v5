@@ -31,6 +31,7 @@ use crate::db::runtime::Db;
 use crate::format_bytes::format_bytes;
 use crate::model::stream::StreamMessage;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, DonePayload, EventSink};
 use super::primary_stream::{
@@ -374,9 +375,23 @@ where
     P: StreamingCompletionProvider,
     S: EventSink,
 {
-    let mut rx = provider
-        .stream_message(provider_name, base_url, params)
-        .await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err`, which the fallback engine
+    // reads as `network` and routes to the understudy (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers).
+    //
+    // v4's recovery call (`recovery.service.ts:303`) passes NONE of the four ids
+    // — no `userId`, no `chatId`, no `characterId`, no `messageId` — which is
+    // also why it writes no `llm_logs` row. The warn carries `context` alone.
+    let mut rx = watch_stream(
+        provider
+            .stream_message(provider_name, base_url, params)
+            .await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(provider_name, &params.model),
+    );
     while let Some(item) = rx.recv().await {
         let chunk = item?;
         if !chunk.content.is_empty() {

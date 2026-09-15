@@ -62,6 +62,7 @@ use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::primary_stream::{apply_reasoning_chunk, PreservePartialOnError, StreamingState};
@@ -341,7 +342,7 @@ where
     Strat: TextToolStrategy + ?Sized,
 {
     let RunTextToolPassOptions {
-        chat_id: _chat_id,
+        chat_id,
         character_id,
         character_name,
         provider: provider_name,
@@ -364,6 +365,16 @@ where
     let status_context = StatusContext {
         character_name: character_name.clone(),
         character_id: character_id.clone(),
+    };
+    // v4's continuation call hands the stall watchdog `userId`, `messageId` and
+    // `chatId` (`text-tool-loop.service.ts:397-399`). The message id is copied
+    // out of the preserver because the watchdog's context outlives the loop
+    // body, which needs `&mut preserve` for the partial save.
+    let watchdog_message_id = preserve.pre_generated_assistant_message_id().to_string();
+    let watchdog_ids = ContinuationWatchdogIds {
+        user_id: &tool_context.user_id,
+        chat_id: &chat_id,
+        message_id: &watchdog_message_id,
     };
 
     // Raw (un-stripped) response from each stream pass — the primary stream first,
@@ -420,6 +431,7 @@ where
                 &ledger,
                 state,
                 &mut raw_responses,
+                watchdog_ids,
             )
             .await
             {
@@ -494,6 +506,7 @@ where
             &ledger,
             state,
             &mut raw_responses,
+            watchdog_ids,
         )
         .await
         {
@@ -601,6 +614,16 @@ fn call_signature_of(parsed: &[ParsedTextToolCall]) -> String {
 // streamContinuation
 // ===========================================================================
 
+/// The three ids v4's continuation call puts in the stall watchdog's
+/// `logContext` (`text-tool-loop.service.ts:397-399`: `userId`, `messageId`,
+/// `chatId` — and deliberately no `characterId`).
+#[derive(Clone, Copy)]
+struct ContinuationWatchdogIds<'a> {
+    user_id: &'a str,
+    chat_id: &'a str,
+    message_id: &'a str,
+}
+
 /// Re-stream a continuation (v4 `streamContinuation`). Emits the `sending`-status
 /// frame, streams `formatted_messages ++ ledger`, appends content to a freshly
 /// pushed `raw_responses` slot (pushed FIRST so a mid-stream failure preserves the
@@ -623,6 +646,7 @@ async fn stream_continuation<P, S, Strat>(
     ledger: &[ThreadedMessage],
     state: &mut StreamingState,
     raw_responses: &mut Vec<String>,
+    watchdog: ContinuationWatchdogIds<'_>,
 ) -> Result<(), StreamError>
 where
     P: StreamingCompletionProvider,
@@ -655,9 +679,25 @@ where
     params.web_search_enabled = continuation_use_native_web_search;
     params.stop = strategy.stop_sequences();
 
-    let mut rx = provider
-        .stream_message(provider_name, base_url, &params)
-        .await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err`, which the fallback engine
+    // reads as `network` and routes to the understudy (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers). v4's continuation call (`text-tool-loop.service.ts:390`) passes
+    // NO `characterId` — only `userId`, `messageId` and `chatId`.
+    let mut rx = watch_stream(
+        provider
+            .stream_message(provider_name, base_url, &params)
+            .await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(provider_name, &params.model).with_ids(
+            Some(watchdog.user_id),
+            Some(watchdog.chat_id),
+            None,
+            Some(watchdog.message_id),
+        ),
+    );
     while let Some(item) = rx.recv().await {
         let chunk = match item {
             Ok(c) => c,

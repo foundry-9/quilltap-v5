@@ -44,6 +44,7 @@ use crate::db::runtime::Db;
 use crate::db::{connection_profiles, DbError};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::provider_manifest::Registry;
 use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
@@ -273,6 +274,7 @@ struct RunStreamResult {
 /// One streamed LLM call. The slate crosses the stream boundary losslessly (v4
 /// passes `ThreadedMessage[]` straight to `streamMessage`; P4.13 unit 2 made the
 /// v5 boundary carry the tool-call linkage instead of flattening it away).
+#[allow(clippy::too_many_arguments)]
 async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     provider: &str,
@@ -281,6 +283,8 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     messages: &[ThreadedMessage],
     tools: &[Value],
     log: Option<&OneShotStreamLog<'_>>,
+    watchdog_user_id: &str,
+    watchdog_chat_id: &str,
 ) -> RunStreamResult {
     // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
     // immediately before the provider loop.
@@ -308,7 +312,22 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
     };
-    let mut rx = streaming.stream_message(provider, base_url, &params).await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers). v4's console calls pass `userId` + `chatId` only — the console
+    // has neither a `messageId` nor a `characterId` to carry.
+    let mut rx = watch_stream(
+        streaming.stream_message(provider, base_url, &params).await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(provider, model).with_ids(
+            Some(watchdog_user_id),
+            Some(watchdog_chat_id),
+            None,
+            None,
+        ),
+    );
     let mut answer = String::new();
     let mut raw: Option<Value> = None;
     let mut reasoning = String::new();
@@ -591,6 +610,8 @@ where
             &conversation_messages,
             &effective_tools,
             stream_log.as_ref(),
+            user_id,
+            chat_id,
         )
         .await;
         // v4's `for await` propagates a mid-stream throw out of `runBrahmaQuery`

@@ -50,6 +50,7 @@ use crate::db::{api_keys, chats_read, connection_profiles};
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload};
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::provider_manifest::{Capability, Registry};
 use crate::services::carina_runner::writer::{
     post_carina_response, PostCarinaResponseParams, PostedCarinaMessage,
@@ -619,6 +620,9 @@ where
         max_tokens,
         top_p,
         profile_parameters: profile_parameters.as_ref(),
+        user_id: &user_id,
+        chat_id: &chat_id,
+        answerer_id: &answerer_id,
     };
 
     let (mut answer, mut raw_response) = run_stream(
@@ -1133,6 +1137,12 @@ struct StreamCtx<'a> {
     max_tokens: Option<i64>,
     top_p: Option<f64>,
     profile_parameters: Option<&'a Value>,
+    /// The three ids v4's Carina call hands the stall watchdog's `logContext`
+    /// (`carina.service.ts:683-685`: `userId`, `chatId`, `characterId:
+    /// answerer.id` — and no `messageId`).
+    user_id: &'a str,
+    chat_id: &'a str,
+    answerer_id: &'a str,
 }
 
 /// Accumulate one streamed LLM call into `(answer, rawResponse)` — v4's
@@ -1165,9 +1175,23 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
     };
-    let mut rx = streaming
-        .stream_message(ctx.provider, ctx.base_url, &params)
-        .await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers).
+    let mut rx = watch_stream(
+        streaming
+            .stream_message(ctx.provider, ctx.base_url, &params)
+            .await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(ctx.provider, ctx.model).with_ids(
+            Some(ctx.user_id),
+            Some(ctx.chat_id),
+            Some(ctx.answerer_id),
+            None,
+        ),
+    );
     let mut answer = String::new();
     let mut raw: Option<Value> = None;
     while let Some(chunk) = rx.recv().await {

@@ -54,6 +54,7 @@ use crate::model::stream::{
     canned_stream_key, StreamCacheUsage, StreamChunk, StreamError, StreamMessage, StreamParams,
     StreamUsage, StreamingCompletionProvider,
 };
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::llm_logging::{
@@ -695,6 +696,13 @@ impl PreservePartialOnError {
         }
     }
 
+    /// v4 `preGeneratedAssistantMessageId` — the id the tool loops' re-stream
+    /// calls hand the stall watchdog as `logContext.messageId` (P4.D189). The
+    /// preserver is the one thing both loops already receive that carries it.
+    pub fn pre_generated_assistant_message_id(&self) -> &str {
+        &self.pre_generated_assistant_message_id
+    }
+
     /// Preserve the partial `state.full_response` on an upstream error — exactly
     /// once for the turn. Clean the text (`normalizeContentBlockFormat` →
     /// `stripCharacterNamePrefix`), append the OOC marker, and write through the
@@ -1031,9 +1039,32 @@ where
     let mut last_usage: Option<StreamUsage> = None;
     let mut last_cache_usage: Option<StreamCacheUsage> = None;
     let mut last_raw_provider_usage: Option<Value> = None;
-    let mut rx = provider
-        .stream_message(&provider_name, base_url.as_deref(), params)
-        .await;
+    // A provider that answers with headers and then goes silent would otherwise
+    // hold this loop open forever — the SDK's own timeout stops at the headers.
+    // The watchdog turns that into an ordinary `Err`, which the fallback engine
+    // reads as `network` and routes to the understudy (v4 `f90144ac4`, bug 141;
+    // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
+    // consumers).
+    //
+    // The four ids are v4's `logContext` bag, read off the SAME [`StreamLogCtx`]
+    // v4's wrapper receives them in — which is why the tool-unsupported retry's
+    // `character_id: None` (v4 passes none at `primary-stream.service.ts:246`)
+    // reaches the warn too. When there is no user at all the whole ctx is absent
+    // and v5 renders no ids where v4 would render empty strings; that state is
+    // unreachable on the request path (v4 gates its own log on the same `if
+    // (userId)`), and it is four log fields wide.
+    let mut rx = watch_stream(
+        provider
+            .stream_message(&provider_name, base_url.as_deref(), params)
+            .await,
+        StallBudgets::default(),
+        StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(
+            log.map(|l| l.user_id),
+            log.map(|l| l.chat_id),
+            log.and_then(|l| l.character_id),
+            log.map(|l| l.message_id),
+        ),
+    );
     while let Some(item) = rx.recv().await {
         let chunk = match item {
             Ok(c) => c,

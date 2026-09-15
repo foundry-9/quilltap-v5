@@ -125611,3 +125611,142 @@ re-read on a real multi-tab chat, a paused room holding a real send, Nudge /
 Skip leaving the pause standing, the cache's first HIT on an outfit already
 worn (measure the collapsed population FIRST — ledger §5.5), the Avatar Rolls
 drawer on a real character, "Show shared" on a real merged wardrobe.
+
+---
+
+## P4.D189 — the stream watchdog: the SERVER substrate + the Salon side (v4 `f90144ac4`, bug 141) — lane record
+
+**Branch `claude/p4-stream-watchdog-salon-b1222c`, from `main` at `f687cc4e`.**
+Round: the `ffb6b3119` bug-141 + bug-142 drift catch-up (P4.D189 → P4.D190 ∥
+P4.D191). Oracle baseline `31436bae4`, target `ffb6b3119`.
+
+**Substrate commit: `73546827`** — `model/stream_watchdog.rs` + `StreamError`'s
+`StreamErrorKind` and its three new methods + their unit tests, and nothing
+else. **P4.D190 branches from THAT sha**, not from `main`. ⚠ At lane start
+`git worktree list` already showed
+`.claude/worktrees/p4-d190-greeting-stall-ladder-b555d2` sitting at `f687cc4e`
+(main) — i.e. created BEFORE the substrate existed. Flagged for the unifier:
+that lane needs to be re-based onto `73546827` (or to cherry-pick it) or it
+cannot compile against §C.1/§C.2. After the substrate commit, `model/stream.rs`
+and `model/stream_watchdog.rs` are FROZEN for both lanes.
+
+### §2 freshness probe (lane start)
+
+`git -C ~/source/quilltap-server`: branch `main`, `status --short` EMPTY,
+`log --oneline ffb6b3119..main` EMPTY, `log --oneline 1a2b2164c..bugfix` EMPTY.
+**PASS** — §1's verdict and its PIN REQUIRED regen rule stand.
+
+### The pins (§R.3)
+
+- `/tmp/qt-v4-pin-p4d189-ffb6b3119` — every moving family. Pin verified by
+  `lib/llm/stream-watchdog.ts` being PRESENT (5,301 bytes).
+- `/tmp/qt-v4-pin-p4d189-31436bae4` — the neutrality legs and `QT_V4_ROOT` for
+  the embed guards (this lane's vendored `help/**` stays at the baseline). Pin
+  verified by `lib/llm/stream-watchdog.ts` being ABSENT — which is also why
+  every regen of a family whose oracle imports it MUST use the target pin.
+
+### The funnel map (v4 caller → v5 site) — MEASURED, not assumed
+
+`git grep -ln "streaming.service'" ffb6b3119 -- lib app` names nineteen
+importers; exactly nine of them CALL `streamMessage({`, at eleven call sites:
+
+| v4 call site | ids it hands the wrapper | v5 site |
+|---|---|---|
+| `primary-stream.service.ts:197` | user, message, chat, character | `primary_stream.rs`'s `consume_stream` (called at `:1190`) |
+| `primary-stream.service.ts:261` (tool-unsupported retry) | user, message, chat — **no character** | the same `consume_stream` (called at `:1241`, with `StreamLogCtx.character_id: None`) |
+| `provider-failover.service.ts:482` (`restreamInto`) | user, message, chat, character | `provider_failover.rs`'s `restream_into` |
+| `recovery.service.ts:303` | **none** | `recovery.rs`'s `drain_recovery_stream` |
+| `native-tool-loop.service.ts:340` | user, message, chat, character | `native_tool_loop.rs` re-stream 1 |
+| `native-tool-loop.service.ts:421` | user, message, chat — no character | `native_tool_loop.rs` re-stream 2 (force-final) |
+| `text-tool-loop.service.ts:390` | user, message, chat — no character | `text_tool_loop.rs`'s `stream_continuation` |
+| `carina.service.ts:676` | user, chat, character — **no message** | `carina_query.rs`'s `run_stream` |
+| `help-chat/orchestrator.service.ts:361` | user, chat, character — no message | `help_chat/orchestrator.rs`'s `stream_turn` |
+| `brahma-console/one-shot.service.ts:211` | user, chat | `brahma_console/mod.rs`'s `run_stream` |
+| `brahma-console/orchestrator.service.ts:343` | user, chat | `brahma_console/orchestrator.rs`'s `stream_turn` |
+
+Plus v4's OTHER wrapped site, `lib/chat/initial-greeting.ts:174` → v5
+`services/initial_greeting.rs:199` — **P4.D190's**, and the twelfth census row.
+No v4 streaming consumer lacks a v5 site, and no v5 site lacks a v4 caller.
+
+### Unit 1 — the substrate (§C.1 + §C.2)
+
+- `model/stream.rs`: `StreamErrorKind::{Provider, Stalled{budget_ms,
+  chunks_received, provider, model_name}}`; `StreamError` gains `kind`;
+  `new()` (unchanged for all 31 pre-existing call sites) builds `Provider`;
+  `stalled()` renders v4's constructor bytes; `is_stalled()`; `v4_name()`.
+  No other construction site in the workspace uses a struct literal, so the
+  added field compiles everywhere untouched.
+- NEW `model/stream_watchdog.rs`: the two constants, `StallBudgets`,
+  `StallWatchdogContext` (+ `streaming_service()` / `with_ids()` builders),
+  `WatchedStream`, `watch_stream`, `recv`. v4's four module-doc paragraphs and
+  both budget docs carried as the *why*.
+- **`elapsed_ms` uses `tokio::time::Instant`, not `std::time::Instant`** — the
+  order's Tier-2 item 7 asks for BOTH "wall-clock, as v4's `Date.now() -
+  startedAt`" AND "under `start_paused` … assert equality". Only
+  `tokio::time::Instant` satisfies both: it IS the std clock in production and
+  it advances with the auto-advanced clock under `start_paused`, so the paused
+  assertion is an exact `elapsed_ms=40`. A `std::time::Instant` would read ~0
+  there and the pin would have to be weakened to `>= 0`.
+- 12 unit tests under `#[tokio::test(start_paused = true)]`, budgets `{60, 40}`:
+  v4's eight shapes (healthy pass-through; first chunk never arrives, with
+  `chunks_received 0` / `budget_ms 60` / the exact bytes; `['a','b']` then the
+  stall with `chunks_received 2` / `budget_ms 40`; six 25 ms gaps NOT aborted;
+  provider+model carried — asserted through a DIFFERENT pair than the shared
+  ctx so it cannot pass by accident; a real provider `Err` arrives as itself
+  and keeps its `Provider` kind; the consumer-drop leg) plus v5's own three
+  (after a stall every further `recv` is `None`; a reasoning-only chunk
+  COUNTS; the defaults are v4's two constants) and the warn pinned through a
+  thread-scoped `CaptureLayer` (present ONCE on a stall with every field,
+  `character_id` ABSENT because it is `None`, and absent entirely on a healthy
+  stream and on a provider `Err`).
+
+**Deferrals recorded in the module doc, loudly:** real cancellation of the
+stalled socket (v4's own "not done here" — an abort on the params is a
+plugin-types contract change; **P4.44's abort-arming deferral STANDS**, this
+lane does not close it), and the consumer-`break` unwind (v4 awaits
+`iterator.return()`; v5's seam is an `mpsc::Receiver` with no `return()`, so
+dropping it is the ONE answer for both of v4's two `finally` legs — a
+NO-COUNTERPART, not a gap).
+
+**Mutations (file-backup revert, each reddening exactly its named test):**
+
+| mutation | reddened |
+|---|---|
+| the budget made cumulative (`budget - elapsed`) | `does_not_abort_a_slow_stream_that_keeps_making_progress` |
+| a reasoning-only chunk stops counting | `a_reasoning_only_chunk_counts` |
+| the stalled `Err` answered on every `recv` (receiver not dropped) | `after_a_stall_every_further_recv_is_none` |
+| the warn deleted | `the_warn_fires_once_with_v4s_bag` |
+| `chunk(s)` rendered `chunks` | `yields_what_arrived_then_stalls_mid_flight` + `a_reasoning_only_chunk_counts` |
+
+### Unit 2 — the ten wrap sites + the census
+
+Each site is `watch_stream(provider.stream_message(…).await,
+StallBudgets::default(), StallWatchdogContext::streaming_service(provider,
+model).with_ids(…))`, v4's comment carried once per file, loop bodies
+untouched. Two mechanical notes: the tool loops copy
+`preserve.pre_generated_assistant_message_id()` into a local `String` first
+(the watchdog ctx outlives the loop body, which needs `&mut preserve` for the
+partial save — a new accessor on `PreservePartialOnError`), and
+`text_tool_loop`'s `RunTextToolPassOptions.chat_id` stopped being discarded as
+`_chat_id`.
+
+One narrow recorded divergence: at `consume_stream` and `restream_into` the
+four ids ride the `Option<&StreamLogCtx>` v4's wrapper receives them in, which
+is gated on `if (userId)` exactly as v4 gates its own log. With no user at all
+v5 renders no ids where v4 would render empty strings. Unreachable on the
+request path, four log fields wide, named in the site comment.
+
+NEW `crates/quilltap-harness/tests/stream_watchdog_wrap_census.rs`, the
+`db_error_key_guard` idiom: `#[cfg(test)]` items stripped by brace balance,
+per-file exact `(.stream_message(, watch_stream()` pairs over the production
+zone, and the twelve-row list asserted to BE the set of production files
+reaching the seam. `model/streaming_provider.rs` has 24 seam calls and not one
+in production, which is exactly why the stripping is load-bearing; the twelfth
+row is `model/stream.rs`'s blanket `Arc<T>` delegation. A second test pins each
+Salon-side wrap to `StallBudgets::default()` and
+`StallWatchdogContext::streaming_service(` — the counts alone cannot see a site
+that bought itself a different deadline. `services/initial_greeting.rs` is
+listed at ZERO wraps; **P4.D190's order moves that to one.**
+
+**Mutation:** unwrapping `text_tool_loop`'s site reddened BOTH census tests by
+file name (`0 production watch_stream( call(s), census says 1`).
