@@ -16,10 +16,13 @@
 //! over the production zone, plus the assertion that the census file list IS
 //! the set of files reaching the seam.
 //!
-//! **Cross-lane:** `services/initial_greeting.rs` is P4.D190's wrap (the
-//! greeting takes its own 90 s/60 s budgets). It is listed here at ZERO wraps
-//! and P4.D190's order moves its expected count to one — that handoff is the
-//! reason the file is named at all rather than merely permitted.
+//! **The one site that is NOT on the Salon's budgets:** `services/initial_
+//! greeting.rs` (P4.D190) wraps on the greeting's own 90 s/60 s constants with
+//! `context: "initial-greeting"`, exactly as v4's `initial-greeting.ts` passes
+//! `withStallWatchdog` its own options. The count census treats it like any
+//! other consumer; the budget census below pins it to ITS constants instead of
+//! `StallBudgets::default()`. (P4.D189 listed it at zero wraps; the `ffb6b3119`
+//! round's unification moved the row when P4.D190 landed beside it.)
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test stream_watchdog_wrap_census
@@ -94,10 +97,10 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
     (
         "services/initial_greeting.rs",
         1,
-        0,
-        "P4.D190's wrap (the greeting's own 90 s/60 s budgets, v4 \
-         lib/chat/initial-greeting.ts:174). Expected ZERO here; P4.D190's order \
-         moves this to one when it lands",
+        1,
+        "`generate_greeting_message` — v4 lib/chat/initial-greeting.ts:174, the \
+         one consumer OUTSIDE v4's funnel, on the greeting's own 90 s/60 s \
+         budgets (P4.D190; the count moved from zero at the round's unification)",
     ),
 ];
 
@@ -255,11 +258,17 @@ fn every_production_stream_message_call_wears_the_watchdog() {
     );
 }
 
+/// The greeting is v4's ONE consumer outside the funnel, and the one site whose
+/// budgets are NOT the defaults (`initial-greeting.ts:10-20`: 90 s to the first
+/// chunk, 60 s between chunks, `context: 'initial-greeting'`).
+const GREETING_SITE: &str = "services/initial_greeting.rs";
+
 /// The wrap is only a wrap if the budgets are v4's. A site that passed its own
 /// `StallBudgets { … }` would satisfy the count census above while quietly
 /// buying itself a different deadline — so the Salon-side sites are pinned to
-/// `StallBudgets::default()` by name. (The greeting's own two constants are
-/// P4.D190's, and live in `initial_greeting.rs`, which has no wrap here yet.)
+/// `StallBudgets::default()` by name, and the greeting to its OWN two constants
+/// and its own `context` (a greeting on the Salon's 240 s would hold the Green
+/// Room's undismissable dialog for four minutes instead of ninety seconds).
 #[test]
 fn every_salon_side_wrap_uses_the_default_budgets() {
     let root = core_src_root();
@@ -271,6 +280,27 @@ fn every_salon_side_wrap_uses_the_default_budgets() {
         let text =
             std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let zone = production_zone(&text);
+        if *rel == GREETING_SITE {
+            for needle in [
+                "first_chunk_ms: GREETING_FIRST_CHUNK_TIMEOUT_MS",
+                "idle_ms: GREETING_IDLE_TIMEOUT_MS",
+                "context: \"initial-greeting\"",
+            ] {
+                if zone.matches(needle).count() != *want_wraps {
+                    failures.push(format!(
+                        "{rel}: expected {want_wraps} `{needle}` — the greeting wraps on its \
+                         OWN 90 s/60 s constants and its own context, never the Salon's"
+                    ));
+                }
+            }
+            if zone.contains("StallBudgets::default()") {
+                failures.push(format!(
+                    "{rel}: `StallBudgets::default()` present — the greeting must not take \
+                     the Salon's 240 s/120 s"
+                ));
+            }
+            continue;
+        }
         let defaults = zone.matches("StallBudgets::default()").count();
         if defaults != *want_wraps {
             failures.push(format!(

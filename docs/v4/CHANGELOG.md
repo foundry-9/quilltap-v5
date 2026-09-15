@@ -4,6 +4,124 @@
 
 ### 4.10-dev
 
+#### Fixed: deleting a message that is not there no longer counts as a deletion (bug 142)
+
+`deleteMessagesByIds` reported the number of message IDs it was *asked* about, not the number of
+rows it actually deleted. Asked to delete one ID that did not exist, it reported deleting one.
+
+Nothing was lost or corrupted — the chat's message count and last-message time are recomputed from
+the messages that survive, so they landed on the right values either way. Two things were wrong:
+
+- Every caller that logs the result was logging a number that could not be false. The Commonplace
+  Book's whisper sweep reported "swept N" whether or not it swept anything.
+- Since the transcript counter was added, a delete that removed nothing still bumped it and told
+  every open Salon tab on that chat that its transcript had changed. Each tab re-read the
+  transcript and was handed the one it already had.
+
+The cause was a check for return values the database layer cannot produce. The code tested whether
+the delete returned a number, then fell back to testing whether it was truthy — but a delete always
+returns a `{ deletedCount, acknowledged }` record, and a miss returns that record with a count of
+zero. An object is truthy, so a miss was counted as a deletion, and the total could only ever equal
+the number of IDs requested. Six of the seven callers of this database method already read
+`deletedCount` directly; this was the only one that did not.
+
+A delete that removes nothing now returns zero, logs nothing, leaves the transcript counter alone,
+and tells no one. A batch that removes some of what it was asked about reports only what it
+removed, and still announces the change — because it did change the transcript.
+
+The reason this survived is worth recording: the test suite's stand-in for the database returned a
+plain `0` or `1`, which took the one branch where the arithmetic was correct. The test named *says
+nothing when nothing was removed* had been passing against a database that does not exist. That
+stand-in was corrected first, which made the test fail on its own before anything else changed. The
+lasting guard is a new suite that runs the real code against a real database instead of a stand-in,
+and separately pins what the database layer actually returns.
+
+Files: `lib/database/repositories/chats-messages.ops.ts`,
+`__tests__/unit/lib/database/repositories/chats-messages-transcript-version.test.ts`,
+`__tests__/unit/lib/database/repositories/chats-messages-delete-count.integration.test.ts` (new).
+
+#### Fixed: a migration test was passing over a helper that did not exist
+
+`add-profile-multi-character-prefill-field.integration.test.ts` replaced the migration's database
+helpers with a stand-in that was missing two of them — `sqliteColumnExists` and
+`addColumnIfMissing`, both of which the migration calls. Six of its seven tests failed with
+`sqliteColumnExists is not a function`, so the migration's column-add and its Anthropic backfill
+were not being exercised at all. Only the test double was wrong; the helpers exist and the
+migration itself is fine.
+
+Files: `__tests__/unit/lib/database/migration/add-profile-multi-character-prefill-field.integration.test.ts`.
+
+#### Fixed: the native-binding ABI heal now actually rebuilds
+
+After a Node.js upgrade, the SQLCipher native addon is compiled against the old ABI and throws
+`NODE_MODULE_VERSION` on load, turning every real-binding test suite red. Both the jest globalSetup
+heal and the CLI's `ensureDatabaseNativeModule()` were supposed to fix that automatically. Neither
+did.
+
+Both shelled out to `npm rebuild <name>`, which fails two different ways:
+
+- **`npm rebuild better-sqlite3`** (the alias the root install uses) is refused with
+  `EALLOWSCRIPTS`. npm no longer runs install scripts for a package that is not listed in the root
+  `package.json` `allowScripts` map, which is keyed `name@version` — the alias is not a key there.
+- **`npm rebuild better-sqlite3-multiple-ciphers`** at the repo root *is* allowed, reports `rebuilt
+  dependencies successfully`, and rebuilds a phantom directory. The stale binary is untouched. A
+  false success is worse than an error: the heal reported it had worked and the suites stayed red.
+
+Rebuilds are now addressed by **directory** rather than by npm package name, and run the package's
+own build chain in place — `prebuild-install`, falling back to `node-gyp rebuild --release`, which
+is exactly what its `install` script does. No name resolution, no npm script policy.
+
+The new helper also **verifies the result instead of trusting the exit code**: it re-reads the
+compiled-for ABI out of the binary afterwards and only reports success once it matches the running
+Node. A tool that exits 0 without changing anything is now reported as the failure it is, naming
+every attempt and what the binding still says.
+
+Files: `packages/quilltap/lib/native-modules.js` (new `findBinFor`, `rebuildNativePackage`;
+`ensureDatabaseNativeModule` rewired), `jest.global-setup.js`,
+`__tests__/unit/packages/quilltap/native-rebuild.test.js` (new).
+
+#### Fixed: a silent provider no longer freezes chat creation (bug 141)
+
+Creating a chat could hang forever at *Setting the opening scene…*, with the Green Room dialog stuck
+open. That dialog cannot be dismissed while creation runs, so the only way out was reloading the
+window.
+
+The cause was a provider that accepted the streaming request, sent response headers, and then never
+sent a chunk. Nothing caught it. Provider SDK timeouts stop at the response headers — which is what
+makes them safe to use on a streaming path, and useless once the headers arrive — so a response body
+that never starts was outside every timeout in the app. The chat itself was already fully built by
+that point; only the opening line, and the HTTP response, were missing.
+
+Provider streams are now watched for silence. A stream gets a generous budget for its first chunk
+(four minutes, since a long prompt with extended thinking legitimately takes minutes to start) and a
+tighter one between chunks (two minutes). The opening greeting gets tighter budgets still — 90
+seconds and 60 seconds — because it is short and runs behind the blocking dialog.
+
+What happens when a stream goes silent:
+
+- **In a chat**, the turn fails over to the connection profile's understudy, the same as any other
+  network failure.
+- **During chat creation**, the greeting stops retrying that profile. The remaining attempts go
+  back to the same silent provider, so the chat opens with its scripted greeting instead. A silence
+  at the Concierge's uncensored profile is the exception: that is a different provider, so the
+  character's own profile is still tried.
+- **In the log**, `[LLMStream] Abandoned a stalled provider stream` names the provider, the model,
+  the budget, and how many chunks had arrived.
+
+A stalled request is abandoned, not cancelled — the provider plugin owns its connection. Killing the
+socket needs a change to the plugin interface and is not in this release.
+
+Not affected: slow streams that keep producing. The budget applies to each gap between chunks, not
+to the total, so a long answer is never cut off for being long. Thinking models emit reasoning
+chunks while they think, and those count.
+
+Files: `lib/llm/stream-watchdog.ts` (new), `lib/services/chat-message/streaming.service.ts`,
+`lib/chat/initial-greeting.ts`, `app/api/v1/chats/route.ts`, `lib/llm/fallback/engine.ts`,
+`docs/developer/bugs/fixed/bug-141-stalled-stream-wedges-chat-creation.md` (new),
+`__tests__/unit/lib/llm/stream-watchdog.test.ts` (new),
+`__tests__/unit/app/api/v1/chats/route.greeting-stall.test.ts` (new),
+`__tests__/unit/lib/llm/fallback/engine.test.ts`.
+
 #### Changed: a paused chat no longer generates anything on its own (bug 137)
 
 **Pause** in the participants sidebar stopped the turn chain, not the chat. Every message you sent

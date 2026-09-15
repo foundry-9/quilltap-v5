@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — test(unify): the `ffb6b3119` round's unification wires — the wrap census's greeting row moved to one, pinned to its own budgets; the `docs/v4/` mirror refreshed
+
+_Versions: harness 0.0.814._
+
+The cross-lane handoff both orders named: P4.D189's wrap census listed
+`services/initial_greeting.rs` at zero `watch_stream(` wraps and P4.D190
+added one, so the row moves to one — and its budget census, which pins every
+Salon-side wrap to `StallBudgets::default()` + `context: "streaming.service"`,
+now pins the greeting to ITS two constants (90 s / 60 s) and
+`context: "initial-greeting"` instead, with `StallBudgets::default()` refused
+there (a greeting on the Salon's 240 s would hold the undismissable Green
+Room four minutes instead of ninety seconds). The `docs/v4/` mirror takes the
+four paths the target moved: `CHANGELOG.md`, `developer/bugs.md`, and the
+new `bugs/fixed/bug-141-…` + `bug-142-…` files, byte copies from the v4
+checkout at `ffb6b3119`.
+
+
 #### 2026-09-15 — fix(unify): the `ffb6b3119` round's §3 review findings — a provider `Err` no longer counts as a chunk, the converged delete-miss chat is presence-pinned, the capstone's posed failures precede reasoning
 
 _Versions: core 0.0.921, harness 0.0.813._
