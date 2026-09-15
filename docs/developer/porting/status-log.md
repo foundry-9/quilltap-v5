@@ -124172,3 +124172,76 @@ throws on; named here rather than left implicit.
   non-reroute generation" cannot be honoured without it — building twice would
   key one object and send another, and would fire the `[Image LoRA]` lines twice
   where v4 fires them once.
+
+### Gate
+
+- **§2 freshness probe:** FAILED once at lane start (recorded above) and PASSED
+  thereafter — at resumption and before every regen batch (branch `main`, tree
+  clean, `85813ddd2..main` empty, `1a2b2164c..bugfix` empty, matching the
+  re-checked §1).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets (default, and `--features
+  quilltap-core/native-transport`); `cargo build --workspace --release` clean
+  (7m 13s).
+- `cargo test --workspace --no-fail-fast` with the lane's five-variable env
+  block plus `QT_V4_ROOT` at the target pin: **562 test binaries / 3,225 passed
+  / 0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines.** Each of the lane's
+  families confirmed to have RUN by name and duration:
+  `avatar_cache_key_equivalence` 1/0, `avatar_rolls_collapse_heal_equivalence`
+  1/0, `avatar_job_tier3_equivalence` 2/0 (0.51 s),
+  `host_boot_avatar_rolls_collapse` 2/0 (1.06 s),
+  `generation_key_travels_as_is_guard` 3/0,
+  `folders_chokepoint_wiring_guard` 7/0, `image_generation_tier3_equivalence`
+  1/0.
+- **Families regenerated FRESH** from `/tmp/qt-v4-pin-p4d184-31436bae4` through
+  `recipe_sweep.py --v4 <pin> --run-all`: `avatar_cache_key_equivalence`,
+  `avatar_rolls_collapse_heal_equivalence`, `avatar_job_tier3_equivalence` —
+  **3/3 ok**, the fixture rebuilt at the pin first.
+- **No `apps/web/**` file touched — no e2e owed.**
+- Versions: core 0.0.903, harness 0.0.792, host 0.0.133.
+
+#### Two gate catches, both fixed on the lane
+
+1. `folders_chokepoint_wiring_guard` (P4.D145) asserted the avatar's
+   `ensure_legacy_folder` reaches the chokepoint. v4 `7fbf8a55b` deleted that
+   writer, so the census fired as designed. The obligation INVERTS rather than
+   disappearing: a new `RETIRED_UPSTREAM` list whose
+   `retired_writers_stay_retired` asserts the function stays gone.
+2. `generation_key_travels_as_is_guard::nothing_in_this_lane_writes_a_non_null_key`
+   (P4.D182) — whose own message named THIS lane as the one that edits it. Now
+   `exactly_one_site_writes_the_key_and_one_module_derives_it`: the job binds
+   `cache_keys.key`, no None-binding site remains beside it, and neither the job
+   nor the heal spells out a key preimage of its own.
+
+#### ⚠ Two named regens the lane could NOT complete — an ENVIRONMENT blocker
+
+`character_avatar_write_tier2_equivalence` and `seed_avatars_equivalence` (the
+order's Tier-2 item 7 and its named `character_avatar_write_tier2` regen). **Both
+oracles WERE regenerated fresh from the pin** (`/tmp/oracle-avatar-write.ndjson`
+18:13, `/tmp/oracle-seed-avatars.ndjson` 18:14), but the Rust halves cannot be
+LINKED: an Xcode update landed mid-session and reset the licence, so every
+`cc` link on this machine now fails with
+
+> You have not agreed to the Xcode license agreements. Please run
+> `sudo xcodebuild -license` …
+
+It is machine-wide (a trivial `outfit_hash_equivalence` link fails identically)
+and needs the human's `sudo`. **The full workspace gate above finished at
+18:13:13, immediately BEFORE the blocker appeared, so it is unaffected and
+stands as the gate of record** — but note that in THAT run these two families
+ran without their oracle env vars in the block, so their 0.00 s passes are
+silent SKIPs, not measurements. Neither family is claimed as verified by this
+lane. **The unifier must accept the licence before re-gating**, then run:
+
+```
+QT_ORACLE_AVATAR_WRITE=/tmp/oracle-avatar-write.ndjson \
+  cargo test -p quilltap-harness --test character_avatar_write_tier2_equivalence
+QT_ORACLE_SEED_AVATARS=/tmp/oracle-seed-avatars.ndjson \
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/qt-qtapimport-seed-avatars-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/qt-qtapimport-seed-avatars-mount.db \
+  cargo test -p quilltap-harness --test seed_avatars_equivalence
+```
+
+The expectation for `seed_avatars` is that the seeding path writes NO key (it
+does not go through the avatar job); `character_avatar_write_tier2` should be
+neutral (it drives the vault write helper, not the handler).
