@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — chore(harness): commit the stalling OpenAI-compatible endpoint used to prove the stream watchdog
+
+_Docs-only change (no crate source)._
+
+`harness/tools/stall-server.py` answers 200 with SSE headers and then holds the
+socket, either sending nothing (the first-chunk arm) or N chunks and then
+silence (the idle arm). No test can pose this — every canned stream on both
+sides yields and closes — so it is the only instrument that fires the P4.D189 /
+P4.D190 watchdogs. The 2026-09-15 dogfood walk used it to measure the greeting
+abandoning at `elapsed_ms: 90002` against a 90,000 ms budget and the Salon at
+`240001` against 240,000, with the stalled error classifying as `network` so
+the understudy answered. Committed with its recipe so the walk's unrun idle arm
+(`?chunks=2`, the 120 s budget) is cheap to pick up.
+
 #### 2026-09-15 — docs(dogfood): the six-round backlog pass — one finding fixed, ten live proofs discharged
 
 _Docs-only change._
