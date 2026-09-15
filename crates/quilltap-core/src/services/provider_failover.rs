@@ -812,7 +812,12 @@ where
             .stream_message(&profile.provider, profile.base_url.as_deref(), params)
             .await,
         StallBudgets::default(),
-        StallWatchdogContext::streaming_service(&profile.provider, &params.model).with_ids(
+        // v4's wrapper reads `connectionProfile.modelName`, not the params it
+        // built from it — so where a profile is in hand, the profile is what the
+        // warn names. (The caller sets `re_params.model = understudy.model_name`
+        // before every chain leg, so in production the two agree; the wiring
+        // probe below is what made the difference visible.)
+        StallWatchdogContext::streaming_service(&profile.provider, &profile.model_name).with_ids(
             log.map(|l| l.user_id),
             log.map(|l| l.chat_id),
             Some(character_id),
@@ -1355,6 +1360,106 @@ mod tests {
             }
         }
         keys
+    }
+
+    /// A provider that answers and then never speaks (the `Sender` is HELD —
+    /// a dropped one closes the channel, which a silent socket does not do).
+    struct SilentProvider {
+        held: std::sync::Mutex<
+            Vec<tokio::sync::mpsc::Sender<crate::model::stream::StreamChunkResult>>,
+        >,
+    }
+
+    impl StreamingCompletionProvider for SilentProvider {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl std::future::Future<
+            Output = tokio::sync::mpsc::Receiver<crate::model::stream::StreamChunkResult>,
+        > + Send {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            self.held.lock().unwrap().push(tx);
+            async move { rx }
+        }
+    }
+
+    /// **The wiring probe** (P4.D189 Tier 2 item 6), the understudy leg's half.
+    /// `restream_into` is the site every chain candidate goes through, so a
+    /// watchdog missing here would let a silent understudy hold the turn open
+    /// exactly as the primary used to. The census sees the NAME; only this sees
+    /// the armed budget and the warn's own ids.
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_understudy_stalls_the_restream_and_says_so() {
+        use crate::test_support::CaptureLayer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let provider = SilentProvider {
+            held: std::sync::Mutex::new(Vec::new()),
+        };
+        let sink = RecordingSink::new();
+        let mut state = StreamingState::default();
+        let params = base_params();
+        let understudy = EffectiveProfile {
+            id: "p2".into(),
+            name: "Understudy".into(),
+            provider: "OPENAI".into(),
+            model_name: "gpt-4o-mini".into(),
+            base_url: None,
+        };
+
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let err = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            restream_into(
+                &provider,
+                &mut state,
+                &sink,
+                &understudy,
+                &params,
+                None,
+                "Friday",
+                "ch1",
+                None,
+            )
+            .await
+            .expect_err("a silent understudy must fail, not hang")
+        };
+
+        assert!(err.is_stalled(), "{err:?}");
+        assert_eq!(
+            err.message, "Provider stream never sent a first chunk within 240000ms",
+            "the failover leg must take v4's DEFAULT first-chunk budget"
+        );
+        // And the classifier reads it the way the walk needs (P4.D189 §C.3).
+        assert_eq!(
+            classify_fallback_trigger(FallbackError::from_stream_error(&err)),
+            Some(FallbackTrigger::Network)
+        );
+
+        let lines = logs.lock().unwrap().clone();
+        let hit = lines
+            .iter()
+            .find(|l| l.contains("[LLMStream] Abandoned a stalled provider stream"))
+            .unwrap_or_else(|| panic!("no stall warn in {lines:?}"));
+        for f in [
+            "context=streaming.service",
+            "character_id=ch1",
+            "provider=OPENAI",
+            "model_name=gpt-4o-mini",
+            "budget_ms=240000",
+            "chunks_received=0",
+            "elapsed_ms=240000",
+        ] {
+            assert!(hit.contains(f), "missing {f} in {hit}");
+        }
+        // No `log` ctx was supplied, so v4's three id keys are absent — the
+        // `undefined`-drops-out-of-JSON rule, here as `Option::None`.
+        for absent in ["user_id=", "chat_id=", "message_id="] {
+            assert!(!hit.contains(absent), "{absent} should be absent in {hit}");
+        }
     }
 
     fn profile(id: &str, provider: &str) -> EffectiveProfile {

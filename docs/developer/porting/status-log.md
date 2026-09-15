@@ -125854,3 +125854,122 @@ bytes reaching `threw` and the partial surviving.
 line), and the stall's `error` field carries v4's message bytes through the
 existing P4.87 pins — visible in the trail `detail` on four of the five cases
 above, which is the same string.
+
+### Tier 2 items 6 + 7 — the wiring probes
+
+The census sees a NAME; only the whole function against a genuinely silent
+provider proves the budget is armed. Two probes, each
+`#[tokio::test(start_paused = true)]` over a provider that hands back a receiver
+and then never speaks (the `Sender` is HELD — a dropped one closes the channel,
+which a silent socket does not do):
+
+- `a_silent_provider_stalls_the_primary_stream_and_says_so` —
+  `run_primary_stream` end to end against a real `Db`, `repos: None`. Asserts
+  `is_stalled()`, the exact `…never sent a first chunk within 240000ms` (the
+  DEFAULT budget, which the census cannot see), and the whole warn bag incl.
+  `context=streaming.service`, `chat_id=c1`, `character_id=ch1`.
+- `a_silent_understudy_stalls_the_restream_and_says_so` — `restream_into`, the
+  site every chain candidate goes through. Same assertions, plus
+  `classify_fallback_trigger(FallbackError::from_stream_error(&err)) ==
+  Some(Network)`, and the three `log`-carried id keys asserted ABSENT (no ctx
+  supplied — v4's `undefined`-drops-out-of-JSON rule as `Option::None`).
+
+**The `restream_into` probe caught a real fidelity gap on its FIRST run.** Both
+profile-holding sites named `params.model` where v4's wrapper reads
+`connectionProfile.modelName`. In production the two agree (every caller sets
+the params' model from the profile it is about to use), so no differential could
+ever see it — the probe could, because it supplies a profile and params that
+disagree. Both sites now read the profile; `consume_stream` keeps `params.model`
+as the honest fallback for the structurally-possible no-profile case, where its
+`provider_name` is already `""`.
+
+**Item 7, `elapsed_ms`:** measured with `tokio::time::Instant`, not
+`std::time::Instant`. The order asks for BOTH "wall-clock, as v4's `Date.now() -
+startedAt`" AND "under `start_paused` … assert equality"; only the tokio clock
+satisfies both (it IS the std clock in production, and it advances with the
+auto-advanced clock under a paused runtime). A `std::time::Instant` would read
+~0 ms there and the pin would have to be weakened to `>= 0`.
+
+**Mutation (item 6), with a recorded deviation.** The order's suggested value —
+`StallBudgets { first_chunk_ms: u64::MAX / 4, .. }` — does NOT redden the probe:
+it HANGS it. A paused tokio clock cannot auto-advance past its own timer
+ceiling, so the probe sat for over 60 s and had to be killed. A hang is not a
+red. Re-run with a finite, differing budget (`first_chunk_ms: 900_000`) the
+probe reds on its message assertion (`…within 900000ms`) — **while the wrap
+census stays GREEN**, because `StallBudgets { first_chunk_ms: 900_000,
+..StallBudgets::default() }` still contains the substring the census counts.
+That is exactly the division of labour the two proofs exist for, demonstrated.
+
+### Tier 2 item 8 — the neutrality sweep
+
+The set was MEASURED, not taken from the order's list:
+`grep -rln "streaming.service\|llm/fallback" harness/oracle/cases` names eleven
+case files, two of which are the families this lane moves. The order's other
+four (`enclave_step`, `answer_confirmation`, `cheap_llm_fallback`,
+`chat_continuation`) name neither module but consume v5 consumers this lane
+wrapped, so they ride along; `tool_build` was added by the grep and is not in
+the order's list. Thirteen families, regenerated at BOTH pins through
+`recipe_sweep.py --run-all --families … --v4 <pin>`.
+
+**Result: v5 GREEN against oracles generated at BOTH pins** — 12/13 ok in each
+pass, the thirteenth a pre-existing red (below).
+
+**Byte-identity across the two pins, 7 of 13** — and these are the ones where
+`cmp` means anything:
+
+| family | NDJSON | bytes |
+|---|---|---|
+| `native_tool_loop_tier3` | `oracle-native-tool-loop.ndjson` | 23,257 |
+| `text_tool_loop_tier3` | `oracle-text-tool-loop.ndjson` | 22,253 |
+| `brahma_console_tier3` | `oracle-brahma.ndjson` | 239,576 |
+| `brahma_orchestrator_tier3` | `oracle-brahma-orch.ndjson` | 3,480 |
+| `cheap_llm_fallback` | `oracle-cheap-llm-fallback.ndjson` | 2,217 |
+| `route_trail_compose` | `oracle-route-trail-compose.ndjson` | 26,590 |
+| `tool_build` | `oracle-tool-build.ndjson` | 962,867 |
+
+**The other six are NON-DETERMINISTIC by construction, PROVEN by a control.**
+`orchestrator_tier3`, `enclave_step_tier3`, `carina_query_tier3`,
+`help_chat_orchestrator_tier3`, `answer_confirmation_tier3` and
+`chat_continuation_tier2` differed across the pins — and differ across TWO
+REGENS AT THE SAME PIN, which is the control that was run rather than assumed.
+Inspecting the differing spans: minted UUIDs, wall-clock `createdAt` /
+`lastMessageAt` stamps, and (for `enclave_step`) dump row ORDER — every one of
+them a field the Rust side normalizes. **A byte-`cmp` is simply not the
+instrument for these families**; their neutrality statement is that v5 is green
+against oracles regenerated at both pins, which both passes delivered. Recorded
+here because "regenerate at both pins and `cmp`" reads as universal advice and
+is not.
+
+### ⚠ Spotted, not mine — `brahma_orchestrator_tier3_equivalence` is RED on main
+
+Against a FRESHLY regenerated oracle (at either pin — its NDJSON is byte-
+identical across them, so this is not v4 drift) the family fails:
+
+```
+[plain] ERROR TEXT MISMATCH:
+  GOT : sqlite error: no such column: cycleOrderParticipantIds
+  WANT: no such column: cycleOrderParticipantIds
+… panicked: Sqlite(… Some("no such column: routeTrail"))
+```
+
+**Reproduced on main's own tree**: `git checkout f687cc4e -- crates/quilltap-core
+crates/quilltap-harness harness/oracle`, same oracle, byte-identical failure.
+This lane touches no DB code.
+
+Two separate things are wrong, both for the unifier:
+
+1. The committed `crates/quilltap-web/tests/fixtures/brahma-main.db` predates
+   P4.D171's two schema moves (`chat_messages.routeTrail`,
+   `chats.cycleOrderParticipantIds`) and the test calls neither
+   `ensure_p4d171_columns` nor `ensure_p4d182_columns`. It passed at the
+   `31436bae4` unification because its oracle was not among that gate's 46
+   regenerated families — the stale `/tmp` NDJSON it ran against predates the
+   widening. Re-running an untouched family surfaces it
+   (`rerunning-an-untouched-family-surfaces-pre-existing-reds`).
+2. Even with the fixture healed, the `[plain]` case exposes a v5 error-text
+   divergence of the P4.50 class: v5 renders `sqlite error: no such column: …`
+   where v4 renders `no such column: …`. The oracle's own WANT is v4's bare
+   sentence, so the prefix is a real (if narrow) divergence on a column-missing
+   read.
+
+Neither is in this lane's Ownership. Recorded here rather than fixed.

@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — test(llm): wiring probes prove the stall budget is armed on the production paths (bug 141)
+
+_Versions: core 0.0.917._
+
+P4.D189 Tier 2 items 6 and 7. The wrap census can see that a site NAMES
+`watch_stream`; only running the whole function against a genuinely silent
+provider proves the budget is armed, that it is v4's DEFAULT budget, and that
+the warn carries the call's own ids. Two probes under
+`#[tokio::test(start_paused = true)]`, each against a provider that hands back
+a receiver and then never speaks (the `Sender` is HELD — a dropped one closes
+the channel, which a silent socket does not do): `run_primary_stream` end to
+end against a real `Db`, and `restream_into`, the site every chain candidate
+goes through. Both assert the exact stalled message, the full warn bag, and —
+at the understudy — that `classify_fallback_trigger` reads the result as
+`network`.
+
+The `restream_into` probe caught a real fidelity gap on its first run: both
+profile-holding sites named `params.model` where v4's wrapper reads
+`connectionProfile.modelName`. In production the two agree (every caller sets
+the params' model from the profile), so no differential could see it; the sites
+now read the profile, with `params.model` kept as the honest fallback where
+`consume_stream` has no profile at all.
+
+`elapsed_ms` is measured with `tokio::time::Instant`, which is the std clock in
+production and advances with the auto-advanced clock under a paused runtime —
+so the probes assert `elapsed_ms` equal to the budget exactly, rather than the
+weaker `>= 0` a `std::time::Instant` would allow there.
+
+Recorded from the mutation battery: the order's suggested budget swap
+(`first_chunk_ms: u64::MAX / 4`) makes the probe HANG rather than fail, because
+a paused tokio clock cannot auto-advance past its timer ceiling — a hang is not
+a red. Swapping to a finite, differing budget (900 s) reddens the probe on its
+message assertion while the census stays GREEN, which is precisely the point of
+having both.
+
 #### 2026-09-14 — test(harness): the primary-stream corpus can pose a stalled provider stream (bug 141)
 
 _Versions: harness 0.0.808._

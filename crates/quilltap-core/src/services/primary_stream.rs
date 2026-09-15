@@ -1034,6 +1034,15 @@ where
         Some(p) => (p.provider.clone(), p.base_url.clone()),
         None => (String::new(), None),
     };
+    // v4's wrapper reads `connectionProfile.modelName` — the params it builds
+    // from it agree, but the profile is the source. With no profile at all
+    // (structurally possible here, never so in production) the params are the
+    // honest fallback, where `provider_name` above has only `""`.
+    let watchdog_model = state
+        .effective_profile
+        .as_ref()
+        .map(|p| p.model_name.clone())
+        .unwrap_or_else(|| params.model.clone());
     // v4 tracks the LAST non-null usage/cache/rawProviderUsage across all chunks
     // for the terminal log.
     let mut last_usage: Option<StreamUsage> = None;
@@ -1058,7 +1067,7 @@ where
             .stream_message(&provider_name, base_url.as_deref(), params)
             .await,
         StallBudgets::default(),
-        StallWatchdogContext::streaming_service(&provider_name, &params.model).with_ids(
+        StallWatchdogContext::streaming_service(&provider_name, &watchdog_model).with_ids(
             log.map(|l| l.user_id),
             log.map(|l| l.chat_id),
             log.and_then(|l| l.character_id),
@@ -1425,7 +1434,149 @@ pub fn find_previous_response_id(provider: &str, existing_messages: &[Value]) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::stream::StreamChunkResult;
     use crate::services::chat_events::RecordingSink;
+
+    /// A provider that answers (the receiver exists) and then never speaks —
+    /// the shape a socket with headers and no body has from here. The `Sender`
+    /// is HELD, because a dropped one closes the channel, which is the one
+    /// thing a silent socket does not do.
+    pub(super) struct SilentProvider {
+        held: std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<StreamChunkResult>>>,
+    }
+
+    impl SilentProvider {
+        pub(super) fn new() -> Self {
+            Self {
+                held: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl StreamingCompletionProvider for SilentProvider {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+        {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            self.held.lock().unwrap().push(tx);
+            async move { rx }
+        }
+    }
+
+    /// **The wiring probe** (P4.D189 Tier 2 item 6). The wrap census can see
+    /// that `run_primary_stream` NAMES `watch_stream`; only running the whole
+    /// function against a genuinely silent provider proves the budget is armed
+    /// on the production path, that it is v4's DEFAULT budget, and that the warn
+    /// carries the call's own ids.
+    ///
+    /// Under `start_paused` the runtime auto-advances its clock when there is
+    /// nothing else to do, so the 240 s budget costs no wall-clock time — and
+    /// `elapsed_ms` lands on exactly the budget, which is the strongest form of
+    /// the "wall-clock since `watch_stream`" assertion available here (in
+    /// production it is `>= budget_ms`).
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_provider_stalls_the_primary_stream_and_says_so() {
+        use crate::test_support::CaptureLayer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
+
+        let provider = SilentProvider::new();
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(EffectiveProfile {
+                id: "p1".into(),
+                name: "Primary".into(),
+                provider: "DEEPSEEK".into(),
+                model_name: "deepseek-v4-flash".into(),
+                base_url: None,
+            }),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let mut preserve =
+            PreservePartialOnError::new("c1", "ch1", "Friday", Vec::new(), "pp1", None, "msg-1");
+
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let err = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+                &db,
+                &provider,
+                &sink,
+                &mut preserve,
+                None,
+                RunPrimaryStreamOptions {
+                    chat_id: "c1".into(),
+                    user_id: "u1".into(),
+                    chat: PrimaryStreamChat { is_paused: false },
+                    character_id: "ch1".into(),
+                    character_name: "Friday".into(),
+                    character_aliases: Vec::new(),
+                    participant_id: "pp1".into(),
+                    participant_status: None,
+                    user_participant_id: None,
+                    is_multi_character: false,
+                    params: StreamParams {
+                        messages: vec![crate::model::stream::StreamMessage::user("hi")],
+                        model: "deepseek-v4-flash".into(),
+                        temperature: Some(0.7),
+                        max_tokens: Some(4096),
+                        top_p: None,
+                        tools: None,
+                        web_search_enabled: false,
+                        profile_parameters: None,
+                        cache_key: None,
+                        previous_response_id: None,
+                        stop: Vec::new(),
+                        request_timeout_ms: None,
+                    },
+                    attached_files: Vec::new(),
+                    original_message: None,
+                    pre_generated_assistant_message_id: "msg-1".into(),
+                    log_context: LogContext::none(),
+                    is_dangerous_routed: false,
+                    fallback_profile: None,
+                    state: &mut state,
+                },
+            )
+            .await
+            .expect_err("a silent provider must fail, not hang")
+        };
+
+        assert!(err.is_stalled(), "{err:?}");
+        assert_eq!(
+            err.message, "Provider stream never sent a first chunk within 240000ms",
+            "the production site must take v4's DEFAULT first-chunk budget"
+        );
+
+        let lines = logs.lock().unwrap().clone();
+        let hit = lines
+            .iter()
+            .find(|l| l.contains("[LLMStream] Abandoned a stalled provider stream"))
+            .unwrap_or_else(|| panic!("no stall warn in {lines:?}"));
+        for f in [
+            "context=streaming.service",
+            "user_id=u1",
+            "chat_id=c1",
+            "character_id=ch1",
+            "message_id=msg-1",
+            "provider=DEEPSEEK",
+            "model_name=deepseek-v4-flash",
+            "budget_ms=240000",
+            "chunks_received=0",
+            "elapsed_ms=240000",
+        ] {
+            assert!(hit.contains(f), "missing {f} in {hit}");
+        }
+    }
 
     /// The §3-review pin: the CHAT_MESSAGE log projection carries each
     /// message's attachment bags (v4 streaming.service.ts:452-455), None when
