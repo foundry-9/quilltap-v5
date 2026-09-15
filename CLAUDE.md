@@ -3575,10 +3575,24 @@ records THERE. Update this summary only when a phase or round completes.
   `details` array, P4.72's `?action=` honesty, and the cheap-LLM chain with its
   `Task failed` warn firing BEFORE the chain. **⚠ NANOGPT's stored key is DEAD
   on this copy** (401; it is the instance default) — environmental, but it
-  shapes any future walk. **Recorded for an order: 10 duplicate
-  `generationKey` groups have re-accumulated since v4's own collapse.** 💸 still
-  owed (human): the Brahma deep query, dedup/summaries, #101, and the bug-133
-  reroute trio + the two image-spend rows.
+  **A second session ran after the human refreshed the
+  NanoGPT key** (which took effect with NO restart — keys are read live from
+  `api_keys` per call): 13 more rows, all PASS — **the watchdog's IDLE arm**
+  (`budget_ms: 120000`, `elapsed_ms: 120406`, byte-exact `went quiet for
+  120000ms after 2 chunk(s)`) **and the mid-stream rule with it** (no trail, no
+  failover, the partial preserved); a paused-room `nudge` running a real turn
+  with `isPaused` still 1 (and writing the rotation A5 then verified); the
+  **stale-lock reclaim** after a SIGKILL, the lock's own history reading
+  `stale-detected … PID 17168 is no longer running` with the hostname playing
+  no part; the gallery 409's **four FLAT siblings**; `?download=1`; the Almanack
+  row; and the memory-gate lines on both arms. **Final: 30 rows run, all PASS.**
+  ⚠ **That session also CORRECTED this walk's own claim** — the 10 duplicate
+  `generationKey` groups all PREDATE v4's 2026-09-11 collapse (newest
+  2026-09-07), so they are survivors, not re-accumulation, and nothing has
+  duplicated since; a v4-side question, not a v5 defect, and the
+  "worth an order" framing is withdrawn. 💸 still owed (human): the Brahma deep
+  query, dedup/summaries, #101, and the bug-133 reroute trio + the two
+  image-spend rows.
 - **Oracle baseline: `ffb6b3119` (2026-09-14, v4 main — "fix(db): a delete
   that removed nothing no longer counts as a deletion (bug 142)",
   `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 + bug-142 drift

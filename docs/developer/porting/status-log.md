@@ -125616,9 +125616,10 @@ drawer on a real character, "Show shared" on a real merged wardrobe.
 
 ## Dogfood pass — the six-round backlog (2026-09-15, agent-driven, on the Friday copy)
 
-**14 rows run, 13 PASS + 1 PASS-that-produced-a-finding; ONE finding found and
-FIXED; both headline 💸 items discharged plus eight more; four cross-app
-proofs.** Walk doc:
+**30 rows run and every one PASSED** (one of them exposing the finding below);
+ONE finding found and FIXED; both headline 💸 items discharged plus ten more;
+four cross-app proofs; and one of the walk's own claims corrected by its second
+session.** Walk doc:
 `dogfood-walks/2026-09-15-six-round-backlog-pass.md`. The ledger's §2 probe
 PASSED at walk start (v4 `main` HEAD **is** the baseline `ffb6b3119`, tree
 clean, §3 EMPTY), so no step could blame drift and no regen needed a pin.
@@ -125737,6 +125738,75 @@ posed endpoint already supports `?chunks=2`.
 `compositionModeDefault = 1` on real data — plain Enter inserts a paragraph and
 **Cmd+Enter sends**, which silently swallowed two sends and looked exactly like
 a paused room refusing a message.
+
+
+### Session 2 — after the human refreshed the NanoGPT key
+
+The walk's first session left several rows blocked by a dead NANOGPT key (401
+`Invalid session`, on the instance's default profile). The human rotated it into
+the copy mid-pass; **the new key took effect with no server restart**, which is
+itself the proof that keys are read live from `api_keys` per call — a rehearsal
+on the seat's own NANOGPT profile answered in character immediately.
+
+**⭐ The watchdog's IDLE arm and the mid-stream rule, both closed.** A second
+posed endpoint (two chunks, then silence — reachable because
+`harness/tools/stall-server.py` gained `QT_STALL_CHUNKS`, a profile's `baseUrl`
+being unable to carry a query string) produced
+`budget_ms: 120000, chunks_received: 2, elapsed_ms: 120406` and the byte-exact
+`Provider stream went quiet for 120000ms after 2 chunk(s)`. The same run settles
+H4: the message carried **no `routeTrail`**, no `[Failover]` line fired, and the
+**partial survived** — `tick tick\n\n{{OOC: stream ended abruptly (…)`. Once
+streaming has started there is no substitution, exactly as ported.
+
+**⭐ The paused-room summons (B2).** A `nudge` ran a real turn (64.6 s,
+messages 139 → 150 with `search` and `doc_grep` TOOL rows, two NANOGPT
+`llm_logs` rows) and **`isPaused` stayed 1**, the send response itself carrying
+`"isPaused": true`. The turn also re-proved finding #98 — the configured
+`search` provider ran off `api_keys` — and it **wrote the rotation** that A5
+then verified: `chatTurnAction`'s `state.cycleOrder` matches the persisted
+`chats.cycleOrderParticipantIds` exactly, while the chat GET correctly omits the
+column (the P4.D171 survey correction).
+
+**⭐ The instance lock (I1/I2).** With the server up, `--lock-status` reported
+`ACTIVE (process confirmed running)`, PID-confirmed, heartbeat 58 s. The server
+was then SIGKILLed and a fresh boot reclaimed the stale lock, the file's own
+history recording `acquired 17168` → **`stale-detected 24346 — PID 17168 is no
+longer running`** → `stale-claimed 24346`. The hostname plays no part — bug
+126's whole point.
+
+**Also closed:** the gallery save and its **409 with four FLAT top-level
+siblings** (`error`, `code`, `relativePath`, `keptAt` — the P4.D185 nesting bug
+staying fixed); `?download=1` flipping `content-disposition` from `inline` to
+`attachment` on the same stored basename; `llmLogsList` filtering to 21
+`VOICE_REWRITE` rows all with `messageId: null`; the Almanack's
+`Impersonated Lines in Character Voice: Yes`; and the memory-gate lines on
+**both** arms — a chat with 8 memories logging
+`deleteMemoriesWithUnlinkBatch complete` (`neighboursTouched=10`) and an **empty**
+chat still logging `[Memories API] Deleted every memory for a chat`, with the
+`unusually large neighbour set` warn correctly silent below its ≥20 threshold.
+
+**⭐ The progressions fail-soft contract, live (F2).** Two malformed entries were
+**accepted by the write** — correct, since nothing validates at hydration — and
+the card then **named the casualty on screen**: *"One entry in this character's
+metadata.json could not be read and is being skipped: probe. Editing the file
+directly is the way to mend it."* — while Pregnancy rendered beside it. v4's
+entry was restored byte-for-byte afterwards, `updatedAt` included.
+
+**A claim of this walk's own, CORRECTED (C3).** Session 1 recorded that 10
+duplicate `generationKey` groups had "re-accumulated since v4's collapse". That
+is **wrong**: all 10 are same-character, but **every one of the 20 rows predates
+v4's 2026-09-11 collapse** (newest 2026-09-07), so they are survivors of it and
+**nothing has duplicated in the four days since**. v4's `selectAvatarRows` had
+them in scope (it does not filter on `generationKey IS NULL`), and the portrait
+keep-list explains only some pairs — a **v4-side question, not a v5 defect**, and
+the "worth an order" framing is withdrawn. v5's cache is unaffected; C1 proved
+it hits.
+
+**Two more instrument traps banked:** the server logs at `info` by default, so
+every `debug`-level comparand (all three memory-gate lines) is invisible until
+`RUST_LOG=debug` — the API answering correctly while the log shows nothing reads
+exactly like a dropped line; and a connection profile's `baseUrl` cannot carry a
+query string through the SDK's URL join.
 
 
 ## P4.D189 — the stream watchdog: the SERVER substrate + the Salon side (v4 `f90144ac4`, bug 141) — lane record

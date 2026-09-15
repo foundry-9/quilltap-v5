@@ -19,11 +19,15 @@ nothing at all (the first-chunk arm) or N content chunks and then silence
   /v1/chat/completions?chunks=2 -> 200 + headers, 2 content chunks, then silence
   /v1/models                    -> a normal model list (so profile setup works)
 """
-import json, socket, sys, threading, time
+import json, os, socket, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
+# Default chunk count for the IDLE arm. A connection profile's baseUrl cannot
+# carry a query string through the SDK's URL join, so the env var is the only
+# way to reach the idle budget from a real seat: QT_STALL_CHUNKS=2.
+DEFAULT_CHUNKS = int(os.environ.get("QT_STALL_CHUNKS", "0"))
 MODEL = "stall-model"
 HELD = []          # keep references so sockets are never GC'd/closed
 
@@ -49,7 +53,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         q = parse_qs(urlparse(self.path).query)
-        n = int(q.get("chunks", ["0"])[0])
+        n = int(q.get("chunks", [str(DEFAULT_CHUNKS)])[0])
         ln = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(ln) if ln else b""
         try:

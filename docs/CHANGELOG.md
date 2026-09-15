@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(dogfood): session 2 of the backlog pass — the watchdog's idle arm, the lock reclaim, and a correction
+
+_Docs-only change._
+
+After the NanoGPT key was refreshed, 13 more rows ran, all PASS, bringing the
+pass to 30 rows run with every one passing. The watchdog's IDLE budget closed
+(`elapsed_ms: 120406` against 120,000, byte-exact `went quiet for 120000ms after
+2 chunk(s)`) and settled the mid-stream rule with it: no route trail, no
+failover, the partial preserved. A paused-room nudge ran a real turn and left
+`isPaused` standing. A SIGKILLed server's stale lock was reclaimed on PID
+liveness alone, the lock history recording `stale-detected … is no longer
+running`.
+
+The session also corrected one of the pass's own claims: the 10 duplicate
+`generationKey` groups all predate v4's 2026-09-11 collapse, so they are
+survivors of it rather than re-accumulation since — a v4-side question, not a v5
+defect.
+
+`harness/tools/stall-server.py` gained `QT_STALL_CHUNKS`, since a connection
+profile's `baseUrl` cannot carry a query string through the SDK's URL join.
+
 #### 2026-09-15 — chore(harness): commit the stalling OpenAI-compatible endpoint used to prove the stream watchdog
 
 _Docs-only change (no crate source)._
