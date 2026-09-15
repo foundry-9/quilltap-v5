@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — chore(unify): recount the round's version bumps as base plus every lane's delta
+
+_Versions: core 0.0.920, harness 0.0.812._
+
+The `ffb6b3119` round's cherry-picks took each lane's version file as it
+arrived, so the last lane's number won; per §R.8 the crates are recounted
+as base + every lane's delta: core 0.0.913 + 4 (P4.D189) + 3 (P4.D190) =
+0.0.920; harness 0.0.805 + 3 + 2 + 2 (P4.D191) = 0.0.812; host stays at
+P4.D191's 0.0.135 (one lane, one bump). `Cargo.lock` synced.
+
+
 #### 2026-09-14 — docs(p4.d189): the lane record, the gate, and the order's status header
 
 _No crate versions bumped_ (the lane's final versions are core 0.0.917 and
