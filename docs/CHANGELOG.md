@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(p4.d189): the lane record, the gate, and the order's status header
+
+_No crate versions bumped_ (the lane's final versions are core 0.0.917 and
+harness 0.0.808, both bumped in earlier commits; this commit carries only the
+`Cargo.lock` line for core's bump, which lagged one commit behind its
+`Cargo.toml`).
+
+P4.D189's closing docs commit: the full lane record appended to
+`status-log.md` (the funnel map v4-caller-by-v4-caller, the four units, the
+mutation tables, the neutrality sweep and its control, the gate numbers, the
+deviations, and the 💸 items), and the order's status header rewritten to
+CLOSED WHOLE with the substrate sha P4.D190 must branch from.
+
+Two things recorded there that outlive the lane. The neutrality sweep's
+"regenerate at both pins and `cmp`-identical" instruction holds for only 7 of
+13 families — the other six mint UUIDs and timestamps and differ across two
+regens at the SAME pin, proven by a control rather than assumed. And
+`brahma_orchestrator_tier3_equivalence` is RED on main against any freshly
+regenerated oracle: its committed fixture predates P4.D171's two schema moves
+and the test heals neither, which also exposes a v5 `sqlite error: ` prefix
+where v4 renders a bare `no such column: …`. Reproduced on main's own tree;
+neither is in this lane's Ownership.
+
 #### 2026-09-14 — test(llm): wiring probes prove the stall budget is armed on the production paths (bug 141)
 
 _Versions: core 0.0.917._

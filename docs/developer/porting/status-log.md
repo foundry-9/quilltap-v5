@@ -125973,3 +125973,97 @@ Two separate things are wrong, both for the unifier:
    read.
 
 Neither is in this lane's Ownership. Recorded here rather than fixed.
+
+### The gate (P4.D189)
+
+1. **§2 probe** re-run at the gate: `main`, tree clean, `ffb6b3119..main`
+   EMPTY, `1a2b2164c..bugfix` EMPTY. PASS (as at lane start).
+2. `cargo fmt --all --check` — exit 0.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — exit 0 in BOTH
+   feature sets (default and `--features quilltap-core/native-transport`), zero
+   warnings. ⚠ The first gate run reported `CLIPPY=1` and looked red: that was
+   `$?` after a `| grep -v` pipe, which is GREP's status (`1` = matched
+   nothing = clean). Re-run without the pipe for the real codes
+   (`gate-exit-code-after-a-pipe`).
+4. `cargo build --workspace --release` — exit 0.
+5. **All 15 lane families regenerated FRESH** from `/tmp/qt-v4-pin-p4d189-ffb6b3119`
+   through `recipe_sweep.py --run-all --families … --v4 <pin>`: **14 ok, 1
+   run_failed** (`brahma_orchestrator_tier3_equivalence`, the pre-existing red
+   above, reproduced on main). Pin verified by grepping the fresh NDJSONs for
+   bytes only the target can produce: `LLMStreamStalledError` ×3 in
+   `oracle-fallback-engine.ndjson`, `never sent a first chunk` ×4 and `went
+   quiet for` ×2 in `oracle-primary-stream.ndjson`.
+6. **Mutation proofs**: five on the substrate, one on the census, four per-site
+   on the classifier wiring, one on the budgets — each reddening exactly its
+   named rows, every revert by FILE BACKUP. Two recorded rather than deleted:
+   the order's `u64::MAX / 4` budget swap HANGS instead of reddening, and case
+   (b)'s guard was already pinned by a pre-existing sibling.
+7. `cargo test --workspace` with the lane's 28-variable env block + `TZ=UTC` +
+   `QT_V4_ROOT=/tmp/qt-v4-pin-p4d189-31436bae4`: **570 test binaries / 3,287
+   passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines.** Every lane
+   family confirmed RUN by name and non-zero duration (`orchestrator_tier3`
+   8.01 s, `help_chat_orchestrator_tier3` 1.36 s / 5 tests,
+   `enclave_step_tier3` 0.69 s, `primary_stream_tier3` 0.40 s / 2 tests,
+   `chat_continuation_tier2` 0.19 s, `answer_confirmation_tier3` 0.17 s,
+   `carina_query_tier3` 0.15 s, `brahma_console_tier3` 0.14 s,
+   `fallback_engine` 0.09 s, `tool_build` 0.09 s, `stream_watchdog_wrap_census`
+   0.08 s / 2 tests, `text_tool_loop_tier3` 0.04 s, `native_tool_loop_tier3`
+   0.03 s, `route_trail_compose` 0.01 s, `cheap_llm_fallback` 0.01 s).
+
+   ⚠ **The FIRST gate run had four families silently skipping at 0.00 s** —
+   `orchestrator_tier3`, `carina_query_tier3`, `brahma_console_tier3` and
+   `answer_confirmation_tier3` each read a `QT_FIXTURE_*_MOUNT` var the
+   recipe's `--show` output did not surface, and a family whose gate var is
+   missing returns early printing `ok` and NO `SKIP:` line. Caught by comparing
+   each family's gate duration against its by-name sweep duration
+   (`orchestrator` 2.56 s under the recipe env vs 0.00 s in the gate). The
+   numbers above are the re-run with all four added.
+   (`a-family-env-var-is-not-its-regen-var`, sharpened: the tell is a duration
+   DELTA, because zero SKIP lines is not zero skips.)
+
+   **ONE variable deliberately withheld: `QT_ORACLE_BRAHMA_ORCH`.** That family
+   is red on main against any freshly regenerated oracle (proven above, out of
+   this lane's Ownership); including it would fail the gate on a defect this
+   lane did not introduce. It was run BY NAME instead — see the "spotted, not
+   mine" section for its exact output. Its 0.00 s in the table above is that
+   withhold, not a masquerade.
+8. **SPA: no change; no e2e owed.** This lane touches no `apps/web/**`; no
+   Playwright run (ONE at a time repo-wide stands for whoever does).
+9. **Ownership honoured**: `git diff --stat main` is EMPTY for every
+   MUST-NOT-TOUCH path (`initial_greeting.rs`, `chat_create.rs`,
+   `cheap_llm_exec.rs`, `orchestrator.rs`, `db/**`, `api/**`, `help/**`,
+   `quilltap-web/src/**`, `quilltap-host/src/**`, `apps/web/**`, `docs/v4/**`),
+   and the only harness/oracle files touched are this lane's three.
+
+**Versions: core 0.0.917, harness 0.0.808.** host / web / cli / tauri / SPA
+unchanged.
+
+### Deviations from the order, recorded
+
+- The census file is `stream_watchdog_wrap_census.rs`, not the order's
+  suggested `stream_watchdog_wire_census.rs` (the order permits "the census
+  inside an existing always-on harness test the lane names"; this is a new
+  always-on test, named here).
+- `elapsed_ms` uses `tokio::time::Instant` — see Tier 2 item 7 above for why
+  `std::time::Instant` cannot satisfy both halves of the order's own assertion.
+- The order's item-6 mutation value (`u64::MAX / 4`) hangs rather than reds;
+  900 s used instead, recorded above.
+- Item 8's "regenerate at both pins and `cmp`-identical" holds for 7 of the 13
+  families; the other six are non-deterministic run-to-run at the SAME pin
+  (measured, not assumed) — recorded above.
+- The census counts TWELVE production files, not the order's eleven: v4's
+  `model/stream.rs` blanket `impl … for Arc<T>` delegates through
+  `(**self).stream_message(`, which is a production `.stream_message(` the walk
+  finds. It is the seam, not a consumer, and carries 0 wraps by design.
+
+### 💸 Owed to the next dogfood pass
+
+- A **real stalled provider** on the Friday copy is the one proof no test can
+  give: every canned stream on both sides yields promptly and CLOSES, so the
+  watchdog is structurally unable to fire in the harness. The cheap posing is a
+  local OpenAI-compatible endpoint that answers 200 with headers and then holds
+  the socket — the turn should fail inside 240 s with
+  `[LLMStream] Abandoned a stalled provider stream` in `combined.log` and the
+  understudy answering, rather than hanging.
+- The MID-STREAM arm on real data (a socket that dies after a few chunks):
+  v4 and v5 both keep the partial and do NOT substitute.
