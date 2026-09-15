@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(setupphase): the `ffb6b3119` bug-141 + bug-142 drift catch-up round — three work orders (P4.D189 → P4.D190 ∥ P4.D191)
+
+_Docs-only change._
+
+The ledger's §2 probe passed (v4 `main` at `ffb6b3119`, four commits past
+the `31436bae4` baseline, checkout clean), so the round is the four-row
+catch-up, split by file ownership. P4.D189 (from `main`) lands the stream
+watchdog as a substrate commit — `model/stream_watchdog.rs` + a `Stalled`
+kind on `StreamError` — then wraps the ten Salon-side `stream_message`
+consumers (v4 has one funnel, v5 has none: eleven sites, held by a census)
+and adds the `LLMStreamStalledError` → `network` classifier arm with
+red-first `fallback_engine` rows and five `primary_stream_tier3` stall
+arms. P4.D190 (stacked on that substrate commit) wraps the greeting at
+90 s / 60 s and ports the ladder's own-profile stall gate with the desk
+scoped out, plus v4's three attempt warns the v5 arms never carried, over
+the capstone's ordered `stream_calls` comparand. P4.D191 (from `main`)
+retires the `DELETE_MISS_DIVERGENCE` pin by measurement in both directions
+(bug 142, a convergence), ratifies `85813ddd2` and `364b04ac4` NO-PORT on
+file lists, and re-vendors the two bug-141 `help/` files. The ledger's four
+rows are marked ORDERED; the ordering record is in `phase-4.md`. No SPA
+lane — bug 141 has no client hunk.
+
+
 #### 2026-09-15 — docs(unify): the `31436bae4` drift catch-up round — seven orders unified, the baseline moves to `31436bae4`
 
 _Docs-only change._

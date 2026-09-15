@@ -6628,6 +6628,96 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `ffb6b3119` bug-141 + bug-142 drift catch-up round (P4.D189 → P4.D190 ∥ P4.D191) — ORDERED 2026-09-14
+
+**Baseline `31436bae4`; v4 `main` HEAD `ffb6b3119` (FOUR past — the
+ledger's four §3 rows, every one now `ORDERED(…)`), v4 `bugfix` tip
+`1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on
+`main`, CLEAN at the planning probe (2026-09-14 22:25 CDT — the §2 probe
+passed, so the ledger stood and nothing was re-derived); regen rule PIN
+REQUIRED (every moving family from a lane-unique detached worktree at
+`ffb6b3119`; neutrality legs and the `QT_V4_ROOT` of the two
+`main`-vendored lanes at `31436bae4`).** The standing rule holds: drift
+debt clears before new scope, so the whole round IS the four-row
+catch-up — split by FILE OWNERSHIP, not by v4's commit batching. ONE
+substrate commit (P4.D189's first), ONE lane stacked on it, ONE from
+`main` beside them. The round-wide §R meeting points, the §C contract,
+the Ownership table and the verification gate are spliced
+byte-identically into every order (one md5 over the four blocks, verified
+at planning). Fresh surveys (2026-09-14, at `ffb6b3119` and on `main`
+`d7cab319`) are folded into the orders' survey sections. **No SPA lane:
+bug 141 has no client hunk** (the Green Room's own ceiling is v4's
+recorded not-done).
+
+**Three planning facts that shape the split (each measured, none from
+prose):** v4 wraps its watchdog at TWO `provider.streamMessage` sites, but
+one of them is `streaming.service.ts` — v4's ONE funnel for every
+Salon-side consumer — and **v5 has no funnel: ELEVEN production
+`.stream_message(` sites** (ten Salon-side + the greeting), so the port is
+eleven wrap sites and a census, not two; v4's stalled MESSAGE matches none
+of the `NETWORK` patterns, so without the NAMED classifier arm v5 files a
+stall as the unattributed `ProviderError` (the corpus row discriminates);
+and the canned providers on both sides never stall, so every existing
+tier-3 family is expected byte-neutral under the wrap — proven by regen
+at both pins, never assumed.
+
+- **P4.D189 — the substrate + the Salon-side watchdog + the classifier**
+  (`work-orders/p4.d189-stream-watchdog-salon-server.md`, from `main`):
+  the SUBSTRATE COMMIT first and alone — `model/stream_watchdog.rs`
+  (`watch_stream` over the receiver: per-gap budgets 240 s / 120 s, the
+  one `[LLMStream] Abandoned a stalled provider stream` warn, the
+  once-only stalled `Err` then `None`, v4's eight test shapes under
+  `start_paused`) + `StreamError`'s `Stalled` kind with v4's message
+  bytes; then the ten Salon-side wrap sites (`primary_stream`,
+  `provider_failover`, `recovery`, both tool loops, Carina, the help-chat
+  and both Brahma orchestrators) held by a per-file wrap CENSUS; `Fallback
+  Error::from_stream_error` + the `LLMStreamStalledError` → `network`
+  arm at v4's position through all four classify sites; `fallback_engine
+  _equivalence` red-first with three rows built from v4's REAL class;
+  `primary_stream_tier3` red-first with five stall arms (a first-chunk
+  stall reaching the understudy; a mid-stream stall that substitutes
+  nothing; a stalled understudy / retry / Concierge leg recorded
+  `network`); the neutrality sweep of every wrapped family at both pins.
+  Bumps core + harness.
+- **P4.D190 — the greeting watchdog + the ladder** (`work-orders/p4.d190-
+  greeting-stall-ladder-server.md`, STACKED on P4.D189's substrate sha):
+  `initial_greeting.rs` wrapped at 90 s / 60 s with `context: "initial-
+  greeting"`; the ladder's `own_profile_stalled` noted at the three
+  own-profile arms ONLY (never at attempt 0 or the content-filter desk),
+  the three gates at v4's positions, the `Greeting abandoned` warn, and
+  **v4's three pre-existing attempt warns + the exhaustion line the v5
+  arms never carried** (the #103/#110 silent-arm class); `initial_
+  greeting_equivalence` with a stall + a plain-error case and an `error`
+  comparand; `chat_create_capstone` red-first with six ladder cases over
+  the ORDERED `stream_calls` comparand (v4's five route tests transcribed
+  + the content-filter-desk-stall arm v4's tests do not reach). Bumps
+  core + harness.
+- **P4.D191 — the bug-142 convergence + the two NO-PORT ratifications +
+  the `help/**` re-vendor** (`work-orders/p4.d191-bug142-convergence-
+  ratifications-help.md`, from `main`): the `DELETE_MISS_DIVERGENCE` pin
+  MEASURED at `ffb6b3119` (the tripwire must fire; v4's post-fix rows
+  dumped; total vs partial convergence decided by `cmp`) then retired to
+  a plain equality red-first in BOTH directions with zero v5 source
+  change; `85813ddd2` / `364b04ac4` ratified NO-PORT on file lists + Tier
+  R at the pin (the ABI heal's fixed `jest.global-setup.js` now rides
+  every target pin); `help/chats.md` + `help/connection-profiles.md`
+  byte-copied (124 stays 124) with every help-content family regenerated
+  at the target. Bumps harness + host.
+
+**Execution:** P4.D189 starts first and commits its substrate alone;
+P4.D190 starts the moment that sha exists; P4.D191 runs from `main` in
+parallel with both. Three worktrees, three lane branches, no SPA
+worktree. Most-capable model for all three (each has a measured-not-
+assumed arm: the neutrality sweep, the ladder's desk-scoping, the
+convergence's total-vs-partial verdict). **Deliberately left out:** every
+phase-4 candidate that is not drift (the owed dogfood pass — it now
+inherits this round's live proof, a real stalled endpoint: point a seat at
+a server that answers headers and no body, and watch the Green Room
+resolve inside ninety seconds with `[LLMStream] Abandoned a stalled
+provider stream` in `combined.log`; the shared-fixture title-checkpoint
+hazard; the maintenance smalls), real socket cancellation (v4's own
+not-done), and the Green Room's client ceiling (v4's own not-done).
+
 ## The `31436bae4` drift catch-up round (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥ P4.D188) — UNIFIED 2026-09-15
 
 **ALL SEVEN ORDERS CLOSED; the oracle baseline MOVES `f4ad2c8d1` →
