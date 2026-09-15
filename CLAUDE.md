@@ -3539,6 +3539,46 @@ records THERE. Update this summary only when a phase or round completes.
   round record in `status-log.md`. 💸 the dogfood queue gains a REAL
   stalled endpoint on the Friday copy (the one proof no canned stream can
   give). Round record: `status-log.md`.
+- **The six-round dogfood backlog pass RAN (2026-09-15, agent-driven, on the
+  Friday copy) — 14 rows run, 13 PASS, ONE finding found and FIXED, and ten 💸
+  items discharged including both headline ones.** Walk doc:
+  `dogfood-walks/2026-09-15-six-round-backlog-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe passed at walk start (v4 HEAD **is**
+  the baseline, §3 EMPTY), so nothing could blame drift. **The pre-walk
+  measurement killed three banked positives and bought better proofs:** v4 had
+  already run its own avatar-roll collapse (2026-09-11, 1785 → 898) and its own
+  bug-132 heal (2026-09-09, 2,908), so v5 was proven instead by booting on v4's
+  healed DB and writing **nothing** (187 ledger rows byte-identical); v4 had
+  written both of the instance's only two `routeTrail` rows; and v4 had already
+  turned on `impersonationVoiceRewrite`, run 17 rehearsals, and written a real
+  **progression** (Abigail's pregnancy, 2026-09-08). **FIXED: finding #118** —
+  the paused-room notice promised an answer that can never come (v5's own
+  banner, written correctly by dogfood #83, made false by bug 137 / P4.D186;
+  P4.D187 shipped the accurate toast but not the banner, and both tests
+  asserted only the opening words while the unit spec's comment had frozen the
+  now-false claim as the point of the test). Commit `6e11605a`, SPA 0.5.722.
+  **⭐ The stream watchdog is proven end to end** against a posed stalling
+  endpoint: the greeting at `elapsed_ms: 90002`/90,000 with the own-profile gate
+  ending the ladder (zero retry lines) and the static greeting delivered; the
+  Salon at `elapsed_ms: 240001`/240,000 followed one millisecond later by
+  `[Failover] … trigger: "network"` — the classification the whole port turns on
+  — and, with a live understudy, `[Failover] Understudy answered` plus v5's own
+  persisted two-row trail. **So the route-trail badge is proven in BOTH
+  directions** (v4's bytes rendered; v5's bytes written and rendered).
+  **⭐ The avatar cache hit three times for nothing** (files/rolls/`IMAGE_GENERATION`
+  all unmoved). **⭐ Progressions** rendered and computed to the day from v4's
+  entry, with the withheld ordinary turn 14 minutes later as the other half of
+  the proof, and a malformed sibling dropped and NAMED on screen. Also live: a
+  real `VOICE_REWRITE` rehearsal, the transcript's subscribed read, all seven
+  avatar-roll route guards, the gallery enumerator and its 404, and
+  `--lock-status`. Free proofs: finding #110's narrating sweep, P4.78's
+  `details` array, P4.72's `?action=` honesty, and the cheap-LLM chain with its
+  `Task failed` warn firing BEFORE the chain. **⚠ NANOGPT's stored key is DEAD
+  on this copy** (401; it is the instance default) — environmental, but it
+  shapes any future walk. **Recorded for an order: 10 duplicate
+  `generationKey` groups have re-accumulated since v4's own collapse.** 💸 still
+  owed (human): the Brahma deep query, dedup/summaries, #101, and the bug-133
+  reroute trio + the two image-spend rows.
 - **Oracle baseline: `ffb6b3119` (2026-09-14, v4 main — "fix(db): a delete
   that removed nothing no longer counts as a deletion (bug 142)",
   `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 + bug-142 drift

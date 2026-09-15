@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(dogfood): the six-round backlog pass — one finding fixed, ten live proofs discharged
+
+_Docs-only change._
+
+14 rows run against a copy of the real Friday instance, covering the six rounds
+unified since the 2026-09-07 pass. 13 PASS plus one that produced finding #118
+(fixed separately in `6e11605a`). Both headline owed proofs are discharged: the
+stream watchdog fired at `elapsed_ms: 90002` on the greeting and `240001` on the
+Salon, with the stalled error classifying as `network` so the understudy
+answered instead of the turn wedging; and the avatar configuration cache hit
+three times for zero spend.
+
+Four cross-app proofs, where v5 was judged against bytes v4 wrote on this
+instance: the avatar-roll collapse ledger and the bug-132 placeholder heal (v5
+boots on v4's healed data and writes nothing — 187 ledger rows byte-identical),
+the route-trail badge rendering v4's own failover rows, and Abigail's
+progression rendered and computed to the day.
+
+27 rows not run, each with its reason recorded — six deferred to the human for
+image spend or a posed provider refusal, the rest beyond the walk's length.
+Five instrument traps banked, and one item recorded for an order: 10 duplicate
+`generationKey` groups have re-accumulated since v4's own collapse.
+
 #### 2026-09-15 — fix(salon): the paused-room notice no longer promises an answer that never comes (dogfood #118)
 
 _Versions: SPA 0.5.722._

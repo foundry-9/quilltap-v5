@@ -125614,6 +125614,131 @@ drawer on a real character, "Show shared" on a real merged wardrobe.
 
 ---
 
+## Dogfood pass — the six-round backlog (2026-09-15, agent-driven, on the Friday copy)
+
+**14 rows run, 13 PASS + 1 PASS-that-produced-a-finding; ONE finding found and
+FIXED; both headline 💸 items discharged plus eight more; four cross-app
+proofs.** Walk doc:
+`dogfood-walks/2026-09-15-six-round-backlog-pass.md`. The ledger's §2 probe
+PASSED at walk start (v4 `main` HEAD **is** the baseline `ffb6b3119`, tree
+clean, §3 EMPTY), so no step could blame drift and no regen needed a pin.
+
+**The pre-walk measurement reshaped four steps and killed three banked
+positives — then bought better proofs (ledger §5.5).** v4 had run its own
+avatar-roll collapse on **2026-09-11** (*"Collapsed 1785 avatar rolls to 898
+configurations (887 images freed; repointed 262 chats, 24 characters, 977
+messages)"*) and its own bug-132 placeholder heal on **2026-09-09** (2,908
+items), so both positive legs were dead on arrival; v5 instead booted on v4's
+healed DB and wrote **nothing** — 187 `migrations_state` rows byte-identical
+(md5 `85ecf65d5310671ba804037dae5bb353` before and after). `chat_messages
+.routeTrail` held only **2 of 139,526** rows — but v4 had written both, on
+2026-09-14 and 2026-09-15, each a two-row primary-failed → understudy-answered
+trail, so P4.D173's "invisible until something actually fails" item was
+provable against v4's own bytes with nothing to provoke. And v4 had already
+turned `impersonationVoiceRewrite` ON and run **17** rehearsals, and had
+written a real **progression** (Abigail's pregnancy) on 2026-09-08.
+
+**FIXED: finding #118** — the paused-room notice promised an answer that can
+never come. Found by consequence: a message typed into the real paused chat
+*The Ledger of Skin and Water* was recorded (138 → 139), `lastTurnParticipantId`
+cleared `4ba95d1a…` → NULL, **zero** `llm_logs` rows, and v4's
+`[Orchestrator] Chat paused — recording the user message without a reply` fired
+— all correct per bug 137 — while the banner **directly below the unanswered
+message** still read *"…but whoever's turn it is will still answer a message you
+send."* That sentence is v5's own affordance (v4 renders no such notice) and was
+written **deliberately by dogfood #83**, correctly at the time: v4 then consulted
+`isPaused` only in `shouldChainNext`, never on the send path. **Bug 137 moved
+exactly that line.** P4.D187 shipped the accurate held-turn toast but nobody
+revisited the persistent banner, and the component's doc comment still cited
+v4's retired `turn-orchestrator.service.ts:77` as its justification. Neither
+test caught it — both asserted only the opening words, and the unit spec's
+comment had **frozen the now-false claim as the point of the test**. Fixed with
+the claim pinned in both tests plus a `not.toContain` guard on the retired
+promise, mutation-proven. Commit `6e11605a`, SPA 0.5.722; gate 434 spec files /
+7,325 tests / 0 failed, build clean, `m4b-salon` green.
+
+**⭐ The stream watchdog, proven end to end — the round's one owed proof.** A
+posed OpenAI-compatible endpoint (`harness`-free, in the walk's scratchpad)
+answers 200 + SSE headers and holds the socket. The greeting arm abandoned at
+**`elapsed_ms: 90002`** against `budget_ms: 90000` with
+`context: "initial-greeting"`, then `[Chats v1] Greeting abandoned — the
+provider accepted the request and then went quiet` — and **zero** `without
+memories` / `Final greeting generation retry failed` / `All greeting generation
+attempts exhausted` lines, which is P4.D190's own-profile gate ending the ladder
+exactly as ported; the chat opened on the static greeting and the `llm_logs` row
+carried `"error":"Provider stream never sent a first chunk within 90000ms"`. The
+Salon arm abandoned at **`elapsed_ms: 240001`** against `budget_ms: 240000` and
+one millisecond later `[Failover] Primary call failed; walking the fallback
+chain` fired with **`trigger: "network"`** — the classification that is the
+whole point of the port, since without it the turn wedges. Repeated with a live
+understudy, `[Failover] Understudy answered` (`DeepSeek v4 Flash`,
+`response_length: 641`, `failed_attempts_before: 1`) and v5 persisted its own
+two-row `routeTrail`. **So the badge is proven in both directions: A4 renders
+v4's bytes, H1b renders v5's.**
+
+**⭐ The avatar cache hits three times for nothing.** `chatToggleAvatarGeneration`
+off/on — v4's own automatic trigger — enqueued three `CHARACTER_AVATAR_GENERATION`
+jobs, all three answering `[CharacterAvatar] Reused cached avatar for this
+configuration` within ~10 ms. The discriminator: `files` 2,138 → 2,138, rolls
+910 → 910, `llm_logs` `IMAGE_GENERATION` 198 → 198.
+
+**⭐ Progressions, against v4's own entry.** The forced greeting build carried
+`Time-bound conditions you are carrying, as of this moment:` /
+`- You are carrying Charlie's daughter. Pregnancy: 6 weeks elapsed, 32 weeks, 6
+days remaining.` — arithmetic correct to the day (42 elapsed = 6 weeks 0 days;
+230 remaining = 32 weeks 6 days), `timeIncrement: week` and
+`percentageReport: false` both honoured. **The negative arm is half the proof:**
+the ordinary turn 14 minutes later withheld the section, correctly, because
+`reportFrequency: "1h"` is walked out of the character's own last visible turn.
+The card renders the same line byte-identically, and a deliberately malformed
+sibling entry was **dropped and named on screen** (*"One entry in this
+character's metadata.json could not be read and is being skipped: probe."*)
+while Pregnancy rendered beside it — the fail-soft invariant, live. v4's entry
+was restored byte-for-byte afterwards.
+
+**Also proven live:** a real voice rehearsal (`VOICE_REWRITE` row 20, `messageId`
+NULL, `seedLength: 64` matching the seed's UTF-16 length, `proposedLength: 1391`)
+and its three byte-exact PUT refusals; `chatTranscript`'s subscribed read
+(`knownVersion: 448` → `unchanged`, `0` → 192 messages); all seven avatar-roll
+route guards including **`Avatar roll not found` beating `Character not found`**
+on a DELETE while the LIST for the same missing character answers
+`Character not found`; `chatGallery`'s nine-source enumerator at real scale and
+its `Chat not found` 404; and `--lock-status` reporting PID-confirmed ownership.
+
+**Free proofs the walk picked up:** finding #110's fix (the scheduled
+maintenance pass narrated `chats_scanned: 951, stale_chats: 819,
+chats_collapsed: 7, files_deleted: 14` instead of deleting in silence — and is
+why `files` fell 2,151 → 2,138 mid-walk); P4.78's `chatCreate` validation
+refusing with a populated `details` array; P4.72's `?action=` route answering
+*"Only the get-background and cost actions are served on this route"*; and the
+cheap-LLM failover chain walking `Task failed` → `Retrying task with a stand-in`
+(`trigger: "auth"`) → `Stand-in answered` on DEEPSEEK — **with the `Task failed`
+warn firing BEFORE the chain**, the ordering a §3 review corrected.
+
+**Environmental, not a defect: NANOGPT's stored key is DEAD on this copy** (401
+`Invalid session`), and it is the instance default — so seats fail over rather
+than answering. It shaped several rows and is why B2/B3 were left unrun.
+
+**Chased to ground and NOT filed:** DeepSeek's raw `DSML` tool-call markup
+persisting as message text looked like a cross-provider failover defect; the
+free discriminator settles it — the instance holds five such messages and
+**four predate this walk** (v4 wrote them).
+
+**Recorded for an order: 10 duplicate `generationKey` groups have re-accumulated
+since v4's own collapse.** If those pairs are same-character, something is
+missing the cache hit the cache exists to catch. Measured, not diagnosed.
+
+**27 rows not run**, each with its reason in the walk doc: six deferred to the
+human (image spend or a posed provider refusal), the rest beyond the walk's
+length. Cheapest unrun row is H2 — the 120 s idle-stall arm, for which the
+posed endpoint already supports `?chunks=2`.
+
+**Five instrument traps banked** (walk doc §4), the sharpest being
+`compositionModeDefault = 1` on real data — plain Enter inserts a paragraph and
+**Cmd+Enter sends**, which silently swallowed two sends and looked exactly like
+a paused room refusing a message.
+
+
 ## P4.D189 — the stream watchdog: the SERVER substrate + the Salon side (v4 `f90144ac4`, bug 141) — lane record
 
 **Branch `claude/p4-stream-watchdog-salon-b1222c`, from `main` at `f687cc4e`.**
