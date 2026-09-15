@@ -94,45 +94,43 @@ enum Op {
     },
 }
 
-/// **A v4 BUG this port found, pinned in BOTH directions** (P4.D183).
-///
-/// v4's `deleteMessagesByIds` counts a requested id as removed whether or not
-/// it existed:
-///
-/// ```js
-/// const result = await messagesCollection.deleteOne({ id: messageId, chatId });
-/// if (typeof result === 'number') { removed += result; }
-/// else if (result) { removed += 1; }          // ← an OBJECT is always truthy
-/// ```
-///
-/// The real SQLite backend returns `{ deletedCount: 0, acknowledged: true }`
-/// for a miss (`backends/sqlite/backend.ts:289`) — never a number — so the
-/// second branch fires and `removed` ends up as `messageIds.length`. v4 then
-/// takes the `removed > 0` path: it rewrites `messageCount`/`lastMessageAt`
-/// and, since `5029075bb`, BUMPS the transcript counter and publishes a hint
-/// for a delete that deleted nothing.
-///
-/// v4's own unit suite cannot see this. `chats-messages-transcript-version.
-/// test.ts:57` mocks `deleteOne` to return a NUMBER (`0` / `1`), which takes
-/// the first branch and behaves correctly — so its "says nothing when nothing
-/// was removed" passes against a mock that does not match its own production
-/// backend. It took a real-DB oracle to expose it, and it only became VISIBLE
-/// when the counter arrived: `messageCount` and `lastMessageAt` are recomputed
-/// from what survives, so they land on the same values either way.
-///
-/// **v5 is left correct.** Reproducing this would mean regressing a v5 path
-/// that works, and miscounting deletions for every caller of the return value.
-/// The divergence is recorded here instead, in both directions, so it cannot
-/// drift: the moment v4 fixes it the oracle's value becomes v5's and this
-/// tripwire fires, naming itself.
-///
-/// FILED UPSTREAM: see the lane record.
-const DELETE_MISS_DIVERGENCE: (&str, i64, i64) = (
-    // (chat id, what v5 writes, what v4 writes)
-    "c0000020-0000-4000-8000-000000000001",
-    2,
-    3,
-);
+// **A v4 BUG this port found — and v4 has now CONVERGED onto v5** (P4.D183 →
+// P4.D191). v4's `deleteMessagesByIds` used to count a requested id as removed
+// whether or not it existed:
+//
+// ```js
+// const result = await messagesCollection.deleteOne({ id: messageId, chatId });
+// if (typeof result === 'number') { removed += result; }
+// else if (result) { removed += 1; }          // ← an OBJECT is always truthy
+// ```
+//
+// The real SQLite backend answers a miss with `{ deletedCount: 0, acknowledged:
+// true }` (`backends/sqlite/backend.ts:289`) — never a number — so the second
+// branch fired and `removed` ended up as `messageIds.length`. v4 then took its
+// `removed > 0` path: it rewrote `messageCount`/`lastMessageAt` and, since
+// `5029075bb`, BUMPED the transcript counter and published a hint for a delete
+// that deleted nothing. v4's own unit suite could not see it —
+// `chats-messages-transcript-version.test.ts:57` mocked `deleteOne` to return a
+// NUMBER, taking the one branch where the arithmetic is right — so it took this
+// real-DB oracle to expose it, and it only became VISIBLE once the counter
+// arrived (`messageCount`/`lastMessageAt` are recomputed from what survives and
+// land on the same values either way).
+//
+// v5 was left correct, and the divergence was pinned in BOTH directions as
+// `DELETE_MISS_DIVERGENCE` (chat `c0000020-…`: v5 wrote `transcriptVersion` 2,
+// v4 wrote 3) so it could not drift. **Filed upstream as v4 bug 142
+// (`364b04ac4`) and FIXED at v4 `ffb6b3119`** — `removed += result.deletedCount`,
+// both stale branches deleted. The tripwire fired by name on the first regen at
+// that pin, which is the tripwire working (drift-ledger §5.4).
+//
+// **The pin is RETIRED to a plain equality** (P4.D191), on a measured TOTAL
+// convergence rather than an assumed one: the same seed fixture run through v4
+// at `31436bae4` and at `ffb6b3119` differs in exactly ONE of 1,513 cells
+// across both dumped tables — this chat's `transcriptVersion`, 3 → 2 — plus the
+// two wall-clock cells `ADD_MINTS_TIMESTAMPS_ON` already carves out. So the
+// cell now COMPARES: a v5 regression that counts a miss again reds this test.
+// The mint carve-out below stays (v4 `5029075bb` is still this family's one
+// minting op).
 
 /// The `addMessage` / `addMessages` ops MINT `updatedAt` / `lastMessageAt`
 /// from the wall clock, so those two cells cannot be compared on the chat they
@@ -142,17 +140,14 @@ const DELETE_MISS_DIVERGENCE: (&str, i64, i64) = (
 /// dropped, so a NULL or an empty string still reds.
 const ADD_MINTS_TIMESTAMPS_ON: &str = "c0000060-0000-4000-8000-000000000001";
 
-/// Apply the two carve-outs above to a `chats` dump, asserting each one is
-/// REAL (present and of the expected shape) before neutralizing it — a
-/// carve-out nothing exercises is a hole, not an exemption.
+/// Apply the ONE remaining carve-out to a `chats` dump, asserting it is REAL
+/// (present and of the expected shape) before neutralizing it — a carve-out
+/// nothing exercises is a hole, not an exemption. (Its sibling,
+/// `DELETE_MISS_DIVERGENCE`, retired above when v4 converged at `ffb6b3119`;
+/// that chat's `transcriptVersion` is now compared like any other cell.)
 fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
-    let (div_chat, v5_expected, v4_expected) = DELETE_MISS_DIVERGENCE;
-    let mut saw_divergence = false;
     let mut saw_mint = false;
-    for (side, dump, expected) in [
-        ("rust", &mut *got, v5_expected),
-        ("oracle", &mut *oracle, v4_expected),
-    ] {
+    for (side, dump) in [("rust", &mut *got), ("oracle", &mut *oracle)] {
         let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
             continue;
         };
@@ -165,19 +160,6 @@ fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            if id == div_chat {
-                let actual = o.get("transcriptVersion").and_then(Value::as_i64);
-                assert_eq!(
-                    actual,
-                    Some(expected),
-                    "[{side}] the delete-miss divergence has MOVED on {div_chat}:                      expected {expected}, got {actual:?}. If v4 fixed the                      truthy-object bug, retire `DELETE_MISS_DIVERGENCE` to a plain                      equality; if v5 changed, that is a regression."
-                );
-                o.insert(
-                    "transcriptVersion".into(),
-                    Value::String("<divergent>".into()),
-                );
-                saw_divergence = true;
-            }
             if id == ADD_MINTS_TIMESTAMPS_ON {
                 for key in ["updatedAt", "lastMessageAt"] {
                     let v = o.get(key).and_then(Value::as_str).unwrap_or("");
@@ -192,10 +174,9 @@ fn apply_chats_carve_outs(got: &mut Value, oracle: &mut Value) {
         }
     }
     assert!(
-        saw_divergence && saw_mint,
-        "both carve-out rows must be PRESENT in the dump (divergence: \
-         {saw_divergence}, mint: {saw_mint}) — a carve-out whose row has left \
-         the corpus is measuring nothing"
+        saw_mint,
+        "the mint carve-out row must be PRESENT in the dump — a carve-out \
+         whose row has left the corpus is measuring nothing"
     );
 }
 

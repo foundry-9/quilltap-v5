@@ -561,6 +561,21 @@ impl<'c> ChatMessagesRepository<'c> {
     /// removed. When any were removed, recount `messageCount` on the chat AND
     /// recompute `lastMessageAt` from what survives (v4 `735d9408c`); `updatedAt`
     /// is still not written, so `update` preserves it. Empty input → `0`.
+    ///
+    /// ⚠ `removed` is `rows affected`, so an id that was not there counts for
+    /// NOTHING and the `removed > 0` guard below stays shut — no bookkeeping,
+    /// no counter bump, no hint. v4 used to disagree: its accumulator tested
+    /// `typeof result === 'number'` and then fell back to bare truthiness, and
+    /// the SQLite backend answers a miss with the (truthy) object
+    /// `{ deletedCount: 0, acknowledged: true }`, so `removed` could only ever
+    /// end at `messageIds.length`. P4.D183's tier-2 census found it, it was
+    /// pinned in both directions as `DELETE_MISS_DIVERGENCE` in
+    /// `chats_messages_ops_tier2_equivalence`, and it was filed upstream as v4
+    /// bug 142 (`364b04ac4`). **v4 converged at `ffb6b3119`** —
+    /// `removed += result.deletedCount`, both stale branches deleted — so the
+    /// pin retired to a plain equality at P4.D191 on a measured TOTAL
+    /// convergence (one cell of 1,513 moved, drift-ledger §5.4). v5 never
+    /// changed here, and this line is now what the differential compares.
     pub fn delete_messages_by_ids(
         &self,
         chat_id: &str,

@@ -290,6 +290,41 @@ the source) and the warn's field bag pinned through a thread-scoped capture
 layer. Five mutations each reddened exactly their named tests: a cumulative
 budget, a reasoning-only chunk that stops counting, answering the stall on
 every `recv`, dropping the warn, and rendering `chunk(s)` as `chunks`.
+#### 2026-09-15 — test(harness): retire `DELETE_MISS_DIVERGENCE` — v4 converged on the delete count at `ffb6b3119` (bug 142)
+
+_Versions: harness 0.0.806._
+
+P4.D183's tier-2 census found that v4's `deleteMessagesByIds` counted a
+requested message id as removed whether or not the row existed: the
+accumulator tested `typeof result === 'number'` and then fell back to bare
+truthiness, and the SQLite backend answers a miss with the truthy object
+`{ deletedCount: 0, acknowledged: true }`. So `removed` could only ever end
+at `messageIds.length`, and a delete that deleted nothing still bumped
+`transcriptVersion` and told every open Salon tab to re-read a transcript it
+already had. v5 counts `rows affected` and was never affected; the gap was
+pinned in both directions as `DELETE_MISS_DIVERGENCE`, filed upstream as v4
+bug 142 (`364b04ac4`), and fixed by v4 at `ffb6b3119`
+(`removed += result.deletedCount`, both stale branches deleted).
+
+The tripwire fired by name on the first regen from an `ffb6b3119` pin —
+`[oracle] the delete-miss divergence has MOVED on c0000020-…: expected 3,
+got Some(2)` — which is the tripwire working, not a regression. The pin is
+retired on a MEASURED total convergence rather than an assumed one: the same
+seed fixture driven through v4 at `31436bae4` and at `ffb6b3119` differs in
+exactly one of 1,513 cells across both dumped tables (this chat's
+`transcriptVersion`, 3 → 2), plus the two wall-clock cells the
+`ADD_MINTS_TIMESTAMPS_ON` carve-out already covers and which differ between
+oracle RUNS, not between v4 vintages. Nothing was reshaped — the carve-out
+is simply deleted, and the mint carve-out and its presence assert stay.
+
+The retirement measurably widens coverage: the formerly neutralized cell now
+compares like any other. Proven in both directions — the retired test is
+green against the `ffb6b3119` oracle and red against the `31436bae4` one on
+exactly that one cell of the 808 in the `chats` dump — and by a mutation
+that makes v5 count a miss again (`removed += if n == 0 { 1 } else { … }`),
+which reds the same single cell. Zero v5 behaviour changed; the only core
+edit is the comment beside `delete_messages_by_ids` recording the
+convergence.
 
 #### 2026-09-14 — docs(setupphase): the `ffb6b3119` bug-141 + bug-142 drift catch-up round — three work orders (P4.D189 → P4.D190 ∥ P4.D191)
 

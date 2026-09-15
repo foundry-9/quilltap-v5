@@ -126382,3 +126382,110 @@ by this lane and not a stale-fixture signal.
   family whose two calls can hash to one key does. The Rust half is 60 lines
   (`PerCallGreetings`) and is worth lifting out of the capstone test if a second
   family wants it.
+## P4.D191 — the bug-142 convergence, the two NO-PORT ratifications, and the `help/**` re-vendor (the `ffb6b3119` drift catch-up round)
+
+Lane branch `claude/p4-convergence-ratifications-ac3153`, from `main` at
+`f687cc4e` (the round's setupphase commit, `d7cab319` + the three orders).
+Oracle baseline `31436bae4`; target `ffb6b3119`. **Regen rule: PIN
+REQUIRED** — two lane-unique detached worktrees,
+`/tmp/qt-v4-pin-p4d191-ffb6b3119` (the target: the convergence measurement,
+the help re-vendor SOURCE, every help-content regen, Tier R) and
+`/tmp/qt-v4-pin-p4d191-31436bae4` (the baseline: the pre-fix leg of the
+convergence proof and the `QT_V4_ROOT` embed-guard leg before the re-vendor
+commit). The ledger's §2 freshness probe PASSED at lane start — branch
+`main`, tree clean, `ffb6b3119..main` and `1a2b2164c..bugfix` both empty —
+and was re-run before every regen batch.
+
+### Unit 1 — the bug-142 CONVERGENCE: `DELETE_MISS_DIVERGENCE` retired by measurement
+
+**The tripwire fired first, by name, exactly as P4.D183 designed it.** The
+unchanged family, run against an oracle regenerated fresh from the
+`ffb6b3119` pin:
+
+```
+[oracle] the delete-miss divergence has MOVED on c0000020-0000-4000-8000-000000000001:
+  expected 3, got Some(2). If v4 fixed the truthy-object bug, retire
+  `DELETE_MISS_DIVERGENCE` to a plain equality; if v5 changed, that is a regression.
+```
+
+It fired on the **oracle** side, which is the proof that v4 moved. The
+regen was verified non-stale per ledger §5.2 (the NDJSON deleted first, the
+fixture rebuilt first, the fresh file grepped for `c0000020` and for the
+changed cell) — 45,693 bytes, `transcriptVersion` 2 on that chat.
+
+**The convergence is TOTAL, measured not assumed** (ledger §5.4 warns that
+a trip tells you v4 moved, not HOW). The SAME target-built seed fixture was
+driven through v4 at BOTH pins — legitimate because the only
+`lib/database/` delta between them is the one hunk (`git diff --stat
+31436bae4 ffb6b3119 -- lib/database/` = `chats-messages.ops.ts | 9 +++---`,
+nothing else; the other four `lib/` files in the span are the bug-141
+streaming surfaces this family never imports). Both NDJSONs are 45,693
+bytes. Decomposed cell by cell across both dumped tables — 1,513 cells —
+**exactly three differ**:
+
+| cell | `31436bae4` | `ffb6b3119` | verdict |
+|---|---|---|---|
+| `chats.c0000020-….transcriptVersion` | 3 | 2 | **the convergence** — v4 now writes what v5 writes |
+| `chats.c0000060-….lastMessageAt` | 03:45:44.053Z | 03:43:58.288Z | the `ADD_MINTS_TIMESTAMPS_ON` wall clock — differs between oracle RUNS, not v4 vintages |
+| `chats.c0000060-….updatedAt` | 03:45:44.053Z | 03:43:58.288Z | ditto |
+
+So there is nothing to reshape: the carve-out is **deleted**, not split.
+The mint carve-out and the `saw_mint` presence assert stay (v4 `5029075bb`
+is still this family's one minting op).
+
+**The retirement, proven in BOTH directions and red-first.**
+
+- GREEN against the `ffb6b3119` oracle (1 passed).
+- RED against the `31436bae4` oracle, on **exactly one cell of the 808**
+  in the `chats` dump (8 rows × 101 columns), decomposed from the panic:
+  `('c0000020-…', 'transcriptVersion', rust 2, oracle 3)`. No other row
+  moved in either run.
+
+**The retirement measurably WIDENED coverage** (the P4.D131 bug-105 check,
+repeated): the formerly neutralized cell now discriminates. Mutation —
+`removed += n as i64` → `removed += if n == 0 { 1 } else { n as i64 }`,
+i.e. v5 committing v4's pre-`ffb6b3119` bug — reds the retired test on
+**exactly** `('c0000020-…', 'transcriptVersion', rust 3, oracle 2)` and
+nothing else. Reverted by FILE BACKUP (`cp` of the pre-mutation file), the
+revert confirmed by `diff -q`.
+
+**⚠ An order premise CORRECTED by measurement.** The order (and its survey)
+said `crates/quilltap-core/src/db/chats_messages.rs` carries a comment
+referencing the divergence / the upstream filing, to be updated. It does
+not, and never did — `grep -n 'bug 142\|FILED UPSTREAM\|truthy\|DELETE_MISS'`
+over the whole crate returns nothing on that path. The divergence record
+lived **only** in the harness test. Rather than leave the core side silent
+about a v4 bug that shaped this function's contract, the convergence record
+was ADDED there as a doc comment beside `delete_messages_by_ids`, following
+the `services/quilltap_import/profiles.rs` bug-105 idiom (the core side
+carries the reasoning, the harness side carries the pin). **Comment-only,
+proven:** `git diff -U0` over that file yields `+` lines that are all `///`
+and zero `-` lines.
+
+**Version-bump note (§R.8 honoured deliberately).** The round contract
+assigns P4.D191 `harness` + `host`. This unit also touches a `core` source
+file — but comment-only, producing an identical binary, which is what §R.8
+already knew when it wrote the Ownership row "COMMENTS ONLY". The binding
+round contract wins over `commit.md` §6's general rule here; `core` is NOT
+bumped by this lane, and the unifier's base + total recount is unaffected.
+Flagged rather than silently decided.
+
+**Regen recipe (both legs).** Node 24 at `~/.nvm/versions/node/v24.13.1/bin`:
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d191-ffb6b3119      # or …-31436bae4 for the pre-fix leg
+cd "$PIN"
+QT_FIXTURE_OUT=<scratch>/qt-chatsmsgops-fixture-tgt.db \
+  $N/npx tsx <v5>/harness/oracle/fixtures/build-chats-messages-ops-fixture.ts
+QT_FIXTURE_CHATSMSGOPS=<scratch>/qt-chatsmsgops-fixture-tgt.db \
+  $N/npx tsx <v5>/harness/oracle/cases/chats-messages-ops-tier2.ts > <scratch>/oracle-chatsmsgops-tgt.ndjson
+# run
+QT_ORACLE_CHATSMSGOPS=… QT_FIXTURE_CHATSMSGOPS=… \
+  cargo test -p quilltap-harness --test chats_messages_ops_tier2_equivalence
+```
+
+No fixture SHAPE changed — `chats-messages-ops-tier2.json` and
+`build-chats-messages-ops-fixture.ts` are untouched, so no sibling oracle is
+invalidated. The fixture builder ran clean from the pin on Node 24 through
+v4's REAL `addMessages` (a cipher-driver real-DB path), which is also the
+ABI evidence recorded in unit 4.
