@@ -126291,3 +126291,94 @@ whenever attempt 1 succeeds, because gate 1 sits AFTER attempt 1. **v4's own
 fixture carries no participant memories, so its "exactly one call" assertion
 passes with gate 1 deleted. Both are closed by an arm that forces the read.
 
+
+### Deferred LOUD (P4.D190 Tier 3 — nothing stubbed, nothing silent)
+
+- **The Green Room's own ceiling** (offering a Close after long enough, not
+  only on the error phase) — v4's OWN recorded not-done at `f90144ac4`, so
+  there is nothing to port. No v5 client change; no SPA change in this lane.
+- **Attempt 4's 1 s delay** stays skipped (v4's `await new Promise(r =>
+  setTimeout(r, 1000))`) — host-timing, P4.4's recorded decision, re-recorded
+  here because the ladder was re-opened. The `match` arm this lane gave attempt
+  4 does not introduce it.
+- **`help/chats.md`'s Green Room paragraph** — P4.D191's re-vendor, not this
+  lane's (§R.7).
+- **`__` R.6(2)/(3): "abandoned, not cancelled" is unchanged here.** v5's seam
+  is an mpsc receiver with no `iterator.return()`, so dropping it is the one
+  answer for both of v4's `finally` legs — a NO-COUNTERPART P4.D189 recorded in
+  the watchdog module. P4.44's abort-arming deferral STANDS; this lane closes
+  nothing of it.
+- **Not in scope and not touched:** `generate_via_uncensored_desk` (v4 leaves
+  it alone), `GeneratedGreeting::none()` / the static-greeting composer, the
+  classifier, the SPA.
+
+### Gate of record (P4.D190, at the lane's last commit)
+
+- §2 freshness probe re-run before every regen batch: branch `main`, tree
+  clean, `ffb6b3119..main` empty, `1a2b2164c..bugfix` empty — PASS each time.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean.
+  - ⚠ The first run of this gate failed clippy ONLY: `type_complexity` on the
+    new `PerCallGreetings.queues` field — a clippy-only lint a workspace test
+    cannot see (the standing note). Fixed with a `GreetingQueues` type alias
+    and the whole gate re-run.
+- `cargo test --workspace` with `QT_ORACLE_GREETING` + `QT_ORACLE_CC` +
+  `QT_FIXTURE_CC_{MAIN,MOUNT,LLM}` + `QT_V4_ROOT` (the baseline pin):
+  **569 test binaries / 3,295 passed / 0 failed / 2 ignored — exit 0, ZERO
+  `SKIP:` lines.** Both families confirmed RUN by name:
+  `chat_create_capstone_equivalence` 3 passed / 4.28 s over 129 cases (every
+  `gs_*` case's nine sections printed OK), `initial_greeting_equivalence` 1
+  passed over 8 rows — and confirmed non-vacuous by contrast, the same binary
+  printing `SKIP: set QT_ORACLE_GREETING` when the var is withheld.
+- No SPA change; no e2e owed (ONE Playwright at a time repo-wide stands for
+  whoever does).
+- Ownership: `git diff 73546827 --` over every MUST-NOT-TOUCH path
+  (`model/**`, `llm_fallback/**`, `db/**`, `api/**`, `help/**`, the ten
+  Salon-side wrap sites, `crates/quilltap-{web,host}/src/**`, `apps/web/**`,
+  `docs/v4/**`, `chats_messages_ops_tier2`, `chat_context_init`) — EMPTY.
+
+### Regen recipe (unit 4 — the capstone, pin REQUIRED)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+PIN=/tmp/qt-v4-pin-p4d190-ffb6b3119        # MUST be at/after ffb6b3119
+cd "$PIN"
+rm -f /tmp/qt-d190-cc-{main,mount,llm}.db
+QT_FIXTURE_CC_MAIN=/tmp/qt-d190-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-d190-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-d190-cc-llm.db \
+  $N/node --import tsx "$V5W/harness/oracle/fixtures/build-chat-create-capstone.ts"
+TMPO=/tmp/qt-cc-oracle-p4d190
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/chat-create-capstone.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/chat-create-capstone.json"  "$TMPO/fixtures/"
+TZ=UTC QT_FIXTURE_CC_MAIN=/tmp/qt-d190-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-d190-cc-mount.db \
+QT_FIXTURE_CC_LLM=/tmp/qt-d190-cc-llm.db QT_ORACLE_OUT=/tmp/oracle-chat-create-p4d190.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "chat-create-capstone\.test\.ts$"
+# then:
+#   QT_ORACLE_CC=/tmp/oracle-chat-create-p4d190.ndjson \
+#   QT_FIXTURE_CC_MAIN=/tmp/qt-d190-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-d190-cc-mount.db \
+#   QT_FIXTURE_CC_LLM=/tmp/qt-d190-cc-llm.db \
+#     cargo test -p quilltap-harness --test chat_create_capstone_equivalence
+```
+
+The builder prints two `no such column: "transcriptVersion"` errors while
+seeding the continuation source chat's messages. **Pre-existing, on both
+sides**: that column is a P4.D182 boot ensure, outside v4's Zod chat schema, so
+`generateDDL` never emits it and the baked fixture has never had it. Not caused
+by this lane and not a stale-fixture signal.
+
+### Spotted, not mine (for the unifier / next round)
+
+- **v4's `route.greeting-stall.test.ts` cannot tell gate 1 from gate 2.** Its
+  fixture carries no participant memories, so its first assertion ("EXACTLY ONE
+  call") passes with v4's first `if (ownProfileStalled) return giveUpOnStall()`
+  deleted — gate 2 catches the same stall one rung later, with identical
+  persisted state. A candidate upstream filing: the shape v4 needs is its own
+  fixture with a `participantMemories` entry.
+- **The ordered-`attempts` vocabulary generalizes.** `primary-stream-tier3`
+  (P4.D189's corpus) keys by label+attempt and does not need it, but any future
+  family whose two calls can hash to one key does. The Rust half is 60 lines
+  (`PerCallGreetings`) and is worth lifting out of the capstone test if a second
+  family wants it.
