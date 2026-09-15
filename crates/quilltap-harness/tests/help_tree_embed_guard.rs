@@ -11,7 +11,7 @@
 //! cannot pass a gate.
 //!
 //! It also pins the tree's SIZE against the vendored v4 count (124 files at
-//! v4 `f4ad2c8d1`): a checkout without `help/` embeds an EMPTY table rather
+//! v4 `ffb6b3119`): a checkout without `help/` embeds an EMPTY table rather
 //! than failing the build, and this is the assertion that refuses it.
 //!
 //! Run standalone:
@@ -22,7 +22,9 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `31436bae4`: still 124 files —
+/// The shipped tree at the vendored pin (v4 `ffb6b3119`: still 124 — the
+/// P4.D191 re-vendor MODIFIED `help/chats.md` and `help/connection-profiles.md`
+/// for bug 141 (`f90144ac4`) and added none; v4 `31436bae4`: still 124 files —
 /// that round modified EIGHT and added none; v4 `f4ad2c8d1`: 124 files — the
 /// P4.D179 re-vendor added `help/impersonation-voice.md` and re-took four
 /// edited files across `686954937` + `f4ad2c8d1`; 123 at `78b381a96` after

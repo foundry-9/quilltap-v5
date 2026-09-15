@@ -126489,3 +126489,76 @@ No fixture SHAPE changed — `chats-messages-ops-tier2.json` and
 invalidated. The fixture builder ran clean from the pin on Node 24 through
 v4's REAL `addMessages` (a cipher-driver real-DB path), which is also the
 ABI evidence recorded in unit 4.
+
+### Unit 2 — the `help/**` re-vendor for bug 141 (`f90144ac4`'s two files)
+
+`cp` from `/tmp/qt-v4-pin-p4d191-ffb6b3119/help/` — byte copies, never
+retyped. Afterwards `diff -r "$PIN/help" help` is EMPTY and both md5s match
+the pin (`chats.md` `de435bcac570213932a7da12d7a9f8f8`,
+`connection-profiles.md` `e082e2c6a0bac967f38f77865c398de4`). `ls help | wc
+-l` = **124**, `find help -type f | wc -l` = 124 — `f90144ac4` MODIFIED two
+and added none, so `VENDORED_FILE_COUNT` does not move; only its provenance
+comment gains the `ffb6b3119` line. The hunks are `chats.md` +2 and
+`connection-profiles.md` **+17/−1** (the order's survey said +16/−1 — the
+byte copy is the authority; the extra line is the diff splitting the
+availability sentence it extends).
+
+**Which families actually move — measured, not assumed.** `grep`ping every
+`help_*` oracle case for a read of the shipped tree
+(`ensureHelpDocsSynced` / `join(process.cwd(), 'help')`) and then reading
+each hit:
+
+| family | reads the shipped bytes? | evidence |
+|---|---|---|
+| `help_tree_equivalence` | **YES — regenerated** | v4's REAL `ensureHelpDocsSynced()` over `process.cwd()/help` at the pin |
+| `help_doc_ensure_equivalence` | no | `process.chdir(helpTreeRoot)` into a per-scenario scratch tree |
+| `help_doc_sync_equivalence` | no | `process.chdir(fixtureRoot)` into the committed fixture root |
+| `help_doc_sync_guards_equivalence` | no | `process.chdir(scenarioRoot)` into a scratch scenario root |
+| `help_docs_tier2`, `help_docs_upsert_tier2`, `help_doc_chunking`, `help_snippet`, `help_system_prompt`, `help_tools`, `help_doc_slug`, `help_context_resolver`, `help_chats_routes`, `help_docs_routes`, `help_chat_orchestrator_tier3` | no | committed fixtures; `help-context-resolver.json` carries `"content": "Content of chats."` — a synthetic string, not the shipped file |
+
+The negative is executable: `grep -rl` for four distinctive sentences from
+the two shipped files across `harness/oracle/fixtures/` and `crates/` returns
+**nothing**. So no committed fixture is invalidated by this re-vendor, and no
+sibling oracle needs regenerating.
+
+**`help_tree_equivalence`, both directions.**
+
+- GREEN against an oracle regenerated from the `ffb6b3119` pin (3,368,849
+  bytes; `124 docs, 700 chunks`; the pin verified by grepping the fresh
+  NDJSON for three sentences only the target has — "the Green Room no longer
+  waits on it indefinitely", "stops talking", "four minutes to produce its
+  first word" — each present once).
+- RED against an oracle from the `31436bae4` pin (3,365,687 bytes; the three
+  target sentences absent, count 0): `help-tree content oracle FAILED:
+  ["docs", "chunks"]`.
+
+The test's `first_diff` reports only the FIRST divergence per table
+(`docs[30]` / `chunks[209]`, both `help/chats.md`), so **"exactly those two
+paths" was measured on the two NDJSONs directly** rather than read off the
+panic: decomposed against each other they agree on the walk order (124
+entries), the doc-path SET, all 124 doc rows, all 700 chunk rows and the job
+count, differing on exactly `help/chats.md` and `help/connection-profiles.md`
+in both the `docs` and `chunks` tables. Nothing else in the tree moved.
+
+**The embed is genuinely fresh, not a stale table passing a stale guard.**
+`quilltap-host`'s `build.rs` emits `include_str!` with ABSOLUTE paths, so
+rustc's own dependency tracking on `include_str!` forces the recompile —
+`help_tree_embed_guard` (embedded table == on-disk tree, same SET, ORDER and
+BYTES) is green on the rebuilt binary.
+
+**`qtap_schema_embed_guard` / `public_schemas_vendor_guard`: UNMOVED, stated
+not re-vendored** — `git diff --stat 31436bae4 ffb6b3119 -- public/` is
+EMPTY, so no `public/` delta exists in any of the four commits in the span
+(ledger §1 says the same).
+
+**No SPA change; no e2e owed** — the help text reaches the Guide through the
+embedded tree the SPA already reads, and this lane touches no
+`apps/web/**` file. No Playwright run.
+
+**Regen recipe** (the sanctioned driver path, from the lane worktree):
+
+```bash
+python3 harness/tools/recipe_sweep.py \
+  --v4 /tmp/qt-v4-pin-p4d191-ffb6b3119 --run help_tree_equivalence
+# (--v4 /tmp/qt-v4-pin-p4d191-31436bae4 for the RED leg)
+```

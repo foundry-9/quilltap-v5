@@ -290,6 +290,39 @@ the source) and the warn's field bag pinned through a thread-scoped capture
 layer. Five mutations each reddened exactly their named tests: a cumulative
 budget, a reasoning-only chunk that stops counting, answering the stall on
 every `recv`, dropping the warn, and rendering `chunk(s)` as `chunks`.
+#### 2026-09-15 — docs(help): re-vendor `chats.md` + `connection-profiles.md` from v4 `ffb6b3119` (bug 141's prose)
+
+_Versions: harness 0.0.807, host 0.0.135._
+
+v4's bug-141 fix (`f90144ac4`) carried two help files: `help/chats.md` gains a
+paragraph telling the reader the Green Room now allows ninety seconds for an
+opening line and then proceeds with a scripted greeting, and
+`help/connection-profiles.md` adds "a provider that simply stops talking" to
+the availability list plus two paragraphs on the four-minute first-word and
+two-minute between-words allowances and on why a long answer is never cut
+short. Byte-copied from a detached worktree pinned at `ffb6b3119`, never
+retyped: `diff -r "$PIN/help" help` is empty and both files' md5s match the
+pin's.
+
+The tree stays at **124 files** — `f90144ac4` modified two and added none — so
+`VENDORED_FILE_COUNT` does not move, only its provenance comment.
+
+`help_tree_equivalence` is the one family whose oracle reads the shipped
+bytes (v4's real `ensureHelpDocsSynced()` walking `join(process.cwd(),
+'help')` at the pin); it is green against an oracle regenerated from the
+`ffb6b3119` pin (124 docs, 700 chunks) and red against one from the
+`31436bae4` pin. The red set was measured rather than inferred: decomposing
+the two oracles against each other, the walk order, the doc-path set, the
+124 docs, the 700 chunks and the job count are identical except for
+`help/chats.md` and `help/connection-profiles.md` — exactly the two files
+re-vendored, and nothing else. Every other help family is unmoved by
+construction: `help_doc_ensure`, `help_doc_sync` and `help_doc_sync_guards`
+`chdir` into their own scratch or committed help roots, and the rest read
+committed fixtures that carry synthetic content, not the shipped bytes (no
+fixture anywhere in the tree contains a sentence from either file).
+`qtap_schema_embed_guard` and `public_schemas_vendor_guard` are untouched —
+none of the four commits in the span has a `public/` delta.
+
 #### 2026-09-15 — test(harness): retire `DELETE_MISS_DIVERGENCE` — v4 converged on the delete count at `ffb6b3119` (bug 142)
 
 _Versions: harness 0.0.806._
