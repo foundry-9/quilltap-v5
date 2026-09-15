@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — docs(drift): two more v4 commits at the round's unification — bug 142 filed and fixed, a convergence onto P4.D183's pin
+
+_Docs-only change._
+
+The `31436bae4` round's `/unify` opening probe found v4 `main` at `ffb6b3119`
+(`4.10.0-dev.36`), twelve commits past the baseline and four past the round's
+target. The two new rows are the filing and the fix for bug 142 — the
+`deleteMessagesByIds` miscount P4.D183's widened funnel census found earlier
+the same day and pinned in both directions as `DELETE_MISS_DIVERGENCE`. v4's
+bug doc credits the port's census as provenance. The fix is one `lib/` hunk
+(`removed += result.deletedCount`) plus tests-only riders and version markers;
+v5 needs no source change, and the pin trips by design at the first regen from
+a pin at or past this sha. This round regenerates at `31436bae4`, before it, so
+the pin stays green here. The round's pins are unaffected by construction; the
+regen rule stays PIN REQUIRED.
+
 #### 2026-09-14 — docs(drift): two more v4 commits mid-round — a stalled provider stream wedges chat creation (bug 141), and v4's ABI heal
 
 _Docs-only change._
