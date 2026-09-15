@@ -124882,3 +124882,158 @@ harness 0.0.783, web 0.0.142). host / cli / tauri / SPA unchanged.
 **Commits (5):** the predicate + its tier-1 family; `held_user_turn` on the
 frame; the seam + `finish_held_user_turn` + the tier-3 widening; the wire pin;
 the Tier-2 jobs arm.
+## P4.D187 — the Salon SPA half: the transcript as a subscribed read, bug 136's out-loud refusals, and bugs 137–140's client half (2026-09-14)
+
+Branch `claude/salon-transcript-pause-spa-00225e` from `main` `ecdcf9e5`. v4 pins
+`/tmp/qt-v4-pin-p4d187-31436bae4` (the recorder) and `.../f4ad2c8d1`
+(`QT_V4_ROOT`), both verified by marker (`paused-hold.ts` present at the target
+and absent at the baseline). The §2 probe was re-run before every recorder run.
+
+**⚠ The lane STOPped once at start and was resumed by the human.** The probe
+failed: v4's checkout was dirty with 17 staged files, and v4 COMMITTED
+(`f90144ac4`, bug 141) mid-probe, putting HEAD one past the ledger. `/driftcheck`
+recorded that row plus `85813ddd2`, and the probe then passed against the
+updated §1.
+
+### Units
+
+1. **`chat/transcript-reconcile.ts`** — a character-faithful port of v4's module
+   (`5029075bb`). v4's own 18 test titles transcribed 1:1, plus a 38-vector
+   corpus recorded from v4's REAL module. The corpus records object identity as
+   an INDEX MAP into `previous` — the property a port cannot fake, since
+   rebuilding every row returns the right ids and an all-null map.
+2. **The transcript as a subscribed read** — the chat GET seeds it, the
+   `chatTranscript` verb maintains it on every `chats` hint and every reconnect.
+   v4's refs become plain fields; v4's two `useState`s become TWO signals, so
+   Angular's `Object.is` gives each half React's identity bail-out (a deliberate
+   deviation from the order's single `transcript` signal — recorded, and it is
+   what makes "an unchanged read re-renders nothing" true rather than intended).
+3. **The bubble INSIDE the array** — `optimisticUser`, `optimisticPriorIds` and
+   `messageIsOptimisticEcho` retired; the #106 beats re-gestured onto the new
+   mechanism and their header rewritten.
+4. **Bug 136** — the two sentences byte-exact at the MEASURED sites.
+5. **Bugs 137–140 client** — both unpause-first legs deleted, `unpauseChat`
+   deleted with them, the once-per-pause held-turn latch + toast, bug 139's
+   resume-then-continue.
+6. **Tier 2** — `splitSwipeGroups` retired (measured dead); the window-event
+   retarget pinned.
+
+### Order premises REFUTED by measurement
+
+- **The composer mechanism question (the order's "ONE mechanism question").**
+  The order recorded that v5 "disables the WHOLE composer while a turn is in
+  flight (`[disabled]="busy()"` at `salon-conversation.ts:469`)" and asked
+  whether bug 136 had a reachable site. That binding is on `qt-turn-controls`;
+  `ChatComposer.disabled` is bound NOWHERE in the app, and only the Send button
+  swaps for Stop. v5 already keeps the editor typeable during a turn — v4's
+  shape — so no mechanism convergence was needed.
+- **v4's fourth bug-137 deletion has no v5 counterpart**: `runTurn` never
+  carried `triggerContinueMode`'s `isPaused` guard.
+- **Five of v4's fourteen `useChatData` titles have nothing to pin here**: they
+  are the per-chat MEMORY count, a standing v5 tier-3 deferral whose mapping
+  divergence `realtime-topic-map.ts:122-132` already records (P4.D177 §C.4).
+  Nine transcript titles landed; those five belong to the deferral.
+
+### NO-COUNTERPARTs measured, not ported
+
+Bug 135 (no `userStoppedStream` latch exists in v5 at all — the only mention in
+the tree is a comment naming v4's), bug 138 (both nudge paths already forward
+`nudge: true`; now pinned), bug 140 (no `isPaused`/`onTogglePause` inputs on
+`message-row` or `message-list`).
+
+### Mutation table (each reverted by FILE BACKUP)
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | pass 2 before pass 1 | `pass 1 completes over every bubble before pass 2 begins` |
+| M2 | one-sided clock slack | `pass 2 refuses a row older than the bubble by more than the slack` |
+| M3 | swipe selection carried by INDEX | the 2 id-carry rows |
+| M4 | never hand back the previous array | the 8 identity rows |
+| M5 | append the bubble FIRST | the 3 bubble-ordering rows |
+| M6 | drop the server-order tiebreak | `the server-order tiebreak outranks the collapse order on an exact tie` |
+| M7 | drop the first-load gate | `leaves the first load to the chat GET` |
+| M8 | drop read serialization | `serializes overlapping reads, taking one trailing pass` |
+| M9 | sweep on a failed read | `holds the sweep when no read backs it up` |
+| M10 | drop the `chats` subscription | the 4 subscription rows |
+| M12 | restore v4's pre-fix single return | `says so, and keeps the remark, when a turn is still in flight` |
+| M13 | toast on an empty composer | the 2 silent-arm rows |
+| M14 | drop the `continueMode` branch | `a NON-continue turn refused mid-turn says nothing` |
+| M15 | drop the composed-send door guard | `answers a composed send arriving mid-turn with the LONG sentence` |
+| M16 | nudge lifts the pause again | `nudges without lifting the pause` |
+| M17 | no once-per-pause latch | `says nothing on the second held turn of the SAME pause` |
+| M18 | `heldUserTurn` checked after `pausedBefore` | the 3 held-turn rows |
+| M19 | Continue dismisses without resuming | `the all-LLM Continue RESUMES first` |
+| M20 | reducer drops `heldUserTurn` | `carries heldUserTurn off the chain-complete frame` |
+| M21 | window events invalidate the chat GET again | `the terminal window events call the CHEAP read` |
+
+**Two corpus rows and one spec exist because the mutation pass found the
+first draft could not falsify them.** Carrying the swipe selection by index
+survived every scenario until one deleted a variant ABOVE the selected one;
+dropping the server-order tiebreak survived all of them (a stable sort only
+disagrees where the collapse pass reordered rows that tie). And M10 exposed a
+blind spot in the HEADLINE beat: `delivers a reply that no stream carried — the
+incident` passed with the subscription DELETED, because the `chats` topic map
+invalidates `chatKeys.detail` on the same hint and the refetch delivered the
+row. Its stub now freezes the chat GET. The same freeze was applied to the
+window-event pin for the same reason.
+
+### Spec pins moved with v4
+
+`salon-turn-controls.spec.ts`'s `lifts a pause BEFORE skipping, and says nothing
+about it` INVERTS to `skips WITHOUT lifting the pause (bug 137)` — the dispatch
+order now has no `chatUpdate` at all. The P4.84 `RECORDED DIVERGENCE — a paused
+chat still generates from the sidebar Skip` RETIRES to a plain equality: v4
+deleted the guard that made it a divergence, so v5's behaviour is now v4's.
+
+### ⚠ The four GATED e2e beats — a shared-fixture hazard, measured both ways
+
+The beats that must SEND to provoke a `chainComplete` are gated on
+`P4D186_SERVER_LANDED`. Their sends push Group Expedition past a title
+checkpoint; nothing renames it there and then (this file's beats pass, and the
+chat still reads "Group Expedition" with `isManuallyRenamed: true` when they
+finish), but `salon-impersonation-voice-flow.spec.ts` — the ONLY spec whose mock
+answers non-streaming calls — later gives the pending checkpoint a real verdict.
+The chat becomes "Indeed, sir. The matter is entirely in hand." and TWELVE later
+title-keyed beats lose it.
+
+Measured, not inferred: **with the four disabled, 315 passed / 0 failed / 8
+skipped; with them live, 296 / 22 / 4** — the same 22 every run, all "Group
+Expedition not found", none a defect in this lane. Pinning the title first does
+not hold across the file boundary (BOTH helpers pin, and
+`title_update_job.rs:192` does gate on the flag); chasing why belongs to a crate
+this order forbids this lane to touch. Moving them onto "Ridge Reunion" (the one
+fixture chat no beat keys by title) was tried and refused: it is an autonomous
+room and renders no message list.
+
+The gate is apt rather than convenient — once `finish_held_user_turn` lands, a
+send into a paused room draws NO reply, so no interchange completes and no
+checkpoint is crossed. **For the unifier: flip `P4D186_SERVER_LANDED` in BOTH
+`salon-chain-pause-toast-flow.spec.ts` and `salon-paused-hold-flow.spec.ts`, and
+`P4D183_SERVER_LANDED` in `salon-transcript-subscribed-read.spec.ts`.**
+
+### Regen recipe
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d187-31436bae4
+git -C ~/source/quilltap-server worktree add --detach "$PIN" 31436bae4
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+cp <V5>/apps/web/oracle/transcript-reconcile.recorder.ts "$PIN/"
+cd "$PIN" && npx tsx transcript-reconcile.recorder.ts \
+  > <V5>/apps/web/src/testing/fixtures/transcript-reconcile.ndjson   # expect 38 lines
+```
+
+### Gate
+
+`npm run lint` clean, `npm test` **433 spec files / 7,269 passed / 0 failed**,
+`npm run build` clean, full Playwright **315 passed / 0 failed / 8 skipped
+(7.9 m)** against a release `quilltap-web` + `quilltap` built in this worktree.
+No crate source was touched (`crates/**` diff against `main` EMPTY), so no
+`cargo` gate is owed. Versions: **SPA 0.5.713** only.
+
+**⚠ The final `npm run lint` / `npm test` could not be re-run at the very end:
+`git` broke host-wide mid-session** (`/usr/bin/git` → "You have not agreed to
+the Xcode license agreements"), and `check-qt-classes.mjs` shells out to it
+before vitest starts. Both were green on the identical tree minutes earlier
+(the unit-5 and Tier-2 gates); `npm run build` and the full Playwright run,
+which do not invoke git, both passed AFTER the breakage. Restoring it needs
+`sudo xcodebuild -license`.

@@ -72,15 +72,30 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
     await expect(pauseButton).toContainText(startedPaused ? 'Resume' : 'Pause');
 
     // --- Guarded: the user-turn Skip banner → Host turn-pass chip. ---
+    //
+    // P4.D187 (bug 137) added the second assertion below. A skip used to lift
+    // the pause silently on its way — `triggerContinueMode` refused outright
+    // while paused, so Nudge and Skip cleared the pause to work at all — and v4
+    // deleted both seams. A skip from a PAUSED room must now leave the room
+    // paused, which the Pause button's own label is the plainest witness to.
     const banner = page.locator('.qt-chat-user-turn-banner');
     const skip = banner.getByRole('button', { name: 'Skip' });
     if (await skip.count()) {
       const chipsBefore = await page.locator('.qt-chat-announcement-chip').count();
+      // Pause first, so the skip has a pause it could wrongly lift.
+      await pauseButton.click();
+      await expect(pauseButton).toContainText('Resume');
       await skip.click();
       // A successful skip posts a Host turn-pass chip ("nothing to add").
       await expect(page.locator('.qt-chat-announcement-chip')).toHaveCount(chipsBefore + 1, {
         timeout: 15_000,
       });
+      // THE GUARD: the pause the operator set is still standing. Before bug 137
+      // this read "Pause", because the skip had quietly resumed the room.
+      await expect(pauseButton).toContainText('Resume');
+      // Put the room back as it was found.
+      await pauseButton.click();
+      await expect(pauseButton).toContainText('Pause');
     } else {
       test.info().annotations.push({
         type: 'note',

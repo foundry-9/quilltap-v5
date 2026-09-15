@@ -857,6 +857,39 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+#### 2026-09-14 — test(e2e): the round's Salon beats — held-turn notice, the pause a summons leaves standing, the subscribed read (P4.D187 Tier 1 item 6)
+
+_Versions: SPA 0.5.713._
+
+`m4b-salon.spec.ts`'s skip sub-beat now pauses the room first and asserts the
+Pause button still reads "Resume" across the skip — before bug 137 it read
+"Pause", because the skip had quietly resumed the room. LIVE and green.
+
+NEW `salon-transcript-subscribed-read.spec.ts` (both beats gated on
+`P4D183_SERVER_LANDED`): a `chats` hint fires the cheap read carrying the
+version it last saw, and a row written by a second client appears with no
+stream at all — the incident in one line. NEW `salon-paused-hold-flow.spec.ts`
+and three held-turn beats in `salon-chain-pause-toast-flow.spec.ts`, with the
+frame injected at the wire exactly as the P4.D161 beats inject `paused`.
+
+⚠ The four beats that must SEND are GATED on `P4D186_SERVER_LANDED`, and not
+for the client's sake. The sends push Group Expedition past one of the Host's
+title checkpoints; nothing renames it there and then, but
+`salon-impersonation-voice-flow.spec.ts` — the only spec whose mock answers
+non-streaming calls — later gives the pending checkpoint a real verdict, the
+chat becomes "Indeed, sir. The matter is entirely in hand.", and twelve later
+title-keyed beats lose it. Measured both ways: with the four beats disabled the
+suite is 315 passed / 0 failed / 8 skipped; with them live it is 296 / 22 / 4,
+the same 22 every run, all "Group Expedition not found", none a defect in this
+lane. Pinning the title first does not hold across the file boundary (both
+helpers pin, and `title_update_job.rs:192` does gate on the flag); chasing why
+belongs to a crate this order forbids this lane to touch. The gate is apt
+rather than convenient: once `finish_held_user_turn` lands, a send into a
+paused room draws no reply, so no interchange completes and no checkpoint is
+crossed — the beats stop being able to cause this the moment they stop being
+simulated. Every behaviour they assert is pinned at the unit tier and
+mutation-proven meanwhile.
+
 #### 2026-09-14 — refactor(salon): retire splitSwipeGroups, pin the terminal events on the cheap read (P4.D187 Tier 2)
 
 _Versions: SPA 0.5.712._

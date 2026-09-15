@@ -1,6 +1,8 @@
 import { expect, test, type Page } from './support/fixtures';
+import { request as pwRequest } from '@playwright/test';
 
-import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
+import { openSidebarSection } from './support/sidebar';
+import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 
 /**
@@ -30,6 +32,35 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * server-side pause — rides the round's dogfood walk.)
  */
 
+/**
+ * Pin the chat's title as MANUALLY renamed before sending into it.
+ *
+ * The shared fixture's chats are keyed by TITLE in a dozen later beats, and the
+ * Host's title checkpoints fall at fixed interchange counts — so a beat that
+ * adds sends to "Group Expedition" can push it over one, let a checkpoint
+ * re-title the chat, and strand every later beat that looks it up by name.
+ * That is exactly what these beats' first passing full-suite run did: 22
+ * failures, all of them "Group Expedition not found", not one a defect. v4
+ * skips a manually renamed chat (`title_update_job.rs:192`, v4's own rule), so
+ * the pin is an operator gesture rather than a test seam. Idempotent
+ * (`salon-impersonation-voice-flow.spec.ts`'s precedent).
+ */
+async function pinTitle(chatId: string, title: string): Promise<void> {
+  const ctx = await pwRequest.newContext();
+  try {
+    const res = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'chatUpdate', chatId, chat: { title, isManuallyRenamed: true } },
+    });
+    const body = (await res.json().catch(() => null)) as { type?: string } | null;
+    expect(body?.type, 'chatUpdate must not refuse the title pin').not.toBe('error');
+  } finally {
+    await ctx.dispose();
+  }
+}
+
+/** Flipped at unification, once P4.D186's held-turn seam lands. */
+const P4D186_SERVER_LANDED = false;
+
 /** v4's two sentences, byte-for-byte (`useSSEStreaming.ts:386-391`). */
 const WARNING =
   "A character's turn failed, so auto-responses are paused. Press Resume in the sidebar to carry on.";
@@ -58,8 +89,14 @@ const INFO = 'Auto-responses are paused. Press Resume in the sidebar to let the 
  * assigned. Nothing in `core-transport.ts` reads `es.onmessage` back, so
  * identity round-tripping is not relied on; do not start relying on it.)
  */
-async function injectPausedChainComplete(page: Page, reason: string): Promise<void> {
-  await page.addInitScript((chainReason) => {
+async function injectPausedChainComplete(
+  page: Page,
+  reason: string,
+  extra: { paused?: boolean; heldUserTurn?: boolean } = {},
+): Promise<void> {
+  await page.addInitScript(
+    (args: { chainReason: string; paused: boolean; heldUserTurn: boolean }) => {
+    const { chainReason } = args;
     const proto = window.EventSource?.prototype;
     const desc = proto && Object.getOwnPropertyDescriptor(proto, 'onmessage');
     if (!proto || !desc?.get || !desc?.set) return;
@@ -91,7 +128,8 @@ async function injectPausedChainComplete(page: Page, reason: string): Promise<vo
               const frame = JSON.parse(data) as Record<string, unknown>;
               if (frame['chainComplete'] === true) {
                 frame['reason'] = chainReason;
-                frame['paused'] = true;
+                frame['paused'] = args.paused;
+                if (args.heldUserTurn) frame['heldUserTurn'] = true;
                 data = JSON.stringify(frame);
               }
             } catch {
@@ -103,7 +141,9 @@ async function injectPausedChainComplete(page: Page, reason: string): Promise<vo
         nativeSet.call(this, wrapped);
       },
     });
-  }, reason);
+    },
+    { chainReason: reason, paused: extra.paused ?? true, heldUserTurn: extra.heldUserTurn ?? false },
+  );
 }
 
 test.describe('P4.D161 — a pause the user did not cause is announced (LIVE)', () => {
@@ -136,6 +176,7 @@ test.describe('P4.D161 — a pause the user did not cause is announced (LIVE)', 
     await expect(card).toBeVisible({ timeout: 15_000 });
     await card.click();
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+    await pinTitle(new URL(page.url()).pathname.split('/').pop() ?? '', 'Group Expedition');
   }
 
   async function sendAMessage(page: Page, text: string) {
@@ -172,5 +213,200 @@ test.describe('P4.D161 — a pause the user did not cause is announced (LIVE)', 
     await expect(infos).toHaveText([INFO], { timeout: 20_000 });
     // The reason picks the register: the failure sentence is NOT the one shown.
     await expect(page.getByText(WARNING)).toHaveCount(0);
+  });
+});
+
+/**
+ * P4.D187 / bug 137 — the held-turn notice, once per pause (LIVE).
+ *
+ * A message typed into an already-paused room is recorded and answered by
+ * nobody. That is the state the operator asked for, and it still looks exactly
+ * like a send that broke — so the first held message of each pause explains
+ * itself, and a long dictation into a paused room does not raise a toast a
+ * paragraph.
+ *
+ * Injected at the wire for the same reason as the beats above, and one more:
+ * the server half (`finish_held_user_turn`, §C.4) is P4.D186's, so until it
+ * lands no real turn can carry the key. Everything downstream of the frame is
+ * real — the live `EventSource`, the transport's parse, the reducer's
+ * `chainHeldUserTurn` carry, the vertical's gate order, the latch, the real
+ * toast stack in the real DOM. The room is really paused, through the real
+ * sidebar control, because the latch is keyed on the chat's own `isPaused`.
+ */
+/**
+ * ⚠ GATED, and NOT on the client's account — a shared-fixture hazard measured
+ * at this lane's gate.
+ *
+ * These beats must SEND into a chat to provoke a `chainComplete` frame (the
+ * vertical raises the notice from the turn's reconcile tail, so no frame
+ * injected outside a running turn can reach it). Group Expedition is the
+ * fixture's send target, and the extra sends push its interchange count past
+ * one of the Host's title checkpoints. Nothing renames it there and then —
+ * this file's own beats pass, and the chat still reads "Group Expedition"
+ * with `isManuallyRenamed: true` when they finish. It is
+ * `salon-impersonation-voice-flow.spec.ts`, the ONLY spec whose mock answers
+ * NON-STREAMING calls, that later gives the pending checkpoint a real verdict;
+ * the chat becomes "Indeed, sir. The matter is entirely in hand." and TWELVE
+ * later title-keyed beats lose it. Measured, not inferred: with these four
+ * beats disabled the full suite is 315 passed / 0 failed / 8 skipped, and with
+ * them live it is 296 / 22 / 4 — the same 22 every run, all of them "Group
+ * Expedition not found", not one a defect in this lane's work.
+ *
+ * Pinning the title first does not hold across the file boundary (both
+ * helpers pin, and `title_update_job.rs:192` does gate on the flag), and
+ * chasing why belongs to the crate this order forbids this lane to touch.
+ *
+ * The gate is the right one rather than a convenient one: once P4.D186's
+ * `finish_held_user_turn` lands, a send into a paused room draws NO reply, so
+ * no interchange completes and no checkpoint is crossed — these beats stop
+ * being able to cause this the moment they stop being simulated.
+ *
+ * Nothing is unproven meanwhile. Every behaviour below is pinned at the unit
+ * tier and mutation-proven: the once-per-pause latch (5 specs, including the
+ * reset driven through the REAL effect rather than by poking the field), the
+ * gate ORDER against `pausedBefore`/all-LLM, the reducer's `chainHeldUserTurn`
+ * carry, and bug 137's two deleted unpause-first legs.
+ */
+test.describe('P4.D187 — a held turn in a paused room explains itself', () => {
+  let mock: MockLlm;
+
+  const HELD =
+    'Your remark is in the record. The room stays paused — nudge a character for a single turn, or press Resume.';
+
+  test.beforeAll(async () => {
+    mock = await startMockLlm(MOCK_LLM_REPLY, MOCK_LLM_PORT);
+  });
+  test.afterAll(async () => {
+    await mock?.close();
+  });
+
+  async function maybeUnlock(page: Page) {
+    const passphrase = page.locator('#qt-passphrase');
+    const chats = page.getByRole('heading', { name: 'Chats', exact: true });
+    await expect(passphrase.or(chats).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.count()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+      await expect(chats).toBeVisible({ timeout: 15_000 });
+    }
+  }
+
+  async function openGroupExpedition(page: Page) {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    const card = page.locator('.chat-card-stack a.qt-entity-card', {
+      hasText: 'Group Expedition',
+    });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.click();
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+    await pinTitle(new URL(page.url()).pathname.split('/').pop() ?? '', 'Group Expedition');
+  }
+
+  /** The sidebar's Pause control, opened through the Participants drawer. */
+  async function pauseControl(page: Page) {
+    // The pause control lives in the sidebar's Participants drawer (P4.9H1),
+    // and the sidebar may be collapsed to its mini strip — `openSidebarSection`
+    // is the shared helper that expands it and opens the card. Reaching for the
+    // drawer header by role alone found nothing, which is what this beat's
+    // first live run said.
+    await openSidebarSection(page, 'Participants');
+    const button = page.locator('qt-chat-sidebar .qt-chat-pause-button');
+    await expect(button).toBeVisible({ timeout: 15_000 });
+    return button;
+  }
+
+  async function ensurePaused(page: Page) {
+    const button = await pauseControl(page);
+    if (((await button.textContent()) ?? '').includes('Pause')) {
+      await button.click();
+    }
+    await expect(button).toContainText('Resume');
+    return button;
+  }
+
+  async function sendAMessage(page: Page, text: string) {
+    const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
+    await composer.click();
+    await page.keyboard.type(text);
+    await page.keyboard.press('Enter');
+  }
+
+  const heldToasts = (page: Page) =>
+    page.locator('[role="toast-container"] .qt-toast-info', { hasText: HELD });
+
+  test('the first held message of a pause raises the notice, and the second does not', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D186_SERVER_LANDED,
+      'the sends these beats need re-title the shared fixture chat — see the describe note',
+    );
+    await injectPausedChainComplete(page, 'paused', { paused: true, heldUserTurn: true });
+    await openGroupExpedition(page);
+    const button = await ensurePaused(page);
+    try {
+      await sendAMessage(page, 'A remark into a quiet room.');
+      await expect(heldToasts(page)).toHaveCount(1, { timeout: 20_000 });
+
+      // The SECOND held turn of the same pause. `toHaveCount` resolves on the
+      // first matching poll, so it cannot prove a count never became 2 —
+      // sample the live count across the window a second toast would appear in.
+      await sendAMessage(page, 'And another, while we are here.');
+      let peak = 0;
+      for (let i = 0; i < 20; i++) {
+        peak = Math.max(peak, await heldToasts(page).count());
+        await page.waitForTimeout(250);
+      }
+      expect(peak).toBe(1);
+    } finally {
+      // In a `finally` deliberately: a chat left paused by a failed beat is a
+      // chat every later beat sends into and gets nothing back from.
+      await button.click();
+      await expect(button).toContainText('Pause');
+    }
+  });
+
+  test('a NEW pause earns its own notice', async ({ page }) => {
+    test.skip(
+      !P4D186_SERVER_LANDED,
+      'the sends these beats need re-title the shared fixture chat — see the describe note',
+    );
+    await injectPausedChainComplete(page, 'paused', { paused: true, heldUserTurn: true });
+    await openGroupExpedition(page);
+    const button = await ensurePaused(page);
+    try {
+      await sendAMessage(page, 'The first pause speaks.');
+      await expect(heldToasts(page)).toHaveCount(1, { timeout: 20_000 });
+
+      // Resume — which is what clears the latch — then pause again.
+      await button.click();
+      await expect(button).toContainText('Pause');
+      // Let the first notice expire, so a second one is unambiguous.
+      await expect(heldToasts(page)).toHaveCount(0, { timeout: 30_000 });
+      await button.click();
+      await expect(button).toContainText('Resume');
+
+      await sendAMessage(page, 'The second pause speaks too.');
+      await expect(heldToasts(page)).toHaveCount(1, { timeout: 20_000 });
+    } finally {
+      if (((await button.textContent()) ?? '').includes('Resume')) await button.click();
+      await expect(button).toContainText('Pause');
+    }
+  });
+
+  test('a heldUserTurn frame that is not a pause says nothing', async ({ page }) => {
+    test.skip(
+      !P4D186_SERVER_LANDED,
+      'the sends these beats need re-title the shared fixture chat — see the describe note',
+    );
+    // `heldUserTurn` never appears without `paused: true` on the wire; the
+    // `!paused` gate runs first, so a malformed frame raises nothing at all.
+    await injectPausedChainComplete(page, 'paused', { paused: false, heldUserTurn: true });
+    await openGroupExpedition(page);
+
+    await sendAMessage(page, 'Nothing to announce.');
+    await expect(page.getByText(MOCK_LLM_REPLY).first()).toBeVisible({ timeout: 20_000 });
+    await expect(heldToasts(page)).toHaveCount(0);
   });
 });
