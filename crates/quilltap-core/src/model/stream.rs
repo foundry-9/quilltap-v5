@@ -307,18 +307,95 @@ impl StreamChunk {
 /// stream item — a consumer sees every chunk before the failure, then the error.
 pub type StreamChunkResult = Result<StreamChunk, StreamError>;
 
+/// Which class of failure a [`StreamError`] is.
+///
+/// v4 `LLMStreamStalledError` vs everything else. v4 tells the two apart by the
+/// error's `name` (`classifyFallbackTrigger` walks `instanceof`, then
+/// `error.name`, then `error.message`); v5 has no error-class hierarchy at the
+/// stream seam, so the one class that matters to a caller is carried as a kind.
+///
+/// Only [`crate::model::stream_watchdog::watch_stream`] ever builds
+/// [`StreamErrorKind::Stalled`] in production — a provider decoder that renders
+/// a stall-shaped message is still a `Provider` error, exactly as a v4 plugin
+/// throwing a bare `Error` with that text would be.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StreamErrorKind {
+    /// A provider failure that reached us as text (every pre-existing site).
+    Provider,
+    /// The stream watchdog fired (v4 `LLMStreamStalledError`) — the provider
+    /// took the request, answered with headers, and then went quiet.
+    Stalled {
+        /// The budget this gap was given, in milliseconds (v4 `budgetMs`).
+        budget_ms: u64,
+        /// How many chunks had already arrived (v4 `chunksReceived`).
+        chunks_received: u64,
+        /// v4 `provider` — `None` where the wrapper was given none.
+        provider: Option<String>,
+        /// v4 `modelName` — `None` where the wrapper was given none.
+        model_name: Option<String>,
+    },
+}
+
 /// Error from a streaming call — either raised before the first chunk (the
 /// stream is a single `Err`) or mid-stream (the `Err` follows the chunks emitted
 /// so far). The message text is carried verbatim: v4's failover path inspects it.
 #[derive(Clone, Debug)]
 pub struct StreamError {
     pub message: String,
+    /// v4's error CLASS, for the one caller distinction v4 makes by name (bug
+    /// 141). Defaults to [`StreamErrorKind::Provider`] via [`StreamError::new`],
+    /// which is every pre-existing construction site.
+    pub kind: StreamErrorKind,
 }
 
 impl StreamError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            kind: StreamErrorKind::Provider,
+        }
+    }
+
+    /// v4 `new LLMStreamStalledError(budgetMs, chunksReceived, provider,
+    /// modelName)` — the constructor renders the message, byte for byte:
+    /// `Provider stream never sent a first chunk within {budgetMs}ms` when
+    /// nothing arrived, else `Provider stream went quiet for {budgetMs}ms after
+    /// {chunksReceived} chunk(s)`.
+    pub fn stalled(
+        budget_ms: u64,
+        chunks_received: u64,
+        provider: Option<&str>,
+        model_name: Option<&str>,
+    ) -> Self {
+        let where_ = if chunks_received == 0 {
+            format!("never sent a first chunk within {budget_ms}ms")
+        } else {
+            format!("went quiet for {budget_ms}ms after {chunks_received} chunk(s)")
+        };
+        Self {
+            message: format!("Provider stream {where_}"),
+            kind: StreamErrorKind::Stalled {
+                budget_ms,
+                chunks_received,
+                provider: provider.map(str::to_string),
+                model_name: model_name.map(str::to_string),
+            },
+        }
+    }
+
+    /// Whether the stream watchdog raised this (v4's `error instanceof
+    /// LLMStreamStalledError`) — the greeting ladder's test.
+    pub fn is_stalled(&self) -> bool {
+        matches!(self.kind, StreamErrorKind::Stalled { .. })
+    }
+
+    /// v4's `error.name` as the fallback classifier reads it:
+    /// `"LLMStreamStalledError"` for a stall, `"Error"` for everything else
+    /// (a v4 plugin throws a plain `Error`, whose `name` is exactly that).
+    pub fn v4_name(&self) -> &'static str {
+        match self.kind {
+            StreamErrorKind::Stalled { .. } => "LLMStreamStalledError",
+            StreamErrorKind::Provider => "Error",
         }
     }
 }

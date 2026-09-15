@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-14 — feat(llm): a provider that goes quiet mid-stream now fails inside a budget (bug 141, substrate)
+
+_Versions: core 0.0.914._
+
+P4.D189's substrate commit, ported from v4 `f90144ac4`'s new
+`lib/llm/stream-watchdog.ts`. A provider that accepts a streaming request,
+answers with headers and then sends no body was outside every budget in the
+system: the transport's own ceiling bounds time-to-first-BYTE only, and once
+the headers land the body streams unbounded, so the consumer's `while let
+Some(item) = rx.recv().await` simply never advanced.
+
+`model/stream_watchdog.rs` puts the budget where the chunks are counted.
+`watch_stream(rx, budgets, ctx)` wraps a provider receiver and gives every
+`recv` a deadline — 240 s to the first chunk, 120 s between chunks, per gap
+and never cumulative, so a long generation is never cut off for being long
+and a thinking model's reasoning deltas count as chunks like any other. On a
+timeout it logs v4's one warn (`[LLMStream] Abandoned a stalled provider
+stream`, with the caller's ids, the budget, the chunk count and the
+wall-clock elapsed), DROPS the inner receiver, and answers one
+`StreamError::stalled(...)`; every later `recv` answers `None`.
+
+`StreamError` gains a `kind`. v4 tells a stall apart from a refusal by the
+error's `name`; v5 has no error-class hierarchy at the stream seam, so
+`StreamErrorKind::Stalled { budget_ms, chunks_received, provider, model_name }`
+carries it, with `StreamError::new` (every pre-existing call site, unchanged)
+still building `Provider`. `stalled()` renders v4's constructor bytes exactly,
+`is_stalled()` is the greeting ladder's test, and `v4_name()` is what the
+fallback classifier reads.
+
+The stalled request is abandoned, not cancelled. v5's seam is an mpsc
+receiver, not a generator, so it has no `iterator.return()` — dropping the
+receiver is the one answer for both of v4's two `finally` legs, and that
+NO-COUNTERPART is recorded in the module doc. Real cancellation still needs
+an abort on the params (v4's own "not done here"); P4.44's abort-arming
+deferral stands.
+
+Twelve unit tests transcribe v4's eight `stream-watchdog.test.ts` shapes
+under a paused clock, plus v5's own three (a stall answers once and then
+`None`; a reasoning-only chunk counts; dropping the watched stream closes
+the source) and the warn's field bag pinned through a thread-scoped capture
+layer. Five mutations each reddened exactly their named tests: a cumulative
+budget, a reasoning-only chunk that stops counting, answering the stall on
+every `recv`, dropping the warn, and rendering `chunk(s)` as `chunks`.
+
 #### 2026-09-14 — docs(setupphase): the `ffb6b3119` bug-141 + bug-142 drift catch-up round — three work orders (P4.D189 → P4.D190 ∥ P4.D191)
 
 _Docs-only change._

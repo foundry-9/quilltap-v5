@@ -39,6 +39,7 @@ pub mod provider_models_api;
 pub mod request_builder;
 pub mod response_parse;
 pub mod stream;
+pub mod stream_watchdog;
 pub mod streaming_provider;
 pub mod tool_wire;
 pub mod transport;
