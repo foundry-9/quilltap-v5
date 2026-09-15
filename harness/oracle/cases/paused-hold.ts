@@ -12,7 +12,7 @@
  * `v4_` prefix the Rust side asserts by name.
  *
  * Run from inside the server checkout (a pinned worktree under PIN REQUIRED):
- *   cd /tmp/qt-v4-pin-p4d186-31436bae4
+ *   cd ~/source/quilltap-server   # (pinned: pass --v4 <pin> to the sweep driver)
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/paused-hold.ts \
  *     > /tmp/oracle-paused-hold.ndjson
  */

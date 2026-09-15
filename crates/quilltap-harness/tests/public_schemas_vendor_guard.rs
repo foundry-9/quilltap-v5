@@ -18,7 +18,7 @@
 //! runs.
 //!
 //! Run standalone:
-//!   QT_V4_ROOT=/tmp/qt-v4-pin-p4d170-25f534c0b \
+//!   QT_V4_ROOT=~/source/quilltap-server \
 //!     cargo test -p quilltap-harness --test public_schemas_vendor_guard -- --nocapture
 //!
 //! ⚠ Against the LIVE checkout this is green only while v4 sits at the file

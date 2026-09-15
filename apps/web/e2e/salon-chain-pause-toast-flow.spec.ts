@@ -59,7 +59,19 @@ async function pinTitle(chatId: string, title: string): Promise<void> {
 }
 
 /** Flipped at unification, once P4.D186's held-turn seam lands. */
-const P4D186_SERVER_LANDED = false;
+const P4D186_SERVER_LANDED = true;
+/**
+ * The standing shared-fixture hazard (the lane record, "The four GATED e2e
+ * beats"): a send into Group Expedition that COMPLETES an interchange pushes
+ * the chat past one of the Host's title checkpoints, and a later spec whose
+ * mock answers non-streaming calls gives that checkpoint a real verdict —
+ * twelve title-keyed beats then lose the chat (measured 296/22/4). The
+ * held-turn beats stopped being able to cause this the moment
+ * `finish_held_user_turn` landed (a held send draws no reply); the one beat
+ * below that sends into an UNPAUSED room still can, so it stays parked on
+ * THIS name until the checkpoint hazard has its own fix.
+ */
+const SHARED_FIXTURE_TITLE_CHECKPOINT_PARK = true;
 
 /** v4's two sentences, byte-for-byte (`useSSEStreaming.ts:386-391`). */
 const WARNING =
@@ -397,8 +409,8 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
 
   test('a heldUserTurn frame that is not a pause says nothing', async ({ page }) => {
     test.skip(
-      !P4D186_SERVER_LANDED,
-      'the sends these beats need re-title the shared fixture chat — see the describe note',
+      SHARED_FIXTURE_TITLE_CHECKPOINT_PARK,
+      'this send lands in an UNPAUSED room and completes an interchange — the one beat of the three the "no reply, no checkpoint" argument does not cover; parked on the named hazard, not on the server gate',
     );
     // `heldUserTurn` never appears without `paused: true` on the wire; the
     // `!paused` gate runs first, so a malformed frame raises nothing at all.

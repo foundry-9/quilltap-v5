@@ -6,11 +6,15 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 /**
  * P4.66 — the duplicate optimistic user bubble, live (dogfood finding #106).
  *
- * v4 holds ONE array a refetch replaces wholesale (`useChatData.ts:14,83`), so
- * a mid-turn refetch can never show the human's own message twice. v5's
- * optimistic bubble lives in a separate signal appended at render
- * (`salon-conversation.ts` `optimisticUser` / `displayMessages`) — latent
- * until the P4.D123–D125 realtime work started refetching the chat mid-turn
+ * v4 holds ONE array a read is RECONCILED into (`useChatData.ts` over
+ * `transcript-reconcile.ts` since `5029075bb`), so a mid-turn read can never
+ * show the human's own message twice: the bubble is a `temp-` row INSIDE that
+ * array and retiring it is the same act as folding in the row it stood for.
+ * Since P4.D187 v5 has exactly that shape (`salon-conversation.ts`
+ * `transcriptMessages` + `chat/transcript-reconcile.ts`); before it, v5's
+ * bubble lived in a separate signal appended at render (`optimisticUser` /
+ * `displayMessages`, retired) — latent until the P4.D123–D125 realtime work
+ * started refetching the chat mid-turn
  * (`realtime/job_topics.rs:81-88`: TITLE_UPDATE / CONTEXT_SUMMARY /
  * CHAT_DANGER_CLASSIFICATION / SCENE_STATE_TRACKING /
  * WARDROBE_OUTFIT_ANNOUNCEMENT each resolve to a `{v:1, topic:'chats', id}`

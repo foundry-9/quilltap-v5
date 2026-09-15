@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — test(unify): the `31436bae4` round's unification wires — three gate constants flipped, the rolls seed rebuilt, the incident beat re-gestured, two beats parked by name, the docs mirror refreshed
+
+_Versions: SPA 0.5.720._
+
+`P4D183_SERVER_LANDED`, `P4D186_SERVER_LANDED` (two files) and
+`P4D185_SERVER_LANDED` are true. The avatar-rolls walk's never-executed seed is
+rebuilt on the review's recipe: a `doc_mount_files` row the blob and the link
+hang off (both `fileId`s are mount-index-local, and the blob table's foreign
+key enforces it), a `mount-blob:<mountPointId>:<blobId>` storage key (the shape
+every reader parses), a real 1×1 PNG with its own sha, and the
+`files.generationKey` column healed on the fixture copy before the plant; the
+album-tile locator no longer counts the section's own tile. The transcript
+incident beat edits an existing assistant row through `messageEdit` from a
+second client — the one dispatch verb that moves a transcript row without
+drawing a turn (its first draft posted a verb that exists on neither side, so
+it would have parked on its own `test.skip` forever). Two activated beats that
+COMPLETE an interchange in the shared fixture chat (a nudge in a paused room;
+a send into an unpaused room) are parked on the named
+`SHARED_FIXTURE_TITLE_CHECKPOINT_PARK` rather than on the server gate the
+held-turn argument covers. `docs/v4/` takes the fourteen files the round's
+eight v4 commits changed; three committed recipes that named lane-private
+`/tmp` pins point at the checkout again.
+
 #### 2026-09-15 — fix(unify): the `31436bae4` round's §3 review findings — a swap-remove reaching disk, a sweep on a failed read, a beat that could never run, five unpinned log lines, and eleven smaller repairs
 
 _Versions: core 0.0.913, harness 0.0.805, web 0.0.146, host 0.0.134, SPA 0.5.719._

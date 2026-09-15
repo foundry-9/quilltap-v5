@@ -12,7 +12,7 @@
 //! Regenerate the oracle (from the v4 checkout — a PINNED worktree under the
 //! ledger's PIN REQUIRED rule, since the predicate does not exist at the
 //! baseline):
-//!   cd /tmp/qt-v4-pin-p4d186-31436bae4
+//!   cd ~/source/quilltap-server   # (pinned: pass --v4 <pin> to the sweep driver)
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!     $V5W/harness/oracle/cases/paused-hold.ts > /tmp/oracle-paused-hold.ndjson

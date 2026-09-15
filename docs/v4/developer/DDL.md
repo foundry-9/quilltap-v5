@@ -460,6 +460,7 @@ CREATE TABLE "chats" (
   "timestampConfig" TEXT,
   "lastTurnParticipantId" TEXT,
   "messageCount" INTEGER DEFAULT 0,
+  "transcriptVersion" INTEGER DEFAULT 0,      -- Monotonic transcript counter. Bumped by ChatMessagesOps.announceTranscriptChange (lib/database/repositories/chats-messages.ops.ts) on every add, add-batch, edit, delete, clear and search-and-replace, beside the publishRealtime('chats', id) hint an open Salon tab listens for. One bump per write, not per row. It is what makes the hinted transcript re-read conditional: the tab hands its last-seen value to GET /api/v1/messages?chatId=&action=transcript&knownVersion=N and the server answers {unchanged:true} without serializing the conversation. Exact under appends, edits AND deletions, which a since=<timestamp> cursor is not. **Deliberately absent from ChatMetadataSchema.** Every repository update rewrites the whole validated row from a snapshot it read moments earlier, so a counter inside the schema could be rewound by any concurrent chat-row write — leaving the counter where a tab that read in between already thinks it is, and that tab never shown the second message. Zod strips what it does not declare, so no update() can touch this column and `SET v = v + 1` is its only writer; read it with ChatsRepository.getTranscriptVersion. Being outside the schema also keeps it out of .qtap exports and backups for free. Added by add-transcript-version-column-v1.
   "lastMessageAt" TEXT,                       -- When a CHARACTER last posted content: type='message', role IN ('USER','ASSISTANT'), systemSender IS NULL, customAnnouncer IS NULL. Whispers count; Staff announcements (Lantern/Host/Prospero/…), announcement bubbles, and raw TOOL rows do NOT — they are message rows but not conversational activity. THE definition lives in `isCharacterAuthoredMessage` (lib/chat/chat-activity.ts); this column is its mirror. NULL when no character has ever posted, where readers fall back to `createdAt` via `chatActivityAt` — NOT to `updatedAt`. Every chat list, sort, and card dates a chat by this, not by `updatedAt`. Recomputed for existing rows by recompute-chat-last-message-at-v1.
   "lastRenameCheckInterchange" INTEGER DEFAULT 0,
   "compactionGeneration" INTEGER DEFAULT 0,
@@ -969,6 +970,10 @@ CREATE TABLE "files" (
   "generationPrompt" TEXT,
   "generationModel" TEXT,
   "generationRevisedPrompt" TEXT,
+  -- Avatar configuration cache key: the hash of everything that determines the
+  -- picture (prompt + provider + profile + built image-gen params). Nullable
+  -- because only cached-avatar rows ever carry one.
+  "generationKey" TEXT,
   "description" TEXT,
   "tags" TEXT DEFAULT '[]',
   "projectId" TEXT,
@@ -981,6 +986,7 @@ CREATE TABLE "files" (
 
 CREATE INDEX "idx_files_category" ON "files" ("category");
 CREATE INDEX "idx_files_createdAt" ON "files" ("createdAt" DESC);
+CREATE INDEX "idx_files_generationKey" ON "files" ("generationKey");
 CREATE INDEX "idx_files_projectId" ON "files" ("projectId");
 CREATE INDEX "idx_files_sha256" ON "files" ("sha256");
 CREATE INDEX "idx_files_userId" ON "files" ("userId");
@@ -989,6 +995,8 @@ CREATE INDEX "idx_files_userId" ON "files" ("userId");
 **Invariant (enforced at write time):** `sha256`, `mimeType` and `size` all describe the bytes **actually stored**, never the bytes handed to the writer. The Scriptorium storage bridges transcode bitmap uploads to WebP (`transcodeToWebP`, via `storeMountFile`), so a writer that records its input describes a file that exists nowhere. All three are therefore taken from the bridge's return value; `lib/chat-files-v2.ts` additionally runs the bridge's own transcode before hashing, so the one hash serves both upload dedup and the join to `doc_mount_files.sha256` — the join that carries an image's description into the search index and lets `describe_image` / `attach_image` resolve a mount link back to its FileEntry.
 
 `mimeType`/`size` were brought into line by `repair-files-mime-and-size-from-mount-blob-v1`, which deliberately left `sha256` alone on the grounds that it was load-bearing for dedup; that carve-out was bug 117, and `realign-file-entry-sha256-v1` closes it by reading each row's hash back out of the mount blob its `storageKey` names.
+
+`generationKey` is the avatar configuration cache key: one image per character per configuration, looked up before the avatar job spends a Concierge classification call or an image call. It hashes the generation prompt (itself already the canonical serialization of the character's appearance, resolved outfit and art direction, since `buildCharacterAvatarPrompt` is pure) together with the provider-side shape the prompt does not carry — provider, image profile id and the full `buildImageGenParams` output. `lib/wardrobe/avatar-cache.ts` is the only thing that derives or looks up a key; a call site that computes its own is a second format, and the two drift. Binding is last-write-wins, which is what makes the regenerate button a reroll for that configuration. Rows predating the cache carry a lower-fidelity `v: 0` key over `(generationModel, generationPrompt)` alone, assigned by `collapse-duplicate-avatar-rolls-v1`; the `v` discriminator inside the hashed payload keeps the two formats from ever colliding. Null on every file that is not a cached avatar. Design of record: [avatar-configuration-cache](features/avatar-configuration-cache.md).
 
 ### folders
 

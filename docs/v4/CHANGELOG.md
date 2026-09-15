@@ -4,6 +4,240 @@
 
 ### 4.10-dev
 
+#### Changed: a paused chat no longer generates anything on its own (bug 137)
+
+**Pause** in the participants sidebar stopped the turn chain, not the chat. Every message you sent
+still drew exactly one reply, and **Nudge** and **Skip** silently cleared the pause before running,
+so one nudge put the chat back in the normal rotation.
+
+A paused chat now only advances when you ask it to, one turn at a time:
+
+- **Sending a message** saves it in full — attachments, staged tool results, auto-detected dice
+  rolls, inline `@Name:` queries — and generates no reply. The chat stays paused. The first message
+  sent during each pause shows a notice explaining this, so the silence isn't mistaken for a failed
+  send.
+- **Nudge** and **Skip** run exactly one turn and stop. Neither clears the pause.
+- **Resume** returns the chat to the normal rotation.
+
+Two related fixes. The `nudge` flag was dropped by a wrapper between the sidebar button and the
+server; it is what withholds the "nothing to add" skip option, so a nudged character could pass the
+turn — in a paused chat, that means no turn at all (bug 138). And **Continue** in the all-LLM pause
+dialog now works: it cleared no pause and requested no turn, so the button meant to restart a
+runaway chat only closed the dialog (bug 139).
+
+Also removed: the `isPaused` / `onTogglePause` props passed from the Salon through the message list
+to every message row. Neither was rendered, and the memo comparison on `isPaused` re-rendered the
+whole viewport on each pause toggle (bug 140). The sidebar Pause button is unaffected.
+
+Not affected: autonomous rooms, which use `runState` and never read this flag; the Courier, which
+uses the same flag to hold a chat while waiting for a pasted reply; and the all-LLM turn thresholds
+that trigger the dialog.
+
+Files: `lib/services/chat-message/orchestrator.service.ts`,
+`lib/services/chat-message/paused-hold.ts` (new), `lib/services/chat-message/streaming.service.ts`,
+`app/salon/[id]/SalonView.tsx`, `app/salon/[id]/hooks/useSSEStreaming.ts`,
+`app/salon/[id]/hooks/useTurnManagement.ts`, `app/salon/[id]/hooks/useChatControls.ts`,
+`app/salon/[id]/components/MessageRow.tsx`,
+`app/salon/[id]/components/VirtualizedMessageList.tsx`, `help/chat-multi-character.md`, `help/chat-participants.md`, `help/chat-turn-manager.md`,
+`docs/developer/bugs/` (bugs 137–140),
+`__tests__/unit/lib/services/chat-message/paused-hold.test.ts` (new),
+`__tests__/unit/hooks/useSSEStreaming-send-guard.test.tsx`,
+`__tests__/unit/app/chats/[id]/hooks/useTurnManagement.test.ts`.
+
+#### Fixed: a send refused while a reply is still streaming now says so (bug 136)
+
+Pressing Enter in the Salon while a reply was still generating did nothing at all — no notice, no
+flash, no log line. The line stayed in the composer and a second press after the turn landed worked,
+but in the moment there was no way to tell "I declined to send that" from "something went wrong",
+which is the same silence a genuinely broken send produces.
+
+One `return` in `sendMessage` covered two quite different cases. The empty-composer half is correct
+and wants no feedback. The `sending` half is a real request refused, and now answers: **One moment —
+the room is still speaking. Your remark waits in the composer.** The **Nudge**, **Continue** and
+**Skip** controls get the same notice when they are refused for the same reason, being clicks on
+explicit controls. A paused chat still declines silently, the sidebar having already said so, and an
+empty composer still says nothing.
+
+Files: `app/salon/[id]/hooks/useSSEStreaming.ts`,
+`__tests__/unit/hooks/useSSEStreaming-send-guard.test.tsx` (new).
+
+#### Removed: a Stop/Pause flag that was written four times and read nowhere (bug 135)
+
+`userStoppedStreamRef` looked like the latch the SSE read loop consults before acting on an event
+that arrives after a Stop. It consulted nothing: the ref had four writers and no readers anywhere in
+the checkout. Stopping a turn works, and always worked, because `stopStreaming` aborts the
+`AbortController` and the fetch dies.
+
+No behaviour changes. The ref, its writes, the parameter it occupied in `sendMessage` and in the In
+Their Own Words dialog's `SendMessageArgs`, and both pass-throughs in `SalonView` are deleted;
+`sendMessage` takes seven arguments instead of eight. No race was demonstrated, so the flag went
+rather than gaining a reader — a write-only ref type-checks and lints clean, so the next person to
+reach for it would have wired a stop-sensitive branch to a guard that is never consulted.
+
+Files: `app/salon/[id]/hooks/useChatControls.ts`, `app/salon/[id]/hooks/useSSEStreaming.ts`,
+`app/salon/[id]/hooks/useImpersonationVoice.ts`, `app/salon/[id]/SalonView.tsx`,
+`__tests__/unit/hooks/useSSEStreaming-route-trail.test.tsx`.
+
+#### Avatar Rolls section in a character's Photo Gallery
+
+The Photo Gallery tab on a character's Aurora page has a new collapsible section below the album:
+**Avatar Rolls**. It lists every portrait the avatar configuration cache holds for that character —
+one image per configuration of outfit, image provider, profile and model — with the same actions the
+album offers, plus one of its own:
+
+- **Set as avatar** — saves the roll into the album (if it isn't there yet) and points the
+  character's portrait at the resulting album link.
+- **Keep in the photo album** — hard-links the roll into the character's `photos/` folder. Idempotent;
+  a roll already kept shows a filled bookmark and the button is disabled.
+- **Download**, **view** (with the generation prompt), and **Save to my gallery** from the enlarged
+  view, as in the album.
+- **Delete** (two clicks to confirm) — clears every pointer at the roll first (`chats.characterAvatars`,
+  `avatarOverrides`, and a legacy `defaultImageId`), then drops the roll's own mount link. **A copy
+  you had kept in the album is not deleted.** The cache treats the missing configuration as a miss,
+  so the next time the character wears that outfit a new portrait is generated.
+
+Membership is `files.generationKey IS NOT NULL` plus the character's id in `files.tags`, so it covers
+rolls stored under `character-avatars/` (before avatars moved into the vault), `images/history/`
+(since), and rolls already copied into `photos/`.
+
+New endpoints: `GET /api/v1/characters/[id]/avatar-rolls`,
+`POST /api/v1/characters/[id]/avatar-rolls/[fileId]?action=save-to-album|set-avatar`,
+`DELETE /api/v1/characters/[id]/avatar-rolls/[fileId]`.
+
+**Behavior change:** the character photo album no longer lists images under `images/history/`. Those
+are avatar rolls and now appear only in the new section; previously each one showed in both places on
+the same page. `images/avatar.webp` still appears in the album.
+
+#### Wardrobe dialog: "Show shared"
+
+The Wardrobe dialog's item list has a second tickbox beside **Show archived**: **Show shared**, on by
+default. Unticking it hides the rows merged in from a shared tier (group, project, Quilltap General)
+— the ones badged `· shared` — leaving only garments the character owns, which makes dressing a
+character or composing an outfit out of her own clothes a good deal easier.
+
+Unlike **Show archived**, which re-fetches every tier with `?includeArchived=true`, this is a
+client-side filter: ownership is a property of the merge, not something the fetch can ask for. It
+uses the same `canManage` predicate that badges the row, so the badge and the filter can't disagree.
+The tickbox is hidden when browsing a shared container directly, where every row belongs to the
+container on display.
+
+#### Character avatars are cached per configuration
+
+A character wearing the same outfit no longer costs a fresh image every time. The avatar prompt is
+built from deterministic inputs only, so the prompt plus the built image-generation parameters
+(provider, profile, model, LoRAs, options, size) hash to a `generationKey` stored on the `files`
+row. Before generating, the avatar job looks that key up; if a matching image is found and its bytes
+still exist, it is reused and the job stops there — skipping the Concierge classification call, the
+image call, the WebP conversion and the file write. Put the coat back on later and the same portrait
+comes back.
+
+The **Regenerate Avatar** button now behaves as a reroll. It sets `force`, which bypasses the lookup,
+generates a new image, and rebinds the key to it, so the new portrait becomes the one that outfit
+returns from then on. It affects that character in that outfit only — the character's own default
+portrait is a separate image and is not touched.
+
+Generated avatars are now always stored in the character's vault, whether or not the chat belongs to
+a project. Project-context avatars no longer show up in that project's file tree; existing files keep
+their storage location and still display. One consequence: a character whose vault is missing or
+broken now gets no avatar at all, where before a project chat could still produce one.
+
+A cache hit posts no Lantern announcement, since nothing was generated. The avatar still updates in
+the Salon as usual.
+
+#### Migration: duplicate avatar rolls are collapsed
+
+`collapse-duplicate-avatar-rolls-v1` brings existing avatars into the cache. Avatar rows are grouped
+by prompt and model; the newest row in each group survives and receives the cache key, and the rest
+are deleted — the `files` row plus the stored image, chunks and links. Every reference to a deleted
+row is repointed to the survivor: `chats.characterAvatars`, `characters.avatarOverrides`, and
+chat message attachments, including the file uuid the Lantern quotes inline in its announcement text.
+
+This is destructive and visible. The duplicates were not redundant copies of the same image; they
+were separate generations of the same prompt. Chats that displayed one of the deleted rolls now
+display the surviving one instead, and this cannot be undone. On the instance it was measured
+against, 1786 avatar rows collapsed to 889, freeing about 141 MB. Rows with no generation prompt are
+skipped, and a group with only one row keeps it and gains a key.
+
+`add-file-generation-key-column-v1` runs first and adds the nullable `files.generationKey` column and
+its index.
+
+#### The Salon transcript is now a subscribed read
+
+A message written into a chat now reaches every open tab on that chat, whether or not the tab was
+the one that asked for it. Until now there was exactly one path: the read loop of the
+`POST /api/v1/messages` fetch the tab itself issued. If that stream was gone — the operator tabbed
+away during a long generation, the machine slept, the connection dropped — the reply was persisted
+correctly and never appeared, and no error was logged anywhere, because a write to a closed
+controller is swallowed and a client that has gone away is indistinguishable from one that is
+listening. The same gap is why staff messages written from the forked job child (Aurora wardrobe
+notes, Lantern backdrops, Commonplace whispers, Suparṇā's mail announcements) showed up only if
+they happened to be enqueued into an open stream at the right moment.
+
+The message write funnel (`ChatMessagesOps`) now publishes `{topic:'chats', id}` on every add,
+add-batch, edit, delete and clear, and `useChatData` listens for it and re-reads the transcript.
+The re-read is the authority; SSE keeps carrying tokens for the turn being generated but no longer
+decides what the room contains. A dropped stream costs a typing animation instead of a turn.
+
+The re-read is conditional, which is what makes subscribing affordable. A new `transcriptVersion`
+counter on the chat row is bumped in the same update as the publish, and
+`GET /api/v1/messages?chatId=&action=transcript&knownVersion=N` answers `{unchanged: true}` when the
+counter still agrees. One busy turn fires wardrobe, backdrop, whisper and memory hints at the same
+topic; they now cost round trips, not re-serialized transcripts.
+
+Two pieces of state a mid-conversation refetch used to trample are now preserved. Swipe selection
+is carried across by the selected variant's id rather than its index, so a regenerate that appends
+a variant no longer yanks the view onto a different reply. Rows that did not change keep their
+object identity, and a read that changed nothing returns the very array it was given, so the
+virtualizer does not remeasure and the scroll position holds.
+
+An optimistic bubble is now a true overlay: it is dropped the moment the authoritative read carries
+a row for it, matched on role and text first and on "a new row of the same role, no older than the
+bubble" second (an attachment send stores different text than it displays). A send that never
+persisted at all is swept at the turn boundary instead of sitting in the transcript forever.
+
+The counter is a `chats` column but deliberately not a field on the chat entity. Every repository
+update rewrites the whole validated row from a snapshot it read moments earlier, so a counter inside
+the schema could be rewound by any concurrent chat-row write — two messages landing together would
+leave it where a tab that read in between already thinks it is, and that tab would never be shown
+the second one. Zod strips what it does not declare, so no `update()` can touch the column and
+`SET v = v + 1` is its only writer. Being outside the entity also keeps it out of `.qtap` exports
+and backups without any special-casing, and an import starts at zero because it simply isn't in the
+bundle.
+
+Search-and-replace announces too. `replaceInMessages` rewrites message rows directly, outside the
+add/update/delete funnel; without an announcement an open Salon would go on being told "unchanged"
+while every line it displayed had its text rewritten underneath it.
+
+Also in this change: the transcript projection — attachments, pre-rendered HTML, off-scene author
+cards — moved out of the chat GET handler into `lib/chat/transcript-projection.ts`, so the mount
+read and the conditional re-read cannot drift apart. Both readers take the counter before projecting,
+so the version handed to a tab is never newer than the rows beside it. The transcript endpoints now
+verify chat ownership, matching the per-message endpoints. The terminal's `chat-update` and
+`terminal-exited` browser events now use the cheap transcript read instead of refetching the whole
+chat.
+
+Filed while implementing, not fixed here: bug 135 (`userStoppedStreamRef` is written four times and
+read nowhere, so Stop and Pause gate nothing) and bug 136 (a send refused because one is already in
+flight returns silently, which is indistinguishable from a send that failed).
+
+#### Docs: plan for the Salon transcript as a subscribed read
+
+Added `docs/developer/features/salon-realtime-transcript.md`, a plan to stop the SSE stream being
+the only way a message reaches an open Salon tab. The transcript is a plain `useState` array filled
+once at mount, so nothing can tell it it is stale: an interrupted stream loses the turn it was
+carrying, and staff messages written by the forked child — Aurora wardrobe notes, Lantern backdrops,
+Commonplace whispers — show up only if they happened to be enqueued into an open stream at the right
+moment. The plan has a chat-scoped realtime hint drive a re-read of the transcript and demotes the
+stream to a display-only overlay for the turn in flight, leaving token streaming and the turn
+manager alone. Records that child-written messages already publish `{topic:'chats', id}` through the
+job dispatcher's post-commit hook, so the publish half is largely built and nothing is listening.
+Covers the publish site at the message write funnel, a conditional read so a hint storm costs round
+trips instead of payloads, the reconciliation rule between the streaming bubble and the
+authoritative rows, and the swipe-selection and scroll-anchor state a mid-turn refetch would
+otherwise disturb. Also records two defects found while diagnosing the incident behind it:
+`userStoppedStreamRef` is written in three places and never read, so Stop and pause gate nothing,
+and the Salon's send returns silently when a send is already in flight.
+
 #### Fixed: a chat setting changed while a Salon tab was open never reached it (bug 134)
 
 Flipping a Settings → Chat dial — auto-scroll, thinking display, token display, the LLM inspector

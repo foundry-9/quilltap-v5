@@ -14,7 +14,8 @@ import { E2E_PASSPHRASE } from './support/env';
  *
  * ORDERING: rides the SHARED global-setup server and unlocks it, so the
  * filename sorts after `aa-foundation.spec.ts` and before the `zz…`
- * destructives. Reads only — it sends nothing, so it disturbs no chat's totals.
+ * destructives. It sends nothing — the incident beat EDITS an existing row
+ * through the funnel, which moves no chat's totals and draws no turn.
  *
  * GATED ACTIVATE-AT-UNIFY behind a NAMED constant: the `chatTranscript` verb is
  * P4.D183's. A capability probe would be the wrong instrument here for a
@@ -24,7 +25,7 @@ import { E2E_PASSPHRASE } from './support/env';
  */
 
 /** Flipped at unification, once P4.D183's `chatTranscript` verb lands. */
-const P4D183_SERVER_LANDED = false;
+const P4D183_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
@@ -140,25 +141,39 @@ test.describe('P4.D187 — the transcript is re-read on a hint', () => {
     await openGroupExpedition(page);
     const chatId = await page.evaluate(() => location.pathname.split('/').pop() ?? '');
 
-    // A second client writes the row — the shape the incident had: a reply
-    // persisted while this tab's stream was gone. This page opens no stream of
-    // its own and sends nothing.
+    // A second client changes a transcript row THROUGH THE WRITE FUNNEL — the
+    // shape the incident had: a change persisted while this tab's stream was
+    // gone. This page opens no stream of its own and sends nothing.
+    //
+    // The verb is `messageEdit` (v4 `PUT /api/v1/messages/{id}`), which goes
+    // through `ChatMessagesOps.updateMessage` and so announces the change
+    // (P4.D183 unit 2) — the ONLY dispatch verb that can move a transcript row
+    // without drawing a turn. A send would draw a reply, and a reply into this
+    // shared fixture chat is what trips the Host's title checkpoints for every
+    // later title-keyed beat. (An earlier draft posted a `chatMessageAdd` verb
+    // that exists on neither side; the 400 tripped its own `test.skip`, so the
+    // beat would have parked silently forever — the vacuously green class.)
+    const detail = await request.get(`/api/v1/chats/${chatId}`);
+    expect(detail.ok()).toBeTruthy();
+    const messages = ((await detail.json()) as { chat?: { messages?: Array<{ id: string; role: string }> } })
+      .chat?.messages ?? [];
+    const target = [...messages].reverse().find((m) => m.role === 'ASSISTANT');
+    expect(target, 'Group Expedition must hold an assistant row to edit').toBeTruthy();
+
     const line = `A line no stream carried ${Date.now()}`;
     const written = await request.post('/api/dispatch', {
-      data: { type: 'chatMessageAdd', chatId, role: 'ASSISTANT', content: line },
-      failOnStatusCode: false,
+      data: { type: 'messageEdit', messageId: target!.id, content: line },
     });
-    test.skip(
-      !written.ok(),
-      'no dispatch verb on this server writes a bare transcript row for another client',
-    );
+    expect(written.ok(), await written.text()).toBeTruthy();
 
+    // Not on screen yet: nothing has told this tab to look.
     await expect(page.getByText(line)).toHaveCount(0);
     await page.evaluate(
       (id) => (window as unknown as { __qtHint?: (c: string) => void }).__qtHint?.(id),
       chatId,
     );
 
+    // …and there it is, delivered by the cheap conditional read alone.
     await expect(page.getByText(line)).toBeVisible({ timeout: 20_000 });
   });
 });

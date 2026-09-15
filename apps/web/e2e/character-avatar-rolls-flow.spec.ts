@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -51,7 +52,7 @@ import {
  * its `photos/` link is what the bookmark reads back as "already kept".
  */
 
-const P4D185_SERVER_LANDED = false;
+const P4D185_SERVER_LANDED = true;
 
 const ROLLS_PORT = 4327;
 const ROLLS_BASE_URL = `http://127.0.0.1:${ROLLS_PORT}`;
@@ -63,10 +64,21 @@ const ROLLS_SERVER_LOG = resolve(ARTIFACTS_DIR, 'avatar-rolls-server.log');
 const USER_TABLES = ['characters', 'chats', 'tags', 'files'];
 
 const ROLL_FILE_ID = 'p4d188-roll-1';
+const ROLL_MOUNT_FILE_ID = 'p4d188-roll-mount-file-1';
 const ROLL_LINK_ID = 'p4d188-roll-link-1';
 const ROLL_BLOB_ID = 'p4d188-roll-blob-1';
-const ROLL_SHA = 'p4d188rollsha256000000000000000000000000000000000000000000000000';
-const ROLL_NAME = 'plate-of-aria.webp';
+const ROLL_NAME = 'plate-of-aria.png';
+/**
+ * A real 1×1 PNG: the tile is an `<img>`, and four bytes of "RIFF" would fire
+ * its `error` handler, mark the roll missing, and take the Download button
+ * with it. The sha is the bytes' own, so the link resolves by sha as the
+ * service resolves it.
+ */
+const ROLL_BYTES = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+const ROLL_SHA = createHash('sha256').update(ROLL_BYTES).digest('hex');
 
 let server: ChildProcess | undefined;
 
@@ -118,32 +130,50 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     }
     const now = '2026-09-12T10:00:00.000Z';
 
-    // (1) the keyed, tagged files row — v4's whole definition of a roll.
+    // The committed pair predates `files.generationKey`; boot heals a live
+    // instance, but this plant runs BEFORE the server boots, so heal the copy
+    // the same way first (idempotent — the boot ensure then finds it present).
+    runCliWrite(cli, `ALTER TABLE files ADD COLUMN generationKey TEXT;`);
+
+    // (1) the keyed, tagged files row — v4's whole definition of a roll. The
+    //     storage key is the `mount-blob:<mountPointId>:<blobId>` shape every
+    //     reader parses (`parse_mount_blob_storage_key`); a `mount:` prefix
+    //     parses as nothing and silently skips the mount-point scoping.
     runCliWrite(
       cli,
       `INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, width, height,
-         source, category, generationPrompt, generationModel, tags, storageKey, generationKey,
-         createdAt, updatedAt)
+         linkedTo, source, category, generationPrompt, generationModel, tags, storageKey,
+         generationKey, createdAt, updatedAt)
        VALUES ('${ROLL_FILE_ID}', '${SINGLE_USER_ID}', '${ROLL_SHA}', '${ROLL_NAME}',
-         'image/webp', 2048, 512, 512, 'generated', 'IMAGE',
+         'image/png', ${ROLL_BYTES.length}, 1, 1, '[]', 'GENERATED', 'IMAGE',
          'Aria in her flying coat', 'flux-1', '["${ariaId}"]',
-         'mount:${vaultId}:images/history/${ROLL_NAME}', 'p4d188-config-key-v1',
+         'mount-blob:${vaultId}:${ROLL_BLOB_ID}', 'p4d188-config-key-v1',
          '${now}', '${now}');`,
     );
 
-    // (2) the bytes, and (3) the vault link under images/history/.
+    // (2) the bytes. `doc_mount_blobs.fileId` and `doc_mount_file_links.fileId`
+    //     both name a `doc_mount_files` row (mount-index-local, NOT `files.id`),
+    //     and the blob table's FK enforces it — so that row comes first, and the
+    //     roll's link is later resolved BY SHA through it (`find_by_sha256`).
+    runCliMountWrite(
+      cli,
+      `INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt)
+       VALUES ('${ROLL_MOUNT_FILE_ID}', '${ROLL_SHA}', ${ROLL_BYTES.length}, 'image/png', 'UPLOAD',
+         '${now}', '${now}');`,
+    );
     runCliMountWrite(
       cli,
       `INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt)
-       VALUES ('${ROLL_BLOB_ID}', '${ROLL_FILE_ID}', '${ROLL_SHA}', 2048, 'image/webp',
-         x'52494646', '${now}', '${now}');`,
+       VALUES ('${ROLL_BLOB_ID}', '${ROLL_MOUNT_FILE_ID}', '${ROLL_SHA}', ${ROLL_BYTES.length},
+         'image/png', x'${ROLL_BYTES.toString('hex')}', '${now}', '${now}');`,
     );
+    // (3) the vault link under images/history/ — what gives the tile a URL.
     runCliMountWrite(
       cli,
       `INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName,
          originalFileName, originalMimeType, lastModified, createdAt, updatedAt)
-       VALUES ('${ROLL_LINK_ID}', '${ROLL_FILE_ID}', '${vaultId}',
-         'images/history/${ROLL_NAME}', '${ROLL_NAME}', '${ROLL_NAME}', 'image/webp',
+       VALUES ('${ROLL_LINK_ID}', '${ROLL_MOUNT_FILE_ID}', '${vaultId}',
+         'images/history/${ROLL_NAME}', '${ROLL_NAME}', '${ROLL_NAME}', 'image/png',
          '${now}', '${now}', '${now}');`,
     );
 
@@ -211,7 +241,13 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     await expect(section.locator('img')).toHaveCount(1);
 
     // Keep: the bookmark flips to the done state and the album gains a photo.
-    const albumTiles = page.locator('button.aspect-square');
+    // The album grid's tiles ONLY: the section's tile is a copy of the album's
+    // markup with the same class string, so an unscoped `button.aspect-square`
+    // counts the roll too and the arithmetic below passes by accident until
+    // the roll is discarded.
+    const albumTiles = page.locator('button.aspect-square').filter({
+      hasNot: page.locator('qt-avatar-rolls-section button.aspect-square'),
+    });
     const albumBefore = await albumTiles.count();
     await section.getByTitle('Keep in the photo album').click();
     await expect(page.getByText('Kept in the photo album')).toBeVisible({ timeout: 10_000 });

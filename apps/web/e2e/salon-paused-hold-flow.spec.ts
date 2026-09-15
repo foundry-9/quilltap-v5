@@ -30,7 +30,9 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  */
 
 /** Flipped at unification, once P4.D186's held-turn seam lands. */
-const P4D186_SERVER_LANDED = false;
+const P4D186_SERVER_LANDED = true;
+/** See `salon-chain-pause-toast-flow.spec.ts` — the same named park, same reason. */
+const SHARED_FIXTURE_TITLE_CHECKPOINT_PARK = true;
 
 let mock: MockLlm;
 
@@ -149,8 +151,8 @@ async function restore(button: ReturnType<typeof pauseControl> extends Promise<i
 test.describe('P4.D187 — a summons leaves the pause standing', () => {
   test('a Nudge from a paused room draws a turn and does NOT resume', async ({ page }) => {
     test.skip(
-      !P4D186_SERVER_LANDED,
-      'the turn this beat draws re-titles the shared fixture chat — see the describe note',
+      SHARED_FIXTURE_TITLE_CHECKPOINT_PARK,
+      'a nudge in a paused room is exactly the ONE turn that completes — it crosses a title checkpoint of the shared fixture chat; parked on the named hazard, not on the server gate (see the describe note)',
     );
     await openGroupExpedition(page);
     const button = await ensurePaused(page);
