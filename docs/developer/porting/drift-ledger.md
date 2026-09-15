@@ -19,46 +19,39 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `31436bae4`** — "fix(salon): a paused chat generates
-  nothing on its own (bugs 137-140)" (v4 main, 2026-09-13 22:49 -0500,
-  `4.10.0-dev.30`), adopted at the `31436bae4` drift catch-up round
-  unification (P4.D182 → {P4.D183 ∥ P4.D184 ∥ P4.D185} ∥ P4.D186 ∥ P4.D187 ∥
-  P4.D188, 2026-09-15). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-15 at the unification (the `/unify` opening probe of
-  2026-09-14 ~20:15 recorded the two newest rows; re-probed at the baseline
-  move — unchanged).
-- **v4 `main` HEAD at check:** `ffb6b3119` ("fix(db): a delete that removed
-  nothing no longer counts as a deletion (bug 142)", 2026-09-14 20:06 -0500,
-  `4.10.0-dev.36`) — **FOUR commits past the baseline.**
+- **Oracle baseline: `ffb6b3119`** — "fix(db): a delete that removed
+  nothing no longer counts as a deletion (bug 142)" (v4 main, 2026-09-14
+  20:06 -0500, `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 +
+  bug-142 drift catch-up round unification (P4.D189 → P4.D190 ∥ P4.D191,
+  2026-09-15). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-15 at the unification (the `/unify` opening probe at
+  ~09:20 CDT; re-probed before the regen sweep at ~09:40 — unchanged).
+- **v4 `main` HEAD at check:** `ffb6b3119` — **AT the baseline, ZERO
+  commits past.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 4 commits, all UNPROCESSED** (the round absorbed
-  its eight rows; these four landed after it was ordered and were out of its
-  scope by construction): one PORT on the provider-streaming + failover +
-  greeting-ladder surfaces (bug 141 — v5 very likely HAS it, P4.D42's
-  first-byte-only streaming bound), one NO-PORT? on v4's Node toolchain, one
-  NO-PORT? docs-only bug filing (bug 142), and one CONVERGENCE (the bug-142
-  fix — v4 adopting the correct delete count v5 already had; P4.D183's
-  `DELETE_MISS_DIVERGENCE` pin trips BY DESIGN at the baseline move that passes
-  `ffb6b3119`). See §3.
-- **Regen rule: PIN REQUIRED** — v4 HEAD is four commits past the baseline.
-  Pin `31436bae4` (§5.1). The checkout is clean, so the pin is the only
-  constraint.
-- **The workspace gate is GREEN against the live checkout** —
-  `qtap_schema_embed_guard`'s re-vendor obligation was discharged by P4.D182
-  (`public/schemas/qtap-export.schema.json` at 93,384 bytes, `generationKey`
-  in) and none of the four post-baseline commits touches `public/schemas/`.
-- **Schema state: CLEAR at the baseline.** `files.generationKey` (D23 re-dump,
-  seed `fresh_schema.json` at the `31436bae4` dump) + `idx_files_generationKey`
-  (boot ensure) and `chats.transcriptVersion` (boot ensure ONLY — outside v4's
-  Zod chat schema, so `generateDDL` never emits it) are on `main`, with the
-  `collapse-duplicate-avatar-rolls-v1` collapse as P4.D184's boot heal under
-  v4's own `migrations_state` id. **The four post-baseline rows move no
-  schema.** `help/**` is at **124 files**, re-vendored at the baseline —
-  **stale by content on exactly two files** (`chats.md`, `connection-profiles.md`,
-  both modified by `f90144ac4`) until the bug-141 catch-up re-vendors them.
+- **Verdict: NO DRIFT.** The four rows the previous round left UNPROCESSED
+  (bug 141 PORT, the ABI-heal NO-PORT?, the bug-142 filing NO-PORT?, the
+  bug-142 fix CONVERGENCE) are ABSORBED / NO-PORT-RATIFIED at this
+  unification and retired to §6. §3 is EMPTY.
+- **Regen rule: NO PIN REQUIRED** — v4 HEAD is the baseline and the
+  checkout is clean, so a regen from the checkout IS a regen at the
+  baseline. (The round's own regens were run from the checkout in exactly
+  that state; the lanes had pinned because the baseline was still
+  `31436bae4` at their time.) The ⚠ ABI note on the retired `85813ddd2`
+  row is now moot for every pin at or past the baseline: the fixed
+  `jest.global-setup.js` heal rides the checkout and every future pin.
+- **The workspace gate is GREEN against the live checkout** — no
+  `public/schemas/` delta in any of the four absorbed commits;
+  `qtap_schema_embed_guard` unmoved at 93,384 bytes.
+- **Schema state: CLEAR at the baseline.** The four absorbed rows moved NO
+  schema (`git diff --stat 31436bae4 ffb6b3119 -- migrations/ lib/database/
+  schema` empty; the one `lib/database/` hunk is the bug-142 delete count).
+  `help/**` is at **124 files, re-vendored whole at `ffb6b3119`** (P4.D191:
+  `chats.md` + `connection-profiles.md` byte copies; the tree is md5-
+  identical to v4's at the baseline, all 124 files).
 
 ## §2 The freshness probe
 
@@ -97,10 +90,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `f90144ac4` | 2026-09-14 | fix(llm): a silent provider no longer wedges chat creation (bug 141) | **PORT — and v5 very likely HAS the bug, by the same mechanism.** A provider accepted the streaming request, answered with headers, and then sent no body; the `for await` never advanced, `POST /api/v1/chats` never responded, and the non-dismissable Green Room held the window (observed on `Friday`: one ESTABLISHED DeepSeek socket on the same fd for eleven minutes, empty queues, idle loop, no `llm_logs` row). **Why every existing budget missed it:** an SDK-backed provider's own timeout stops at the response HEADERS — which is what makes it safe to apply on a streaming path and useless once they have landed. That is precisely **P4.D42's shape in v5** (the streaming bound is deliberately first-byte-only; `TransportPolicy` + the 300 s default sit on the REQUEST), so the gap is inherited — v4's own `bugs.md` marks the v5 status "**Applies**". NEW `lib/llm/stream-watchdog.ts` (+139) wraps the stream and budgets each `next()` separately: first chunk generous (240 s — a long context with extended thinking legitimately takes minutes), gaps tight (120 s), **per-gap and never cumulative** so a long generation is never cut for being long and a thinking model's reasoning deltas count as chunks; the greeting takes 90 s/60 s, being short and running behind the blocking dialog. Applied at BOTH `provider.streamMessage` call sites → v5's primary stream + the greeting path (`lib/chat/initial-greeting.ts`, which v4 notes is the one streaming consumer that bypasses `streaming.service.ts`). `LLMStreamStalledError` is NAMED, not merely messaged, and that buys three things to port together: `classifyFallbackTrigger` reads it as `network` beside `CheapLLMTimeoutError` so a Salon turn reaches its understudy → v5 `classify_fallback_trigger` (P4.D135/P4.D136); the greeting ladder in `app/api/v1/chats/route.ts` (+36) **ends on the first stall on the participant's own profile** (attempts 1, 2 and 4 are that one profile three times over) while a stall at the Concierge's uncensored desk is scoped OUT (different profile, different provider) → v5's greeting ladder + the `chat_create_capstone` family, whose `stream_calls`/attempt comparands are exactly what measures this; and a silence becomes distinguishable in the logs from a refusal. ⚠ The stalled request is **abandoned, not cancelled** — the plugin owns its SDK client and a generator suspended at an `await` cannot be resumed from outside; real cancellation needs an `AbortSignal` on `LLMParams` and a plugin-types contract change, explicitly NOT done here (v5's abort-arming deferral from P4.44 is the neighbour). Two `help/` files. ⚠ Overlaps the in-flight round: `streaming.service.ts` is also P4.D186's file — neighbouring hunks, not a conflict. Not a convergence (the human reported it from the Electron shell; v4 filed and fixed it the same day) | ORDERED(P4.D189, P4.D190, P4.D191) — the Salon-side watchdog + classifier (P4.D189, the substrate commit first), the greeting site + ladder (P4.D190, stacked on that commit), the two `help/` files (P4.D191); ordered 2026-09-14 |
-| `85813ddd2` | 2026-09-14 | fix(tooling): the native-binding ABI heal now actually rebuilds | **NO-PORT?** — v4's Node toolchain only: `jest.global-setup.js` and `packages/quilltap/lib/native-modules.js`, plus one new test. No `lib/`, `app/`, `components/`, `migrations/` or `public/` delta. The concern has **no v5 analog** — v5 links the SQLite3MC amalgamation statically through `quilltap-sqlite3mc-sys`, so there is no `NODE_MODULE_VERSION` to mismatch and the CLI's Rust `db` family cannot reach this code (the new console sentences fire only on an ABI mismatch, so Tier R is unmoved — confirm 188/188 or the then-current count at ratification). **Two things it is worth knowing about, though:** (1) it repairs a heal our own oracle runs depend on — `harness/oracle/lib/jest-zone-globalsetup.cjs` deliberately CHAINS v4's `jest.global-setup.js` resolved from the regen cwd, and v4's heal had been announcing success while rebuilding a phantom directory (`npm rebuild` refused with EALLOWSCRIPTS for the root alias, and allowed-but-inert for the other spelling); the new `rebuildNativePackage` addresses the package by DIRECTORY, runs its own `prebuild-install || node-gyp rebuild` chain in place, and **verifies the compiled ABI actually moved** rather than trusting the exit code. (2) ⚠ **Under PIN REQUIRED a pinned worktree chains the PINNED tree's copy** — i.e. the old, silently-inert heal — so if a Node upgrade lands before this row is ratified, a pinned regen will hit the stale-binding failure with a heal that claims success and does nothing (v4's own "worse than an error"). Symptom to recognize: real-binding oracle cases failing at setup with `NODE_MODULE_VERSION`, after a green-looking rebuild line. Workaround: rebuild by directory from the MAIN checkout before regenerating | ORDERED(P4.D191) — NO-PORT ratification with the file list + Tier R at the `ffb6b3119` pin; ordered 2026-09-14 |
-| `364b04ac4` | 2026-09-14 | docs(bugs): file bug 142 — deleteMessagesByIds counts a message it did not delete | **NO-PORT?** — two files, both under `docs/` (`docs/developer/bugs.md` +1, NEW `docs/developer/bugs/bug-142-delete-miss-counts-as-removed.md` +151); no `lib/`, `app/`, `packages/`, `plugins/` or `help/` delta (measured by `git show --stat`). It is the upstream filing of the v4 bug **P4.D183 found** with its widened funnel census (`chats_messages_ops_tier2_equivalence`) — v4's own bug doc credits the port's tier-2 census as provenance and marks the v5 status "does not reproduce — deliberately". Ratify NO-PORT with that evidence at the next round; the substance is the row below | ORDERED(P4.D191) — NO-PORT ratification (two `docs/` files); ordered 2026-09-14 |
-| `ffb6b3119` | 2026-09-14 | fix(db): a delete that removed nothing no longer counts as a deletion (bug 142) | **CONVERGENCE (one hunk) + tests-only riders.** The ONE `lib/` hunk is `chats-messages.ops.ts:637-645`: the `removed` accumulator's `typeof result === 'number'` / truthy-object pair replaced by `removed += result.deletedCount` — the fix for the bug **this port found and pinned in both directions** as `DELETE_MISS_DIVERGENCE` in `chats_messages_ops_tier2_equivalence` (P4.D183 unit 6: v5's `delete_messages_by_ids` counts `rows affected`, so a miss never bumped `transcriptVersion` nor published a `chats` hint). **v5 needs NO source change**; the pin trips BY DESIGN the first time that family regenerates from a pin at or past this sha (§5.4 — measure v4's post-fix rows, then retire the pin to a plain equality; the `31436bae4` round's unification regenerates at `31436bae4`, BEFORE this sha, so the pin stays and stays green there). Riders: NEW `__tests__/integration/.../chats-messages-delete-count.integration.test.ts` (+205, v4's own real-DB guard), `chats-messages-transcript-version.test.ts` mock corrected to return `DeleteResult` (the double that had hidden the bug), the `add-profile-multi-character-prefill-field` migration test's two missing mock helpers (v4 tests-only), `README.md` + three version markers (`4.10.0-dev.36`), `docs/CHANGELOG.md` + `bugs.md` + the bug file moved to Fixed. No `help/`, no `public/`, no migration | ORDERED(P4.D191) — the `DELETE_MISS_DIVERGENCE` pin retired by measurement in both directions (§5.4); ordered 2026-09-14 |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -254,6 +243,28 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `ffb6b3119` bug-141 + bug-142 drift catch-up round (2026-09-15,
+  baseline `31436bae4` → `ffb6b3119`):** `f90144ac4` ABSORBED(P4.D189 — the
+  stream watchdog as a substrate commit [`model/stream_watchdog.rs` +
+  `StreamError`'s `Stalled` kind with v4's message bytes], the TEN Salon-side
+  wrap sites held by a per-file census [v4 has one funnel, v5 none], the
+  `LLMStreamStalledError` → `network` classifier arm through all four classify
+  sites with red-first `fallback_engine` rows + five `primary_stream_tier3`
+  stall arms, the neutrality sweep at both pins ∥ P4.D190 — the greeting
+  wrapped at 90 s / 60 s, the ladder's own-profile gate at v4's three
+  positions with the desk scoped out, v4's three attempt warns + the
+  exhaustion line the v5 arms never carried, `initial_greeting` +
+  `chat_create_capstone` red-first over the ordered `stream_calls` comparand
+  [the jest `instanceof`-across-`resetModules` trap found and fixed on both
+  oracles] ∥ P4.D191 — the two `help/` files byte-copied, 124 stays 124);
+  `ffb6b3119` ABSORBED(P4.D191 — the CONVERGENCE measured TOTAL [1 of 1,513
+  cells moved], `DELETE_MISS_DIVERGENCE` retired to a plain equality
+  red-first in both directions with zero v5 source change; the §3 review
+  added a presence pin for the converged chat); `85813ddd2` and `364b04ac4`
+  NO-PORT-RATIFIED(P4.D191 — file lists in the lane record; Tier R 223/0 at
+  the pin; the main checkout's binding measured ABI-matched to Node 24).
+  Round record: `status-log.md` → "Round record — the `ffb6b3119` bug-141 +
+  bug-142 drift catch-up round unification".
 - **The `31436bae4` drift catch-up round (2026-09-15, baseline `f4ad2c8d1`
   → `31436bae4`):** `5029075bb` ABSORBED(P4.D182 substrate — the
   `chats.transcriptVersion` boot ensure, the eight-file `help/**` re-vendor ∥

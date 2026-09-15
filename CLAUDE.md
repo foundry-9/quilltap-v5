@@ -3498,9 +3498,51 @@ records THERE. Update this summary only when a phase or round completes.
   collapsed population first). Two P4.D187 beats stay parked on the named
   shared-fixture title-checkpoint hazard (phase-4.md). Round record:
   `status-log.md`.
-- **Oracle baseline: `31436bae4` (2026-09-13, v4 main — "fix(salon): a paused
-  chat generates nothing on its own (bugs 137-140)", `4.10.0-dev.30`),
-  adopted at the `31436bae4` drift catch-up round unification (2026-09-15).**
+- **The `ffb6b3119` bug-141 + bug-142 drift catch-up round (P4.D189 →
+  P4.D190 ∥ P4.D191): UNIFIED on main (2026-09-15) — ALL THREE CLOSED; the
+  oracle baseline MOVES to `ffb6b3119` and the drift ledger's §3 is EMPTY.**
+  v4's stream watchdog (bug 141) absorbed whole — and the port is ELEVEN wrap
+  sites, not v4's two: v4 has ONE `streaming.service.ts` funnel for every
+  Salon-side consumer and v5 has none. P4.D189: `model/stream_watchdog.rs`
+  as a substrate commit (per-gap 240 s / 120 s budgets, the once-only
+  stalled `Err` then `None`, drop-on-stall as v5's whole "abandoned, not
+  cancelled", v4's eight test shapes under `start_paused`) + `StreamError`'s
+  `Stalled` kind with v4's message bytes; the ten Salon-side sites held by a
+  per-file wrap census; the `LLMStreamStalledError` → `network` classifier
+  arm through all four classify sites (red-first: v4's stalled message
+  matches NO network pattern, so v5 had filed a stall as the unattributed
+  `provider-error`); five `primary_stream_tier3` stall arms + a 13-family
+  neutrality sweep at both pins (**six of thirteen families differ across
+  two regens at the SAME pin** — minted ids/clocks — so "cmp at both pins"
+  is not universal; recorded). P4.D190 (stacked on the substrate): the
+  greeting wrapped at 90 s / 60 s, the ladder's own-profile gate at v4's
+  three positions with both desks scoped out, **v4's three attempt warns +
+  the exhaustion line v5's silent arms never carried**, eight capstone arms
+  over the ordered `stream_calls` comparand — **the first regen recorded
+  v4's PRE-fix ladder** because a class imported at jest top level belongs
+  to the registry generation before `resetModules()` and v4's `instanceof`
+  silently never fired (fixed on both oracles; a memory note). P4.D191: the
+  bug-142 CONVERGENCE measured TOTAL (1 of 1,513 cells) and
+  `DELETE_MISS_DIVERGENCE` retired red-first in BOTH directions with zero v5
+  source change; `85813ddd2`/`364b04ac4` ratified NO-PORT on file lists
+  (Tier R 223/0; the main checkout's binding measured ABI-matched to Node
+  24); the two `help/` files byte-copied, the whole 124-file tree
+  md5-identical to v4. **The §3 review (three parallel readers): NO
+  blocking findings** — fixed at unification: a source `Err` counted as a
+  chunk (v4 never counts a throw), the capstone's posed-failure-vs-reasoning
+  order, a missing presence pin on the converged chat, the census's
+  greeting row (the named cross-lane handoff). Surfaced for the next round:
+  the tool loops re-stream with a `base_params.model` never refreshed after
+  a cross-provider failover (pre-existing), six more unported greeting log
+  lines, and the pre-existing `brahma_orchestrator_tier3` red on main (a
+  committed fixture predating P4.D171's columns). Gate + versions: the
+  round record in `status-log.md`. 💸 the dogfood queue gains a REAL
+  stalled endpoint on the Friday copy (the one proof no canned stream can
+  give). Round record: `status-log.md`.
+- **Oracle baseline: `ffb6b3119` (2026-09-14, v4 main — "fix(db): a delete
+  that removed nothing no longer counts as a deletion (bug 142)",
+  `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 + bug-142 drift
+  catch-up round unification (2026-09-15).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

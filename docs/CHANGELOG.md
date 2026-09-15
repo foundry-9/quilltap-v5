@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — docs(unify): the `ffb6b3119` bug-141 + bug-142 drift catch-up round — three orders unified, the baseline moves to `ffb6b3119`
+
+_Docs-only change._
+
+P4.D189 → P4.D190 ∥ P4.D191 unified on `main`; all three CLOSED. The oracle
+baseline moves `31436bae4` → `ffb6b3119`; the ledger's four rows are absorbed
+or ratified and its §3 is EMPTY — v4 HEAD is the baseline and the checkout
+is clean, so the regen rule is NO PIN REQUIRED. The §3 review (three parallel
+readers over the whole diff, the verdict owned at the unify) found no
+blocking defect; its should-fixes and the two wires are the two commits
+above. Gate: fmt + clippy both feature sets + release build clean; the
+32-family regen+run sweep 31 ok / 1 pre-existing red
+(`brahma_orchestrator_tier3` — a committed fixture predating P4.D171's
+columns, recorded as the next maintenance item); `cargo test --workspace`
+570 binaries / 3,300 passed / 0 failed / 2 ignored, zero SKIP lines; SPA 434
+spec files + build clean; full Playwright 318 passed / 1 failed / 6 skipped
+(the six named parks; the one red the documented P4.d17 quill
+intermittent, 3/3 green by file). Versions at the move: core 0.0.921, harness
+0.0.814, host 0.0.135. Order status headers, the ledger (§1/§3/§6), the
+phase plan's UNIFIED section + "what is next", CLAUDE.md's status bullets
+and the round record in `status-log.md` updated.
+
+
 #### 2026-09-15 — test(unify): the `ffb6b3119` round's unification wires — the wrap census's greeting row moved to one, pinned to its own budgets; the `docs/v4/` mirror refreshed
 
 _Versions: harness 0.0.814._

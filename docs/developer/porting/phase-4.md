@@ -6628,6 +6628,70 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `ffb6b3119` bug-141 + bug-142 drift catch-up round (P4.D189 → P4.D190 ∥ P4.D191) — UNIFIED 2026-09-15
+
+**ALL THREE ORDERS CLOSED; the oracle baseline MOVES `31436bae4` →
+`ffb6b3119`; the ledger's four rows are ABSORBED / NO-PORT-RATIFIED and
+its §3 is EMPTY (v4 HEAD IS the baseline — regen rule NO PIN REQUIRED).**
+Round record: `status-log.md` → "Round record — the `ffb6b3119` bug-141 +
+bug-142 drift catch-up round unification" (the §3 review's findings — none
+blocking; the should-fixes; the wires; the gate numbers). CHANGELOG: the
+unification entries of 2026-09-15. Every order's status header names what
+the review fixed on it.
+
+**What is next, in order:**
+
+1. **The owed dogfood pass** on the Friday copy — now carrying TWO rounds'
+   live surfaces: this round's **real stalled provider** (the one proof no
+   test can give: point a seat at a local endpoint that answers 200 with
+   headers and holds the socket — a Salon turn must fail inside 240 s with
+   `[LLMStream] Abandoned a stalled provider stream` in `combined.log` and
+   the understudy answering; a New Chat must open its scripted greeting
+   inside 90 s with `[Chats v1] Greeting abandoned — …`; a mid-stream stall
+   keeps the partial and substitutes nothing on both apps), the `31436bae4`
+   round's queue (the transcript's live re-read on a real multi-tab chat, a
+   paused room holding a real send with the once-per-pause notice,
+   Nudge/Skip leaving the pause standing, the avatar cache's first HIT —
+   measure the collapsed population FIRST, ledger §5.5 — the Avatar Rolls
+   section, "Show shared"), plus the standing 💸 queue.
+2. **The `brahma_orchestrator_tier3_equivalence` red on `main`** (found by
+   P4.D189 re-running an untouched family; reproduced on `main` at
+   `f687cc4e`; red in this round's sweep too — withheld from the workspace
+   gate by name): the committed `crates/quilltap-web/tests/fixtures/
+   brahma-{main,mount}.db` pair predates P4.D171's two schema moves
+   (`chat_messages.routeTrail`, `chats.cycleOrderParticipantIds`) and the
+   family runs neither boot ensure; the pair is SHARED with
+   `brahma_console_tier3` + `brahma_console_routes` (both green — they never
+   read those columns). Widen the committed pair through v4's migration SQL
+   (the P4.52 idiom — never heal v5's copy alone: `the-oracle-side-needs-
+   the-vintage-heal-too`) and regenerate all three families. The second
+   half of P4.D189's diagnosis (a `sqlite error: ` prefix on v5's
+   column-missing read where v4 renders the bare sentence, the P4.50 class)
+   only surfaces BECAUSE the column is missing; re-measure after the widen
+   before ordering anything for it.
+3. **Two pre-existing candidates the §3 review surfaced:** (a) the two
+   tool-loop re-stream sites send `base_params.model` — built from the
+   PRE-failover profile at `orchestrator.rs:2787` and never rebuilt after
+   `effective_profile` is refreshed at `:2861` — so after a cross-provider
+   failover the tool re-stream carries the OLD model name to the NEW
+   provider (v4 passes `streaming.effectiveProfile` to its funnel); wants a
+   corpus arm in `native_tool_loop_tier3` / `text_tool_loop_tier3` with a
+   failover-then-tool-call case, then the fix; (b) SIX v4 log lines in
+   `autoGenerateFirstMessage` still unported (P4.D190's header lists them)
+   — a small capture-pinned follow-up, the #103/#110 class.
+4. **The shared-fixture title-checkpoint hazard** (five P4.D187 beats parked
+   on `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`) and the `31436bae4` round's
+   maintenance smalls — unchanged, see that round's list below.
+5. The standing items: the `name`-field turn-path measurement, P4.87's two
+   OPEN coverage items, the upstream filing candidates (v4's
+   `route.greeting-stall.test.ts` cannot tell gate 1 from gate 2 — its
+   fixture carries no participant memories, P4.D190; v4's v0 fallback is
+   dead for trigger-phrase profiles — P4.D184; the fresh-instance
+   `idx_files_generationKey` — P4.D182).
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `ffb6b3119` bug-141 + bug-142 drift catch-up round (P4.D189 → P4.D190 ∥ P4.D191) — ORDERED 2026-09-14
 
 **Baseline `31436bae4`; v4 `main` HEAD `ffb6b3119` (FOUR past — the

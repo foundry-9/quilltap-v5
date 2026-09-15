@@ -126744,3 +126744,249 @@ P4.D189/P4.D190's (this lane carried only its help prose);
 `qtap_schema_embed_guard` is unmoved — stated with the measurement
 (`git diff --stat 31436bae4 ffb6b3119 -- public/` EMPTY), and re-run as part
 of the workspace gate rather than as a re-vendor; no SPA change.
+
+---
+
+## Round record — the `ffb6b3119` bug-141 + bug-142 drift catch-up round unification (P4.D189 → P4.D190 ∥ P4.D191), 2026-09-15
+
+**Outcome: ALL THREE ORDERS CLOSED; the oracle baseline MOVES `31436bae4` →
+`ffb6b3119`; the drift ledger's four rows are ABSORBED / NO-PORT-RATIFIED and
+its §3 is EMPTY (v4 `main` HEAD IS the baseline, checkout clean — regen rule
+NO PIN REQUIRED).** Unify branch `unify/ffb6b3119`, fast-forwarded onto
+`main`.
+
+### The survey
+
+- The ledger's §2 probe PASSED at the opening (branch `main`, tree clean,
+  `ffb6b3119..main` EMPTY, `1a2b2164c..bugfix` EMPTY) and again before the
+  regen sweep. **No drift arrived during the round** — the first round since
+  P4.59 to unify against an unmoved v4.
+- Three lane branches, three worktrees, all clean: P4.D189
+  (`claude/p4-stream-watchdog-salon-b1222c`, six commits from `f687cc4e`),
+  P4.D190 (`claude/p4-d190-greeting-stall-ladder-b555d2`, three commits
+  stacked on P4.D189's substrate `73546827` — `git merge-base` confirmed the
+  branch point; P4.D189's lane record had flagged the worktree as created
+  before the substrate existed, and it was re-based before its first commit),
+  P4.D191 (`claude/p4-convergence-ratifications-ac3153`, three commits from
+  `f687cc4e`). Every order's status header claimed CLOSED whole; each lane's
+  tier list was checked against its diff and lane record — every Tier-1 and
+  Tier-2 item is real, every Tier-3 deferral is the one in the code.
+
+### The reconcile
+
+Twelve commits cherry-picked in dependency order (D189 whole; D190 minus the
+shared substrate commit; D191). Conflicts were ONLY the version files
+(`Cargo.toml` ×2, `Cargo.lock`) on two picks — `docs/CHANGELOG.md` and
+`status-log.md` auto-merged with every lane's entries intact (11 H4 headers,
+3 lane records, no conflict markers). Versions recounted as base + every
+lane's delta: core 0.0.913 + 4 + 3 = 0.0.920; harness 0.0.805 + 3 + 2 + 2 =
+0.0.812; host 0.0.135 (one lane, one bump). No source-level conflict — the
+Ownership table held.
+
+### The §3 review — what it found
+
+The whole combined diff (`git diff main...unify/ffb6b3119`, 5,099 source
+lines over 38 files) was read end to end by the unifier, with three parallel
+reviewer agents for breadth (the watchdog + Salon side vs v4's
+`stream-watchdog.ts`/`streaming.service.ts`/`engine.ts`; the greeting +
+ladder vs v4's `initial-greeting.ts`/`route.ts`; the harness + P4.D191). The
+verdict is the unifier's. **NO BLOCKING FINDING in any lane.** Fixed on the
+unify branch (`dd527436` + the wire `b11769af`):
+
+1. **`WatchedStream::recv` counted a source `Err` item as a received chunk**
+   (P4.D189, `stream_watchdog.rs`). v4's `chunksReceived++` sits after a
+   successful `next()`; a thrown error never reaches it. v5's seam carries a
+   provider error as a channel ITEM, and the increment was unconditional —
+   so a source that errored and then stayed open would have been on the
+   IDLE budget with one chunk too many on its message. Unreachable today
+   (every consumer stops at the first `Err` — measured across all eleven
+   loops), now faithful (`if item.is_ok()`) and pinned by
+   `a_provider_error_is_not_counted_as_a_chunk`.
+2. **The capstone's `greeting_chunks` delivered a posed `stall`/`error`
+   AFTER any reasoning chunks** (P4.D190) where the jest mock throws BEFORE
+   its reasoning loop — a two-sides disagreement no current case reaches
+   (none pairs reasoning with a failure); the Rust side now matches the
+   mock's order, closing the trap before a thinking-model-goes-quiet case
+   opens it.
+3. **The converged delete-miss chat had no presence pin** (P4.D191): the
+   retired equality's discriminating cell (`c0000020-…`'s
+   `transcriptVersion`) could have gone vacuous if a corpus edit dropped
+   the chat or its miss op. Pinned exactly as the mint carve-out is
+   (`CONVERGED_DELETE_MISS_CHAT` + `saw_converged`).
+4. **The watchdog's module doc** now records that v5's header bound and the
+   first-chunk budget are SEQUENTIAL (v4's lazy generator covers the SDK's
+   headers inside its 240 s; v5's `stream_message` awaits the transport's
+   headers — bounded by P4.D42's request budget — BEFORE handing back the
+   receiver the watchdog wraps), so the worst case with no first token is
+   `transport budget + 240 s` where v4's is 240 s; nothing is unbounded, the
+   window is wider and recorded. The write-only `stalled` field's doc says
+   it is kept for `Debug`.
+5. `PerCallGreetings`' doc records the residual the reviewers named: a
+   per-call canned miss is a `Provider`-kind `Err`, indistinguishable from
+   a posed `error` rung, so an `error`-posed rung's prompt drift is
+   invisible downstream (a `stall`-posed rung still catches it; the greeting
+   prompt's bytes are pinned by `initial_greeting_equivalence`). Two panic
+   messages lost a run of spaces.
+
+**Verified right, with the evidence:** the watchdog's every semantic (per-gap
+never cumulative; first-vs-idle on `chunks_received == 0`; every `Ok` chunk
+counts; a source `Err` passes as itself with kind `Provider`; `None` passes;
+ONE warn with v4's bag and `None` ids dropped as JSON drops `undefined`; the
+receiver dropped; `Some(Err)` once then `None`); tokio 1.52's `Timeout` polls
+the inner future FIRST so a chunk buffered at the deadline wins and
+`Receiver::recv` is cancel-safe — no race; `WatchedStream` is `Send` by
+construction; the message bytes byte-identical to v4's constructor; all TEN
+Salon-side sites wrapped on `StallBudgets::default()` with the ids v4's
+actual callers hand the funnel (primary: four ids; the tool-unsupported
+retry: no `characterId`; `restreamInto`: `characterId: opts.character.id`;
+recovery: none; native re-stream: four / force-final: three; text
+continuation: three; Carina: user+chat+answerer; help-chat:
+user+chat+character; both Brahma: user+chat) — no loop body changed
+behaviour; the classifier arm at v4's exact position through all four
+production classify sites and nothing missed (`cheap_llm_exec` classifies a
+`CompletionError`, correctly untouched); the `model_name` fidelity fix
+(`connectionProfile.modelName` is v4's source at all three wrapper reads)
+with `consume_stream`'s `params.model` fallback unreachable in production;
+the greeting's 90 s/60 s + `context: "initial-greeting"` + the ids; the
+ladder line by line against v4's post-commit `autoGenerateFirstMessage`
+(note ONLY in the three own-profile catch arms, never at attempt 0 or the
+content-filter desk; the three gates at v4's positions; attempt 3 skipped
+when the desk was tried at attempt 0 on both sides; no gate after attempt 2;
+the five strings byte-identical incl. the em dash; no behaviour change on
+the healthy path); the capstone's eight `gs_*` counts derived independently
+from v4's route (1/1/2/1/2/3/1/3) and the corpus neutrality (+280/−1, the
+`-1` a closing brace; the memory seed inert elsewhere); both jest oracles
+resolving `LLMStreamStalledError` AFTER `jest.resetModules()`; the census's
+brace-balance stripping reproduced independently over all 688 core sources
+(`model/streaming_provider.rs`: 23 test-only seam calls, 0 production —
+the stripping is load-bearing) with the file set asserted in BOTH
+directions; the `classify` floor 35 → 48 exact; the five stall fixture
+cases each carrying a `stall` chunk; the `DELETE_MISS_DIVERGENCE`
+retirement complete with the miss op still in the corpus; `db/
+chats_messages.rs` comment-only (15 `///` lines, 0 removed); and the WHOLE
+`help/` tree md5-identical to v4 at `ffb6b3119` — all 124 files, not only
+the two re-vendored.
+
+**Recorded, not fixed (pre-existing, outside every lane's ownership):**
+(a) the two tool-loop re-stream sites send `base_params.model`, built from
+the PRE-failover profile at `orchestrator.rs:2787` and never rebuilt after
+`effective_profile` is refreshed at `:2861` — after a cross-provider
+failover the re-stream carries the OLD model name to the NEW provider (v4
+passes `streaming.effectiveProfile` to its funnel); the watchdog only
+reports what the request already carries. Wants a failover-then-tool-call
+corpus arm, then the fix (phase-4.md's next list). (b) SIX v4 log lines in
+`autoGenerateFirstMessage` stay unported (`Retrying greeting generation
+without memories`, the two `succeeded on … retry` infos, `Connection
+profile is missing its API key`, `Failed to build first message context`,
+`Failed to build recent-conversations block for greeting`) — §R.5(6) named
+only the four P4.D190 ported. (c) P4.D189's lane record says "twelfth
+row"/"twelve-row list"; the census has eleven rows (1 + 10 files; the
+module doc's ELEVEN is right). (d) `gs_desk_stall_does_not_condemn_own_
+profile` cannot discriminate the attempt-0 scoping on its own (attempt 1
+succeeds, so gate 1 never reads the flag) — the discriminator is the
+`…recovers_on_the_final_retry` pair, as the lane record says.
+
+### The unification wires (`b11769af`)
+
+- **The wrap census's `initial_greeting.rs` row moved from ZERO to ONE
+  wrap** — the cross-lane handoff both orders named. The naive flip alone
+  would have broken the census's SECOND test (it pins every wrapped file
+  to `StallBudgets::default()` + `context: "streaming.service"`, which the
+  greeting deliberately does not use): the greeting row is now pinned to
+  ITS two constants + `context: "initial-greeting"` with
+  `StallBudgets::default()` refused there. Census 2/2 green on the unified
+  tree.
+- **The `docs/v4/` mirror** took the four paths the target moved
+  (`CHANGELOG.md` 58,531 → 66,230 bytes; `developer/bugs.md` 246,110 →
+  253,704; the new `bugs/fixed/bug-141-…` 9,550 + `bug-142-…` 9,681 —
+  byte copies from the checkout at `ffb6b3119`).
+
+### The regen sweep (from the checkout — v4 HEAD `ffb6b3119`, clean)
+
+`harness/tools/recipe_sweep.py --run-all --families <32>` over the round's
+moving families + every family whose v5 consumer the watchdog wrapped +
+every `help_*` family: **31 ok / 1 run_failed** — the one red is
+`brahma_orchestrator_tier3_equivalence`, PRE-EXISTING on `main` (P4.D189
+reproduced it at `f687cc4e` with the same oracle: the committed
+`brahma-{main,mount}.db` pair predates P4.D171's two columns and the family
+runs neither boot ensure; recorded in phase-4.md as the next maintenance
+item and withheld from the workspace gate BY NAME). The fresh NDJSONs carry
+the round's changed bytes: `LLMStreamStalledError` ×3 in
+`oracle-fallback-engine.ndjson`; `never sent a first chunk` ×4 + `went quiet
+for` ×2 in `oracle-primary-stream.ndjson`; `LLMStreamStalledError` ×1 in
+`oracle-greeting.ndjson`; `gs_own_stall_ends_ladder` in
+`oracle-chat-create.ndjson` (129 cases); "the Green Room no longer waits on
+it indefinitely" ×1 in `oracle-help-tree.ndjson`; and v4 writing
+`transcriptVersion` **2** on `c0000020-…` in `oracle-chatsmsgops.ndjson`
+(the convergence, at the new baseline). ⚠ `QT_FIXTURE_HELP_MAIN` is claimed
+by TWO help families (`help_doc_sync` / `help_doc_sync_guards`) with
+different fixtures — a second-family-on-one-var collision — so both were
+proven by name in the sweep and withheld from the workspace block.
+
+### The gate (the gate of record)
+
+Run from the main worktree on `unify/ffb6b3119` (`CARGO_INCREMENTAL=0`,
+`TZ=UTC`, one logged, sentinel-guarded chain; every regen from the v4
+checkout AT the target, clean):
+
+1. §2 probe — PASS (opening, and again before the sweep).
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. `cargo build --workspace --release` — clean.
+5. The 32-family regen+run sweep — 31 ok / 1 run_failed (the pre-existing
+   `brahma_orchestrator_tier3` red, above); changed bytes grepped in every
+   moving family's fresh NDJSON (above).
+6. Mutation proofs — the lanes' batteries stand (D189: five on the
+   substrate, one on the census, four per-site on the classifier wiring,
+   one on the budgets; D190: eleven incl. the two survivors-then-closed;
+   D191: the coverage-widening mutation). The §3 fixes' own pins: the new
+   `a_provider_error_is_not_counted_as_a_chunk` (reddens on the
+   pre-fix increment), the `saw_converged` presence assert (reddens on a
+   corpus missing `c0000020-…`), the census's greeting branch (reddens on
+   `StallBudgets::default()` at the greeting — measured while wiring: the
+   naive row flip alone failed the second test).
+7. `cargo test --workspace --no-fail-fast` with the round's 52-variable env
+   block (the 55 recipe vars minus `QT_ORACLE_BRAHMA_ORCH` — the
+   pre-existing red, withheld by name — and the two colliding
+   `QT_FIXTURE_HELP_MAIN` families, proven by name in the sweep) +
+   `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the checkout + `QT_NODE`: **570 test
+   binaries / 3,300 passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:`
+   lines.** The round's families confirmed RUN by name with non-zero
+   durations: `chat_create_capstone` 3 passed / 4.12 s (129 cases),
+   `orchestrator_tier3` 2.96 s, `help_chat_orchestrator_tier3` 5 passed /
+   1.26 s, `help_tree` 1.06 s, `enclave_step_tier3` 0.62 s,
+   `answer_confirmation_tier3` 0.17 s, `primary_stream_tier3` 2 passed /
+   0.15 s, `carina_query_tier3` 0.14 s, `brahma_console_tier3` 0.13 s,
+   `fallback_engine` 0.10 s (175 rows), `stream_watchdog_wrap_census` 2
+   passed / 0.09 s, `tool_build` 0.09 s, `text_tool_loop_tier3` 0.04 s,
+   `chats_messages_ops_tier2` 0.02 s, `cheap_llm_fallback` 0.02 s,
+   `route_trail_compose` 0.02 s, `chat_continuation_tier2` 0.19 s,
+   `native_tool_loop_tier3` 0.01 s, `initial_greeting` 1 passed (8 rows,
+   DB-free); Tier R (`cli_differential`) 315.62 s at the checkout (223/0 at
+   the pin per P4.D191 — the count is hidden on PASS); `help_tree_embed_
+   guard` / `qtap_schema_embed_guard` / `spelling_guard` green. The two
+   `ignored` are the standing pair.
+8. SPA: `npm test` **434 spec files passed**; `npm run build` clean (no
+   lane touched `apps/web/**` — the run is the end-to-end proof the wrapped
+   production paths still stream through the real server).
+9. Full Playwright against the release binary: **318 passed / 1 failed / 6
+   skipped (8.6 m)** — the six skips are the named parks (five P4.D187
+   title-checkpoint beats + the standing gallery store-probe park); the one
+   red is `salon-thinking-indicator.spec.ts` › "the quill rocks while the
+   reply streams and is gone once it settles" — **the documented P4.d17
+   quill intermittent** (named as such in every order's gate spec and in
+   the `31436bae4` round's own gate record) — re-run by file three times on the same build: **3/3 green (2.1 m)**. No lane touched the surface; recorded, not this round's.
+10. Ownership: every MUST-NOT-TOUCH path in every lane's diff EMPTY against
+    its base; the unifier's own edits confined to the two wires and the §3
+    fixes above.
+
+### Deferred loud / next
+
+See phase-4.md's "What is next" under the round: the owed dogfood pass (now
+carrying a REAL stalled endpoint — the one proof no canned stream on either
+side can give, since every canned sequence is pre-pushed and closes), the
+`brahma_orchestrator_tier3` fixture widen, the two pre-existing candidates
+the review surfaced, the title-checkpoint hazard, the maintenance smalls.
+Versions at the move: core 0.0.921, harness 0.0.814, host 0.0.135; web / cli
+/ tauri / SPA unchanged.
