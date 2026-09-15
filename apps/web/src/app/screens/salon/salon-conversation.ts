@@ -1461,7 +1461,6 @@ export class SalonConversation {
   private transcriptChatId: string | null = null;
 
   // --- client-side swipe switching (v4 `switchSwipe`) ---
-  private readonly swipeOverride = signal<Record<string, number>>({});
 
   // --- inline edit + delete-cascade ---
   protected readonly editingId = signal<string | null>(null);
@@ -1590,16 +1589,15 @@ export class SalonConversation {
    * server reads `isPaused` when the continue-mode turn arrives, and would
    * otherwise grant a single turn and stop again.
    *
-   * v4 then calls `handleContinue`, which queries the server for the next
-   * speaker and names it. v5 has no such twin — its Continue hands the choice
-   * to the server (`runTurn({continueMode: true})` with no seat named), the
-   * pre-existing divergence `runTurn`'s own comment records. The ORDER is what
-   * bug 139 is about, and it is the same.
+   * v4 then calls `handleContinue` (`useTurnManagement.ts:178-205`), which
+   * asks the server who is up, applies the turn response, and names that seat
+   * — or refuses aloud. Its v5 twin is {@link onSidebarSkip}, arm for arm, so
+   * the same call is made here; the ORDER (resume, THEN ask) is bug 139.
    */
   protected async onAllLLMContinue(): Promise<void> {
     this.showAllLLMPause.set(false);
     await this.setPauseState(false);
-    await this.runTurn({ continueMode: true });
+    await this.onSidebarSkip();
   }
 
   /** v4 `handleAllLLMStop` — `chatControls.setPauseState(true)`. */
@@ -1903,17 +1901,17 @@ export class SalonConversation {
     return p?.character ? { id: p.character.id, name: p.character.name } : null;
   });
 
-  /** Swipe states with the client-side override applied to `current`. */
-  protected readonly effectiveSwipeStates = computed<Record<string, SwipeState>>(() => {
-    const base = this.transcriptSwipeStates();
-    const override = this.swipeOverride();
-    const out: Record<string, SwipeState> = {};
-    for (const [gid, st] of Object.entries(base)) {
-      const current = override[gid] ?? st.current;
-      out[gid] = { ...st, current };
-    }
-    return out;
-  });
+  /**
+   * The swipe states the renderer reads. v4 keeps ONE map — the operator's
+   * swipe writes `current` straight into it (`useMessageActions.ts:341-365`),
+   * which is exactly what `reconcileTranscript`'s id-carry reads back on the
+   * next read. A separate override layer (the pre-P4.D187 shape) shadowed that
+   * carry: the reconcile was fed a `current` the operator had never chosen,
+   * and an unclamped index could outlive a delete below it.
+   */
+  protected readonly effectiveSwipeStates = computed<Record<string, SwipeState>>(() =>
+    this.transcriptSwipeStates(),
+  );
 
   /**
    * Whether the "your remark was recorded, nobody answered it" notice has
@@ -3405,7 +3403,14 @@ export class SalonConversation {
     // is deferred to the next change detection, which would let the sweep run
     // first and drop a bubble whose row had in fact landed. Apply here too —
     // the effect's later pass then reconciles to the very same array.
-    this.seedTranscriptFromChat();
+    //
+    // ⚠ Only on the word of a read that CAME BACK. `invalidateQueries` resolves
+    // whether or not the refetch succeeded, and `chatQuery.data()` keeps the
+    // last good chat after a failed one — so a chat GET that fails at the turn
+    // boundary must leave `lastReadOk` false (v4 `useChatData.ts:174/:188` sets
+    // it inside the try / in the catch), or the sweep below would take the
+    // operator's only copy of a line the server may well have persisted.
+    this.settleTranscriptAfterTurn();
     // v4 calls `announceChainPause(event)` immediately after `fetchChat()` at
     // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
     // reconcile point stands in for both. v4 defaults the reason at the
@@ -3691,6 +3696,19 @@ export class SalonConversation {
     );
     this.transcriptMessages.set(next.messages);
     this.transcriptSwipeStates.set(next.swipeStates);
+  }
+
+  /**
+   * The turn tail's transcript half: apply the turn-boundary chat GET, or —
+   * when that GET FAILED — record that no read backs the sweep. Extracted so
+   * the guard is pinned on its own; `runTurn` is the only caller.
+   */
+  private settleTranscriptAfterTurn(): void {
+    if (this.chatQuery.status() === 'error') {
+      this.lastReadOk = false;
+    } else {
+      this.seedTranscriptFromChat();
+    }
   }
 
   /**
@@ -4001,10 +4019,12 @@ export class SalonConversation {
   protected onSwipe(message: MessageDto, direction: -1 | 1): void {
     const gid = message.swipeGroupId;
     if (!gid) return;
-    const st = this.effectiveSwipeStates()[gid];
+    const st = this.transcriptSwipeStates()[gid];
     if (!st) return;
     const next = Math.max(0, Math.min(st.total - 1, st.current + direction));
-    this.swipeOverride.update((o) => ({ ...o, [gid]: next }));
+    // v4 `setSwipeStates(prev => ({...prev, [gid]: {...prev[gid], current}}))`:
+    // the choice lives in the one map the reconcile carries by variant id.
+    this.transcriptSwipeStates.update((prev) => ({ ...prev, [gid]: { ...st, current: next } }));
   }
 
   /** v4 `generateSwipe` (`useMessageActions.ts:318-332`). */

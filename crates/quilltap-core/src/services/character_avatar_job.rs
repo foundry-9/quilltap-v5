@@ -92,9 +92,12 @@ impl CharacterAvatarPayload {
             .get("equippedSlotsOverride")
             .filter(|v| !v.is_null())
             .cloned();
-        // v4 reads `payload.force` through `if (!payload.force)` — a JS truthy
-        // test, so only a literal `true` (the one shape the trigger writes)
-        // forces. An absent key, `false`, `null` and `0` all leave the cache on.
+        // v4 reads `payload.force` through `if (!payload.force)` — JS truthiness.
+        // This read is a STRICT bool: absent, `false`, `null` and `0` leave the
+        // cache on in both engines, and the one writer (`queue_service`) only
+        // ever writes a literal `true`, so the shapes where the two rules would
+        // differ (`1`, `"x"` — truthy in v4, not a bool here) are unreachable.
+        // Recorded rather than widened: a truthy-string reroll is not a contract.
         let force = payload
             .get("force")
             .and_then(Value::as_bool)
@@ -234,6 +237,9 @@ where
     .await
     .map_err(|e| e.to_string())?;
 
+    // Kept for the cache-hit info line (v4 logs `leafCounts` beside the
+    // reused file id).
+    let leaf_counts = prompt_result.leaf_counts;
     let prompt = prompt_result.prompt;
     if !prompt_result.has_appearance {
         // No appearance data — WARN+RETURN.
@@ -311,6 +317,7 @@ where
                 chatId = %payload.chat_id,
                 characterId = %payload.character_id,
                 fileId = %cached.id,
+                leafCounts = ?leaf_counts,
                 "[CharacterAvatar] Reused cached avatar for this configuration"
             );
             return Ok(());
@@ -414,6 +421,16 @@ where
     } else {
         None
     };
+    // The INITIAL build's log context. v4 builds once, up front, under
+    // `background-jobs.character-avatar` (the params the cache key was derived
+    // from, reused verbatim); a PRE-generation Concierge profile swap is the one
+    // case that rebuilds, and v4 tags that rebuild `…concierge-route`
+    // (`character-avatar.ts:317-326`). `prebuilt_params` is `None` exactly then.
+    let initial_build_log_context = if prebuilt_params.is_some() {
+        "background-jobs.character-avatar"
+    } else {
+        "background-jobs.character-avatar.concierge-route"
+    };
     let outcome = common::generate_with_reroute(
         db,
         deps.image_provider,
@@ -433,7 +450,7 @@ where
         Some(&payload.chat_id),
         Some(&payload.character_id),
         "Avatar image generation failed",
-        "background-jobs.character-avatar",
+        initial_build_log_context,
         "background-jobs.character-avatar.concierge-reroute",
         Some(job_id),
         // [cc65d6bfc] v4's avatar handler is UNTOUCHED by bug 133: its reroute
@@ -792,4 +809,33 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+#[cfg(test)]
+mod payload_tests {
+    use super::*;
+
+    /// The `force` wire's read half: the manual regenerate writes a literal
+    /// `true` (`queue_service::enqueue_character_avatar_generation`), and this
+    /// is the only reader. Absent and `false` are one answer, as v4's
+    /// `if (!payload.force)` makes them.
+    #[test]
+    fn force_reads_a_literal_true_and_nothing_else() {
+        let base = serde_json::json!({
+            "chatId": "c1", "characterId": "ch1", "imageProfileId": "p1"
+        });
+        let read = |extra: Option<Value>| {
+            let mut v = base.clone();
+            if let Some(f) = extra {
+                v["force"] = f;
+            }
+            CharacterAvatarPayload::from_json(&v)
+                .expect("decodes")
+                .force
+        };
+        assert!(!read(None), "absent leaves the cache on");
+        assert!(!read(Some(Value::Bool(false))));
+        assert!(!read(Some(Value::Null)));
+        assert!(read(Some(Value::Bool(true))), "the manual reroll's payload");
+    }
 }

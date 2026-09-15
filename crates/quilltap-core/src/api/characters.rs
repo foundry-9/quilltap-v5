@@ -1926,10 +1926,19 @@ async fn save_avatar_roll_to_album(
             Err(e) => return Err(db_error_response(e)),
         }
     };
-    let data = bytes
-        .read_image_buffer(&entry)
-        .unwrap_or_default()
-        .unwrap_or_default();
+    // Two different failures, two different v4 answers. `readImageBuffer`
+    // THROWS on a read that fails (a backend key with no backend, a missing
+    // blob) and that message matches none of the route ladder's four `includes`
+    // arms, so v4 answers a 500 beside `Avatar roll action failed`; only a read
+    // that succeeds with nothing in it is the `has empty bytes` 400.
+    let data = match bytes.read_image_buffer(&entry) {
+        Ok(buf) => buf.unwrap_or_default(),
+        Err(e) => {
+            return Err(avatar_roll_err(svc::AvatarRollError::Db(
+                crate::db::DbError::Internal(e),
+            )))
+        }
+    };
     if data.is_empty() {
         return Err(avatar_roll_err(svc::AvatarRollError::BadRequest(format!(
             "Image {} has empty bytes",

@@ -489,6 +489,14 @@ export class AvatarRollsSection {
     this.busyRollId.set(roll.id);
     try {
       const body = await deleteAvatarRoll(this.core, this.characterId(), roll.id);
+      // v4 reaches the service through the REST edge, which turns the
+      // service's `deleted: false` (a miss — the id names no roll of this
+      // character) into `notFound('Avatar roll')`, and the client toasts that
+      // 404's sentence. The dispatch verb answers the service's own shape,
+      // so the miss is judged here, before anything is invalidated.
+      if (!body?.deleted) {
+        throw new Error('Avatar roll not found');
+      }
       await this.invalidateAll();
       this.toasts.showSuccess(
         body?.keptInAlbum ? 'Roll discarded; the album copy stays' : 'Roll discarded',

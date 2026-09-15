@@ -3626,6 +3626,48 @@ describe('SalonConversation — the transcript is a subscribed read (v4 useChatD
     expect(stub.reads.length).toBe(before);
   });
 
+  it('holds the sweep when the turn-boundary chat GET itself FAILED', async () => {
+    // The turn tail applies the chat GET synchronously (v4's `fetchChat` ref
+    // mirror) before it sweeps. `invalidateQueries` resolves whether or not the
+    // refetch succeeded and the query keeps its last good chat, so a tail that
+    // read "the GET came back" off the data alone would sweep on a failed read
+    // — and take the operator's only copy of a line the server may well have
+    // persisted (v4 `useChatData.ts:174/:188`: the ok flag is set inside the
+    // try and cleared in the catch). The round's §3 review caught the tail
+    // claiming a read it never had; this is the pin.
+    const stub = transcriptStub();
+    const fixture = await render(stub.client);
+    const inst = fixture.componentInstance as unknown as Host & {
+      settleTranscriptAfterTurn(): void;
+      chatQuery: { status(): string };
+    };
+    const queryClient = TestBed.inject(QueryClient);
+
+    (inst as unknown as { transcriptMessages: { update(f: (p: MessageDto[]) => MessageDto[]): void } }).transcriptMessages.update(
+      (prev) => [...prev, bubble({ id: 'temp-user-1757595222222', content: 'a send into an outage' })],
+    );
+
+    // The turn boundary: the chat GET has FAILED (the query is put into the
+    // error state a refused refetch leaves it in — invalidating through the
+    // client would retry with backoff and outlive the test), then the tail
+    // settles and the sweep asks.
+    queryClient
+      .getQueryCache()
+      .find({ queryKey: chatKeys.detail('chat-1') })!
+      .setState({ status: 'error', error: new Error('offline'), fetchStatus: 'idle' });
+    await settle(fixture);
+    expect(inst.chatQuery.status()).toBe('error');
+    inst.settleTranscriptAfterTurn();
+    inst.clearProvisionalMessages();
+    expect(inst.transcriptMessages().map((m) => m.id)).toContain('temp-user-1757595222222');
+
+    // The next read that comes back performs the held sweep.
+    stub.state.version = 12;
+    await inst.refreshTranscript();
+    await settle(fixture);
+    expect(inst.transcriptMessages().map((m) => m.id)).not.toContain('temp-user-1757595222222');
+  });
+
   it('sweeps a bubble that never persisted at all', async () => {
     const stub = transcriptStub();
     const fixture = await render(stub.client);

@@ -138,6 +138,23 @@ async function runCase(
   );
 
   await initializeDatabase();
+
+  // P4.D182 (the `31436bae4` round): the committed `character-archive-*` pair
+  // predates `files.generationKey` and `chats.transcriptVersion`, and the Rust
+  // side heals its copy the way boot heals an instance — so this side must
+  // carry the same two columns, or the whole-table census reads two extra
+  // keys on v5's rows that are really the vintage gap (the
+  // "oracle-side-needs-the-vintage-heal-too" shape). v4's migration DDL.
+  try {
+    await rawQuery('ALTER TABLE "files" ADD COLUMN "generationKey" TEXT');
+  } catch {
+    // already present
+  }
+  try {
+    await rawQuery('ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0');
+  } catch {
+    // already present
+  }
   const repos = getRepositories();
 
   /** Plant an ARCHIVE `files` row, optionally with bytes on disk. */

@@ -30,11 +30,15 @@
 use std::path::PathBuf;
 
 fn source() -> String {
+    source_of("crates/quilltap-core/src/api/chat_transcript.rs")
+}
+
+fn source_of(rel: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
         .expect("repo root")
-        .join("crates/quilltap-core/src/api/chat_transcript.rs");
+        .join(rel);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
 }
 
@@ -103,5 +107,37 @@ fn the_unchanged_return_precedes_the_projection() {
         unchanged_at < project_at,
         "the `unchanged` answer is built AFTER the projection — the whole point \
          of the conditional is that an agreeing counter serializes nothing"
+    );
+}
+
+/// The chat GET carries the identical hazard (v4 `handlers/get.ts:300-313`
+/// reads the counter first "so the pair handed to a tab never claims a version
+/// newer than the rows beside it", stepping around the terminal reconciliation
+/// and the operator-mail sweep on the way) — and the same blindness: both
+/// orders produce identical bodies unless a write lands between them. Pinned
+/// structurally over `assemble_chat_get`, exactly as the verb is above.
+#[test]
+fn the_chat_get_reads_the_version_before_it_projects() {
+    let src = code_only(&source_of("crates/quilltap-core/src/api/salon.rs"));
+    let version_at = src
+        .find("get_transcript_version(")
+        .expect("`assemble_chat_get` must read the counter through `get_transcript_version`");
+    let project_at = src
+        .find("project_chat_transcript(")
+        .expect("`assemble_chat_get` must project through `project_chat_transcript`");
+    assert!(
+        version_at < project_at,
+        "the chat GET reads the counter AFTER projecting (version at byte \
+         {version_at}, projection at {project_at}); v4 reads it first"
+    );
+    assert_eq!(
+        src.matches("get_transcript_version(").count(),
+        1,
+        "the counter should be read exactly once in salon.rs"
+    );
+    assert_eq!(
+        src.matches("project_chat_transcript(").count(),
+        1,
+        "the transcript should be projected exactly once in salon.rs"
     );
 }

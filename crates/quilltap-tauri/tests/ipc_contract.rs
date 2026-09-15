@@ -493,8 +493,8 @@ fn seed_image_file(base: &std::path::Path) {
             "CREATE TABLE IF NOT EXISTS files (\
                id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, mimeType TEXT, \
                size REAL, width REAL, height REAL, category TEXT, generationPrompt TEXT, \
-               generationModel TEXT, generationRevisedPrompt TEXT, description TEXT, \
-               storageKey TEXT, createdAt TEXT, updatedAt TEXT);",
+               generationModel TEXT, generationRevisedPrompt TEXT, generationKey TEXT, \
+               description TEXT, storageKey TEXT, createdAt TEXT, updatedAt TEXT);",
         )
         .unwrap();
     w.connection()

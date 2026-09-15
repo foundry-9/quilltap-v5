@@ -564,13 +564,18 @@ fn scrub_chat_avatars(
         let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
             continue;
         };
-        // v4 spreads the existing map and `delete`s the one key.
+        // v4 spreads the existing map and `delete`s the one key — the surviving
+        // keys keep their insertion order. Under `preserve_order` `Map::remove`
+        // is indexmap's SWAP-remove (the last key drops into the hole), and this
+        // map is re-serialized into `chats.characterAvatars` on disk, so a
+        // three-seat chat would come back in an order v4 never writes.
+        // `shift_remove` is the order-preserving delete (the standing rule).
         let mut next = chat
             .get("characterAvatars")
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        next.remove(character_id);
+        next.shift_remove(character_id);
         chats.update(
             chat_id,
             &ChatUpdate {
@@ -678,7 +683,12 @@ pub fn delete_avatar_roll(
         context = "photos.avatar-rolls",
         character_id,
         file_id,
-        roll_link_id = roll_link.as_ref().map(|l| l.link_id.as_str()).unwrap_or(""),
+        // v4 logs `rollLinkId: rollLink?.linkId ?? null` — an unlinked roll
+        // reads `null`, not the empty string.
+        roll_link_id = roll_link
+            .as_ref()
+            .map(|l| l.link_id.as_str())
+            .unwrap_or("null"),
         kept_in_album,
         blob_removed,
         chats_scrubbed,

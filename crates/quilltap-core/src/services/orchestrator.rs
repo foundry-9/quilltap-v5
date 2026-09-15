@@ -72,7 +72,10 @@
 //!   (v4's loops early-return with no markers) and `toolMessages` stays empty. A
 //!   non-empty tool slate is wave-4.
 //! * **`request_full_context` bypass / `forceToolsOnNextMessage`**: their flag
-//!   reads are reproduced; the corpus keeps the flags clear.
+//!   reads are reproduced; the corpus keeps `forceToolsOnNextMessage` clear,
+//!   and sets `requestFullContextOnNextMessage` only on the held-turn case
+//!   `ed000005` (P4.D186), where it is the discriminator for the `!hold`
+//!   conjunct on v4's side.
 //!
 //! ## `executeTurnChain`
 //!
@@ -1033,8 +1036,8 @@ where
     // The predicate is consulted ONCE, here, off the FRESH chat row read above —
     // never the caller's copy and never re-evaluated at the seam, so a row that
     // changes underneath the turn cannot make the spine hold half a message.
-    // `paused_hold_equivalence` pins the predicate; the four references below are
-    // to this local.
+    // `paused_hold_equivalence` pins the predicate; the five references below
+    // (the log branch, three `!hold` conjuncts, the seam) are to this local.
     let hold_for_paused_chat = crate::services::paused_hold::should_hold_user_turn_for_pause(
         crate::services::paused_hold::PausedHoldInput {
             is_continue_mode,
@@ -1276,10 +1279,11 @@ where
     }
 
     // --- Context compression setup (orchestrator.service.ts:371–418) ---
-    // requestFullContextOnNextMessage bypass gate (corpus keeps it clear). The
-    // ported `ChatUpdate` carries no setter for this column (no ported op writes
-    // it), so a chat that HAD it set is a documented deferral; the corpus keeps
-    // it clear, so the flag reset never fires and no write is missed.
+    // requestFullContextOnNextMessage bypass gate. The ported `ChatUpdate`
+    // carries no setter for this column (no ported op writes it), so a chat that
+    // HAD it set is a documented deferral: the corpus keeps it clear on every
+    // case but the held-turn `ed000005`, so the flag reset never fires and no
+    // write is missed.
     // Held posts build no request, so the flag must survive to be spent by the turn
     // the user eventually asks for. ⚠ MEASURED: in v4 this conjunct also withholds
     // the `requestFullContextOnNextMessage: false` reset write; v5 has never

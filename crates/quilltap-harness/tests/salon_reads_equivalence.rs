@@ -234,6 +234,14 @@ fn salon_reads_match_oracle() {
         // P4.D182's gate because this test SKIPs (and passes) when its oracle
         // var is unset, and cargo captures a passing test's output.
         quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+        // …and the counter planted at 7 on every chat, as the oracle plants it:
+        // the chat GET's `transcriptVersion` is a projected VALUE, and at the
+        // healed `DEFAULT 0` a hard-coded zero would pass this family (the
+        // `31436bae4` unification review's catch). The key-order pin below sees
+        // paths; this makes the number itself a comparand.
+        w.connection()
+            .execute("UPDATE \"chats\" SET \"transcriptVersion\" = 7", [])
+            .expect("plant the transcript counter on the vintage fixture");
     }
     let db = Db::open(
         DbPaths {

@@ -329,6 +329,212 @@ fn mount_blob_exists(mount: &Connection, storage_key: &str) -> bool {
 mod tests {
     use super::*;
 
+    // ── The lookup's four rules and its four log lines, on raw connections ──
+    //
+    // Thread-scoped capture (`test_support::captured_with`) sees what THIS
+    // thread logs, and production reaches the lookup through the writer thread
+    // (`with_both_conns`), so the job-level tier-3 family cannot pin these
+    // lines; the module pins them on the connections it is handed.
+
+    const OWNER: &str = "a1000000-0000-4000-8000-000000000001";
+    const OTHER: &str = "a1000000-0000-4000-8000-000000000002";
+    const KEY: &str = "v1:k";
+
+    fn pair() -> (rusqlite::Connection, rusqlite::Connection) {
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, userId TEXT, sha256 TEXT, \
+             originalFilename TEXT, mimeType TEXT, size REAL, width REAL, height REAL, \
+             isPlainText INTEGER, linkedTo TEXT, source TEXT, category TEXT, \
+             generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
+             generationKey TEXT, description TEXT, tags TEXT, projectId TEXT, folderPath TEXT, \
+             storageKey TEXT, fileStatus TEXT, createdAt TEXT, updatedAt TEXT);",
+        )
+        .unwrap();
+        let mount = rusqlite::Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY, sha256 TEXT, \
+                 fileSizeBytes INTEGER, fileType TEXT, source TEXT, createdAt TEXT, updatedAt TEXT);",
+            )
+            .unwrap();
+        mount
+            .execute_batch(crate::db::doc_mount_blobs::CREATE_TABLE_SQL)
+            .unwrap();
+        (main, mount)
+    }
+
+    fn plant_blob(mount: &rusqlite::Connection, blob_id: &str) {
+        mount
+            .execute(
+                "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
+                 VALUES (?1, 'ab', 2, 'image/webp', 'UPLOAD', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![format!("mf-{blob_id}")],
+            )
+            .unwrap();
+        mount
+            .execute(
+                "INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'ab', 2, 'image/webp', x'5249', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![blob_id, format!("mf-{blob_id}")],
+            )
+            .unwrap();
+    }
+
+    fn plant_row(
+        main: &rusqlite::Connection,
+        id: &str,
+        tag: &str,
+        storage_key: Option<&str>,
+        created_at: &str,
+    ) {
+        main.execute(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, linkedTo, \
+             source, category, generationKey, tags, storageKey, createdAt, updatedAt) \
+             VALUES (?1, 'u', 'ab', 'avatar_x.webp', 'image/webp', 2, '[]', 'GENERATED', 'IMAGE', \
+             ?2, ?3, ?4, ?5, ?5)",
+            rusqlite::params![id, KEY, format!("[\"{tag}\"]"), storage_key, created_at],
+        )
+        .unwrap();
+    }
+
+    fn keys() -> AvatarCacheKeys {
+        AvatarCacheKeys {
+            key: KEY.to_string(),
+            legacy_key: "v0:never".to_string(),
+        }
+    }
+
+    #[test]
+    fn the_newest_holder_of_a_key_wins_and_logs_a_hit() {
+        let (main, mount) = pair();
+        plant_blob(&mount, "b-old");
+        plant_blob(&mount, "b-new");
+        // Inserted OLDEST FIRST, so rowid order is the WRONG order and only the
+        // sort makes the newest win — a deleted (or tie-everything) sort hands
+        // back `f-old` here. The first draft inserted them newest-first and the
+        // mutation survived: a stable sort over equal keys keeps rowid order.
+        plant_row(
+            &main,
+            "f-old",
+            OWNER,
+            Some("mount-blob:mp:b-old"),
+            "2026-01-01T00:00:00.000Z",
+        );
+        plant_row(
+            &main,
+            "f-new",
+            OWNER,
+            Some("mount-blob:mp:b-new"),
+            "2026-02-01T00:00:00.000Z",
+        );
+        let (hit, lines) = crate::test_support::captured_with(|| {
+            lookup_cached_avatar(&main, &mount, &keys(), OWNER)
+        });
+        assert_eq!(hit.map(|f| f.id).as_deref(), Some("f-new"));
+        assert!(
+            lines.iter().any(|l| l.contains("[AvatarCache] Hit")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("[AvatarCache] Miss")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_keyed_row_without_a_storage_key_is_skipped_and_the_lookup_logs_a_miss() {
+        let (main, mount) = pair();
+        plant_row(&main, "f-bare", OWNER, None, "2026-01-01T00:00:00.000Z");
+        let (hit, lines) = crate::test_support::captured_with(|| {
+            lookup_cached_avatar(&main, &mount, &keys(), OWNER)
+        });
+        assert!(hit.is_none());
+        assert!(
+            lines.iter().any(|l| l.contains("[AvatarCache] Miss")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("[AvatarCache] Hit")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_cross_character_holder_is_skipped_silently() {
+        let (main, mount) = pair();
+        plant_blob(&mount, "b1");
+        plant_row(
+            &main,
+            "f-theirs",
+            OTHER,
+            Some("mount-blob:mp:b1"),
+            "2026-01-01T00:00:00.000Z",
+        );
+        let (hit, lines) = crate::test_support::captured_with(|| {
+            lookup_cached_avatar(&main, &mount, &keys(), OWNER)
+        });
+        assert!(hit.is_none());
+        assert!(
+            lines.iter().any(|l| l.contains("[AvatarCache] Miss")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Hit") || l.contains("blob is gone")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_gone_blob_logs_regenerating_and_the_lookup_misses() {
+        let (main, mount) = pair();
+        plant_row(
+            &main,
+            "f-gone",
+            OWNER,
+            Some("mount-blob:mp:b-gone"),
+            "2026-01-01T00:00:00.000Z",
+        );
+        let (hit, lines) = crate::test_support::captured_with(|| {
+            lookup_cached_avatar(&main, &mount, &keys(), OWNER)
+        });
+        assert!(hit.is_none());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[AvatarCache] Cached avatar blob is gone, regenerating")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("[AvatarCache] Miss")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4's `catch` warns and returns `null` at once — no `Miss` line follows,
+    /// and the legacy key is not tried.
+    #[test]
+    fn a_failed_read_warns_and_is_a_miss_without_the_miss_line() {
+        let (main, mount) = pair();
+        main.execute_batch("DROP TABLE files;").unwrap();
+        let (hit, lines) = crate::test_support::captured_with(|| {
+            lookup_cached_avatar(&main, &mount, &keys(), OWNER)
+        });
+        assert!(hit.is_none());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[AvatarCache] Lookup failed, treating as a miss")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("[AvatarCache] Miss")),
+            "{lines:?}"
+        );
+    }
+
     /// The `undefined`/absent identity the module doc claims, on the v5 side:
     /// there is nothing to filter, so an absent key and a `None` that serde
     /// omits are literally one preimage.

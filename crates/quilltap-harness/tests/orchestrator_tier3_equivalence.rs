@@ -1544,6 +1544,11 @@ fn orchestrator_tier3_matches_oracle() {
             if kind == "CONVERSATION_RENDER" {
                 render_rows += 1;
             }
+            // `SCENE_STATE_TRACKING` is a FORWARD guard: nothing in v5 enqueues
+            // that kind yet (the trigger is unported — `spine.rs` says so), so
+            // only the `CONVERSATION_RENDER` half is live and only that half
+            // has the non-vacuity floor below. The kind stays named so the day
+            // the trigger lands, a held turn cannot fire it unnoticed.
             if kind != "CONVERSATION_RENDER" && kind != "SCENE_STATE_TRACKING" {
                 continue;
             }

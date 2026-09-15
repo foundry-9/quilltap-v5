@@ -1253,8 +1253,16 @@ describe('SalonConversation — a paused room grants one turn and no more (bugs 
     // stopped dead after one reply. The order is the fix: the server reads
     // `isPaused` when the continue-mode turn arrives, so the resume has to be
     // persisted before the request goes out.
-    const { client, dispatch } = stubClient(groupChat({ isPaused: true }));
+    // v4 then calls `handleContinue` — ASK the server who is up, and name that
+    // seat (`useTurnManagement.ts:178-205`); its v5 twin is `onSidebarSkip`, so
+    // the resume is followed by the turn query, then the named send.
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
     const fixture = await render(client);
+    // The render's own mount-time turn query precedes everything; only the
+    // calls the Continue itself makes are the order under test.
+    const mounted = dispatch.mock.calls.length;
 
     await (
       fixture.componentInstance as unknown as { onAllLLMContinue(): Promise<void> }
@@ -1262,10 +1270,15 @@ describe('SalonConversation — a paused room grants one turn and no more (bugs 
     await new Promise((r) => setTimeout(r, 0));
 
     const order = dispatch.mock.calls
+      .slice(mounted)
       .map((c) => c[0] as CoreRequest)
-      .filter((r) => r.type === 'chatUpdate' || r.type === 'chatSend')
+      .filter((r) => r.type === 'chatUpdate' || r.type === 'chatTurnAction' || r.type === 'chatSend')
       .map((r) => r.type);
-    expect(order).toEqual(['chatUpdate', 'chatSend']);
+    expect(order).toEqual(['chatUpdate', 'chatTurnAction', 'chatSend']);
+    const send = dispatch.mock.calls
+      .map((c) => c[0] as CoreRequest)
+      .find((r) => r.type === 'chatSend') as { respondingParticipantId?: string };
+    expect(send.respondingParticipantId).toBe('pA');
     const update = dispatch.mock.calls
       .map((c) => c[0] as CoreRequest)
       .find((r) => r.type === 'chatUpdate') as { chat?: { isPaused?: boolean } };

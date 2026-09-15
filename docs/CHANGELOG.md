@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-15 — fix(unify): the `31436bae4` round's §3 review findings — a swap-remove reaching disk, a sweep on a failed read, a beat that could never run, five unpinned log lines, and eleven smaller repairs
+
+_Versions: core 0.0.913, harness 0.0.805, web 0.0.146, host 0.0.134, SPA 0.5.719._
+
+Three would have shipped. `scrub_chat_avatars` used `Map::remove` under
+`preserve_order` — a swap-remove — so a three-seat chat's `characterAvatars`
+reached disk in an order v4 never writes (every fixture chat wore one key and
+the family sorts keys): `shift_remove`, the committed `avatar-rolls-*` pair
+rebuilt with chat A wearing three seats and the scrubbed one in the middle,
+the family pinning the raw key order. The Salon's turn tail seeded the
+transcript off the query's last good data and marked the read OK even when the
+turn-boundary chat GET had failed, so the sweep could delete the operator's
+own line (v4 sets the flag inside the try): `settleTranscriptAfterTurn()`,
+spec-pinned by putting the query in the error state. P4.D184's Tier-1 item 5
+was never built: the cache's four lines are pinned on raw connections and the
+job's `Reused …` line is captured on the tier-3 hit case with its silence on a
+forced reroll.
+
+Also fixed: the `heldUserTurn` source census stripped test modules at the
+FIRST `#[cfg(test)]` and so never scanned `help_chat/orchestrator.rs`'s emit
+site (brace balance now, zone asserted); the chat GET's `transcriptVersion`
+value was unpinned (a hard-coded 0 passed everything) and the read-order guard
+lacked its chat-GET arm; the collapse heal's error arm — v4 logs `Failed to
+collapse duplicate avatar rolls` and boots on where v5's `?` aborted the boot;
+the `force` wire's write half through the real enqueue; `leafCounts` on the
+reuse line and the `…concierge-route` build context on a pre-generation swap;
+the three `[AvatarRolls]` lines under capture (one logged `""` for v4's
+`null`); the rolls query gate's `Infinity` and safe-integer arms (`?offset=1e30`
+answered 200) with three new oracle cases; a failed byte read answering the
+empty-bytes 400 where v4 answers 500; bug 139's second half calling the
+`handleContinue` twin; the `swipeOverride` layer that shadowed the reconcile's
+id-carry; a delete MISS toasting success where v4 toasts the 404 sentence;
+two reduced `files` DDL mirrors and two committed-pair readers the
+`generationKey` widening reddened behind their SKIPs; and comment, count and
+divergence-note corrections in five files.
+
 #### 2026-09-14 — chore(unify): recount the round's version bumps as base plus every lane's delta
 
 _Versions: core 0.0.912, harness 0.0.804, web 0.0.145, SPA 0.5.718._

@@ -35,7 +35,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/avatar-rolls-tier2.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/avatar-rolls.json"       "$TMPO/fixtures/"
- *   cd /tmp/qt-v4-pin-p4d185-31436bae4
+ *   cd ~/source/quilltap-server   # (pinned: pass --v4 <pin> to the sweep driver)
  *   TZ=UTC \
  *   QT_FIXTURE_AR_MAIN=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-main.db \
  *   QT_FIXTURE_AR_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/avatar-rolls-mount.db \
@@ -449,6 +449,12 @@ async function main(): Promise<void> {
     { name: 'route_list_limit_float', op: rGet(ROLF, '?limit=1.5') },
     { name: 'route_list_limit_too_big', op: rGet(ROLF, '?limit=201') },
     { name: 'route_list_offset_negative', op: rGet(ROLF, '?offset=-1') },
+    // Zod 4's TYPE check refuses a non-finite number by NAME, aborting; its
+    // `.int()` bound to the safe-integer range is CONTINUABLE, so a huge value
+    // answers that sentence AND the min/max one, joined (measured at the pin).
+    { name: 'route_list_limit_infinity', op: rGet(ROLF, '?limit=Infinity') },
+    { name: 'route_list_offset_huge', op: rGet(ROLF, '?offset=1e30') },
+    { name: 'route_list_limit_negative_huge', op: rGet(ROLF, '?limit=-1e30') },
     // Two issues → v4 joins the messages with `; `.
     { name: 'route_list_both_bad', op: rGet(ROLF, '?limit=0&offset=-1') },
     { name: 'route_list_missing_character', op: rGet(NOBODY, '') },

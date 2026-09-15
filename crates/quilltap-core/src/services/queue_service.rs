@@ -1601,3 +1601,80 @@ pub fn enqueue_character_headshoulders_backfill_blocking(
     Ok((id, true))
 }
 // === end P4.82 ===
+
+#[cfg(test)]
+mod avatar_enqueue_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    async fn test_db(tag: &str) -> Db {
+        let path =
+            std::env::temp_dir().join(format!("qt-avatar-enqueue-{tag}-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(
+            DbPaths {
+                main: path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            "dGVzdC1wZXBwZXItZm9yLWF2YXRhci1lbnF1ZXVl",
+        )
+        .expect("open test db");
+        db.write(|ws| {
+            ws.main()
+                .connection()
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS background_jobs (
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, status TEXT,
+                       payload TEXT, priority REAL, attempts REAL, maxAttempts REAL,
+                       lastError TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT,
+                       createdAt TEXT, updatedAt TEXT);",
+                )
+                .map_err(Into::into)
+        })
+        .await
+        .expect("create tables");
+        db
+    }
+
+    async fn payload_of(db: &Db, job_id: &str) -> Value {
+        let id = job_id.to_string();
+        let raw: String = db
+            .read_main(move |c| {
+                c.query_row(
+                    "SELECT payload FROM background_jobs WHERE id = ?1",
+                    rusqlite::params![id],
+                    |r| r.get(0),
+                )
+                .map_err(Into::into)
+            })
+            .expect("the job row");
+        serde_json::from_str(&raw).expect("payload json")
+    }
+
+    /// The `force` wire's WRITE half, end to end through the enqueue — the
+    /// manual regenerate's row carries a literal `true`, the automatic
+    /// trigger's row carries NO `force` key at all (v4 `...(force ? { force:
+    /// true } : {})`). The tier-3 family constructs its payload in Rust, so
+    /// without this a deleted `payload.insert` would leave every test green.
+    #[tokio::test]
+    async fn the_manual_reroll_writes_force_true_and_the_automatic_trigger_writes_no_key() {
+        let db = test_db("force").await;
+        let (manual, _) =
+            enqueue_character_avatar_generation(&db, "u1", "chat-a", "ch1", "p1", None, true)
+                .await
+                .expect("enqueue manual");
+        let payload = payload_of(&db, &manual).await;
+        assert_eq!(payload["force"], Value::Bool(true), "{payload}");
+
+        let (auto, _) =
+            enqueue_character_avatar_generation(&db, "u1", "chat-b", "ch1", "p1", None, false)
+                .await
+                .expect("enqueue automatic");
+        let payload = payload_of(&db, &auto).await;
+        assert!(
+            payload.get("force").is_none(),
+            "an automatic trigger must not carry the key: {payload}"
+        );
+    }
+}

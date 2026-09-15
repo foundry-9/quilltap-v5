@@ -165,6 +165,24 @@ async function runCase(
   } catch {
     // already present
   }
+  // P4.D182/P4.D183 (the `31436bae4` round): the pair also predates
+  // `chats.transcriptVersion` (and `files.generationKey`, which the Rust side
+  // needs to read attachments at all). Heal both, then plant a NON-ZERO
+  // counter on every chat: the chat GET projects the stored value (v4 reads it
+  // raw through `getTranscriptVersion`), and at zero a hard-coded `0` on the
+  // port is indistinguishable from the read — the unification review found
+  // exactly that blindness. The Rust side plants the same 7.
+  try {
+    await rawQuery('ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0');
+  } catch {
+    // already present
+  }
+  try {
+    await rawQuery('ALTER TABLE "files" ADD COLUMN "generationKey" TEXT');
+  } catch {
+    // already present
+  }
+  await rawQuery('UPDATE "chats" SET "transcriptVersion" = 7');
 
   // P4.D60 (bug 51): inject live impersonation state so the GET projection
   // exercises the non-default arm (the columns are stored as JSON string / text).

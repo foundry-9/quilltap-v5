@@ -682,15 +682,35 @@ fn avatar_job_matches_oracle() {
                 force: case.force_on_second_run,
                 ..payload.clone()
             };
-            got_threw_second = rt
-                .block_on(handle_character_avatar_generation(
+            // The job's ONE new info line (`7fbf8a55b`) is emitted on this
+            // thread after the lookup's write returns, so a thread-scoped capture
+            // sees it; its silence on a forced reroll is the same pin's other
+            // half. (The cache module's own four lines are pinned in
+            // `avatar_cache.rs`'s unit tests — they fire on the writer thread.)
+            let (second_outcome, second_lines) = quilltap_core::test_support::captured_with(|| {
+                rt.block_on(handle_character_avatar_generation(
                     &db,
                     &deps,
                     &case.user_id,
                     &second,
                     "job-1",
                 ))
-                .err();
+            });
+            got_threw_second = second_outcome.err();
+            let reused = second_lines.iter().any(|l| {
+                l.contains("[CharacterAvatar] Reused cached avatar for this configuration")
+            });
+            match label.as_str() {
+                "cache_hit_second_run" => assert!(
+                    reused,
+                    "{label}: the hit must log the reuse: {second_lines:?}"
+                ),
+                "cache_force_rerolls" => assert!(
+                    !reused,
+                    "{label}: a forced reroll never logs a reuse: {second_lines:?}"
+                ),
+                _ => {}
+            }
         }
         assert_eq!(
             got_threw_second, want.threw_second,

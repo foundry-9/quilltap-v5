@@ -555,7 +555,24 @@ async function main(): Promise<void> {
   const worn = {
     [ROLF]: { imageId: F_ROLL_NEW, generatedAt: TS, afterMessageCount: 0 },
   };
-  await mkChat(CHAT_WEARING_A, 'Wearing A', worn);
+  // Chat A wears FOUR seats' avatars with ROLF's key SECOND. v4's
+  // `scrubChatAvatars` spreads the map and `delete`s one key, which keeps the
+  // survivors' insertion order (SAGE, TALL, FOURTH); the port must not reorder
+  // them. Under `preserve_order` a `Map::remove` is a SWAP-remove that drops
+  // the LAST key into ROLF's slot (SAGE, FOURTH, TALL) — the shape the round's
+  // §3 review caught, invisible while every chat wore exactly one key. Four
+  // keys, not three: with the scrubbed key second-to-last a swap-remove and a
+  // shift-remove agree, and the first draft's mutation survived exactly so.
+  // The ordered key list is compared raw in `delete_scrubs_everything` (the
+  // family's `sorted()` cannot see it).
+  const FOURTH = 'a1000000-0000-4000-8000-000000000004';
+  const wornFour = {
+    [SAGE]: { imageId: F_ROLL_SAGE, generatedAt: TS, afterMessageCount: 0 },
+    [ROLF]: { imageId: F_ROLL_NEW, generatedAt: TS, afterMessageCount: 0 },
+    [TALL]: { imageId: F_ROLL_TALL, generatedAt: TS, afterMessageCount: 0 },
+    [FOURTH]: { imageId: F_ROLL_TALL, generatedAt: TS, afterMessageCount: 0 },
+  };
+  await mkChat(CHAT_WEARING_A, 'Wearing A', wornFour);
   await mkChat(CHAT_WEARING_B, 'Wearing B', worn);
   await mkChat(CHAT_BARE, 'Bare', {});
 

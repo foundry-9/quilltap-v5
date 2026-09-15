@@ -317,9 +317,29 @@ fn avatar_roll_query_issues(query: &std::collections::HashMap<String, String>) -
             issues.push("Invalid input: expected number, received NaN".to_string());
             continue;
         }
-        if n.fract() != 0.0 || !n.is_finite() {
+        // Zod 4's `z.number()` refuses a non-finite value at the TYPE check,
+        // naming the value (`Number('Infinity')` is a real number in JS, so it
+        // reaches the schema) — an aborting issue, nothing else is reported.
+        if !n.is_finite() {
+            issues.push(format!(
+                "Invalid input: expected number, received {}",
+                if n > 0.0 { "Infinity" } else { "-Infinity" }
+            ));
+            continue;
+        }
+        if n.fract() != 0.0 {
             issues.push("Invalid input: expected int, received number".to_string());
             continue;
+        }
+        // `.int()` also bounds a whole number to the safe-integer range, and
+        // that issue is CONTINUABLE: Zod goes on to the `min`/`max` checks and
+        // the route joins every issue with `; ` (measured against v4's own zod
+        // at the pin: `?limit=1e30` answers both sentences).
+        const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
+        if n > MAX_SAFE {
+            issues.push("Too big: expected int to be <=9007199254740991".to_string());
+        } else if n < -MAX_SAFE {
+            issues.push("Too small: expected int to be >=-9007199254740991".to_string());
         }
         if n < min {
             issues.push(format!("Too small: expected number to be >={}", min as i64));

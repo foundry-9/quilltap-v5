@@ -515,6 +515,17 @@ fn open_work(spec: &Spec) -> Work {
     let mount = dir.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-archive-main.db"), &main).expect("copy main");
     std::fs::copy(fixtures_dir().join("character-archive-mount.db"), &mount).expect("copy mount");
+    // P4.D182 (the `31436bae4` round): the committed `character-archive-*` pair
+    // predates `files.generationKey`, which `FILE_ENTRY_COLUMNS` now names, so
+    // every `files` read against the bare copy answers `no such column`. Heal
+    // the copy the way boot heals an instance (the `salon_reads` idiom) — this
+    // family SKIPs without its oracle var, which is why no lane gate saw it and
+    // the unified sweep did.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open the copied main for the P4.D182 heal");
+        quilltap_core::test_support::ensure_p4d182_columns(w.connection());
+    }
     std::fs::create_dir_all(dir.path().join("files")).expect("files dir");
     let db = Db::open(
         DbPaths {

@@ -1470,22 +1470,20 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // `migrations_state` ledger, honoured in both directions — the real
                 // Friday instance has already been collapsed BY v4, so a v5 boot
                 // there must find the row and do nothing at all.
-                if let quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
-                    avatar_rows,
-                    configurations,
-                    rows_keyed,
-                    victims_deleted,
-                    blobs_deleted,
-                    chats_changed,
-                    characters_changed,
-                    messages_changed,
-                } = quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
+                //
+                // v4's migration body sits inside a `try/catch` that logs
+                // `Failed to collapse duplicate avatar rolls` and reports
+                // `success: false`; its runner records the failure, writes NO
+                // ledger row, and the instance boots on. A `?` here would abort
+                // the boot where v4 carries on — so the error is logged in v4's
+                // words and swallowed, and the next boot tries again (the pass
+                // is resumable by design, and no row was stamped).
+                match quilltap_core::db::avatar_rolls_collapse_heal::collapse_duplicate_avatar_rolls(
                     main,
                     Some(mount_index),
                     &quilltap_core::clock::now_iso(),
-                )? {
-                    tracing::info!(
-                        target: "quilltap::boot",
+                ) {
+                    Ok(quilltap_core::db::avatar_rolls_collapse_heal::CollapseOutcome::Ran {
                         avatar_rows,
                         configurations,
                         rows_keyed,
@@ -1494,8 +1492,29 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                         chats_changed,
                         characters_changed,
                         messages_changed,
-                        "Collapsed duplicate avatar rolls into one image per configuration"
-                    );
+                    }) => {
+                        tracing::info!(
+                            target: "quilltap::boot",
+                            avatar_rows,
+                            configurations,
+                            rows_keyed,
+                            victims_deleted,
+                            blobs_deleted,
+                            chats_changed,
+                            characters_changed,
+                            messages_changed,
+                            "Collapsed duplicate avatar rolls into one image per configuration"
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::error!(
+                            target: "quilltap::boot",
+                            context = "migrations.collapse-duplicate-avatar-rolls",
+                            error = %error,
+                            "Failed to collapse duplicate avatar rolls"
+                        );
+                    }
                 }
                 // === end P4.D184 ===
                 // === P4.D175 (v4 `78b381a96`, migration

@@ -644,6 +644,35 @@ fn avatar_rolls_match_oracle() {
         Minted::new(baked.clone()).walk(&mut g);
         let mut w = want;
         Minted::new(baked.clone()).walk(&mut w);
+        // `chats.characterAvatars` reaches DISK re-serialized from the map the
+        // scrub rewrote, and `sorted()` below is blind to key ORDER. v4's
+        // `{...existing}; delete next[id]` keeps the survivors in insertion
+        // order; a `Map::remove` under `preserve_order` swap-moves the last key
+        // into the hole (the round's §3 catch). Chat A wears FOUR seats with
+        // the scrubbed one SECOND, so the raw key sequence discriminates — with
+        // three, the scrubbed key is second-to-last and the two deletes agree.
+        if name == "delete_scrubs_everything" {
+            let keys_of = |v: &Value| -> Vec<String> {
+                v["state"]["chats"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|c| c["id"] == json!("c1000000-0000-4000-8000-000000000001"))
+                    .and_then(|c| c["characterAvatars"].as_object())
+                    .map(|o| o.keys().cloned().collect())
+                    .unwrap_or_default()
+            };
+            let (gk, wk) = (keys_of(&g), keys_of(&w));
+            assert!(
+                gk.len() >= 3,
+                "{name}: chat A must still wear at least THREE seats after the scrub, \
+                 or a swap-remove of the second-to-last key is invisible: {gk:?}"
+            );
+            assert_eq!(
+                gk, wk,
+                "{name}: surviving `characterAvatars` keys must keep v4's order (swap-remove?)"
+            );
+        }
         let (g, w) = (sorted(&g), sorted(&w));
         if g != w {
             eprintln!("[{name}] MISMATCH:\n{}", first_diff(&g, &w));
@@ -697,4 +726,104 @@ fn key_order_pin() {
         "OK: AvatarRollEntry key order matches v4 ({} keys).",
         got.len()
     );
+}
+
+/// The three `[AvatarRolls]` info lines (v4 `avatar-rolls-service.ts:180,
+/// 211, 301`) — a log-only surface no differential can see, pinned under a
+/// thread-scoped capture over raw connections onto a scratch copy of the
+/// committed pair (the service takes connections, so nothing here crosses the
+/// writer thread). The delete arm is the unlinked roll on purpose: v4 logs
+/// `rollLinkId: rollLink?.linkId ?? null`, and the port once rendered `""`.
+#[test]
+fn the_three_avatar_rolls_log_lines_fire_with_v4s_fields() {
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let scratch = std::env::temp_dir().join(format!("qt-avatar-rolls-logs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let main_p = scratch.join("main.db");
+    let mount_p = scratch.join("mount.db");
+    std::fs::copy(fixtures_dir().join("avatar-rolls-main.db"), &main_p).unwrap();
+    std::fs::copy(fixtures_dir().join("avatar-rolls-mount.db"), &mount_p).unwrap();
+    let main_w =
+        quilltap_core::db::Writer::open_writable(&main_p, &spec.test_pepper_base64).unwrap();
+    let mount_w =
+        quilltap_core::db::Writer::open_writable(&mount_p, &spec.test_pepper_base64).unwrap();
+    let (main, mount) = (main_w.connection(), mount_w.connection());
+
+    // 1. copied into the album — the bytes come off the roll's own blob.
+    let plan = svc::plan_album_save(main, mount, ROLF, F_ROLL_NEW).expect("plan");
+    let svc::AlbumSavePlan::NeedsBytes(needs) = plan else {
+        panic!("F_ROLL_NEW is not in the album yet");
+    };
+    let storage_key: String = main
+        .query_row(
+            "SELECT storageKey FROM files WHERE id = ?1",
+            rusqlite::params![F_ROLL_NEW],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let (_mp, blob_id) =
+        quilltap_core::services::file_storage::parse_mount_blob_storage_key(&storage_key).unwrap();
+    let bytes: Vec<u8> = mount
+        .query_row(
+            "SELECT data FROM doc_mount_blobs WHERE id = ?1",
+            rusqlite::params![blob_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let (link_id, lines) = quilltap_core::test_support::captured_with(|| {
+        svc::commit_album_save(
+            main,
+            mount,
+            ROLF,
+            F_ROLL_NEW,
+            &bytes,
+            &needs.original_filename,
+            &needs.mime_type,
+            &spec.kept_at,
+        )
+        .expect("commit")
+    });
+    assert!(
+        lines.iter().any(
+            |l| l.contains("[AvatarRolls] Roll copied into the photo album")
+                && l.contains(F_ROLL_NEW)
+                && l.contains(&link_id)
+        ),
+        "{lines:?}"
+    );
+
+    // 2. promoted to the portrait — `addedToAlbum` rides the line.
+    let (_, lines) = quilltap_core::test_support::captured_with(|| {
+        svc::point_portrait_at_link(main, mount, ROLF, F_ROLL_NEW, &link_id, true).expect("promote")
+    });
+    assert!(
+        lines.iter().any(
+            |l| l.contains("[AvatarRolls] Roll promoted to the character portrait")
+                && l.contains("added_to_album=true")
+        ),
+        "{lines:?}"
+    );
+
+    // 3. deleted — the UNLINKED roll, whose `rollLinkId` v4 logs as `null`.
+    let (out, lines) = quilltap_core::test_support::captured_with(|| {
+        svc::delete_avatar_roll(main, mount, ROLF, F_ROLL_NOLINK).expect("delete")
+    });
+    assert!(out.deleted);
+    let deleted = lines
+        .iter()
+        .find(|l| l.contains("[AvatarRolls] Roll deleted"))
+        .unwrap_or_else(|| panic!("no delete line: {lines:?}"));
+    assert!(
+        deleted.contains("roll_link_id=\"null\"") || deleted.contains("roll_link_id=null"),
+        "v4 logs `rollLinkId: null` for an unlinked roll, never the empty string: {deleted}"
+    );
+    assert!(
+        deleted.contains("kept_in_album=false") && deleted.contains("chats_scrubbed=0"),
+        "{deleted}"
+    );
+
+    drop(main_w);
+    drop(mount_w);
+    let _ = std::fs::remove_dir_all(&scratch);
 }

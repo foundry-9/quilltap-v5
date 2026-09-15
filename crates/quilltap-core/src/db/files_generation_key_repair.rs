@@ -23,7 +23,8 @@
 //! - column absent → ALTER, then the index;
 //! - column present, index absent (a fresh-provisioned instance, or a v4
 //!   instance whose migration half-ran) → the index alone;
-//! - both present → two cheap reads and nothing written.
+//! - both present → two cheap reads plus the idempotent `CREATE INDEX IF NOT
+//!   EXISTS`, which writes nothing.
 //!
 //! ## What is load-bearing
 //!
@@ -37,10 +38,24 @@
 //! On the shared Friday instance this is an exact no-op in both arms: v4's own
 //! migration runner has already added the column and created the index there.
 //!
+//! ## One recorded divergence: a FRESH instance
+//!
+//! v4's migration gates its WHOLE run on the column being absent
+//! (`shouldRun: !sqliteColumnExists('files', 'generationKey')`), and a fresh
+//! v4 instance provisions the column from `generateDDL` — so on a fresh v4
+//! instance the migration never runs and `idx_files_generationKey` is never
+//! created: v4's avatar-cache lookup is a table scan there. v5 creates the
+//! index on every entrance. Performance-only, in v5's favour, invisible to
+//! `provisioning_equivalence` (which compares the provisioner's output, not
+//! the post-boot instance), and a candidate upstream nicety. Recorded at the
+//! `31436bae4` round's unification rather than "closed" — the two arms below
+//! are v5's design, not a v4 gap this module fills.
+//!
 //! v4's migration pretty label (`lib/startup/prettify.ts`) has no v5 analog —
 //! recorded NO-PORT, the P4.D63 / P4.D73 / P4.D79 / P4.D171 precedent.
 //!
-//! Idempotent; one PRAGMA plus one `sqlite_master` probe on the happy path.
+//! Idempotent; one PRAGMA, one `sqlite_master` probe and one no-op
+//! `CREATE INDEX IF NOT EXISTS` on the happy path.
 
 use rusqlite::Connection;
 

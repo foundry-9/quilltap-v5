@@ -971,11 +971,50 @@ mod tests {
                 include_str!("help_chat/orchestrator.rs"),
             ),
         ];
+        /// Every `#[cfg(test)]`-gated item removed by BRACE BALANCE, so a
+        /// test module that sits mid-file (as `help_chat/orchestrator.rs`'s
+        /// `stream_conversion_tests` does, with production code BELOW it) does
+        /// not truncate the production zone. Splitting at the first attribute
+        /// scanned one sixth of that file and never reached its one emit site.
+        fn production_zone(src: &str) -> String {
+            let mut out = String::with_capacity(src.len());
+            let mut rest = src;
+            while let Some(at) = rest.find("#[cfg(test)]") {
+                out.push_str(&rest[..at]);
+                let after = &rest[at..];
+                let Some(open_rel) = after.find('{') else {
+                    break;
+                };
+                let mut depth = 0usize;
+                let mut end = None;
+                for (offset, ch) in after[open_rel..].char_indices() {
+                    match ch {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = Some(open_rel + offset + 1);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let Some(end) = end else {
+                    break;
+                };
+                rest = &after[end..];
+            }
+            out.push_str(rest);
+            out
+        }
         let mut setters: Vec<String> = Vec::new();
+        let mut zone_mentions = 0usize;
         for (name, src) in sources {
-            // Strip the file's own `#[cfg(test)]` module by braces, so a test
-            // fixture frame is never counted as a production emit.
-            let zone = src.split("\n#[cfg(test)]\n").next().unwrap_or(src);
+            let zone = production_zone(src);
+            if zone.contains("held_user_turn") {
+                zone_mentions += 1;
+            }
             for line in zone.lines() {
                 let t = line.trim();
                 if let Some(rest) = t.strip_prefix("held_user_turn:") {
@@ -995,13 +1034,13 @@ mod tests {
             "the one setter must live in orchestrator.rs, found {:?}",
             setters[0]
         );
-        // Non-vacuity: the census must actually be reading files that mention the
-        // field at all, or a rename would make it silently pass on zero matches.
-        let mentions = sources
-            .iter()
-            .filter(|(_, src)| src.contains("held_user_turn"))
-            .count();
-        assert_eq!(mentions, 2, "both orchestrators should name the field");
+        // Non-vacuity: the PRODUCTION ZONE of both files must name the field —
+        // a rename, or a zone that stops short of the emit site, would otherwise
+        // let the census pass on zero matches.
+        assert_eq!(
+            zone_mentions, 2,
+            "both orchestrators' production zones should name the field"
+        );
     }
     #[test]
     fn empty_response_done_carries_the_reason() {

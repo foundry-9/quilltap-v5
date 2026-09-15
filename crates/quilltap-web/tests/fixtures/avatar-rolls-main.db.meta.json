@@ -1,15 +1,15 @@
 {
-  "rolfVault": "8f353b9e-bfbf-450e-8f05-a08552b67aac",
-  "sageVault": "0c93ea5e-6d1e-4fcd-a51d-7fd0bba6eae6",
+  "rolfVault": "8d042c51-be24-4406-a7ad-0f1e7dbc765e",
+  "sageVault": "a241daa1-692f-4499-ac5c-4871731e5b69",
   "projectMp": "83000000-0000-4000-8000-000000000001",
   "linkIds": {
-    "rollNew": "21c49385-f71f-46be-aef1-c752e77a091a",
-    "rollKept": "4b71e38e-d8e2-4a25-89c2-11da94f690d7",
-    "rollKeptAlbum": "58ccefd4-623a-4a0d-b143-f649d034b102",
-    "rollAlbum": "231bb5b0-918d-4403-a324-239d17b220a3",
-    "rollLegacy": "3fc4639d-e8d5-46e5-8ee8-5406e53a3d0a",
-    "rollSage": "2ae25164-dfb2-440c-a08d-b7a4b095c4ba",
-    "notRoll": "9f027ff0-5743-4377-8bfb-c50a6c007e4a"
+    "rollNew": "641d1d87-7e30-4ae1-a51f-fd0ea572bbe0",
+    "rollKept": "ebf5ab48-e97a-4ade-9cb0-abdb7b5f67e6",
+    "rollKeptAlbum": "496c4c50-ef3b-4b3e-b82f-b2e5ed8769ec",
+    "rollAlbum": "9277d1cb-a4d8-429d-b3f8-04ecc4b8f976",
+    "rollLegacy": "05eb9ee0-f423-44a4-a6b7-e94e25ebc190",
+    "rollSage": "366d8565-707e-4b2d-9c46-211f59ffc1df",
+    "notRoll": "78f125b4-7865-42ca-9edf-a8885831e9d8"
   },
   "shas": {
     "rollNew": "9e682fea692fb84998d2da30eec075af8127fdec54c73ea0a4cf72b144e9b514",
@@ -21,19 +21,19 @@
     "notRoll": "cba5daa134a63de4d6ed1c5ecdf451459d26d158e10aaf9e7b053ac6cd9dc283"
   },
   "blobIds": {
-    "rollNew": "74e116b0-15f0-4324-84d3-9208c992f90b",
-    "rollKept": "c8a575e5-25b7-4d83-8904-2722fdb21e66",
-    "rollKeptAlbum": "c8a575e5-25b7-4d83-8904-2722fdb21e66",
-    "rollAlbum": "3874e930-4e9f-4d91-8ada-5c076456647b",
-    "rollLegacy": "ad56b4e5-dce0-4c42-bdb8-47044822c296",
-    "rollSage": "77a0cbfb-5cfc-4462-a4cb-05d6cd0a5514",
-    "notRoll": "6cc3333a-0ad6-4909-8567-082cb716ac73"
+    "rollNew": "facde722-a431-47ce-889d-f500ce86fda4",
+    "rollKept": "3c80cf4c-52c0-47ec-b38f-5b1afccb71cc",
+    "rollKeptAlbum": "3c80cf4c-52c0-47ec-b38f-5b1afccb71cc",
+    "rollAlbum": "25d71ec8-a3d5-4a60-80bb-ddfe6062d82f",
+    "rollLegacy": "e0bf770e-cfe9-438f-a6fa-a417e1e57b5a",
+    "rollSage": "8353f189-e2cc-4fd4-b3d3-9dd679b15dbd",
+    "notRoll": "6d3aa54e-dd03-4cf3-ad5e-f2d4a171b1b2"
   },
-  "rollNewLinkId": "21c49385-f71f-46be-aef1-c752e77a091a",
-  "rollKeptLinkId": "4b71e38e-d8e2-4a25-89c2-11da94f690d7",
-  "rollKeptAlbumLinkId": "58ccefd4-623a-4a0d-b143-f649d034b102",
-  "rollAlbumLinkId": "231bb5b0-918d-4403-a324-239d17b220a3",
-  "rollLegacyLinkId": "3fc4639d-e8d5-46e5-8ee8-5406e53a3d0a",
-  "rollSageLinkId": "2ae25164-dfb2-440c-a08d-b7a4b095c4ba",
-  "notRollLinkId": "9f027ff0-5743-4377-8bfb-c50a6c007e4a"
+  "rollNewLinkId": "641d1d87-7e30-4ae1-a51f-fd0ea572bbe0",
+  "rollKeptLinkId": "ebf5ab48-e97a-4ade-9cb0-abdb7b5f67e6",
+  "rollKeptAlbumLinkId": "496c4c50-ef3b-4b3e-b82f-b2e5ed8769ec",
+  "rollAlbumLinkId": "9277d1cb-a4d8-429d-b3f8-04ecc4b8f976",
+  "rollLegacyLinkId": "05eb9ee0-f423-44a4-a6b7-e94e25ebc190",
+  "rollSageLinkId": "366d8565-707e-4b2d-9c46-211f59ffc1df",
+  "notRollLinkId": "78f125b4-7865-42ca-9edf-a8885831e9d8"
 }

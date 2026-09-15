@@ -213,13 +213,6 @@ fn transcript_route_matches_oracle() {
     );
 
     let uid = &spec.user_id;
-    // (name, plant, the v5 call)
-    type Call = Box<dyn Fn(&Db) -> Response>;
-    let tv = |known: Option<Value>| -> Call {
-        Box::new(move |db: &Db| chat_transcript::chat_transcript(db, "", SOLO, known.as_ref()))
-    };
-    let _ = &tv;
-
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
 

@@ -25,6 +25,9 @@ use quilltap_core::db::Writer;
 use serde_json::Value;
 
 const ROLF: &str = "a1000000-0000-4000-8000-000000000001";
+/// The fixture's keyed roll with a BACKEND storage key and no mount link
+/// (`build-avatar-rolls-fixture.ts`, `F_ROLL_NOLINK`).
+const F_ROLL_NOLINK: &str = "f1000000-0000-4000-8000-000000000004";
 const TALL: &str = "a1000000-0000-4000-8000-000000000003";
 const NOBODY: &str = "a9000000-0000-4000-8000-0000000000ff";
 
@@ -135,8 +138,8 @@ async fn avatar_roll_routes_match_oracle() {
     }
     let route_cases = oracle.keys().filter(|k| k.starts_with("route_")).count();
     assert!(
-        route_cases >= 21,
-        "the oracle is stale: {route_cases} route cases, expected at least 21"
+        route_cases >= 24,
+        "the oracle is stale: {route_cases} route cases, expected at least 24"
     );
 
     let baked = baked_ids();
@@ -180,6 +183,21 @@ async fn avatar_roll_routes_match_oracle() {
             "route_list_offset_negative",
             "GET",
             format!("/{ROLF}/avatar-rolls?offset=-1"),
+        ),
+        (
+            "route_list_limit_infinity",
+            "GET",
+            format!("/{ROLF}/avatar-rolls?limit=Infinity"),
+        ),
+        (
+            "route_list_offset_huge",
+            "GET",
+            format!("/{ROLF}/avatar-rolls?offset=1e30"),
+        ),
+        (
+            "route_list_limit_negative_huge",
+            "GET",
+            format!("/{ROLF}/avatar-rolls?limit=-1e30"),
         ),
         (
             "route_list_both_bad",
@@ -303,4 +321,52 @@ async fn avatar_roll_routes_match_oracle() {
     }
 
     assert!(failed.is_empty(), "avatar-roll routes FAILED: {failed:?}");
+}
+
+/// A roll whose bytes cannot be READ is a 500, not a 400 (the `31436bae4`
+/// round's §3 review). v4's `readImageBuffer` throws on a failed read and the
+/// item route's ladder (`[fileId]/route.ts:44-57`) maps none of its four
+/// `includes` arms onto that message, so v4 answers `serverError(message)`
+/// beside `[Characters/AvatarRolls v1] Avatar roll action failed`; only a read
+/// that SUCCEEDS with nothing in it is the `has empty bytes` 400. Pinned here
+/// on the STATUS only: v4's body carries its storage manager's own sentence for
+/// the backend key (`<userId>/no-link.webp` names a backend this venue does
+/// not configure), and v5's carries its backend's — two engines' error prose,
+/// a recorded text divergence over one status class. `F_ROLL_NOLINK` is the
+/// fixture's keyed roll with a backend storage key and no mount link.
+#[tokio::test]
+async fn a_roll_whose_bytes_cannot_be_read_answers_500_not_400() {
+    let base = materialize();
+    let base_dir = base.path().to_path_buf();
+    let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
+        c.terminal = false;
+        c.spine = Some(std::sync::Arc::new(
+            quilltap_host::ProductionSpineFactory::new(base_dir, c.version.clone(), c.tz.clone()),
+        ));
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let url = format!(
+        "http://{addr}/api/v1/characters/{ROLF}/avatar-rolls/{F_ROLL_NOLINK}?action=save-to-album"
+    );
+    let resp = client.post(&url).send().await.expect("request");
+    let status = resp.status().as_u16();
+    let body: Value = resp.json().await.unwrap_or(Value::Null);
+    assert_eq!(
+        status, 500,
+        "a failed byte read is v4's 500, not the empty-bytes 400: {body}"
+    );
+    assert!(
+        body["error"].as_str().is_some_and(|e| !e.is_empty()),
+        "the 500 carries the read failure's sentence: {body}"
+    );
+    assert!(
+        !body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("has empty bytes"),
+        "a read that FAILED must not be reported as one that answered nothing: {body}"
+    );
+    drop(base);
 }

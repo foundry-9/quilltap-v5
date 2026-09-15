@@ -470,6 +470,25 @@ describe('AvatarRollsSection', () => {
     expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Roll discarded' });
   });
 
+  // v4 reaches the service through the REST edge, which turns a miss
+  // (`deleted: false`) into `notFound('Avatar roll')`, and `deleteRoll` toasts
+  // that 404's `body.error`. The dispatch verb hands the section the service's
+  // own shape, so the miss must be judged client-side — a success toast for a
+  // roll that was never there is the divergence the round's §3 review caught.
+  it('toasts v4’s 404 sentence on a delete MISS and invalidates nothing', async () => {
+    const stub = stubClient({
+      rolls: [roll()],
+      reply: () => ({ deleted: false, blobRemoved: false, chatsScrubbed: 0, keptInAlbum: false }),
+    });
+    const fixture = await render(stub.client);
+    await expand(fixture);
+    buttonByTitle(fixture, 'Discard this plate')!.click();
+    await flush(fixture);
+    buttonByTitle(fixture, 'Click again to confirm delete')!.click();
+    await flush(fixture);
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Avatar roll not found' });
+  });
+
   // v4 `:166` — the kept-copy arm has its own sentence.
   it('says the album copy stays when the server reports it kept', async () => {
     const stub = stubClient({
