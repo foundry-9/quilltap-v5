@@ -2324,9 +2324,16 @@ export class SalonConversation {
   /**
    * The floor is the banner's seat, but the composer is pointed somewhere else
    * — say so rather than inviting words that would land in another character's
-   * voice (v4 bug 146, `SalonView.tsx:1562`). Normally bug 49's turn-follow has
-   * already moved the composer; this is the reload case and the deliberate
-   * same-turn SpeakerSelector choice.
+   * voice (v4 bug 146, `SalonView.tsx:1562`). v4's comment names two ways in:
+   * "the reload case and the deliberate same-turn SpeakerSelector choice",
+   * because normally bug 49's turn-follow has already moved the composer.
+   *
+   * ⚠ MEASURED on v5: only the second reaches it. {@link turnFollow}'s latch
+   * (`lastFollowedTurnSeat`) is a plain instance field, so a reload starts it
+   * null and the follow fires again and re-moves the composer onto the floor —
+   * the two agree and this reads false. The deliberate pick is what parts them,
+   * and the latch then leaves it alone. The e2e beat
+   * (`salon-floor-seat-flow.spec.ts`) uses that gesture for the same reason.
    */
   protected readonly composerElsewhere = computed<boolean>(
     () => this.isSeatsTurn() && this.speakingSeat()?.id !== this.bannerSeat()?.id,

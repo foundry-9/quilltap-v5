@@ -216,6 +216,76 @@ assertion moves under this port.
 SPA gate at this unit: lint clean, `npm test` 434 spec files / 7,342 tests / 0
 failed, `npm run build` clean.
 
+### Unit 5 — the live e2e beat (`salon-floor-seat-flow.spec.ts`)
+
+A serial two-beat walk that builds its own chat (never a shared fixture chat —
+the title-checkpoint hazard) with one LLM seat and TWO seats the human drives,
+then proves the banner names the FLOOR and its Skip passes that turn.
+
+**Two cheaper levers were tried and REFUTED by measurement before this shape:**
+
+1. **The order's fair-rotation premise is wrong with an active LLM seat.**
+   `select_next_speaker_after_user_message` records the poster in the cycle and
+   then runs the ordinary weighted pick over everyone still un-spoken — with
+   seats A (user), B (user) and L (LLM), a post by A leaves {B, L} and the floor
+   is a coin flip. The help text's "a message from one of them hands the floor
+   straight to the other" is not a rule the selection enforces.
+2. **The manual turn queue never reaches `chatTurnAction query`.**
+   `handle_turn_action` rebuilds its `TurnState` from HISTORY
+   (`calculate_turn_state_from_history_with_cycle`), which does not read the
+   persisted `turnQueue` at all; only the turn-RUN path
+   (`resolve_responding_participant`) pops it. The first draft queued seat B and
+   asserted the floor — it passed one run and failed the next on the same code,
+   which is exactly what a coin flip looks like. The measurement is now in the
+   beat's header so the next reader does not re-derive it.
+
+**What the beat does instead: it removes the randomness.** It impersonates the
+LLM seat, so EVERY active seat is one the human drives (v4 bug 44's overlay —
+the durable `controlledBy: 'llm'` is untouched). Whichever seat the rotation
+lands on is then a floor seat the banner must speak for, so the walk is TOTAL:
+no branch of it depends on the draw, and the overlay arm runs live whenever the
+draw picks the LLM seat. The composer is then pointed at whichever OWNED user
+seat is not the floor — there are two, so one always qualifies, and the speaker
+selector offers only owned seats.
+
+The deliberate pick is not a convenience: bug 49's turn-follow defaults the
+speaking-as onto any user-driven floor seat, so on a fresh load the two agree
+and the fourth sentence is unreachable. v4 names that route in
+(`SalonView.tsx:1559-1562`) and the follow's seat-keyed latch leaves the pick
+alone.
+
+**The assertions, in order:** the plain turn sentence before the pick (the two
+agree); the fourth sentence naming the FLOOR's seat after it; the `skipUserTurn`
+dispatch body's `participantId` === the floor's id (the wait ARMED BEFORE the
+click); and the server's own transcript — every `systemKind: 'turn-pass'`
+message's `hostEvent.participantId` equals exactly `[floor.id]`. That last one
+is bug 146's actual harm read back, and it is read from the SERVER because the
+Salon renders a turn-pass as a COLLAPSED chip ("The Host / nothing to add") — an
+earlier draft asserted on the sentence and read back the chip.
+
+**What the first live runs caught (three gesture defects, no product defect):**
+
+| Run | Failure | Cause |
+|---|---|---|
+| 1 | `maybeUnlock` timed out on both locators | `/salon/<id>` on a locked instance renders neither the passphrase field nor the Chats heading; the unlock screen is the LIST route's. Fixed with `openBuiltChat`, which goes through `/salon` first. |
+| 2 | "the queue put B on the floor" — got another seat | the queue measurement above; run 3 passed the same assertion on the same code, which is the tell. |
+| 3/4 | the Host turn-pass sentence not in the DOM | it renders as a collapsed chip; the sentence is not in the page. Replaced with the server read of `hostEvent.participantId`. |
+
+**Mutation proof M11:** `onSkipUserTurn` reverted to `speakingSeat()` (the
+pre-fix code), SPA rebuilt, the beat re-run live.
+ It reddens the beat on the POST body
+(`Expected: <floor id>` / `Received: <composer id>`), which is exactly the
+assertion it targets; the file was then restored by backup, the SPA rebuilt and
+the beat re-run GREEN (2 passed, 1.6 m).
+
+**Tier 3 — the order's recorded non-deferrals:** no server behaviour changed
+(`chatTurnAction skipUserTurn` already accepts any user-driven seat, bug 123),
+and the wire is unchanged — `git diff --stat main...HEAD -- apps/web/src/app/
+core/core-contract.ts` is EMPTY, the tripwire the order names. P4.D58's
+weighted-random limitation is NOT moot for this feature the way the order
+predicted (the two-user-seat rotation is not deterministic — see above); the
+beat works around it with the overlay instead, and its header records that.
+
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 
 Ordered against baseline **`2f4254b42`** with **ZERO drift** (the generator

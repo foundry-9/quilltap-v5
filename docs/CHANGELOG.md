@@ -58,6 +58,42 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — test(e2e): the Skip banner's floor seat, walked live on a two-user-seat chat
+
+_Versions: SPA 0.5.725._
+
+A serial two-beat walk that builds its own chat (never a shared fixture chat)
+with one LLM seat and two seats the human drives, then proves the banner names
+the FLOOR and its Skip passes that turn.
+
+Two cheaper levers were tried and refuted by measurement first. The order's
+fair-rotation premise does not hold with an active LLM seat in the room: after
+the poster is recorded, the other user seat AND the LLM both go to the weighted
+pick, so the floor is a coin flip. And the manual turn queue never reaches
+`chatTurnAction query` — `handle_turn_action` rebuilds its `TurnState` from
+history and never reads the persisted `turnQueue`; only the turn-RUN path pops
+it. The first draft queued a seat and asserted the floor, passed one run and
+failed the next on the same code.
+
+So the beat removes the randomness rather than fighting it: it impersonates the
+LLM seat, making every active seat one the human drives, so whichever seat the
+rotation lands on is a floor seat the banner must speak for. The walk is total —
+no branch depends on the draw — and the overlay arm runs live whenever the draw
+picks the LLM seat.
+
+It asserts the plain turn sentence before the deliberate speaker pick, the
+fourth sentence naming the floor's seat after it, the `skipUserTurn` dispatch
+body's `participantId` (the wait armed before the click), and the server's own
+transcript: every turn-pass message's `hostEvent.participantId` equals exactly
+the floor's. That last one is bug 146's harm read back, and it comes from the
+server because the Salon renders a turn-pass as a collapsed chip.
+
+The first live runs caught three gesture defects and no product defect: the
+unlock screen belongs to the list route, not `/salon/<id>`; the queue
+measurement above; and the collapsed-chip transcript. Mutation proof M11 —
+`onSkipUserTurn` reverted to `speakingSeat()`, the SPA rebuilt and the beat
+re-run live — reddens it on the POST body.
+
 #### 2026-09-16 — fix(spa): the Skip banner speaks for the FLOOR, not the composer's seat (v4 bug 146)
 
 _Versions: SPA 0.5.724._
