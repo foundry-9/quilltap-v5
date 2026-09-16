@@ -165,6 +165,32 @@ than deleted: `db::chats_read` coerces a NULL column before the verb sees it,
 so that fallback is unreachable and kept only for v4 fidelity. The reason is
 now executable instead of a comment, as the null arm asserts the reader's
 guarantee directly.
+#### 2026-09-16 — fix(photos): the album predicate skips a RUN of trailing slashes, as Node does (P4.91)
+
+_Versions: core 0.0.928, harness 0.0.821._
+
+`photos_relative_path_equivalence` now drives
+`photos::photos_paths::is_photos_relative_path` — the home five modules already
+read — instead of the second copy in `db::doc_mount_file_links`, and the corpus
+grew from 13 rows to 30 with the slash shapes. Repointing FIRST is what made the
+growth mean anything: the copy the family used to drive was already Node-faithful,
+so the new rows would have gone green on arrival having measured nothing.
+
+Against the unchanged home the grown corpus went red on exactly three rows —
+`photos//`, `photos///`, `PHOTOS//` — because `path.posix.dirname` skips a whole
+run of trailing slashes before looking for the last separator (`photos//` is `.`,
+not `photos`) where the Rust helper stripped one. Node's own loop now lives in
+`photos_paths`, moved from the second copy rather than re-derived, and the family
+is green on all 30. `photos/sub//` was the order's open question and is measured
+as agreeing (both spellings land on a folder, just not the same one), and
+`photos//a.webp` is the one shape the run rule makes TRUE, through the `photos/`
+prefix test.
+
+Two things the predicate cannot see are pinned directly by a new
+`posix_dirname_matches_node` table of Node 24.13.1 output: the single-trailing-slash
+control, and the rooted `//photos` → `//` arm the copy this was moved from answered
+`/` for. The corpus floor is now an exact `== 30`, and the family collects every
+mismatch instead of asserting per row, so a red names the whole set.
 
 #### 2026-09-16 — docs(porting): order the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93)
 
