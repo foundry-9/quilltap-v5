@@ -1129,6 +1129,11 @@ struct FieldVisitor {
 /// layer that can fail is worse than one that logs a slightly wrong shape — it
 /// falls back to the raw string under the raw (suffixed) name, which is loud
 /// enough in the file to find.
+///
+/// The stem lands in `context` like any other field — a hypothetical
+/// `messageJson` or `errorJson` would sit under `context.message` /
+/// `context.error`, NOT in the record's envelope. No caller does that; the
+/// convention is for structured CONTEXT values only.
 const JSON_FIELD_SUFFIX: &str = "Json";
 
 impl FieldVisitor {

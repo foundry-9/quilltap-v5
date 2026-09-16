@@ -2148,9 +2148,11 @@ where
     };
 
     // Provider stop sequences (simple-json only). v4 passes these on the PRIMARY
-    // stream and on the TEXT continuation, and on neither of the native loop's
-    // two re-streams; `loop_base_params` below is what makes that true here, by
-    // clearing them off every copy the loops receive (P4.92).
+    // stream, on the TEXT continuation, and on the empty-response chain leg
+    // (`attempt_empty_response_recovery` forwards them to the understudy) — and
+    // on neither of the native loop's two re-streams; `loop_base_params` below
+    // is what makes that true here, by clearing them off every copy the loops
+    // receive while `params` itself keeps them for the recovery (P4.92).
     let initial_stop_sequences: Vec<String> = if resolved_tool_mode == ResolvedToolMode::SimpleJson
     {
         SIMPLE_JSON_STOP.iter().map(|s| s.to_string()).collect()
@@ -2939,7 +2941,7 @@ where
     // The strip is on the LOOP CLONES rather than on `params` itself, because
     // `params` has a FOURTH consumer below: `attempt_empty_response_recovery`,
     // and v4 passes THAT one `stop: initialStopSequences`
-    // (`orchestrator.service.ts:1636`). Its chain leg forwards them to the
+    // (`orchestrator.service.ts:1637`). Its chain leg forwards them to the
     // understudy (`provider_failover.rs`'s `walk_fallback_chain`, v4
     // `provider-failover.service.ts:653`), so blanking `params.stop` in place
     // would silently take a pseudo-tool profile's framing off the swap.

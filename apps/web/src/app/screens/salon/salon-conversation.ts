@@ -2068,7 +2068,13 @@ export class SalonConversation {
    * That is v4's shape too — its effect depends on the same two chat fields —
    * and the only window where the two disagree is a chat GET issued BEFORE a
    * turn action's resolve-and-persist and resolved after it, which v4 has
-   * identically. No guard is invented here that v4 lacks.
+   * identically. No guard is invented here that v4 lacks. The same rule holds
+   * with NO read involved: this effect re-runs on every `busy()` flip with the
+   * cached row, so a rotation `applyTurnResponse` adopted from a `query` is
+   * overwritten by the row's own string on the next send. v4 does exactly that
+   * (its effect re-runs on the optimistic bubble), and the row is the persisted
+   * result of that very query, so the two strings agree whenever the read is
+   * current — pinned in the spec beside the legacy-server arm.
    *
    * Still gated on PRESENCE, but the gate now means LEGACY SERVER, not
    * dormancy: a server predating `1fefadb9a` omits both keys, and this effect

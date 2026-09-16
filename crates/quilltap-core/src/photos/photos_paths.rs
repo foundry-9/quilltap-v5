@@ -19,8 +19,9 @@ pub fn build_photos_relative_path(filename: &str) -> String {
 /// `photos` or a `photos/…` prefix.
 ///
 /// The ONE home since P4.91 — v4 has one too (`lib/photos/photos-paths.ts`,
-/// imported by all 21 of its call sites), and v5 briefly had a second copy in
-/// `db::doc_mount_file_links` that differed on trailing-slash runs. Driven by
+/// imported by all 21 of its call sites), and v5 had — from Phase 3 (W4.8)
+/// until P4.91 — a second copy in `db::doc_mount_file_links` that differed on
+/// trailing-slash runs. Driven by
 /// `photos_relative_path_equivalence` over v4's real function.
 pub fn is_photos_relative_path(relative_path: Option<&str>) -> bool {
     let Some(rel) = relative_path else {

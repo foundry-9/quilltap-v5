@@ -396,11 +396,19 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     // on the collapsed strip's badge (measured: the expanded card has no
     // status render) — so the sidebar is collapsed for this arm.
     {
-      // Impersonate the first LLM seat, then reload so the client adopts it.
-      const impResp = await page.request.post('/api/dispatch', {
-        data: { type: 'chatImpersonate', chatId, participantId: activeLlmSeats[0].id },
-      });
-      expect(impResp.ok(), `chatImpersonate → ${impResp.status()}`).toBe(true);
+      // Impersonate EVERY LLM seat, then reload so the client adopts them.
+      // Both, not one: with a seat still LLM-driven, an off-turn Skip could
+      // hand the floor to it and run a real turn, and the model's reply would
+      // complete the cycle and reset the spoken column before the poll read
+      // it (the `1fefadb9a` round's §3 review). With every seat user-driven,
+      // no Skip ever calls a model.
+      for (const seat of activeLlmSeats) {
+        const impResp = await page.request.post('/api/dispatch', {
+          data: { type: 'chatImpersonate', chatId, participantId: seat.id },
+        });
+        expect(impResp.ok(), `chatImpersonate(${seat.id}) → ${impResp.status()}`).toBe(true);
+      }
+      const llmSeatIds = new Set(activeLlmSeats.map((s) => s.id));
 
       await page.evaluate(() => localStorage.setItem('quilltap.chat-sidebar.collapsed', 'true'));
       await page.reload();
@@ -424,20 +432,34 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
       // The Skip's own request tells us which seat held the floor — armed
       // BEFORE the click (an assertion after a click reads the pre-click
       // state).
-      const skipPost = page.waitForRequest((req) => {
-        if (!req.url().includes('/api/dispatch') || req.method() !== 'POST') return false;
-        try {
-          return (JSON.parse(req.postData() ?? '{}') as { action?: string }).action === 'skipUserTurn';
-        } catch {
-          return false;
-        }
-      }, { timeout: 20_000 });
+      const armSkipPost = () =>
+        page.waitForRequest((req) => {
+          if (!req.url().includes('/api/dispatch') || req.method() !== 'POST') return false;
+          try {
+            return (JSON.parse(req.postData() ?? '{}') as { action?: string }).action === 'skipUserTurn';
+          } catch {
+            return false;
+          }
+        }, { timeout: 20_000 });
       const banner = page.locator('.qt-chat-user-turn-banner');
-      await expect(banner).toBeVisible({ timeout: 20_000 });
-      await banner.getByRole('button', { name: 'Skip' }).click();
-      const skipped = (JSON.parse((await skipPost).postData() ?? '{}') as { participantId?: string })
-        .participantId!;
-      expect(skipped, 'the Skip named a seat').toBeTruthy();
+      const skipOnce = async (): Promise<string> => {
+        const skipPost = armSkipPost();
+        await expect(banner).toBeVisible({ timeout: 20_000 });
+        await banner.getByRole('button', { name: 'Skip' }).click();
+        const id = (JSON.parse((await skipPost).postData() ?? '{}') as { participantId?: string })
+          .participantId!;
+        expect(id, 'the Skip named a seat').toBeTruthy();
+        return id;
+      };
+      // The floor is the server's draw and may land on the OWNER seat first;
+      // the owner's card always reads `user-turn`, never `spoken`, so the
+      // discriminating seat is an impersonated LLM seat. One extra Skip moves
+      // the floor off the owner with no model call (every seat is user-driven).
+      let skipped = await skipOnce();
+      if (!llmSeatIds.has(skipped)) {
+        skipped = await skipOnce();
+      }
+      expect(llmSeatIds.has(skipped), `the skipped seat ${skipped} is an impersonated LLM seat`).toBe(true);
 
       // The SERVER is the independent source: the column now names that seat.
       await expect

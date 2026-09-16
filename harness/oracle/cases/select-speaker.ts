@@ -218,6 +218,27 @@ const scenarios: Scenario[] = [
     random01: 0.5,
     impersonating: [LEILANI],
   },
+  // (a') SIGHTED, POST-POST: v4's "the client also agrees while its copy of
+  //      the row is still pre-post" pair has a second half — the columns as
+  //      `addMessage` rewrites them once Leilani's post lands
+  //      (`computeSpokenThisCycleAfterMessage` / `computeCycleOrderAfterMessage`:
+  //      Leilani joins the spoken set, the rotation shrinks to Charlie). The
+  //      answer must not move. NOTE the shared `mkState` shape passes
+  //      `userParticipantId: null` + `impersonating: [LEILANI]` where v4's
+  //      test passes `CHARLIE` and no list — the pure function reads the seat
+  //      through the overlay either way, and the rows still drive v4's REAL
+  //      `selectNextSpeaker`; recorded rather than hidden.
+  {
+    id: 'bug147-agreement-client-sighted-post',
+    participants: agreementRoom,
+    characters: agreementChars,
+    queue: [],
+    spoken: [ABIGAIL, BARAKA, GEN314, LEILANI],
+    lastSpeakerId: LEILANI,
+    cycleOrder: [CHARLIE],
+    random01: 0.5,
+    impersonating: [LEILANI],
+  },
   // (b) BLIND: the same room with NO rotation and NO spoken set — what the
   //     client saw before `1fefadb9a` put the two columns on the wire. The
   //     cycle-order branch is unreachable, so it falls through to a weighted

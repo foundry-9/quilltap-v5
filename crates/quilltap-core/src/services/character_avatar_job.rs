@@ -67,22 +67,23 @@ const CONTEXT: &str = "background-jobs.character-avatar";
 const LOG_TARGET: &str = "quilltap::character_avatar";
 
 /// v4's `logger.error('[CharacterAvatar] Prompt classification failed,
-/// continuing normally', { context, jobId, error })` — `character-avatar.ts:292`
-/// — kept for the record only. **NO-PORT: the branch does not exist in v5.**
+/// continuing normally', { context, jobId, error })` — `character-avatar.ts:292`.
 ///
-/// v4 wraps `classifyDangerousContent` in a try/catch and fails safe on a
-/// throw. v5's `classify_content` (`dangerous_content::gatekeeper`) is
-/// INFALLIBLE by signature — it returns `DangerClassificationResult`, not a
-/// `Result`, and catches its own inner error into
-/// `DangerClassificationResult::safe_fallback()` at its one `Err(_) =>` arm.
-/// There is therefore no v5 branch on which this sentence could fire; the
-/// fail-safe behaviour v4's catch provides is already the port's contract.
+/// v4's `try` (`:243-297`) wraps BOTH `classifyDangerousContent` AND
+/// `resolveImageProviderForDangerousContent`. v5's `classify_content`
+/// (`dangerous_content::gatekeeper`) is INFALLIBLE by signature — it returns
+/// `DangerClassificationResult` and folds its own inner error into
+/// `safe_fallback()` — so the classifier half has no v5 branch. The resolver
+/// half does: its `read_main` can fail, and that arm (below, at the routing
+/// read) is where the sentence fires in v5, with the error attached as v4
+/// attaches the exception. It has a silence leg; a FIRING pin is not
+/// plantable through the seed, because the resolver reads `image_profiles`
+/// and the job's own profile read reaches that table first (recorded at the
+/// `1fefadb9a` round's unification).
 ///
-/// The eighteen other `character-avatar.ts` sites DO have v5 branches and all
-/// fire (fourteen landed by P4.93, one by P4.D184, three on the shared
-/// `image_job_common` path).
-#[allow(dead_code)]
-const CLASSIFICATION_FAILED_UNREACHABLE: &str =
+/// The eighteen other `character-avatar.ts` sites all fire (fourteen landed
+/// by P4.93, one by P4.D184, three on the shared `image_job_common` path).
+const CLASSIFICATION_FAILED: &str =
     "[CharacterAvatar] Prompt classification failed, continuing normally";
 
 /// The decoded `CHARACTER_AVATAR_GENERATION` payload.
@@ -390,7 +391,17 @@ where
                 chat_id = %payload.chat_id,
                 character_id = %payload.character_id,
                 file_id = %cached.id,
-                leaf_counts = ?leaf_counts,
+                // v4 logs `leafCounts` as an OBJECT; through the file layer's
+                // `…Json` convention (P4.91) it lands as one, not as a `Debug`
+                // string.
+                leafCountsJson = %serde_json::json!({
+                    "top": leaf_counts.top,
+                    "bottom": leaf_counts.bottom,
+                    "footwear": leaf_counts.footwear,
+                    "accessories": leaf_counts.accessories,
+                    "hair": leaf_counts.hair,
+                })
+                .to_string(),
                 "[CharacterAvatar] Reused cached avatar for this configuration"
             );
             return Ok(());
@@ -464,16 +475,21 @@ where
             // routing-equivalent but silent in DETECT_ONLY — where the verdict
             // is the only thing the operator gets.
             if classification.is_dangerous {
+                // v4 logs `categories` as an ARRAY of names; a `?`-formatted
+                // `Vec` would render Rust's `Debug`, so it rides the file
+                // layer's `…Json` convention (P4.91) and lands as structure.
+                let category_names: Vec<&str> = classification
+                    .categories
+                    .iter()
+                    .map(|c| c.category.as_str())
+                    .collect();
+                let categories_json = serde_json::to_string(&category_names).unwrap_or_default();
                 tracing::info!(
                     target: LOG_TARGET,
                     context = CONTEXT,
                     job_id = job_id,
                     score = classification.score,
-                    categories = ?classification
-                        .categories
-                        .iter()
-                        .map(|c| c.category.as_str())
-                        .collect::<Vec<_>>(),
+                    categoriesJson = %categories_json,
                     mode = %danger_settings.mode,
                     "[CharacterAvatar] Avatar prompt classified as dangerous"
                 );
@@ -493,19 +509,33 @@ where
                 let uncensored = danger_settings.uncensored_image_profile_id.clone();
                 let uid = user_id.to_string();
                 let api_keys = deps.api_keys;
-                let route = db
-                    .read_main(move |conn| {
-                        Ok(resolve_image_provider_for_dangerous_content(
-                            conn,
-                            api_keys,
-                            &original,
-                            &orig_key,
-                            &mode,
-                            uncensored.as_deref(),
-                            &uid,
-                        ))
-                    })
-                    .ok();
+                let route = match db.read_main(move |conn| {
+                    Ok(resolve_image_provider_for_dangerous_content(
+                        conn,
+                        api_keys,
+                        &original,
+                        &orig_key,
+                        &mode,
+                        uncensored.as_deref(),
+                        &uid,
+                    ))
+                }) {
+                    Ok(route) => Some(route),
+                    Err(e) => {
+                        // v4 `:292` — the one v5 branch of its catch (see
+                        // `CLASSIFICATION_FAILED`): the routing read failed,
+                        // the avatar carries on unrouted.
+                        tracing::error!(
+                            target: LOG_TARGET,
+                            context = CONTEXT,
+                            job_id = job_id,
+                            error = %e,
+                            "{}",
+                            CLASSIFICATION_FAILED
+                        );
+                        None
+                    }
+                };
                 if let Some(route) = route {
                     if route.rerouted {
                         // v4 `:274` — the ORIGINAL profile's NAME, not its id
@@ -676,13 +706,16 @@ where
             "[CharacterAvatar] Avatar image saved"
         ),
         Err(e) => {
-            // v4 `:589` logs at ERROR with the exception attached and a bag of
-            // just `{context, jobId}` — the message itself rides the thrown
-            // error, which becomes the job's failure text below.
+            // v4 `:589` logs at ERROR with the exception attached (v4's
+            // `logger.error(msg, ctx, error)` renders it into the record's
+            // `error` object; the visitor maps a tracing field named `error`
+            // onto the same shape) and a bag of just `{context, jobId}`; the
+            // message also becomes the job's failure text below.
             tracing::error!(
                 target: LOG_TARGET,
                 context = CONTEXT,
                 job_id = job_id,
+                error = %e,
                 "[CharacterAvatar] Failed to save avatar image"
             );
             return Err(format!("Failed to save avatar image: {e}"));
@@ -1127,6 +1160,10 @@ mod log_line_tests {
         /// Drop `connection_profiles` after seeding, so the profiles READ the
         /// cheap-LLM selection is built from FAILS (v4's `:237` catch).
         break_connection_profiles: bool,
+        /// Refuse every INSERT into `files` through a BEFORE INSERT trigger, so
+        /// the avatar WRITE fails while every read before it (the cache lookup
+        /// only SELECTs `files`) still succeeds — the plant for v4's `:589`.
+        break_files_insert: bool,
     }
 
     impl Default for Arrangement {
@@ -1138,6 +1175,7 @@ mod log_line_tests {
                 danger_mode: "OFF",
                 uncensored_profile: false,
                 break_connection_profiles: false,
+                break_files_insert: false,
             }
         }
     }
@@ -1194,6 +1232,7 @@ mod log_line_tests {
         let danger_mode = a.danger_mode;
         let uncensored_profile = a.uncensored_profile;
         let break_connection_profiles = a.break_connection_profiles;
+        let break_files_insert = a.break_files_insert;
         let physical =
             a.has_appearance.then(
                 || crate::db::vault_character_write::PhysicalDescriptionWrite {
@@ -1360,6 +1399,16 @@ mod log_line_tests {
             // thing under it that can go wrong — and it used to be swallowed.
             if break_connection_profiles {
                 main.execute("DROP TABLE connection_profiles", [])?;
+            }
+            // The plant for v4 `:589`: the `files` INSERT itself fails. A
+            // trigger, not a DROP, because the cache lookup SELECTs `files`
+            // first and must still succeed for the job to reach the write.
+            if break_files_insert {
+                main.execute(
+                    "CREATE TRIGGER qt_test_refuse_files_insert BEFORE INSERT ON files \
+                     BEGIN SELECT RAISE(ABORT, 'files insert refused by the test plant'); END",
+                    [],
+                )?;
             }
             Ok(())
         })
@@ -1688,6 +1737,40 @@ mod log_line_tests {
         none(&lines, "[CharacterAvatar] No images returned from provider");
     }
 
+    /// v4 `:589` — the write fails: ERROR, the exception on the line, the job
+    /// fails with the same sentence, and the completion line never fires.
+    /// (The `1fefadb9a` round's §3 review: the line had only a silence leg.)
+    #[test]
+    fn a_failed_save_logs_the_error_and_fails_the_job() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                break_files_insert: true,
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        let err = out.expect_err("the refused INSERT must fail the job");
+        assert!(
+            err.starts_with("Failed to save avatar image: "),
+            "v4 rethrows with its own prefix: {err}"
+        );
+
+        let line = one(&lines, "[CharacterAvatar] Failed to save avatar image");
+        assert!(
+            line.starts_with("ERROR quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(line.contains("error="), "v4 attaches the exception: {line}");
+        assert!(
+            line.contains("refused by the test plant"),
+            "and it names what actually failed: {line}"
+        );
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+        none(&lines, "[CharacterAvatar] Avatar generation completed");
+    }
+
     // --- v4 `:378` (the shared arm) + the completion's silence ---------------
 
     /// A refused provider ends the job, so neither of the happy path's two
@@ -1748,10 +1831,12 @@ mod log_line_tests {
             "the classifier's score: {line}"
         );
         assert!(
-            line.contains("categories=[\"violence\"]"),
-            "v4 maps to the category NAMES: {line}"
+            line.contains("categoriesJson=[\"violence\"]"),
+            "v4 maps to the category NAMES, as an array (the `…Json` convention): {line}"
         );
         assert!(line.contains("mode=DETECT_ONLY"), "{line}");
+        // The routing read succeeded, so v4's `:292` catch stayed silent.
+        none(&lines, CLASSIFICATION_FAILED);
         // DETECT_ONLY asks no routing question at all.
         none(
             &lines,

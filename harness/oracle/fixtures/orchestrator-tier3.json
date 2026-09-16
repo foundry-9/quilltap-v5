@@ -2013,8 +2013,7 @@
    "streamLabel": "textblock_mode",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2",
-   "modelSupportsNativeTools": false
+   "respondingParticipant": "f20a0002-0000-4000-8000-0000000000a2"
   },
   {
    "name": "agent_mode_on",
@@ -2420,8 +2419,7 @@
    "streamLabel": "simple_json_then_native_tool_call",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "respondingParticipant": "cb12000b-0000-4000-8000-0000000000c2",
-   "modelSupportsNativeTools": false
+   "respondingParticipant": "cb12000b-0000-4000-8000-0000000000c2"
   },
   {
    "name": "simple_json_text_tool_continuation",
@@ -2432,8 +2430,7 @@
    "streamLabel": "simple_json_text_tool_continuation",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "respondingParticipant": "cb13000b-0000-4000-8000-0000000000c3",
-   "modelSupportsNativeTools": false
+   "respondingParticipant": "cb13000b-0000-4000-8000-0000000000c3"
   }
  ],
  "streams": {

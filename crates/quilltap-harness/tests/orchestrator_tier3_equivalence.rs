@@ -306,18 +306,15 @@ struct CannedCompletionW {
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
     m.iter()
         .map(|m| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                // P4.90: the corpus had never carried a `tool` role, so this
-                // catch-all silently filed one as `user` — and the canned key
-                // renders the role, so the expected key for a tool-loop
-                // re-stream could never match the one v5 computes. Found by the
-                // failover-then-tool-call arm, whose five messages matched the
-                // oracle byte-for-byte while the key still missed.
-                "tool" => CompletionRole::Tool,
-                _ => CompletionRole::User,
-            },
+            // P4.90 found this mapper filing the oracle's `tool` role as `user`
+            // (the canned key renders the role, so a tool-loop re-stream's
+            // expected key could never match v5's); P4.93 gave `CompletionRole`
+            // its one inverse and repointed every hand-rolled mapper onto it —
+            // this file last, at the `1fefadb9a` round's unification (§R.10 (b)),
+            // because P4.92 owned it that round. The `User` default is the
+            // conscious choice `from_v4_wire`'s doc asks for: this corpus can
+            // carry only the four wire spellings.
+            role: CompletionRole::from_v4_wire(m.role.as_str()).unwrap_or(CompletionRole::User),
             content: m.content.clone(),
         })
         .collect()
@@ -1321,6 +1318,37 @@ fn orchestrator_tier3_matches_oracle() {
          fails over before the tool loop, so the arm measures nothing"
     );
 
+    // --- P4.92: the two carry-over cases must have RE-STREAMED on v4 ---
+    // The per-call arms compare v5's `previous_response_id` / `stop` against
+    // the recorded row at every canned lookup, and the stale-oracle floors
+    // guard the PRIMARY rows (a non-null id, a non-empty stop). What neither
+    // can say is that the RE-STREAM happened: if detection silently stopped on
+    // both sides (a marker rename, say), each case would record one primary
+    // row, the primary floors would still pass, and the strip's arms would
+    // compare nothing. So each case is pinned against v4's own recorded calls
+    // in the P4.90 idiom above — a re-stream row (one carrying a `tool`
+    // message) on the case's seat, showing the field v4 DROPPED. (The
+    // `1fefadb9a` round's §3 review.)
+    assert!(
+        canned_streams.iter().any(|s| s.provider == "OPENAI"
+            && s.model == "gpt-chains"
+            && s.previous_response_id.is_none()
+            && s.messages.iter().any(|m| m.role == "tool")),
+        "openai_chained_then_native_tool_call: v4 recorded no re-stream (OPENAI / \
+         gpt-chains, carrying a `tool` message) WITHOUT a previousResponseId — the \
+         case no longer reaches the native loop, so the previous_response_id strip \
+         measures nothing"
+    );
+    assert!(
+        canned_streams.iter().any(|s| s.provider == "OPENAI"
+            && s.model == "o1-mini"
+            && s.stop.is_empty()
+            && s.messages.iter().any(|m| m.role == "tool")),
+        "simple_json_then_native_tool_call: v4 recorded no re-stream (OPENAI / \
+         o1-mini, carrying a `tool` message) with EMPTY stop sequences — the case \
+         no longer reaches the native loop, so the stop strip measures nothing"
+    );
+
     // --- P4.D186 (v4 `31436bae4` bug 137): the held user turn ---
     // The frame + table diffs above already compare these cases end to end. What
     // they cannot do alone is prove the case is MEANINGFUL: if both sides failed
@@ -1681,7 +1709,7 @@ fn orchestrator_tier3_matches_oracle() {
             "no oracle row recorded a non-empty stop: the oracle predates the P4.92 recording, or no case resolves simple-json any more; every stop arm above is vacuous"
         );
         // ...and the TEXT continuation's own `stop` override
-        // (`text_tool_loop.rs`, v4 `text-tool-loop.service.ts:399`) needs its
+        // (`text_tool_loop.rs`, v4 `text-tool-loop.service.ts:400`) needs its
         // own floor. Found by a mutation that SURVIVED: deleting that override
         // left the family green, because the only rows reaching the text
         // continuation were the ANTHROPIC ones, whose text-block strategy

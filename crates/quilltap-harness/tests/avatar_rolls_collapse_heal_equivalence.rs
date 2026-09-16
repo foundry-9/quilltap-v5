@@ -452,9 +452,13 @@ fn shape_line(line: &str) -> Option<Value> {
             .unwrap_or(Value::Null)
     };
     // `fileIds` is v4's `unexplained.slice(0, 20)` — a JSON ARRAY, not a scalar.
-    // v5 emits it as compact JSON through `record_str` (no spaces, so it is one
-    // whitespace token and `field` recovers it whole); parse it back so the
-    // comparand is the array v4's `logger.warn` context carries.
+    // v5 emits it as compact JSON through `record_str` under the FILE layer's
+    // `…Json` convention (P4.91 — `log_file.rs` re-parses `fileIdsJson` into a
+    // real array under `fileIds` in `combined.log`). This capture is the
+    // thread-scoped rig, which sees the RAW field name, so the reader asks for
+    // `fileIdsJson` and applies the same re-parse; the comparand is then the
+    // array v4's `logger.warn` context carries. (The `1fefadb9a` round's
+    // unification: the rename landed after this family's last consumer run.)
     let json_field = |name: &str| -> Value {
         match field(name) {
             Value::String(raw) => serde_json::from_str(&raw).unwrap_or(Value::String(raw)),
@@ -478,7 +482,7 @@ fn shape_line(line: &str) -> Option<Value> {
         "protectedKept": field("protectedKept"),
         "albumCopiesKept": field("albumCopiesKept"),
         "unexplainedCount": field("unexplainedCount"),
-        "fileIds": json_field("fileIds"),
+        "fileIds": json_field("fileIdsJson"),
     }))
 }
 

@@ -401,6 +401,7 @@ fn select_speaker_matches_oracle() {
         const ABIGAIL: &str = "1cbe72f5";
         let want = [
             "bug147-agreement-client-sighted",
+            "bug147-agreement-client-sighted-post",
             "bug147-agreement-client-blind",
             "bug147-agreement-server",
         ];
@@ -411,6 +412,7 @@ fn select_speaker_matches_oracle() {
             );
         }
         let sighted = &agreement["bug147-agreement-client-sighted"];
+        let sighted_post = &agreement["bug147-agreement-client-sighted-post"];
         let blind = &agreement["bug147-agreement-client-blind"];
         let server = &agreement["bug147-agreement-server"];
 
@@ -423,6 +425,10 @@ fn select_speaker_matches_oracle() {
         assert_eq!(
             sighted, server,
             "GIVEN the two columns the client's computation must agree with the              server's, seat and reason: got client {sighted:?} vs server {server:?}"
+        );
+        assert_eq!(
+            sighted_post, server,
+            "and it must STILL agree once the row carries Leilani's post — v4's              post-post half of the sighted pair: got {sighted_post:?} vs server {server:?}"
         );
         assert_ne!(
             blind.0, server.0,

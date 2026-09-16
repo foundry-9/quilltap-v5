@@ -1079,7 +1079,7 @@ mod tests {
         lines.iter().filter(|l| l.contains(needle)).collect()
     }
 
-    /// P4.93 — the four capture tests below go through THIS, not
+    /// P4.93 — the five capture tests below go through THIS, not
     /// `test_support::captured` directly.
     ///
     /// `captured` installs a THREAD-scoped subscriber, and `tracing` caches each

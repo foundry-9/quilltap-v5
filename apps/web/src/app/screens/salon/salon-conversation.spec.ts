@@ -388,6 +388,49 @@ describe('SalonConversation — the cycle columns (P4.D177 §C.2 / P4.D195 bug 1
     expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
   });
 
+  /**
+   * The row wins with NO read involved: when the chat GET carries both keys,
+   * the effect's re-run on a `busy` flip re-seeds from the CACHED row, so a
+   * rotation a turn response adopted is replaced by the row's own string (v4's
+   * effect re-runs on the optimistic bubble and does the same). Sibling of the
+   * legacy-server arm above (the `1fefadb9a` round's §3 review).
+   */
+  it('re-seeds the rotation from the cached row when busy flips and the chat GET carries the keys', async () => {
+    const chat = chatDetail();
+    (chat as { cycleOrderParticipantIds?: string }).cycleOrderParticipantIds = '["p-x"]';
+    (chat as { spokenThisCycleParticipantIds?: string }).spokenThisCycleParticipantIds = '["p-y"]';
+    const client = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatch = client.dispatch as ReturnType<typeof vi.fn>;
+    const base = dispatch.getMockImplementation() as (req: CoreRequest) => Promise<CoreResponse>;
+    dispatch.mockImplementation(async (req: CoreRequest) => {
+      if (req.type === 'chatTurnAction') {
+        return {
+          type: 'turnAction',
+          data: {
+            turn: { nextSpeakerId: 'p-b', reason: 'cycle_order', cycleComplete: false },
+            state: { queue: ['p-b', 'p-a'], cycleOrder: ['p-b', 'p-a'] },
+          },
+        } as unknown as CoreResponse;
+      }
+      return base(req);
+    });
+    const fixture = await render(client);
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; spokenSinceUserTurn: string[] };
+      stream: { set: (v: unknown) => void };
+    };
+    // The refresh's turn response adopted its draw…
+    expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
+
+    // …and a send starts: `busy` flips, the effect re-runs, the ROW wins.
+    comp.stream.set({ messageId: 'streaming-1' });
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(comp.turnState().cycleOrder).toEqual(['p-x']);
+    expect(comp.turnState().spokenSinceUserTurn).toEqual(['p-y']);
+  });
+
   it('adopts state.cycleOrder from a turn response and keeps the previous list when a response omits it', async () => {
     const chat = chatDetail();
     const client = stubClient(chat, new Subject<ScopedEvent>());

@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — fix(unify): the `1fefadb9a` round's §3 review fixes — the avatar save-failure line gains v4's error and a firing pin, two structured log fields ride the JSON convention, the routing read's swallowed error logs v4's sentence, the two missing re-stream floors, the post-post agreement row, the busy-flip re-seed pinned, the e2e Skip arm made deterministic, and the collapse census reader repointed
+
+_No crate versions bumped (the round's recount lands in the wires commit)._
+
+P4.93: `[CharacterAvatar] Failed to save avatar image` carried no exception
+and had only a silence leg (deleting the line survived every test) — it now
+logs `error = %e`, and a `break_files_insert` plant (a BEFORE INSERT trigger
+on `files`, so the cache lookup still reads) drives a firing pin; the `:255`
+`categories` array and the cache-hit `leafCounts` object rendered Rust
+`Debug` strings — both now ride P4.91's `…Json` file-layer convention; the
+`:292` NO-PORT was one branch short (v4's `try` also wraps the routing
+resolver, whose read v5 swallowed with `.ok()`) — the arm logs v4's sentence
+with the error and carries on unrouted. P4.92: two non-vacuity floors
+require the `gpt-chains` re-stream row without a `previousResponseId` and
+the `o1-mini` one with empty `stop`; the dead `modelSupportsNativeTools`
+case-spec key deleted; the `:2150` comment names the empty-response chain
+leg. P4.D195: the `bug147-agreement-client-sighted-post` corpus row with its
+equality pin; the busy-flip re-seed with the cached row documented and
+spec-pinned; the e2e Skip arm impersonates every LLM seat and skips past an
+owner-seat floor. The unified sweep's one new red — the collapse family
+reading the census warn's `fileIds` by its raw name after P4.91's rename to
+`fileIdsJson` — fixed at the reader. Two doc nits.
+
 #### 2026-09-16 — docs(porting): the P4.D195 lane record — bug 147 closed, and a pre-existing salon-fixture red found
 
 _No crate versions bumped._
