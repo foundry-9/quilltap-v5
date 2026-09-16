@@ -26,8 +26,10 @@ doc prose does not state and the order flagged: the `speaking_seat_id` fallback
 is returned **verbatim and un-validated** (a seat not in the room, or an LLM
 seat, comes back as given — v4's caller gates with `isUserDrivenSeat`
 afterwards, and v5's does the same); an **empty-string** `next_speaker_id` is
-JS-falsy and falls straight through to the fallback; and `find` returns the
-**first** id match, so duplicate ids take the first.
+JS-falsy and falls straight through to the fallback; and `find` scans for the
+first participant satisfying the WHOLE predicate rather than the first id match
+(the order's third shape was stated as "first id match" and is **refuted by
+measurement** — see unit 3's M5).
 
 The twin has no production caller in the core — v4's consumer is its client —
 so it is the differential-proven authority the SPA mirror cites, exactly as
@@ -105,6 +107,37 @@ least one row each spelling an `undefined` argument, an empty-string floor id,
 and a `null` result. The per-row `*Form` fields carry how the v4 call spelled
 each argument (`value` / `null` / `undefined`), which Rust's `Option` cannot
 tell apart, and the test asserts the form agrees with the emitted value.
+
+### Unit 3 — the `turn-order.ts` client twin + v4's suite as its parity spec
+
+`resolveFloorSeatId<T extends SeatView>` beside `isUserDrivenSeat` /
+`findUserParticipant` / `findActiveUserParticipant`, same generic bound, doc
+comment citing v4 `2075242f9` and the core authority (`floor_seat_equivalence`).
+v4's `floor-seat.test.ts` transcribed case-for-case into `turn-order.spec.ts` —
+all seven `it`s with v4's own factory field set — plus a
+`resolveFloorSeatId — shapes v4's suite does not ask` block carrying the
+prose-invisible rows.
+
+**An order premise REFUTED by measurement.** The order's third shape — "`find`
+returns the FIRST id match, so duplicate ids take the first" — is wrong, and the
+spec written from it went RED on its first run (`expected 'dup' to be
+'helene'`). `find` scans for the first participant satisfying the WHOLE
+predicate, so in `[llm 'dup', user 'dup']` the LLM occurrence is skipped and the
+user one wins. The Rust port had always spelled it that way (one `find` with the
+whole predicate), so nothing in the port moved; what moved is the description,
+corrected in four places (the core doc comment, the oracle case header and its
+duplicate block, the client doc comment, the previous changelog entry).
+
+A duplicate-id row can never say WHICH match won — the function returns the id,
+and the ids are equal. What it CAN say is that the scan does not stop at the
+first id match and bail, and that is the discriminator:
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M5 | rewrite the scan as lookup-then-filter (`find(id).filter(present && user-driven)`) | `duplicate-ids-llm-first` (`Some("helene")` vs `Some("dup")`) |
+
+Spec run: `node tools/ng-run.mjs test --watch=false --filter "resolveFloorSeatId"`
+→ 12 passed.
 
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 

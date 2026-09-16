@@ -10,6 +10,7 @@ import {
   isUserDrivenSeat,
   nudgeParticipant,
   removeFromQueue,
+  resolveFloorSeatId,
   type SeatView,
   type TurnOrderParticipant,
   type TurnState,
@@ -620,6 +621,128 @@ describe('the impersonation-overlay participant filters (v4 turn-manager/utils.t
       ).toBe(abigailSeat);
       // The column was never touched.
       expect(abigailSeat.controlledBy).toBe('llm');
+    });
+  });
+});
+
+/**
+ * `resolveFloorSeatId` — which seat the "your turn" banner speaks for, and
+ * whose turn its Skip passes (v4 `2075242f9`, bug 146). Case-for-case from v4's
+ * own `__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts` (all seven),
+ * plus the shapes that suite does not ask — the four the core's
+ * `floor_seat_equivalence` corpus adds and the differential proves against v4's
+ * real function.
+ */
+describe('resolveFloorSeatId (v4 floor-seat.test.ts)', () => {
+  /** v4's factory: `controlledBy: 'llm'`, `status: 'active'`, `isActive: true`. */
+  const seat = (id: string, over: Partial<SeatView> = {}): SeatView => ({
+    id,
+    controlledBy: 'llm',
+    status: 'active',
+    ...over,
+  });
+
+  /** The shape of the chat that produced bug 146: two seats the human drives. */
+  const charlie = seat('charlie', { controlledBy: 'user' });
+  const helene = seat('helene', { controlledBy: 'user' });
+  const wahno = seat('wahno');
+  const room = [wahno, charlie, helene];
+
+  it('prefers the seat the rotation landed on over the composer’s seat', () => {
+    // Helene has just posted; the floor is Charlie's. The composer is still
+    // pointed at Helene, and before the fix that is what Skip passed.
+    expect(resolveFloorSeatId(charlie.id, room, [], helene.id)).toBe(charlie.id);
+  });
+
+  it('keeps the composer’s seat when the floor belongs to an LLM', () => {
+    // Bug 123's off-turn affordance: nothing of the human's is outstanding, so
+    // the banner stays about the seat they are typing as.
+    expect(resolveFloorSeatId(wahno.id, room, [], helene.id)).toBe(helene.id);
+  });
+
+  it('keeps the composer’s seat when there is no selection yet', () => {
+    expect(resolveFloorSeatId(null, room, [], helene.id)).toBe(helene.id);
+    expect(resolveFloorSeatId(undefined, room, [], charlie.id)).toBe(charlie.id);
+  });
+
+  it('agrees with the composer when both name the same seat', () => {
+    expect(resolveFloorSeatId(helene.id, room, [], helene.id)).toBe(helene.id);
+  });
+
+  it('honours the impersonation overlay, not the bare controlledBy column', () => {
+    // An impersonated seat's durable `controlledBy` stays 'llm' (v4 bug 44), so
+    // a reader that consulted the column alone would hand the floor back to the
+    // composer and pass the wrong turn.
+    const lorian = seat('lorian');
+    const withLorian = [...room, lorian];
+    expect(resolveFloorSeatId(lorian.id, withLorian, ['lorian'], charlie.id)).toBe(lorian.id);
+    expect(resolveFloorSeatId(lorian.id, withLorian, [], charlie.id)).toBe(charlie.id);
+  });
+
+  it('falls back when the rotation names a seat that has left the room', () => {
+    const departed = seat('departed', { controlledBy: 'user', status: 'removed' });
+    expect(resolveFloorSeatId(departed.id, [...room, departed], [], helene.id)).toBe(helene.id);
+  });
+
+  it('returns null when neither the floor nor the composer names a seat', () => {
+    expect(resolveFloorSeatId(wahno.id, room, [], null)).toBeNull();
+    expect(resolveFloorSeatId(null, room, [], null)).toBeNull();
+  });
+
+  describe('resolveFloorSeatId — shapes v4’s suite does not ask', () => {
+    it('treats an empty-string floor id as falsy, even when a seat carries it', () => {
+      // JS truthiness: `if (nextSpeakerId)` is false for '', so the lookup is
+      // never attempted — the seat with that id in the room does not win.
+      const blank = seat('', { controlledBy: 'user' });
+      expect(resolveFloorSeatId('', [...room, blank], [], helene.id)).toBe(helene.id);
+      expect(resolveFloorSeatId('', room, [], null)).toBeNull();
+    });
+
+    it('returns the composer’s seat VERBATIM — un-validated, for the caller to gate', () => {
+      // Not in the room at all…
+      expect(resolveFloorSeatId(wahno.id, room, [], 'ghost-seat')).toBe('ghost-seat');
+      // …an LLM seat nobody impersonates…
+      expect(resolveFloorSeatId(wahno.id, room, [], wahno.id)).toBe(wahno.id);
+      // …and a seat that has left the room.
+      const departed = seat('departed', { controlledBy: 'user', status: 'removed' });
+      expect(resolveFloorSeatId(wahno.id, [...room, departed], [], departed.id)).toBe(departed.id);
+    });
+
+    it('scans for the first WHOLE-predicate match, not the first id match', () => {
+      // The value returned is the id, so a duplicate-id case cannot say WHICH
+      // match won — what it says is that the scan does not stop at the first id
+      // match and bail. A lookup-then-filter rewrite answers `helene` here.
+      const llmFirst = [seat('dup'), seat('dup', { controlledBy: 'user' }), ...room];
+      expect(resolveFloorSeatId('dup', llmFirst, [], helene.id)).toBe('dup');
+      const absentFirst = [
+        seat('dup', { controlledBy: 'user', status: 'absent' }),
+        seat('dup', { controlledBy: 'user' }),
+        ...room,
+      ];
+      expect(resolveFloorSeatId('dup', absentFirst, [], helene.id)).toBe('dup');
+    });
+
+    it('counts a SILENT seat as present and an ABSENT one as not', () => {
+      const silent = seat('silent-user', { controlledBy: 'user', status: 'silent' });
+      expect(resolveFloorSeatId(silent.id, [...room, silent], [], helene.id)).toBe(silent.id);
+      const away = seat('absent-user', { controlledBy: 'user', status: 'absent' });
+      expect(resolveFloorSeatId(away.id, [...room, away], [], helene.id)).toBe(helene.id);
+      // Presence is checked BEFORE the overlay, so the overlay cannot resurrect
+      // a seat that has left.
+      const goneImp = seat('gone-imp', { status: 'removed' });
+      expect(resolveFloorSeatId(goneImp.id, [...room, goneImp], [goneImp.id], helene.id)).toBe(
+        helene.id,
+      );
+    });
+
+    it('reads the three spellings of “no overlay” alike', () => {
+      const lorian = seat('lorian');
+      const withLorian = [...room, lorian];
+      expect(resolveFloorSeatId(lorian.id, withLorian, [], helene.id)).toBe(helene.id);
+      expect(resolveFloorSeatId(lorian.id, withLorian, null, helene.id)).toBe(helene.id);
+      expect(resolveFloorSeatId(lorian.id, withLorian, undefined, helene.id)).toBe(helene.id);
+      // …and an owner seat needs no overlay at all.
+      expect(resolveFloorSeatId(charlie.id, room, undefined, helene.id)).toBe(charlie.id);
     });
   });
 });

@@ -416,3 +416,65 @@ export function findActiveUserParticipant<T extends SeatView>(
   }
   return findUserParticipant(participants);
 }
+
+/**
+ * The seat the "your turn" banner speaks for — and the seat its Skip passes
+ * (v4 `2075242f9`, bug 146).
+ *
+ * Two different questions can both have an answer at once, and they are not the
+ * same question:
+ *
+ *  - **Whose turn is it?** `turnSelectionResult.nextSpeakerId`.
+ *  - **Whose voice will the composer take?** `activeTypingParticipantId`, via
+ *    {@link findActiveUserParticipant}.
+ *
+ * With two seats the human drives (their own character plus an impersonated
+ * one, or two owned characters) the two disagree routinely: the rotation moves
+ * on every turn, the speaking-as does not (v4 bug 49's follow is a client-side
+ * default and a reload restores the last *deliberate* choice). Bug 146 is what
+ * happens when the banner answers the second question while the human reads it
+ * as the first: it offers to pass a turn that is not outstanding, records a
+ * Host turn-pass for a seat that never held the floor, and leaves the real turn
+ * where it was — so the human is prompted again and has to pass twice.
+ *
+ * So: **the floor wins when there is one.** When the rotation has landed on a
+ * seat the human drives, that seat is what the banner names and what Skip
+ * passes. Only when the floor belongs to nobody the human drives — an LLM is up
+ * next, or there is no selection yet — does it fall back to the composer's
+ * seat, which is the off-turn "let someone else respond" affordance v4 bug 123
+ * added. It reads {@link isUserDrivenSeat} rather than the bare `controlledBy`
+ * column, so an impersonated seat's turn is not lost to its durable `'llm'`
+ * value (v4 bug 44).
+ *
+ * Returns null when neither is available (an all-LLM room, or a chat still
+ * loading), which the caller reads as "no banner".
+ *
+ * Three shapes v4's prose does not state, carried on purpose: the
+ * `speakingSeatId` fallback comes back VERBATIM and un-validated (the caller
+ * gates it with `isUserDrivenSeat` afterwards); an empty-string `nextSpeakerId`
+ * is falsy and falls straight through; and `find` scans for the first
+ * participant satisfying the WHOLE predicate rather than the first id match, so
+ * a repeated id whose first occurrence fails presence or user-driven does not
+ * block a later one that passes.
+ *
+ * Client mirror of v4 `lib/chat/turn-manager/utils.ts` `resolveFloorSeatId` and
+ * the core `participant_filters::resolve_floor_seat_id` (the
+ * differential-proven authority — `floor_seat_equivalence`).
+ */
+export function resolveFloorSeatId<T extends SeatView>(
+  nextSpeakerId: string | null | undefined,
+  participants: readonly T[],
+  impersonatingParticipantIds?: readonly string[] | null,
+  speakingSeatId?: string | null,
+): string | null {
+  if (nextSpeakerId) {
+    const onFloor = participants.find(
+      (p) =>
+        p.id === nextSpeakerId &&
+        isParticipantPresent(p.status) &&
+        isUserDrivenSeat(p, impersonatingParticipantIds),
+    );
+    if (onFloor) return onFloor.id;
+  }
+  return speakingSeatId ?? null;
+}

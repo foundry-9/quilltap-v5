@@ -143,7 +143,12 @@ pub fn find_active_user_participant<'a>(
 ///     and v5's does the same.
 ///  2. v4 guards on JS truthiness, so an **empty-string** `next_speaker_id` is
 ///     falsy and falls straight through to the fallback.
-///  3. `find` returns the **first** id match, so duplicate ids take the first.
+///  3. `find` scans for the first participant satisfying the WHOLE predicate,
+///     not the first id match — so when ids repeat, an earlier occurrence that
+///     fails presence or user-driven does NOT block a later one that passes.
+///     (The order predicted "first id match"; the corpus's
+///     `duplicate-ids-llm-first` row measured otherwise, and it is the row that
+///     reddens if this is ever rewritten as a lookup-then-filter.)
 ///
 /// v4's consumer is its client (`app/salon/[id]/SalonView.tsx`), so this twin
 /// has no production caller in the core: it is the differential-proven

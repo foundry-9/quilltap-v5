@@ -58,6 +58,28 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — feat(spa): the `resolveFloorSeatId` client twin, with v4's own suite as its parity spec
+
+_Versions: core 0.0.923, SPA 0.5.723._
+
+The client mirror of the core's `resolve_floor_seat_id` (v4 `2075242f9`, bug
+146), generic over `SeatView` and citing both v4's function and the
+differential-proven core authority. v4's own
+`__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts` is transcribed
+case-for-case as the parity spec — all seven, with v4's `seat()` factory field
+set — plus a block for the shapes that suite does not ask.
+
+The order's third prose-invisible shape is **refuted by measurement**. It (and
+this port's first wording) said `find` returns the first id match; the spec
+expectation written from that claim went RED, and the oracle's own
+`duplicate-ids-llm-first` row says why: `find` scans for the first participant
+satisfying the WHOLE predicate, so a repeated id whose first occurrence fails
+presence or user-driven does not block a later one that passes. The Rust port
+was already correct — only the description was wrong, and it is corrected in
+the core doc comment, the oracle case, the client doc comment and the previous
+changelog entry. A fifth mutation proof measures it: rewriting the scan as
+lookup-then-filter reddens exactly `duplicate-ids-llm-first`.
+
 #### 2026-09-16 — feat(core): `resolve_floor_seat_id` — the seat the Skip banner speaks for (v4 bug 146)
 
 _Versions: core 0.0.922, harness 0.0.815._
@@ -74,7 +96,9 @@ off-turn, which is v4 bug 123's affordance.
 Three shapes v4's prose does not state are carried on purpose and pinned:
 the fallback comes back verbatim and un-validated (the caller gates it), an
 empty-string floor id is JS-falsy and falls straight through, and `find`
-takes the first match on duplicate ids.
+scans for the first WHOLE-predicate match rather than the first id match.
+(The order predicted "first id match"; the corpus measured otherwise — see
+the following entry.)
 
 The twin has no production caller in the core — v4's consumer is its client
 — so, exactly as `is_user_driven_seat` does for its own mirror, it is the

@@ -9,8 +9,10 @@
  * that suite does not ask — the three prose-invisible ones especially: the
  * fallback is returned VERBATIM and un-validated (a seat not in the room, or an
  * LLM seat, comes back as given — the caller gates afterwards); an EMPTY-string
- * `nextSpeakerId` is falsy in JS and falls straight through; and `find` takes
- * the FIRST id match when ids repeat.
+ * `nextSpeakerId` is falsy in JS and falls straight through; and `find` scans
+ * for the first participant satisfying the WHOLE predicate rather than the
+ * first id match, so a repeated id whose first occurrence fails presence or
+ * user-driven does not block a later one that passes.
  *
  * ⚠ PIN REQUIRED at the TARGET `2075242f9` — `resolveFloorSeatId` does not exist
  * at the `ffb6b3119` baseline, so a baseline-pinned run fails to import and that
@@ -187,7 +189,11 @@ emit('fallback-undefined', V(wahno.id), room, EMPTY_IMP, UNDEF);
 emit('no-floor-fallback-not-in-room', NUL, room, EMPTY_IMP, V('ghost-seat'));
 emit('no-floor-fallback-undefined', NUL, room, EMPTY_IMP, UNDEF);
 
-// `find` takes the FIRST id match when ids repeat.
+// `find` scans for the first participant satisfying the WHOLE predicate. The
+// returned value is the id, so a duplicate-id row cannot say WHICH match won —
+// what it CAN say is that the scan does not stop at the first id match and
+// bail: `duplicate-ids-llm-first` resolves to `dup`, not to the composer's
+// seat. That is the row a lookup-then-filter rewrite reddens.
 const dupLlmFirst = [p('dup', 'llm'), p('dup', 'user'), ...room];
 const dupUserFirst = [p('dup', 'user'), p('dup', 'llm'), ...room];
 const dupAbsentFirst = [p('dup', 'user', 'absent'), p('dup', 'user'), ...room];
