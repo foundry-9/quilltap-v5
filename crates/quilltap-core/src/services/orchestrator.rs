@@ -2784,7 +2784,9 @@ where
     // where the typed i64 truncates it (1000.5 → 1000) — noted at the aa464abf
     // unification review, unchanged here.
     let sampling = crate::sampling_params::resolve_sampling_params(Some(&model_params));
-    let params = StreamParams {
+    // `mut` for the P4.90 post-failover `model` rebuild below — nothing else in
+    // this function mutates it.
+    let mut params = StreamParams {
         messages: stream_messages,
         model: effective_profile.model_name.clone(),
         temperature: sampling.temperature,
@@ -2861,6 +2863,35 @@ where
     if let Some(p) = streaming_state.effective_profile.as_ref() {
         effective_profile = p.clone();
     }
+    // P4.90 (the `ffb6b3119` §3 review's finding (a)): the refresh above moved
+    // the LOCAL profile but not `params`, which was built at `:2786` from the
+    // pre-failover profile. The tool loops take `base_params` BY VALUE and
+    // re-stream with `params.model` (`native_tool_loop.rs:466` / `:578`,
+    // `text_tool_loop.rs:427`), so a native tool call after a cross-provider
+    // recovery sent the PRIMARY's model name to the UNDERSTUDY's provider.
+    // Rebuilt here, before the early return, so both loop-option sites below
+    // (`provider` / `base_url` already come from the refreshed local) get a
+    // consistent request.
+    //
+    // v4 has no such bug because its loops take `connectionProfile:
+    // streamingState.effectiveProfile` (`orchestrator.service.ts:1184` / `:1369`)
+    // and its ONE `streamMessage` funnel derives the model from that profile per
+    // call (`streaming.service.ts:403`).
+    //
+    // MEASURED — why `model` is the ONLY field that moves. v4's funnel derives
+    // exactly three things from the profile: the provider and base URL it builds
+    // the client with (`streaming.service.ts:365-367`) and
+    // `connectionProfile.modelName` (`:403`). Everything else in that request
+    // body comes from the `modelParams` ARGUMENT — `profileParameters` verbatim
+    // (`:409`) and the three sampling knobs resolved from it (`:393`) — and v4
+    // computes that bag ONCE, at `orchestrator.service.ts:1107`
+    // (`profileParams(streamingState.effectiveProfile)`), which runs BEFORE the
+    // primary stream at `:1460` and is never recomputed. So v4's own loops carry
+    // the PRE-failover `parameters` bag, and v5 must keep `profile_parameters`,
+    // `temperature`, `max_tokens` and `top_p` stale to match it. `tools` and
+    // `web_search_enabled` are likewise computed once from the pre-failover
+    // profile on both sides.
+    params.model = effective_profile.model_name.clone();
 
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.

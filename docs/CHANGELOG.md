@@ -361,6 +361,43 @@ recipe; the three harness headers gained vintage notes. The P4.50-class
 `sqlite error: ` prefix is RE-MEASURED and has no live site left in these
 families (zero occurrences across the three fresh oracles and the v5 run);
 `DbError::Sqlite`'s Display arm is untouched.
+#### 2026-09-16 — fix(orchestrator): rebuild the request model after a failover, so the tool loops reach the understudy (P4.90)
+
+_Versions: core 0.0.923, harness 0.0.815._
+
+The `ffb6b3119` §3 review's finding (a). `StreamParams` is built once, before
+the primary stream, from the pre-failover profile. After a recovery the
+orchestrator re-read its effective profile — the `78b381a96` fix — but not
+that struct, and the tool loops take `base_params` by value and re-stream with
+`params.model`. So a native tool call after a cross-provider failover sent the
+PRIMARY's model name to the UNDERSTUDY's provider, and the request failed at
+the far end for a reason nothing in the log named.
+
+Proven before it was fixed. `orchestrator-tier3.json` gained
+`failover_then_native_tool_call`: a seat on `FailoverPrimary` (ANTHROPIC
+`claude-falls-over`) whose stream throws, an `attemptHardErrorFailover` walk to
+`FailoverUnderstudy` (OPENAI `gpt-stands-in`), and an understudy reply carrying
+a native tool call — so the loop's re-stream is the first call in this corpus
+that happens after a cross-provider recovery. The canned key is
+`provider|model|temperature|messages`, which makes that one row the only
+comparand in the tree that can see which profile the re-stream was keyed to.
+Unfixed, the Rust side asked for `(OPENAI, claude-falls-over)` and had no
+canned answer.
+
+Only `model` moves, and that is measured rather than assumed: v4's funnel
+derives exactly the provider, the base URL and `connectionProfile.modelName`
+from the profile per call (`streaming.service.ts:365-367`, `:403`); everything
+else in the body comes from a `modelParams` bag v4 computes once at
+`orchestrator.service.ts:1107`, before the primary stream, and never
+recomputes. So v4's own loops carry the pre-failover parameters, and v5 keeps
+`profile_parameters` and the three sampling knobs stale to match.
+
+Two harness repairs rode along, both exposed by the new arm and neither a port
+bug: the oracle's `tool` role was filed as `user` by a catch-all, so the
+expected key for any tool-loop re-stream could never match (the corpus had
+never carried one), and a canned-stream miss reported only a message COUNT,
+which named neither half of the two-step diagnosis it was asked to support.
+
 #### 2026-09-16 — feat(chat-create): say the six greeting-ladder lines v4 says (P4.90)
 
 _Versions: core 0.0.922._

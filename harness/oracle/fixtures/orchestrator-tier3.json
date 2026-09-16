@@ -1695,6 +1695,29 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "fb110006-0000-4000-8000-000000000f16",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "fb11000b-0000-4000-8000-0000000000b1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "fa110001-0000-4000-8000-000000000f11"
+    }
+   ],
+   "messages": [
+    {
+     "id": "fb110106-0000-4000-8000-000000000106",
+     "role": "ASSISTANT",
+     "content": "Friday opens the understudy room again.",
+     "participantId": "fb11000b-0000-4000-8000-0000000000b1"
+    }
+   ]
   }
  ],
  "calls": [
@@ -2287,6 +2310,17 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "neverPauseForUser": true
+  },
+  {
+   "name": "failover_then_native_tool_call",
+   "kind": "chain",
+   "chatId": "fb110006-0000-4000-8000-000000000f16",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "failover_then_native_tool_call",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "fb11000b-0000-4000-8000-0000000000b1"
   }
  ],
  "streams": {
@@ -3362,6 +3396,61 @@
      }
     }
    ]
+  ],
+  "failover_then_native_tool_call": [
+   [
+    {
+     "error": "502 Bad Gateway"
+    }
+   ],
+   [
+    {
+     "content": "The understudy reaches for the ledger."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 21,
+      "completionTokens": 7,
+      "totalTokens": 28
+     },
+     "rawResponse": {
+      "marker": "failover_native_call",
+      "tool_calls": [
+       {
+        "id": "ftc-0001",
+        "type": "function",
+        "function": {
+         "name": "read_conversation",
+         "arguments": "{}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " The ledger is not written up yet."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 34,
+      "completionTokens": 8,
+      "totalTokens": 42
+     }
+    }
+   ]
+  ]
+ },
+ "detection": {
+  "failover_native_call": [
+   {
+    "name": "read_conversation",
+    "arguments": {},
+    "callId": "ftc-0001"
+   }
   ]
  },
  "summaryCompletion": {

@@ -28,6 +28,17 @@
 //! SERVER-LOCAL zone, so this oracle is TZ-sensitive (the harness pins
 //! `server_tz` to "UTC"). The pin below is load-bearing, not decoration.
 //!
+//! **P4.90** added `failover_then_native_tool_call`: the seat's profile
+//! (`FailoverPrimary`, ANTHROPIC `claude-falls-over`) throws a hard provider
+//! error, `attemptHardErrorFailover` hands the turn to `FailoverUnderstudy`
+//! (OPENAI `gpt-stands-in`), and the understudy's reply carries a native tool
+//! call — so the tool loop's re-stream is the first call in this corpus that
+//! happens AFTER a cross-provider recovery. The canned key is
+//! `provider|model|temperature|messages`, so that one row is the only comparand
+//! in the tree that can see which profile the re-stream was keyed to: before the
+//! fix the Rust side asked for `(OPENAI, claude-falls-over)` — the understudy's
+//! provider with the primary's model — and had no canned answer.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
 //! `.claude/` paths, so the case is staged in a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -206,7 +217,15 @@ struct ChunkW {
     #[serde(default)]
     error: Option<String>,
     /// W4.1g native-call case: the provider raw response carried on the terminal
-    /// chunk (the canned detector keys on `raw_response.marker`).
+    /// chunk.
+    ///
+    /// The two sides read it DIFFERENTLY and the corpus row must satisfy both:
+    /// the oracle's `detectToolCallsInResponse` is mocked to key on
+    /// `rawResponse.marker` (→ `spec.detection[marker]`), while the Rust spine
+    /// runs the REAL `RegistryToolCallDetector` over the provider's own wire
+    /// shape. P4.90's `failover_then_native_tool_call` row therefore carries
+    /// BOTH a `marker` and a genuine OPENAI `tool_calls` array that parse to the
+    /// same call.
     #[serde(default, rename = "rawResponse")]
     raw_response: Option<Value>,
 }
@@ -270,6 +289,13 @@ fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
             role: match m.role.as_str() {
                 "system" => CompletionRole::System,
                 "assistant" => CompletionRole::Assistant,
+                // P4.90: the corpus had never carried a `tool` role, so this
+                // catch-all silently filed one as `user` — and the canned key
+                // renders the role, so the expected key for a tool-loop
+                // re-stream could never match the one v5 computes. Found by the
+                // failover-then-tool-call arm, whose five messages matched the
+                // oracle byte-for-byte while the key still missed.
+                "tool" => CompletionRole::Tool,
                 _ => CompletionRole::User,
             },
             content: m.content.clone(),
@@ -464,10 +490,30 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some(seq) => seq,
+                // P4.90: name the roles + a content prefix of every message on a
+                // miss. The counts alone said "5 msgs" for both halves of a
+                // two-step diagnosis (first the model was wrong, then a message
+                // body was), and neither told which.
                 None => vec![Err(StreamError::new(format!(
-                    "no canned stream queued for key ({provider}, model {}, {} msgs)",
+                    "no canned stream queued for key ({provider}, model {}, temperature {:?}, \
+                     {} msgs)\n{}",
                     params.model,
+                    params.temperature,
                     params.messages.len(),
+                    params
+                        .messages
+                        .iter()
+                        .map(|m| {
+                            let c = m.content();
+                            let head: String = c.chars().take(120).collect();
+                            format!(
+                                "    {:>9} | {} chars | {head:?}",
+                                m.role_str(),
+                                c.chars().count()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                 )))],
             }
         };
@@ -980,12 +1026,16 @@ fn orchestrator_tier3_matches_oracle() {
             photo_bytes: None,
         };
         // The spine now constructs the real registry-backed tool detector +
-        // provider-text strategy internally (W4.7c). The corpus carries no native
-        // tool calls (the canned streams' raw_response has no tool_use blocks) and
-        // no provider text markers, so both passes no-op after the real (now
-        // provider-reshaped) slate reaches the wire — proven by the tools-at-wire
-        // assertion. A native tool CALL end-to-end is proven separately by
-        // `native_tool_loop_tier3` (v4's REAL `runNativeToolLoop` + threading).
+        // provider-text strategy internally (W4.7c). Exactly ONE corpus case
+        // carries a native tool call — P4.90's `failover_then_native_tool_call`,
+        // whose understudy answers with an OPENAI `tool_calls` array; every other
+        // case's `raw_response` has no tool blocks and no provider text markers,
+        // so both passes no-op after the real (now provider-reshaped) slate
+        // reaches the wire — proven by the tools-at-wire assertion. The loop's
+        // own internals stay proven by `native_tool_loop_tier3` (v4's REAL
+        // `runNativeToolLoop` + threading); what THIS family adds is the one
+        // thing that family cannot see — which profile the re-stream is keyed to
+        // after the spine has failed over underneath it.
 
         // P4.87: ONE draw source per case, cloned into every carrier this case
         // reaches — the initial `ProcessClock`, each chained turn's, and
