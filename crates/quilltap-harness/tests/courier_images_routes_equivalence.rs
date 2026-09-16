@@ -671,11 +671,8 @@ fn courier_images_routes_match_oracle() {
                 .messages
                 .iter()
                 .map(|m| CompletionMessage {
-                    role: match m.role.as_str() {
-                        "system" => CompletionRole::System,
-                        "assistant" => CompletionRole::Assistant,
-                        _ => CompletionRole::User,
-                    },
+                    role: CompletionRole::from_v4_wire(m.role.as_str())
+                        .unwrap_or(CompletionRole::User),
                     content: m.content.clone(),
                 })
                 .collect();

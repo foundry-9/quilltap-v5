@@ -38,6 +38,34 @@ impl CompletionRole {
             CompletionRole::Tool => "tool",
         }
     }
+
+    /// The inverse of [`as_str`](Self::as_str): an oracle-recorded `role`
+    /// string back into the enum, exhaustive over the four v4 wire spellings
+    /// and `None` for anything else (P4.93).
+    ///
+    /// This existed nowhere until P4.93, so every tier-3 family hand-rolled it
+    /// — and most of those hand-rolls had no `"tool"` arm, silently filing a
+    /// tool row as `User` behind a catch-all. That is not a cosmetic slip: the
+    /// canned tier-3 key RENDERS the role ([`canned_key`] / [`canned_stream_key`]
+    /// via [`CannedKeyMessage::key_role`]), so a misfiled role computes a key
+    /// the registration can never match, and the family fails as an
+    /// "unregistered input" whose messages diff byte-for-byte against the
+    /// oracle. P4.90 found exactly that on the orchestrator's
+    /// failover-then-tool-call arm.
+    ///
+    /// Returning `Option` rather than defaulting is the point: a caller that
+    /// wants a default must write one, which makes it a conscious choice at the
+    /// call site instead of a catch-all nobody reads. Callers that cannot
+    /// meaningfully continue on an unknown role `panic!` instead.
+    pub fn from_v4_wire(s: &str) -> Option<Self> {
+        match s {
+            "system" => Some(CompletionRole::System),
+            "user" => Some(CompletionRole::User),
+            "assistant" => Some(CompletionRole::Assistant),
+            "tool" => Some(CompletionRole::Tool),
+            _ => None,
+        }
+    }
 }
 
 /// One message of a completion request (v4 `LLMMessage`, role + content subset).
@@ -682,5 +710,68 @@ mod tests {
                 .unwrap_err();
             assert_eq!(err.message, "provider down");
         }
+    }
+
+    // --- P4.93: the `CompletionRole` inverse ---------------------------------
+
+    /// Exhaustive over the four v4 wire spellings, `None` for anything else.
+    /// Paired with `as_str` so the two can never drift: every variant must
+    /// round-trip, which is what makes the `tool` arm impossible to lose.
+    #[test]
+    fn from_v4_wire_round_trips_every_role() {
+        for role in [
+            CompletionRole::System,
+            CompletionRole::User,
+            CompletionRole::Assistant,
+            CompletionRole::Tool,
+        ] {
+            assert_eq!(
+                CompletionRole::from_v4_wire(role.as_str()),
+                Some(role),
+                "{} must round-trip",
+                role.as_str()
+            );
+        }
+        assert_eq!(
+            CompletionRole::from_v4_wire("tool"),
+            Some(CompletionRole::Tool),
+            "the arm every hand-rolled mapper was missing"
+        );
+    }
+
+    /// An unknown spelling answers `None` — the caller decides. Case matters
+    /// (v4's wire is lowercase), and neither the empty string nor a JS-ish
+    /// `undefined` is a role.
+    #[test]
+    fn from_v4_wire_refuses_anything_else() {
+        for unknown in ["", "Tool", "USER", "function", "developer", "undefined"] {
+            assert_eq!(
+                CompletionRole::from_v4_wire(unknown),
+                None,
+                "{unknown:?} is not a v4 role spelling"
+            );
+        }
+    }
+
+    /// The reason the inverse exists at all: the canned key RENDERS the role,
+    /// so a role filed wrong computes a key that can never match the
+    /// registration (P4.90's finding). A `tool` row keyed as `user` is a
+    /// different key — this pins that they differ, so the mapper's arm is
+    /// load-bearing rather than cosmetic.
+    #[test]
+    fn a_misfiled_tool_role_computes_a_different_canned_key() {
+        let as_tool = vec![CompletionMessage {
+            role: CompletionRole::Tool,
+            content: "the tool result".to_string(),
+        }];
+        let as_user = vec![CompletionMessage {
+            role: CompletionRole::User,
+            content: "the tool result".to_string(),
+        }];
+        assert_ne!(
+            canned_completion_key("OPENAI", "m", Some(0.3), &as_tool),
+            canned_completion_key("OPENAI", "m", Some(0.3), &as_user),
+            "the canned key must distinguish a tool row from a user row"
+        );
     }
 }

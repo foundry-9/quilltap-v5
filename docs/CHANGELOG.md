@@ -301,6 +301,50 @@ matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
 without executing anything — so `<tool_call>` never reaches the simple-json pass
 on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
 not a change here.
+#### 2026-09-16 — refactor(harness): one `CompletionRole` inverse, and every hand-rolled role mapper repointed onto it
+
+_Versions: core 0.0.928, harness 0.0.822._
+
+`CompletionRole` carried `as_str()` and no inverse, so twenty-three tier-3
+families each hand-rolled the string→enum match. Nine had no `"tool"` arm and
+swept it into `_ => CompletionRole::User`. The canned tier-3 key renders the
+role, so a `tool` row filed as `user` computes a key the oracle's own
+registration can never match — the family then fails as an "unregistered input"
+whose messages diff byte-for-byte against the oracle, which is what cost P4.90 a
+lane on `orchestrator_tier3`'s failover-then-tool-call arm.
+
+`CompletionRole::from_v4_wire(&str) -> Option<Self>` is exhaustive over the four
+wire spellings and `None` otherwise; returning `Option` is the point, since a
+default now has to be written at the call site. Thirty-one harness families were
+repointed onto it, each keeping its own default (`unwrap_or(User)` where the v4
+path is single-shot, `unwrap_or_else(|| panic!(…))` with each family's own
+message where an unknown role must abort). Behaviour on today's corpora is
+unchanged and no canned key byte moved. `role_mapper_inverse_guard` is the
+`db_error_key_guard`-idiom census that keeps the hand-rolls from regrowing; it
+exempts `orchestrator_tier3_equivalence.rs` by name for this round only (another
+lane owns that file), and fails if the exemption outlives its cause.
+
+Two sites measured individually. `external_prompt_tier3`'s catch-all defaulted
+to `Tool` — an accident, and an unreachable one: v4's external-prompt generator
+assembles exactly `[{role:'system'},{role:'user'}]` at two literal sites for a
+single-shot call. `file_attachment_tier3` maps into `StreamMessage`, not
+`CompletionMessage`, and its projection compares the rendered role against the
+oracle, so it was never in the silent class; it now names the two roles it
+cannot build instead of sweeping them into `User`
+(`StreamMessage::Tool` needs a `call_id` the corpus shape has no field for).
+`message_formatter_equivalence` maps `WireRole`/`MessageRole`, neither of which
+has a tool spelling at all — left alone, recorded.
+
+The exposure survey came back the other way round from the order's hypothesis.
+v4 emits `role: 'tool'` at exactly one place,
+`lib/services/chat-message/tool-call-threading.ts:94`, with four callers (the
+native tool loop, both Brahma engines, the help-chat orchestrator) — so the only
+families that can carry a tool row are the five that already had the arm. The
+two the order flagged as live-exposed cannot reach one through their oracles:
+`enclave_step_tier3`'s stream mock has no tool-call channel on either side, and
+`regenerate_swipe_tier3` is a single non-streaming `sendMessage` with no loop.
+The nine catch-alls were latent, not live; no corpus case was added.
+
 #### 2026-09-16 — test(harness): split the `QT_FIXTURE_HELP_MAIN` two-family collision by name and give the prune-guard family a content channel
 
 _Versions: harness 0.0.821._

@@ -278,13 +278,7 @@ fn env_or_skip(key: &str) -> Option<String> {
 }
 
 fn role_of(s: &str) -> CompletionRole {
-    match s {
-        "system" => CompletionRole::System,
-        "user" => CompletionRole::User,
-        "assistant" => CompletionRole::Assistant,
-        "tool" => CompletionRole::Tool,
-        other => panic!("unknown role {other}"),
-    }
+    CompletionRole::from_v4_wire(s).unwrap_or_else(|| panic!("unknown role {}", s))
 }
 
 fn fresh_copy(main_fixture: &str, mount_fixture: &str, tag: &str) -> (PathBuf, PathBuf) {

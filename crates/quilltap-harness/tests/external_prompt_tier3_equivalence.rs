@@ -258,12 +258,16 @@ fn messages_from(call: &Value) -> Vec<CompletionMessage> {
         .unwrap()
         .iter()
         .map(|m| {
-            let role = match m["role"].as_str().unwrap() {
-                "system" => CompletionRole::System,
-                "user" => CompletionRole::User,
-                "assistant" => CompletionRole::Assistant,
-                _ => CompletionRole::Tool,
-            };
+            // P4.93: through the ONE inverse, defaulting to `User` like every
+            // sibling family. This site used to default to `Tool`, which was an
+            // ACCIDENT, not a decision — and an unreachable one: v4's
+            // external-prompt generator assembles exactly `[{role:'system'},
+            // {role:'user'}]` at two literal sites
+            // (`lib/services/external-prompt-generator.service.ts:148-150`,
+            // `:191-193`) for a single-shot call with no tool loop, so no third
+            // spelling can reach this mapper at all.
+            let role = CompletionRole::from_v4_wire(m["role"].as_str().unwrap())
+                .unwrap_or(CompletionRole::User);
             CompletionMessage {
                 role,
                 content: m["content"].as_str().unwrap().to_string(),

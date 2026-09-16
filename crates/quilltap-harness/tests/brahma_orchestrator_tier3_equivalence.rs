@@ -188,12 +188,7 @@ struct CannedStreamW {
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
     m.iter()
         .map(|m| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                "tool" => CompletionRole::Tool,
-                _ => CompletionRole::User,
-            },
+            role: CompletionRole::from_v4_wire(m.role.as_str()).unwrap_or(CompletionRole::User),
             content: m.content.clone(),
         })
         .collect()

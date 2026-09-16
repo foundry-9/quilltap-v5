@@ -328,12 +328,8 @@ impl QueuedStreamingProvider {
                 .messages
                 .iter()
                 .map(|m| CompletionMessage {
-                    role: match m.role.as_str() {
-                        "system" => CompletionRole::System,
-                        "user" => CompletionRole::User,
-                        "assistant" => CompletionRole::Assistant,
-                        other => panic!("unexpected role {other}"),
-                    },
+                    role: CompletionRole::from_v4_wire(m.role.as_str())
+                        .unwrap_or_else(|| panic!("unexpected role {}", m.role.as_str())),
                     content: m.content.clone(),
                 })
                 .collect();

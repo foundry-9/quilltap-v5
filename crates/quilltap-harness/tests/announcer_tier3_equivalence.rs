@@ -453,11 +453,8 @@ fn announcer_tier3_matches_oracle() {
                 .expect("messages array")
                 .iter()
                 .map(|m| CompletionMessage {
-                    role: match m["role"].as_str().unwrap() {
-                        "system" => CompletionRole::System,
-                        "assistant" => CompletionRole::Assistant,
-                        _ => CompletionRole::User,
-                    },
+                    role: CompletionRole::from_v4_wire(m["role"].as_str().unwrap())
+                        .unwrap_or(CompletionRole::User),
                     content: m["content"].as_str().unwrap().to_string(),
                 })
                 .collect();

@@ -74,7 +74,7 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::files::image_processing::NotConfiguredTranscoder;
 use quilltap_core::model::completion::{
     canned_completion_key_with_attachments, CannedCompletionProvider, CompletionAttachment,
-    CompletionMessage, CompletionResponse, CompletionUsage,
+    CompletionMessage, CompletionResponse, CompletionRole, CompletionUsage,
 };
 use quilltap_core::services::chat_files::{
     load_and_process_files, load_chat_files_for_llm, FileBytesStore, LoadChatFilesOptions,
@@ -609,14 +609,36 @@ fn file_attachment_matches_oracle() {
                         .as_ref()
                         .map(|a| a.iter().map(&build_attachment).collect())
                         .unwrap_or_default();
-                    match m.role.as_str() {
-                        "system" => StreamMessage::system(m.content.clone()),
-                        "assistant" => StreamMessage::assistant(m.content.clone()),
-                        _ => StreamMessage::User {
+                    // P4.93: this mapper builds a `StreamMessage`, not a
+                    // `CompletionMessage`, so it is NOT in the silent class —
+                    // the `project` closure below compares `m.role_str()`
+                    // against the oracle, so a misfiled role reddens loudly
+                    // instead of missing a canned key. It still goes through
+                    // the ONE inverse, and the two roles it cannot build say
+                    // so by name rather than falling into `User`:
+                    // `StreamMessage::Tool` needs a `call_id` that
+                    // `AdaptMessage` has no field for (v4's adapter
+                    // `lib/chat/message-attachment-adapter.ts` takes
+                    // `role: string` loosely and carries every other field
+                    // through untouched, so a call id would have to come from
+                    // the corpus), and the adapt corpus carries only
+                    // system/user/assistant.
+                    match CompletionRole::from_v4_wire(m.role.as_str()) {
+                        Some(CompletionRole::System) => StreamMessage::system(m.content.clone()),
+                        Some(CompletionRole::Assistant) => {
+                            StreamMessage::assistant(m.content.clone())
+                        }
+                        Some(CompletionRole::User) => StreamMessage::User {
                             content: m.content.clone(),
                             cache_control: None,
                             attachments,
                         },
+                        Some(CompletionRole::Tool) => panic!(
+                            "a `tool` adapt row is unrepresentable here: \
+                             StreamMessage::Tool needs a call_id AdaptMessage \
+                             does not carry — widen the corpus shape first"
+                        ),
+                        None => panic!("unexpected role {}", m.role),
                     }
                 })
                 .collect()

@@ -130048,3 +130048,104 @@ the test header, which is why the rename needed no driver-side alias.
 families under TODAY's names and edits none of them — no collision with this
 rename. The unifier re-runs both help-sync families with the renamed block
 after the pick.
+
+### Unit B — the `to_completion_messages` tool-role blind spot: ONE inverse, every mapper repointed
+
+**The inverse.** `crates/quilltap-core/src/model/completion.rs`:
+`CompletionRole::from_v4_wire(&str) -> Option<Self>`, four arms, `None`
+otherwise, beside `as_str()`. No `FromStr` — nothing wants the trait; the
+callers all hold a `&str` already and a trait impl would only add a second
+spelling of the same answer. Three unit tests: the four spellings ROUND-TRIP
+through `as_str`/`from_v4_wire` (so the pair cannot drift and the `tool` arm
+cannot be lost), six non-spellings answer `None` (case matters — v4's wire is
+lowercase), and — the one that says why the inverse exists —
+`a_misfiled_tool_role_computes_a_different_canned_key` asserts
+`canned_completion_key` differs for the same content under `Tool` vs `User`.
+
+**The sweep.** 31 of the 32 harness files carrying
+`"assistant" => CompletionRole::Assistant` (the 32nd is P4.92's
+`orchestrator_tier3_equivalence.rs`, §R.10 (b) — untouched). Each keeps ITS
+default: Class 1 → `.unwrap_or(CompletionRole::User)`; Class 2 →
+`.unwrap_or_else(|| panic!(<each family's own message>))`, byte-identical
+messages with the inline `{other}` capture repointed at the expression. Class 3
+(the eleven already-correct mappers, `tool` arm and all) went through too, or
+the census below could not be total. Net −104 lines.
+
+**The two oddballs, measured individually.**
+
+- `external_prompt_tier3_equivalence.rs`: the catch-all defaulted to `Tool`.
+  Measured: v4's `lib/services/external-prompt-generator.service.ts` assembles
+  exactly `[{role:'system'}, {role:'user'}]` at `:148-150` and `:191-193`, a
+  single-shot call with no tool loop — so no third spelling can reach the mapper
+  and the `Tool` default was an ACCIDENT, not a decision. Now `unwrap_or(User)`
+  like its siblings, with the finding in a code comment.
+- `file_attachment_tier3_equivalence.rs`: NOT in the silent class. It builds a
+  `StreamMessage`, and the family's `project` closure compares `m.role_str()`
+  against the oracle — so a misfiled role reddens loudly rather than missing a
+  canned key. It still routes through the inverse, and the two roles it cannot
+  build now say so by name: `StreamMessage::Tool` needs a `call_id` that
+  `AdaptMessage` has no field for (v4's adapter takes `role: string` loosely and
+  carries every other field through untouched, so a call id would have to come
+  from the corpus), and an unknown role panics.
+- `message_formatter_equivalence.rs:126-139` — **measured, left alone.** It maps
+  `WireRole` and `MessageRole`, a DIFFERENT enum pair: `message_formatter.rs:221`
+  is `{System, User, Assistant}` and `:58` is `{User, Assistant}`. Neither has a
+  tool spelling, so there is nothing for the inverse to give them.
+
+**Tier 2 item 10 — the census guard.** New
+`crates/quilltap-harness/tests/role_mapper_inverse_guard.rs` (the
+`db_error_key_guard` idiom): walks `crates/quilltap-harness/tests/**.rs` and
+fails on any file still matching `"assistant" => CompletionRole::Assistant`.
+`orchestrator_tier3_equivalence.rs` is exempt BY NAME with the reason and the
+instruction — **the unifier repoints it onto the inverse at the wire and DELETES
+the exemption** (§R.10 (b)); the guard also fails if the exemption outlives its
+cause. Anti-vacuity: it asserts ≥ 25 files call `from_v4_wire`, so a tree that
+merely stopped mapping roles cannot satisfy it.
+
+**Mutation proof M1** (`from_v4_wire("tool")` → `Some(CompletionRole::User)`,
+reverted by file backup per `mutation-proof-revert-by-file-backup`):
+
+| family | tool rows in its oracle | M1 |
+|---|---|---|
+| `native_tool_loop_tier3_equivalence` | 8 | **RED** — `no canned stream queued for key (ANTHROPIC, model claude, temperature Some(0.7), 4 msgs)`, the exact failure shape the inverse prevents |
+| `text_tool_loop_tier3_equivalence` | 0 | green (the contrast: the mutation bites only where a tool row exists) |
+| `orchestrator_tier3_equivalence` | 1 | green — **the order's expectation, REFUTED by measurement** |
+
+The order named `orchestrator_tier3` as M1's witness. It cannot be: §R.10 (b)
+forbids this lane from editing that file, so its mapper still hand-rolls its own
+(correct, P4.90) `"tool"` arm and `from_v4_wire` never runs for it. The witness
+is `native_tool_loop_tier3`. When the unifier repoints P4.92's file at the wire,
+M1 would redden it too — that is the exemption's whole point.
+
+**Item 5 — the "exposed pair", measured, and the premise refuted.** v4 emits
+`role: 'tool'` at exactly ONE site, `lib/services/chat-message/
+tool-call-threading.ts:94` (`buildToolResultMessages`), with exactly four
+callers: `native-tool-loop.service.ts`, `brahma-console/one-shot.service.ts`,
+`brahma-console/orchestrator.service.ts`, `help-chat/orchestrator.service.ts`.
+So the only families that can carry a tool row are `native_tool_loop_tier3`,
+`brahma_console_tier3`, `brahma_orchestrator_tier3`,
+`help_chat_orchestrator_tier3` and `orchestrator_tier3` — **and every one of
+those five already had the `"tool"` arm**. The nine Class-1 catch-alls were
+LATENT, not live. Specifically, for the two the order called LIVE-exposed:
+
+- **`enclave_step_tier3`** — its `custom_tools: true` is a v5-side
+  `OrchestratorChatSettings` flag mirroring the fixture's `chat_settings` row,
+  not a corpus tool call. The family's `streamMessage` mock yields only
+  `{ content }` or `{ done, usage, cacheUsage, rawProviderUsage,
+  attachmentResults, rawResponse }` (`enclave-step-tier3.test.ts:240-252`), and
+  the Rust `ChunkW` mirrors exactly that (`content`/`done`/`usage`/`error`,
+  `:153-162`). **There is no tool-call channel on either side**, and the corpus
+  JSON contains zero `toolCall`/`tool_use`/`"tool"` occurrences. Reachable in
+  production, unreachable through this oracle: expressing it means reshaping the
+  mock on both sides plus a custom-tool definition in the fixture — a corpus
+  build, not a coverage line. Recorded, pin left (the order's own out).
+- **`regenerate_swipe_tier3`** — v4's `regenerate-swipe.service.ts:137` is a
+  **single non-streaming `sendMessage`** ("Single non-streaming generation"), no
+  loop of any kind. The `'tool'` in its role cast at `:140` is defensive typing
+  over `formatMessagesForProvider`, whose own output union carries no tool role
+  (v5's ported `WireRole` is `{System, User, Assistant}`). No tool row is
+  reachable.
+
+**The proof obligation (item 4): every edited family re-run by name on a
+pin-fresh oracle, GREEN, zero row change** — the sweep and its numbers are in
+the lane's gate section below.

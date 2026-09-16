@@ -202,13 +202,7 @@ impl CompletionProvider for CannedCompletion {
 }
 
 fn role_of(s: &str) -> CompletionRole {
-    match s {
-        "system" => CompletionRole::System,
-        "user" => CompletionRole::User,
-        "assistant" => CompletionRole::Assistant,
-        "tool" => CompletionRole::Tool,
-        other => panic!("unknown role {other}"),
-    }
+    CompletionRole::from_v4_wire(s).unwrap_or_else(|| panic!("unknown role {}", s))
 }
 
 // ---------------------------------------------------------------------------
