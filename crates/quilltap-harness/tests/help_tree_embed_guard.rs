@@ -11,7 +11,7 @@
 //! cannot pass a gate.
 //!
 //! It also pins the tree's SIZE against the vendored v4 count (124 files at
-//! v4 `ffb6b3119`): a checkout without `help/` embeds an EMPTY table rather
+//! v4 `1fefadb9a`): a checkout without `help/` embeds an EMPTY table rather
 //! than failing the build, and this is the assertion that refuses it.
 //!
 //! Run standalone:
@@ -22,7 +22,10 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `2075242f9`: still 124 — the
+/// The shipped tree at the vendored pin (v4 `1fefadb9a`: still 124 — the
+/// P4.D195 re-vendor MODIFIED `help/chat-turn-manager.md` alone (bug 147,
+/// `1fefadb9a` — one sentence on the sidebar reading the same stored running
+/// order as the banner) and added none; v4 `2075242f9`: still 124 — the
 /// P4.D194 re-vendor MODIFIED `help/database-protection.md` (bug 144,
 /// `23abc1ba1`) and `help/chat-turn-manager.md` (bug 146, `2075242f9`) and added
 /// none; v4 `ffb6b3119`: still 124 — the P4.D191 re-vendor MODIFIED

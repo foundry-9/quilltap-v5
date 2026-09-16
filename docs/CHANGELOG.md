@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — chore(help): re-vendor `chat-turn-manager.md` at v4 `1fefadb9a`
+
+_Versions: harness 0.0.822._
+
+One line of `help/chat-turn-manager.md`, byte-copied from the target pin: the
+sidebar's turn-order paragraph now says the sidebar and the turn banner both
+read the one stored running order, "and not a second opinion arrived at
+independently" — which is exactly what bug 147 made false and this round's port
+makes true again. 124 files stays 124 (a modification, no addition), and the
+whole vendored tree is md5-identical to v4's at the pin.
+
+All fifteen `help_*` content families regenerated from the target pin and re-run
+by name: 15/15 ok, zero SKIP. The pin is verified on the changed bytes — the
+fresh `help-tree` oracle carries the new sentence.
+
 #### 2026-09-16 — feat(salon): the chat-GET turn seed goes live and grows its spoken half (v4 bug 147)
 
 _Versions: SPA 0.5.727._
