@@ -511,27 +511,60 @@ struct LockAssessment {
 /// wording.
 const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
 
+/// The freshness window in words, derived from the constant the check actually
+/// uses — so the sentence `--lock-clean` prints cannot drift away from the
+/// behaviour it describes. v4 `23abc1ba1`'s `describeFreshWindow()`
+/// (`packages/quilltap/bin/quilltap.js:489-498`), arm for arm.
+///
+/// The window is a parameter so the JS arithmetic can be pinned at values
+/// [`FRESH_MS`] never takes ([`describe_fresh_window`] is the production call).
+/// `Math.round` first, then `% 60` on the ROUNDED number — v4's order, which is
+/// what makes `0` answer `0 minutes` rather than `0 seconds`.
+fn describe_fresh_window_ms(ms: f64) -> String {
+    let seconds = quilltap_core::jsnum::math_round(ms / 1000.0);
+    if seconds % 60.0 != 0.0 {
+        return format!("{} seconds", crate::nodefmt::js_num_string(seconds));
+    }
+    let minutes = seconds / 60.0;
+    if minutes == 1.0 {
+        "1 minute".to_string()
+    } else {
+        format!("{} minutes", crate::nodefmt::js_num_string(minutes))
+    }
+}
+
+fn describe_fresh_window() -> String {
+    describe_fresh_window_ms(FRESH_MS)
+}
+
 /// The two lines `--lock-clean` prints when it refuses, or `None` when the lock
 /// is cleanable. Pure so the WORDING can be pinned against v4's launcher
-/// (`packages/quilltap/bin/quilltap.js:626-634`), which is this verb's oracle.
+/// (`packages/quilltap/bin/quilltap.js:636-656` at v4 `23abc1ba1`), which is
+/// this verb's oracle.
 ///
-/// ⚠ **The second arm carries a v4 sentence that is FALSE, on purpose.**
+/// The two arms say different things because they tested different things:
 ///
 ///  - `alive && is_node` — a real Quilltap process is running. "Held by a live
-///    process" is TRUE, and stopping it is the remedy.
-///  - `heartbeat_fresh` alone — the lock was refreshed recently, but its process
-///    may be **gone**. This arm fires precisely when a server was killed less
-///    than five minutes ago, and it announces *"its holder is alive"* — which
-///    [`assess_lock`] has just computed to be FALSE one line earlier, and which
-///    the BOOT path contradicts outright (it reclaims the same lock, logging
-///    `PID <n> is no longer running`). An operator who has just killed the
-///    server is told to go stop a process that does not exist.
+///    process" is TRUE and stopping it IS the remedy, so this arm keeps v4's
+///    *"Stop the running instance first…"*.
+///  - `heartbeat_fresh` alone — reached ONLY once [`assess_lock`] has computed
+///    `alive = false` (the arm above claims every confirmed-live case), so it
+///    must not assert that anything is running. Freshness alone is bug 126's
+///    deliberate fallback for every environment — a PID check is not reliable
+///    everywhere, and cleaning a LIVE instance's lock is the worse failure —
+///    so the refusal is right, and what it says is simply what was tested,
+///    plus the remedy the old text omitted entirely: waiting.
 ///
-/// That is **v4's own text, byte for byte**, and the port keeps it: v4 bug 144
-/// is filed against the launcher, and v5 converges when v4 does. The 2026-09-15
-/// dogfood walk (finding #119) briefly "fixed" it here and Tier R caught the
-/// divergence across five cases — the record of why this reads wrong and stays
-/// is the point of this comment.
+/// ⚠ **This arm is a CONVERGENCE, and its history is the point.** Until v4
+/// `23abc1ba1` it announced *"its holder is alive"* over a PID the line above
+/// had just proved dead — and the BOOT path contradicted it outright, logging
+/// `PID <n> is no longer running` as it reclaimed the same lock. v5 carried
+/// that byte for byte. The 2026-09-15 dogfood walk (finding #119) "fixed" it
+/// here on a false premise, Tier R caught the divergence, and the revert was
+/// pinned *asserting the false claim* so that v4's own fix would redden it by
+/// design. v4 landed the fix (bug 144, `23abc1ba1`); at the target pin exactly
+/// **four** `lock clean …` Tier R cases moved — four, not the five the walk's
+/// record claimed — and these are v4's post-fix bytes.
 fn lock_clean_refusal_lines(
     alive: bool,
     is_node: bool,
@@ -551,10 +584,14 @@ fn lock_clean_refusal_lines(
     if heartbeat_fresh {
         return Some([
             format!(
-                "Lock is still being refreshed (heartbeat {}s ago) — its holder is alive. Cannot clean.",
+                "Lock heartbeat is still fresh ({}s ago). Cannot clean.",
                 quilltap_core::jsnum::math_round(heartbeat_age_ms / 1000.0) as i64
             ),
-            "Stop the running instance first, or use --lock-override to force.".to_string(),
+            format!(
+                "A lock counts as held until its heartbeat is {} stale, even if its process has \
+                 gone. Wait it out, or use --lock-override to force.",
+                describe_fresh_window()
+            ),
         ]);
     }
     None
@@ -908,44 +945,65 @@ fn format_history_ts(ts: &str) -> String {
 mod lock_clean_wording_tests {
     use super::*;
 
-    /// v4's launcher, `packages/quilltap/bin/quilltap.js:626-634`, transcribed.
-    /// These are the bytes Tier R compares against; both arms are v4's.
+    /// v4's launcher, `packages/quilltap/bin/quilltap.js:636-656` at v4
+    /// `23abc1ba1`, transcribed. These are the bytes Tier R compares against;
+    /// every arm is v4's.
     const V4_LIVE_PROCESS: &str =
         "Lock is held by a live Quilltap process (PID 4242). Cannot clean.";
-    const V4_FRESH_HEARTBEAT: &str =
-        "Lock is still being refreshed (heartbeat 82s ago) — its holder is alive. Cannot clean.";
-    const V4_SECOND_LINE: &str =
+    const V4_FRESH_HEARTBEAT: &str = "Lock heartbeat is still fresh (82s ago). Cannot clean.";
+    /// The live-process arm's second line — v4's ONLY surviving use of it. The
+    /// fresh-heartbeat arm stopped saying this at `23abc1ba1`, which is half of
+    /// bug 144's fix (the remedy was wrong, not only the diagnosis).
+    const V4_LIVE_SECOND_LINE: &str =
         "Stop the running instance first, or use --lock-override to force.";
+    const V4_FRESH_SECOND_LINE: &str =
+        "A lock counts as held until its heartbeat is 5 minutes stale, even if its process has \
+         gone. Wait it out, or use --lock-override to force.";
 
     #[test]
     fn a_live_quilltap_process_is_named_as_such() {
         let [first, second] =
             lock_clean_refusal_lines(true, true, 4242.0, 1_000.0, true).expect("refuses");
         assert_eq!(first, V4_LIVE_PROCESS);
-        assert_eq!(second, V4_SECOND_LINE);
+        assert_eq!(second, V4_LIVE_SECOND_LINE);
     }
 
     /// The 2026-09-15 walk's exact scenario: the server was SIGKILLed 82 s ago,
     /// so the PID is DEAD but the heartbeat is still young.
     ///
-    /// ⚠ **This test pins a sentence that is FALSE, deliberately.** v4 says the
-    /// holder is alive here and it is not — filed as v4 bug 144. The port stays
-    /// faithful until v4 converges, and this assertion is what stops a
-    /// well-meaning fix from diverging again: the walk tried exactly that, and
-    /// Tier R failed five cases (`lock clean suspect but fresh heartbeat
-    /// refuses`, `… docker fresh refuses`, `… retired lima env`, `… foreign
-    /// fresh local refuses`, and one more) because this verb's oracle is v4's
-    /// real launcher.
+    /// This is the CONVERGED text (v4 `23abc1ba1`, bug 144). Its predecessor,
+    /// `a_fresh_heartbeat_keeps_v4s_false_liveness_claim`, asserted
+    /// `first.contains("its holder is alive")` **on purpose** so that v4's fix
+    /// would redden it by design; it did, together with four `lock clean …`
+    /// Tier R cases, and this is the retirement. The two `!contains` guards
+    /// below are what stops the old bytes coming back: BOTH lines moved — the
+    /// first stopped claiming liveness, and the second stopped prescribing a
+    /// remedy for a process that is gone.
     #[test]
-    fn a_fresh_heartbeat_keeps_v4s_false_liveness_claim() {
+    fn a_fresh_heartbeat_says_what_it_tested_and_offers_waiting() {
         let [first, second] =
             lock_clean_refusal_lines(false, false, 24346.0, 82_000.0, true).expect("refuses");
         assert_eq!(first, V4_FRESH_HEARTBEAT);
-        assert_eq!(second, V4_SECOND_LINE);
-        // The claim really is about liveness, and the PID really is dead — the
-        // two halves of v4 bug 144, pinned together so the convergence is
-        // measurable when v4 fixes it.
-        assert!(first.contains("its holder is alive"));
+        assert_eq!(second, V4_FRESH_SECOND_LINE);
+        assert!(!first.contains("its holder is alive"));
+        assert!(!second.contains("Stop the running instance first"));
+        // The window in the sentence IS the window the check uses.
+        assert!(second.contains(&describe_fresh_window()));
+    }
+
+    /// v4's `describeFreshWindow()`, arm for arm, over an injected window —
+    /// including values `FRESH_MS` never takes, because the arithmetic is JS's
+    /// and not English. `0` is the tell: `0 % 60 === 0`, `0 / 60 === 0`, and
+    /// `0 === 1` is false, so v4 answers `0 minutes`.
+    #[test]
+    fn the_fresh_window_is_worded_as_v4_words_it() {
+        assert_eq!(describe_fresh_window_ms(300.0 * 1000.0), "5 minutes");
+        assert_eq!(describe_fresh_window_ms(60.0 * 1000.0), "1 minute");
+        assert_eq!(describe_fresh_window_ms(90.0 * 1000.0), "90 seconds");
+        assert_eq!(describe_fresh_window_ms(0.0), "0 minutes");
+        // The production call reads `FRESH_MS` — which
+        // `the_freshness_window_is_v4s_five_minutes` pins at v4's value.
+        assert_eq!(describe_fresh_window(), "5 minutes");
     }
 
     /// v4's branch ORDER: a confirmed live process is named before the

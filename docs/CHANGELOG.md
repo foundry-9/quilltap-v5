@@ -203,6 +203,49 @@ the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
 conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
 the room (`fallback-not-in-room`), and treating an empty-string floor id as
 a name (`empty-string-floor-matching-seat`).
+#### 2026-09-16 — fix(cli): `--lock-clean`'s heartbeat refusal says what it tested (v4 `23abc1ba1`, bug 144)
+
+_Versions: cli 0.0.22._
+
+The CONVERGENCE half of v4 `23abc1ba1`. v5 was deliberately pinned to v4's
+pre-fix wording — *"Lock is still being refreshed (heartbeat 82s ago) — its
+holder is alive. Cannot clean."* + *"Stop the running instance first…"* —
+because this port's own 2026-09-15 dogfood walk (finding #119) filed it
+upstream as v4 bug 144 after briefly "fixing" it here and watching Tier R
+catch the divergence. v4 has landed the fix, so the pin has done its job.
+
+The heartbeat arm now prints v4's post-fix bytes: `Lock heartbeat is still
+fresh (Ns ago). Cannot clean.` and `A lock counts as held until its heartbeat
+is 5 minutes stale, even if its process has gone. Wait it out, or use
+--lock-override to force.` — the window rendered by a new
+`describe_fresh_window()` derived from `FRESH_MS` exactly as v4's
+`describeFreshWindow()` derives it from `HEARTBEAT_FRESH_MS`, so the sentence
+cannot drift from the check. Refusal semantics and branch order are unchanged;
+the live-process arm keeps its own "Stop the running instance first…" second
+line, which is now v4's only use of it.
+
+Measured red-first, both directions. Tier R against v4's real launcher at
+`2075242f9` reddened **exactly four** `lock clean …` cases before the change
+(`lock clean suspect but fresh heartbeat refuses`, `… docker fresh refuses`,
+`… retired lima env`, `… foreign fresh local refuses`) and answered 223/0
+after; run against the baseline `ffb6b3119` launcher afterwards it reddens the
+same four the other way. **Four, not the five the walk's record and the work
+order both claimed** — the fifth was never substantiated and the arm reaches
+only these four cases.
+
+`a_fresh_heartbeat_keeps_v4s_false_liveness_claim`, whose
+`assert!(first.contains("its holder is alive"))` existed precisely so v4's fix
+would redden it, is retired to
+`a_fresh_heartbeat_says_what_it_tested_and_offers_waiting`: both lines pinned
+exactly, plus `!contains` guards on both retired sentences, plus the window in
+the sentence compared against `describe_fresh_window()` itself. A new
+`the_fresh_window_is_worded_as_v4_words_it` pins the JS arithmetic over an
+injected window — 300 s → `5 minutes`, 60 s → `1 minute`, 90 s → `90 seconds`,
+and `0` → `0 minutes` (v4 rounds first, so `0 % 60 === 0` and the minutes arm
+wins). Three mutations: restoring the old first line reds the unit test and
+the same four Tier R cases; restoring the old second line alone reds them too,
+which is the proof Tier R compares both lines; dropping the `minutes === 1`
+arm reds the 60 s pin.
 
 #### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
 
