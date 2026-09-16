@@ -349,6 +349,12 @@ impl<T: ProviderTransport, K: ProviderKeySource> StreamingCompletionProvider
         // OpenAI's builder reads the id, so this prep is inert for every other
         // provider and is only ever CONSUMED on a pre-stream failure of a chained
         // request.
+        //
+        // P4.92: only the PRIMARY stream can reach this arm now. The two tool
+        // loops used to inherit the primary's `previous_response_id` through
+        // `base_params`, so a chained turn that called a tool armed this
+        // fallback once per loop iteration; the orchestrator now clears the
+        // token off every copy it hands a loop, matching v4's four call sites.
         let fallback_prepared = if params.previous_response_id.is_some() {
             let mut fallback_params = params.clone();
             fallback_params.previous_response_id = None;

@@ -129559,3 +129559,388 @@ each harness before its first write.
 ### Versions
 
 core 0.0.930, harness 0.0.821, web 0.0.148; host/cli/tauri/SPA unchanged.
+## Lane record — P4.92 (the tool loops' `base_params` carry-over class), 2026-09-16
+
+**Order:** `docs/developer/porting/work-orders/p4.92-loop-params-carry-over.md`.
+**Branch:** `claude/loop-params-carry-over-docs-91d876` (worktree
+`.claude/worktrees/loop-params-carry-over-docs-91d876`).
+**Round:** the `1fefadb9a` bug-147 drift catch-up + maintenance round
+(P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93). This lane absorbs NO drift row.
+
+### §0 — the probe and the pin
+
+The drift ledger's §2 freshness probe PASSED at lane start and again before
+every regen batch: checkout on `main`, tree CLEAN, `log 1fefadb9a..main` empty,
+`log 1a2b2164c..bugfix` empty. Per §R.3 this lane pins the BASELINE, and the
+precondition the order asked for was recorded first:
+
+```
+git -C ~/source/quilltap-server diff --stat 2075242f9..1fefadb9a -- lib/services/chat-message/
+```
+
+→ **EMPTY**. v4's four `streamMessage` call sites are untouched by the drift
+commit, so the baseline is the right spec.
+
+Pin (lane-unique, ledger §5.1, the three symlink classes):
+`/tmp/qt-v4-pin-p4.92-2075242f9`, `git worktree add --detach … 2075242f9`.
+Every regen ran through the sweep driver with `--v4 "$PIN"`.
+
+### §1 — the v4 survey, re-verified at the pin
+
+The order's omission table is confirmed byte for byte (`streaming.service.ts`
+destructures the options at `:363`, builds `cacheKey` at `:393` and forwards
+the bag at `:400-412`):
+
+| option | primary `primary-stream:197-210` | native re-stream `native-tool-loop:340-350` | native force-final `:421-430` | text continuation `text-tool-loop:390-400` |
+|---|---|---|---|---|
+| `previousResponseId` | yes | **no** | **no** | **no** |
+| `stop` | yes | **no** | **no** | yes (`strategy.stopSequences`) |
+| `characterId` (→ `cacheKey`) | yes | yes | **no** | **no** |
+
+**An order premise REFUTED by measurement.** The order allowed for the `stop`
+half being dead by construction if the tool modes were mutually exclusive. They
+are not — on EITHER side. v4 calls `runNativeToolLoop` unconditionally
+(`orchestrator.service.ts:1499`), and so does v5 (`orchestrator.rs`, no mode
+guard). Under simple-json `actualTools` is `[]`, but the loop's break condition
+is the DETECTOR, not the slate, so a simple-json seat whose reply parses as a
+native call does reach the native re-stream. The `stop` half therefore landed
+as a **corpus case**, not the unit pin the order permitted.
+
+Two smaller measurements, both recorded because they contradict prose already
+in the tree:
+
+- `textblock_mode` is a **simple-json** case, not a text-block one. Its seat is
+  the OPENAI `o1-mini` profile, whose `supportsTools: false` in
+  `FALLBACK_PRICING` (`lib/llm/fallback-data.ts:291-300`) makes
+  `resolveToolMode(false, undefined)` return `'simple-json'`
+  (`lib/tools/pseudo-tool-support.ts:116-132`). The case name follows v4's
+  `useTextBlockTools` FLAG, which is true for any non-native mode; the harness
+  header's "resolves false → text-block mode" is loose. It is why the corpus
+  already had exactly one canned row carrying `stop: ["</tool_call>"]` the
+  moment the recording existed — and why Case B could reuse that seat instead
+  of inventing a `pseudoToolMode` profile field the builder does not carry.
+- v4's Phase-19/Phase-20 text-pass gating (`if simple-json … else text-block`)
+  matches v5's `orchestrator.rs` block exactly — checked because a first draft
+  of Case B mis-read a failing request as a spurious text continuation.
+
+### §2 — what landed
+
+**Tier 1 item 1 — the corpus can see the fields.** The oracle's `streamMessage`
+mock destructures `previousResponseId` / `stop` and records them on the canned
+row (`previousResponseId: string|null`, `stop: string[]`), **never in the key**.
+The harness's `CannedStreamW` reads them back, `QueuedStreamingProvider` records
+what v5 passed per key, and both are compared after the run — the same
+side-channel treatment `tools` / `modelParams` / `sampling` / `attachments`
+already get.
+
+*Byte-identity across the regen, proven:* stripping the two new keys from every
+`cannedStream` row of the before/after NDJSONs leaves all **69** pre-existing
+rows identical. A naive whole-file `cmp` DIFFERS, and that is not this lane —
+the fixture builder mints a fresh vault mount-point UUID per build and the
+orchestrator mints message ids, so the comparison normalizes UUIDs
+(`regenerate-at-both-pins-and-cmp-is-not-universal`, applied to two regens at
+ONE pin). Row count 69 → 73 after the two cases (2 rows each: primary +
+re-stream).
+
+**Tier 1 item 2 — the builder seeds a `rawResponse`.** `MessageSpec` gains an
+optional `rawResponse` forwarded into `repos.chats.addMessages`. The column is
+v4's own (`ChatMessageRowSchema:42`, `rawResponse: JsonSchema.nullable()
+.optional()`), and it is what `findPreviousResponseId`
+(`primary-stream.service.ts:419-439`) walks newest-first for a `type:'message'`
+/ `role:'ASSISTANT'` row whose `rawResponse.id` starts `resp_`. v5's
+`primary_stream.rs`'s `find_previous_response_id` reads the identical shape off
+the hydrated row (`db/chats_messages_read.rs:170`). Before this, `grep resp_`
+over the spec returned zero and the builder could not seed one, so the whole
+chaining half was structurally unreachable.
+
+**Tier 1 item 3 — Case A, `openai_chained_then_native_tool_call`.** A new
+OPENAI `ChainPrimary` profile (`gpt-chains`, unknown to `FALLBACK_PRICING`, so
+`checkModelSupportsTools` defaults TRUE → native mode), its own chat + seat, and
+one seeded ASSISTANT message carrying `rawResponse: { id: "resp_prior" }`. The
+canned reply's terminal chunk carries P4.90's dual shape — a `marker` for the
+oracle's mocked detector AND a genuine OPENAI `tool_calls` array for v5's REAL
+`RegistryToolCallDetector`. The chat is `isPaused: true`, matching P4.90's
+`fb110006` template, so `executeTurnChain` stops after the one turn the case
+poses (without it the chain ran on and BOTH sides died for want of a third
+canned sequence — a mutual failure that would have compared equal).
+
+**Tier 1 item 4 — Case B, `simple_json_then_native_tool_call`.** The same
+shape on the existing OPENAI `o1-mini` seat, so the primary carries
+`SIMPLE_JSON_STOP` and the native re-stream is where the carry shows.
+
+**RED-FIRST, both halves, against unported v5** (the fix not yet written):
+
+| arm | v5 sent | v4 sent |
+|---|---|---|
+| Case A, native re-stream (key carries a `tool` message) | `Some("resp_prior")` | `None` |
+| Case B, native re-stream | `["</tool_call>"]` | `[]` |
+
+The second red had to be captured with the `previousResponseId` assertion
+temporarily disabled (file backup, restored immediately) — the two arms sit in
+one block and the first one to fire masks the other.
+
+*The positive controls, from the same NDJSON:* the Case A PRIMARY row records
+`previousResponseId: "resp_prior"` on BOTH sides (the chaining really happens,
+so the recording is live, not uniformly null), and both cases' re-stream rows
+carry a `tool` role message (the loop really re-streamed).
+
+**Tier 1 item 5 — the fix.** `loop_base_params()` after the P4.90 `params.model`
+rebuild, used at all THREE `base_params:` sites (the order said two; there are
+two `run_text_tool_pass` calls). It clears `previous_response_id` and `stop`.
+
+⚠ **The strip is on the CLONES, not on `params` — and the order's preferred
+placement would have introduced a regression.** The order offered "after the
+primary's use and before the three clones". The primary is fine (it takes
+`params.clone()` before the rebuild), but `params` has a **fourth** consumer the
+order's survey did not list: `attempt_empty_response_recovery`. v4 passes THAT
+one `stop: initialStopSequences` (`orchestrator.service.ts:1636`), and its chain
+leg forwards them to the understudy (`provider_failover.rs`'s
+`walk_fallback_chain` reads `Some(&params.stop)`; v4
+`provider-failover.service.ts:653` does the same) so a pseudo-tool profile's
+framing survives the swap. Blanking `params.stop` in place would have taken it
+off silently. `previous_response_id` would have been harmless there —
+`restream_into` already clears it on every leg — but both fields stay on one
+seam so the rule reads as one rule.
+
+The `:2150` `initial_stop_sequences` comment ("applied to the primary stream" —
+which nothing enforced) is reworded to name what now makes it true, and the
+P4.41 fallback doc block in `streaming_provider.rs` gains the sentence the order
+asked for: only the primary can reach that arm now.
+
+**Tier 1 item 6** — P4.41's unit pins re-read and unchanged (they pin the
+PRIMARY's chaining, which this lane does not move).
+
+**Tier 2 item 8 — the recorded-row guard.** Two floors, both needed for a
+different reason:
+- a PRESENCE check on the raw NDJSON object at load (`previousResponseId` and
+  `stop` must both be keys), because serde's `default` makes a missing key parse
+  as the common real answer;
+- a NON-VACUITY check on the parsed rows (at least one non-null
+  `previousResponseId`, at least one non-empty `stop`), because a corpus that
+  stopped chaining or stopped resolving simple-json would leave every arm
+  comparing `None == None` / `[] == []`.
+
+### §3 — mutation proofs
+
+| # | mutation | expected | result |
+|---|---|---|---|
+| M1 | delete `p.previous_response_id = None` from `loop_base_params` | Case A red on the re-stream row | RED — `previousResponseId at wire mismatch` |
+| M4 | delete `p.stop = Vec::new()` from `loop_base_params` | Case B red on the re-stream row | RED — `stop at wire mismatch` |
+| M2 | delete the TEXT continuation's own `params.stop = strategy.stop_sequences()` | the existing simple-json text-tool cases red | **SURVIVED as first written — a finding; see below** |
+| M3 | strip `previous_response_id` BEFORE the primary's use (positive control) | Case A red on the PRIMARY row | RED |
+
+Re-run whole after Case C landed: M1 RED (`previousResponseId at wire
+mismatch`), M4 RED (`stop at wire mismatch`), **M2 now RED** (same assertion,
+the continuation row), M3 RED (the primary row), and the restored tree green.
+
+Every revert by file backup (`mutation-proof-revert-by-file-backup`), never
+`git checkout <file>`; the battery ends by re-running green.
+
+**M2 SURVIVED, and that is the lane's own finding.** Deleting the text
+continuation's `stop` override left the family GREEN. Diagnosis: FOUR canned
+rows do reach the text continuation (identified by the `[Tool Result: …]`
+ledger entry in their message slate), but **all four are the ANTHROPIC
+`claude-sonnet` seat**, which resolves text-block mode — and
+`TextBlockStrategy::stop_sequences()` returns `Vec::new()`. So the arm was
+comparing `[] == []`: the only strategy with sequences to lose is simple-json,
+and no case reached a simple-json TEXT continuation. `text_tool_loop.rs`'s
+override was untested by the differential, exactly the class M2 exists to catch.
+
+Fixed rather than deleted, with a third case:
+
+**Case C — `simple_json_text_tool_continuation`.** The same OPENAI `o1-mini`
+simple-json seat on its own chat, whose canned primary prose carries a literal
+
+```
+<tool_call>
+{"name": "read_conversation", "arguments": {}}
+</tool_call>
+```
+
+and NO `rawResponse` — so the native loop no-ops (nothing for either detector
+to find) and the text pass is what parses, executes and re-streams. Both sides
+now record a continuation row carrying `stop: ["</tool_call>"]`, and M2 reddens
+it. A dedicated floor guards the arm's non-vacuity for the future: at least one
+recorded canned row must carry non-empty stop sequences AND a tool-result
+ledger entry (both dialects named — simple-json's `<tool_result name="…">` and
+text-block's `[Tool Result: …]`, since the two strategies spell it
+differently; the first draft of the floor named only the text-block form and
+missed the very row it was written for).
+
+⚠ **Case C is written with `<call>`, not `<tool_call>`, and the reason is a v4
+behaviour worth filing.** The first draft used simple-json's canonical
+`<tool_call>` block and the pass never ran: on BOTH sides the markers were
+STRIPPED and no tool executed. Diagnosed to v4's **Phase-19 provider-native
+text-marker pass**, which runs BEFORE the Phase-20 simple-json pass. v4's OPENAI
+plugin declares the trio, and its `hasAnyXMLToolMarkers` matches
+`/<tool_call>/i` — but its `parseAllXMLToolCalls` walks five XML shapes
+(`<function_calls>`, `<tool_call>` as XML, `<function_call …>`, `<tool_use…>`,
+`<invoke name=…>`) and finds nothing in a `<tool_call>` block whose body is
+simple-json's `{"name": …, "arguments": …}` JSON. `runTextToolPass` then
+`break`s on the empty parse and still runs `assembleStripped` with the
+PROVIDER's stripper — so the markers are removed, the tool is never called, and
+Phase 20 sees a response with no markers left to find. Measured on v4's own
+parser at the pin (`hasSimpleJsonMarkers` true, `parseSimpleJsonCalls` returns
+the call — the simple-json side is fine); v5 reproduces it exactly (the case's
+event trace and tables diffed clean in that draft). **Candidate v4 filing: a
+simple-json profile on OPENAI — or any of the nine other plugins declaring the
+same trio — cannot land the `<tool_call>` block its own system instructions
+tell the model to emit.** `<call>` is one of v4's own
+`OPENING_TAG_ALIASES` and matches none of the plugin's five regexes, so Case C
+uses it to reach the pass the case is about; the swallowing behaviour is left
+alone, faithful, and recorded here rather than fixed in a lane that owns
+neither the plugins nor the passes.
+
+### §4 — Tier 2 item 7: the `cacheKey` carry, MEASURED and ESCALATED
+
+v4 derives `cacheKey = buildCharacterCacheKey(characterId)` inside the funnel
+(`streaming.service.ts:393`) →
+`quilltap:char:<id>:v<PROMPT_CACHE_STRUCTURE_VERSION>`. **It reaches the wire on
+six of eleven providers** (grep `cacheKey` over `plugins/dist/*/provider.ts` at
+the pin):
+
+| provider | wire key |
+|---|---|
+| OPENAI | `prompt_cache_key` |
+| GROK | `prompt_cache_key` |
+| OPENROUTER | `user` |
+| NANOGPT | `user` |
+| Z_AI | `user` |
+| DEEPSEEK | `user_id` |
+
+Deliberately ignored, each with a comment saying so: ANTHROPIC, GOOGLE, OLLAMA;
+plus OPENAI_COMPATIBLE and MCP, which never read it.
+
+v5 already has the whole machinery and it agrees key for key:
+`cheap_llm.rs`'s `build_character_cache_key` (same string, version 4),
+`streaming_provider.rs` copying `cache_key` into the request input, and the
+builders emitting the identical keys (`responses_api.rs` `prompt_cache_key`;
+`chat_completions.rs` `user` ×4 and `user_id`). It is LIVE on the external-prompt
+generator, the optimizer, and the cheap-LLM executor.
+
+**The gap is ONE production input:** `orchestrator.rs`'s `StreamParams` literal
+sets `cache_key: None`, so the entire Salon turn path — primary and both loops —
+sends no cache key on all six providers. (`primary_stream.rs`,
+`native_tool_loop.rs` and `text_tool_loop.rs`'s other `cache_key: None`s are all
+inside `#[cfg(test)]` modules.)
+
+**Disposition (b) — ESCALATED, not fixed here**, for two reasons:
+1. it is a PRIMARY-path wire divergence, and the primary's request bytes belong
+   to the request-envelopes corpus, which this family does not drive;
+2. matching v4 needs the same four-way asymmetry this lane just closed but
+   pointing the other way — primary YES, native re-stream YES, native
+   force-final NO, text continuation NO — and the force-final is a second
+   re-stream INSIDE `native_tool_loop.rs`, whose production zone this lane is
+   forbidden to touch (Tier 3). The fix cannot be caller-side alone.
+
+**Ordered shape for the follow-up:** set `cache_key: build_character_cache_key(
+Some(&character_id))` at the orchestrator's `StreamParams` literal; keep it on
+the native loop's first re-stream and clear it on the force-final; clear it on
+the text continuation; pin the six wire keys in the request-envelopes corpus
+(present and absent per provider) plus a tier-3 side-channel like this lane's,
+since `canned_stream_key` cannot see `cache_key` either.
+
+### §5 — findings for the unifier (outside this lane's ownership)
+
+- **The `cacheKey` escalation above** — one line in `orchestrator.rs` plus a
+  loop-internal clear plus a corpus; wants its own order.
+- ⚠ **A live cross-lane `/tmp` collision, mid-lane.** The committed recipe for
+  this family writes `/tmp/qt-orch-main.db`, `/tmp/qt-orch-mount.db` and
+  `/tmp/oracle-orchestrator.ndjson` — shared paths. P4.93's lane regenerated
+  this family into them while this lane's mutation battery was running: the
+  oracle NDJSON was DELETED between mutations (M3 and the closing green re-run
+  both died on `expect("oracle readable")` at the load, a failure that looks
+  nothing like a port regression) and the fixture pair was rebuilt at 09:34
+  from a tree without this lane's three cases. Everything from that point was
+  re-run from LANE-PRIVATE paths under `/tmp/p4.92/` — the same recipe, the
+  same pin, only the output paths moved — and the committed header was left
+  canonical. Two things for the unifier: the unified gate must regenerate this
+  family itself (any artifact either lane leaves in the shared paths is
+  untrustworthy), and the standing "never run two sweeps concurrently" rule
+  needs its `/tmp`-path corollary written down, because a driver that stages
+  per-family (`/tmp/qt-orch-oracle-<family>`) still shares the recipe's OUTPUT
+  paths.
+- **Pre-existing, not this lane:** the orchestrator fixture builder logs
+  `Failed to bump transcript version` / `no such column: "transcriptVersion"`
+  once per chat. P4.D182 landed `chats.transcriptVersion` as a BOOT ensure only
+  (deliberately outside v4's Zod chat schema), and the builder creates `chats`
+  from `generateDDL`, so the column is absent from the fixture. It is loud on
+  every build of this family and is not caused by anything here.
+
+### §5b — the verification gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`, logged,
+sentinel-guarded, read in full (never through `tail`):
+
+| step | result |
+|---|---|
+| §R.2 freshness probe (opening, before every regen batch, and before the gate) | PASS every time — `main`, CLEAN, both logs empty |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` with the lane's env block | **571 binaries / 3,321 passed / 0 failed / 2 ignored, exit 0** |
+
+The lane's three families are confirmed RUN inside that workspace run by name:
+`orchestrator_tier3_equivalence` (1 test, ok),
+`chat_create_capstone_equivalence` (3, ok), `primary_stream_tier3_equivalence`
+(2, ok).
+
+⚠ **The zero-`SKIP:` claim is NOT made for the workspace run**, and that is a
+deliberate honesty point rather than an omission: `cargo test` CAPTURES a
+passing test's stdout/stderr, so a family that skipped on a missing env var
+prints its `SKIP:` line into a buffer nobody sees. The positive proof that the
+lane's families ran is the by-name runs above (each with `--nocapture`, log
+grepped for `SKIP:` → zero) plus the per-binary lines in the workspace log. The
+env block set only this lane's own oracle/fixture vars plus
+`QT_V4_ROOT`/`QT_V4_CHECKOUT` (both at the pin) and `QT_NODE`; families outside
+the lane were not withheld, they were simply never given their vars, exactly as
+the order's gate item 8 allows.
+
+### §6 — the regen recipe, exactly as run
+
+```bash
+PIN=/tmp/qt-v4-pin-p4.92-2075242f9
+git -C ~/source/quilltap-server worktree add --detach "$PIN" 2075242f9
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" \
+      "$PIN/plugins/dist/$(basename "$d")/node_modules"
+done
+rm -f /tmp/qt-orch-main.db /tmp/qt-orch-mount.db /tmp/oracle-orchestrator.ndjson
+python3 harness/tools/recipe_sweep.py --v5w "$PWD" --v4 "$PIN" \
+  --run orchestrator_tier3_equivalence
+```
+
+After the collision above, the same recipe was run by hand with lane-private
+outputs (`/tmp/p4.92/{qt-orch-main.db,qt-orch-mount.db,oracle-orchestrator
+.ndjson}` and a lane-private `/tmp/p4.92/oracle-stage` jest mirror); the
+committed header is unchanged, so a unifier running the sweep driver gets the
+canonical paths.
+
+(the driver rewrites the header recipe's `cd ~/source/quilltap-server` to the
+pin; it stages the case into `/tmp/qt-orch-oracle-orchestrator_tier3_equivalence`
+so the VENUE RULE does not bite from a `.claude/worktrees/…` checkout).
+
+Run by hand:
+
+```bash
+QT_ORACLE_ORCHESTRATOR=/tmp/oracle-orchestrator.ndjson \
+QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db \
+QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db TZ=UTC \
+  cargo test -p quilltap-harness --test orchestrator_tier3_equivalence
+```
+
+**⚠ The driver's own exit code is what to read, not a wrapper's.** A
+`( … ; touch done )` subshell exits 0 whatever the driver did; the `--run` log's
+`FAILED [run_failed]` / per-binary `test result:` lines are the record.
+
+Neutrality legs (§R's item 5), both regenerated at the SAME pin into
+lane-private paths and run by name: `chat_create_capstone_equivalence`
+**3 passed / 0 failed**, `primary_stream_tier3_equivalence` **2 passed /
+0 failed**, zero SKIPs. Both share the canned-stream machinery this lane
+widened and neither moved a row, as expected — the recording is a
+side-channel on the ORCHESTRATOR family's oracle only; the other two
+families have their own mocks and their own `CannedStreamW`-shaped readers.

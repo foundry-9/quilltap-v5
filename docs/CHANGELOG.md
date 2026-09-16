@@ -250,6 +250,57 @@ Two things the predicate cannot see are pinned directly by a new
 control, and the rooted `//photos` → `//` arm the copy this was moved from answered
 `/` for. The corpus floor is now an exact `== 30`, and the family collects every
 mismatch instead of asserting per row, so a red names the whole set.
+#### 2026-09-16 — fix(orchestrator): the tool loops stop inheriting the primary's chaining token and stop sequences (P4.92)
+
+_Versions: core 0.0.928, harness 0.0.821._
+
+v4 has ONE `streamMessage` funnel and four Salon-turn call sites that fill its
+options in by hand, and they do not agree: the primary passes
+`previousResponseId` and `stop`; the native loop's re-stream and force-final
+pass neither; the text continuation passes `stop` alone
+(`strategy.stopSequences`). v5 handed both loops `base_params: params.clone()`
+— the primary's whole `StreamParams` — so both primary-only options rode into
+every re-stream. Consequences, both real: `responses_api.rs` switches the OPENAI
+body to the CHAINED shape whenever the token is set, which drops the tool-result
+history from the request outright, and it arms the P4.41
+`previous_response_not_found` fallback once per loop iteration; and a
+simple-json seat's `</tool_call>` pair went out on a native re-stream v4 sends
+bare. The strip is caller-side, on the three `base_params:` clones rather than
+on `params` itself, because `params` has a fourth consumer —
+`attempt_empty_response_recovery`, which v4 passes `stop: initialStopSequences`
+and whose chain leg forwards them to the understudy.
+
+The corpus was structurally blind to both fields: the canned call key is
+`provider|model|temperature|messages`, and nothing recorded them. The oracle's
+`streamMessage` mock now records `previousResponseId` and `stop` as
+side-channels (never in the key — all 69 pre-existing canned rows are
+byte-identical with the two keys stripped), the harness compares them per call,
+and two new cases pose the shapes: `openai_chained_then_native_tool_call` (a
+new OPENAI `ChainPrimary` seat whose history carries
+`rawResponse.id: "resp_prior"` — the fixture builder learned to seed one) and
+`simple_json_then_native_tool_call` (the OPENAI `o1-mini` seat, whose
+`supportsTools: false` resolves simple-json). Both ran RED against unported v5:
+`Some("resp_prior")` vs `None` and `["</tool_call>"]` vs `[]` on the re-stream
+rows, with the primary rows agreeing on both sides as the positive control that
+the recording is live.
+
+An order premise was refuted by measurement: the native loop is NOT reachable
+only under native mode. v4 runs `runNativeToolLoop` unconditionally, so
+simple-json reaches it too — the `stop` half lands as a corpus case, not the
+unit pin the order allowed for.
+
+A third case, `simple_json_text_tool_continuation`, was added because one of
+the ordered mutation proofs SURVIVED: deleting the text continuation's own
+`stop` override left the family green. The four rows that reached the text
+continuation were all the ANTHROPIC seat, whose text-block strategy has no stop
+sequences, so the arm compared `[] == []`. The new case is a simple-json seat
+whose prose carries a `<call>` block, and it gets its own non-vacuity floor.
+It uses `<call>` rather than simple-json's canonical `<tool_call>` for a
+measured reason recorded in the lane record: v4's Phase-19 provider-marker pass
+matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
+without executing anything — so `<tool_call>` never reaches the simple-json pass
+on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
+not a change here.
 
 #### 2026-09-16 — docs(porting): order the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93)
 

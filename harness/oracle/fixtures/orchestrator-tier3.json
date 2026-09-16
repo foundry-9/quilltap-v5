@@ -78,6 +78,12 @@
    "provider": "OPENAI",
    "modelName": "gpt-stands-in",
    "apiKeyId": "fa110004-0000-4000-8000-000000000f14"
+  },
+  {
+   "id": "cb110001-0000-4000-8000-000000000c11",
+   "name": "ChainPrimary",
+   "provider": "OPENAI",
+   "modelName": "gpt-chains"
   }
  ],
  "chatSettings": {
@@ -1718,6 +1724,78 @@
      "participantId": "fb11000b-0000-4000-8000-0000000000b1"
     }
    ]
+  },
+  {
+   "id": "cb110006-0000-4000-8000-000000000c16",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "cb11000b-0000-4000-8000-0000000000c1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "cb110001-0000-4000-8000-000000000c11"
+    }
+   ],
+   "messages": [
+    {
+     "id": "cb110106-0000-4000-8000-000000000c06",
+     "role": "ASSISTANT",
+     "content": "Friday closes the previous exchange.",
+     "participantId": "cb11000b-0000-4000-8000-0000000000c1",
+     "rawResponse": {
+      "id": "resp_prior"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cb120006-0000-4000-8000-000000000c26",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "cb12000b-0000-4000-8000-0000000000c2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "e0000005-0000-4000-8000-000000000005"
+    }
+   ],
+   "messages": [
+    {
+     "id": "cb120106-0000-4000-8000-000000000c07",
+     "role": "ASSISTANT",
+     "content": "Friday sets the ledger down.",
+     "participantId": "cb12000b-0000-4000-8000-0000000000c2"
+    }
+   ]
+  },
+  {
+   "id": "cb130006-0000-4000-8000-000000000c36",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "cb13000b-0000-4000-8000-0000000000c3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "e0000005-0000-4000-8000-000000000005"
+    }
+   ],
+   "messages": [
+    {
+     "id": "cb130106-0000-4000-8000-000000000c08",
+     "role": "ASSISTANT",
+     "content": "Friday rests a hand on the ledger.",
+     "participantId": "cb13000b-0000-4000-8000-0000000000c3"
+    }
+   ]
   }
  ],
  "calls": [
@@ -2321,6 +2399,41 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "fb11000b-0000-4000-8000-0000000000b1"
+  },
+  {
+   "name": "openai_chained_then_native_tool_call",
+   "kind": "chain",
+   "chatId": "cb110006-0000-4000-8000-000000000c16",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "openai_chained_then_native_tool_call",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "cb11000b-0000-4000-8000-0000000000c1"
+  },
+  {
+   "name": "simple_json_then_native_tool_call",
+   "kind": "chain",
+   "chatId": "cb120006-0000-4000-8000-000000000c26",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "simple_json_then_native_tool_call",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "cb12000b-0000-4000-8000-0000000000c2",
+   "modelSupportsNativeTools": false
+  },
+  {
+   "name": "simple_json_text_tool_continuation",
+   "kind": "chain",
+   "chatId": "cb130006-0000-4000-8000-000000000c36",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "simple_json_text_tool_continuation",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "cb13000b-0000-4000-8000-0000000000c3",
+   "modelSupportsNativeTools": false
   }
  ],
  "streams": {
@@ -3018,7 +3131,7 @@
   "sentinel_prose": [
    [
     {
-     "content": "[NOTHING TO ADD]\nActually \u2014 on reflection, the ledger disagrees with itself."
+     "content": "[NOTHING TO ADD]\nActually — on reflection, the ledger disagrees with itself."
     },
     {
      "done": true,
@@ -3442,6 +3555,116 @@
      }
     }
    ]
+  ],
+  "openai_chained_then_native_tool_call": [
+   [
+    {
+     "content": "Friday reaches for the ledger again."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 23,
+      "completionTokens": 7,
+      "totalTokens": 30
+     },
+     "rawResponse": {
+      "marker": "chain_native_call",
+      "tool_calls": [
+       {
+        "id": "cnc-0001",
+        "type": "function",
+        "function": {
+         "name": "read_conversation",
+         "arguments": "{}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " The ledger says nothing new."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 36,
+      "completionTokens": 9,
+      "totalTokens": 45
+     }
+    }
+   ]
+  ],
+  "simple_json_then_native_tool_call": [
+   [
+    {
+     "content": "Friday reaches for the ledger."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 23,
+      "completionTokens": 7,
+      "totalTokens": 30
+     },
+     "rawResponse": {
+      "marker": "simple_json_native_call",
+      "tool_calls": [
+       {
+        "id": "sjc-0001",
+        "type": "function",
+        "function": {
+         "name": "read_conversation",
+         "arguments": "{}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " Still nothing written there."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 36,
+      "completionTokens": 9,
+      "totalTokens": 45
+     }
+    }
+   ]
+  ],
+  "simple_json_text_tool_continuation": [
+   [
+    {
+     "content": "Friday turns a page.\n<call>\n{\"name\": \"read_conversation\", \"arguments\": {}}\n</call>"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 27,
+      "completionTokens": 11,
+      "totalTokens": 38
+     }
+    }
+   ],
+   [
+    {
+     "content": "Nothing is written there yet."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 41,
+      "completionTokens": 6,
+      "totalTokens": 47
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -3450,6 +3673,20 @@
     "name": "read_conversation",
     "arguments": {},
     "callId": "ftc-0001"
+   }
+  ],
+  "chain_native_call": [
+   {
+    "name": "read_conversation",
+    "arguments": {},
+    "callId": "cnc-0001"
+   }
+  ],
+  "simple_json_native_call": [
+   {
+    "name": "read_conversation",
+    "arguments": {},
+    "callId": "sjc-0001"
    }
   ]
  },

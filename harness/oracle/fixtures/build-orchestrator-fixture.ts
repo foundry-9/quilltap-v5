@@ -74,6 +74,18 @@ interface MessageSpec {
    * whose answer depends on message ORDER must pin its own stamps.
    */
   createdAt?: string;
+  /**
+   * P4.92: the provider's raw response, persisted on the row exactly as a real
+   * assistant turn persists it (`chat_messages.rawResponse`, a JSON object —
+   * `ChatMessageRowSchema` `:42`). The only reader that matters here is v4's
+   * `findPreviousResponseId` (`primary-stream.service.ts:419-439`), which walks
+   * `existingMessages` newest-first for a `type: 'message'` / `role:
+   * 'ASSISTANT'` row whose `rawResponse.id` starts `resp_` — so seeding
+   * `{ id: 'resp_…' }` is what poses an OpenAI Responses-API chained turn.
+   * Nothing in the corpus could pose one before this: `grep resp_` over the
+   * spec returned zero.
+   */
+  rawResponse?: Record<string, unknown>;
 }
 /**
  * P4.D154 (bug 121): a `files` row the corpus can attach to a USER message, so
@@ -468,6 +480,7 @@ async function main(): Promise<void> {
           ...(m.targetParticipantIds !== undefined
             ? { targetParticipantIds: m.targetParticipantIds }
             : {}),
+          ...(m.rawResponse !== undefined ? { rawResponse: m.rawResponse } : {}),
         })) as never
       );
     } else {

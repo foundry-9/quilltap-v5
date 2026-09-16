@@ -268,6 +268,26 @@ struct CannedStreamW {
     /// resolver are measured here, not just asserted at tier 1.
     #[serde(default)]
     sampling: Value,
+    /// P4.92: the OpenAI Responses-API chaining token v4 passed for this call
+    /// key (`null` where v4 passed none). v4's ONE `streamMessage` funnel takes
+    /// it as an OPTION, and only the PRIMARY call site supplies it — the native
+    /// re-stream, the native force-final and the text continuation all omit it,
+    /// with `provider-failover.service.ts:464` spelling out why ("handing it to
+    /// a different account — never mind a different provider — is meaningless at
+    /// best"). v5 hands the loops the primary's whole `StreamParams`, so it rode
+    /// in; the call key could never see it.
+    #[serde(rename = "previousResponseId", default)]
+    previous_response_id: Option<String>,
+    /// P4.92: the provider stop sequences v4 passed for this call key (`[]` where
+    /// v4 passed none). The primary passes `initialStopSequences`
+    /// (simple-json's `</tool_call>` pair, else undefined) and the TEXT
+    /// continuation passes `strategy.stopSequences`; the native loop's two
+    /// re-streams pass NEITHER. Since v4 runs `runNativeToolLoop`
+    /// unconditionally — even under simple-json, where `actualTools` is `[]` —
+    /// a simple-json seat whose reply carries a native call reaches the native
+    /// re-stream, and that is where the carry-over is observable.
+    #[serde(default)]
+    stop: Vec<String>,
     sequences: Vec<Vec<ChunkW>>,
 }
 #[derive(Deserialize)]
@@ -349,6 +369,14 @@ struct QueuedStreamingProvider {
     /// at the wire, per call key.
     expected_attachments: HashMap<String, Value>,
     recorded_attachments: Mutex<HashMap<String, Value>>,
+    /// P4.92: the chaining token / stop sequences the ORACLE recorded at the
+    /// wire, per call key, and what the RUST side actually passed. Neither is in
+    /// the key (the key is `provider|model|temperature|messages`), so these are
+    /// the only comparands that can see either field.
+    expected_previous_response_id: HashMap<String, Option<String>>,
+    recorded_previous_response_id: Mutex<HashMap<String, Option<String>>>,
+    expected_stop: HashMap<String, Vec<String>>,
+    recorded_stop: Mutex<HashMap<String, Vec<String>>>,
 }
 
 /// The three knobs as `{temperature?, maxTokens?, topP?}` with absent knobs
@@ -374,6 +402,8 @@ impl QueuedStreamingProvider {
         let mut expected_model_params: HashMap<String, Value> = HashMap::new();
         let mut expected_sampling: HashMap<String, Value> = HashMap::new();
         let mut expected_attachments: HashMap<String, Value> = HashMap::new();
+        let mut expected_previous_response_id: HashMap<String, Option<String>> = HashMap::new();
+        let mut expected_stop: HashMap<String, Vec<String>> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
@@ -410,7 +440,9 @@ impl QueuedStreamingProvider {
             } else {
                 Value::Array(Vec::new())
             };
-            expected_attachments.insert(key, atts);
+            expected_attachments.insert(key.clone(), atts);
+            expected_previous_response_id.insert(key.clone(), row.previous_response_id.clone());
+            expected_stop.insert(key, row.stop.clone());
         }
         Self {
             queues: Mutex::new(queues),
@@ -422,6 +454,10 @@ impl QueuedStreamingProvider {
             recorded_sampling: Mutex::new(HashMap::new()),
             expected_attachments,
             recorded_attachments: Mutex::new(HashMap::new()),
+            expected_previous_response_id,
+            recorded_previous_response_id: Mutex::new(HashMap::new()),
+            expected_stop,
+            recorded_stop: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -485,6 +521,19 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                             .collect(),
                     )
                 });
+            // P4.92: the two primary-only options. Recorded per key, never in
+            // it — the same side-channel treatment `tools` / `modelParams` /
+            // `sampling` / `attachments` get above.
+            self.recorded_previous_response_id
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| params.previous_response_id.clone());
+            self.recorded_stop
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| params.stop.clone());
         }
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
@@ -785,6 +834,19 @@ fn orchestrator_tier3_matches_oracle() {
             }
             "threw" => { /* recorded alongside the events line; the events line carries `threw` */ }
             "cannedStream" => {
+                // P4.92 item 8: EVERY row must carry both new keys. `serde`'s
+                // `default` makes a missing key parse as "v4 passed none", which
+                // is also the common real answer — so a regen from a stale
+                // oracle case would drop the recording and leave every
+                // comparison reading `None == None` / `[] == []`. Presence is
+                // checked on the raw object, before the typed parse erases the
+                // difference.
+                for k in ["previousResponseId", "stop"] {
+                    assert!(
+                        parsed.rest.get(k).is_some(),
+                        "oracle cannedStream row is missing `{k}`: regenerate the oracle from THIS tree's case file (P4.92 widened the streamMessage mock's recording)"
+                    );
+                }
                 canned_streams.push(serde_json::from_value(parsed.rest).expect("cannedStream"))
             }
             "cannedCompletion" => canned_completions
@@ -1553,6 +1615,98 @@ fn orchestrator_tier3_matches_oracle() {
             carriers, 1,
             "expected exactly one stream call carrying attachments (the bug-121 \
              re-hydration row); the corpus or the oracle has gone stale"
+        );
+    }
+
+    // --- the CHAINING TOKEN and the STOP SEQUENCES at the wire (P4.92) ---
+    // v4 has ONE `streamMessage` funnel (`streaming.service.ts:400-412`) whose
+    // options each call site fills in by hand, and the four Salon-turn sites do
+    // not agree:
+    //
+    //   option               | primary | native re-stream | force-final | text cont.
+    //   previousResponseId   |  yes    |       no         |     no      |    no
+    //   stop                 |  yes    |       no         |     no      |    yes
+    //
+    // v5 hands the loops `base_params: params.clone()` — the primary's whole
+    // `StreamParams` — so both fields rode into every re-stream. Neither is in
+    // the canned call key (`provider|model|temperature|messages`), so the corpus
+    // was structurally blind to the divergence until the oracle mock started
+    // recording them alongside `tools` / `modelParams` / `sampling` /
+    // `attachments`. Fixed caller-side at the three `base_params:` sites
+    // (`orchestrator.rs`), and pinned here per call.
+    {
+        let recorded = streaming.recorded_previous_response_id.lock().unwrap();
+        for (key, got) in recorded.iter() {
+            let want = streaming
+                .expected_previous_response_id
+                .get(key)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Rust made a stream call with no oracle-recorded previousResponseId for key:\n{key}"
+                    )
+                });
+            assert_eq!(
+                got, want,
+                "previousResponseId at wire mismatch for key:\n{key}"
+            );
+        }
+        let recorded_stop = streaming.recorded_stop.lock().unwrap();
+        for (key, got) in recorded_stop.iter() {
+            let want = streaming.expected_stop.get(key).unwrap_or_else(|| {
+                panic!("Rust made a stream call with no oracle-recorded stop for key:\n{key}")
+            });
+            assert_eq!(got, want, "stop at wire mismatch for key:\n{key}");
+        }
+        // Stale-oracle floors. Both fields default to the "v4 passed none"
+        // value, so an oracle regenerated from a tree WITHOUT the recording
+        // would make every arm above compare `None == None` / `[] == []` and
+        // pass having measured nothing (`a-case-added-only-to-the-oracle-is-
+        // never-run`). The corpus guarantees at least one of each:
+        //   - `openai_chained_then_native_tool_call` seeds an assistant message
+        //     carrying `rawResponse.id: "resp_prior"` on an OPENAI seat, so v4's
+        //     `findPreviousResponseId` returns it on the PRIMARY call;
+        //   - `textblock_mode` / `simple_json_then_native_tool_call` seat the
+        //     OPENAI `o1-mini` profile, whose `supportsTools: false` in
+        //     FALLBACK_PRICING resolves `simple-json` — so v4 passes
+        //     `SIMPLE_JSON_STOP` on the primary.
+        assert!(
+            streaming
+                .expected_previous_response_id
+                .values()
+                .any(|v| v.is_some()),
+            "no oracle row recorded a previousResponseId: the oracle predates the P4.92 recording, or the chaining case stopped chaining; every previousResponseId arm above is vacuous"
+        );
+        assert!(
+            streaming.expected_stop.values().any(|v| !v.is_empty()),
+            "no oracle row recorded a non-empty stop: the oracle predates the P4.92 recording, or no case resolves simple-json any more; every stop arm above is vacuous"
+        );
+        // ...and the TEXT continuation's own `stop` override
+        // (`text_tool_loop.rs`, v4 `text-tool-loop.service.ts:399`) needs its
+        // own floor. Found by a mutation that SURVIVED: deleting that override
+        // left the family green, because the only rows reaching the text
+        // continuation were the ANTHROPIC ones, whose text-block strategy
+        // returns NO stop sequences at all — so the arm compared `[] == []`.
+        // The simple-json strategy is the only one with sequences to lose, and
+        // `simple_json_text_tool_continuation` is the case that poses it.
+        //
+        // A continuation row is identified by the tool-result LEDGER ENTRY in
+        // its slate, and the two strategies spell that differently: simple-json
+        // writes `<tool_result name="…">` (v4 `formatSimpleJsonToolResult`) and
+        // text-block writes `[Tool Result: …]`. Both are named so the floor
+        // survives whichever strategy a future case uses.
+        let text_continuations_with_stop = canned_streams
+            .iter()
+            .filter(|r| {
+                !r.stop.is_empty()
+                    && r.messages.iter().any(|m| {
+                        m.content.contains("<tool_result name=")
+                            || m.content.contains("[Tool Result: ")
+                    })
+            })
+            .count();
+        assert!(
+            text_continuations_with_stop > 0,
+            "no oracle row is a text continuation carrying stop sequences: text_tool_loop's `params.stop = strategy.stop_sequences()` is untested, and a mutation deleting it would survive"
         );
     }
 

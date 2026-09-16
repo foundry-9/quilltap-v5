@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; attachments: unknown[][]; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; attachments: unknown[][]; previousResponseId: string | null; stop: string[]; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -280,6 +280,16 @@ async function main(): Promise<void> {
         connectionProfile: { provider: string; modelName: string };
         modelParams: Record<string, unknown>;
         tools?: unknown[];
+        // P4.92: the two options v4's FOUR `streamMessage` call sites pass
+        // ASYMMETRICALLY. The primary passes both; the native re-stream, the
+        // native force-final and the text continuation each omit
+        // `previousResponseId`, and only the text continuation passes a `stop`
+        // (`strategy.stopSequences`). v5 hands the loops the primary's whole
+        // `StreamParams`, so both rode into every re-stream — invisibly, because
+        // the call key is `provider|model|temperature|messages` and nothing else
+        // recorded them.
+        previousResponseId?: string;
+        stop?: string[];
       }) {
         const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
         // P4.D154 (bug 121): the per-message attachment slate reaching the wire,
@@ -321,9 +331,15 @@ async function main(): Promise<void> {
         // drops the undefined knobs, which is the "absent" the Rust side
         // reproduces by omitting the key.
         const samplingAtWire = resolveSamplingParams(modelParamsAtWire) as unknown as Record<string, unknown>;
+        // P4.92: side-channel recordings, NEVER part of the key — every
+        // pre-existing recorded key stays byte-identical and every old canned
+        // answer still matches. `undefined` normalizes to `null` / `[]`, which is
+        // exactly what the omitting call sites produce.
+        const previousResponseIdAtWire = options.previousResponseId ?? null;
+        const stopAtWire = options.stop ?? [];
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);

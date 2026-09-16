@@ -2147,7 +2147,10 @@ where
         None
     };
 
-    // Provider stop sequences (simple-json only) — applied to the primary stream.
+    // Provider stop sequences (simple-json only). v4 passes these on the PRIMARY
+    // stream and on the TEXT continuation, and on neither of the native loop's
+    // two re-streams; `loop_base_params` below is what makes that true here, by
+    // clearing them off every copy the loops receive (P4.92).
     let initial_stop_sequences: Vec<String> = if resolved_tool_mode == ResolvedToolMode::SimpleJson
     {
         SIMPLE_JSON_STOP.iter().map(|s| s.to_string()).collect()
@@ -2893,6 +2896,69 @@ where
     // profile on both sides.
     params.model = effective_profile.model_name.clone();
 
+    // P4.92 — the tool loops' `base_params` carry-over.
+    //
+    // v4 has ONE `streamMessage` funnel (`streaming.service.ts:350-412`) whose
+    // options every call site fills in by hand, and the four Salon-turn sites do
+    // NOT agree. Measured at `2075242f9`:
+    //
+    //   option               | primary | native re-stream | force-final | text cont.
+    //   ---------------------|---------|------------------|-------------|-----------
+    //   previousResponseId   |  yes    |       no         |     no      |    no
+    //   stop                 |  yes    |       no         |     no      |    yes
+    //   characterId→cacheKey |  yes    |       yes        |     no      |    no
+    //
+    // (`primary-stream.service.ts:197-210`, `native-tool-loop.service.ts:340-350`
+    // and `:421-430`, `text-tool-loop.service.ts:390-400`.)
+    //
+    // v5 hands the loops `base_params: params.clone()` — the PRIMARY's whole
+    // `StreamParams` — so both primary-only options rode into every re-stream.
+    // Why each one matters:
+    //
+    // - `previous_response_id` is the OpenAI Responses-API chaining token, and
+    //   `responses_api.rs:513-522` does not merely add a key when it is set: it
+    //   switches the body to the CHAINED shape (`input: lastUser`). A loop
+    //   re-stream that chains therefore drops the tool-result history from the
+    //   body outright — the model never sees the result it just asked for unless
+    //   the chained response happens to hold it server-side. It also arms
+    //   `streaming_provider.rs`'s per-call `previous_response_not_found`
+    //   fallback on every iteration, which is one dead request per loop pass.
+    //   v4 spells its refusal out at `provider-failover.service.ts:464`: it is
+    //   "an OpenAI Responses-API chaining token, and handing it to a different
+    //   account — never mind a different provider — is meaningless at best."
+    // - `stop` is simple-json's `</tool_call>` pair. v4 runs `runNativeToolLoop`
+    //   UNCONDITIONALLY (`orchestrator.service.ts:1499`) — including under
+    //   simple-json, where `actualTools` is `[]` — so a simple-json seat whose
+    //   reply parses as a native call does reach the native re-stream, and v4
+    //   sends it with no stop sequences at all. (The two modes are NOT mutually
+    //   exclusive; measured, not assumed — `simple_json_then_native_tool_call`
+    //   in the tier-3 corpus is that shape.) The TEXT continuation keeps its own
+    //   `stop` override — `strategy.stop_sequences()`, v4-faithful — so this
+    //   clearing is invisible there.
+    //
+    // The strip is on the LOOP CLONES rather than on `params` itself, because
+    // `params` has a FOURTH consumer below: `attempt_empty_response_recovery`,
+    // and v4 passes THAT one `stop: initialStopSequences`
+    // (`orchestrator.service.ts:1636`). Its chain leg forwards them to the
+    // understudy (`provider_failover.rs`'s `walk_fallback_chain`, v4
+    // `provider-failover.service.ts:653`), so blanking `params.stop` in place
+    // would silently take a pseudo-tool profile's framing off the swap.
+    // (`previous_response_id` would be harmless there — `restream_into` clears
+    // it on every leg already — but keeping both fields on one seam keeps the
+    // rule readable.)
+    //
+    // `cacheKey` is NOT fixed here: v5 sends `cache_key: None` on the PRIMARY
+    // too, which is a pre-existing primary-path divergence on every provider
+    // whose builder writes it (OPENAI/GROK `prompt_cache_key`,
+    // OPENROUTER/NANOGPT/Z_AI `user`, DEEPSEEK `user_id`) and needs the
+    // request-envelopes corpus, not this seam. Escalated by P4.92.
+    let loop_base_params = || {
+        let mut p = params.clone();
+        p.previous_response_id = None;
+        p.stop = Vec::new();
+        p
+    };
+
     if let Some(early) = primary.early_return {
         // Request-limit recovery handled the whole request.
         return Ok(ProcessMessageResult {
@@ -2999,7 +3065,7 @@ where
             provider: effective_profile.provider.clone(),
             base_url: effective_profile.base_url.clone(),
             formatted_messages: loop_messages,
-            base_params: params.clone(),
+            base_params: loop_base_params(),
             tool_context: loop_tool_context,
             state: &mut streaming_state,
             tool_messages: &mut tool_messages,
@@ -3077,7 +3143,7 @@ where
                 provider: effective_profile.provider.clone(),
                 base_url: effective_profile.base_url.clone(),
                 formatted_messages: make_text_messages(),
-                base_params: params.clone(),
+                base_params: loop_base_params(),
                 // The provider pass re-offers the regular tool slate (v4
                 // `continuationTools: actualTools`).
                 continuation_tools: actual_tools_value.clone(),
@@ -3122,7 +3188,7 @@ where
                 provider: effective_profile.provider.clone(),
                 base_url: effective_profile.base_url.clone(),
                 formatted_messages: make_text_messages(),
-                base_params: params.clone(),
+                base_params: loop_base_params(),
                 continuation_tools,
                 continuation_use_native_web_search: use_native_web_search && !use_text_block_tools,
                 tool_context: make_text_context(),
