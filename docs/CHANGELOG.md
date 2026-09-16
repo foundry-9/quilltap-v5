@@ -301,6 +301,28 @@ matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
 without executing anything — so `<tool_call>` never reaches the simple-json pass
 on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
 not a change here.
+#### 2026-09-16 — fix(test): arm the memories capture rig through `global_capture`, not a second global default
+
+_Versions: core 0.0.930._
+
+A process has ONE global tracing default, and `set_global_default` succeeds
+exactly once. `quilltap-host`'s `lock.rs` may arm an empty registry to keep
+callsites interesting precisely because — as its own comment says — no other
+global exists in that crate. In `quilltap-core` one does:
+`test_support::global_capture` installs `GlobalCaptureLayer` for `job_runner`'s
+smoke test. Arming an empty registry from `db::memories` therefore won the race
+whenever a memories test ran first, `global_capture`'s installer silently failed
+its `let _ =`, and `failed_job_emits_a_tracing_event` captured nothing.
+
+Measured, not reasoned about: that test went red on this lane's first full
+workspace gate, which is what the gate is for. The arming now comes from
+`global_capture` itself, through its public entry point over an empty future —
+one process, one global, and the one both consumers need. The capture stays
+thread-scoped, because `global_capture`'s own reader is async and renders the
+message only while every assertion in `db::memories` reads `key=value` fields.
+The full core lib binary is green four consecutive runs (2377/0), both
+consumers included.
+
 #### 2026-09-16 — fix(logging): the fifteen absent `[CharacterAvatar]` handler lines, and the `db::memories` capture rig's interest-cache race
 
 _Versions: core 0.0.929._

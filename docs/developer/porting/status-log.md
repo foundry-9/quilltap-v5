@@ -130293,3 +130293,34 @@ one test pins both sentences and their ordering.
 reads captured lines with `.any(…)` / `!reused`, NOT an exact line count. There
 is no count pin to widen, so that file is untouched (it is also the file the
 order restricts to exactly that case).
+
+#### Unit C, corrected — the first full workspace gate caught the lane's own defect
+
+The `lock.rs` idiom does **not** transfer to `quilltap-core`, and the reason is
+in `lock.rs`'s own comment: it arms an empty `tracing_subscriber::registry()`
+*because* "No global default exists anywhere else in `quilltap-host`." One DOES
+exist in `quilltap-core` — `test_support::global_capture` installs
+`GlobalCaptureLayer` for `job_runner`'s smoke test — and `set_global_default`
+succeeds exactly ONCE per process. So the memories shim's empty registry won the
+race whenever a memories test ran first, `global_capture`'s installer silently
+failed its `let _ =`, and `failed_job_emits_a_tracing_event` captured nothing.
+
+**It went red on the lane's first full workspace gate** (`-p quilltap-core
+--lib`, 2381 passed / 1 failed) — which is exactly what a workspace gate is for,
+and why no amount of per-module green could have found it: the two rigs never
+meet in a single-module run.
+
+The corrected shape arms through `global_capture`'s OWN public entry point
+(`capture_events` over an empty future, once per binary behind a `Once`), so the
+process-global is the layer BOTH consumers need; the capture stays thread-scoped
+for the field assertions. Verified: the full core lib binary green ×4
+consecutive (2377 passed / 0 failed each), with `job_runner`'s capture test and
+the four memories capture tests both passing in every run.
+
+One flake seen and NOT reproduced:
+`services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+failed once in the five full-binary runs and passed alone plus in four further
+full runs. It belongs to the documented `ActivityTestGuard` global-counter class
+(the previous round's "structural counter race"); its counters are atomics, not
+tracing state, so nothing this lane touches reaches them. It PASSED in the
+lane's pre-fix gate run too. Recorded, not chased.

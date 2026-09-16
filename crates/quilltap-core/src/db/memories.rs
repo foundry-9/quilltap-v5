@@ -1095,27 +1095,48 @@ mod tests {
     ///
     /// The fix is to keep a dispatcher permanently registered, so every rebuild
     /// of the interest cache (one happens on each `set_default`) ANDs in a
-    /// subscriber that says `always`. An empty global registry is enough — the
-    /// per-test thread-local default still takes precedence over it, so nothing
-    /// about what these tests observe changes.
+    /// subscriber that says `always`. **Which** dispatcher is not a free choice,
+    /// though — and that is the part worth reading twice.
     ///
-    /// This is `quilltap-host`'s `lock.rs` idiom verbatim (its `heartbeat_tick`
-    /// lines flaked 2 runs in 5 on the same race), NOT `test_support`'s
-    /// `global_capture`: that rig is `async` and renders the MESSAGE only, while
-    /// every assertion here reads `key=value` fields (`memoryId`,
-    /// `neighbourCount`, `durationMs`). The module doc names `global_capture` as
-    /// the sanctioned answer to the `Interest` race, and this is that answer in
-    /// the shape a synchronous, field-asserting test can use — the arming, which
-    /// is the load-bearing half.
+    /// `quilltap-host`'s `lock.rs:1026-1040` fixes this exact symptom by arming
+    /// an EMPTY `tracing_subscriber::registry()`, and its comment is careful to
+    /// say why it may: "No global default exists anywhere else in
+    /// `quilltap-host`." That is FALSE here. `quilltap-core` already has one —
+    /// `test_support::global_capture` installs `GlobalCaptureLayer` for
+    /// `job_runner`'s smoke test — and `set_global_default` succeeds exactly
+    /// once per process. Arming an empty registry from this module therefore
+    /// WINS THE RACE whenever a `memories` test runs first, `global_capture`'s
+    /// own installer silently fails its `let _ =`, and
+    /// `failed_job_emits_a_tracing_event` captures nothing. It was measured, not
+    /// reasoned about: that test went red on this lane's first full workspace
+    /// gate, and this paragraph is what the red bought.
+    ///
+    /// So the arming comes from `global_capture` itself, through its public
+    /// entry point, over an empty future — one process, one global, and the one
+    /// that both consumers need. The CAPTURE stays thread-scoped, because
+    /// `global_capture`'s own reader is `async` and renders the MESSAGE only
+    /// while every assertion here reads `key=value` fields (`memoryId`,
+    /// `neighbourCount`, `charactersAffected`, `durationMs`). The module doc
+    /// names `global_capture` as the sanctioned answer to the `Interest` race;
+    /// this is that answer split into the half each test needs.
     fn captured(f: impl FnOnce()) -> Vec<String> {
+        arm_global_callsites();
+        crate::test_support::captured(f)
+    }
+
+    /// Install `global_capture`'s process-global subscriber once per binary, by
+    /// running it over an empty future. Idempotent, and a no-op for anything
+    /// else: the layer reads only a thread that has ARMED its buffer, so an
+    /// un-armed thread's events are dropped rather than colouring whichever test
+    /// happens to be capturing.
+    fn arm_global_callsites() {
         static INIT: std::sync::Once = std::sync::Once::new();
         INIT.call_once(|| {
-            // `let _`: another test binary layout could have set one already
-            // (`global_capture` does, for `job_runner`'s smoke test), and either
-            // global keeps the callsites interesting.
-            let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .expect("a current-thread runtime to arm the global capture layer")
+                .block_on(crate::test_support::global_capture::capture_events(async {}));
         });
-        crate::test_support::captured(f)
     }
 
     #[test]
