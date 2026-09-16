@@ -6628,6 +6628,72 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — UNIFIED 2026-09-16
+
+**ALL FIVE ORDERS CLOSED (P4.D192 with Tier 2 item 7 a NAMED follow-up, its
+premise refuted); the oracle baseline MOVES `ffb6b3119` → `2075242f9`; the
+ledger's four rows are ABSORBED / NO-PORT-RATIFIED and its §3 is EMPTY — but
+v4's tree is DIRTY with bug 147 in flight, so the regen rule stays PIN
+REQUIRED (drift ledger §1).** Round record: `status-log.md` → "Round record —
+the `2075242f9` bug-145/146 drift catch-up + maintenance round unification"
+(the §3 review's findings — none blocking; the fixes; the wires; the gate
+numbers). CHANGELOG: the unification entries of 2026-09-16. Every order's
+status header names what the review fixed on it.
+
+**What is next, in order:**
+
+1. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: a real `--lock-clean` inside the five-minute window after a
+   SIGKILL (the two new sentences, then a clean after the window); a real
+   cross-provider failover followed by a tool call (a dead primary endpoint +
+   a DeepSeek understudy — `combined.log` must show the re-stream against the
+   understudy's model); the collapse's album-copy survival on a PLANTED copy
+   (v4 ran the migration on Friday 2026-09-11, so v5's boot writes nothing —
+   delete v4's ledger row on the disposable copy and re-run; ledger §5.5); the
+   Skip banner's fourth sentence on a real two-user-seat chat (the deliberate
+   speaker pick — a reload does NOT reach it on v5, measured); the six
+   greeting lines on a real New Chat with a dangling key id; plus the standing
+   💸 queue (the Brahma deep query, dedup/summaries, #101).
+2. **Bug 147's catch-up** the moment v4 commits it (the chat GET projecting
+   `cycleOrderParticipantIds` — P4.D171's both-directions "v4 never projects
+   it" pin TRIPS by design; the client `cycleOrder` read is a CONVERGENCE
+   since P4.D177 already reads it; a docs row). Run `/driftcheck` first.
+3. **The `is_photos_relative_path` consolidation, done RIGHT** (P4.D192's
+   refuted Tier 2 item 7): grow `photos_relative_path_equivalence`'s 13-row
+   corpus with the trailing-slash-run shapes FIRST (`photos//`, `photos///`,
+   `a//`) and watch `photos::photos_paths` go red; make its `posix_dirname`
+   Node-faithful (the `doc_mount_file_links` twin's loop); then delete the
+   twin and repoint its five importers + the harness family. Until then the
+   two homes disagree on an input no writer mints, in the safe direction.
+4. **The loops' `base_params` carry-over class** (the P4.90 §3 review's lead):
+   `previous_response_id` (and `stop`) ride `base_params` into both tool loops
+   where v4's re-streams pass none — on an OPENAI primary with a `resp_` id in
+   history v5 chains and P4.41's fallback re-issues (one dead request per loop
+   iteration; a wire shape v4 never sends). A corpus arm (OPENAI seat + a
+   `resp_` id + a native call) in `orchestrator_tier3`, then the fix — the
+   identical shape as P4.90's model rebuild.
+5. **Maintenance smalls surfaced by the round:** the `QT_FIXTURE_HELP_MAIN`
+   two-family collision (`help_doc_sync` / `help_doc_sync_guards` want
+   different files under one var — each PASSES on the other's fixture, so at
+   least one arm is fixture-insensitive: a coverage question); the
+   `to_completion_messages` tool-role blind spot is tree-wide (any tier-3
+   family whose oracle records a role outside `system|user|assistant` and
+   whose Rust side keys from a typed enum mismatches silently — only the
+   orchestrator family's mapper was fixed); `report_census`'s `fileIds` as a
+   JSON string in `combined.log` where v4 logs an array; the shared-fixture
+   title-checkpoint hazard (five P4.D187 beats still parked); the remaining
+   `31436bae4` smalls (the `db::memories` tracing-Interest intermittent, the
+   18 `[CharacterAvatar]` handler lines, the `SCENE_STATE_TRACKING` trigger,
+   the rolls save's 500-vs-400 prose).
+6. The standing items: the `name`-field turn-path measurement, P4.87's two
+   OPEN coverage items, the upstream filing candidates (v4's
+   `route.greeting-stall.test.ts` cannot tell gate 1 from gate 2; the v0
+   fallback dead for trigger-phrase profiles; the fresh-instance
+   `idx_files_generationKey`).
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — ORDERED 2026-09-16
 
 **Baseline `ffb6b3119`; v4 `main` HEAD `2075242f9` (FOUR past — the

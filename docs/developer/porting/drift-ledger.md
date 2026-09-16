@@ -19,53 +19,59 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `ffb6b3119`** — "fix(db): a delete that removed
-  nothing no longer counts as a deletion (bug 142)" (v4 main, 2026-09-14
-  20:06 -0500, `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 +
-  bug-142 drift catch-up round unification (P4.D189 → P4.D190 ∥ P4.D191,
-  2026-09-15). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-16 at ~08:00 CDT, by `/driftcheck`. Previously checked
-  2026-09-15 at ~16:20 CDT by `/dogfood`.
-- **v4 `main` HEAD at check:** `2075242f9` (`4.10.0-dev.40`) — **FOUR commits
-  past the baseline.** Two are the dogfood walk's own docs-only filings
-  (`064ba85df` bug 143, `81e02f7a2` bug 144); two are real fixes v4 landed in
-  response to them — `23abc1ba1` (bug 145, and it fixes bug 144 + closes bug
-  143) and `2075242f9` (bug 146). See §3.
+- **Oracle baseline: `2075242f9`** — "fix(salon): Skip passes the turn that
+  is outstanding, not the composer's seat (bug 146)" (v4 main, 2026-09-15,
+  `4.10.0-dev.40`), adopted at the `2075242f9` bug-145/146 drift catch-up +
+  maintenance round unification (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥
+  P4.90, 2026-09-16). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-16 at the `/unify` of that round (the §2 probe was run
+  at the unification's open and again before the regen sweeps). Previously
+  checked 2026-09-16 at ~08:00 CDT by `/driftcheck`.
+- **v4 `main` HEAD at check:** `2075242f9` — **IS the baseline.** Zero commits
+  past it.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. The previous
-  check's ⚠ dirty `migrations/scripts/collapse-duplicate-avatar-rolls-v1.ts`
-  edit has **landed** as `23abc1ba1` — the poison is gone, and the file is
-  now drift to absorb rather than dirt to pin around.
-- **Verdict: DRIFT PENDING — 4 commits, of which 2 carry code.** One is a
-  **data-loss PORT** (bug 145 — v5 measurably reproduces it, see §3), one a
-  **PORT** (bug 146) that also carries a **CONVERGENCE** (bug 144's wording,
-  which v5 is deliberately pinned to). The two docs-only rows are confirmed
-  NO-PORT by re-inspection at this check (file lists unchanged; no `lib/`,
-  `app/`, `packages/`, `plugins/`, `migrations/`, `help/` or
-  `public/schemas/` delta in either) — they keep their `UNPROCESSED`
-  disposition only because ratification belongs to `/unify` at the baseline
-  move.
-- ⚠ **Regen rule: PIN REQUIRED.** HEAD is four commits past the baseline and
-  two of them touch `lib/`, `migrations/`, `packages/` and `help/`
-  (`git diff --stat ffb6b3119..2075242f9 -- lib/ app/ packages/ plugins/
-  migrations/ help/ public/schemas/` is non-empty). Pin a worktree at
-  `ffb6b3119` for every regen until the catch-up round moves the baseline.
-  The reason has changed since the last check — it is HEAD now, not a dirty
-  tree — but the rule itself is unchanged. The ⚠ ABI note on the retired
-  `85813ddd2` row stays moot: the fixed `jest.global-setup.js` heal rides
-  the checkout and every pin at or past the baseline.
-- **The workspace gate is unaffected by the drift** — `public/schemas/` has
-  no delta across `ffb6b3119..2075242f9`, so `qtap_schema_embed_guard` stays
-  green at 93,384 bytes.
-- **Schema state: CLEAR at the baseline, and the drift moves no DDL.** The
-  only `migrations/` delta is the avatar-roll collapse *data* script's
-  rewrite (no `generateDDL`, no `lib/database/` hunk), so **no D23 re-dump is
-  owed**. `help/**` stays at **124 files**, but **two of them moved**
-  (`database-protection.md` +10, `chat-turn-manager.md` +3) — v5's vendored
-  `help/` tree is still byte-identical to the baseline's and will need those
-  two re-vendored when the round lands.
+- **Checkout at check:** branch **`main`**, tree **DIRTY** — and the dirt
+  GREW during the round. At the unification's open: `__tests__/unit/lib/chat/
+  turn-manager/floor-seat.test.ts` (+11, an eighth `resolveFloorSeatId` case —
+  the second sighting of bug 146 on an impersonated seat), `docs/developer/
+  bugs.md`, `docs/developer/bugs/fixed/bug-146-…md`. By the §3 review:
+  also `app/api/v1/chats/[id]/handlers/get.ts`, `app/salon/[id]/hooks/
+  useTurnManagement.ts`, `__tests__/unit/app/api/v1/chats/[id]/handlers/
+  get.test.ts`, `docs/CHANGELOG.md`, and two NEW files — `__tests__/unit/lib/
+  chat/turn-manager/client-server-agreement.test.ts` and `docs/developer/
+  bugs/fixed/bug-147-chat-get-omits-the-rotation.md`. **That is v4 bug 147
+  in flight** ("the chat GET omits the rotation" — the chat GET projecting
+  `cycleOrderParticipantIds` / the client reading `TurnActionResponse.state.
+  cycleOrder`). Two v5 consequences, both pre-recorded: (a) v5's
+  `applyTurnResponse` ALREADY reads `state.cycleOrder` (P4.D177), so the
+  client half is a CONVERGENCE when it lands; (b) P4.D171's survey correction
+  pinned BOTH DIRECTIONS that "v4 never projects `cycleOrderParticipantIds`
+  on the chat GET" — **that pin will TRIP at the next baseline move by
+  design** (§5.4: measure, then retire). The eighth floor-seat case is
+  ALREADY in v5's corpus and parity spec (added at this unification's wires
+  from the dirty test, since the function exists at the pin).
+- **Verdict: NO DRIFT at HEAD — but bug 147 is IN FLIGHT in a dirty `app/`
+  tree.** Nothing to absorb until it commits; when it does, expect a PORT
+  (the chat-GET projection) + a CONVERGENCE (the client `cycleOrder` read)
+  + a docs row.
+- ⚠ **Regen rule: PIN REQUIRED.** HEAD is the baseline, but the checkout is
+  dirty in `app/` (bug 147's hunks poison any regen that imports the chat
+  GET handler or the client turn-management hook from the working tree —
+  ledger §5.1's mid-lane note). Pin a worktree at `2075242f9` for every
+  regen until the tree is clean. The unification's own regens ran from
+  `/tmp/qt-v4-pin-unify-2075242f9` (moved families) and
+  `/tmp/qt-v4-pin-unify-ffb6b3119` (neutrality legs); both pins were removed
+  at cleanup.
+- **The workspace gate is unaffected** — `public/schemas/` did not move across
+  `ffb6b3119..2075242f9`, so `qtap_schema_embed_guard` stays green at 93,384
+  bytes.
+- **Schema state: CLEAR at the baseline.** The round moved no DDL (the
+  avatar-roll collapse rewrite is a *data* script; no `generateDDL`, no
+  `lib/database/` hunk), so no D23 re-dump was owed. `help/**` is **124
+  files**, v5's vendored tree md5-identical to v4's at `2075242f9` after
+  P4.D194's two-file re-vendor.
 
 ## §2 The freshness probe
 
@@ -104,10 +110,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `064ba85df` | 2026-09-15 | docs(bugs): file bug 143 — the avatar-roll collapse left duplicate generationKey rows | NO-PORT? | Nothing. Docs-only (`docs/developer/bugs.md` + the new `bugs/bug-143-*.md`); written BY this port's 2026-09-15 dogfood walk, recording a v4-side data-hygiene residue that v5 does not reproduce. ⚠ **Re-checked 2026-09-16: v4 has CLOSED bug 143 as NOT A DEFECT** (in `23abc1ba1`) — all ten duplicate `generationKey` groups are the deliberate protected-portrait branch; the three the filing could not explain were protected *when the pass ran* and had stopped being protected by the time the walk measured them four days later. The walk's own diagnosis was reconstructed from a later snapshot of mutable state (`characters.defaultImageId`), which is the error. Nothing to port; the lesson is recorded on the `23abc1ba1` row. | ORDERED(P4.D194) — NO-PORT confirmed by re-inspection; ratify at the baseline move |
-| `81e02f7a2` | 2026-09-15 | docs(bugs): file bug 144 — --lock-clean says the holder is alive when it has just died | NO-PORT? | Nothing to port. Docs-only, written BY this port's walk. ⚠ **But v5 is deliberately PINNED to the buggy wording** (`quilltap-cli/src/db_cmd.rs`, `a_fresh_heartbeat_keeps_v4s_false_liveness_claim`): when v4 lands the fix, that test reddens BY DESIGN and Tier R's five `lock clean …` cases move — absorb both together. ⚠ **That has now happened: v4 fixed bug 144 in `23abc1ba1`** (2026-09-15), so the pin trips BY DESIGN at the baseline move. The convergence is carried on the `23abc1ba1` row, which is where the retirement is measured. | ORDERED(P4.D194) — NO-PORT confirmed by re-inspection; ratify at the baseline move |
-| `23abc1ba1` | 2026-09-15 | fix(avatars): the roll collapse no longer deletes the photo you kept (bug 145) — **and it fixes bug 144, and closes bug 143 as not a defect** | **PORT** (data loss) + **CONVERGENCE** | **Three distinct intersections. (a) `migrations/scripts/collapse-duplicate-avatar-rolls-v1.ts` → v5's boot heal `quilltap-core/src/db/avatar_rolls_collapse_heal.rs` (ported P4.D184, pinned by `avatar_rolls_collapse_heal_equivalence` + `host_boot_avatar_rolls_collapse`). ⚠ **v5 MEASURABLY REPRODUCES bug 145** — `delete_victim_blob` (`:214`) selects `doc_mount_file_links WHERE fileId = ?1` and deletes by `fileId` (`:237`), exactly the shape v4 replaced: collapsing a duplicate roll takes any album photo sharing those bytes, silently and unrecoverably. v4 measured a 19% base rate on the real instance (199 of 1066 avatar links). v4's replacement `dropVictimRollLink` reaches three chokepoints v5 already has ported counterparts for — `isPhotosRelativePath`, `gcOrphanedFileRow` (P4.31's orphan reaper), and the roll-vs-album discrimination in `photos/avatar_rolls_service.rs` (P4.D185). Also new: `parseMountBlobKey` (the mountPointId half is now used), the in-pass `protectedKept` census + `unexplainedDuplicateKeys` warn, `keptClause` on both summary messages, and `albumCopiesKept` in the log bag. ⚠ v4's own note — *"every test seeded a roll with exactly one link, so the one shape that would have failed was the one shape never modelled"* — applies to v5's 17-scenario family too: the fixture needs the two-link shape before the fix can be proven. **(b)** `packages/quilltap/bin/quilltap.js` `--lock-clean` → **CONVERGENCE**: v5 is deliberately pinned to the OLD wording (`quilltap-cli/src/db_cmd.rs:554`, test `a_fresh_heartbeat_keeps_v4s_false_liveness_claim`, commit `00647c34`) because the walk filed it as bug 144. New copy: `Lock heartbeat is still fresh (Ns ago). Cannot clean.` + a second line rendered through a new `describeFreshWindow()` off `HEARTBEAT_FRESH_MS`. Refusal semantics unchanged. The pin and Tier R's five `lock clean …` cases move together. **(c)** `help/database-protection.md` (+10) → the vendored `help/` tree (P4.9I2; still 124 files, currently byte-identical to the baseline) needs the re-vendor. Docs/tests/README/`package.json` are NO-PORT. | ORDERED(P4.D192, P4.D194) — 2026-09-16 |
-| `2075242f9` | 2026-09-15 | fix(salon): Skip passes the turn that is outstanding, not the composer's seat (bug 146) | **PORT** | New pure predicate `resolveFloorSeatId` in `lib/chat/turn-manager/utils.ts` (+ the `index.ts` re-export) → v5's turn-manager family, ported P4.D172; it reads `isUserDrivenSeat`, whose v5 twins are `quilltap-core/src/participant_filters.rs` (server, P4.D56) and `apps/web/src/app/chat/turn-order.ts` (client, P4.D58) — so this is a **pure leaf with a tier-1 path on both sides**. The consumer is `app/salon/[id]/SalonView.tsx`'s Skip banner → v5's `apps/web/src/app/chat/turn-controls.ts:138-139`, which carries the two existing sentences verbatim and needs the new third: `` `${name}'s turn — switch the speaker to them to type, or skip to let someone else respond.` `` behind a `composerElsewhere` conjunct, plus the banner/must-speak-guard/Skip-POST all following the floor seat instead of the composer's. Bug 123's off-turn affordance and bug 44's impersonation overlay are both explicitly preserved — v5's P4.D186/P4.D187 Skip work is the surrounding code. Server acceptance of an off-turn skip is UNCHANGED (no `lib/` behavior beyond the new export). `help/chat-turn-manager.md` (+3) → the same re-vendor as `23abc1ba1`. | ORDERED(P4.D193, P4.D194) — 2026-09-16 |
+| _(empty — v4 `main` HEAD `2075242f9` IS the baseline as of the 2026-09-16 unification; bug 147 is in flight in a dirty tree and has no row until it commits)_ | | | | | |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -261,6 +264,23 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `2075242f9` bug-145/146 drift catch-up + maintenance round
+  (2026-09-16, baseline `ffb6b3119` → `2075242f9`):** `23abc1ba1`
+  ABSORBED(P4.D192 — bug 145's migration hunk: `drop_victim_roll_link` over
+  the three existing chokepoints, `gc_orphaned_file_row` widened to v4's
+  per-table counts, the in-pass `protectedKept` census + `keptClause`, the
+  family 17 → 24 scenarios with the album cases RED-FIRST [v5 measurably had
+  the bug] ∥ P4.D194 — the bug-144 CONVERGENCE measured then retired
+  [FOUR Tier R cases moved, not five; BOTH lines moved], the
+  `help/database-protection.md` re-vendor, the non-lib files ratified
+  NO-PORT on `--name-status` lists), `2075242f9` ABSORBED(P4.D193 —
+  `resolveFloorSeatId` on both sides under the NEW tier-1
+  `floor_seat_equivalence` [52 → 54 rows], the Salon banner re-keyed on the
+  floor with v4's fourth sentence, a live two-user-seat beat ∥ P4.D194 —
+  `help/chat-turn-manager.md`), `064ba85df` NO-PORT-RATIFIED(P4.D194 — bug
+  143 filed, docs-only), `81e02f7a2` NO-PORT-RATIFIED(P4.D194 — bug 144
+  filed, docs-only). Round record: `status-log.md` → "Round record — the
+  `2075242f9` bug-145/146 drift catch-up + maintenance round unification".
 - **The `ffb6b3119` bug-141 + bug-142 drift catch-up round (2026-09-15,
   baseline `31436bae4` → `ffb6b3119`):** `f90144ac4` ABSORBED(P4.D189 — the
   stream watchdog as a substrate commit [`model/stream_watchdog.rs` +

@@ -128839,3 +128839,265 @@ round's §8 — it is P4.89's subject.
 
 core **0.0.921 → 0.0.923** (+2), harness **0.0.814 → 0.0.815** (+1). No other
 crate's source changed; the SPA was never touched.
+
+---
+
+## Round record — the `2075242f9` bug-145/146 drift catch-up + maintenance round unification (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90), 2026-09-16
+
+**ALL FIVE ORDERS CLOSED — P4.D192 with Tier 2 item 7 a NAMED follow-up (its
+premise refuted by the lane's own measurement); the oracle baseline MOVES
+`ffb6b3119` → `2075242f9`; the ledger's four rows retire (`23abc1ba1` and
+`2075242f9` ABSORBED, `064ba85df` and `81e02f7a2` NO-PORT-RATIFIED) and its
+§3 is EMPTY.** Unified on `unify/2075242f9` from `main` `e9173924`: fifteen
+lane commits cherry-picked in the order D192 → D193 → D194 → P4.89 → P4.90
+(two version-file conflicts, nothing else — the union files auto-merged
+cleanly), then the wires commit, the §3-fixes commit, and this record.
+
+### The probe, and what it found
+
+The ledger's §2 probe at the unification's open: v4 `main` HEAD `2075242f9`
+(unmoved, both logs empty) — **but the checkout was DIRTY**, on three files
+at the open (`floor-seat.test.ts` +11, `docs/developer/bugs.md`, the
+bug-146 doc) and on nine by the §3 review (`app/api/v1/chats/[id]/handlers/
+get.ts`, `app/salon/[id]/hooks/useTurnManagement.ts`, two tests, a NEW
+`client-server-agreement.test.ts`, a NEW `bug-147-chat-get-omits-the-
+rotation.md`, `docs/CHANGELOG.md`): **v4 bug 147 in flight.** No `lib/`
+hunk yet, so nothing to absorb, but an `app/` dirt that poisons regens — every
+regen here ran from two lane-unique detached pins (`/tmp/qt-v4-pin-unify-
+2075242f9` for the moved families, `/tmp/qt-v4-pin-unify-ffb6b3119` for the
+neutrality legs), and the ledger's §1 now records the dirty tree, the
+in-flight bug, and the two v5 consequences it will have (the P4.D171
+both-directions chat-GET pin trips at the next move by design; the client
+`cycleOrder` read is already a P4.D177 convergence). The dirty test's
+eighth `resolveFloorSeatId` case was taken into v5's corpus and parity spec
+at the wires (the function exists at the pin; only v4's test was dirty).
+
+### What landed, per lane (the status headers carry the detail)
+
+- **P4.D192** — bug 145's `lib` half: `drop_victim_roll_link` over the three
+  existing chokepoints (`gc_orphaned_file_row` widened to v4's per-table
+  counts, `parse_mount_blob_storage_key` reused, the photos predicate), the
+  in-pass `protectedKept` census with v4's warn on BOTH exits, `keptClause`
+  on both ledger sentences, the two bag fields; the family 17 → 24 scenarios
+  with **39 red rows across 17 scenarios against the unported heal** (v5
+  measurably had the bug); seven mutation proofs + M4 against the new boot
+  arm. Two order premises refuted: v4's six new cases are FOUR new scenarios
+  (two seed what scenario 9 already seeds) and v4's census case takes the
+  EARLY return, so the conjunct nobody opened was the post-summary exit
+  (`the-census-fires-after-a-collapse-too`). Tier 2 item 7 REFUTED: the two
+  `is_photos_relative_path` homes are NOT byte-identical (the `photos_paths`
+  helper strips ONE trailing slash, Node and the `doc_mount_file_links` twin
+  strip a run) — recorded with the ordered shape. One declared
+  out-of-ownership hunk (`host.rs`'s boot log line) stood.
+- **P4.D193** — bug 146 whole: `resolve_floor_seat_id` with the three
+  prose-invisible shapes under the NEW tier-1 `floor_seat_equivalence` (52
+  rows + a re-export row; the barrel cannot be imported as ESM from a v5-side
+  tsx entry, so the re-export is pinned by identity through the CJS
+  `default`); the client twin with v4's suite case-for-case; the banner
+  re-keyed on the floor, `composerElsewhere` + the fourth sentence, Skip
+  posting `bannerSeat()`; five component specs asserting the DISPATCH BODY;
+  a live two-user-seat beat that impersonates the LLM seat so the walk is
+  TOTAL. Three order premises refuted by measurement: `find` scans the whole
+  predicate (not "first id match"); the fair-rotation floor with an active
+  LLM seat is a coin flip (the help text's "hands the floor straight to the
+  other" is not a rule the selection enforces); the reload route to the
+  fourth sentence is unreachable on v5 (the turn-follow re-fires). Also: the
+  manual turn queue is invisible to `chatTurnAction query`. The new family
+  tripped P4.68's `participant_status_home_guard` at the lane's gate and was
+  routed through the one parser.
+- **P4.D194** — the bug-144 convergence: Tier R at the target pin RED on
+  **FOUR** fresh-heartbeat cases (not the five the walk and dogfood #119
+  claimed — the fifth fresh-heartbeat case plants a LIVE PID and takes the
+  arm above), v4's two lines dumped — **BOTH moved**, the old second line
+  surviving only in the live-process arm — the arm converged with
+  `describe_fresh_window_ms` off `FRESH_MS`, 223/0 at the target and 223/4
+  the reverse way at the baseline; the retired pin replaced by one with two
+  `!contains` guards; the two help pages byte-copied (124 stays 124, the
+  whole tree md5-identical, `help_tree_equivalence` green at the target and
+  red at the baseline on exactly the two paths, measured on the NDJSONs);
+  four NO-PORT ratifications on `--name-status` lists; the `docs/v4/`
+  inventory; row #119 → CONVERGED. Five findings for the unifier (all
+  discharged below or named).
+- **P4.89** — the committed `brahma-main.db` widened in place through v4's
+  migration DDL (the gap MEASURED with v4's real `compareSchemas` — exactly
+  the two P4.D171 columns on MAIN, nothing on MOUNT; twelve tables
+  cell-identical before/after; a second run `already current`); the
+  standing `brahma_orchestrator_tier3` red CLOSED with zero core change —
+  **and a SECOND latent red closed with it**: `brahma_console_routes` had
+  been un-passable on `main` since P4.D171 (every write case 500 on both
+  sides) and passed gates only by SKIPping on an unset var. Two order
+  premises refuted (the migrator applies v4's real migration ALTERs from a
+  list, it does not call `compareSchemas` — the independent measurement
+  agreed; `brahma_console_tier3` bakes its own fixture and shares only the
+  file NAME). The P4.50-class prefix RETIRED (Outcome A — no live site).
+- **P4.90** — (a) the failover model refresh: the order's case shape
+  REFUTED (an empty-response failover runs AFTER the loops in v4, so no
+  re-stream can follow it) and rebuilt as a HARD-ERROR failover
+  (`failover_then_native_tool_call`, the corpus's first `detection` entry);
+  RED-FIRST verbatim — `no canned stream queued for key (OPENAI, model
+  claude-falls-over, 5 msgs)`, the understudy's provider with the primary's
+  model in one line; the measurement v4 forces: **`model` moves and nothing
+  else** (v4's `modelParams` bag is computed once at `orchestrator.service.
+  ts:1107` before the primary stream, so v4's own loops carry the
+  pre-failover parameters bag and v5 keeps `profile_parameters` + the
+  sampling knobs stale to match); three mutations. Two harness repairs found
+  BY the arm: `to_completion_messages` filed the oracle's `tool` role as
+  `user` (the corpus had never carried one), and a canned-stream miss named
+  only a count. (b) the six greeting lines at v4's sites, unit-pinned with
+  silence legs (the capstone carries no capture layer); the api-key warn on
+  BOTH a missing row and a read failure (v4's finder is a null-fallback
+  `safeQuery`); the recent-conversations warn placed at the swallowed read.
+
+### The §3 review (four parallel readers; the verdict owned at the unify)
+
+**NO blocking findings** in any lane — the sixth such round. Every lane's
+diff was read against v4's real code at the pins. What was found, and what
+was done:
+
+1. **P4.D192 — the heal imported the wrong `is_photos_relative_path` twin.**
+   v4's migration imports `lib/photos/photos-paths.ts`, whose `path.posix.
+   dirname` skips a RUN of trailing slashes; v5's `photos::photos_paths`
+   twin strips one — and the lane had itself measured that the `db::doc_
+   mount_file_links` twin is the Node-faithful one (which is why its ordered
+   consolidation did not land). The compounding point the lane record
+   missed: v5's runtime roll rule (`classify_roll_links` through
+   `photo_link_summary`'s `isPhotoAlbum`) reads the FAITHFUL twin, so v5's
+   heal and v5's runtime disagreed on the trailing-slash-run shape where
+   v4's two callers agree. **Fixed** (`4954de3a`): the heal imports the
+   faithful home; neutral on all 24 scenarios at the target pin (no corpus
+   row mints that shape — the family's DDL could carry it, no scenario does;
+   the follow-up grows the 13-row photos corpus first). Reachable only on a
+   path ending in ≥ 2 slashes, which no writer mints; safe direction.
+2. **P4.90 — the `:692` recent-conversations warn sits where v4's catch never
+   fires for a repository failure.** Measured on v4 at `ffb6b3119`:
+   `chats.repository.ts:181-206` wraps the read in a rethrowing `safeQuery`,
+   but the read INSIDE is `findByFilter`, and `base.repository.ts:272-287`
+   is a FALLBACK-mode `safeQuery` — it logs the repository's own `ERROR Error
+   finding entities by filter` and returns `[]`, so `buildRecentConversations
+   Block` answers `''` and `route.ts:692` is reached only for a
+   non-repository throw (`getRepositories()` / `getModelContextLimit`),
+   which v5's infallible helper cannot produce. The lane record's `:692` row
+   ("NOT the NO-PORT the order allowed for … the two are one site") is
+   therefore WRONG as a fidelity claim. **Kept as a RECORDED DIVERGENCE**
+   (`4954de3a`): v5 has no repository-layer fallback log to twin, so the
+   failure is NAMED with v4's sentence rather than swallowed (the #103/#110
+   class) — the same failure, a different sentence, an empty block on both
+   sides; the helper's comment and the test's doc now say so.
+3. **P4.90 — a wrong v4 citation** at the api-key arm (`findApiKeyById:266`,
+   not `findApiKeyByIdAndUserId:288`; both null-fallback `safeQuery`s, so the
+   semantic claim held). **Fixed** in the comment.
+4. **P4.90 — the new corpus arm had no oracle-side "v4 really failed over"
+   pin**: the discriminator was indirect (the unfixed v5 errs in the loop and
+   `assert_events_eq` reddens on the truncated trace — a real red, M1–M3
+   confirm), but a future regen that quietly stopped failing over would go
+   green measuring nothing. **Fixed** (`4954de3a`): the P4.D186 held-cases
+   idiom — at least one recorded canned stream keyed `OPENAI` /
+   `gpt-stands-in` carrying a `tool` message.
+5. **P4.D193 — v4's uncommitted eighth case** (the composer holding an
+   impersonated seat, the floor on the owner's) was in neither the corpus nor
+   the spec by exact shape (the branch is v4-1's — no port risk — but the
+   "seven cases case-for-case" claim would go stale when v4 commits).
+   **Fixed at the wires** (`d513aa7c`): corpus 53 → 54 rows regenerated at
+   the target pin; the mirror `it` in the parity spec.
+6. **P4.D194 — the refuted "5 of 223"** also lived in CLAUDE.md's status
+   bullet and the walk doc (the lane corrected only row #119). **Fixed at the
+   wires**; and the lane's finding 4 (`help_doc_chunking` spelling its skip
+   as prose, invisible to the gate's `SKIP:` grep) was widened by one grep to
+   SEVEN families incl. Tier R — all now the sentinel (the sweep driver keys
+   on both spellings, so nothing there moves).
+
+**Recorded, not changed** (each named in the owning order's header and in
+phase-4.md's candidates): P4.90's lead — `previous_response_id` (and `stop`)
+ride `base_params` into both tool loops where v4's re-streams pass none (on
+an OPENAI primary with a `resp_` id in history v5 chains and P4.41's fallback
+re-issues; the identical class as the fix — wants a corpus arm); the
+`to_completion_messages` tool-role blind spot is tree-wide; `report_census`'s
+`fileIds` reaches `combined.log` as a JSON string where v4 logs an array;
+the census's `fileIds` ORDER is SELECT-order over a table the real instance
+indexes; the Rust doc's `is_user_driven_seat` analogy overstates; the parity
+spec's factory sets three of v4's thirteen fields (the function reads three);
+`describe_fresh_window_ms(-0.0)` would render `-0 minutes` (unreachable);
+the `QT_FIXTURE_HELP_MAIN` two-family collision (each family passes on the
+other's fixture — a coverage question).
+
+### The unification wires (`d513aa7c`)
+
+- **The version recount** — the silent-auto-merge trap fired again: three
+  lanes bumped core from one base and the picks merged the identical lines as
+  ONE (core sat at 0.0.923 where base + 1 + 2 + 2 = 0.0.926; harness at
+  0.0.815 where base + 1 + 2 + 1 + 1 = 0.0.819). Recounted; `host` took a
+  second bump (0.0.137) for the help embed per P4.D191's precedent (the lane
+  flagged the choice); the SPA 0.5.726 for the spec.
+- **The `docs/v4/` mirror** — the seven pre-listed paths, copied from the
+  `2075242f9` COMMIT (`git show`), never the working tree, two of whose
+  copies were dirty with bug 147.
+- The eighth floor-seat case (above); the seven skip sentinels (above); the
+  P4.D190 header's "SIX more lines" paragraph retired (P4.90 landed them);
+  the `help_tree_embed_guard` provenance comment at the new vintage; the walk
+  doc + CLAUDE.md counts.
+
+### The regen sweeps (from the two pins; never two sweeps concurrently)
+
+- **Baseline pin (`ffb6b3119`), 16 families** — the drift never touched them:
+  `doc_mount_file_links_tier2`, `store_delete`, `maintenance_ops_tier2`,
+  `photos_relative_path`, `turn_pause_filters`, `turn_predicates`, the three
+  brahma families, `orchestrator_tier3`, `native_tool_loop_tier3`,
+  `text_tool_loop_tier3`, `chat_continuation_tier2`, `chat_create_capstone`,
+  `initial_greeting`, `primary_stream_tier3` — **16/16 ok, zero `SKIP:`**.
+- **Target pin (`2075242f9`), 17 families** — the ones the round MOVES:
+  `avatar_rolls_collapse_heal` (24 scenarios — `did not choose to double up`
+  ×2, `albumCopiesKept` ×20), `floor_seat` (54 rows — the eighth case ×1),
+  and the fifteen `help_*` families (`courtesy of the house` ×1, `always
+  speaks for whoever holds the floor` ×1 in the tree oracle) — **17/17 ok,
+  zero `SKIP:`**.
+- **Tier R** at the target pin, by name with `--nocapture`: **223 cases,
+  0 failures** (334.6 s — not a skip).
+- `orchestrator_tier3` re-run by name after the §3 pin: green.
+- The two P4.89 collisions handled by name: `brahma_console_tier3` (a
+  different fixture under the same `QT_FIXTURE_BRAHMA_*` names — proven in
+  the baseline sweep, its `QT_ORACLE_BRAHMA` withheld from the WORKSPACE
+  block) and `help_doc_sync_guards` (the shared `QT_FIXTURE_HELP_MAIN` —
+  proven in the target sweep).
+
+### The gate (the gate of record)
+
+Run from the main worktree on `unify/2075242f9` after `4954de3a`
+(`CARGO_INCREMENTAL=0`, `TZ=UTC`, one detached, sentinel-guarded chain with
+every log captured whole; the SPA gate detached beside it):
+
+1. §2 probe — the dirty-tree posture recorded (above); HEAD unmoved.
+2. `cargo fmt --all --check` — clean (after one rustfmt nit from the
+   skip-sentinel rename, folded into `4954de3a`).
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean
+   in the default set; clean with `--features
+   quilltap-core/native-transport`.
+4. `cargo build --workspace --release` — clean.
+5. `cargo test --workspace --no-fail-fast` with the round's 62-variable env
+   block (every recipe var of the 33 families minus the two collisions,
+   `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the TARGET pin, `QT_NODE` the node
+   binary; every path verified to exist before the run; `QT_ORACLE_BRAHMA_
+   ORCH` and `QT_ORACLE_BRAHMA_ROUTES` RESTORED): **571 test binaries / 3,321 passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines** (the two ignored are the standing pair; the four `FAILED` text hits in the log are a fixture's boot WARN sentence, not results)**.
+   The round's families confirmed RUN by name with non-zero durations inside it: `cli_differential` 310.51 s (223/0 at the target pin — the count is hidden on PASS, read from the by-name run), `chat_create_capstone` 3 passed / 4.20 s, `orchestrator_tier3` 3.01 s, `help_tree` 1.10 s, `host_boot_avatar_rolls_collapse` 3 passed / 1.10 s, `spelling_guard` 0.90 s, `brahma_orchestrator_tier3` 0.15 s, `help_doc_sync_guards` 0.11 s, `stream_watchdog_wrap_census` 2 passed / 0.09 s, `help_doc_chunking` 0.07 s, `participant_status_home_guard` 0.07 s, `help_doc_sync` 0.06 s, `store_delete` 0.05 s, `brahma_console_routes` 0.04 s, `text_tool_loop_tier3` 0.04 s, `qtap_schema_embed_guard` 2 passed / 0.04 s, `avatar_rolls_collapse_heal` 0.03 s. The four that read 0.00 s in the captured run (`floor_seat`, `turn_pause_filters`, `photos_relative_path`, `initial_greeting` — tiny tier-1 corpora) were POSITIVELY proven by the by-name sweep runs above with `--nocapture` (`floor_seat`: `54 floor rows, 1 reexport`), which is the proof, since cargo swallows a passing test's SKIP line.
+6. Mutation proofs — the lanes' batteries stand (D192: seven + M4 on the boot
+   arm; D193: M1–M5 on the twins, M6–M10 on the Salon, M11 live; D194:
+   M1–M3 incl. the proof Tier R compares BOTH lines; P4.90: Mb1–Mb6 + M1–M3).
+   The §3 fixes' own pins: the heal's import (neutral by design — the corpus
+   cannot see it; the follow-up corpus will), the failover pin (reddens on an
+   oracle with no understudy-keyed `tool` re-stream).
+7. SPA: `npm run lint` clean (incl. the qt-class guard, 952 classes);
+   `npm test` **434 spec files / 7,343 tests / 0 failed** (7,342 + the eighth floor-seat case)**; `npm run build` clean.
+8. Full Playwright against the release binary: ****318 passed / 3 failed / 6 skipped (11.0 m)** — the six skips are the standing parks (five P4.D187 title-checkpoint beats + the gallery store-probe park); the three reds are the documented full-suite intermittent trio (`salon-documents-flow` ×2 — one received the PTY shell's nvm `npm_config_prefix` notice where it waited for `session ended` — and the `workspace-flow` terminal pop-out), Document Mode / terminal surfaces no lane in this round touched, **re-run by file in isolation: 18/18 green (57.5 s)**; the round's own beats (`salon-floor-seat-flow` ×2 and every activated sibling) green in the full run**.
+9. Ownership: every lane's diff inside its Owns column (the one declared
+   exception, D192's `host.rs` log line, stood); the unifier's edits confined
+   to the wires, the §3 fixes, and this record.
+
+### Deferred loud / next
+
+See phase-4.md's "What is next" under the round: the owed dogfood pass (the
+live `--lock-clean`, the real cross-provider failover + tool call, the
+planted album-copy proof, the fourth banner sentence, the six greeting lines
+on a dangling key); bug 147's catch-up when v4 commits it (the P4.D171
+chat-GET pin trips by design); the photos-predicate consolidation done right;
+the loops' `base_params` carry-over class; the maintenance smalls. Versions
+at the move: core 0.0.927, harness 0.0.820, host 0.0.137, web 0.0.147, cli
+0.0.22, SPA 0.5.726; tauri unchanged.

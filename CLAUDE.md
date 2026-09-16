@@ -3608,10 +3608,63 @@ records THERE. Update this summary only when a phase or round completes.
   REQUIRED.** 💸 still owed (human): the Brahma deep
   query, dedup/summaries, #101, and the bug-133 reroute trio + the two
   image-spend rows.
-- **Oracle baseline: `ffb6b3119` (2026-09-14, v4 main — "fix(db): a delete
-  that removed nothing no longer counts as a deletion (bug 142)",
-  `4.10.0-dev.36`), adopted at the `ffb6b3119` bug-141 + bug-142 drift
-  catch-up round unification (2026-09-15).**
+- **The `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192
+  ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90): UNIFIED on main (2026-09-16) — ALL
+  FIVE CLOSED (P4.D192's Tier 2 item 7 a NAMED follow-up, its premise
+  refuted); the oracle baseline MOVES to `2075242f9` and the ledger's §3 is
+  EMPTY — but ⚠ v4's tree is DIRTY with bug 147 in flight ("the chat GET
+  omits the rotation"), so the regen rule stays PIN REQUIRED.** v4's two
+  code commits absorbed whole plus the two maintenance candidates: bug 145
+  (the avatar-roll collapse deleted by `fileId`, taking the album photo the
+  operator kept — **v5 measurably HAD it**, 39 red rows across 17 of 24
+  scenarios before the port; `drop_victim_roll_link` over the three existing
+  chokepoints with `gc_orphaned_file_row` widened to v4's per-table counts,
+  the in-pass `protectedKept` census on BOTH exits, `keptClause` on both
+  ledger sentences; a fourth boot arm) ∥ bug 146 (`resolveFloorSeatId` on
+  both sides under a NEW tier-1 family — 54 rows incl. v4's still-uncommitted
+  eighth case — the Salon banner re-keyed on the FLOOR with v4's fourth
+  sentence, Skip posting the floor seat, a live two-user-seat beat that
+  impersonates the LLM seat so the walk is total; three order premises
+  refuted: `find` scans the whole predicate, the two-user-seat floor is a
+  coin flip with an LLM present, the reload route is unreachable on v5) ∥ the
+  bug-144 CONVERGENCE (v4 fixed this port's own #119 filing — Tier R RED on
+  FOUR fresh-heartbeat cases at the target pin, not the five the walk
+  claimed; BOTH lines moved; `describe_fresh_window` off `FRESH_MS`; 223/0
+  at the pin; the deliberate false-claim pin retired; two help pages
+  re-vendored, 124 stays 124; four NO-PORT ratifications on file lists) ∥
+  the committed `brahma-main.db` widened in place through v4's own migration
+  DDL (the gap MEASURED with v4's real `compareSchemas`; twelve tables
+  cell-identical) — the standing `brahma_orchestrator_tier3` red CLOSED with
+  zero core change **and a SECOND latent red with it** (`brahma_console_
+  routes`, un-passable on main since P4.D171, passing only by SKIPping); the
+  P4.50-class prefix RETIRED (no live site) ∥ the post-failover
+  `params.model` rebuild (the tool loops re-streamed the PRIMARY's model to
+  the UNDERSTUDY's provider — a hard-error failover-then-tool-call corpus arm
+  RED-FIRST; **`model` moves and nothing else**, since v4's `modelParams` bag
+  is computed once before the primary stream) + the six greeting-ladder log
+  lines, capture-pinned. **The §3 review (four parallel readers): NO
+  blocking findings — the sixth such round; fixed on the unify branch:** the
+  heal imported the NON-Node-faithful `is_photos_relative_path` twin where
+  v5's runtime roll rule reads the faithful one (the lane had measured the
+  divergence and reverted its consolidation, then left the heal on the wrong
+  home); P4.90's `:692` warn re-recorded as a DIVERGENCE (v4's catch sits
+  behind a fallback-mode `safeQuery` and never fires on a repository read);
+  an oracle-side pin that the new arm's failover still happens; v4's eighth
+  floor-seat case taken from its dirty test; seven prose-form skip notices
+  made the `SKIP:` sentinel. Gate: 16/16 + 17/17 families fresh from the two
+  pins zero SKIP; Tier R 223/0; clippy both feature sets; release build; 571
+  test binaries / 3,321 / 0 / 2 ignored, zero SKIP lines; ng 434 files /
+  7,343; full Playwright 318 passed / 3 failed / 6 skipped (the trio the P4.D138 follow-up recorded as the standing full-suite intermittent class — 18/18 green by file in isolation; the skips the standing parks). Versions: core 0.0.927, harness
+  0.0.820, host 0.0.137, web 0.0.147, cli 0.0.22, SPA 0.5.726. 💸 the
+  dogfood queue gains the live `--lock-clean`, a real cross-provider
+  failover + tool call, the planted album-copy proof, the fourth banner
+  sentence, the six greeting lines on a dangling key. **Next: bug 147's
+  catch-up when v4 commits it, then the owed dogfood pass** — see
+  phase-4.md. Round record: `status-log.md`.
+- **Oracle baseline: `2075242f9` (2026-09-15, v4 main — "fix(salon): Skip
+  passes the turn that is outstanding, not the composer's seat (bug 146)",
+  `4.10.0-dev.40`), adopted at the `2075242f9` bug-145/146 drift catch-up +
+  maintenance round unification (2026-09-16).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

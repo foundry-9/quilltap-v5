@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): unify the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — the baseline moves to `2075242f9`
+
+_Docs-only change (the code landed in the lanes' entries and the two unify commits above)._
+
+All five orders CLOSED (P4.D192's Tier 2 item 7 a named follow-up — its
+premise refuted); the oracle baseline moves `ffb6b3119` → `2075242f9`; the
+drift ledger's four rows retire (two ABSORBED, two NO-PORT-RATIFIED) and its
+§3 is empty. v4's tree is DIRTY with bug 147 in flight, recorded in the
+ledger's §1 with the regen rule kept at PIN REQUIRED.
+
+The §3 review (four parallel readers) found no blocking issue in any lane;
+the fixes it did make are the two `unify` commits above. Gate: the 16-family
+baseline-pin and 17-family target-pin sweeps 33/33 ok zero SKIP; Tier R
+223/0 at the target pin; fmt + clippy both feature sets clean; release build
+clean; 571 test binaries / 3,321 passed / 0 failed / 2 ignored, zero `SKIP:`
+lines; SPA 434 spec files / 7,343 tests, build clean; full Playwright
+318 passed / 3 failed / 6 skipped (the trio the P4.D138 follow-up recorded as the standing full-suite intermittent class — 18/18 green by file in isolation; the skips the standing parks). The round record is in `status-log.md`; phase-4.md carries
+the UNIFIED section with what is next; each order's status header names
+what the review changed on it.
+
 #### 2026-09-16 — fix(unify): the `2075242f9` round's §3 review fixes — the heal reads the Node-faithful photos predicate, the recent-conversations warn recorded as a divergence, an oracle-side failover pin
 
 _Versions: core 0.0.927, harness 0.0.820._
