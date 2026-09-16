@@ -203,6 +203,37 @@ the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
 conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
 the room (`fallback-not-in-room`), and treating an empty-string floor id as
 a name (`empty-string-floor-matching-seat`).
+#### 2026-09-16 — docs(help): re-vendor `database-protection.md` + `chat-turn-manager.md` from v4 `2075242f9`
+
+_No crate versions bumped._
+
+The two `help/**` hunks of this round's drift, byte-copied from a worktree
+pinned at v4 `2075242f9`: `database-protection.md` +10 (the five-minute
+heartbeat window explained, with `--lock-clean`'s new refusal quoted — v4
+`23abc1ba1`, bug 144) and `chat-turn-manager.md` +3 (the banner speaks for
+whoever holds the floor — v4 `2075242f9`, bug 146). Both modified, none added,
+so the tree stays at **124 files** and `help_tree_embed_guard`'s
+`VENDORED_FILE_COUNT` does not move.
+
+Proven at the pin. `diff -r "$PIN/help" help` is empty and both md5s match.
+`help_tree_equivalence` — the one family that reads the SHIPPED bytes — is
+green against an oracle regenerated from the target pin (124 docs, 701 chunks;
+`database-protection.md`'s new paragraphs add the chunk that takes 700 → 701)
+and red against one from the baseline pin. Decomposed on the two NDJSONs
+rather than read off the panic (which names only the first row per table): the
+walk order, the doc-path set, the job count and all 122 other docs agree, and
+exactly `help/chat-turn-manager.md` and `help/database-protection.md` differ,
+in both the `docs` and `chunks` tables.
+
+The other fourteen help families were regenerated and re-run at the target pin
+through the sweep driver — 15/15 ok, zero SKIP — confirming P4.D191's
+measurement independently re-made here: only `help-tree-sync.test.ts` reads
+the shipped tree, the rest `chdir` into scratch or committed roots or mock
+`ensureHelpDocsSynced`, and no committed fixture carries a sentence from
+either file. The embed is genuinely fresh: `build.rs` emits `include_str!`
+with absolute paths, the rebuilt test binary contains both new sentences, and
+`help_tree_embed_guard` is green on it.
+
 #### 2026-09-16 — fix(cli): `--lock-clean`'s heartbeat refusal says what it tested (v4 `23abc1ba1`, bug 144)
 
 _Versions: cli 0.0.22._
