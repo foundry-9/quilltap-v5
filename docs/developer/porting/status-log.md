@@ -304,6 +304,62 @@ weighted-random limitation is NOT moot for this feature the way the order
 predicted (the two-user-seat rotation is not deterministic — see above); the
 beat works around it with the overlay instead, and its header records that.
 
+### Lane gate (run in the foreground of the lane's last turn)
+
+- **§R.2 freshness probe:** PASS at lane start, before each regen batch, and
+  again at lane close — branch `main`, tree clean, both logs empty.
+- **Pins:** `/tmp/qt-v4-pin-p4d193-2075242f9` (target — every regen this lane's
+  port MOVES) and `/tmp/qt-v4-pin-p4d193-ffb6b3119` (baseline — the neutrality
+  legs and the pin verification). Both lane-unique; both removed at lane close.
+- `cargo fmt --all --check` — CLEAN.
+- `cargo clippy --workspace --all-targets -- -D warnings` — CLEAN in BOTH
+  feature sets (default, and `--features quilltap-core/native-transport`).
+- `cargo build --workspace --release` — CLEAN.
+- `cargo test --workspace --no-fail-fast` with the lane's env block (its three
+  oracle vars + `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the BASELINE pin + `QT_NODE` =
+  the node BINARY): **571 test binaries / 3,307 passed / 0 failed / 2 ignored,
+  ZERO `SKIP:` lines, exit 0.** (The first run of this gate was the one that
+  caught the status-parse census — 1 failed, fixed and re-run whole.)
+- **The lane's families by NAME with `--nocapture`, zero SKIP:**
+  `floor_seat_equivalence` (`OK: floor-seat matched oracle (52 floor rows, 1
+  reexport)`), `turn_pause_filters_equivalence` (`counts [61, 10, 9, 8]`),
+  `turn_predicates_equivalence` (`35 rows`), `participant_status_home_guard`.
+- **Neutrality legs at BOTH pins:** `turn-pause-filters.ts` (88 rows) and
+  `turn-predicates.ts` (35 rows) regenerated from each pin and `cmp`'d —
+  **byte-identical**, as expected for functions the drift never touches.
+- **Sweep driver:** `recipe_sweep.py --run floor_seat_equivalence --v4 <target
+  pin> --v5w <worktree>` → `OK: floor_seat_equivalence recipe ran end-to-end`.
+- **SPA:** `npm run lint` (incl. the qt-class guard) CLEAN; `npm test` **434
+  spec files / 7,342 tests / 0 failed**; `npm run build` CLEAN.
+- **Playwright, full suite at lane close: 320 passed / 1 failed / 6 skipped
+  (8.7 m).** Both of this lane's beats GREEN in the full run. The one red is
+  `salon-thinking-indicator.spec.ts` — the documented P4.d17 quill intermittent,
+  in a file this lane never touched; **re-run by file in isolation: 1 passed.**
+  The six skips are the standing conditional parks (three P4.D187 pause beats,
+  the gallery-delete park, two paused-hold beats), none of them this lane's.
+- **Ownership:** `git diff --name-only main...HEAD` is 15 paths, every one in
+  the Owns column. Every MUST-NOT-TOUCH path is untouched, including the
+  order's named tripwire — `apps/web/src/app/core/core-contract.ts`: **0 files**
+  (this feature changes no wire). `help/**`, `crates/quilltap-cli/**`,
+  `crates/quilltap-web/**`, `crates/quilltap-host/**`, `docs/v4/**` and the
+  drift ledger: 0 files each.
+- **Versions bumped by this lane:** core 0.0.921 → 0.0.923, harness 0.0.814 →
+  0.0.816, SPA 0.5.722 → 0.5.725. (Five commits; the unifier RECOUNTS as base +
+  the sum of every lane's bumps.)
+
+### For the unifier
+
+- Nothing is OPEN under this order.
+- **The `docs/v4/` mirror is not this lane's** (§R.9) — `lib/chat/turn-manager/
+  utils.ts` (+45) and `index.ts` (+1) move at `2075242f9`, and
+  `help/chat-turn-manager.md` is P4.D194's.
+- **Four measurements worth carrying forward** (all in code comments too): the
+  `find`-scans-the-whole-predicate rule; the fair-rotation coin flip with an
+  active LLM seat; the turn queue being invisible to `chatTurnAction query`; and
+  the turn-follow re-firing on reload, which makes v4's "reload case" route to
+  the fourth sentence unreachable on v5.
+- **No findings outside the lane's ownership.**
+
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 
 Ordered against baseline **`2f4254b42`** with **ZERO drift** (the generator

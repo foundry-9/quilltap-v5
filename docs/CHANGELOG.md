@@ -58,6 +58,15 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — docs(porting): close P4.D193 — the lane record and gate for bug 146
+
+_Docs-only change._
+
+The P4.D193 lane record and its verification gate, and the order's status
+header updated to CLOSED. Everything the order asked for landed; three of its
+own premises were refuted by measurement along the way and are recorded in the
+lane record, in code comments and in the entries above.
+
 #### 2026-09-16 — fix(harness): route `floor_seat_equivalence`'s status parse through the one home
 
 _Versions: harness 0.0.816._
