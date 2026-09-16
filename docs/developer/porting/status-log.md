@@ -128549,3 +128549,293 @@ workspace gate" rule. The release build was still compiling at the time, so
 `cargo test`'s compile came later — confirmed by mtime, the test binary
 (05:12:08) is newer than the edited source (05:05:15). The gate therefore
 tested the committed tree.
+## Lane record — P4.90 (the failover model refresh + the six greeting-ladder log lines)
+
+Ordered against baseline **`ffb6b3119`** with v4 HEAD at **`2075242f9`** (four
+commits past it, two carrying code — **none of them on this lane's surfaces**;
+the order's Preamble records the check and the lane re-verified it). **The
+`2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥
+P4.D194 ∥ P4.89 ∥ P4.90), 2026-09-16.** Branch
+`claude/p4-90-failover-greeting-lines-ed0fde` from `main` `e9173924`.
+
+**Drift-ledger §2 freshness probe:** PASS at lane start and again before the
+regen batch — v4 checkout on `main`, tree clean, `git log 2075242f9..main`
+EMPTY, `git log 1a2b2164c..bugfix` EMPTY. Regen rule **PIN REQUIRED**; every
+regen ran from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p490-ffb6b3119` with the three symlink classes. The lane never
+wrote the ledger.
+
+**Commits (2):**
+
+| sha | subject |
+|---|---|
+| `bfeed012` | `feat(chat-create): say the six greeting-ladder lines v4 says (P4.90)` |
+| `5c709c4a` | `fix(orchestrator): rebuild the request model after a failover, so the tool loops reach the understudy (P4.90)` |
+
+### (b) — the six `autoGenerateFirstMessage` lines (Tier-1 item 4)
+
+All six landed at their v4 sites with v4's sentences, levels and bag keys. Two
+of the order's six rows were changed by measurement.
+
+| v4 site | level | v5 site | note |
+|---|---|---|---|
+| `route.ts:647` | warn | `chat_create.rs`, the `api_keys::find_by_id` arm | the `_` arm warns on BOTH a missing row and a read failure — v4's own `findApiKeyByIdAndUserId` (`connection-profiles.repository.ts:288`) is a `safeQuery` with a `null` fallback, so a read error reaches v4's `if (!storedKey)` exactly as a missing row does. **Order row said "the `Ok(None)` arm"; the measurement widens it and the two sides still agree.** |
+| `:672` | error | the `Err` arm of `build_first_message_context` | was `if let Ok(fmc)`, now a `match` |
+| `:692` | warn | INSIDE `build_recent_conversations_block`, at the swallowed read | **NOT the NO-PORT the order's row allowed for.** v5's helper is infallible by SIGNATURE, so the throw v4 catches is the `Err` the helper swallows; the greeting is the only caller on either side (v4 `lib/memory/memory-recap.ts:69` is imported once, by `route.ts:686`), so the two are one site. |
+| `:882` | info | before attempt 2's call, inside the non-empty-memories gate | `original_memory_count` = the list being STRIPPED |
+| `:895` | info | attempt 2's content-success return | |
+| `:942` | info | attempt 4's content-success return | |
+
+**Every line is unit-pinned, none capstone-pinned** — and that resolves item
+4's "wire each through the capstone where a case reaches it": the capstone
+carries **no capture layer at all** (`grep CaptureLayer
+chat_create_capstone_equivalence.rs` → nothing), which is also why P4.D190's
+five sibling lines are unit-pinned in `chat_create.rs`'s own test module. The
+file's idiom was followed, per `an-orders-prescribed-shape-may-fight-the-files-idiom`.
+Log lines are not a jest-side comparand (`jest.setup` no-ops v4's logger —
+`jest-setup-llm-logging-service-mocked`), so the sentence bytes are transcribed
+from `route.ts` at `ffb6b3119` and every test's doc comment says so.
+
+**Six new tests, each with its silence leg** (`one_at(level, …)` joins
+`one_warn`; the target is matched as a whole token —
+`capture-layer-target-assert-is-a-prefix-match`):
+`a_dangling_api_key_id_is_named_and_ends_the_greeting`,
+`a_profile_without_an_api_key_id_never_says_it` (the silence leg for `:647`
+AND for the whole attempt-2/attempt-4 set),
+`a_failed_first_message_context_is_named_and_the_ladder_continues` (the venue
+re-opened with `mount_index: None`, which is what makes that call `Err` — see
+`ladder_venue`'s own note), `a_failed_recent_conversations_read_is_named` +
+`a_healthy_recent_conversations_read_is_silent` (the read is broken by
+RENAMING the ordered column, not by dropping a table —
+`a-dropped-table-raises-no-read-error`),
+`the_memory_strip_rung_announces_itself_and_its_own_recovery`,
+`the_final_retry_announces_its_own_recovery`.
+
+**Mutation table (b)** — each reddened exactly its target, reverted by file
+backup (`mutation-proof-revert-by-file-backup`):
+
+| # | mutation | reddens |
+|---|---|---|
+| Mb1 | drop the api-key warn | `a_dangling_api_key_id_is_named_and_ends_the_greeting` |
+| Mb2 | drop the fmc error | `a_failed_first_message_context_is_named_and_the_ladder_continues` |
+| Mb3 | drop the recent-conv warn | `a_failed_recent_conversations_read_is_named` |
+| Mb4 | drop the retry info | `the_memory_strip_rung_announces_itself_and_its_own_recovery` |
+| Mb5 | **TRUE swap** of the two success sentences | **BOTH** `the_final_retry_announces_its_own_recovery` and `the_memory_strip_rung_…` |
+| Mb6 | `original_memory_count = 0` (the post-strip list) | `the_memory_strip_rung_…` |
+
+### (a) — the post-failover `params.model` rebuild (Tier-1 items 1–3)
+
+**The order's case shape was REFUTED by measurement.** The order modelled the
+new arm on `understudy_answers` (an empty-response failover). That can never
+work: v4 runs `attemptEmptyResponseRecovery` at
+`orchestrator.service.ts:1619` — **after** `runNativeToolLoop` at `:1499` —
+so an empty-response failover happens downstream of the loops and no re-stream
+follows it. The first regen proved it: the label produced two canned-stream
+rows and no `tool`-role message anywhere. The arm is a **hard-error** failover
+instead (`attemptHardErrorFailover`, called from inside `runPrimaryStream`,
+which returns `{}` on recovery and lets the orchestrator go on to the loops).
+
+`harness/oracle/fixtures/orchestrator-tier3.json` grew by one chat
+(`fb110006-…f16`, one seat on `FailoverPrimary`), one call
+(`failover_then_native_tool_call`, `kind: chain`, `continueMode`), one three-
+attempt stream list, and the corpus's FIRST `detection` entry:
+
+1. `[{ "error": "502 Bad Gateway" }]` → `classifyFallbackTrigger` →
+   `provider-error` (`lib/llm/fallback/engine.ts`'s `PROVIDER_ERROR_PATTERNS`),
+   `hasStartedStreaming` still false, so the chain walks;
+2. the understudy (OPENAI `gpt-stands-in`) answers with a terminal
+   `rawResponse` carrying BOTH a `marker` and a real OPENAI `tool_calls`
+   array — the oracle's `detectToolCallsInResponse` is mocked to key on the
+   marker, the Rust spine runs the REAL `RegistryToolCallDetector` over the
+   wire shape, and the row satisfies both (recorded in `ChunkW`'s doc comment);
+3. the loop's re-stream — **the first call in this corpus that happens after a
+   cross-provider recovery.**
+
+The tool is `read_conversation` with `{}`: the fixture chats carry no
+`renderedMarkdown`, so BOTH sides return the fixed
+`"Error: Conversation has not been rendered yet."` — a tool result that cannot
+drift with in-flight state, which is what keeps the arm a clean discriminator.
+
+**RED-FIRST, verbatim:**
+
+```
+process_message(failover_then_native_tool_call) returned Err:
+  Internal("native tool loop failed: no canned stream queued for key
+            (OPENAI, model claude-falls-over, 5 msgs)")
+```
+
+— the understudy's PROVIDER with the primary's MODEL, in one line.
+
+**Tier-1 item 2, the measurement v4 forces: `model` moves and NOTHING else.**
+v4's funnel derives exactly three things from the profile — the provider and
+base URL it builds the client with (`streaming.service.ts:365-367`) and
+`connectionProfile.modelName` (`:403`). Everything else in that body comes
+from the `modelParams` ARGUMENT (`profileParameters` verbatim at `:409`, the
+three sampling knobs resolved from it at `:393`), and v4 computes that bag
+ONCE at `orchestrator.service.ts:1107` —
+`profileParams(streamingState.effectiveProfile)` — which runs BEFORE the
+primary stream at `:1460` and is never recomputed. **So v4's own loops carry
+the PRE-failover `parameters` bag**, and v5 keeps `profile_parameters`,
+`temperature`, `max_tokens` and `top_p` stale to match it; `tools` /
+`web_search_enabled` are likewise once-computed on both sides. v5 already
+passed `provider` / `base_url` from the refreshed local, and `StreamParams`
+carries no api key, so the fix is the single statement the order predicted.
+The decision and both line numbers are a code comment at the fix site.
+
+**Mutation table (a)** — all three reddened the new case with the SAME
+discriminating symptom (the re-stream keyed to `claude-falls-over`):
+
+| # | mutation | result |
+|---|---|---|
+| M1 | revert the rebuild | red |
+| M2 | rebuild `model` from the ORIGINAL `connection_profile` | red |
+| M3 | rebuild only under `did_reroute` (the Concierge flag, not the failover) | red |
+
+### Two harness repairs, neither a port bug — both found BY the new arm
+
+1. **`to_completion_messages`' catch-all filed the oracle's `tool` role as
+   `user`.** The canned key renders the role, so the expected key for ANY
+   tool-loop re-stream could never match the one v5 computes. The corpus had
+   never carried a `tool` role (measured: 0 non-standard-role messages in the
+   pre-change oracle, 1 after), so nothing had ever exercised it. The symptom
+   was a second miss on a key whose provider, model, temperature and all five
+   message bodies matched the oracle **byte for byte**.
+2. **A canned-stream miss reported only a message COUNT.** It now prints the
+   provider, model, temperature and every message's role, character length and
+   a 120-char content head. That is what turned the second half of this
+   diagnosis from a guess into a read, and it is the reason the three (a)
+   mutations could be classified in one line each.
+
+### Regen recipes as run (both from the BASELINE pin)
+
+```bash
+PIN=/tmp/qt-v4-pin-p490-ffb6b3119
+git -C ~/source/quilltap-server worktree add --detach "$PIN" ffb6b3119
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" \
+      "$PIN/plugins/dist/$(basename "$d")/node_modules"
+done
+
+# the moved family + its five neutrality legs, through the sanctioned driver
+python3 harness/tools/recipe_sweep.py --run-all \
+  --families orchestrator_tier3_equivalence,native_tool_loop_tier3_equivalence,\
+text_tool_loop_tier3_equivalence,chat_continuation_tier2_equivalence,\
+chat_create_capstone_equivalence,initial_greeting_equivalence,\
+primary_stream_tier3_equivalence \
+  --v4 "$PIN" --v5w "$PWD"
+```
+
+**Result: 7/7 `ok`, zero unexplained SKIP.** Three families finish in
+0.00–0.03 s, which is the SKIP-masquerade tell, so each was **re-run by hand
+with `--nocapture` and its full env block** and confirmed to have genuinely
+run (`initial_greeting`, `text_tool_loop`, and `native_tool_loop` with
+`QT_FIXTURE_NTL` — a first spot-check that withheld that ONE var printed
+`SKIP: set QT_FIXTURE_NTL`, which is exactly the trap and exactly why the
+by-name re-run is the positive proof). The driver's only warning on every
+family was `tracked fixture bytes modified` — the lane's own uncommitted
+`orchestrator-tier3.json`, not a stage writing it.
+
+### Neutrality
+
+The whole pre-change oracle was kept (`/tmp/oracle-orchestrator-p490-base.ndjson`,
+291 rows) and compared row-multiset against the post-change one (297 rows)
+under a UUID + ISO-timestamp normalization. **Every pre-existing `events` /
+`cannedStream` / `cannedCompletion` / `cost` row is identical.** The only
+differences are the six rows the new case adds (its event trace, three canned
+streams, one canned completion, one cost row) and the four whole-table dumps,
+which grow by the new chat's rows on BOTH sides. A raw `cmp` is NOT meaningful
+here — minted message/job ids and timestamps differ between any two regens of
+this family (`regenerate-at-both-pins-and-cmp-is-not-universal`).
+
+`stream_watchdog_wrap_census` is unmoved: the lane adds **zero** `watch_stream(`
+calls (`grep watch_stream orchestrator.rs` → 0), and the census runs green in
+the workspace gate.
+
+### Tier 2
+
+- **Item 6 — the handler-logging inventory.** `harness/tools/handler_log_inventory.py`
+  surveys `lib/background-jobs/handlers/*.ts` only, so `app/api/v1/chats/route.ts`
+  was never in scope and these six lines never had rows. Recorded, NOT widened
+  here — it is the same scope gap the finding-#110 standing note names.
+- **Item 7 — the P4.D190 header correction.** Its "Recorded, not this lane's:
+  SIX more v4 log lines in `autoGenerateFirstMessage` stay unported" is now
+  discharged; all six are on this branch. **The unifier updates P4.D190's
+  header** (this lane does not own that file).
+
+### Tier 3 — deferred loud
+
+- **A loop-side rebuild** (reading the model from a refreshed profile INSIDE
+  the loops, v4's funnel shape): NOT this lane's, and not needed — the
+  caller-side rebuild is the ordered shape and it is what landed. The loop
+  files were never touched.
+- **💸 the live proof:** a real cross-provider failover followed by a tool call
+  on the Friday copy (a dead primary endpoint + a DeepSeek understudy, which
+  tool-calls reliably — the 2026-08-19 walk's recipe), with `combined.log`
+  showing the re-stream against the understudy's model. Banked for the dogfood
+  pass.
+- **The optional `failover_then_text_tool_pass` arm, with its measurement.**
+  v5 passes ONE `params` value to BOTH loop-option sites (`:2971` native,
+  `:3049` text), so the ordered rebuild is a single statement that the native
+  arm already pins; a text arm would need a second failover chain onto the
+  text-block profile to re-prove the same statement. Built as a measurement,
+  recorded rather than landed.
+
+### For the unifier
+
+- Nothing outside the lane's Owns column was touched
+  (`git diff --stat main...HEAD` is the proof).
+- **P4.D190's header** needs its "SIX more v4 log lines" paragraph retired
+  (Tier-2 item 7).
+- The two harness repairs are in files this lane owns, but the `tool`-role one
+  is a **tree-wide latent blind spot of the same shape**: any tier-3 family
+  whose oracle records a role outside `system|user|assistant` and whose Rust
+  side computes the key from a typed enum will mismatch silently. Only this
+  family's mapper was fixed; a sweep of the others is a candidate, not a
+  finding.
+
+### The verification gate (run from the lane worktree, `CARGO_INCREMENTAL=0 TZ=UTC`)
+
+| step | result |
+|---|---|
+| §R.2 probe (lane start + before the regen batch) | **PASS** both times |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| … `--features quilltap-core/native-transport` | clean |
+| the 7-family sweep from the `ffb6b3119` pin | **7/7 `ok`**, zero unexplained SKIP |
+| mutation proofs | 6 for (b) + 3 for (a), each reddening exactly its target |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` with the lane's env block | **570 test binaries / 3,313 passed / 0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines** |
+| the lane's families confirmed RUN by duration | orchestrator 5.10 s, capstone 6.76 s, chat_continuation 0.22 s, primary_stream 0.17 s, text_tool_loop 0.03 s, native_tool_loop 0.01 s, initial_greeting 0.00 s — the last three re-run by hand with `--nocapture` (above) because a sub-0.05 s pass is the SKIP-masquerade shape |
+| `stream_watchdog_wrap_census` | **green, 2/2 — unmoved** |
+| ownership check | `git diff --stat main...HEAD` is 8 files, every one in the Owns column |
+
+The gate's env block (for the unifier):
+
+```
+TZ=UTC CARGO_INCREMENTAL=0
+QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node
+QT_V4_ROOT=/tmp/qt-v4-pin-p490-ffb6b3119
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p490-ffb6b3119
+QT_ORACLE_ORCHESTRATOR=/tmp/oracle-orchestrator.ndjson
+QT_FIXTURE_ORCH_MAIN=/tmp/qt-orch-main.db  QT_FIXTURE_ORCH_MOUNT=/tmp/qt-orch-mount.db
+QT_ORACLE_NATIVE_TOOL_LOOP=/tmp/oracle-native-tool-loop.ndjson  QT_FIXTURE_NTL=/tmp/qt-ntl.db
+QT_ORACLE_TEXT_TOOL_LOOP=/tmp/oracle-text-tool-loop.ndjson
+QT_ORACLE_CHAT_CONTINUATION=/tmp/oracle-chat-continuation.ndjson
+QT_FIXTURE_CONT_MAIN=/tmp/qt-continuation-main.db  QT_FIXTURE_CONT_MOUNT=/tmp/qt-continuation-mount.db
+QT_ORACLE_CC=/tmp/oracle-chat-create.ndjson
+QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db  QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db  QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db
+QT_ORACLE_GREETING=/tmp/oracle-greeting.ndjson
+QT_ORACLE_PRIMARY_STREAM=/tmp/oracle-primary-stream.ndjson  QT_FIXTURE_PRIMARY_STREAM=/tmp/qt-primary-stream.db
+QT_ORACLE_OPENAI_FALLBACK=/tmp/oracle-openai-fallback.ndjson
+```
+
+`brahma_orchestrator_tier3` was withheld by name (its oracle var unset) per the
+round's §8 — it is P4.89's subject.
+
+### Versions
+
+core **0.0.921 → 0.0.923** (+2), harness **0.0.814 → 0.0.815** (+1). No other
+crate's source changed; the SPA was never touched.

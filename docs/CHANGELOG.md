@@ -361,6 +361,16 @@ recipe; the three harness headers gained vintage notes. The P4.50-class
 `sqlite error: ` prefix is RE-MEASURED and has no live site left in these
 families (zero occurrences across the three fresh oracles and the v5 run);
 `DbError::Sqlite`'s Display arm is untouched.
+#### 2026-09-16 — docs(porting): close P4.90 — the lane record for the failover model refresh and the six greeting lines
+
+_No crate versions bumped._
+
+The lane record for P4.90 (the two pre-existing findings the `ffb6b3119` §3
+review surfaced), with the drift-ledger probe results, both mutation tables,
+the regen recipes as run, the neutrality measurement, the gate numbers and the
+handoffs to the unifier — including P4.D190's header correction (Tier-2 item 7)
+and the `tool`-role blind spot as a tree-wide candidate rather than a finding.
+
 #### 2026-09-16 — fix(orchestrator): rebuild the request model after a failover, so the tool loops reach the understudy (P4.90)
 
 _Versions: core 0.0.923, harness 0.0.815._
