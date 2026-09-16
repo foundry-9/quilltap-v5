@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): order the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93)
+
+_Docs-only change._
+
+Four work orders under `docs/developer/porting/work-orders/`, all from
+`main` with disjoint ownership, the round-wide §R / Ownership / gate blocks
+spliced byte-identically into each (one md5, verified). P4.D195 absorbs bug
+147 whole — the chat GET's two turn columns projected as raw JSON strings at
+v4's position with the P4.D171 "v4 never projects it" pin retired red-first,
+the SPA's dormant chat-GET seed made live and grown a spoken half (the
+sidebar's `spoken` status was unreachable in v5 too), the `state.cycleOrder`
+read measured as a convergence, the help page re-vendored. P4.91 does the
+photos-predicate consolidation right (repoint the family first, grow the
+corpus red-first, move the Node loop, delete the twin, repoint six importers)
+and renders the collapse census's `fileIds` as the array v4 logs. P4.92 closes
+the tool loops' `base_params` carry-over (`previous_response_id` + `stop`)
+after teaching the orchestrator corpus to see the two fields, and measures a
+third carry-over (`cacheKey`). P4.93 takes the harness + logging smalls: the
+`QT_FIXTURE_HELP_MAIN` collision split by name with a fixture-sensitive arm,
+one `CompletionRole` inverse repointing every hand-rolled role mapper, the
+`db::memories` capture-rig intermittent, and the fifteen absent
+`[CharacterAvatar]` log lines. The drift ledger's one row is `ORDERED(P4.D195)`;
+phase-4.md carries the planning record and what was deliberately left out
+(the dogfood pass, the `SCENE_STATE_TRACKING` trigger, the lock-conflict
+503-vs-409 ruling, the census `ORDER BY` ruling, the title-checkpoint hazard).
+
 #### 2026-09-16 — docs(porting): record v4 drift at the unification's close — bug 147 landed mid-round
 
 _Docs-only change._

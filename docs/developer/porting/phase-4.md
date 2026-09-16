@@ -6628,6 +6628,164 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — ORDERED 2026-09-16
+
+**Baseline `2075242f9`; v4 `main` HEAD `1fefadb9a` (ONE past — the
+ledger's one §3 row, bug 147, now `ORDERED(P4.D195)`), v4 `bugfix` tip
+`1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on `main`,
+CLEAN at the planning probe (2026-09-16 — the §2 probe PASSED, so the ledger
+stood and nothing was re-derived); regen rule PIN REQUIRED (P4.D195's moving
+families from a lane-unique detached worktree at `1fefadb9a`; every other
+family and all three maintenance lanes at `2075242f9`).** The standing rule
+holds: drift debt clears before new scope — the drift lane takes the row
+whole, and because the code drift is SMALL (two whitelist keys, one client
+type field, one help line) the round also carries the three maintenance
+candidates the `2075242f9` round's "What is next" ranked 3, 4 and 5, as
+three more lanes with disjoint ownership. ALL FOUR from `main`, no stacking.
+The round-wide §R meeting points, the Ownership table and the verification
+gate are spliced byte-identically into every order (one md5 over the three
+blocks, verified at planning: `c50ac00c…`). Fresh surveys (2026-09-16, at
+`1fefadb9a` / `2075242f9` and on `main` `6e0ba5e8`) are folded into the
+orders' survey sections.
+
+**Four planning facts that shape the split (each measured, none from
+prose):** v5's SPA never had bug 147's BANNER half (its turn is
+server-authoritative — `chatTurnAction query`), but it DID have the
+SIDEBAR half — `TurnState.spokenSinceUserTurn` has never been seeded in v5
+(`createInitialTurnState` `[]`; `applyTurnResponse` never refreshes it), so
+`computePredictedTurnOrder`'s `spoken` status is unreachable in v5 exactly
+as v4's filing says it was in v4 — which makes the SPA half a REAL port (the
+seed's spoken half), not a convergence, while the `state.cycleOrder` read IS
+a convergence (P4.D177 already reads it); the chat GET has ONE projection in
+the tree (`api/salon.rs` `chat_get` — `activeTypingParticipantId` is
+projected nowhere else in `crates/*/src`) and the row reader ALREADY
+coerces both columns NULL → `'[]'`, so the port is two inserts at v4's
+position plus the P4.D171 note's retirement, red-first over the five
+`get_*` cases; the photos-predicate family drives the TWIN today (which is
+already Node-faithful), so "grow the corpus and watch `photos_paths` go
+red" only works AFTER repointing the family — and the twin has SIX
+importers, not the recorded five (the collapse heal, added by the
+`2075242f9` §3 review, is the sixth); and the orchestrator corpus is
+structurally BLIND to `previous_response_id` and `stop` (neither in the
+canned key nor recorded; no fixture message carries a `rawResponse` and the
+builder cannot seed one; no case resolves SimpleJson), so the loop-params
+lane's first deliverable is making the corpus able to see them — its survey
+also found a THIRD carry-over (`cacheKey`, derived per call from
+`characterId` in v4's funnel, `None` at every v5 site) that it measures and
+dispositions rather than fixes.
+
+- **P4.D195 — bug 147 whole** (`work-orders/p4.d195-bug147-cycle-columns-
+  chat-get-spa-seed.md`): the two keys projected in `chat_get` as RAW JSON
+  strings with v4's `?? '[]'` shape at v4's position (after
+  `activeTypingParticipantId`, before `isPaused`), `salon_reads_equivalence`
+  regenerated at the TARGET pin FIRST so the P4.D171 pin trips as designed
+  (all five `get_*` cases RED, then green), the corpus grown with a planted
+  spoken set + a planted `''` + a `get`-case KEY-ORDER pin (`norm` sorts
+  keys away — presence is not position); the SPA's chat DTO gains
+  `spokenThisCycleParticipantIds?`, the dormant `_turnEffect` seed goes
+  LIVE and seeds BOTH halves (`parseCycleOrder` + a `parseSpokenThisCycle`
+  twin of v4's `state.ts:53-62` parse, REPLACING as `calculateTurnState
+  FromHistory` does; the presence gate kept as the LEGACY-server arm), the
+  four DORMANT paragraphs rewritten, the P4.D187 refetch interplay measured
+  and spec-pinned (a refetch's row wins), the sidebar wiring pinned at
+  component level, a live e2e arm (force one deterministic turn, reload,
+  the speaking seat's card reads `spoken`; the mid-turn arm before the
+  reload); `help/chat-turn-manager.md` byte-copied (124 stays 124; the
+  `help_*` content families at the target). Tier 2: v4's new agreement
+  test as Rust unit rows over the existing twins (the client leg a
+  measured NO-COUNTERPART), the `state.cycleOrder` convergence as a
+  three-row table. Bumps core + harness + SPA.
+- **P4.91 — the photos-predicate consolidation + the census log shape**
+  (`work-orders/p4.91-photos-predicate-consolidation-census-log.md`): the
+  family REPOINTED onto `photos::photos_paths` first (green over 13), the
+  corpus grown 13 → ≥ 27 with the trailing-slash-run shapes RED on exactly
+  those rows, `posix_dirname` replaced by the Node loop MOVED from the
+  twin, the twin deleted and its SIX importers repointed with the heal's
+  `:71-83` justification rewritten to the single-home truth, the two
+  near-duplicate unit suites consolidated, every consumer family re-run by
+  name with zero row change, the writer census (no writer mints a
+  slash run). Tier 2: `report_census` logs `fileIds` as the ARRAY v4 logs,
+  through a NAMED `log_file.rs` visitor convention (a JSON-valued field
+  suffix re-parsed into a `Value`; `route_trail.rs` recorded as the second
+  candidate, out of ownership); the ORDER half RECORDED not changed (an
+  `ORDER BY` is a deliberate divergence — ESCALATED for the ruling); the
+  stale "five importers"/"byte-identical homes"/CHANGELOG claims corrected
+  by NEW record. Bumps core + harness + web.
+- **P4.92 — the loops' `base_params` carry-over class** (`work-orders/
+  p4.92-loop-params-carry-over.md`): the oracle's `streamMessage` mock
+  records `previousResponseId` + `stop` as SIDE-CHANNEL fields (never the
+  key — every pre-existing row proven byte-identical with the two keys
+  stripped), `CannedStreamW` reads them back and the harness compares per
+  re-stream; the fixture builder learns to seed `rawResponse.id: "resp_…"`;
+  Case A (an OPENAI primary with a `resp_` id in history + a native tool
+  call) RED-first on the re-stream row with the PRIMARY row as the positive
+  control that the recording is live; Case B (the `stop` half) as a corpus
+  case OR a unit pin with the measured mode exclusivity recorded; the
+  caller-side strip in P4.90's exact shape (`previous_response_id` at all
+  three loop-option sites, `stop` at the native one; the text loop's own
+  `stop` override stays — v4-faithful), the `:2150` comment made true;
+  v4's `provider-failover.service.ts:464` why and the chained-body
+  consequence (`responses_api.rs:513-522` drops the tool-result history)
+  carried as comments. Tier 2: the `cacheKey` carry MEASURED through v4's
+  plugins — a recorded no-op if dead on every wire, an ESCALATION with the
+  measured shape if it reaches one (too wide for a loop-params lane).
+  Bumps core + harness.
+- **P4.93 — the harness + logging maintenance smalls** (`work-orders/
+  p4.93-harness-logging-smalls.md`): (A) the `QT_FIXTURE_HELP_MAIN`
+  collision split by NAME (the guards family reads its own var) + a
+  fixture-SENSITIVE content column for the thin guards family, proven by a
+  fixture MUTATION reddening against an unchanged oracle (the two `.db`s
+  are logically identical — one builder, one spec — which is WHY each
+  passed on the other's); (B) `CompletionRole::from_v4_wire` in its home
+  and every hand-rolled harness role mapper repointed — nine silent
+  catch-alls, the `external_prompt` silent-to-`Tool` oddball, the
+  `file_attachment` `StreamMessage` variant, twelve loud ones — all but
+  P4.92's `orchestrator_tier3` (the unifier repoints it at the wire); M1
+  (`"tool"` → `User`) reddens the eleven families that key a `tool` row
+  today; the two EXPOSED families (`enclave_step_tier3` with `custom_tools:
+  true`, `regenerate_swipe_tier3`) measured for a reachable tool row; a
+  source census so the class cannot return; (C) the `db::memories`
+  intermittent moved onto `global_capture`; (D) the FIFTEEN absent
+  `[CharacterAvatar]` sentences (the record's "18" recounted: v4 has 19,
+  v5 has 4 — one in the handler, three on the shared image path) at v4's
+  branch points with capture pins + silence legs, NO-PORT arms with v4
+  quoted. Bumps core + harness.
+
+**Execution:** all four in parallel from `main`, four worktrees, four lane
+branches, ONE SPA worktree (P4.D195's — `npm ci`, never a copied
+`node_modules`). Most-capable model for P4.D195 (the red-first regen
+choreography + the SPA seed's interplay measurement + a live beat whose
+discriminator is a server fact) and P4.92 (a corpus that cannot see the
+fields has to be taught to, and a THIRD carry-over is measured and
+dispositioned); P4.91 and P4.93 are mechanical against written recipes
+(the measured table + the Node loop already in the tree; the P4.61
+log-line idiom + the `a-second-family-on-one-table` idiom) and can run on a
+cheaper agent with the same orders — P4.93's role sweep touches ~24
+harness files and wants care, not judgment. Unification order P4.D195 →
+P4.91 → P4.92 → P4.93; the baseline MOVES to `1fefadb9a` at the move and
+the ledger row retires ABSORBED(P4.D195). **Deliberately left out, each
+with its reason:** the owed dogfood pass (item 1 of the previous "What is
+next" — `/dogfood`'s, not a work order; it gains this round's live
+surfaces: a real `spoken` mark after a reload, a chained OPENAI turn with
+a tool call showing ZERO `Conversation chaining failed` lines on the
+re-stream, the census array in a real `combined.log`); the
+`SCENE_STATE_TRACKING` trigger + handler (lane-sized — v5 has the
+vocabulary and a `services/scene_state_tracking/mod.rs` but neither the
+handler nor the `orchestrator.service.ts:230-246` trigger; wants its own
+order with a tier-3 family); the lock-conflict 503-vs-409 (a
+v5-composition divergence — v4's server module and launcher module
+DISAGREE with each other; needs the human's ruling on which code the
+fresh-foreign-lock case deserves before any lane — the smallest shape is a
+third `LockStatus` verdict + one match arm + the flipped
+`lock_conflict_boot_status` pin); the census `ORDER BY` (P4.91 escalates
+it — a deliberate divergence from v4); the shared-fixture
+title-checkpoint hazard (five P4.D187 beats still parked — a design choice
+among the three named shapes, still owed its own small order); the rolls
+save's 500-vs-400 body prose (status converged and pinned; the bodies are
+two engines' own storage sentences — nothing to build); the `name`-field
+turn-path measurement; P4.87's two OPEN coverage items; the upstream
+filing candidates. PB1 stays parked by the standing rule.
+
 ## The `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — UNIFIED 2026-09-16
 
 **ALL FIVE ORDERS CLOSED (P4.D192 with Tier 2 item 7 a NAMED follow-up, its
