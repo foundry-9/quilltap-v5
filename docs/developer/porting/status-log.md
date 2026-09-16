@@ -127238,3 +127238,262 @@ side can give, since every canned sequence is pre-pushed and closes), the
 the review surfaced, the title-checkpoint hazard, the maintenance smalls.
 Versions at the move: core 0.0.921, harness 0.0.814, host 0.0.135; web / cli
 / tauri / SPA unchanged.
+
+---
+
+## P4.D192 — bug 145, the server half: the collapse takes the roll's own link, not the photo you kept (lane record, 2026-09-16)
+
+**Order:** `work-orders/p4.d192-bug145-collapse-drops-own-link-server.md`, the
+`2075242f9` bug-145/146 drift catch-up + maintenance round
+(P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90). Branch
+`claude/collapse-drops-link-server-262dec` from `main` `e9173924`.
+**Tier 1 CLOSED WHOLE. Tier 2 item 8 (the boot arm) LANDED. Tier 2 item 7
+(the `is_photos_relative_path` consolidation) DID NOT LAND — its premise was
+refuted by measurement; see "The refuted premise" below.**
+
+### §0 The probe and the pins
+
+The drift ledger's §2 freshness probe PASSED at lane start and again before
+every regen batch: checkout on `main`, tree clean, `2075242f9..main` and
+`1a2b2164c..bugfix` both empty. Regen rule PIN REQUIRED, so two lane-unique
+detached worktrees per ledger §5.1, with the three symlink classes:
+
+- **TARGET `/tmp/qt-v4-pin-p4d192-2075242f9`** — the collapse family (its jest
+  oracle imports v4's REAL migration, which must be the post-fix file).
+- **BASELINE `/tmp/qt-v4-pin-p4d192-ffb6b3119`** — every neutrality leg.
+
+`git -C ~/source/quilltap-server worktree list` before each batch; the sibling
+lanes' pins (`p489`, `p4d193`, `p4d194`) were present throughout and untouched.
+
+### §1 Red-first: v5 measurably had bug 145
+
+The corpus grew FIRST, and the family was run against the UNPORTED heal over an
+oracle regenerated at the TARGET pin. **39 red rows across 17 of 24 scenarios**
+(full list: `/tmp/p4d192-prefix-reds.txt`, reproduced in §6). The classes:
+
+- the three album scenarios red on **all four mount tables** — `album-old`,
+  `blob-old`, `content-old` and `doc-old` present on v4, GONE on v5. This is
+  the data loss, measured;
+- `never-deletes-a-roll-a-character-names-as-its-portrait` red on `ledgerRow`
+  (v4's new kept clause);
+- both census scenarios red on `warns`;
+- ten pre-existing collapse scenarios red on `infos` (v4's summary bag gained
+  `protectedKept`/`albumCopiesKept`).
+
+After the port: **24 scenarios, 0 red rows.**
+
+### §2 What landed
+
+1. **`drop_victim_roll_link`** replaces `delete_victim_blob`, v4's five steps in
+   order, the links SELECT with NO `ORDER BY` (v4 has none — `Array.prototype.
+   find` walks rowid order and the two must scan alike), the `!is_photos_
+   relative_path` conjunct, the mount-point conjunct with v4's JS-truthiness
+   `None | Some("")` arm, the GC through the widened `gc_orphaned_file_row`, and
+   `DroppedVictim { link_dropped, bytes_freed }`. The delete loop counts
+   `blobs_deleted` on `bytes_freed` and `album_copies_kept` on `link_dropped &&
+   !bytes_freed` (v4's `if`/`else if`, reproduced as ordered match arms); the
+   `Err` arm and the `files`-row delete are unchanged. v4's why-comment and the
+   `delete_avatar_roll` cross-reference carried.
+2. **`parse_mount_blob_key`** — v4 split `blobIdFromStorageKey` because the
+   mount half became load-bearing. v5 delegates to the EXISTING
+   `services::file_storage::parse_mount_blob_storage_key` (the same three
+   conditions, and already what `classify_roll_links` reads) rather than
+   writing a third spelling; `blob_id_from_storage_key` now delegates too.
+3. **`gc_orphaned_file_row` widened** to `Result<Option<OrphanedFileRowGc>>`
+   with `{documents, blobs, files}` from `conn.execute`'s changed-row counts.
+   Five call sites adapted to `.is_some()`; the two in-file tests now assert the
+   Option AND the counts; ONE new test (`gc_reports_what_it_removed_per_table`)
+   pins the document-only arm — collected, `blobs: 0`, so `bytes_freed` is
+   FALSE, which is v4's `(collected?.blobs ?? 0) > 0` read.
+4. **The census.** `protected_kept` pushed at the keep decision;
+   `unexplained_duplicate_keys` over ALL `files` (NOT the avatar predicate —
+   v4's `stowaway` arm is what proves that), SELECT-order bucketing with a
+   stable newest-first sort per bucket; `report_census` on BOTH exits with v4's
+   warn (`unexplainedCount` + the first 20 `fileIds` as a JSON array).
+   `reportProgress` is a NO-PORT with a named comment (v5 has no migration
+   progress reporter).
+5. **`kept_clause` + the bag.** `CollapseOutcome::Ran` gained `protected_kept`
+   and `album_copies_kept`; both ledger sentences append the clause; the summary
+   `info!` carries the two fields in v4's key position.
+6. **The corpus** 17 → 24 scenarios, both mount DDLs and both dumps widened with
+   `relativePath`, and three new spec knobs (`albumLinks` + `albumLinksFirst`,
+   `deleteLinks`, `extraFiles` whose `survivor-of:<rollId>` key is DERIVED on
+   both sides through the real helper, never a copied hash).
+7. **Tier 2 item 8** — a fourth boot arm
+   (`boot_keeps_an_album_copy_of_a_collapsed_roll`) over the mount index's REAL
+   DDL. The plant is asserted to carry TWO links before the boot, so the arm
+   cannot pass vacuously.
+
+### §3 Two order premises REFUTED by measurement
+
+**(a) v4's six new cases are not six new scenarios.** Two of them — "reports the
+rolls it kept" and the census "says nothing about a duplicate it chose to keep"
+— seed *exactly* what corpus scenario 9 already seeds (portrait + new + a
+character naming `link-portrait`). They are not duplicated; scenario 9 carries
+them, and it is one of the pre-fix reds (on `message`). And v4's census case
+`names a duplicate key this pass did not double up on purpose` seeds ONE roll,
+so it makes no victims and takes the **early return** — meaning the order's
+proposed scenario (g) "census fires with nothing to collapse" is v4's own case,
+not a new conjunct. The conjunct v4's suite never opens is the *other* exit, so
+`the-census-fires-after-a-collapse-too` was added for it. M3a and M3b each
+redden exactly one of the two, which proves both call sites independently.
+
+**(b) The `is_photos_relative_path` homes are NOT byte-identical, and the twin
+the order says to delete is the FAITHFUL one.** The two predicates' bodies are
+identical; their PRIVATE `posix_dirname` helpers are not.
+`db/doc_mount_file_links.rs`'s reproduces Node's algorithm (it strips a RUN of
+trailing slashes); `photos/photos_paths.rs`'s strips a single one. Measured
+against Node 24 (`path.posix.dirname`), they disagree on any path ending in two
+or more slashes:
+
+| input | Node | `doc_mount_file_links` (the twin) | `photos_paths` (the survivor) |
+|---|---|---|---|
+| `"photos//"` | `"."` → false | `"."` → false ✓ | `"photos"` → **true** ✗ |
+| `"photos///"` | `"."` → false | `"."` → false ✓ | `"photos/"` → **true** ✗ |
+| `"a//"` | `"."` | `"."` ✓ | `"a"` ✗ |
+
+The 13-row corpus is blind to all three (it was run against BOTH homes before
+the deletion: both green, which is precisely why the corpus cannot license the
+consolidation). Deleting the faithful home would therefore have been a silent
+behaviour change on a shape no test can see — in the *safe* direction at every
+call site (a false "this is an album path" protects a file rather than deleting
+one) and on an input the mount index does not mint, but a regression all the
+same. **The consolidation was reverted**; the twin now carries a ⚠ doc comment
+naming the divergence, the inputs and Node's answers.
+
+**Ordered shape for the follow-up lane** (it needs ownership of
+`photos/photos_paths.rs` and `harness/oracle/cases/photos-relative-path.ts`,
+neither of which is P4.D192's): grow the corpus with the trailing-slash-run
+shapes FIRST and watch `photos_paths` go red; replace its `posix_dirname` with
+the Node-faithful algorithm; then delete the twin and repoint its five
+importers (`api/chat_media.rs:1716`, `photos/photo_link_summary.rs:13`,
+`photos/character_gallery_service.rs:17`, `services/maintenance.rs:32,375`) and
+the harness family's import. Note that Tier 1 item 2 is unaffected and DID
+land as ordered: the heal imports `photos::photos_paths`, which is the module
+v4's own migration imports.
+
+### §4 Mutation proofs — seven, each reddening exactly its target
+
+Applied one at a time to `db/avatar_rolls_collapse_heal.rs`, reverted by file
+backup (never `git checkout`), with a baseline re-check afterwards that came
+back **0 red rows** — so no mutation leaked. Reds measured per scenario through
+a throwaway collector (deleted at lane close).
+
+| # | mutation | red |
+|---|---|---|
+| M1 | `kept_clause` always `""` | 2 rows — scenario 9 + the new portrait-and-sibling scenario, both on `ledgerRow` |
+| M2 | count `album_copies_kept` on `link_dropped` alone (v4's `else if` flattened) | 22 rows — every collapsing scenario, `infos` + `ledgerRow` |
+| M3a | skip the census on the EARLY-RETURN exit | 1 row — `the-census-names-a-duplicate-key-…` :: `warns` |
+| M3b | skip the census on the POST-SUMMARY exit | 1 row — `the-census-fires-after-a-collapse-too` :: `warns` |
+| M4 | the old bug: select by `fileId`, delete every link | 18 rows — the three album scenarios × four mount tables + `ledgerRow` + `infos` |
+| M5 | drop the `!is_photos_relative_path` conjunct | 2 rows — ONLY `an-album-link-in-the-rolls-own-mount-…`, on `doc_mount_file_links` + `doc_mount_chunks` |
+| M6 | `bytes_freed = link_dropped` | 6 rows — the three album scenarios on `ledgerRow` + `infos` (`N images freed`) |
+| M7 | never record a protected keep | 5 rows — and note it reddens `warns` too: without the record the census reports a FALSE POSITIVE, which is the `keptDeliberately` filter proven load-bearing |
+
+M4 was additionally run against the boot arm: it fails **only**
+`boot_keeps_an_album_copy_of_a_collapsed_roll`, on "the photo the operator kept
+stays", with the other two arms green — so arm 4 is a discriminating wiring
+proof, not decoration.
+
+⚠ **M5 is why the same-mount scenario exists.** The order predicted M5 would
+redden v4's own case (a) if the album link were seeded first. It does not: v4's
+`keepInAlbum` puts the album in `vault-1`, a DIFFERENT mount, so the mount-point
+conjunct alone finds the roll's link whatever the rowid order. Only an album
+link in the roll's OWN mount, seeded FIRST, makes the photos conjunct
+load-bearing — which is also the modern production shape (`images/history/` and
+`photos/` in one vault). The order dependence is recorded in the corpus `$note`
+and in both seeding helpers' comments.
+
+### §5 Regen recipes, as run
+
+The sweep driver is the sanctioned path (`harness/tools/recipe_sweep.py`); it
+rewrites each recipe's `cd ~/source/quilltap-server` to the pin.
+
+```bash
+# the moving family — the TARGET pin (v4's post-fix migration)
+python3 harness/tools/recipe_sweep.py --run avatar_rolls_collapse_heal_equivalence \
+  --v4 /tmp/qt-v4-pin-p4d192-2075242f9 --v5w "$PWD"
+# env var: QT_ORACLE_AVATAR_COLLAPSE=/tmp/oracle-avatar-rolls-collapse.ndjson
+
+# the neutrality legs — the BASELINE pin
+python3 harness/tools/recipe_sweep.py --run-all \
+  --families doc_mount_file_links_tier2_equivalence,store_delete_equivalence,\
+maintenance_ops_tier2_equivalence,photos_relative_path_equivalence \
+  --v4 /tmp/qt-v4-pin-p4d192-ffb6b3119 --v5w "$PWD"
+# env var: QT_ORACLE_PHOTOS_PATH=/tmp/oracle-photos-relative-path.ndjson
+```
+
+**Pin verification (ledger §5.2).** The fresh 24-line NDJSON greps: `did not
+choose to double up` **2**, `kept 1 roll still serving as a character portrait`
+**2**, `albumCopiesKept` **20**, `protectedKept` **20**, `unexplainedCount`
+**20**, `relativePath` **23**, `album-old` **2**. The pre-fix tree cannot emit
+any of the first five, so the pin is confirmed by content, not by path.
+
+**Neutrality:** 4/4 `ok`, zero `SKIP:` lines, each with a non-zero duration and
+its own OK sentence (`doc_mount_file_links` 6 tables; maintenance jobs 1/1,
+orphans 2, terminals 3/2; `is_photos_relative_path` 13 inputs). Results
+artifact: `/tmp/p4d192-neutral-results.json`. ⓘ The driver's
+"tracked fixture bytes modified by this family's stages" warning on all four is
+a FALSE ALARM from this lane's own uncommitted corpus edit, not those families
+writing it.
+
+### §6 Out-of-ownership edit, declared
+
+`crates/quilltap-host/src/host.rs` is NOT in this lane's Owns column, but
+`CollapseOutcome::Ran` gaining two fields is a compile break there (E0027) and
+the change is mandated by Tier 1 item 5. No sibling lane in this round owns that
+file (P4.D193 → `participant_filters.rs` + SPA; P4.D194 → cli + help; P4.89 →
+web fixtures; P4.90 → `orchestrator.rs` + `chat_create.rs`), so the two fields
+were added to the boot log line — where they say the same thing the migration's
+own summary now says — with a `[23abc1ba1]` comment. **For the unifier: this is
+the only edit outside the Ownership table.**
+
+### §7 Deferred loud
+
+- **Tier 2 item 7** — the consolidation, with the measured reason and the
+  ordered shape above. Not silent: the surviving twin's doc comment names it.
+- **💸 The real-instance proof** stays banked per Tier 3. v4 ran this migration
+  on the Friday copy on 2026-09-11, so a v5 boot there writes nothing; observing
+  the fix needs v4's ledger row deleted on the disposable copy and the pass
+  re-run, which is a planted proof and belongs to a dogfood pass, not here.
+- `reportProgress` — NO-PORT, commented at the census.
+
+### §8 The verification gate (run in the foreground of the lane's last turn)
+
+`CARGO_INCREMENTAL=0 TZ=UTC`, one logged sentinel-guarded chain, the full log
+captured (never `| tail`):
+
+1. §R.2 probe — PASS at lane start and again before every regen batch.
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean; and with
+   `--features quilltap-core/native-transport` — clean. (The first run caught
+   one `nonminimal_bool` in this lane's new GC test; the assertion now reads as
+   the collapse heal reads it, through a named `bytes_freed` local.)
+4. `cargo build --workspace --release` — clean.
+5. `cargo test --workspace --no-fail-fast` with the lane env block
+   (`QT_NODE`, `QT_V4_ROOT`/`QT_V4_CHECKOUT` = the BASELINE pin,
+   `QT_ORACLE_AVATAR_COLLAPSE`, `QT_ORACLE_PHOTOS_PATH`) —
+   **570 test binaries / 3,312 passed / 0 failed / 2 ignored, exit 0.** The two
+   ignored are the standing pair. `brahma_orchestrator_tier3` withheld by name
+   (P4.89's subject). The lane's six families confirmed RUN by name in the log:
+   `avatar_rolls_collapse_heal_equivalence`,
+   `doc_mount_file_links_tier2_equivalence`, `store_delete_equivalence`,
+   `maintenance_ops_tier2_equivalence`, `photos_relative_path_equivalence`,
+   `host_boot_avatar_rolls_collapse` (3 arms → 4 with this lane's).
+   ⓘ `grep -c 'SKIP:'` over that log is 0, which is the CAPTURE, not a claim —
+   cargo swallows a passing test's SKIP line. The lane's own families were
+   proven RUN by the by-name sweep runs above, each with a non-zero duration.
+6. Mutation proofs — the seven in §4, plus M4 against the boot arm; each
+   reddened exactly its target, reverted by file backup, and the baseline
+   re-check came back 0 red rows.
+7. Ownership: `git status --porcelain` is fourteen paths, every one in the
+   Owns column except the declared `crates/quilltap-host/src/host.rs` (§6);
+   `Cargo.lock` as cargo rewrote it. Every MUST-NOT-TOUCH path ABSENT —
+   no `services/orchestrator.rs`, `services/chat_create.rs`,
+   `participant_filters.rs`, `crates/quilltap-cli/**`, `help/**`,
+   `apps/web/**`, `crates/quilltap-web/tests/fixtures/brahma-*`, no other
+   harness family, no `docs/v4/**`, no drift ledger.
+8. No SPA gate — the lane touches no `apps/web/**`.
+
+Versions: core 0.0.922, harness 0.0.815, host 0.0.136; web / cli / tauri / SPA
+unchanged.

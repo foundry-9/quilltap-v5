@@ -24,10 +24,13 @@
 //!     without it the message names a file that no longer exists, to the reader
 //!     and to any model that later reads the transcript;
 //!   - non-survivors are then deleted — the `files` row, and in the mount-index
-//!     partition the chunks, links, and the `doc_mount_files` /
+//!     partition the victim's **own** link and its chunks, plus (when that link
+//!     was the last one for the file) the `doc_mount_files` /
 //!     `doc_mount_blobs` / `doc_mount_documents` rows. Explicitly, not via
 //!     `ON DELETE CASCADE`: tables generated from the Zod schema carry no foreign
-//!     keys at all.
+//!     keys at all. Only the roll's own link is ours — a plate the operator
+//!     copied into a character's album is two links over one set of bytes, and
+//!     the album's copy is theirs to keep. See [`drop_victim_roll_link`].
 //!
 //! A group of one keeps its row and gains a key — including rows no chat
 //! references any more. An orphaned roll is a perfectly good cache entry for its
@@ -69,8 +72,11 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::db::doc_mount_file_links::gc_orphaned_file_row;
 use crate::db::DbError;
+use crate::photos::photos_paths::is_photos_relative_path;
 use crate::services::avatar_cache::derive_legacy_avatar_cache_key;
+use crate::services::file_storage::parse_mount_blob_storage_key;
 
 const MIGRATION_ID: &str = "collapse-duplicate-avatar-rolls-v1";
 
@@ -97,6 +103,14 @@ pub enum CollapseOutcome {
         configurations: usize,
         rows_keyed: usize,
         victims_deleted: usize,
+        /// Rows keyed alongside their survivor because they were still a
+        /// character's portrait when the pass ran (v4 `protectedKept.length`,
+        /// `23abc1ba1`). Drives the summary bag AND the ledger message's
+        /// [`kept_clause`].
+        protected_kept: usize,
+        /// Victims whose own link went but whose bytes stayed, because the
+        /// operator had kept that plate in a character's album.
+        album_copies_kept: usize,
         blobs_deleted: usize,
         chats_changed: usize,
         characters_changed: usize,
@@ -117,16 +131,24 @@ struct AvatarRow {
     created_at: String,
 }
 
-/// `mount-blob:<mountPointId>:<blobId>` → blobId, or `None` for any other shape.
-/// v4 spells this out inline here rather than reusing the storage helper, and the
-/// two agree: a leading `mount-blob:`, a non-empty mount point, a non-empty blob.
+/// `mount-blob:<mountPointId>:<blobId>` → its two halves, or `None` for any
+/// other shape — v4 `parseMountBlobKey` (`23abc1ba1`, which split it out of
+/// `blobIdFromStorageKey` because the mount half is now load-bearing).
+///
+/// v4 spells the rule out inline in the migration rather than reusing the
+/// storage helper; v5 goes the other way and reaches
+/// [`parse_mount_blob_storage_key`], which is the same three conditions
+/// character for character (a leading `mount-blob:`, a non-empty mount point, a
+/// non-empty blob) and is already what [`crate::photos::avatar_rolls_service`]
+/// reads. A second spelling is how the two come to disagree.
+fn parse_mount_blob_key(storage_key: Option<&str>) -> Option<(String, String)> {
+    parse_mount_blob_storage_key(storage_key?)
+}
+
+/// `mount-blob:<mountPointId>:<blobId>` → blobId, or `None` for any other shape
+/// (v4 `blobIdFromStorageKey`, which delegates the same way since `23abc1ba1`).
 fn blob_id_from_storage_key(storage_key: Option<&str>) -> Option<String> {
-    let rest = storage_key?.strip_prefix("mount-blob:")?;
-    let sep = rest.find(':')?;
-    if sep < 1 || sep == rest.len() - 1 {
-        return None;
-    }
-    Some(rest[sep + 1..].to_string())
+    parse_mount_blob_key(storage_key).map(|(_mount_point_id, blob_id)| blob_id)
 }
 
 /// v4 `JSON.stringify(value)` for a JSON column. `serde_json` is built with
@@ -208,10 +230,41 @@ fn protected_blob_ids(
     Ok(protected)
 }
 
-/// Drop a victim's bytes from the mount-index partition, mirroring
-/// `deleteMountBlob`: the storage key was the user-visible handle for "the file",
-/// so every link to that file goes with it. Returns whether a blob was found.
-fn delete_victim_blob(mount: &Connection, blob_id: &str) -> Result<bool, DbError> {
+/// What [`drop_victim_roll_link`] did — v4's `{ linkDropped, bytesFreed }`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DroppedVictim {
+    /// The roll's own link was found and taken.
+    link_dropped: bool,
+    /// …and it was the last consumer of the bytes, so the blob went too.
+    bytes_freed: bool,
+}
+
+/// Drop a victim roll's **own link**, and its bytes only when that link was the
+/// last consumer of them — v4 `dropVictimRollLink` (`23abc1ba1`, bug 145).
+///
+/// Deliberately *not* `deleteMountBlob`'s verb. A roll the operator has already
+/// copied into a character's album is two links over one set of bytes — the
+/// roll's own `character-avatars/…` (or `images/history/…`) link, and the
+/// album's `photos/…` link — and only the first is ours to take. Deleting by
+/// `fileId`, as this once did (and as v4 did until `23abc1ba1`), took the album
+/// photo with the duplicate: the operator kept a plate they liked, and
+/// collapsing an unrelated *roll* of the same configuration silently removed
+/// the copy they kept. Nothing in the main DB records an album link, so the
+/// loss left no trace to notice or undo.
+///
+/// This is the rule [`crate::photos::avatar_rolls_service`]'s `delete_avatar_roll`
+/// follows at runtime — "only the roll's own link is ours" — reached here
+/// through the same GC chokepoint ([`gc_orphaned_file_row`]) the link
+/// repository's `delete_with_gc` uses, so all three collect content the same way.
+///
+/// A victim whose only surviving link is the album copy drops no link at all and
+/// keeps its bytes; its `files` row still goes, exactly as `delete_avatar_roll`
+/// does with a `None` roll link.
+fn drop_victim_roll_link(
+    mount: &Connection,
+    blob_id: &str,
+    roll_mount_point_id: Option<&str>,
+) -> Result<DroppedVictim, DbError> {
     let file_id: Option<String> = mount
         .query_row(
             "SELECT fileId FROM doc_mount_blobs WHERE id = ?1",
@@ -220,30 +273,61 @@ fn delete_victim_blob(mount: &Connection, blob_id: &str) -> Result<bool, DbError
         )
         .optional_row()?;
     let Some(file_id) = file_id else {
-        return Ok(false);
+        return Ok(DroppedVictim {
+            link_dropped: false,
+            bytes_freed: false,
+        });
     };
 
-    let link_ids: Vec<String> = {
-        let mut stmt = mount.prepare("SELECT id FROM doc_mount_file_links WHERE fileId = ?1")?;
+    // No ORDER BY — v4 has none either, and its `Array.prototype.find` walks
+    // the rows in whatever order the SELECT returns them (rowid order for a
+    // plain table). Adding one here would pick a different link from v4's on a
+    // content row with more than one candidate.
+    let links: Vec<(String, String, Option<String>)> = {
+        let mut stmt = mount.prepare(
+            "SELECT id, mountPointId, relativePath FROM doc_mount_file_links WHERE fileId = ?1",
+        )?;
         let rows = stmt
-            .query_map([&file_id], |r| r.get::<_, String>(0))?
+            .query_map([&file_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         rows
     };
-    for link_id in &link_ids {
+
+    // The roll's own link: never one in a `photos/` folder, and — when the
+    // storage key names a mount — the one living in that mount.
+    let roll_link = links.iter().find(|(_id, mount_point_id, relative_path)| {
+        !is_photos_relative_path(relative_path.as_deref())
+            // v4's `!rollMountPointId || l.mountPointId === rollMountPointId` is
+            // a JS truthiness test, so an EMPTY mount point means "unconstrained"
+            // there too. Unreachable from the pass — `parseMountBlobKey` rejects
+            // a storage key whose mount half is empty — but part of the
+            // function's contract, and pinned as such at unit level.
+            && match roll_mount_point_id {
+                None | Some("") => true,
+                Some(mp) => mount_point_id == mp,
+            }
+    });
+
+    if let Some((link_id, _, _)) = roll_link {
         mount.execute("DELETE FROM doc_mount_chunks WHERE linkId = ?1", [link_id])?;
+        mount.execute("DELETE FROM doc_mount_file_links WHERE id = ?1", [link_id])?;
     }
-    mount.execute(
-        "DELETE FROM doc_mount_file_links WHERE fileId = ?1",
-        [&file_id],
-    )?;
-    mount.execute(
-        "DELETE FROM doc_mount_documents WHERE fileId = ?1",
-        [&file_id],
-    )?;
-    mount.execute("DELETE FROM doc_mount_blobs WHERE fileId = ?1", [&file_id])?;
-    mount.execute("DELETE FROM doc_mount_files WHERE id = ?1", [&file_id])?;
-    Ok(true)
+
+    // Bytes go only once nothing links to them any more — a no-op while the
+    // album still holds a copy. v4's `(collected?.blobs ?? 0) > 0`: a
+    // document-only orphan collects a `files` row and no blob, and does NOT
+    // count as bytes freed.
+    let collected = gc_orphaned_file_row(mount, &file_id)?;
+    Ok(DroppedVictim {
+        link_dropped: roll_link.is_some(),
+        bytes_freed: collected.is_some_and(|c| c.blobs > 0),
+    })
 }
 
 /// `query_row` → `Option`, without the `QueryReturnedNoRows` special case
@@ -354,6 +438,124 @@ fn rewrite_avatar_overrides(parsed: &Value, remap: &HashMap<String, String>) -> 
     (Value::Array(next), changed)
 }
 
+/// Every `generationKey` this pass leaves on more than one row must be one it
+/// doubled up on purpose — v4 `unexplainedDuplicateKeys` (`23abc1ba1`).
+///
+/// Run **in-pass**, with the run's own set of deliberate keeps, and not as an
+/// after-the-fact census: the protection is `characters.defaultImageId`, which
+/// the operator can repoint at any time, so reconstructing "was this keep
+/// legitimate?" from a later snapshot answers a different question and reports
+/// false positives for every portrait that has since moved or whose character
+/// has gone. The only moment the invariant is checkable is the one in which the
+/// decisions were made. (This is what closed v4's own bug 143 as not a defect:
+/// built the way that filing proposed, the check would have manufactured
+/// exactly the three false positives the filing could not explain.)
+///
+/// ⚠ The predicate is EVERY `files` row carrying a shared non-empty
+/// `generationKey` — deliberately NOT the avatar predicate the pass groups on,
+/// which is what lets a row outside the pass's reach (v4's `stowaway` test: a
+/// `background_scene.webp` with no storage key) be named.
+///
+/// Reports rather than throws. A surprise here means the *next* pass has
+/// something to look at, not that the collapse just done should be abandoned.
+///
+/// NO-PORT: v4 interleaves `reportProgress(…)` calls through both loops here
+/// (and through the delete/repoint loops elsewhere in the pass). Those drive v4's
+/// migration-runner progress bar, which v5 has no counterpart for — the pass runs
+/// inside boot, not behind a runner UI — so they are deliberately absent rather
+/// than stubbed.
+fn unexplained_duplicate_keys(
+    main: &Connection,
+    kept_deliberately: &HashSet<String>,
+) -> Result<Vec<String>, DbError> {
+    let rows: Vec<(String, String, String)> = {
+        let mut stmt = main.prepare(
+            "SELECT id, generationKey AS key, createdAt FROM files \
+              WHERE generationKey IS NOT NULL AND generationKey != '' \
+                AND generationKey IN ( \
+                      SELECT generationKey FROM files \
+                       WHERE generationKey IS NOT NULL AND generationKey != '' \
+                       GROUP BY generationKey HAVING COUNT(*) > 1)",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    // v4's `String(row.createdAt)` — a SQL NULL renders "null".
+                    r.get::<_, Option<String>>(2)?
+                        .unwrap_or_else(|| "null".to_string()),
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+
+    // v4 buckets into a `Map` in SELECT row order; the bucket walk is that
+    // insertion order, and it decides the order of `fileIds`.
+    let mut key_order: Vec<String> = Vec::new();
+    let mut by_key: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (id, key, created_at) in rows {
+        by_key
+            .entry(key.clone())
+            .or_insert_with(|| {
+                key_order.push(key.clone());
+                Vec::new()
+            })
+            .push((id, created_at));
+    }
+
+    let mut unexplained: Vec<String> = Vec::new();
+    for key in &key_order {
+        let mut bucket = by_key[key].clone();
+        // v4 `String(b.createdAt).localeCompare(String(a.createdAt))` — newest
+        // first, stable, and the same ISO-strings-from-one-clock rationale as
+        // the survivor sort in `run_pass`.
+        bucket.sort_by(|a, b| b.1.cmp(&a.1));
+        // The newest holder is the survivor and needs no excuse; every other row
+        // sharing its key must be one this pass chose to keep.
+        for (id, _created_at) in bucket.iter().skip(1) {
+            if !kept_deliberately.contains(id) {
+                unexplained.push(id.clone());
+            }
+        }
+    }
+    Ok(unexplained)
+}
+
+/// v4 `reportCensus` — silent when the invariant holds, one warn when it does
+/// not. Called on BOTH of the pass's exits.
+fn report_census(main: &Connection, protected_kept: &[String]) -> Result<(), DbError> {
+    let kept: HashSet<String> = protected_kept.iter().cloned().collect();
+    let unexplained = unexplained_duplicate_keys(main, &kept)?;
+    if unexplained.is_empty() {
+        return Ok(());
+    }
+    let first_twenty: Vec<&str> = unexplained.iter().take(20).map(String::as_str).collect();
+    let file_ids = serde_json::to_string(&first_twenty)
+        .map_err(|e| DbError::Internal(format!("json serialize: {e}")))?;
+    tracing::warn!(
+        target: "quilltap::migration",
+        context = LOG_CONTEXT,
+        unexplainedCount = unexplained.len(),
+        fileIds = file_ids.as_str(),
+        "Avatar rolls share a generation key this pass did not choose to double up"
+    );
+    Ok(())
+}
+
+/// What the pass *kept*, said out loud — v4 `keptClause` (`23abc1ba1`). The
+/// summary used to count only what it collapsed, so every deliberate keep was
+/// invisible in the one record that outlives the logs, leaving a later reader to
+/// rediscover the protected branch from the residue and mistake it for damage.
+fn kept_clause(protected_kept_count: usize) -> String {
+    match protected_kept_count {
+        0 => String::new(),
+        1 => "; kept 1 roll still serving as a character portrait".to_string(),
+        n => format!("; kept {n} rolls still serving as character portraits"),
+    }
+}
+
 /// Run the collapse once per instance, guarded by v4's own migration ledger.
 /// `now_iso` stamps the ledger's `completedAt`/`lastChecked` (the caller passes
 /// [`crate::clock::now_iso`]).
@@ -409,24 +611,29 @@ pub fn collapse_duplicate_avatar_rolls(
         characters_changed,
         messages_changed,
         victims_deleted,
+        protected_kept,
         ..
     } = outcome
     else {
         return Ok(outcome);
     };
+    // Both sentences carry v4's kept clause (`23abc1ba1`): the ledger row is the
+    // one record that outlives the logs, so a pass that kept a portrait says so.
     let message = if victims_deleted == 0 {
         format!(
-            "Keyed {} avatar configurations; nothing to collapse",
+            "Keyed {} avatar configurations; nothing to collapse{}",
             match outcome {
                 CollapseOutcome::Ran { rows_keyed, .. } => rows_keyed,
                 _ => 0,
-            }
+            },
+            kept_clause(protected_kept)
         )
     } else {
         format!(
             "Collapsed {avatar_rows} avatar rolls to {configurations} configurations \
              ({blobs_deleted} images freed; repointed {chats_changed} chats, \
-             {characters_changed} characters, {messages_changed} messages)"
+             {characters_changed} characters, {messages_changed} messages){}",
+            kept_clause(protected_kept)
         )
     };
     main.execute(
@@ -506,6 +713,12 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
     let mut remap: HashMap<String, String> = HashMap::new();
     let mut survivors: Vec<(String, String)> = Vec::new();
     let mut victims: Vec<usize> = Vec::new();
+    // Rows deliberately keyed alongside their survivor because they were still a
+    // character's portrait when this pass ran. Recorded here, at the moment of
+    // the decision, because it cannot be reconstructed later:
+    // `characters.defaultImageId` is mutable, so a portrait moved after the fact
+    // makes a perfectly correct keep look like an unexplained duplicate.
+    let mut protected_kept: Vec<String> = Vec::new();
 
     for key in &group_order {
         let bucket = &groups[key];
@@ -525,6 +738,7 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
                 // perfectly truthful image of this configuration, and the lookup
                 // prefers the newest holder of a key anyway.
                 survivors.push((rows[victim].id.clone(), key.clone()));
+                protected_kept.push(rows[victim].id.clone());
                 tracing::info!(
                     target: "quilltap::migration",
                     context = LOG_CONTEXT,
@@ -557,11 +771,16 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
 
     if victims.is_empty() {
         // v4's early return: keyed, nothing to collapse, no repoints attempted.
+        // The census runs on THIS exit too (`23abc1ba1`) — and it is the exit
+        // v4's own new census test takes, since a lone roll makes no victims.
+        report_census(main, &protected_kept)?;
         return Ok(CollapseOutcome::Ran {
             avatar_rows: rows.len(),
             configurations: groups.len(),
             rows_keyed: survivors.len(),
             victims_deleted: 0,
+            protected_kept: protected_kept.len(),
+            album_copies_kept: 0,
             blobs_deleted: 0,
             chats_changed: 0,
             characters_changed: 0,
@@ -588,13 +807,26 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
 
     // ---- 3. Delete the victims --------------------------------------------
     let mut blobs_deleted = 0usize;
+    let mut album_copies_kept = 0usize;
     let mut victims_deleted = 0usize;
     for &victim in &victims {
-        let blob_id = blob_id_from_storage_key(rows[victim].storage_key.as_deref());
-        if let (Some(mount), Some(blob_id)) = (mount, blob_id.as_deref()) {
-            match delete_victim_blob(mount, blob_id) {
-                Ok(true) => blobs_deleted += 1,
-                Ok(false) => {}
+        // v4 guards on `mountDb && parsed` (was `&& blobId`) — the same truth
+        // table, since a parse that succeeds always yields a non-empty blob half.
+        let parsed = parse_mount_blob_key(rows[victim].storage_key.as_deref());
+        if let (Some(mount), Some((roll_mount_point_id, blob_id))) = (mount, parsed.as_ref()) {
+            match drop_victim_roll_link(mount, blob_id, Some(roll_mount_point_id.as_str())) {
+                Ok(DroppedVictim {
+                    bytes_freed: true, ..
+                }) => blobs_deleted += 1,
+                Ok(DroppedVictim {
+                    link_dropped: true, ..
+                }) => {
+                    // The bytes stayed because the operator had kept this plate
+                    // in a character's album. That copy is theirs, not the
+                    // cache's.
+                    album_copies_kept += 1
+                }
+                Ok(_) => {}
                 Err(error) => {
                     // A blob that refuses to go is not a reason to abandon the
                     // pass; the files row stays too, and the next run retries the
@@ -624,6 +856,8 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
         // corrected — the number is a log field and a ledger message, and
         // "corrected" would be a second spelling of v4's own count.
         victims_deleted: victims.len(),
+        protected_kept: protected_kept.len(),
+        album_copies_kept,
         blobs_deleted,
         chats_changed,
         characters_changed,
@@ -635,6 +869,8 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
         configurations,
         rows_keyed,
         victims_deleted,
+        protected_kept: protected_kept_count,
+        album_copies_kept,
         blobs_deleted,
         chats_changed,
         characters_changed,
@@ -648,6 +884,8 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
             configurations = *configurations,
             rowsKeyed = *rows_keyed,
             victimsDeleted = *victims_deleted,
+            protectedKept = *protected_kept_count,
+            albumCopiesKept = *album_copies_kept,
             blobsDeleted = *blobs_deleted,
             chatsChanged = *chats_changed,
             charactersChanged = *characters_changed,
@@ -655,6 +893,9 @@ fn run_pass(main: &Connection, mount: Option<&Connection>) -> Result<CollapseOut
             "Collapsed duplicate avatar rolls"
         );
     }
+
+    // v4 reports the census AFTER the summary line, on this exit too.
+    report_census(main, &protected_kept)?;
 
     Ok(outcome)
 }
@@ -747,4 +988,141 @@ fn repoint_messages(main: &Connection, remap: &HashMap<String, String>) -> Resul
         changed += 1;
     }
     Ok(changed)
+}
+
+#[cfg(test)]
+mod drop_victim_roll_link_tests {
+    //! The arms of [`drop_victim_roll_link`] the tier-2 family cannot reach.
+    //!
+    //! The family drives the whole pass, and the pass always passes a mount
+    //! point (v4's `parseMountBlobKey` rejects a storage key whose mount half is
+    //! empty, so `parsed.mountPointId` is never falsy where v4 calls it). The
+    //! unconstrained arm is part of the function's CONTRACT — it is the shape
+    //! `classify_roll_links` already carries for a roll whose storage key names
+    //! no mount — so it is pinned here instead (v4 `23abc1ba1`).
+
+    use super::*;
+
+    /// The five mount tables at the shape v4's own migration suite builds.
+    fn mount_db() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            r#"
+            CREATE TABLE "doc_mount_files" ("id" TEXT PRIMARY KEY);
+            CREATE TABLE "doc_mount_blobs" ("id" TEXT PRIMARY KEY, "fileId" TEXT NOT NULL);
+            CREATE TABLE "doc_mount_documents" ("id" TEXT PRIMARY KEY, "fileId" TEXT NOT NULL);
+            CREATE TABLE "doc_mount_file_links" (
+              "id" TEXT PRIMARY KEY,
+              "fileId" TEXT NOT NULL,
+              "mountPointId" TEXT NOT NULL,
+              "relativePath" TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE "doc_mount_chunks" ("id" TEXT PRIMARY KEY, "linkId" TEXT NOT NULL);
+            "#,
+        )
+        .unwrap();
+        c.execute(
+            r#"INSERT INTO "doc_mount_files" (id) VALUES ('content-1')"#,
+            [],
+        )
+        .unwrap();
+        c.execute(
+            r#"INSERT INTO "doc_mount_blobs" (id, fileId) VALUES ('blob-1', 'content-1')"#,
+            [],
+        )
+        .unwrap();
+        c
+    }
+
+    fn link(c: &Connection, id: &str, mount_point_id: &str, relative_path: &str) {
+        c.execute(
+            r#"INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId, relativePath)
+               VALUES (?1, 'content-1', ?2, ?3)"#,
+            rusqlite::params![id, mount_point_id, relative_path],
+        )
+        .unwrap();
+    }
+
+    fn link_ids(c: &Connection) -> Vec<String> {
+        let mut stmt = c
+            .prepare("SELECT id FROM doc_mount_file_links ORDER BY id")
+            .unwrap();
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        rows
+    }
+
+    /// `!rollMountPointId` — an absent mount point constrains nothing, so the
+    /// first non-`photos/` link wins whichever mount it lives in.
+    #[test]
+    fn an_absent_mount_point_takes_the_first_non_album_link() {
+        let c = mount_db();
+        link(&c, "album", "vault-1", "photos/kept.webp");
+        link(&c, "roll", "somewhere-else", "images/history/a.webp");
+
+        let got = drop_victim_roll_link(&c, "blob-1", None).unwrap();
+        assert_eq!(
+            got,
+            DroppedVictim {
+                link_dropped: true,
+                bytes_freed: false
+            }
+        );
+        assert_eq!(link_ids(&c), vec!["album".to_string()]);
+    }
+
+    /// v4's test is `!rollMountPointId`, a JS truthiness test — so an EMPTY
+    /// string reads the same as absent. Unreachable from the pass; pinned so a
+    /// later `Some("")` never silently starts constraining.
+    #[test]
+    fn an_empty_mount_point_reads_the_same_as_an_absent_one() {
+        let c = mount_db();
+        link(&c, "roll", "somewhere-else", "images/history/a.webp");
+
+        assert_eq!(
+            drop_victim_roll_link(&c, "blob-1", Some("")).unwrap(),
+            DroppedVictim {
+                link_dropped: true,
+                bytes_freed: true
+            }
+        );
+        assert!(link_ids(&c).is_empty());
+    }
+
+    /// An unknown blob is v4's `if (!blob) return { false, false }` — and it
+    /// must not reach the GC at all.
+    #[test]
+    fn an_unknown_blob_drops_nothing() {
+        let c = mount_db();
+        link(&c, "roll", "mount-1", "images/history/a.webp");
+
+        assert_eq!(
+            drop_victim_roll_link(&c, "no-such-blob", Some("mount-1")).unwrap(),
+            DroppedVictim {
+                link_dropped: false,
+                bytes_freed: false
+            }
+        );
+        assert_eq!(link_ids(&c), vec!["roll".to_string()]);
+    }
+
+    /// A victim whose only surviving link is the album copy drops no link and
+    /// keeps its bytes — the third of v4's new cases, at unit level.
+    #[test]
+    fn a_roll_with_only_an_album_link_left_drops_nothing_and_keeps_its_bytes() {
+        let c = mount_db();
+        link(&c, "album", "vault-1", "photos/kept.webp");
+
+        assert_eq!(
+            drop_victim_roll_link(&c, "blob-1", Some("mount-1")).unwrap(),
+            DroppedVictim {
+                link_dropped: false,
+                bytes_freed: false
+            }
+        );
+        assert_eq!(link_ids(&c), vec!["album".to_string()]);
+    }
 }

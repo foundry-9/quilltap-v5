@@ -8,14 +8,19 @@
 //! a pre-4.10 instance does not exist until that call) and inside the
 //! mount-aware block (it needs both partitions to take a victim's blob).
 //!
-//! Three arms, because each is a different claim:
+//! Four arms, because each is a different claim:
 //!
 //!   1. a planted duplicate population IS collapsed on boot — the wire exists;
 //!   2. a SECOND boot changes nothing — the ledger row the first boot wrote is
 //!      honoured by this app;
 //!   3. a boot on an instance whose ledger already carries v4's OWN row
 //!      collapses NOTHING — the cross-app direction, and the one the real Friday
-//!      instance will meet, since v4 ran this migration there before any v5 walk.
+//!      instance will meet, since v4 ran this migration there before any v5 walk;
+//!   4. [P4.D192, v4 `23abc1ba1`, bug 145] a victim the operator had KEPT in a
+//!      character's album loses its own link and its `files` row, and keeps the
+//!      album link and the bytes behind it. The tier-2 family proves that of the
+//!      function; only a real boot proves it of the whole wire, over the mount
+//!      index's REAL DDL rather than the migration suite's reduced one.
 
 use std::path::Path;
 
@@ -39,8 +44,14 @@ fn base_config(base: &Path) -> HostConfig {
 }
 
 /// Two unkeyed avatar rolls of ONE configuration, each with its vault blob —
-/// the shape the pass exists to collapse.
+/// the shape the pass exists to collapse. `keep_victim_in_album` adds the second
+/// link over the victim's bytes that the operator would have made by keeping
+/// that plate (v4 `23abc1ba1`, bug 145).
 fn plant_duplicate_rolls(base: &Path, with_v4_ledger_row: bool) {
+    plant(base, with_v4_ledger_row, false)
+}
+
+fn plant(base: &Path, with_v4_ledger_row: bool, keep_victim_in_album: bool) {
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
 
@@ -155,6 +166,37 @@ fn plant_duplicate_rolls(base: &Path, with_v4_ledger_row: bool) {
                 rusqlite::params![format!("blob-{id}"), format!("content-{id}")],
             )
             .unwrap();
+        // The roll's OWN link. Before bug 145 the pass never needed one — it
+        // deleted by `fileId` — which is exactly why no arm here had modelled a
+        // second link over the same bytes.
+        m.connection()
+            .execute(
+                "INSERT INTO doc_mount_file_links \
+                   (id, fileId, mountPointId, relativePath, fileName, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'mount-1', ?3, ?4, '2026-01-01T00:00:00.000Z', \
+                         '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![
+                    format!("link-{id}"),
+                    format!("content-{id}"),
+                    format!("images/history/avatar_Friday_{id}.webp"),
+                    format!("avatar_Friday_{id}.webp")
+                ],
+            )
+            .unwrap();
+    }
+    if keep_victim_in_album {
+        // The operator kept this plate: a SECOND link, in the character's own
+        // vault's `photos/` folder, over the victim's SAME content row.
+        m.connection()
+            .execute(
+                "INSERT INTO doc_mount_file_links \
+                   (id, fileId, mountPointId, relativePath, fileName, createdAt, updatedAt) \
+                 VALUES ('album-old', ?1, 'vault-1', 'photos/kept-old.webp', \
+                         'kept-old.webp', '2026-01-01T00:00:00.000Z', \
+                         '2026-01-01T00:00:00.000Z')",
+                [format!("content-{OLD_ID}")],
+            )
+            .unwrap();
     }
 }
 
@@ -167,6 +209,13 @@ fn assert_planted(base: &Path) {
         .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 2, "the plant must carry two rolls of one configuration");
+}
+
+/// One COUNT(*) against the mount-index partition, reopened after the host has
+/// been dropped (the pass writes through the host's own writer).
+fn mount_count(base: &Path, sql: &str) -> i64 {
+    let m = Writer::open_writable(&base.join("data/quilltap-mount-index.db"), PEPPER).unwrap();
+    m.connection().query_row(sql, [], |r| r.get(0)).unwrap()
 }
 
 fn file_ids(db: &quilltap_core::db::runtime::Db) -> Vec<String> {
@@ -248,6 +297,72 @@ async fn boot_collapses_duplicate_rolls_once() {
         ledger_message(&db),
         first_message,
         "a second boot must not run the pass again"
+    );
+}
+
+/// Arm 4 — the collapse takes the roll, not the photo the operator kept.
+///
+/// Before bug 145's fix this deleted by `fileId`: `album-old` and `blob-old`
+/// both went, silently, and nothing outside the mount index recorded that they
+/// had ever existed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn boot_keeps_an_album_copy_of_a_collapsed_roll() {
+    let dir = tempfile::tempdir().unwrap();
+    plant(dir.path(), false, true);
+    assert_planted(dir.path());
+    // The plant must genuinely carry TWO links over the victim's bytes, or the
+    // arm proves nothing it did not already prove in arm 1.
+    assert_eq!(
+        mount_count(
+            dir.path(),
+            &format!("SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = 'content-{OLD_ID}'")
+        ),
+        2,
+        "the victim must start with its own link AND the album copy"
+    );
+
+    let host = boot(base_config(dir.path())).await;
+    let db = host.core().db().unwrap();
+    assert_eq!(
+        file_ids(&db),
+        vec![NEW_ID.to_string()],
+        "the duplicate cache row still goes — this is about the bytes"
+    );
+    drop(db);
+    drop(host);
+
+    // The roll's own link is gone; the album's link and its bytes are not.
+    assert_eq!(
+        mount_count(
+            dir.path(),
+            &format!("SELECT COUNT(*) FROM doc_mount_file_links WHERE id = 'link-{OLD_ID}'")
+        ),
+        0,
+        "the roll's own link goes"
+    );
+    assert_eq!(
+        mount_count(
+            dir.path(),
+            "SELECT COUNT(*) FROM doc_mount_file_links WHERE id = 'album-old'"
+        ),
+        1,
+        "the photo the operator kept stays"
+    );
+    assert_eq!(
+        mount_count(
+            dir.path(),
+            &format!("SELECT COUNT(*) FROM doc_mount_blobs WHERE id = 'blob-{OLD_ID}'")
+        ),
+        1,
+        "…and so do the bytes behind it"
+    );
+    assert_eq!(
+        mount_count(
+            dir.path(),
+            &format!("SELECT COUNT(*) FROM doc_mount_files WHERE id = 'content-{OLD_ID}'")
+        ),
+        1,
+        "…and the content row the album link still needs"
     );
 }
 

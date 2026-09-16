@@ -4,8 +4,8 @@
 //!
 //! Both sides walk the SAME scenarios (`harness/oracle/fixtures/avatar-rolls-
 //! collapse-heal.json` — v4's own thirteen test cases rebuilt as data, plus four
-//! its suite does not ask) and the WHOLE post-pass state of every table the pass
-//! can touch is diffed: `files`, `chats.characterAvatars`,
+//! its suite does not ask, plus bug 145's album/census shapes at P4.D192) and
+//! the WHOLE post-pass state of every table the pass can touch is diffed: `files`, `chats.characterAvatars`,
 //! `characters.avatarOverrides`, `chat_messages.{attachments,content,
 //! opaqueContent}` and the five mount tables. So a survivor kept, a victim
 //! deleted, a reference repointed, a uuid swapped inline, and a blob's chunks
@@ -18,12 +18,22 @@
 //! v4's logger lines are comparands too — the protected-roll arm and the summary
 //! counts are otherwise invisible on the state.
 //!
-//! ⚠ The migration this drives arrived at v4 `7fbf8a55b`, which is PAST the
-//! `f4ad2c8d1` oracle baseline — so until the baseline moves, regenerate through
-//! the sweep driver with a pin at or after that commit (`recipe_sweep.py --v4
-//! <pinned worktree> --run avatar_rolls_collapse_heal_equivalence`), which
-//! rewrites the `cd` below. Against a checkout still at the baseline the import
-//! fails outright; it cannot pass stale.
+//! ⚠ The migration this drives arrived at v4 `7fbf8a55b` and was rewritten at
+//! **`23abc1ba1`** (bug 145) — both PAST the `ffb6b3119` oracle baseline, so
+//! until the baseline moves, regenerate through the sweep driver with a pin at
+//! or after `23abc1ba1` (`recipe_sweep.py --v4 <pinned worktree> --run
+//! avatar_rolls_collapse_heal_equivalence`), which rewrites the `cd` below.
+//! Against a checkout still at the baseline the mount DDL now carries a
+//! `relativePath` column v4's pre-fix migration never selects, so the album
+//! scenarios would record the OLD, data-losing behaviour as v4's contract —
+//! verify the pin by grepping the fresh NDJSON for `did not choose to double
+//! up` (MUST be > 0; the pre-fix tree cannot emit it).
+//!
+//! [P4.D192] The bug-145 comparands: `doc_mount_file_links.relativePath` is in
+//! the dump (an album link and a roll link are only distinguishable by path),
+//! the summary bag carries `protectedKept`/`albumCopiesKept`, the ledger
+//! `message` carries v4's kept clause, and `warns` carries the in-pass
+//! duplicate-key census (whose `fileIds` is a JSON ARRAY — see `shape_line`).
 //!
 //! Generate the oracle output (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -45,11 +55,15 @@ use std::collections::HashMap;
 use quilltap_core::db::avatar_rolls_collapse_heal::{
     collapse_duplicate_avatar_rolls, CollapseOutcome,
 };
+use quilltap_core::services::avatar_cache::derive_legacy_avatar_cache_key;
 use quilltap_core::test_support::captured_with;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
 const NOW_ISO: &str = "2026-09-14T12:00:00.000Z";
+
+/// v4's `VAULT_MOUNT` — the character's own vault, where the album lives.
+const VAULT_MOUNT: &str = "vault-1";
 
 fn spec_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -100,7 +114,8 @@ fn build_mount() -> Connection {
         CREATE TABLE "doc_mount_file_links" (
           "id" TEXT PRIMARY KEY,
           "fileId" TEXT NOT NULL,
-          "mountPointId" TEXT NOT NULL
+          "mountPointId" TEXT NOT NULL,
+          "relativePath" TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE "doc_mount_chunks" ("id" TEXT PRIMARY KEY, "linkId" TEXT NOT NULL);
         "#,
@@ -172,10 +187,21 @@ fn seed_roll(main: &Connection, mount: &Connection, mount_point_id: &str, roll: 
             rusqlite::params![format!("doc-{id}"), content_id],
         )
         .expect("mount doc");
+    let relative_path = roll
+        .get("relativePath")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("character-avatars/avatar_Friday_{id}.webp"));
     mount
         .execute(
-            r#"INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId) VALUES (?1, ?2, ?3)"#,
-            rusqlite::params![format!("link-{id}"), content_id, mount_point_id],
+            r#"INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId, relativePath)
+               VALUES (?1, ?2, ?3, ?4)"#,
+            rusqlite::params![
+                format!("link-{id}"),
+                content_id,
+                mount_point_id,
+                relative_path
+            ],
         )
         .expect("mount link");
     mount
@@ -184,6 +210,79 @@ fn seed_roll(main: &Connection, mount: &Connection, mount_point_id: &str, roll: 
             rusqlite::params![format!("chunk-{id}"), format!("link-{id}")],
         )
         .expect("mount chunk");
+}
+
+/// v4's `keepInAlbum` (`23abc1ba1`): a SECOND link, over the SAME content row,
+/// in a `photos/` folder — what "the operator kept this plate" looks like in
+/// the mount index. Defaults to the character's own vault, a DIFFERENT mount
+/// from the roll's.
+fn keep_in_album(mount: &Connection, link: &Value) {
+    let roll_id = link["rollId"].as_str().expect("album rollId");
+    let mount_point_id = link
+        .get("mountPointId")
+        .and_then(Value::as_str)
+        .unwrap_or(VAULT_MOUNT);
+    mount
+        .execute(
+            r#"INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId, relativePath)
+               VALUES (?1, ?2, ?3, ?4)"#,
+            rusqlite::params![
+                format!("album-{roll_id}"),
+                format!("content-{roll_id}"),
+                mount_point_id,
+                format!("photos/kept-{roll_id}.webp")
+            ],
+        )
+        .expect("album link");
+}
+
+/// A `files` row the pass never groups — v4's `stowaway`. A `generationKey` of
+/// `survivor-of:<rollId>` is DERIVED here through the same helper the pass
+/// groups on, so neither side ever carries a hand-copied hash.
+fn seed_extra_file(main: &Connection, scenario: &Value, extra: &Value) {
+    let key: Option<String> = match extra.get("generationKey").and_then(Value::as_str) {
+        None => None,
+        Some(k) => match k.strip_prefix("survivor-of:") {
+            None => Some(k.to_string()),
+            Some(roll_id) => {
+                let roll = scenario["rolls"]
+                    .as_array()
+                    .expect("rolls")
+                    .iter()
+                    .find(|r| r["id"].as_str() == Some(roll_id))
+                    .unwrap_or_else(|| panic!("survivor-of names no roll: {roll_id}"));
+                let model: Option<&str> = match roll.get("model") {
+                    None => Some("flux-dev"),
+                    Some(Value::Null) => None,
+                    Some(v) => v.as_str(),
+                };
+                Some(derive_legacy_avatar_cache_key(
+                    model,
+                    roll["prompt"].as_str().unwrap_or(""),
+                ))
+            }
+        },
+    };
+    let model: Option<&str> = match extra.get("model") {
+        None => Some("flux-dev"),
+        Some(Value::Null) => None,
+        Some(v) => v.as_str(),
+    };
+    main.execute(
+        r#"INSERT INTO "files" (id, originalFilename, category, generationPrompt, generationModel, generationKey, storageKey, createdAt)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"#,
+        rusqlite::params![
+            extra["id"].as_str().expect("extra id"),
+            extra["originalFilename"].as_str().expect("extra filename"),
+            extra.get("category").and_then(Value::as_str).unwrap_or("IMAGE"),
+            extra["prompt"].as_str(),
+            model,
+            key,
+            extra.get("storageKey").and_then(Value::as_str),
+            extra["createdAt"].as_str().expect("extra createdAt")
+        ],
+    )
+    .expect("insert extra file");
 }
 
 fn plant_ledger_row(main: &Connection) {
@@ -284,8 +383,8 @@ fn dump_all(main: &Connection, mount: &Connection) -> Value {
         ),
         "doc_mount_file_links": dump(
             mount,
-            "SELECT id, fileId, mountPointId FROM doc_mount_file_links ORDER BY id",
-            &["id", "fileId", "mountPointId"],
+            "SELECT id, fileId, mountPointId, relativePath FROM doc_mount_file_links ORDER BY id",
+            &["id", "fileId", "mountPointId", "relativePath"],
         ),
         "doc_mount_chunks": dump(
             mount,
@@ -352,6 +451,16 @@ fn shape_line(line: &str) -> Option<Value> {
             })
             .unwrap_or(Value::Null)
     };
+    // `fileIds` is v4's `unexplained.slice(0, 20)` — a JSON ARRAY, not a scalar.
+    // v5 emits it as compact JSON through `record_str` (no spaces, so it is one
+    // whitespace token and `field` recovers it whole); parse it back so the
+    // comparand is the array v4's `logger.warn` context carries.
+    let json_field = |name: &str| -> Value {
+        match field(name) {
+            Value::String(raw) => serde_json::from_str(&raw).unwrap_or(Value::String(raw)),
+            other => other,
+        }
+    };
     Some(json!({
         "message": message,
         "context": field("context"),
@@ -366,6 +475,10 @@ fn shape_line(line: &str) -> Option<Value> {
         "chatsChanged": field("chatsChanged"),
         "charactersChanged": field("charactersChanged"),
         "messagesChanged": field("messagesChanged"),
+        "protectedKept": field("protectedKept"),
+        "albumCopiesKept": field("albumCopiesKept"),
+        "unexplainedCount": field("unexplainedCount"),
+        "fileIds": json_field("fileIds"),
     }))
 }
 
@@ -400,8 +513,51 @@ fn avatar_rolls_collapse_matches_oracle() {
 
         let main = build_main();
         let mount = build_mount();
+        // rowid order is a comparand: `drop_victim_roll_link`'s links SELECT has
+        // no ORDER BY (v4's has none either), so whichever link was inserted
+        // first is the one v4's `Array.prototype.find` reaches first.
+        let album_links_first = scenario
+            .get("albumLinksFirst")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let album_links = scenario
+            .get("albumLinks")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if album_links_first {
+            for link in &album_links {
+                keep_in_album(&mount, link);
+            }
+        }
         for roll in scenario["rolls"].as_array().into_iter().flatten() {
             seed_roll(&main, &mount, mount_point_id, roll);
+        }
+        if !album_links_first {
+            for link in &album_links {
+                keep_in_album(&mount, link);
+            }
+        }
+        for link_id in scenario
+            .get("deleteLinks")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            mount
+                .execute(
+                    r#"DELETE FROM "doc_mount_file_links" WHERE id = ?1"#,
+                    [link_id.as_str().expect("deleteLinks id")],
+                )
+                .expect("delete link");
+        }
+        for extra in scenario
+            .get("extraFiles")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            seed_extra_file(&main, scenario, extra);
         }
         for c in scenario
             .get("chats")

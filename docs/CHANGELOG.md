@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — fix(db): the avatar-roll collapse keeps the photo you kept (bug 145)
+
+_Versions: core 0.0.922, harness 0.0.815, host 0.0.136._
+
+Copying an avatar roll into a character's album makes a second reference to the
+same bytes, not a second copy. The boot heal's `delete_victim_blob` deleted by
+`fileId`, taking every reference with it — so collapsing a duplicate removed the
+album photo, and removed it precisely because you had kept it. Nothing outside
+the mount index recorded that photo, so the loss left no trace to notice or
+undo. **v5 measurably had the bug:** the corpus's three album scenarios go red
+against the unported heal on all four mount tables (39 red rows in all across 17
+of 24 scenarios, before the fix).
+
+`drop_victim_roll_link` takes the roll's own link and nothing else, releasing
+the bytes only if that was the last one. It reaches three chokepoints v5 already
+had rather than forming a fourth opinion: `photos_paths::is_photos_relative_path`
+(what v4's migration itself now imports), `gc_orphaned_file_row`, and
+`services::file_storage::parse_mount_blob_storage_key`. A victim whose only
+surviving link is the album copy drops no link and keeps its bytes; its `files`
+row still goes.
+
+`gc_orphaned_file_row` widens from `bool` to v4's `Option<OrphanedFileRowGc>`
+(per-table `documents`/`blobs`/`files` counts): the collapse frees bytes only on
+`blobs > 0`, so a document-only orphan is collected without counting as an image
+freed. Every other caller reads `.is_some()` and is behaviour-neutral —
+`doc_mount_file_links_tier2_equivalence`, `store_delete_equivalence`,
+`maintenance_ops_tier2_equivalence` and `photos_relative_path_equivalence` all
+re-run green at the baseline pin.
+
+Also from `23abc1ba1`: the in-pass `protectedKept` census (the invariant is only
+checkable at the instant the decisions are made — `characters.defaultImageId` is
+mutable, so an after-the-fact reconstruction reports a false positive for every
+portrait that has since moved), its `Avatar rolls share a generation key this
+pass did not choose to double up` warn on BOTH exits, v4's kept clause on both
+summary sentences, and `protectedKept`/`albumCopiesKept` in the summary bag and
+the boot line.
+
+The shared corpus grows 17 → 24 scenarios and both mount DDLs and dumps gain
+`relativePath`. Two of v4's six new cases needed no new scenario — they seed
+exactly what scenario 9 already seeds, so scenario 9 carries them and moves on
+`message`. Three of the new scenarios ask what v4's own suite does not: its
+census case is an early-return pass, so one covers the post-summary census exit;
+one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
+by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
+load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
+A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+
 #### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
 
 _Docs-only change._

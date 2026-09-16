@@ -369,6 +369,16 @@ fn posix_dirname(p: &str) -> String {
 /// (matching the rest of the mount-index lookups): the path's `dirname`,
 /// lowercased, equals `"photos"` or starts with `"photos/"`. `None`/empty → false.
 /// Used by the stale-chat sweep to protect album-saved generated images.
+///
+/// ⚠ NOT interchangeable with [`crate::photos::photos_paths::is_photos_relative_path`]
+/// despite the identical body: that one's private `posix_dirname` strips a single
+/// trailing slash where Node strips a RUN, so the two disagree on a path ending in
+/// two or more slashes (`"photos//"` → Node and THIS say `"."`/false, the other
+/// says `"photos"`/true). Measured against Node 24 at P4.D192, which is why that
+/// lane's ordered consolidation of the two homes did NOT land — see the lane
+/// record for the ordered shape (make `photos_paths`'s helper Node-faithful and
+/// grow `photos_relative_path_equivalence`'s 13-row corpus with the
+/// trailing-slash-run shapes FIRST; today it is blind to them).
 pub fn is_photos_relative_path(relative_path: Option<&str>) -> bool {
     let Some(rp) = relative_path.filter(|s| !s.is_empty()) else {
         return false;
@@ -1459,7 +1469,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
             }
         }
 
-        let file_gc = gc_orphaned_file_row(&tx, &file_id)?;
+        let file_gc = gc_orphaned_file_row(&tx, &file_id)?.is_some();
         tx.commit()?;
         Ok(file_gc)
     }
@@ -2439,33 +2449,52 @@ pub(crate) fn fan_out_group_file_id(
 ///
 /// Runs inside the caller's transaction (`conn` is the transaction handle).
 ///
-/// Returns `true` when the row was collected.
-pub(crate) fn gc_orphaned_file_row(conn: &Connection, file_id: &str) -> Result<bool, DbError> {
+/// Returns `None` — nothing collected — while another link still references the
+/// file; otherwise the per-table counts removed. v4 returns the same shape
+/// (`OrphanedFileRowGc`, `mount-index/orphan-store-reaper.ts`), and its
+/// `blobs` count is load-bearing for exactly one caller:
+/// [`super::avatar_rolls_collapse_heal`] releases a victim roll's bytes only on
+/// `(collected?.blobs ?? 0) > 0` (v4 `23abc1ba1`, bug 145). Every other caller
+/// asks only whether anything was collected, i.e. `.is_some()`.
+pub(crate) fn gc_orphaned_file_row(
+    conn: &Connection,
+    file_id: &str,
+) -> Result<Option<OrphanedFileRowGc>, DbError> {
     let still: i64 = conn.query_row(
         "SELECT COUNT(*) FROM doc_mount_file_links WHERE fileId = ?1",
         params![file_id],
         |row| row.get(0),
     )?;
     if still > 0 {
-        return Ok(false);
+        return Ok(None);
     }
+    let mut counts = OrphanedFileRowGc::default();
     if table_exists_sync(conn, "doc_mount_documents")? {
-        conn.execute(
+        counts.documents = conn.execute(
             "DELETE FROM doc_mount_documents WHERE fileId = ?1",
             params![file_id],
         )?;
     }
     if table_exists_sync(conn, "doc_mount_blobs")? {
-        conn.execute(
+        counts.blobs = conn.execute(
             "DELETE FROM doc_mount_blobs WHERE fileId = ?1",
             params![file_id],
         )?;
     }
-    conn.execute(
+    counts.files = conn.execute(
         "DELETE FROM doc_mount_files WHERE id = ?1",
         params![file_id],
     )?;
-    Ok(true)
+    Ok(Some(counts))
+}
+
+/// Per-table rows removed for one content row by [`gc_orphaned_file_row`] — v4
+/// `OrphanedFileRowGc` (`mount-index/orphan-store-reaper.ts`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct OrphanedFileRowGc {
+    pub documents: usize,
+    pub blobs: usize,
+    pub files: usize,
 }
 
 /// True when `table` exists in the connection's schema — v4 `tableExistsSync`
@@ -2538,7 +2567,7 @@ pub fn sweep_orphaned_link_content(conn: &Connection) -> Result<usize, DbError> 
     let tx = conn.unchecked_transaction()?;
     let mut collected = 0usize;
     for file_id in &orphans {
-        if gc_orphaned_file_row(&tx, file_id)? {
+        if gc_orphaned_file_row(&tx, file_id)?.is_some() {
             collected += 1;
         }
     }
@@ -2674,7 +2703,7 @@ pub fn sweep_orphaned_store_children(conn: &Connection) -> Result<ReapedStoreChi
     )?;
     let mut content = 0usize;
     for file_id in &doomed_files {
-        if gc_orphaned_file_row(&tx, file_id)? {
+        if gc_orphaned_file_row(&tx, file_id)?.is_some() {
             content += 1;
         }
     }
@@ -2799,9 +2828,61 @@ mod orphan_backlog_tests {
         )
         .unwrap();
 
-        assert!(!gc_orphaned_file_row(&db, "shared").unwrap());
+        assert_eq!(
+            gc_orphaned_file_row(&db, "shared").unwrap(),
+            None,
+            "nothing is collected while a link remains — v4 returns null here"
+        );
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 1);
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_documents"), 1);
+    }
+
+    /// The per-table counts (v4 `OrphanedFileRowGc`, ported at P4.D192 because
+    /// `blobs` became load-bearing). A content row with a blob frees bytes; a
+    /// document-only one does not — and that distinction is exactly what
+    /// `avatar_rolls_collapse_heal`'s `(collected?.blobs ?? 0) > 0` reads (v4
+    /// `23abc1ba1`), so a document-only victim whose link dropped counts as an
+    /// album copy kept, never as an image freed.
+    #[test]
+    fn gc_reports_what_it_removed_per_table() {
+        let db = mount_index_db();
+        seed_content(&db, "with-blob");
+        assert_eq!(
+            gc_orphaned_file_row(&db, "with-blob").unwrap(),
+            Some(OrphanedFileRowGc {
+                documents: 1,
+                blobs: 1,
+                files: 1,
+            })
+        );
+
+        // Document-only content: the same collection, but no bytes released.
+        db.execute(
+            "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes) VALUES ('text', 'text', 10)",
+            [],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO doc_mount_documents (id, fileId, content) VALUES ('text-d', 'text', 'x')",
+            [],
+        )
+        .unwrap();
+        let collected = gc_orphaned_file_row(&db, "text").unwrap();
+        assert_eq!(
+            collected,
+            Some(OrphanedFileRowGc {
+                documents: 1,
+                blobs: 0,
+                files: 1,
+            })
+        );
+        // Spelled as the collapse heal spells it (v4 `(collected?.blobs ?? 0) > 0`)
+        // so this arm moves the day that reading does.
+        let bytes_freed = collected.is_some_and(|c| c.blobs > 0);
+        assert!(
+            !bytes_freed,
+            "a document-only orphan is collected but frees no bytes"
+        );
     }
 
     /// Bug 13 (v4 `7bcd8515`): a document-only / restored / hand-built index
@@ -2835,8 +2916,13 @@ mod orphan_backlog_tests {
         )
         .unwrap();
         // No link references it → gc must collect it.
-        assert!(
+        assert_eq!(
             gc_orphaned_file_row(&db, "solo").unwrap(),
+            Some(OrphanedFileRowGc {
+                documents: 1,
+                blobs: 0,
+                files: 1,
+            }),
             "gc should collect the orphan and NOT throw on the absent blobs table"
         );
         assert_eq!(count(&db, "SELECT COUNT(*) FROM doc_mount_files"), 0);

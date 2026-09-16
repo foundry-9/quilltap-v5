@@ -1488,6 +1488,8 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                         configurations,
                         rows_keyed,
                         victims_deleted,
+                        protected_kept,
+                        album_copies_kept,
                         blobs_deleted,
                         chats_changed,
                         characters_changed,
@@ -1499,6 +1501,12 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                             configurations,
                             rows_keyed,
                             victims_deleted,
+                            // [`23abc1ba1`] What the pass KEPT, alongside what it
+                            // collapsed: a portrait held back, and a victim whose
+                            // bytes stayed because the operator had kept that
+                            // plate in a character's album.
+                            protected_kept,
+                            album_copies_kept,
                             blobs_deleted,
                             chats_changed,
                             characters_changed,

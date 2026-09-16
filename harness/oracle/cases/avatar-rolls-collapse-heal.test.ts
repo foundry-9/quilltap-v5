@@ -7,9 +7,10 @@
  * `recordCompletedMigration`), driven over the shared spec
  * `harness/oracle/fixtures/avatar-rolls-collapse-heal.json`.
  *
- * The scenarios are v4's OWN thirteen test cases from
+ * The scenarios are v4's OWN test cases from
  * `__tests__/unit/migrations/collapse-duplicate-avatar-rolls.test.ts`, rebuilt
- * as data so both implementations walk the same seeds. The migration reads TWO
+ * as data so both implementations walk the same seeds — the original thirteen
+ * plus the album/census cases `23abc1ba1` added for bug 145 (P4.D192). The migration reads TWO
  * databases: the MAIN partition through `migrations/lib/database-utils` (mocked
  * to a shared in-memory DB) and the MOUNT-INDEX partition, which it opens itself
  * — so this oracle borrows the P4.D152 realign oracle's two mechanics verbatim:
@@ -37,8 +38,9 @@
  *     PRESENCE and its `itemsAffected`/`message` are).
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores
- * .claude/ paths. The migration arrived at `7fbf8a55b`, past the `f4ad2c8d1`
- * baseline, so pin the checkout at or after it until the baseline moves):
+ * .claude/ paths. The migration arrived at `7fbf8a55b` and was REWRITTEN at
+ * `23abc1ba1` (bug 145), both past the `ffb6b3119` baseline, so pin the checkout
+ * at or after `23abc1ba1` until the baseline moves):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5W=<this worktree root>
  *   TMPO=/tmp/qt-avatar-rolls-collapse-oracle
@@ -71,6 +73,9 @@ function loadDriver() {
 }
 const Database = loadDriver();
 type DatabaseInstance = ReturnType<typeof Database>;
+
+/** v4's `VAULT_MOUNT` — the character's own vault, where the album lives. */
+const VAULT_MOUNT = 'vault-1';
 
 let testDb: DatabaseInstance = null as unknown as DatabaseInstance;
 let mountDbPath = '';
@@ -156,6 +161,40 @@ interface RollSpec {
   category?: string;
   /** Skip the mount-side seeding entirely (a roll with no blob). */
   noBlob?: boolean;
+  /**
+   * The roll's own link path. v4's `seedRoll` writes
+   * `character-avatars/avatar_Friday_<id>.webp` (`23abc1ba1`); an override is
+   * how a scenario poses a roll living somewhere else.
+   */
+  relativePath?: string;
+}
+
+/**
+ * A second link over a roll's content row — what "the operator kept this plate
+ * in a character's album" looks like in the mount index (v4 `keepInAlbum`,
+ * `23abc1ba1`). `mountPointId` defaults to the character's own vault, a
+ * DIFFERENT mount from the roll's.
+ */
+interface AlbumLinkSpec {
+  rollId: string;
+  mountPointId?: string;
+}
+
+/** A plain `files` row outside the pass's avatar predicate (v4's `stowaway`). */
+interface ExtraFileSpec {
+  id: string;
+  originalFilename: string;
+  category?: string;
+  prompt: string | null;
+  model?: string | null;
+  createdAt: string;
+  storageKey?: string | null;
+  /**
+   * `survivor-of:<rollId>` derives the key from that roll's (model, prompt)
+   * through v4's REAL `deriveLegacyAvatarCacheKey`, so neither side ever
+   * carries a hand-copied hash. Any other string is written literally.
+   */
+  generationKey?: string | null;
 }
 interface Scenario {
   name: string;
@@ -168,6 +207,20 @@ interface Scenario {
     content?: string | null;
     opaqueContent?: string | null;
   }>;
+  /** Album copies of a roll's bytes, seeded after the rolls unless… */
+  albumLinks?: AlbumLinkSpec[];
+  /**
+   * …this is set, which seeds them BEFORE the rolls. rowid order is what
+   * `Array.prototype.find` walks in `dropVictimRollLink`'s links SELECT (no
+   * ORDER BY), so an album link seeded first is what makes the
+   * `!isPhotosRelativePath` conjunct load-bearing rather than incidentally
+   * correct.
+   */
+  albumLinksFirst?: boolean;
+  /** Link ids deleted AFTER seeding and BEFORE the run (v4's case (c)). */
+  deleteLinks?: string[];
+  /** `files` rows outside the avatar predicate (v4's `stowaway`). */
+  extraFiles?: ExtraFileSpec[];
   /** Plant the ledger row first — the cross-app "v4 already ran it" shape. */
   preCompleted?: boolean;
   /** Run the pass twice (idempotence). */
@@ -217,7 +270,8 @@ function makeMountDb(file: string): DatabaseInstance {
     CREATE TABLE "doc_mount_file_links" (
       "id" TEXT PRIMARY KEY,
       "fileId" TEXT NOT NULL,
-      "mountPointId" TEXT NOT NULL
+      "mountPointId" TEXT NOT NULL,
+      "relativePath" TEXT NOT NULL DEFAULT ''
     );
     CREATE TABLE "doc_mount_chunks" ("id" TEXT PRIMARY KEY, "linkId" TEXT NOT NULL);
   `);
@@ -254,11 +308,67 @@ function seedRoll(
     .prepare('INSERT INTO "doc_mount_documents" (id, fileId) VALUES (?, ?)')
     .run(`doc-${roll.id}`, contentId);
   mount
-    .prepare('INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId) VALUES (?, ?, ?)')
-    .run(`link-${roll.id}`, contentId, spec.mountPointId);
+    .prepare(
+      'INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId, relativePath) VALUES (?, ?, ?, ?)'
+    )
+    .run(
+      `link-${roll.id}`,
+      contentId,
+      spec.mountPointId,
+      roll.relativePath ?? `character-avatars/avatar_Friday_${roll.id}.webp`
+    );
   mount
     .prepare('INSERT INTO "doc_mount_chunks" (id, linkId) VALUES (?, ?)')
     .run(`chunk-${roll.id}`, `link-${roll.id}`);
+}
+
+/**
+ * v4's `keepInAlbum` (`23abc1ba1`): a SECOND link, over the same content row,
+ * in a `photos/` folder. Two links over one set of bytes is what keeping a
+ * plate looks like — and only the roll's own is the collapse's to take.
+ */
+function keepInAlbum(mount: DatabaseInstance, link: AlbumLinkSpec): void {
+  mount
+    .prepare(
+      'INSERT INTO "doc_mount_file_links" (id, fileId, mountPointId, relativePath) VALUES (?, ?, ?, ?)'
+    )
+    .run(
+      `album-${link.rollId}`,
+      `content-${link.rollId}`,
+      link.mountPointId ?? VAULT_MOUNT,
+      `photos/kept-${link.rollId}.webp`
+    );
+}
+
+/** A `files` row the pass never groups — seeded with a key it did not mint. */
+function seedExtraFile(
+  main: DatabaseInstance,
+  scenario: Scenario,
+  extra: ExtraFileSpec,
+  deriveKey: (model: string | null, prompt: string) => string
+): void {
+  let key: string | null = extra.generationKey ?? null;
+  if (key && key.startsWith('survivor-of:')) {
+    const rollId = key.slice('survivor-of:'.length);
+    const roll = scenario.rolls.find((r) => r.id === rollId);
+    if (!roll) throw new Error(`survivor-of names no roll: ${rollId}`);
+    key = deriveKey(roll.model === undefined ? 'flux-dev' : roll.model, roll.prompt ?? '');
+  }
+  main
+    .prepare(
+      `INSERT INTO "files" (id, originalFilename, category, generationPrompt, generationModel, generationKey, storageKey, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      extra.id,
+      extra.originalFilename,
+      extra.category ?? 'IMAGE',
+      extra.prompt,
+      extra.model === undefined ? 'flux-dev' : extra.model,
+      key,
+      extra.storageKey ?? null,
+      extra.createdAt
+    );
 }
 
 function plantLedgerRow(db: DatabaseInstance, spec: Spec): void {
@@ -303,7 +413,7 @@ function dumpAll(main: DatabaseInstance, mount: DatabaseInstance) {
     doc_mount_documents: q(mount, 'SELECT id, fileId FROM doc_mount_documents ORDER BY id'),
     doc_mount_file_links: q(
       mount,
-      'SELECT id, fileId, mountPointId FROM doc_mount_file_links ORDER BY id'
+      'SELECT id, fileId, mountPointId, relativePath FROM doc_mount_file_links ORDER BY id'
     ),
     doc_mount_chunks: q(mount, 'SELECT id, linkId FROM doc_mount_chunks ORDER BY id'),
   };
@@ -325,6 +435,10 @@ function shapeLogs(calls: LogCall[]) {
     chatsChanged: c.context.chatsChanged ?? null,
     charactersChanged: c.context.charactersChanged ?? null,
     messagesChanged: c.context.messagesChanged ?? null,
+    protectedKept: c.context.protectedKept ?? null,
+    albumCopiesKept: c.context.albumCopiesKept ?? null,
+    unexplainedCount: c.context.unexplainedCount ?? null,
+    fileIds: c.context.fileIds ?? null,
   }));
 }
 
@@ -350,6 +464,10 @@ describe('avatar-rolls-collapse-heal oracle', () => {
     const { loadMigrationState, isMigrationCompleted, recordCompletedMigration } = await import(
       '@/migrations/state'
     );
+    // The `extraFiles` keys are DERIVED through v4's own helper, never copied.
+    const { deriveLegacyAvatarCacheKey } = await import('@/lib/wardrobe/avatar-cache');
+    const deriveKey = (model: string | null, prompt: string) =>
+      deriveLegacyAvatarCacheKey({ modelName: model, prompt });
 
     const lines: string[] = [];
     try {
@@ -358,7 +476,22 @@ describe('avatar-rolls-collapse-heal oracle', () => {
         mountDbPath = path.join(dir, 'quilltap-mount-index.db');
         const mount = makeMountDb(mountDbPath);
         testDb = makeMainDb();
+        // rowid order is a comparand: `dropVictimRollLink`'s links SELECT has no
+        // ORDER BY, so whichever link was inserted first is the one
+        // `Array.prototype.find` reaches first.
+        if (scenario.albumLinksFirst) {
+          for (const link of scenario.albumLinks ?? []) keepInAlbum(mount, link);
+        }
         for (const roll of scenario.rolls) seedRoll(testDb, mount, spec, roll);
+        if (!scenario.albumLinksFirst) {
+          for (const link of scenario.albumLinks ?? []) keepInAlbum(mount, link);
+        }
+        for (const linkId of scenario.deleteLinks ?? []) {
+          mount.prepare('DELETE FROM "doc_mount_file_links" WHERE id = ?').run(linkId);
+        }
+        for (const extra of scenario.extraFiles ?? []) {
+          seedExtraFile(testDb, scenario, extra, deriveKey);
+        }
         for (const c of scenario.chats ?? []) {
           testDb
             .prepare('INSERT INTO chats (id, characterAvatars) VALUES (?, ?)')

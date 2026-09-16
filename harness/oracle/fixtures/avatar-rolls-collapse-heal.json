@@ -1,19 +1,34 @@
 {
   "$note": [
     "Corpus for the tier-2 collapse-duplicate-avatar-rolls differential (P4.D184,",
-    "v4 7fbf8a55b). Read by BOTH sides: harness/oracle/cases/avatar-rolls-collapse-",
-    "heal.test.ts drives v4's REAL migration + REAL ledger write, and",
+    "v4 7fbf8a55b; grown for bug 145 at v4 23abc1ba1, P4.D192). Read by BOTH",
+    "sides: harness/oracle/cases/avatar-rolls-collapse-heal.test.ts drives v4's",
+    "REAL migration + REAL ledger write, and",
     "crates/quilltap-harness/tests/avatar_rolls_collapse_heal_equivalence.rs drives",
     "quilltap_core::db::avatar_rolls_collapse_heal over the same seeds.",
     "",
     "Scenarios 1-13 are v4's OWN thirteen test cases from",
     "__tests__/unit/migrations/collapse-duplicate-avatar-rolls.test.ts, rebuilt as",
-    "data so the two implementations walk identical state. Three more (14-16) ask",
+    "data so the two implementations walk identical state. Four more (14-17) ask",
     "the questions v4's suite does not: the cross-app ledger row, a pass with",
-    "nothing to collapse, and a roll whose storageKey names no blob.",
+    "nothing to collapse, a roll whose storageKey names no blob, and a null model.",
+    "",
+    "18-24 are bug 145's shapes (v4 23abc1ba1). TWO of v4's six new cases are NOT",
+    "here, because the corpus already had them: its `reports the rolls it kept`",
+    "and its census `says nothing about a duplicate it chose to keep` seed exactly",
+    "what scenario 9 seeds, so scenario 9 carries both — the port moves its",
+    "`message` (the kept clause) and its `warns` stay empty. And v4's census case",
+    "is an EARLY-RETURN pass (one roll, no victims), so three of these ask what",
+    "v4's own suite never opens: 22 the post-summary census exit, 23 the",
+    "!isPhotosRelativePath conjunct (an album link in the roll's OWN mount, seeded",
+    "FIRST — the mount conjunct alone saves v4's `vault-1` cases), and 24 a",
+    "non-zero `protectedKept` in the summary log bag (v4's protected case takes",
+    "the early return, where no summary line is emitted at all).",
     "",
     "A roll seeds a `files` row PLUS its vault file/blob/link/chunk, exactly as",
-    "v4's `seedRoll` does. `noBlob: true` seeds the files row alone."
+    "v4's `seedRoll` does. `noBlob: true` seeds the files row alone. `albumLinks`",
+    "is v4's `keepInAlbum`: a SECOND link over the SAME content row, at",
+    "photos/kept-<id>.webp, in `vault-1` unless the entry names a mount."
   ],
   "mountPointId": "mount-1",
   "nowIso": "2026-09-14T12:00:00.000Z",
@@ -186,6 +201,85 @@
           "createdAt": "2026-06-01T00:00:00.000Z",
           "model": null
         }
+      ]
+    },
+    {
+      "name": "keeps-the-album-photo-and-its-bytes-when-the-roll-is-collapsed",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "albumLinks": [{ "rollId": "old" }]
+    },
+    {
+      "name": "still-frees-the-bytes-of-a-roll-nobody-kept",
+      "rolls": [
+        { "id": "kept", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "unkept", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-02-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "albumLinks": [{ "rollId": "kept" }]
+    },
+    {
+      "name": "drops-the-files-row-of-a-roll-whose-only-surviving-link-is-the-album-copy",
+      "rolls": [
+        { "id": "orphaned", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "albumLinks": [{ "rollId": "orphaned" }],
+      "deleteLinks": ["link-orphaned"]
+    },
+    {
+      "name": "the-census-names-a-duplicate-key-this-pass-did-not-double-up-on-purpose",
+      "rolls": [
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "extraFiles": [
+        {
+          "id": "stowaway",
+          "originalFilename": "background_scene.webp",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "storageKey": null,
+          "generationKey": "survivor-of:new"
+        }
+      ]
+    },
+    {
+      "name": "the-census-fires-after-a-collapse-too",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "extraFiles": [
+        {
+          "id": "stowaway",
+          "originalFilename": "background_scene.webp",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "storageKey": null,
+          "generationKey": "survivor-of:new"
+        }
+      ]
+    },
+    {
+      "name": "an-album-link-in-the-rolls-own-mount-is-still-not-the-rolls-own-link",
+      "rolls": [
+        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "albumLinksFirst": true,
+      "albumLinks": [{ "rollId": "old", "mountPointId": "mount-1" }]
+    },
+    {
+      "name": "keeps-a-portrait-and-still-collapses-an-unprotected-sibling",
+      "rolls": [
+        { "id": "portrait", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        { "id": "spare", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-02-01T00:00:00.000Z" },
+        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+      ],
+      "characters": [
+        { "id": "char-1", "avatarOverrides": null, "defaultImageId": "link-portrait" }
       ]
     }
   ]
