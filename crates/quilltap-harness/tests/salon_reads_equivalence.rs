@@ -507,6 +507,82 @@ fn salon_reads_match_oracle() {
         cases.push(("get_route_trail_and_cycle_order".into(), got, want));
     }
 
+    // P4.D195 (v4 `1fefadb9a`, bug 147): the two cycle columns' non-default
+    // arms — the shapes neither the committed fixture nor a JSON-encoding
+    // plant can pose. Mirrors the oracle's `setCycleColumnsRaw`. Runs LAST
+    // (after the rotation plant above) because each writes both columns on the
+    // shared db and no later read depends on them.
+    //
+    // (a) EMPTY STRING in both columns: `'' ?? '[]'` is `''` in JS, so v4 puts
+    //     the empty string on the wire. v5 must agree (`.filter(|v|
+    //     !v.is_null())` leaves a non-null `Value::String("")` alone).
+    {
+        let solo_owned = solo.clone();
+        rt.block_on(db.write(move |w| {
+            // Undo the previous block's route-trail plant first: the oracle
+            // gets a FRESH fixture copy per case and this one does not ask for
+            // a trail, while the Rust side shares ONE db. NULL is the
+            // fixture's untouched value for the column.
+            w.main()
+                .connection()
+                .execute_batch("UPDATE \"chat_messages\" SET \"routeTrail\" = NULL")?;
+            w.main().connection().execute(
+                "UPDATE \"chats\" SET \"spokenThisCycleParticipantIds\" = '', \
+                 \"cycleOrderParticipantIds\" = '' WHERE \"id\" = ?1",
+                rusqlite::params![solo_owned],
+            )?;
+            Ok(())
+        }))
+        .expect("plant empty-string cycle columns");
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let mut want = oracle["get_cycle_columns_empty_string"]["body"].clone();
+        strip_rendered_html(&mut want);
+        cases.push(("get_cycle_columns_empty_string".into(), got, want));
+    }
+
+    // (b) SQL NULL in both columns — the legacy row predating them. Neither
+    //     side's `?? '[]'` fires (v4's chat schema `.default('[]')` and v5's
+    //     `db::chats_read` coerce first); this arm proves they agree about
+    //     that, and is the ONLY case exercising a NULL
+    //     `spokenThisCycleParticipantIds`.
+    //
+    //     It also carries the READER'S GUARANTEE, stated executably. P4.D195's
+    //     M2 mutation — projecting `Value::Null` instead of `'[]'` when the
+    //     value is null — SURVIVED the entire differential, because no input
+    //     can reach that fallback: the reader has already coerced. That is a
+    //     real finding about coverage, not a proof to delete, and the honest
+    //     response is to pin the reason rather than pretend the corpus covers
+    //     the branch. If `db::chats_read` ever stopped coercing, THIS is what
+    //     reddens, and the projection's `?? '[]'` (kept for v4 fidelity)
+    //     becomes load-bearing instead of decorative.
+    {
+        let solo_owned = solo.clone();
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute(
+                "UPDATE \"chats\" SET \"spokenThisCycleParticipantIds\" = NULL, \
+                 \"cycleOrderParticipantIds\" = NULL WHERE \"id\" = ?1",
+                rusqlite::params![solo_owned],
+            )?;
+            Ok(())
+        }))
+        .expect("plant null cycle columns");
+        let raw_row = db
+            .read_main(|c| quilltap_core::db::chats_read::find_by_id(c, solo))
+            .expect("read the null-column row back")
+            .expect("the solo chat exists");
+        for key in ["spokenThisCycleParticipantIds", "cycleOrderParticipantIds"] {
+            assert!(
+                raw_row.get(key).is_some_and(|v| v.is_string()),
+                "reader_never_yields_null_cycle_columns: `db::chats_read` handed                  `{key}` as {:?} for a NULL column — it must coerce to a string                  (`'[]'`) before the projection sees it. The projection's                  `?? '[]'` fallback has been unreachable on that guarantee; it                  is now load-bearing, so re-check `api::salon::chat_get`.",
+                raw_row.get(key)
+            );
+        }
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let mut want = oracle["get_cycle_columns_null"]["body"].clone();
+        strip_rendered_html(&mut want);
+        cases.push(("get_cycle_columns_null".into(), got, want));
+    }
+
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
 

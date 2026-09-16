@@ -363,25 +363,51 @@ fn assemble_chat_get(
             .filter(|v| !v.is_null())
             .unwrap_or(json!([])),
     );
-    // NOTE (P4.D171, measured 2026-09-09 against the `78b381a96` pin): the
-    // work order's §C.2 claimed v4's chat-GET whitelist
-    // (`app/api/v1/chats/[id]/handlers/get.ts:574-629`) projects
-    // `cycleOrderParticipantIds` "after impersonatingParticipantIds". It does
-    // NOT — `git show 2aca73ad6 -- 'app/api/v1/chats/[id]/handlers/get.ts'`
-    // is EMPTY (that commit never touches the file), and `grep
-    // cycleOrderParticipantIds handlers/get.ts` at the `78b381a96` tip finds
-    // nothing. `app/salon/[id]/types.ts:242` declares the field optional and
-    // `SalonView.tsx:753` already reads `chat?.cycleOrderParticipantIds`, but
-    // the server-side whitelist wiring that would populate it is simply
-    // absent — a genuine v4 gap between the client and server halves of this
-    // commit, not a survey-vs-hunk misread on this port's side (verified via
-    // the shipped hunks, never the commit message, per
-    // `work-order-facts-need-the-same-verification-as-commit-prose`). NOT
-    // projecting it here keeps v5 byte-identical to v4's ACTUAL response.
-    // P4.D172/P4.D177 should re-check this before relying on §C.2's claim.
     out.insert(
         "activeTypingParticipantId".into(),
         get_v("activeTypingParticipantId").unwrap_or(Value::Null),
+    );
+    // The cycle's rotation and who has already spoken in it (v4 `1fefadb9a`,
+    // bug 147 — `handlers/get.ts:362-373`). v4's Salon recomputes "whose turn
+    // is it" locally from these two columns plus history
+    // (`calculateTurnStateFromHistory` takes them as arguments); without them
+    // on the wire it read `undefined` for both, which parses to an empty
+    // rotation and an empty spoken-set, so `selectNextSpeaker` could never
+    // take its cycle-order branch and fell through to a fresh weighted roll on
+    // every recompute — the client contradicting a rotation the server had
+    // already drawn and persisted. They are STRINGS on purpose: the column is
+    // the JSON the turn manager's parsers expect, and re-encoding it here
+    // would put a second shape of the same fact on the wire.
+    //
+    // The earlier NOTE here (P4.D171, measured 2026-09-09 against the
+    // `78b381a96` pin) recorded CORRECTLY that v4's whitelist did not project
+    // `cycleOrderParticipantIds` — a genuine v4 client/server gap, which
+    // `1fefadb9a` closes. It is retired with this port; the both-directions
+    // pin it left in `salon_reads_equivalence` tripped at the target pin
+    // exactly as designed (all five `get_*` cases, bodies AND key order).
+    //
+    // `?? '[]'` per v4, even though `db::chats_read` already coerces a NULL
+    // column to `'[]'` before the verb sees it (`:210-221`) — so the fallback
+    // is UNREACHABLE today and exists only so a reader change can never
+    // reintroduce `undefined`. That is measured, not asserted: P4.D195's M2
+    // mutation (`.unwrap_or(Value::Null)`) SURVIVED the whole differential,
+    // which is the proof that no input can reach it, and
+    // `salon_reads_equivalence`'s `reader_never_yields_null_cycle_columns`
+    // arm states the reader's guarantee executably so the deadness cannot
+    // quietly stop being true. A stored EMPTY STRING is NOT nullish in JS and
+    // passes through as `''`; measured identical on both sides by the
+    // `get_cycle_columns_empty_string` corpus arm.
+    out.insert(
+        "spokenThisCycleParticipantIds".into(),
+        get_v("spokenThisCycleParticipantIds")
+            .filter(|v| !v.is_null())
+            .unwrap_or(json!("[]")),
+    );
+    out.insert(
+        "cycleOrderParticipantIds".into(),
+        get_v("cycleOrderParticipantIds")
+            .filter(|v| !v.is_null())
+            .unwrap_or(json!("[]")),
     );
     out.insert("isPaused".into(), json!(bool_or("isPaused", false)));
     // v4 `bd419ae9` (bug 37): surfaced so the client can explain a silent

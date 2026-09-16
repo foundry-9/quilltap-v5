@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — fix(salon): the chat GET projects the cycle's two turn columns (v4 bug 147)
+
+_Versions: core 0.0.928, harness 0.0.821._
+
+`api::salon::chat_get` now projects `spokenThisCycleParticipantIds` and
+`cycleOrderParticipantIds` as the raw JSON strings the row carries — v4
+`1fefadb9a`'s `handlers/get.ts:362-373`, at v4's exact position (after
+`activeTypingParticipantId`, before `isPaused`) and with v4's `?? '[]'`
+default, so an unset row reads as "no rotation on file" and never as
+`undefined`. Strings on purpose: the column is the JSON the turn manager's
+parsers expect, and re-encoding it here would put a second shape of the same
+fact on the wire.
+
+The P4.D171 NOTE that deliberately omitted `cycleOrderParticipantIds` is
+retired. It measured v4 correctly — v4's whitelist named neither column, a
+genuine client/server gap — and `1fefadb9a` is v4 closing it. The
+both-directions pin that note left in `salon_reads_equivalence` tripped at the
+target pin exactly as the drift ledger predicted: all five pre-existing `get_*`
+cases red on the body AND on the P4.D183 key-order pin, before a line of the
+port was written.
+
+The corpus gains the two arms neither the committed fixture nor a
+JSON-encoding plant can pose, over a new raw-plant helper mirrored on both
+sides: an EMPTY STRING in both columns (measured — `'' ?? '[]'` is `''` in JS,
+so v4 puts the empty string on the wire, not `'[]'`) and a genuine SQL NULL
+(both sides coerce to `'[]'` before the projection sees it, and this is the
+only case exercising a null `spokenThisCycleParticipantIds` at all). 16 → 18
+cases. A survey correction rides along: the committed fixture already carried a
+non-empty spoken set on both chats, so that non-default arm was covered for
+free.
+
+Mutation proofs: projecting the two keys at the END of the object reddens all
+seven key-order pins and NO body case — which is why the key-order pin exists;
+dropping the spoken key reddens all seven cases both ways. The third —
+projecting `Value::Null` for the default — SURVIVED, and is recorded rather
+than deleted: `db::chats_read` coerces a NULL column before the verb sees it,
+so that fallback is unreachable and kept only for v4 fidelity. The reason is
+now executable instead of a comment, as the null arm asserts the reader's
+guarantee directly.
+
 #### 2026-09-16 — docs(porting): order the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93)
 
 _Docs-only change._

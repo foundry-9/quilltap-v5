@@ -71,6 +71,18 @@ interface CaseSpec {
    * sides mirror them). */
   setRouteTrail?: { messageId: string; trail: unknown[] };
   setCycleOrder?: { chatId: string; order: string[] };
+  /** P4.D195 (v4 `1fefadb9a`, bug 147): write the two cycle columns RAW, so a
+   * case can pose a value `setCycleOrder`'s `JSON.stringify` cannot — an EMPTY
+   * STRING (not nullish in JS, so v4's `?? '[]'` does NOT fire) and a genuine
+   * SQL NULL (which v4's chat schema `.default('[]')` and v5's
+   * `db::chats_read` both coerce to `'[]'` before the projection sees them).
+   * Written as raw UPDATEs on the `chats` row (both differential sides mirror
+   * them). `undefined` here leaves the column untouched. */
+  setCycleColumnsRaw?: {
+    chatId: string;
+    spoken?: string | null;
+    order?: string | null;
+  };
 }
 
 function mockRequest(url: string): unknown {
@@ -217,6 +229,23 @@ async function runCase(
       JSON.stringify(c.setCycleOrder.order),
       c.setCycleOrder.chatId,
     ]);
+  }
+
+  // P4.D195 (bug 147): the raw plants — the arms the JSON-encoding helper
+  // above cannot pose. Each column is written only when the case names it.
+  if (c.setCycleColumnsRaw) {
+    if (c.setCycleColumnsRaw.spoken !== undefined) {
+      await rawQuery('UPDATE "chats" SET "spokenThisCycleParticipantIds" = ? WHERE "id" = ?', [
+        c.setCycleColumnsRaw.spoken,
+        c.setCycleColumnsRaw.chatId,
+      ]);
+    }
+    if (c.setCycleColumnsRaw.order !== undefined) {
+      await rawQuery('UPDATE "chats" SET "cycleOrderParticipantIds" = ? WHERE "id" = ?', [
+        c.setCycleColumnsRaw.order,
+        c.setCycleColumnsRaw.chatId,
+      ]);
+    }
   }
 
   try {
@@ -408,6 +437,37 @@ async function main(): Promise<void> {
         chatId: soloId,
         order: ['b1000000-0000-4000-8000-000000000002', 'b1000000-0000-4000-8000-000000000001'],
       },
+    },
+    // P4.D195 (v4 `1fefadb9a`, bug 147): the two cycle columns now ride the
+    // chat GET as RAW JSON strings. The five `get_*` cases above cover the
+    // ordinary arms for free — the committed fixture already carries a
+    // NON-EMPTY `spokenThisCycleParticipantIds` on both chats, and
+    // `get_route_trail_and_cycle_order` plants a non-`'[]'` rotation — so what
+    // is left are the two arms neither the fixture nor a JSON-encoding plant
+    // can pose.
+    //
+    // (a) An EMPTY STRING in both columns. `'' ?? '[]'` is `''` in JS (an
+    //     empty string is not nullish), so v4 puts `''` on the wire, NOT
+    //     `'[]'`. Pinned as whatever the oracle answers, not as a prediction.
+    {
+      name: 'get_cycle_columns_empty_string',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${soloId}`,
+      chatId: soloId,
+      setCycleColumnsRaw: { chatId: soloId, spoken: '', order: '' },
+    },
+    // (b) A genuine SQL NULL in both columns — the legacy row predating them.
+    //     Neither `?? '[]'` actually fires: v4's chat schema defaults the
+    //     column to `'[]'` on read and v5's `db::chats_read` coerces the same
+    //     way, so the projection sees `'[]'` already. This arm is what proves
+    //     the two implementations agree about that, and it is the only case
+    //     that exercises a NULL `spokenThisCycleParticipantIds` at all.
+    {
+      name: 'get_cycle_columns_null',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${soloId}`,
+      chatId: soloId,
+      setCycleColumnsRaw: { chatId: soloId, spoken: null, order: null },
     },
   ];
 
