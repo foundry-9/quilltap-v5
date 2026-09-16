@@ -129272,3 +129272,57 @@ Both `salon_mutations_equivalence.rs` and the fixture pair are outside this
 lane's ownership, so it is recorded here rather than fixed. `salon_reads_
 equivalence` reads the same pair and is green — it never writes down that path.
 `salon_swipe_generate_equivalence` (the other neutrality leg) is **ok**.
+
+### P4.D195 — the lane's verification gate (2026-09-16)
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`, every long
+step backgrounded behind a sentinel and read from the FULL log (no `tail`, no
+`pgrep` loop). Three sibling lanes were gating concurrently — load average
+20–34 throughout, which is why `cli_differential` alone took 603 s.
+
+| step | result |
+|---|---|
+| §R.2 freshness probe | PASS at lane open and before every regen batch |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -D warnings` | clean, DEFAULT feature set |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` + the lane's 33-var env block | **571 binaries / 3,321 passed / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines** |
+| SPA `npm run lint` | clean (952 qt-* classes, guard self-test 5/5) |
+| SPA `npm test` | **434 spec files / 7,349 tests / 0 failed** |
+| SPA `npm run build` | clean |
+| the lane's e2e file by name | 5/5 passed |
+| full Playwright | **321 passed / 0 failed / 6 skipped (10.5 m) — exit 0** |
+
+The six Playwright skips are the standing named parks, unchanged by this lane:
+the five P4.D187 beats held on the shared-fixture title-checkpoint hazard and
+the standing chat-gallery park.
+
+**The lane's families, confirmed RUN inside the block by duration:**
+`salon_reads_equivalence` 0.07 s, `help_tree_equivalence` 1.17 s,
+`help_tree_embed_guard` 0.02 s, `help_doc_sync_guards_equivalence` 0.09 s,
+`help_doc_sync_equivalence` 0.04 s, `cli_differential` 603.46 s.
+`select_speaker_equivalence` and `turn_state_equivalence` report 0.00 s — they
+are pure tier-1 — so they are attested instead by their own `--nocapture` runs
+earlier in the lane, which printed their row counts (`OK: select-speaker
+matched oracle (22 select, 9 select-after)`; `OK: turn-state matched oracle
+(counts [9, 3, 12, 7, 6, 3])`). The help families' positive proof is the
+by-name sweep (15/15 ok, zero SKIP), not the workspace block.
+
+⚠ **§R.10(a) note for the unifier:** `help_doc_sync_equivalence` and
+`help_doc_sync_guards_equivalence` SHARE the env var `QT_FIXTURE_HELP_MAIN`
+with DIFFERENT fixture paths — the exact collision P4.93 renames. The
+workspace block can only carry one value, so it was set to the sync family's;
+both families are proven green by the per-family sweep, which sets each one's
+own vars. Re-run both with the renamed block after P4.93's pick.
+
+**A gate-log trap worth the note:** `grep -c FAILED` over the workspace log
+reported 1 failure that did not exist — it matched a `WARN … FAILED-status
+exclusion disabled` line. The honest counters are `^test result: FAILED` and
+`^test .* \.\.\. FAILED`, both ZERO here.
+
+**Ownership check:** `git diff --stat main...HEAD` lists 21 files, every one in
+this lane's Owns column. The Tier-3 tripwire is EMPTY — `git diff main...HEAD --
+'crates/quilltap-core/src/api/turn*.rs' select_speaker.rs turn_state.rs db/
+crates/quilltap-web/tests/fixtures/` produces nothing, so no server turn
+handler, no `chats_read.rs`, and neither committed fixture DB was touched.
