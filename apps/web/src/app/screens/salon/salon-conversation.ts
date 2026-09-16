@@ -113,6 +113,7 @@ import {
   isUserDrivenSeat,
   nudgeParticipant,
   parseCycleOrder,
+  parseSpokenThisCycle,
   removeFromQueue,
   resolveFloorSeatId,
   type TurnSelectionResult,
@@ -2047,25 +2048,53 @@ export class SalonConversation {
   );
 
   /**
-   * Re-query the next speaker whenever the chat settles and no turn is
-   * running. The rotation's ONE live source is `state.cycleOrder` on every
-   * `?action=turn` response (`applyTurnResponse` below — the `query` action
-   * resolves and persists a cycle, so a fresh load gets it from the refresh).
-   * The chat-GET leg §C.2 named is DORMANT by design: P4.D171 measured that
-   * v4's chat GET never projects `cycleOrderParticipantIds` (its server
-   * whitelist was never written — `handlers/get.ts:572-629`), so v5's does
-   * not either, and this seed runs only if a server ever sends the key. It is
-   * gated on PRESENCE because this effect re-runs on every `chat()` and
-   * `busy()` emission: unconditionally seeding `parseCycleOrder(undefined)`
-   * (= `[]`) wiped the rotation the turn response had just set, on every send
-   * and every refetch — the §3 unification review of the `78b381a96` round.
+   * Seed the cycle's two turn facts from the chat row, then re-query the next
+   * speaker whenever the chat settles and no turn is running.
+   *
+   * v4 `1fefadb9a` (bug 147) made this seed LIVE. Until then v4's chat-GET
+   * whitelist projected neither cycle column — P4.D171 measured that
+   * correctly, and v5 matched it, so this leg was dormant by design and only
+   * `?action=turn`'s `state.cycleOrder` ever set a rotation. v4's own client
+   * feeds these same two raw strings to `calculateTurnStateFromHistory`
+   * (`SalonView.tsx:790-832`); v5 has no such recompute (it asks the server
+   * whose turn it is — the P4.D177 mechanism divergence, which stands), but
+   * the two PARSED facts are what the participant sidebar's predicted order
+   * reads, so they are seeded here the same way and from the same bytes.
+   *
+   * REPLACING, not merging: `calculateTurnStateFromHistory` builds a fresh
+   * state off the row every time, so the row is the truth for both halves and
+   * a stale client list must not survive a refetch that contradicts it. Every
+   * `invalidateQueries(chatKeys.detail…)` site therefore re-seeds both halves.
+   * That is v4's shape too — its effect depends on the same two chat fields —
+   * and the only window where the two disagree is a chat GET issued BEFORE a
+   * turn action's resolve-and-persist and resolved after it, which v4 has
+   * identically. No guard is invented here that v4 lacks.
+   *
+   * Still gated on PRESENCE, but the gate now means LEGACY SERVER, not
+   * dormancy: a server predating `1fefadb9a` omits both keys, and this effect
+   * re-runs on every `chat()` and `busy()` emission, so seeding
+   * `parseCycleOrder(undefined)` (= `[]`) unconditionally would wipe the
+   * rotation the turn response had just set on every send and every refetch —
+   * the §3 unification review of the `78b381a96` round.
+   *
+   * Known residue, carried from v4's own bug-147 filing: `turnState.queue` is
+   * never seeded from the row on load, so a reload forgets a queued seat until
+   * the next round trip. v4 does not seed it either
+   * (`calculateTurnStateFromHistory` takes no queue), so v5 mirrors that;
+   * `applyTurnResponse` remains the queue's only source. When v4 fixes it,
+   * this is the site.
    */
   private readonly _turnEffect = effect(() => {
     const chat = this.chat();
     const busy = this.busy();
-    if (chat && chat.cycleOrderParticipantIds !== undefined) {
+    if (
+      chat &&
+      (chat.cycleOrderParticipantIds !== undefined ||
+        chat.spokenThisCycleParticipantIds !== undefined)
+    ) {
       const cycleOrder = parseCycleOrder(chat.cycleOrderParticipantIds);
-      this.turnState.update((prev) => ({ ...prev, cycleOrder }));
+      const spokenSinceUserTurn = parseSpokenThisCycle(chat.spokenThisCycleParticipantIds);
+      this.turnState.update((prev) => ({ ...prev, cycleOrder, spokenSinceUserTurn }));
     }
     if (chat && !busy) {
       void this.refreshTurn();
@@ -2093,7 +2122,18 @@ export class SalonConversation {
    * AND the drawn rotation back from `state` (P4.D177 §C.2 — `state.cycleOrder`
    * is the parsed post-resolve list) and rebuild the selection result from the
    * `turn` envelope. `spokenSinceUserTurn` / `lastSpeakerId` are never
-   * refreshed client-side — v4 leaves them at their initial values too.
+   * refreshed from a turn response — v4 leaves them alone here too; the row's
+   * seed in `_turnEffect` is what moves `spokenSinceUserTurn`.
+   *
+   * A CONVERGENCE, not a port: v4 `1fefadb9a` (bug 147) declared
+   * `TurnActionResponse.state.cycleOrder?: string[]` — a field its route had
+   * always sent and its client had dropped — and spreads it truthily
+   * (`...(response.state.cycleOrder ? { cycleOrder: … } : {})`). v5 has read
+   * it since P4.D177 with `?? prev.cycleOrder`. The two spellings agree on
+   * every value the wire can carry, because the only JS values that are falsy
+   * AND nullish-or-absent here coincide: a non-empty array adopts, an EMPTY
+   * array adopts (`[]` is truthy), `null` keeps, absent keeps. Zero code
+   * change; the four rows are pinned in `salon-conversation.spec.ts`.
    */
   private applyTurnResponse(data: unknown): void {
     const body = data as {

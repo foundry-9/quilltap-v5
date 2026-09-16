@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — feat(salon): the chat-GET turn seed goes live and grows its spoken half (v4 bug 147)
+
+_Versions: SPA 0.5.727._
+
+The `_turnEffect` seed has been dormant since P4.D177 — gated on the presence
+of `cycleOrderParticipantIds` precisely because no server sent it. v4
+`1fefadb9a` and this round's server half now do, so the gate opens, and the
+seed takes BOTH halves of the turn state off the row: the rotation through
+`parseCycleOrder` and, new here, the spoken-this-cycle set through
+`parseSpokenThisCycle`. v5 had never seeded `spokenSinceUserTurn` at all, so
+the participant sidebar's `spoken` status has been unreachable on this port
+exactly as v4's own filing says it was in v4. It lights on real data now.
+
+`parseSpokenThisCycle` is an alias, not a second copy: v4 parses the spoken
+column inline in `calculateTurnStateFromHistory` and the rule was measured arm
+for arm against `parseCycleOrder` — falsy, invalid JSON and a non-array all
+read as nothing on file, and non-string elements are dropped rather than
+voiding the result. The four branches are now driven through v4's real code by
+new `turn-state` corpus rows, so "identical" is a measurement rather than a
+claim in a doc comment.
+
+The seed REPLACES rather than merges, because v4's
+`calculateTurnStateFromHistory` builds a fresh state off the row every time, so
+a client list the row contradicts must not survive a refetch. Every
+`invalidateQueries(chatKeys.detail…)` site therefore re-seeds both halves —
+the P4.D187 interplay, now measured and spec-pinned rather than assumed. The
+presence gate stays, but it means LEGACY SERVER now, not dormancy: a server
+predating `1fefadb9a` omits both keys and must not wipe the rotation the turn
+response just set.
+
+`state.cycleOrder` on turn responses is a CONVERGENCE, not a port — v4 declared
+a field its route had always sent, and v5 has read it since P4.D177. All four
+shapes the wire can carry are pinned in a table: a non-empty array adopts, an
+EMPTY array adopts (`[]` is truthy in JS, and not nullish, so v4's spread and
+v5's `??` agree), `null` and absent keep the previous list. Zero code change.
+
+Also here: the sidebar consequence pinned at component level (a discriminating
+pair — the same seat reads `eligible` without the column and `spoken` with it,
+sorted behind the eligible seats as v4's step 6 places it), and a live e2e arm
+that drives a real Skip, reads the column back through the server as the
+independent source, and asserts the badge both mid-turn (no reload — the skip
+handler's own invalidation is what carries it) and after a reload.
+
+Mutation proofs: seeding only the rotation reddens all four spoken assertions;
+merging instead of replacing reddens exactly the refetch arm; dropping the
+presence gate reddens exactly the legacy-server arm.
+
 #### 2026-09-16 — fix(salon): the chat GET projects the cycle's two turn columns (v4 bug 147)
 
 _Versions: core 0.0.928, harness 0.0.821._

@@ -34,7 +34,14 @@ import { isParticipantPresent } from './skip-signal-helpers';
  * server-side; in the browser only `queue` is ever refreshed.
  */
 export interface TurnState {
-  /** Participants who have spoken since the user last spoke. */
+  /**
+   * Participants who have spoken since the user last spoke — semantically
+   * "spoken this cycle", and the input to `computePredictedTurnOrder`'s
+   * `'spoken'` bucket (step 6). Seeded from the chat GET's raw
+   * `spokenThisCycleParticipantIds` string via {@link parseSpokenThisCycle}
+   * (v4 `1fefadb9a`, bug 147); never refreshed from a turn response, as v4
+   * does not refresh it either.
+   */
   spokenSinceUserTurn: string[];
   /** The participant whose turn it is (null = user's turn). */
   currentTurnParticipantId: string | null;
@@ -44,16 +51,28 @@ export interface TurnState {
   lastSpeakerId: string | null;
   /**
    * The whole cycle's speaking order, drawn once up front and followed seat by
-   * seat (v4 `TurnState.cycleOrder`, P4.D177 — the client mechanism divergence:
-   * v5's SPA has no `calculateTurnStateFromHistory`, so this is set from
-   * `?action=turn`'s `state.cycleOrder` on every turn response (the ONE live
-   * source — a fresh load's `query` refresh resolves and returns it) and
-   * never recomputed client-side. The chat-GET leg ({@link parseCycleOrder}
-   * over the raw `cycleOrderParticipantIds` string) is DORMANT: P4.D171
-   * measured that v4's chat GET never projects the key, so neither does v5's,
-   * and the seed fires only if a server ever sends it. Empty when the current
-   * cycle has not drawn a rotation yet, in which case step 4 below falls back
-   * to the old talkativeness-descending guess.
+   * seat (v4 `TurnState.cycleOrder`, P4.D177).
+   *
+   * TWO live sources, as v4 has: the chat GET's raw
+   * `cycleOrderParticipantIds` string, parsed by {@link parseCycleOrder} and
+   * seeded on every `chat()` emission (v4 feeds the same string to
+   * `calculateTurnStateFromHistory`), and `?action=turn`'s
+   * `state.cycleOrder` on every turn response, which carries the rotation
+   * between refetches. The chat-GET leg was DORMANT until P4.D195: P4.D171
+   * measured correctly that v4's chat GET projected neither cycle column, so
+   * v5's did not either and the seed could never fire; v4 `1fefadb9a` (bug
+   * 147) closed that gap and v5's projection followed.
+   *
+   * The client mechanism divergence STANDS and is unrelated: v5's SPA has no
+   * `calculateTurnStateFromHistory` / `selectNextSpeaker` recompute — it asks
+   * the server whose turn it is. So v5 never reproduced bug 147's banner
+   * half (the banner is server-authoritative here) but DID reproduce its
+   * sidebar half, where an unseeded {@link TurnState.spokenSinceUserTurn}
+   * made the `'spoken'` status unreachable. P4.D195 closed that.
+   *
+   * Empty when the current cycle has not drawn a rotation yet, in which case
+   * step 4 of `computePredictedTurnOrder` falls back to the old
+   * talkativeness-descending guess.
    */
   cycleOrder: string[];
 }
@@ -156,6 +175,22 @@ export function parseCycleOrder(raw: string | null | undefined): string[] {
     return [];
   }
 }
+
+/**
+ * Parse the chat GET's raw `spokenThisCycleParticipantIds` JSON string into a
+ * participant-id array (v4 `1fefadb9a`, bug 147).
+ *
+ * v4 has no named function for this: `calculateTurnStateFromHistory`
+ * (`lib/chat/turn-manager/state.ts:50-62`) parses the string inline. MEASURED
+ * arm for arm against {@link parseCycleOrder}, the rule is IDENTICAL — a falsy
+ * string, invalid JSON and a non-array value all read as "nobody has spoken
+ * yet", and a non-string element within an array value is dropped rather than
+ * voiding the whole result. So this is one function with two documented
+ * callers rather than a second copy of the same four branches; the alias
+ * exists because the two fields are different facts and a reader following
+ * `spokenThisCycleParticipantIds` should land on its own name.
+ */
+export const parseSpokenThisCycle = parseCycleOrder;
 
 /** The queue position for a participant (1-indexed), or 0 if not queued (v4 `getQueuePosition`). */
 export function getQueuePosition(state: TurnState, participantId: string): number {

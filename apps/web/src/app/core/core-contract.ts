@@ -3337,8 +3337,23 @@ export interface ChatDetail {
    * between (P4.D177 §C.2). `'[]'` (or an absent/empty value) reads as "no
    * rotation on file"; parse with `parseCycleOrder` (`chat/turn-order.ts`),
    * never `JSON.parse` directly.
+   *
+   * SENT FROM v4 `1fefadb9a` (bug 147) — until then v4's chat-GET whitelist
+   * named neither cycle column, so this key was declared and never populated
+   * on either side. Optional still, because that is how v4 declares it
+   * (`app/salon/[id]/types.ts`) and because an older server omits it.
    */
   cycleOrderParticipantIds?: string;
+  /**
+   * Who has already spoken in the current cycle, RAW off the row — the same
+   * shape and the same rule as {@link ChatDetail.cycleOrderParticipantIds}
+   * beside it (v4 `1fefadb9a`, bug 147: `spokenThisCycleParticipantIds:
+   * chatMetadata.spokenThisCycleParticipantIds ?? '[]'`). Parse with
+   * `parseSpokenThisCycle` (`chat/turn-order.ts`) — v4 parses it inline in
+   * `calculateTurnStateFromHistory` by exactly the rule `parseCycleOrder`
+   * applies, never `JSON.parse` directly.
+   */
+  spokenThisCycleParticipantIds?: string;
   /**
    * The chat's blob mount point — the store whose `images/` folder backs
    * relative markdown image refs (v4 `MessageContent` `blobMountPointId`). v4

@@ -373,5 +373,101 @@ test.describe('P4.9H1 — the Salon chat sidebar', () => {
     const positions = expectedNames.map((n) => visibleNames.indexOf(n));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+
+    // ---------------------------------------------------------------------
+    // P4.D195 (v4 `1fefadb9a`, bug 147) — the `spoken` status becomes
+    // REACHABLE, live.
+    //
+    // v4's filing calls it "a status that existed and was unreachable": the
+    // chat GET named neither cycle column, so the client's turn state carried
+    // an empty spoken-set forever and no seat was ever marked as having had
+    // its say. v5 reproduced exactly that half of the bug (its banner half it
+    // never had — the banner is server-authoritative here). This rides the
+    // same fresh chat the rotation assertion above built.
+    //
+    // The lever is a SKIP, not a send: `skipUserTurn` writes the seat into
+    // `spokenThisCycleParticipantIds` through `computeSpokenThisCycleAfterSkip`
+    // with no model call at all, so the beat is deterministic. Impersonating
+    // an LLM seat is what makes every active seat one the banner speaks for,
+    // so the Skip always has a floor to pass (the `salon-floor-seat-flow`
+    // recipe).
+    //
+    // The status renders in exactly ONE place — `collapsedPositionBadgeClass`
+    // on the collapsed strip's badge (measured: the expanded card has no
+    // status render) — so the sidebar is collapsed for this arm.
+    {
+      // Impersonate the first LLM seat, then reload so the client adopts it.
+      const impResp = await page.request.post('/api/dispatch', {
+        data: { type: 'chatImpersonate', chatId, participantId: activeLlmSeats[0].id },
+      });
+      expect(impResp.ok(), `chatImpersonate → ${impResp.status()}`).toBe(true);
+
+      await page.evaluate(() => localStorage.setItem('quilltap.chat-sidebar.collapsed', 'true'));
+      await page.reload();
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 20_000 });
+
+      // The badge for a seat, by its position in the collapsed strip's roster.
+      const badgeClassFor = async (participantId: string): Promise<string> => {
+        const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+        const b = (await resp.json()) as {
+          data?: { chat?: { participants?: Array<{ id: string; character?: { name?: string } }> } };
+        };
+        const name = (b.data?.chat?.participants ?? []).find((p) => p.id === participantId)
+          ?.character?.name;
+        const button = page
+          .locator('qt-chat-sidebar .qt-chat-sidebar-collapsed-avatar')
+          .filter({ has: page.locator(`[title^="${name}"]`) })
+          .or(page.locator(`qt-chat-sidebar .qt-chat-sidebar-collapsed-avatar[title^="${name}"]`));
+        return (await button.first().locator('.qt-chat-sidebar-collapsed-position-badge').getAttribute('class')) ?? '';
+      };
+
+      // The Skip's own request tells us which seat held the floor — armed
+      // BEFORE the click (an assertion after a click reads the pre-click
+      // state).
+      const skipPost = page.waitForRequest((req) => {
+        if (!req.url().includes('/api/dispatch') || req.method() !== 'POST') return false;
+        try {
+          return (JSON.parse(req.postData() ?? '{}') as { action?: string }).action === 'skipUserTurn';
+        } catch {
+          return false;
+        }
+      }, { timeout: 20_000 });
+      const banner = page.locator('.qt-chat-user-turn-banner');
+      await expect(banner).toBeVisible({ timeout: 20_000 });
+      await banner.getByRole('button', { name: 'Skip' }).click();
+      const skipped = (JSON.parse((await skipPost).postData() ?? '{}') as { participantId?: string })
+        .participantId!;
+      expect(skipped, 'the Skip named a seat').toBeTruthy();
+
+      // The SERVER is the independent source: the column now names that seat.
+      await expect
+        .poll(
+          async () => {
+            const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+            const b = (await resp.json()) as {
+              data?: { chat?: { spokenThisCycleParticipantIds?: string } };
+            };
+            return JSON.parse(b.data?.chat?.spokenThisCycleParticipantIds ?? '[]') as string[];
+          },
+          { timeout: 20_000 },
+        )
+        .toContain(skipped);
+
+      // MID-TURN ARM — no reload. The skip handler invalidates
+      // `chatKeys.detail`, the refetch carries the two columns, and
+      // `_turnEffect` re-seeds both halves. Before P4.D195 this badge could
+      // never read `spoken` on any page, reloaded or not.
+      await expect
+        .poll(() => badgeClassFor(skipped), { timeout: 20_000 })
+        .toContain('qt-participant-position-spoken');
+
+      // …and it survives a reload, which is the seed reading the row rather
+      // than a client list that happened to be right.
+      await page.reload();
+      await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 20_000 });
+      await expect
+        .poll(() => badgeClassFor(skipped), { timeout: 20_000 })
+        .toContain('qt-participant-position-spoken');
+    }
   });
 });

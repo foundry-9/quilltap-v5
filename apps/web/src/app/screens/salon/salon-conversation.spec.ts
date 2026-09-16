@@ -158,6 +158,15 @@ function chatDetail(): ChatDetail {
     conciergeOverride: null,
     offSceneCharacters: [],
     lastTurnParticipantId: null,
+    // P4.D195 (v4 `1fefadb9a`, bug 147): the server projects both cycle
+    // columns on EVERY chat GET now, `'[]'` for an unset row and never
+    // `undefined`. `'[]'` is the honest default shape and is behaviourally
+    // inert (both parse to `[]`, which is what `createInitialTurnState`
+    // already holds), so seeding it here changes no other case while making
+    // the presence gate live — and making the legacy-server arm's `delete`
+    // load-bearing, which it was NOT before: the factory carried neither key.
+    cycleOrderParticipantIds: '[]',
+    spokenThisCycleParticipantIds: '[]',
   };
 }
 
@@ -332,21 +341,23 @@ describe('SalonConversation (workspace-tab mode)', () => {
   });
 });
 
-describe('SalonConversation — the drawn rotation (P4.D177 §C.2, the §3 unification catch)', () => {
+describe('SalonConversation — the cycle columns (P4.D177 §C.2 / P4.D195 bug 147)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   /**
-   * `applyTurnResponse` adopts `state.cycleOrder`; the `_turnEffect` re-runs on
-   * every `chat()` / `busy()` emission and used to re-seed the rotation from
-   * the chat GET's `cycleOrderParticipantIds` unconditionally — a key neither
-   * v4's nor v5's GET sends (P4.D171 measured it), so `parseCycleOrder(undefined)`
-   * = `[]` wiped the rotation on every send and every refetch. Modelled here as
-   * production does it: the refresh adopts the server's draw, then `busy` flips
-   * (a send starts). The rotation must survive.
+   * The LEGACY-SERVER arm. `applyTurnResponse` adopts `state.cycleOrder`; the
+   * `_turnEffect` re-runs on every `chat()` / `busy()` emission and must not
+   * re-seed from a GET that carries neither cycle column — `parseCycleOrder(
+   * undefined)` = `[]` would wipe the rotation on every send and every
+   * refetch (the §3 unification catch of the `78b381a96` round). A server
+   * predating v4 `1fefadb9a` sends no such key; v5's presence gate is what
+   * keeps it working. Modelled as production does it: the refresh adopts the
+   * server's draw, then `busy` flips (a send starts). The rotation survives.
    */
   it('keeps the rotation the turn response set when busy flips and the chat GET carries no key', async () => {
     const chat = chatDetail();
     delete (chat as { cycleOrderParticipantIds?: string }).cycleOrderParticipantIds;
+    delete (chat as { spokenThisCycleParticipantIds?: string }).spokenThisCycleParticipantIds;
     const client = stubClient(chat, new Subject<ScopedEvent>());
     const dispatch = client.dispatch as ReturnType<typeof vi.fn>;
     const base = dispatch.getMockImplementation() as (req: CoreRequest) => Promise<CoreResponse>;
@@ -389,6 +400,192 @@ describe('SalonConversation — the drawn rotation (P4.D177 §C.2, the §3 unifi
     expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-c']);
     comp.applyTurnResponse({ turn: { nextSpeakerId: 'p-a' }, state: { queue: ['p-a'] } });
     expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-c']);
+  });
+
+  /**
+   * P4.D195 Tier 2 item 9 — the `state.cycleOrder` CONVERGENCE, as a table
+   * rather than an assertion. v4 `1fefadb9a` spreads the field truthily
+   * (`...(response.state.cycleOrder ? { cycleOrder: … } : {})`); v5 has read
+   * it since P4.D177 as `?? prev.cycleOrder`. Every row the wire can carry
+   * must agree, and the interesting one is the EMPTY ARRAY: `[]` is truthy in
+   * JS, so v4 ADOPTS it, and `[]` is not nullish, so v5 adopts it too. If a
+   * row ever disagreed, v5 would move to v4's shape — it does not.
+   */
+  it('agrees with v4 truthy-spread on every state.cycleOrder shape the wire can carry', async () => {
+    const client = stubClient(chatDetail(), new Subject<ScopedEvent>());
+    const fixture = await render(client);
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[] };
+      applyTurnResponse: (data: unknown) => void;
+    };
+    const seed = () =>
+      comp.applyTurnResponse({ turn: { nextSpeakerId: 'p-a' }, state: { queue: [], cycleOrder: ['seed-1', 'seed-2'] } });
+
+    // Row 1 — a non-empty array: v4 truthy → adopt; v5 `??` → adopt.
+    seed();
+    comp.applyTurnResponse({ turn: {}, state: { queue: [], cycleOrder: ['p-x'] } });
+    expect(comp.turnState().cycleOrder).toEqual(['p-x']);
+
+    // Row 2 — an EMPTY array: truthy in JS, so v4 adopts the empty rotation.
+    seed();
+    comp.applyTurnResponse({ turn: {}, state: { queue: [], cycleOrder: [] } });
+    expect(comp.turnState().cycleOrder).toEqual([]);
+
+    // Row 3 — explicit null: falsy for v4, nullish for v5 → keep the previous.
+    seed();
+    comp.applyTurnResponse({ turn: {}, state: { queue: [], cycleOrder: null } });
+    expect(comp.turnState().cycleOrder).toEqual(['seed-1', 'seed-2']);
+
+    // Row 4 — absent: falsy for v4, nullish for v5 → keep the previous.
+    seed();
+    comp.applyTurnResponse({ turn: {}, state: { queue: [] } });
+    expect(comp.turnState().cycleOrder).toEqual(['seed-1', 'seed-2']);
+  });
+
+  /**
+   * P4.D195 Tier 1 item 4(a) — the seed goes LIVE. v4 `1fefadb9a` projects
+   * BOTH cycle columns on the chat GET, and v4's client feeds both to
+   * `calculateTurnStateFromHistory`. v5 parses both here. Asserting BOTH
+   * halves is the point: seeding only the rotation was the pre-P4.D195 shape,
+   * and `spokenSinceUserTurn` had never been seeded on this port at all.
+   */
+  it('seeds BOTH halves of the turn state from the chat GET row', async () => {
+    const chat = chatDetail();
+    chat.cycleOrderParticipantIds = '["p-b","p-a"]';
+    chat.spokenThisCycleParticipantIds = '["p-c"]';
+    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; spokenSinceUserTurn: string[] };
+    };
+    expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
+    expect(comp.turnState().spokenSinceUserTurn).toEqual(['p-c']);
+  });
+
+  /**
+   * P4.D195 Tier 1 item 4(b) — the P4.D187 refetch interplay, MEASURED. Every
+   * `invalidateQueries(chatKeys.detail…)` site re-seeds both halves from the
+   * row, and the row REPLACES rather than merges: `calculateTurnStateFromHistory`
+   * builds a fresh state off the row each time, so a client list the row
+   * contradicts must not survive. Modelled as the turn tail does it — a turn
+   * response sets one rotation, then a refetch carries a different one.
+   */
+  it('re-seeds both halves when a refetch carries a different row', async () => {
+    const chat = chatDetail();
+    chat.cycleOrderParticipantIds = '["p-b","p-a"]';
+    chat.spokenThisCycleParticipantIds = '["p-c"]';
+    // A NEW object per answer, driven by a mutable holder: TanStack's
+    // structural sharing keeps the previous reference when the payload is
+    // deep-equal, and returning the SAME object would leave `chatQuery.data()`
+    // identical so the computed never re-emits and the effect never re-runs —
+    // the false-green shape the `f6eac168` §3 review caught.
+    let served: ChatDetail = chat;
+    const client = stubClient(chat, new Subject<ScopedEvent>());
+    const dispatch = client.dispatch as ReturnType<typeof vi.fn>;
+    const base = dispatch.getMockImplementation() as (req: CoreRequest) => Promise<CoreResponse>;
+    dispatch.mockImplementation(async (req: CoreRequest) => {
+      if (req.type === 'chatGet') {
+        return { type: 'chat', data: { chat: { ...served } } } as unknown as CoreResponse;
+      }
+      return base(req);
+    });
+    const fixture = await render(client);
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; spokenSinceUserTurn: string[] };
+      applyTurnResponse: (data: unknown) => void;
+      chatQuery: { refetch: () => Promise<unknown> };
+    };
+    expect(comp.turnState().cycleOrder).toEqual(['p-b', 'p-a']);
+
+    // A turn response moves the rotation between refetches.
+    comp.applyTurnResponse({ turn: {}, state: { queue: [], cycleOrder: ['p-a'] } });
+    expect(comp.turnState().cycleOrder).toEqual(['p-a']);
+
+    // The refetch lands: the row wins, on BOTH halves, replacing not merging.
+    served = { ...chat, cycleOrderParticipantIds: '["p-a","p-c"]', spokenThisCycleParticipantIds: '["p-b"]' };
+    await comp.chatQuery.refetch();
+    for (let i = 0; i < 5; i++) {
+      fixture.detectChanges();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-c']);
+    expect(comp.turnState().spokenSinceUserTurn).toEqual(['p-b']);
+  });
+
+  /**
+   * P4.D195 Tier 1 item 4(d) — v4's parse rule, on the wire. Invalid JSON, a
+   * non-array value, and non-string ELEMENTS: the first two read as "nothing
+   * on file", the third drops the bad members rather than voiding the result
+   * (v4's `.filter`, not an all-or-nothing refusal).
+   */
+  it("applies v4's tolerant parse to both raw strings — invalid JSON and a non-array read as nothing on file", async () => {
+    const chat = chatDetail();
+    chat.cycleOrderParticipantIds = 'not json at all';
+    chat.spokenThisCycleParticipantIds = '{"nope":1}';
+    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; spokenSinceUserTurn: string[] };
+    };
+    expect(comp.turnState().cycleOrder).toEqual([]);
+    expect(comp.turnState().spokenSinceUserTurn).toEqual([]);
+  });
+
+  it("applies v4's tolerant parse to both raw strings — non-string ELEMENTS are dropped, not fatal", async () => {
+    const chat = chatDetail();
+    chat.cycleOrderParticipantIds = '["p-a",7,null,"p-b"]';
+    chat.spokenThisCycleParticipantIds = '[3,"p-c"]';
+    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+    const comp = fixture.componentInstance as unknown as {
+      turnState: () => { cycleOrder: string[]; spokenSinceUserTurn: string[] };
+    };
+    expect(comp.turnState().cycleOrder).toEqual(['p-a', 'p-b']);
+    expect(comp.turnState().spokenSinceUserTurn).toEqual(['p-c']);
+  });
+
+  /**
+   * P4.D195 Tier 1 item 5 — the SIDEBAR CONSEQUENCE, wired.
+   *
+   * `computePredictedTurnOrder`'s `'spoken'` bucket (step 6) has been pinned
+   * as a pure function since P4.D177, but PRODUCTION could never reach it on
+   * this port: nothing ever seeded `turnState.spokenSinceUserTurn` (v4's own
+   * bug-147 filing says the same of v4 — "a status that existed and was
+   * unreachable"). What is new is the WIRING, so that is what this pins: the
+   * chat GET's raw string → `parseSpokenThisCycle` → `turnState` → the
+   * `[turnState]` binding → the sidebar's own `turnOrder()`.
+   *
+   * A DISCRIMINATING PAIR, not a single assertion: with an empty spoken set
+   * the seat is `'eligible'`, and only the seeded column moves it to
+   * `'spoken'` — and behind the eligible seat, as v4's step 6 places it.
+   */
+  it("lights the sidebar's 'spoken' status from the chat GET's column, behind the eligible seats", async () => {
+    const seats = [
+      participant({ id: 'pu', controlledBy: 'user', character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+      participant({ id: 'p1', displayOrder: 1 }),
+      participant({ id: 'p2', displayOrder: 2, character: { id: 'char2', name: 'Jeeves', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } }),
+    ];
+    const statuses = async (spoken: string) => {
+      const chat = { ...chatDetail(), participants: seats, spokenThisCycleParticipantIds: spoken, cycleOrderParticipantIds: '[]' };
+      const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+      const sidebar = fixture.debugElement.query(By.directive(ChatSidebar))
+        .componentInstance as unknown as {
+        turnOrder: () => { participantId: string; status: string }[];
+      };
+      const order = sidebar.turnOrder();
+      TestBed.resetTestingModule();
+      return order;
+    };
+
+    // Control: nobody has spoken — p1 is still to come.
+    const before = await statuses('[]');
+    expect(before.find((e) => e.participantId === 'p1')?.status).toBe('eligible');
+
+    // The column names p1 — and only that changed.
+    const after = await statuses('["p1"]');
+    expect(after.find((e) => e.participantId === 'p1')?.status).toBe('spoken');
+    expect(after.find((e) => e.participantId === 'p2')?.status).toBe('eligible');
+    // v4 step 6 places the spoken bucket last: p1 now sorts BEHIND p2.
+    expect(after.findIndex((e) => e.participantId === 'p1')).toBeGreaterThan(
+      after.findIndex((e) => e.participantId === 'p2'),
+    );
   });
 });
 
