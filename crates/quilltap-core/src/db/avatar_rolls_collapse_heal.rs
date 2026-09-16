@@ -72,16 +72,18 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 use serde_json::Value;
 
-// The `db::doc_mount_file_links` home, NOT `photos::photos_paths`: v4 imports its
-// predicate from `lib/photos/photos-paths.ts`, whose `path.posix.dirname` skips a
-// RUN of trailing slashes; v5's `photos_paths` twin strips one, and it is the
-// `doc_mount_file_links` twin that reproduces Node (P4.D192's measurement). The
-// runtime roll rule (`avatar_rolls_service::classify_roll_links`, through
-// `photo_link_summary`'s `isPhotoAlbum`) reads THIS one, so the heal and the
-// runtime agree on every input, as v4's two callers do. (The §3 review of the
-// `2075242f9` round; the consolidation itself is a named follow-up.)
-use crate::db::doc_mount_file_links::{gc_orphaned_file_row, is_photos_relative_path};
+// `photos::photos_paths` is the ONE home, as v4 has one (`lib/photos/
+// photos-paths.ts`, which is what its migration imports) — Node-faithful since
+// P4.91 moved Node's own `dirname` loop into it, and driven by
+// `photos_relative_path_equivalence` over v4's real function. The runtime roll
+// rule (`avatar_rolls_service::classify_roll_links`, through
+// `photo_link_summary`'s `isPhotoAlbum`) reads the same home, so the heal and
+// the runtime agree by construction rather than by choice. (Until P4.91 there
+// were two v5 copies disagreeing on trailing-slash runs, and this import named
+// which one it wanted; there is nothing left to choose between.)
+use crate::db::doc_mount_file_links::gc_orphaned_file_row;
 use crate::db::DbError;
+use crate::photos::photos_paths::is_photos_relative_path;
 use crate::services::avatar_cache::derive_legacy_avatar_cache_key;
 use crate::services::file_storage::parse_mount_blob_storage_key;
 

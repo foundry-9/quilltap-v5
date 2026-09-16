@@ -325,68 +325,6 @@ pub fn detect_database_file_type(relative_path: &str) -> Option<&'static str> {
     }
 }
 
-/// JS `path.posix.dirname(p)` — the directory portion of a POSIX path. Reproduces
-/// Node's algorithm: empty → `"."`; strip trailing slashes; the substring before
-/// the last remaining `/` (or `"/"` for a root path, `"."` when there is no
-/// separator). Used only by [`is_photos_relative_path`].
-fn posix_dirname(p: &str) -> String {
-    if p.is_empty() {
-        return ".".to_string();
-    }
-    let bytes = p.as_bytes();
-    let has_root = bytes[0] == b'/';
-    // Find the last slash that is not a run of trailing slashes.
-    let mut end: Option<usize> = None; // index of the last non-trailing-slash slash
-    let mut matched_slash = true;
-    let mut i = p.len();
-    while i > 1 {
-        i -= 1;
-        if bytes[i] == b'/' {
-            if !matched_slash {
-                end = Some(i);
-                break;
-            }
-        } else {
-            matched_slash = false;
-        }
-    }
-    match end {
-        None => {
-            if has_root {
-                "/".to_string()
-            } else {
-                ".".to_string()
-            }
-        }
-        Some(0) => "/".to_string(),
-        Some(e) if has_root && e == 1 => "/".to_string(),
-        Some(e) => p[..e].to_string(),
-    }
-}
-
-/// True when a `doc_mount_file_links.relativePath` lives in a `photos/` folder —
-/// v4 `isPhotosRelativePath` (`lib/photos/photos-paths.ts`). Case-insensitive
-/// (matching the rest of the mount-index lookups): the path's `dirname`,
-/// lowercased, equals `"photos"` or starts with `"photos/"`. `None`/empty → false.
-/// Used by the stale-chat sweep to protect album-saved generated images.
-///
-/// ⚠ NOT interchangeable with [`crate::photos::photos_paths::is_photos_relative_path`]
-/// despite the identical body: that one's private `posix_dirname` strips a single
-/// trailing slash where Node strips a RUN, so the two disagree on a path ending in
-/// two or more slashes (`"photos//"` → Node and THIS say `"."`/false, the other
-/// says `"photos"`/true). Measured against Node 24 at P4.D192, which is why that
-/// lane's ordered consolidation of the two homes did NOT land — see the lane
-/// record for the ordered shape (make `photos_paths`'s helper Node-faithful and
-/// grow `photos_relative_path_equivalence`'s 13-row corpus with the
-/// trailing-slash-run shapes FIRST; today it is blind to them).
-pub fn is_photos_relative_path(relative_path: Option<&str>) -> bool {
-    let Some(rp) = relative_path.filter(|s| !s.is_empty()) else {
-        return false;
-    };
-    let folder = posix_dirname(rp).to_lowercase();
-    folder == "photos" || folder.starts_with("photos/")
-}
-
 /// Coerce a frontmatter scalar token to a policy boolean — v4 `coercePolicyBool`
 /// (`doc-edit/document-policy.ts:58`). `false`/`no`/`0`/`off`/`n` → false;
 /// `true`/`yes`/`1`/`on`/`y` → true; absent/empty/unrecognized → `fallback`

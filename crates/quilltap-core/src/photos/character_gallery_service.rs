@@ -13,9 +13,7 @@ use serde_json::{json, Value};
 
 use crate::db::characters_read;
 use crate::db::doc_mount_blobs::DocMountBlobsRepository;
-use crate::db::doc_mount_file_links::{
-    is_photos_relative_path, DocMountFileLinksRepository, LinkBlobInput,
-};
+use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkBlobInput};
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::DbError;
 use crate::photos::keep_image_markdown::{
@@ -25,7 +23,8 @@ use crate::photos::keep_image_markdown::{
 };
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
 use crate::photos::photos_paths::{
-    build_photos_relative_path, is_character_album_relative_path, PHOTOS_FOLDER,
+    build_photos_relative_path, is_character_album_relative_path, is_photos_relative_path,
+    PHOTOS_FOLDER,
 };
 use crate::photos::resolve_character_avatar::build_mount_file_url;
 use crate::photos::save_image_to_album::{

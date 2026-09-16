@@ -165,6 +165,34 @@ than deleted: `db::chats_read` coerces a NULL column before the verb sees it,
 so that fallback is unreachable and kept only for v4 fidelity. The reason is
 now executable instead of a comment, as the null arm asserts the reader's
 guarantee directly.
+#### 2026-09-16 — refactor(photos): one `is_photos_relative_path`, and the collapse heal stops naming which copy it wants (P4.91)
+
+_Versions: core 0.0.929._
+
+The second copy in `db::doc_mount_file_links` is gone — the twin and the
+private `posix_dirname` it carried — and its six importers read
+`photos::photos_paths`: `api::chat_media`, `photos::photo_link_summary`,
+`photos::character_gallery_service`, `services::maintenance` (the module and
+its test), and `db::avatar_rolls_collapse_heal`. v4 has one home too
+(`lib/photos/photos-paths.ts`, which all 21 of its call sites import,
+migration included), so this is the shape being ported, not a v5 tidy-up.
+
+The heal's thirteen-line justification for reaching into `doc_mount_file_links`
+is rewritten: it explained which of two disagreeing copies the heal wanted and
+why, and there is nothing left to choose between. The heal and the runtime roll
+rule now agree by construction rather than by choice.
+
+`services::maintenance`'s `photos_relative_path_predicate` is retired — a second
+near-identical suite pinning one function from a second module. All ten of its
+asserts live in `photos_paths`'s own test beside the trailing-slash-run rows and
+the `posix_dirname` table.
+
+Nothing production can reach moves: every `relativePath` a writer mints goes
+through `normalise_relative_path` or `collapse_slashes` (both strip trailing
+slashes) or through `build_photos_relative_path("{timestamp}-{slug}.{ext}")`, so
+no writer can produce even a single trailing slash, let alone the run the two
+copies disagreed on.
+
 #### 2026-09-16 — fix(photos): the album predicate skips a RUN of trailing slashes, as Node does (P4.91)
 
 _Versions: core 0.0.928, harness 0.0.821._

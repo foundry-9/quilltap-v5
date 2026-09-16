@@ -1713,7 +1713,7 @@ pub async fn chat_attach_mount_file(
     // construction, than vision could produce, and free.
     let mut description = String::new();
     let mut description_source = "empty";
-    if crate::db::doc_mount_file_links::is_photos_relative_path(Some(relative_path)) {
+    if crate::photos::photos_paths::is_photos_relative_path(Some(relative_path)) {
         if let Some(from_markdown) =
             crate::photos::keep_image_markdown::build_attach_description_from_kept_image(
                 mount_file.extracted_text.as_deref(),

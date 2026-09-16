@@ -10,11 +10,12 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
-use crate::db::doc_mount_file_links::{is_photos_relative_path, DocMountFileLinksRepository};
+use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_files::DocMountFilesRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::DbError;
 use crate::photos::keep_image_markdown::parse_kept_image_frontmatter;
+use crate::photos::photos_paths::is_photos_relative_path;
 
 fn empty() -> Value {
     json!({ "count": 0, "linkers": [] })

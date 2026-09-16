@@ -29,12 +29,13 @@
 use serde_json::Value;
 
 use crate::clock::iso_to_ms;
-use crate::db::doc_mount_file_links::{is_photos_relative_path, DocMountFileLinksRepository};
+use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_files::DocMountFilesRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::files::{FileSweepRow, FilesRepository};
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
+use crate::photos::photos_paths::is_photos_relative_path;
 
 use super::queue_service::{resolve_stale_chat_days, retention_cutoff_iso};
 
@@ -372,7 +373,6 @@ pub async fn collapse_stale_chat_assets(
 #[cfg(test)]
 mod tests {
     use super::collapse_stale_chat_assets;
-    use crate::db::doc_mount_file_links::is_photos_relative_path;
     use crate::db::runtime::Db;
     use crate::test_support::captured_with as captured;
 
@@ -549,21 +549,11 @@ mod tests {
         assert!(warn[0].contains("error="), "{:?}", warn[0]);
     }
 
-    #[test]
-    fn photos_relative_path_predicate() {
-        // In a photos/ folder → true (case-insensitive).
-        assert!(is_photos_relative_path(Some("photos/a.webp")));
-        assert!(is_photos_relative_path(Some("Photos/a.webp")));
-        assert!(is_photos_relative_path(Some("PHOTOS/a.webp")));
-        // A nested photos/ subfolder → true (startsWith "photos/").
-        assert!(is_photos_relative_path(Some("photos/sub/a.webp")));
-        // Not in photos/ → false.
-        assert!(!is_photos_relative_path(Some("images/a.webp")));
-        assert!(!is_photos_relative_path(Some("a.webp"))); // dirname "." → false
-        assert!(!is_photos_relative_path(Some("my-photos/a.webp"))); // dirname "my-photos"
-        assert!(!is_photos_relative_path(Some("photosx/a.webp")));
-        // null/empty → false.
-        assert!(!is_photos_relative_path(None));
-        assert!(!is_photos_relative_path(Some("")));
-    }
+    // `photos_relative_path_predicate` lived here until P4.91 — a second
+    // near-identical suite pinning one function from a second module. All ten
+    // of its asserts are now in `photos::photos_paths::tests::
+    // photos_relative_path_detection`, beside the trailing-slash-run rows and
+    // the `posix_dirname` table, which is where the one home's contract
+    // belongs. This module's own coverage of the predicate is the sweep's
+    // album-protection behaviour, exercised by the cases above.
 }
