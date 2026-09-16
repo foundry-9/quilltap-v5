@@ -2540,7 +2540,21 @@ where
     if let Some(api_key_id) = connection_profile.get("apiKeyId").and_then(Value::as_str) {
         match api_keys::find_by_id(main, api_key_id) {
             Ok(Some(k)) => api_key = k.key_value,
-            _ => return GeneratedGreeting::none(),
+            // P4.90: v4 `app/api/v1/chats/route.ts:647` warns here and returns
+            // `NO_GREETING`; v5 returned silently. The `_` arm covers BOTH a
+            // missing row and a read failure because v4's own
+            // `findApiKeyByIdAndUserId`
+            // (`lib/database/repositories/connection-profiles.repository.ts:288`)
+            // is a `safeQuery` with a `null` fallback — a read error reaches
+            // v4's `if (!storedKey)` exactly as a missing row does, so both
+            // reach the same warn on both sides.
+            _ => {
+                tracing::warn!(
+                    context = "autoGenerateFirstMessage",
+                    "[Chats v1] Connection profile is missing its API key"
+                );
+                return GeneratedGreeting::none();
+            }
         }
     }
 
@@ -2571,7 +2585,7 @@ where
                 .map(str::to_string),
         })
         .collect();
-    if let Ok(fmc) = build_first_message_context(
+    match build_first_message_context(
         db,
         deps.embedding,
         &character_id,
@@ -2585,19 +2599,31 @@ where
     )
     .await
     {
-        greeting_memories = fmc
-            .participant_memories
-            .into_iter()
-            .map(|m| GreetingMemory {
-                about_character_name: m.about_character_name,
-                summary: m.summary,
-            })
-            .collect();
-        greeting_project = fmc.project_context.map(|pc| GreetingProjectContext {
-            name: pc.name,
-            description: pc.description,
-            instructions: pc.instructions,
-        });
+        Ok(fmc) => {
+            greeting_memories = fmc
+                .participant_memories
+                .into_iter()
+                .map(|m| GreetingMemory {
+                    about_character_name: m.about_character_name,
+                    summary: m.summary,
+                })
+                .collect();
+            greeting_project = fmc.project_context.map(|pc| GreetingProjectContext {
+                name: pc.name,
+                description: pc.description,
+                instructions: pc.instructions,
+            });
+        }
+        // P4.90: v4 `app/api/v1/chats/route.ts:672` — an ERROR line, then the
+        // ladder carries on with no memories and no project context. v5
+        // swallowed the `Err` in an `if let Ok(...)`, so a chat created against
+        // a damaged mount index produced a memory-less greeting with nothing in
+        // `combined.log` naming the cause.
+        Err(e) => tracing::error!(
+            character_id = %character_id,
+            error = %e,
+            "[Chats v1] Failed to build first message context"
+        ),
     }
 
     // Recent-conversations block (swallow errors).
@@ -2793,12 +2819,24 @@ where
 
     // Attempt 2: strip memories (they may be triggering the content filter).
     if !greeting_memories.is_empty() {
+        // P4.90: v4 `app/api/v1/chats/route.ts:882` — INSIDE the try, before the
+        // call, so the count it names is the list that is being stripped.
+        tracing::info!(
+            character_id = %character_id,
+            original_memory_count = greeting_memories.len(),
+            "[Chats v1] Retrying greeting generation without memories"
+        );
         let mut r = base_request();
         r.project_context = greeting_project.clone();
         r.recent_conversations_block = recent_block_opt(&recent_conversations_block);
         match generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
             Ok(res) => {
                 if !res.content.is_empty() {
+                    // P4.90: v4 `:895` — the success line for THIS rung only.
+                    tracing::info!(
+                        character_id = %character_id,
+                        "[Chats v1] Greeting generation succeeded on retry without memories"
+                    );
                     return GeneratedGreeting::from_result(&res);
                 }
                 if res.content_filter_detected {
@@ -2868,6 +2906,13 @@ where
         match generate_greeting_message(deps.streaming, &r, make_log().as_ref()).await {
             Ok(res) => {
                 if !res.content.is_empty() {
+                    // P4.90: v4 `app/api/v1/chats/route.ts:942` — the success
+                    // line for the FINAL rung only. Its sentence is what tells a
+                    // `combined.log` reader which rung recovered the greeting.
+                    tracing::info!(
+                        character_id = %character_id,
+                        "[Chats v1] Greeting generation succeeded on final retry"
+                    );
                     return GeneratedGreeting::from_result(&res);
                 }
             }
@@ -3098,9 +3143,29 @@ pub fn build_recent_conversations_block(
     if limit <= 0 {
         return String::new();
     }
-    let eligible =
-        chats_read::find_recent_summarized_by_character(main, character_id, limit, current_chat_id)
-            .unwrap_or_default();
+    // P4.90: v4 wraps the ONE call to this helper in a try/catch and warns
+    // (`app/api/v1/chats/route.ts:692`, `{ characterId, error }`). v5's helper is
+    // infallible by SIGNATURE — the throw v4 catches is this `Err`, swallowed
+    // here — so the warn belongs at the swallow, not at the (unreachable) caller
+    // arm. The greeting is the only caller on either side (v4
+    // `lib/memory/memory-recap.ts:69` is imported once, by `route.ts:686`), so
+    // the two sites are the same site.
+    let eligible = match chats_read::find_recent_summarized_by_character(
+        main,
+        character_id,
+        limit,
+        current_chat_id,
+    ) {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(
+                character_id = %character_id,
+                error = %e,
+                "[Chats v1] Failed to build recent-conversations block for greeting"
+            );
+            Vec::new()
+        }
+    };
     if eligible.is_empty() {
         return String::new();
     }
@@ -3808,6 +3873,24 @@ mod tests {
         hits[0]
     }
 
+    /// The `one_warn` shape for any level (P4.90 needed INFO and ERROR too).
+    /// The target is matched as a whole token for the same reason `one_warn`
+    /// does it — `contains` on a target is a PREFIX match (the P4.D127 finding).
+    fn one_at<'a>(captured: &'a [String], level: &str, needle: &str) -> &'a String {
+        let prefix = format!("{level} quilltap_core::services::chat_create ");
+        let hits: Vec<&String> = captured
+            .iter()
+            .filter(|l| l.starts_with(&prefix) && l.contains(needle))
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one {level} carrying {needle:?}; captured:\n{}",
+            captured.join("\n")
+        );
+        hits[0]
+    }
+
     fn no_line_with(captured: &[String], needle: &str) {
         assert!(
             !captured.iter().any(|l| l.contains(needle)),
@@ -4155,5 +4238,327 @@ mod tests {
             "[Chats v1] Concierge fallback for greeting generation failed",
         );
         no_line_with(&captured, "Greeting abandoned");
+    }
+    // =======================================================================
+    // P4.90 — the SIX `autoGenerateFirstMessage` lines v5 never carried
+    // (`app/api/v1/chats/route.ts:647 / :672 / :692 / :882 / :895 / :942`),
+    // the `ffb6b3119` §3 review's finding (b), the #103/#110 class.
+    //
+    // Every one is log-only: the greeting the ladder returns, and the row the
+    // caller then writes, are byte-identical with and without the line — so no
+    // differential on either side can see one. The jest oracle cannot help
+    // either (`jest.setup` no-ops the logger — `jest-setup-llm-logging-service-
+    // mocked`), so the SENTENCE bytes are transcribed from `route.ts` at
+    // `ffb6b3119` and every line is pinned HERE by the thread-scoped capture
+    // rig, each arm asserting the silence of the lines it must not fire. That
+    // is also the P4.D190 precedent: the capstone carries no capture layer, so
+    // its five sibling lines are unit-pinned in this module too.
+    // =======================================================================
+
+    const DANGLING_KEY: &str = "dead0000-0000-4000-8000-00000000dead";
+
+    /// The ladder venue with the participant's own profile naming an `apiKeyId`
+    /// that resolves to nothing (v4's `!storedKey`).
+    fn ladder_venue_with_dangling_key() -> (tempfile::TempDir, Db, crate::db::Writer) {
+        let (dir, db, w) = ladder_venue(false);
+        let changed = w
+            .connection()
+            .execute(
+                "UPDATE connection_profiles SET apiKeyId = ?2 WHERE id = ?1",
+                rusqlite::params![OWN_CP, DANGLING_KEY],
+            )
+            .unwrap();
+        assert_eq!(changed, 1, "the seeded own profile must be the one we move");
+        (dir, db, w)
+    }
+
+    /// v4 `:647`. A profile that NAMES a key whose row is gone gets a warn and
+    /// no greeting — not the silent `NO_GREETING` v5 used to answer. The silence
+    /// leg is `a_profile_without_an_api_key_id_never_says_it` below: v4 gates on
+    /// `if (connectionProfile.apiKeyId)`, so a profile with no key id at all is
+    /// the ordinary local-model case and must stay quiet.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_dangling_api_key_id_is_named_and_ends_the_greeting() {
+        let (_d, db, w) = ladder_venue_with_dangling_key();
+        let streaming = PosedByModel::default()
+            .with("claude-sonnet-4-5", vec![Posed::Answer("Never asked.", 4)]);
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "", "the scripted greeting takes over");
+        assert!(
+            streaming.calls().is_empty(),
+            "the ladder returns before any provider call"
+        );
+        let captured = logs.lock().unwrap().clone();
+        let line = one_at(
+            &captured,
+            "WARN",
+            "[Chats v1] Connection profile is missing its API key",
+        );
+        assert!(
+            line.contains("context=autoGenerateFirstMessage"),
+            "in:\n{line}"
+        );
+    }
+
+    /// The silence leg for `:647` AND for the whole attempt-2/attempt-4 set: a
+    /// healthy greeting on the first rung says none of the six.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_profile_without_an_api_key_id_never_says_it() {
+        let (_d, db, w) = ladder_venue(false);
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![Posed::Answer("The wood remembers you.", 5)],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "The wood remembers you.");
+        let captured = logs.lock().unwrap().clone();
+        for needle in [
+            "Connection profile is missing its API key",
+            "Failed to build first message context",
+            "Failed to build recent-conversations block for greeting",
+            "Retrying greeting generation without memories",
+            "Greeting generation succeeded on retry without memories",
+            "Greeting generation succeeded on final retry",
+        ] {
+            no_line_with(&captured, needle);
+        }
+    }
+
+    /// v4 `:672`. The mount-index partition is what
+    /// `build_first_message_context` resolves the other participants through
+    /// (see `ladder_venue`'s note); open the instance without it and the call is
+    /// `Err` — the arm v5 swallowed in an `if let Ok(...)`. The ladder then runs
+    /// on with no memories, which is v4's behaviour too: the line is the whole
+    /// difference.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_first_message_context_is_named_and_the_ladder_continues() {
+        let (dir, _db, w) = ladder_venue(false);
+        seed_bram_remembers_cleo(w.connection());
+        let blind = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: None,
+                llm_logs: None,
+            },
+            LADDER_PEPPER,
+        )
+        .expect("open db without the mount index");
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![Posed::Answer("Bram nods at the treeline.", 6)],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &blind,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            true,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "Bram nods at the treeline.");
+        let captured = logs.lock().unwrap().clone();
+        let line = one_at(
+            &captured,
+            "ERROR",
+            "[Chats v1] Failed to build first message context",
+        );
+        assert!(
+            line.contains("character_id=a3000000-0000-4000-8000-0000000000a3"),
+            "in:\n{line}"
+        );
+        assert!(line.contains("error="), "in:\n{line}");
+        // The memories never loaded, so the memory-stripping rung is skipped —
+        // which is exactly why the failure had to be said out loud.
+        no_line_with(&captured, "Retrying greeting generation without memories");
+    }
+
+    /// v4 `:692`. v5's helper is infallible by signature, so the pin is on the
+    /// helper itself at the swallow (see its own comment for why that is the
+    /// same site). Renaming the ordered column is what makes the read fail —
+    /// dropping a table is the less reliable poke (`a-dropped-table-raises-no-
+    /// read-error`).
+    #[test]
+    fn a_failed_recent_conversations_read_is_named() {
+        let (_d, _db, w) = ladder_venue(false);
+        let c = w.connection();
+        c.execute(
+            "ALTER TABLE chats RENAME COLUMN \"lastMessageAt\" TO \"lastMessageAtGone\"",
+            [],
+        )
+        .unwrap();
+        let logs = fresh_logs();
+        let block = {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let _guard = tracing::subscriber::set_default(subscriber);
+            build_recent_conversations_block(c, BRAM, Some(LADDER_CHAT), 5)
+        };
+        assert_eq!(block, "", "a failed read yields v4's empty block");
+        let captured = logs.lock().unwrap().clone();
+        let line = one_at(
+            &captured,
+            "WARN",
+            "[Chats v1] Failed to build recent-conversations block for greeting",
+        );
+        assert!(
+            line.contains("character_id=a3000000-0000-4000-8000-0000000000a3"),
+            "in:\n{line}"
+        );
+        assert!(line.contains("error="), "in:\n{line}");
+    }
+
+    /// The silence leg for `:692`: a healthy read says nothing.
+    #[test]
+    fn a_healthy_recent_conversations_read_is_silent() {
+        let (_d, _db, w) = ladder_venue(false);
+        let logs = fresh_logs();
+        let block = {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let _guard = tracing::subscriber::set_default(subscriber);
+            build_recent_conversations_block(w.connection(), BRAM, Some(LADDER_CHAT), 5)
+        };
+        assert_eq!(block, "");
+        let captured = logs.lock().unwrap().clone();
+        no_line_with(
+            &captured,
+            "Failed to build recent-conversations block for greeting",
+        );
+    }
+
+    /// v4 `:882` + `:895`. The memory-stripping rung announces itself with the
+    /// count it is about to strip, and announces its own recovery — and NOT the
+    /// final retry's, which is the one thing the two success lines are for.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_memory_strip_rung_announces_itself_and_its_own_recovery() {
+        let (_d, db, w) = ladder_venue(false);
+        seed_bram_remembers_cleo(w.connection());
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![
+                Posed::Fail("502 Bad Gateway"),
+                Posed::Answer("Bram sets down the lantern.", 6),
+            ],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            true,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "Bram sets down the lantern.");
+        assert_eq!(
+            streaming.calls().len(),
+            2,
+            "attempt 1 + the memory-stripping rung, which answers"
+        );
+        let captured = logs.lock().unwrap().clone();
+        let retry = one_at(
+            &captured,
+            "INFO",
+            "[Chats v1] Retrying greeting generation without memories",
+        );
+        for f in [
+            "character_id=a3000000-0000-4000-8000-0000000000a3",
+            // The two memories `seed_bram_remembers_cleo` plants — the count is
+            // the list being stripped, not the list that remains.
+            "original_memory_count=2",
+        ] {
+            assert!(retry.contains(f), "missing {f} in:\n{retry}");
+        }
+        let ok = one_at(
+            &captured,
+            "INFO",
+            "[Chats v1] Greeting generation succeeded on retry without memories",
+        );
+        assert!(
+            ok.contains("character_id=a3000000-0000-4000-8000-0000000000a3"),
+            "in:\n{ok}"
+        );
+        // Attempt 4 never ran, so ITS sentence must be absent — the assertion a
+        // mutation swapping the two sentences has to break.
+        no_line_with(&captured, "Greeting generation succeeded on final retry");
+    }
+
+    /// v4 `:942`, and the other half of the swap proof: a seat with NO memories
+    /// skips the stripping rung entirely, so the recovery that lands is the
+    /// FINAL retry's — and neither attempt-2 sentence may appear.
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_final_retry_announces_its_own_recovery() {
+        let (_d, db, w) = ladder_venue(false);
+        let streaming = PosedByModel::default().with(
+            "claude-sonnet-4-5",
+            vec![
+                Posed::Fail("502 Bad Gateway"),
+                Posed::Answer("The ranger returns at dusk.", 6),
+            ],
+        );
+        let logs = fresh_logs();
+        let greeting = run_ladder(
+            &db,
+            w.connection(),
+            &streaming,
+            &NoApiKeys,
+            false,
+            LADDER_CHAT,
+            logs.clone(),
+        )
+        .await;
+
+        assert_eq!(greeting.content, "The ranger returns at dusk.");
+        assert_eq!(
+            streaming.calls().len(),
+            2,
+            "attempt 1 + the final plain retry; no memories, so no rung 2"
+        );
+        let captured = logs.lock().unwrap().clone();
+        let ok = one_at(
+            &captured,
+            "INFO",
+            "[Chats v1] Greeting generation succeeded on final retry",
+        );
+        assert!(
+            ok.contains("character_id=a3000000-0000-4000-8000-0000000000a3"),
+            "in:\n{ok}"
+        );
+        no_line_with(&captured, "Retrying greeting generation without memories");
+        no_line_with(
+            &captured,
+            "Greeting generation succeeded on retry without memories",
+        );
     }
 }

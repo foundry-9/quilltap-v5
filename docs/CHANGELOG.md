@@ -361,6 +361,41 @@ recipe; the three harness headers gained vintage notes. The P4.50-class
 `sqlite error: ` prefix is RE-MEASURED and has no live site left in these
 families (zero occurrences across the three fresh oracles and the v5 run);
 `DbError::Sqlite`'s Display arm is untouched.
+#### 2026-09-16 — feat(chat-create): say the six greeting-ladder lines v4 says (P4.90)
+
+_Versions: core 0.0.922._
+
+The `ffb6b3119` §3 review's finding (b): v4's `autoGenerateFirstMessage`
+(`app/api/v1/chats/route.ts`) emits six log lines the port never carried, so a
+greeting that failed for a nameable reason failed in silence. All six now land
+at their v4 sites with v4's sentences, levels and bag keys:
+
+- `:647` warn `Connection profile is missing its API key` (`context:
+  'autoGenerateFirstMessage'`) — a profile that names an `apiKeyId` whose row
+  does not resolve. v4's `findApiKeyByIdAndUserId` is a `safeQuery` with a
+  `null` fallback, so a read failure reaches the same warn a missing row does;
+  v5's `_` arm matches.
+- `:672` error `Failed to build first message context` (`characterId`,
+  `error`) — the `Err` arm v5 swallowed in an `if let Ok(...)`.
+- `:692` warn `Failed to build recent-conversations block for greeting`
+  (`characterId`, `error`). v5's helper is infallible by signature, so the line
+  sits at the swallowed read inside it; the greeting is the only caller on
+  either side, so the two are the same site.
+- `:882` info `Retrying greeting generation without memories` (`characterId`,
+  `originalMemoryCount`) — before attempt 2's call, naming the list being
+  stripped.
+- `:895` info `Greeting generation succeeded on retry without memories` and
+  `:942` info `Greeting generation succeeded on final retry` (`characterId`) —
+  which rung actually recovered the greeting.
+
+Every line is log-only: the greeting returned and the row written are
+byte-identical with and without it, and the jest oracle no-ops v4's logger, so
+the sentence bytes are transcribed from `route.ts` at `ffb6b3119` and each line
+is pinned by the thread-scoped capture rig in `chat_create.rs`'s own test module
+(the P4.D190 precedent — the capstone carries no capture layer), each arm
+asserting the silence of the lines it must not fire. Six mutation proofs,
+including a true swap of the two success sentences, which reddens both recovery
+tests.
 
 #### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
 
