@@ -165,6 +165,37 @@ than deleted: `db::chats_read` coerces a NULL column before the verb sees it,
 so that fallback is unreachable and kept only for v4 fidelity. The reason is
 now executable instead of a comment, as the null arm asserts the reader's
 guarantee directly.
+#### 2026-09-16 — fix(logging): the collapse census logs `fileIds` as the array v4 logs, through a named JSON-field convention (P4.91)
+
+_Versions: core 0.0.930, web 0.0.148._
+
+v4's `reportCensus` hands winston a raw `string[]` and `combined.log` reads
+`"fileIds":["id1","id2"]`. v5's reached the same file as a quoted JSON STRING,
+because `tracing` gives a layer strings, ints, bools, floats and `Debug` and
+nothing else — the structured-value door is `Visit::record_value`, which needs
+`tracing`'s `valuable` feature, and this workspace declares `tracing = "0.1"`
+bare.
+
+So the callsite says so in the field name. `log_file.rs` gains one documented
+convention: a field whose name ends in `Json` carries already-serialized JSON,
+and the visitor re-parses it into real structure under the name WITHOUT the
+suffix. A payload that does not parse is neither dropped nor fatal — a logging
+layer that can fail is worse than one that logs a slightly wrong shape — it
+falls back to the raw string under its raw name. `report_census` renames its
+field to `fileIdsJson` and the record now matches v4's byte shape.
+
+The order assumed a census capture test already existed. There was none —
+nothing pinned that warn at all, which is how the wrong shape survived a whole
+round. It has one now: v4's sentence, the count, the parsed array, the
+twenty-id cap, and the silence leg when the invariant holds.
+
+Recorded and deliberately NOT changed: the census SELECT has no `ORDER BY` on
+either side, so `fileIds`' order is scan order — stable on an unindexed fixture,
+instance-dependent on a real instance that has `idx_files_generationKey`. An
+`ORDER BY id` is the fix and a deliberate divergence from v4's shipped SQL;
+it is escalated, not applied. `route_trail.rs`'s `trail` field is the
+convention's second candidate, left to its owning lane.
+
 #### 2026-09-16 — refactor(photos): one `is_photos_relative_path`, and the collapse heal stops naming which copy it wants (P4.91)
 
 _Versions: core 0.0.929._

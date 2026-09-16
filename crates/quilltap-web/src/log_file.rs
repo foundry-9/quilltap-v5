@@ -1093,12 +1093,43 @@ pub fn resolve_destinations(
 /// is `tracing::warn!(error = %e, "…")`); everything else is `context`.
 /// Per P4.18 the *contents* of `context` are v5's own and carry no fidelity
 /// obligation — only the envelope's keys do.
+///
+/// One exception to "contents carry no obligation": where a v4 line logs a
+/// **structured** value — an array, an object — `context` must carry that
+/// structure, not a quoted rendering of it. `tracing` has no way to hand a
+/// layer a `serde_json::Value` here (a `?`-formatted `Vec` renders Rust's
+/// `Debug`, not JSON), so the callsite serializes and names the field with the
+/// [`JSON_FIELD_SUFFIX`] — see [`FieldVisitor::put`].
 #[derive(Default)]
 struct FieldVisitor {
     message: String,
     context: Map<String, Value>,
     error: Option<Value>,
 }
+
+/// The suffix that marks a string field as **already-serialized JSON**, to be
+/// re-parsed into real structure and inserted under the name WITHOUT the
+/// suffix (`fileIdsJson = "[\"a\"]"` → `"fileIds": ["a"]`).
+///
+/// Why a naming convention rather than a typed channel: the [`Visit`] impl
+/// below is everything `tracing` offers a layer — strings, ints, bools, floats
+/// and `Debug`. The structured-value door is `Visit::record_value`, which needs
+/// `tracing`'s `valuable` feature; this workspace declares `tracing = "0.1"`
+/// bare and never enables it (`valuable` appears in `Cargo.lock` only as
+/// `tracing-core`'s OPTIONAL dependency — `cargo tree -p tracing-core -e
+/// features` shows it unselected). So a callsite with a v4 line that logs an
+/// array (`reportCensus`'s `fileIds`, a raw `string[]` winston renders as
+/// `"fileIds":["id1","id2"]`) has two options: emit the quoted JSON string and
+/// have the file record disagree with v4's, or say so in the field name. This
+/// is the second.
+///
+/// [`Visit`]: tracing::field::Visit
+///
+/// A field that does not parse is NOT dropped and NOT a panic — a logging
+/// layer that can fail is worse than one that logs a slightly wrong shape — it
+/// falls back to the raw string under the raw (suffixed) name, which is loud
+/// enough in the file to find.
+const JSON_FIELD_SUFFIX: &str = "Json";
 
 impl FieldVisitor {
     fn put(&mut self, name: &str, value: Value) {
@@ -1121,7 +1152,23 @@ impl FieldVisitor {
                 self.error = Some(json!({ "name": "Error", "message": message }));
             }
             other => {
-                self.context.insert(other.to_string(), value);
+                // The `…Json` convention (see [`JSON_FIELD_SUFFIX`]).
+                let reparsed = match (other.strip_suffix(JSON_FIELD_SUFFIX), &value) {
+                    (Some(stem), Value::String(raw)) if !stem.is_empty() => {
+                        serde_json::from_str::<Value>(raw)
+                            .ok()
+                            .map(|parsed| (stem.to_string(), parsed))
+                    }
+                    _ => None,
+                };
+                match reparsed {
+                    Some((stem, parsed)) => {
+                        self.context.insert(stem, parsed);
+                    }
+                    None => {
+                        self.context.insert(other.to_string(), value);
+                    }
+                }
             }
         }
     }
@@ -1193,6 +1240,117 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LogFileLayer {
             visitor.error,
         );
         self.writer.write(level, &line);
+    }
+}
+
+/// The `…Json` field convention, both arms — P4.91.
+///
+/// The layer itself has no oracle (`crates/quilltap-web/src/lib.rs:133-135`),
+/// so the pin is the byte shape v4's winston writes, quoted here: v4's
+/// `reportCensus` passes `fileIds: unexplained.slice(0, 20)`, a raw
+/// `string[]`, and the record reads `"fileIds":["id1","id2"]`.
+#[cfg(test)]
+mod json_field_tests {
+    use super::*;
+
+    /// One event through the real `FieldVisitor`, the way `on_event` drives it.
+    fn context_of(f: impl FnOnce()) -> Map<String, Value> {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::layer::SubscriberExt;
+
+        struct Grab(Arc<Mutex<Vec<Map<String, Value>>>>);
+        impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Grab {
+            fn on_event(
+                &self,
+                event: &tracing::Event<'_>,
+                _ctx: tracing_subscriber::layer::Context<'_, S>,
+            ) {
+                let mut v = FieldVisitor::default();
+                event.record(&mut v);
+                self.0.lock().unwrap().push(v.context);
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::registry().with(Grab(seen.clone()));
+        {
+            let _g = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = seen.lock().unwrap().first().cloned().unwrap();
+        out
+    }
+
+    /// The arm the census needs: a parseable `…Json` field is re-parsed into
+    /// real structure and loses the suffix. This is byte-for-byte v4's
+    /// `reportCensus` record.
+    #[test]
+    fn a_parseable_json_field_becomes_structure_under_the_unsuffixed_name() {
+        let ctx = context_of(|| {
+            let payload = serde_json::to_string(&["id1", "id2"]).unwrap();
+            tracing::warn!(
+                unexplainedCount = 2,
+                fileIdsJson = payload.as_str(),
+                "Avatar rolls share a generation key this pass did not choose to double up"
+            );
+        });
+
+        assert!(
+            !ctx.contains_key("fileIdsJson"),
+            "the suffix is consumed, not carried: {ctx:?}"
+        );
+        assert_eq!(ctx["fileIds"], json!(["id1", "id2"]));
+        assert_eq!(ctx["unexplainedCount"], json!(2));
+
+        // And through the whole renderer, the line v4's winston writes.
+        let line = render_line("2026-09-16T00:00:00.000Z", "warn", "m", ctx, None);
+        assert!(
+            line.contains(r#""fileIds":["id1","id2"]"#),
+            "the array reaches the file as an array: {line}"
+        );
+        assert!(
+            !line.contains(r#""fileIds":"["#),
+            "and never as a quoted JSON string: {line}"
+        );
+    }
+
+    /// The fallback arm: a `…Json` field whose payload does not parse keeps its
+    /// raw string under its RAW name. A logging layer that can fail is worse
+    /// than one that logs a slightly wrong shape.
+    #[test]
+    fn an_unparseable_json_field_falls_back_to_the_raw_string() {
+        let ctx = context_of(|| {
+            tracing::warn!(fileIdsJson = "not json at all", "m");
+        });
+
+        assert_eq!(ctx["fileIdsJson"], json!("not json at all"));
+        assert!(
+            !ctx.contains_key("fileIds"),
+            "a failed parse claims no unsuffixed name: {ctx:?}"
+        );
+    }
+
+    /// The convention is opt-in by NAME: a field that does not end in the
+    /// suffix is never re-parsed, even when its value happens to be JSON.
+    /// (`route_trail.rs`'s `trail` is exactly such a field — the convention's
+    /// second candidate, left to its owning lane.)
+    #[test]
+    fn a_field_without_the_suffix_is_never_reparsed() {
+        let ctx = context_of(|| {
+            tracing::warn!(trail = r#"[{"a":1}]"#, "m");
+        });
+        assert_eq!(ctx["trail"], json!(r#"[{"a":1}]"#));
+    }
+
+    /// A field named exactly the suffix has no stem to insert under, so it is
+    /// left alone rather than landing under an empty key.
+    #[test]
+    fn a_bare_suffix_name_is_left_alone() {
+        let ctx = context_of(|| {
+            tracing::warn!(Json = "[1,2]", "m");
+        });
+        assert_eq!(ctx["Json"], json!("[1,2]"));
+        assert!(!ctx.contains_key(""), "no empty key: {ctx:?}");
     }
 }
 

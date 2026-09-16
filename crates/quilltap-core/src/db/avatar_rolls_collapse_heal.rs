@@ -502,6 +502,18 @@ fn unexplained_duplicate_keys(
 
     // v4 buckets into a `Map` in SELECT row order; the bucket walk is that
     // insertion order, and it decides the order of `fileIds`.
+    //
+    // ⚠ RECORDED, NOT FIXED (P4.91, escalated for the human's ruling). Neither
+    // side's SELECT above carries an `ORDER BY`, so both engines take whatever
+    // row order the scan hands back. On a fixture with no index on
+    // `generationKey` that is stable and the two agree; the REAL instance has
+    // `idx_files_generationKey` (itself recorded as a fresh-instance divergence
+    // at P4.D192 — a fresh v4 never creates it), and SQLite may satisfy the
+    // `IN`-subquery through the index and hand back a different order. So
+    // `fileIds` is instance-dependent in production while the harness pins one
+    // order. An `ORDER BY id` on BOTH sides is the fix AND a deliberate
+    // divergence from v4's shipped SQL, which is a ruling this lane does not
+    // get to make on its own — so it is written down here rather than added.
     let mut key_order: Vec<String> = Vec::new();
     let mut by_key: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for (id, key, created_at) in rows {
@@ -543,11 +555,19 @@ fn report_census(main: &Connection, protected_kept: &[String]) -> Result<(), DbE
     let first_twenty: Vec<&str> = unexplained.iter().take(20).map(String::as_str).collect();
     let file_ids = serde_json::to_string(&first_twenty)
         .map_err(|e| DbError::Internal(format!("json serialize: {e}")))?;
+    // `fileIdsJson`, not `fileIds`: v4 hands winston a raw `string[]` and the
+    // record reads `"fileIds":["id1","id2"]`. `tracing` has no structured-value
+    // channel here (no `valuable`; a `?`-formatted `Vec` would render Rust's
+    // `Debug`), so the callsite serializes and the file layer's `…Json`
+    // convention re-parses it back into an array under the unsuffixed name —
+    // `quilltap_web::log_file::JSON_FIELD_SUFFIX`. Before P4.91 this field was
+    // spelled `fileIds` and reached `combined.log` as a quoted JSON STRING,
+    // which is the one place v5's record disagreed with v4's.
     tracing::warn!(
         target: "quilltap::migration",
         context = LOG_CONTEXT,
         unexplainedCount = unexplained.len(),
-        fileIds = file_ids.as_str(),
+        fileIdsJson = file_ids.as_str(),
         "Avatar rolls share a generation key this pass did not choose to double up"
     );
     Ok(())
@@ -1133,5 +1153,171 @@ mod drop_victim_roll_link_tests {
             }
         );
         assert_eq!(link_ids(&c), vec!["album".to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod report_census_tests {
+    //! The census warn's fields and its silence leg — P4.91.
+    //!
+    //! The order assumed a census capture test already existed; it did not.
+    //! Nothing pinned the warn at all, which is how its `fileIds` could reach
+    //! `combined.log` as a quoted JSON string for a whole round without a red.
+    //!
+    //! This is the CORE half of the pin: the field is named `fileIdsJson` and
+    //! carries a parseable JSON array of at most 20 ids. The WEB half — that
+    //! the layer turns that into `"fileIds":[…]` — is
+    //! `quilltap_web::log_file::json_field_tests`.
+
+    use super::*;
+    use crate::test_support::captured;
+
+    /// The `files` shape `unexplained_duplicate_keys` reads: id, generationKey,
+    /// createdAt.
+    fn main_db(rows: &[(&str, &str, &str)]) -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            r#"CREATE TABLE "files" (
+                 "id" TEXT PRIMARY KEY,
+                 "generationKey" TEXT,
+                 "createdAt" TEXT
+               );"#,
+        )
+        .unwrap();
+        for (id, key, created) in rows {
+            c.execute(
+                r#"INSERT INTO "files" (id, generationKey, createdAt) VALUES (?1, ?2, ?3)"#,
+                rusqlite::params![id, key, created],
+            )
+            .unwrap();
+        }
+        c
+    }
+
+    /// The silence leg: the invariant holding logs NOTHING. v4's `reportCensus`
+    /// returns early on an empty list, and a census that narrates every clean
+    /// pass is a census nobody reads.
+    #[test]
+    fn a_held_invariant_says_nothing() {
+        let c = main_db(&[
+            ("solo", "key-a", "2026-01-01T00:00:00.000Z"),
+            ("other", "key-b", "2026-01-01T00:00:00.000Z"),
+        ]);
+        let lines = captured(|| {
+            report_census(&c, &[]).unwrap();
+        });
+        assert!(
+            lines.is_empty(),
+            "nothing to report, nothing said: {lines:?}"
+        );
+    }
+
+    /// The warn fires with v4's sentence, v4's count, and `fileIdsJson`
+    /// carrying a parseable ARRAY — not a Rust `Debug` rendering, and not a
+    /// value the file layer would have to quote.
+    #[test]
+    fn an_unexplained_duplicate_reports_its_ids_as_a_json_array() {
+        // Two rows share `key-a`; the newest is the survivor and needs no
+        // excuse, so `older` is the one the census cannot account for.
+        let c = main_db(&[
+            ("newer", "key-a", "2026-01-02T00:00:00.000Z"),
+            ("older", "key-a", "2026-01-01T00:00:00.000Z"),
+        ]);
+        let lines = captured(|| {
+            report_census(&c, &[]).unwrap();
+        });
+
+        assert_eq!(lines.len(), 1, "one warn, not one per row: {lines:?}");
+        let line = &lines[0];
+        assert!(
+            line.starts_with("WARN quilltap::migration"),
+            "v4 logs this at warn on the migration target: {line}"
+        );
+        assert!(
+            line.contains(
+                "Avatar rolls share a generation key this pass did not choose to double up"
+            ),
+            "v4's sentence, byte for byte: {line}"
+        );
+        assert!(line.contains("unexplainedCount=1"), "{line}");
+        // NOT a `contains("fileIdsJson")` — the field NAME being present says
+        // nothing about its payload, and an assertion that cannot fail is not
+        // an assertion. The name is proven by `extract_field` panicking without
+        // it; the payload is proven by parsing it.
+        assert!(
+            !line.contains("fileIds="),
+            "the unsuffixed spelling is what reached combined.log as a quoted \
+             string before P4.91; it must not come back: {line}"
+        );
+
+        // The payload is real JSON — which is the whole premise of the `…Json`
+        // convention the file layer re-parses.
+        let payload = extract_field(line, "fileIdsJson");
+        let parsed: Value = serde_json::from_str(&payload)
+            .unwrap_or_else(|e| panic!("fileIdsJson must be parseable JSON ({e}): {payload:?}"));
+        assert_eq!(parsed, serde_json::json!(["older"]));
+    }
+
+    /// v4 slices to twenty. The array the file record carries is bounded, so a
+    /// pathological instance cannot write an unbounded line.
+    #[test]
+    fn the_array_is_capped_at_twenty() {
+        let mut rows: Vec<(String, String, String)> = Vec::new();
+        // One shared key with 25 rows: the newest survives, 24 are unexplained.
+        for i in 0..25 {
+            rows.push((
+                format!("f{i:02}"),
+                "key-a".to_string(),
+                format!("2026-01-{:02}T00:00:00.000Z", i + 1),
+            ));
+        }
+        let borrowed: Vec<(&str, &str, &str)> = rows
+            .iter()
+            .map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str()))
+            .collect();
+        let c = main_db(&borrowed);
+
+        let lines = captured(|| {
+            report_census(&c, &[]).unwrap();
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("unexplainedCount=24"), "{}", lines[0]);
+
+        let payload = extract_field(&lines[0], "fileIdsJson");
+        let parsed: Value = serde_json::from_str(&payload).expect("parseable");
+        assert_eq!(
+            parsed.as_array().unwrap().len(),
+            20,
+            "v4 slices to twenty; the count says 24: {payload}"
+        );
+    }
+
+    /// Pull one field's value out of the capture layer's `name=value` rendering
+    /// and undo the `Debug` quoting the rig applies to strings.
+    fn extract_field(line: &str, name: &str) -> String {
+        let needle = format!("{name}=");
+        let start = line
+            .find(&needle)
+            .unwrap_or_else(|| panic!("{name} in {line}"))
+            + needle.len();
+        let rest = &line[start..];
+        // The rig renders a `&str` field through `Debug`, so the value is a
+        // quoted, escaped Rust string literal. Parse it back with serde.
+        if rest.starts_with('"') {
+            let end = {
+                let bytes = rest.as_bytes();
+                let mut i = 1;
+                loop {
+                    match bytes[i] {
+                        b'\\' => i += 2,
+                        b'"' => break i + 1,
+                        _ => i += 1,
+                    }
+                }
+            };
+            serde_json::from_str::<String>(&rest[..end]).expect("a Debug-quoted string")
+        } else {
+            rest.split_whitespace().next().unwrap().to_string()
+        }
     }
 }
