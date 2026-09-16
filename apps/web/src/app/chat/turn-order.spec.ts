@@ -679,6 +679,18 @@ describe('resolveFloorSeatId (v4 floor-seat.test.ts)', () => {
     expect(resolveFloorSeatId(lorian.id, withLorian, [], charlie.id)).toBe(charlie.id);
   });
 
+  it('sends the floor to the owner seat when the composer holds an impersonated one', () => {
+    // v4's eighth case (the second sighting, 2026-09-16 — uncommitted in v4 at
+    // the `2075242f9` unification): Leilani is an LLM seat the operator had
+    // taken up, so her `controlledBy` is still 'llm' and only the overlay makes
+    // her theirs. She posts, the floor goes to the owner seat Charlie, and the
+    // composer is still on Leilani — which is what recorded "Leilani declining
+    // the floor" for a turn she had just held.
+    const leilani = seat('leilani');
+    const withLeilani = [...room, leilani];
+    expect(resolveFloorSeatId(charlie.id, withLeilani, ['leilani'], leilani.id)).toBe(charlie.id);
+  });
+
   it('falls back when the rotation names a seat that has left the room', () => {
     const departed = seat('departed', { controlledBy: 'user', status: 'removed' });
     expect(resolveFloorSeatId(departed.id, [...room, departed], [], helene.id)).toBe(helene.id);

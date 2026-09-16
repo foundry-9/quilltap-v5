@@ -71,7 +71,7 @@ fn lines_of(kind: &str, text: &str) -> Vec<Value> {
 fn help_doc_chunking_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_HELP_DOC_CHUNKING") else {
         eprintln!(
-            "skipping help_doc_chunking_matches_oracle: set QT_ORACLE_HELP_DOC_CHUNKING to run \
+            "SKIP: help_doc_chunking_matches_oracle: set QT_ORACLE_HELP_DOC_CHUNKING to run \
              the differential"
         );
         return;

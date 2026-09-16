@@ -1773,7 +1773,7 @@ fn dead_pid() -> u32 {
 #[test]
 fn cli_differential() {
     let Ok(v4_checkout) = std::env::var("QT_V4_CHECKOUT") else {
-        eprintln!("skipping CLI differential: set QT_V4_CHECKOUT=/path/to/quilltap-server (and have Node 24 / QT_NODE)");
+        eprintln!("SKIP: CLI differential: set QT_V4_CHECKOUT=/path/to/quilltap-server (and have Node 24 / QT_NODE)");
         return;
     };
     let node = std::env::var("QT_NODE").unwrap_or_else(|_| "node".to_string());

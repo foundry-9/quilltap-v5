@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — chore(unify): the `2075242f9` round's unification wires — the docs/v4 mirror, the version recount, the eighth floor-seat case, seven skip sentinels, and the record corrections
+
+_Versions: core 0.0.926, harness 0.0.819, host 0.0.137, SPA 0.5.726._
+
+The cross-lane work no single lane could do, on `unify/2075242f9`:
+
+- **The version recount** (the silent-auto-merge trap fired again): three
+  lanes bumped `quilltap-core` from the same base and two bumped the harness,
+  and the cherry-picks merged the identical lines as one — core 0.0.921 + 1
+  (P4.D192) + 2 (P4.D193) + 2 (P4.90) = 0.0.926; harness 0.0.814 + 1 + 2 + 1
+  + 1 = 0.0.819. Host takes a second bump (0.0.137) for P4.D194's help
+  re-vendor, which changes the host's compiled embed without touching a host
+  source file — P4.D191's precedent, and the lane record flagged the choice.
+- **The `docs/v4/` mirror** takes the seven paths P4.D194 pre-listed, copied
+  from the `2075242f9` COMMIT (`git show 2075242f9:<path>`), not from v4's
+  working tree, which is dirty on two of them (bug 147 in flight).
+- **The eighth `resolveFloorSeatId` case** — v4's uncommitted second sighting
+  (the composer holding an impersonated seat while the floor is the owner's)
+  — added to the tsx corpus (53 → 54 rows, regenerated at the target pin) and
+  to the SPA parity spec, so the "seven cases case-for-case" claim does not go
+  stale when v4 commits it.
+- **Seven skip notices normalised to the `SKIP:` sentinel** (P4.D194's
+  finding, widened by one grep): `help_doc_chunking`, `help_doc_ensure`,
+  `help_doc_slug`, `help_doc_sync`, `help_doc_sync_guards`,
+  `embedding_provider_tier3`, `image_ingest_tier2` and Tier R spelled it as
+  prose (`skipping …`), which the gate's `grep -c 'SKIP:'` could not see; the
+  sweep driver keys on both spellings, so nothing there moves.
+- **Record corrections:** the walk doc's and CLAUDE.md's "Tier R failed 5 of
+  223" → four (P4.D194 measured it three times); P4.D190's header's "SIX more
+  v4 log lines stay unported" retired (P4.90 landed them); the
+  `help_tree_embed_guard` provenance comment carries the `2075242f9` vintage.
+
 #### 2026-09-16 — fix(db): the avatar-roll collapse keeps the photo you kept (bug 145)
 
 _Versions: core 0.0.922, harness 0.0.815, host 0.0.136._

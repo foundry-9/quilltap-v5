@@ -3592,7 +3592,7 @@ records THERE. Update this summary only when a phase or round completes.
   v5-invented string and changed the wording — wrong.** v4 emits both lines
   verbatim (`packages/quilltap/bin/quilltap.js:630-634`); the grep that
   "established" otherwise never looked in `packages/quilltap/bin/`, and **Tier R
-  failed 5 of 223 cases**. Reverted, **pinned both ways**, filed upstream as
+  failed 4 of 223 cases** (this bullet first said five; P4.D194 measured four). Reverted, **pinned both ways**, filed upstream as
   **v4 bug 144**; Tier R back to 223/0. cli 0.0.21, zero behaviour change. The
   standing lesson: **run the oracle BEFORE changing a user-facing string** — a
   failed grep is not proof of absence where an oracle exists.

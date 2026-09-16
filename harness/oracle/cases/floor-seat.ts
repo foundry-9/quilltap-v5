@@ -128,6 +128,7 @@ const impOf = (...ids: string[]): [Form, string[]] => ['value', ids];
 
 // ---------------------------------------------------------------------------
 // v4's own seven cases, `__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts`
+// (+ the eighth, uncommitted in v4's tree at the `2075242f9` unification)
 // ---------------------------------------------------------------------------
 
 // (1) prefers the seat the rotation landed on over the composer's seat.
@@ -144,6 +145,10 @@ emit('v4-5a-overlay-wins', V(lorian.id), withLorian, impOf('lorian'), V(charlie.
 emit('v4-5b-no-overlay-falls-back', V(lorian.id), withLorian, EMPTY_IMP, V(charlie.id));
 // (6) falls back when the rotation names a seat that has left the room.
 emit('v4-6-departed-floor', V(departed.id), [...room, departed], EMPTY_IMP, V(helene.id));
+// v4's EIGHTH case (the second sighting, Friday chat `e59f8969`, 2026-09-16 —
+// uncommitted in v4's tree at the `2075242f9` unification): the composer holds an
+// IMPERSONATED LLM seat and the floor is the owner seat; the floor wins.
+emit('v4-8-owner-floor-impersonated-composer', V(charlie.id), withLorian, impOf('lorian'), V(lorian.id));
 // (7) null when neither the floor nor the composer names a seat.
 emit('v4-7a-llm-floor-no-composer', V(wahno.id), room, EMPTY_IMP, NUL);
 emit('v4-7b-nothing-at-all', NUL, room, EMPTY_IMP, NUL);

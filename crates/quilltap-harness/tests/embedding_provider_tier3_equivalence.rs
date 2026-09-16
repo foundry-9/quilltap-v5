@@ -100,7 +100,7 @@ fn load_oracle(path: &str) -> Vec<OracleRow> {
 fn embedding_provider_matches_v4() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_EMBEDDING_PROVIDER") else {
         eprintln!(
-            "skipping embedding_provider_tier3_equivalence: QT_ORACLE_EMBEDDING_PROVIDER unset"
+            "SKIP: embedding_provider_tier3_equivalence: QT_ORACLE_EMBEDDING_PROVIDER unset"
         );
         return;
     };

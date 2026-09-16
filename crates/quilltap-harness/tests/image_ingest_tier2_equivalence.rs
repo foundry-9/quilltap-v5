@@ -248,7 +248,7 @@ fn image_ingest_matches_oracle() {
         (Ok(o), Ok(m), Ok(x)) => (o, m, x),
         _ => {
             eprintln!(
-                "skipping image_ingest_matches_oracle: set QT_ORACLE_IMAGE_INGEST + \
+                "SKIP: image_ingest_matches_oracle: set QT_ORACLE_IMAGE_INGEST + \
                  QT_FIXTURE_INGEST_MAIN + QT_FIXTURE_INGEST_MOUNT to run the differential"
             );
             return;

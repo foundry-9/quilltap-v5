@@ -2,7 +2,9 @@
 //! banner speaks for, and whose turn its Skip passes (v4 `2075242f9`, bug 146).
 //!
 //! Exact on the resolved id (a string or null). The corpus carries v4's own
-//! seven `__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts` cases plus
+//! seven `__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts` cases (plus
+//! the eighth v4 wrote on 2026-09-16, still uncommitted at the `2075242f9`
+//! unification) plus
 //! the shapes that suite does not ask — the verbatim un-validated fallback, the
 //! JS-falsy empty-string floor id, and `find`'s first-match on duplicate ids.
 //!

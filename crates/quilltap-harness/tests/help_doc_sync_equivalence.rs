@@ -86,7 +86,7 @@ fn help_doc_sync_matches_oracle() {
         (Ok(o), Ok(f)) => (o, f),
         _ => {
             eprintln!(
-                "skipping help_doc_sync_matches_oracle: set QT_ORACLE_HELP_SYNC + \
+                "SKIP: help_doc_sync_matches_oracle: set QT_ORACLE_HELP_SYNC + \
                  QT_FIXTURE_HELP_MAIN to run the differential"
             );
             return;

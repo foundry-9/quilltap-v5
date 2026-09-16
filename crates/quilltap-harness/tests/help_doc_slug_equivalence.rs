@@ -28,7 +28,7 @@ struct SlugCase {
 fn help_doc_slug_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_HELP_DOC_SLUG") else {
         eprintln!(
-            "skipping help_doc_slug_matches_oracle: set QT_ORACLE_HELP_DOC_SLUG to run the \
+            "SKIP: help_doc_slug_matches_oracle: set QT_ORACLE_HELP_DOC_SLUG to run the \
              differential"
         );
         return;

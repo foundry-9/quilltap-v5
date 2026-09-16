@@ -125,7 +125,7 @@ fn help_doc_ensure_matches_oracle() {
         (Ok(o), Ok(f)) => (o, f),
         _ => {
             eprintln!(
-                "skipping help_doc_ensure_matches_oracle: set QT_ORACLE_HELP_ENSURE + \
+                "SKIP: help_doc_ensure_matches_oracle: set QT_ORACLE_HELP_ENSURE + \
                  QT_FIXTURE_ENSURE_DIR to run the differential"
             );
             return;
