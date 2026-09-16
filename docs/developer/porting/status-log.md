@@ -130324,3 +130324,57 @@ full runs. It belongs to the documented `ActivityTestGuard` global-counter class
 (the previous round's "structural counter race"); its counters are atomics, not
 tracing state, so nothing this lane touches reaches them. It PASSED in the
 lane's pre-fix gate run too. Recorded, not chased.
+
+### The lane's verification gate (P4.93)
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`, as ONE
+logged, sentinel-guarded chain (`/tmp/claude-503/p493-gate.sh` → a full log, no
+`| tail`), with the lane's **76-variable** env block plus
+`QT_V4_ROOT`/`QT_V4_CHECKOUT` = the lane pin `/tmp/qt-v4-pin-p4.93-2075242f9`
+and `QT_NODE` = the node BINARY. The block is the union of every run stage the
+sweep driver extracts for this lane's families — including BOTH help-sync names
+(`QT_FIXTURE_HELP_MAIN` for the sync family, `QT_FIXTURE_HELP_SYNC_GUARDS_MAIN`
+for the guards family), which is the shape the unifier's block needs.
+
+| stage | result |
+|---|---|
+| §R.2 freshness probe | **PASS** at lane start, again before the regen batch, and again before the final regen — v4 `main`, tree CLEAN, both logs empty |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` | **572 test binaries / 3,338 passed / 3 failed / 2 ignored**, **ZERO `SKIP:` lines** |
+| the lane's families confirmed RUN | `help_doc_sync_guards` 0.11 s, `help_doc_sync` 0.06 s, `avatar_job_tier3` 0.48 s, `role_mapper_inverse_guard` 0.06 s, `native_tool_loop_tier3` 0.01 s, `enclave_step_tier3` 0.65 s, `chat_create_capstone` 4.17 s, `primary_stream_tier3` 0.15 s — none 0.00 s |
+| ownership check | `git diff --stat main...HEAD` — 45 paths, every one in the Owns column; every MUST-NOT-TOUCH path absent (`orchestrator_tier3_equivalence.rs`, `salon_reads_equivalence.rs`, `help_tree_embed_guard.rs`, `db/avatar_rolls_collapse_heal.rs`, `photos/**`, `apps/web/**`, `help/**`, `crates/quilltap-web/src/**`, the drift ledger) |
+| spelling | `git diff main...HEAD | grep -ci` the misspelling → **0** |
+
+**The three reds are NOT this lane's, and each was proven so by restoring
+`main`'s version of the file and re-running against the SAME oracles** (this
+lane's only change to each is the role mapper, and none of the failures is a
+role):
+
+| family | failure | cause |
+|---|---|---|
+| `courier_images_routes_equivalence` | `sqlite error: no such column: generationKey` on 4 save cases | the P4.D182 `files.generationKey` fixture-vintage gap — v4's insert names only the keys it has, v5 binds a fixed column list |
+| `pascal_run_custom_handler_equivalence` | `no such column: cycleOrderParticipantIds` in the store dump | the P4.D171 `chats` fixture-vintage gap, same class |
+| `pascal_custom_tools_route_equivalence` | `case 'list' status` 500 vs 200 | the same family's vintage rot, already recorded by the `49769ec4` round |
+
+Each wants a fixture heal (`ensure_p4d182_columns` / `ensure_p4d171_columns`, or
+a rebuild), not a port change. **For the unifier: they are pre-existing on
+`main` and will red its gate too unless healed.**
+
+**The first gate run found a real defect in this lane's own unit (C)** — see the
+correction record above. It also found ONE cross-lane artifact, which is the
+round's own §R.10 (a) handoff working exactly as written: a sibling lane
+regenerated `/tmp/oracle-help-sync-guards.ndjson` at 09:32 (mine was 09:19)
+under TODAY's env names, from a tree without the new column, so the guards family
+failed deserializing in 0.00 s. Regenerated from this worktree at the lane pin
+and green. **The unifier re-runs both help-sync families after the pick anyway
+(§R.10 (a)); this is why.**
+
+**One flake, recorded not chased:**
+`services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+failed once across five full core-lib runs and passed in the other four plus in
+isolation. It PASSED in the lane's first (pre-fix) gate run too. It belongs to
+the documented `ActivityTestGuard` global-counter class; its counters are
+atomics, not tracing state, so nothing this lane touches reaches them.
