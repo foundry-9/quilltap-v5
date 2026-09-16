@@ -203,6 +203,29 @@ the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
 conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
 the room (`fallback-not-in-room`), and treating an empty-string floor id as
 a name (`empty-string-floor-matching-seat`).
+#### 2026-09-16 — docs(porting): ratify the P4.D194 NO-PORTs, converge dogfood #119, and record the lane
+
+_Docs-only change._
+
+The lane's paper half. Dogfood row #119 moves to **CONVERGED** (v4
+`23abc1ba1`; the deliberate false-claim pin did exactly what it was written
+to do and is now retired by measurement), with one correction of record: the
+divergence reddened **four** Tier R cases, not the five the row and the walk
+doc both claimed while naming only four. The lane record adds the
+`--name-status` file lists that ratify `064ba85df` and `81e02f7a2` NO-PORT
+whole and the non-lib files of `23abc1ba1` / `2075242f9` with them — across
+all four commits the only hunks touching `lib/`, `app/`, `migrations/`,
+`packages/` or `help/` are the three this round ports — the both-directions
+Tier R legs, the three mutation proofs, the help-tree diff decomposed on the
+two NDJSONs, and the `docs/v4/` mirror inventory with byte counts at the pin
+for the unifier (§R.9; this lane copies nothing).
+
+Two items are recorded for the unifier rather than edited: the
+`VENDORED_FILE_COUNT` provenance comment in `help_tree_embed_guard.rs` is one
+vintage stale (green untouched, and a MUST-NOT-TOUCH path for every lane in
+the round), and `quilltap-host` is deliberately not bumped although the help
+re-vendor changes its compiled embed — §R.8 assigns this lane `cli` alone.
+
 #### 2026-09-16 — docs(help): re-vendor `database-protection.md` + `chat-turn-manager.md` from v4 `2075242f9`
 
 _No crate versions bumped._

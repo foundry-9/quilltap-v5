@@ -127848,3 +127848,329 @@ captured (never `| tail`):
 
 Versions: core 0.0.922, harness 0.0.815, host 0.0.136; web / cli / tauri / SPA
 unchanged.
+## P4.D194 — the bug-144 CONVERGENCE, the two NO-PORT ratifications, and the `help/**` re-vendor (the `2075242f9` bug-145/146 drift catch-up + maintenance round)
+
+Lane branch `claude/p4-convergence-ratifications-3c0486`, from `main` at
+`e9173924` (the round's setupphase commit). Oracle baseline `ffb6b3119`;
+target `2075242f9`. **Regen rule: PIN REQUIRED** — two lane-unique detached
+worktrees, `/tmp/qt-v4-pin-p4d194-2075242f9` (the target: the convergence
+measurement, the help re-vendor SOURCE, every help-content regen, Tier R)
+and `/tmp/qt-v4-pin-p4d194-ffb6b3119` (the baseline: the reverse leg of the
+convergence proof and the RED leg of the help-tree measurement). The
+ledger's §2 freshness probe PASSED at lane start — branch `main`, tree
+clean, `2075242f9..main` and `1a2b2164c..bugfix` both empty — and was re-run
+before the regen batch, with `git worktree list` confirming the four sibling
+pins belong to other lanes.
+
+### Unit 1 — the bug-144 CONVERGENCE: the false-liveness pin retired by measurement
+
+**The tripwire fired first, by name, exactly as dogfood #119 designed it.**
+Tier R run against the UNCHANGED v5 with `QT_V4_CHECKOUT` at the target pin:
+
+```
+CLI differential: 223 cases, 4 failures
+[lock clean suspect but fresh heartbeat refuses] stdout differs
+--- v4 ---
+Lock heartbeat is still fresh (Ns ago). Cannot clean.
+A lock counts as held until its heartbeat is 5 minutes stale, even if its process has gone. Wait it out, or use --lock-override to force.
+--- v5 ---
+Lock is still being refreshed (heartbeat Ns ago) — its holder is alive. Cannot clean.
+Stop the running instance first, or use --lock-override to force.
+```
+
+plus `lock clean docker fresh refuses`, `lock clean retired lima env` and
+`lock clean foreign fresh local refuses`, each with the identical diff. It
+fired on the **v4** side of the comparand, which is the proof v4 moved.
+
+**⚠ An order premise REFUTED by measurement: FOUR cases, not five.** Both
+the order ("the five cases the walk measured moving … + one — find the
+fifth by running") and dogfood row #119 ("Tier R … failed 5 of 223 cases")
+claim five while naming only four. There is no fifth: the heartbeat-fresh
+arm is reachable from exactly four `lock clean …` cases, and the fifth
+`lock clean` case that plants a fresh heartbeat — `lock clean renamed host
+live pid` — plants a LIVE `node -e setTimeout` PID, so it takes the
+`alive && is_node` arm above and is untouched. Measured three times: 4 at
+the target pin pre-fix, 0 post-fix, 4 at the baseline pin post-fix. The
+walk's "5" is unsubstantiated and is corrected in row #119's status cell.
+
+**v4's actual post-fix bytes, dumped before retiring anything** (ledger
+§5.4: a trip tells you v4 moved, not HOW). **BOTH lines moved**, which the
+order's shape anticipated and the planner's summary of bug 144 did not
+fully: v4's fix is not only "stop claiming liveness" but "stop prescribing
+a remedy for a process that is gone" — the old second line, *"Stop the
+running instance first, or use --lock-override to force."*, survives ONLY
+in the live-process arm, and the new second line offers waiting, a remedy
+the old text omitted entirely.
+
+**The port.** `lock_clean_refusal_lines`' `heartbeat_fresh` branch carries
+the two new sentences; branch ORDER and refusal semantics are unchanged
+(`a_live_process_outranks_a_fresh_heartbeat`, `a_stale_lock_is_not_refused`
+and `a_reused_pid_is_not_refused_when_the_heartbeat_is_stale` are
+untouched and still green). New `describe_fresh_window_ms(ms: f64) ->
+String` beside `FRESH_MS`, v4's three arms in v4's order — `Math.round`
+first, then `% 60` on the ROUNDED number, which is what makes `0` answer
+`0 minutes` rather than `0 seconds` — through the existing
+`quilltap_core::jsnum::math_round` and `crate::nodefmt::js_num_string`
+twins; `describe_fresh_window()` is the production call at `FRESH_MS`. The
+doc comment at `:514` is rewritten: the false sentence is gone, the arm's
+reasoning is v4's own comment (bug 126's freshness fallback for every
+environment), and the convergence history — including the walk's
+mis-filing and the pin that was written to trip — is kept, because that is
+what makes the next such pin legible.
+
+**The pins.** `a_fresh_heartbeat_keeps_v4s_false_liveness_claim` →
+`a_fresh_heartbeat_says_what_it_tested_and_offers_waiting`: both lines
+pinned exactly, `!first.contains("its holder is alive")`,
+`!second.contains("Stop the running instance first")` (the second guard
+matters — the old remedy is the half a narrower fix would have kept), and
+`second.contains(&describe_fresh_window())` so the sentence and the check
+cannot part. `V4_SECOND_LINE` is split into `V4_LIVE_SECOND_LINE` (pinned
+by the live-process test, v4's only surviving use) and
+`V4_FRESH_SECOND_LINE`. New `the_fresh_window_is_worded_as_v4_words_it`
+pins the JS arithmetic over an INJECTED window at values `FRESH_MS` never
+takes: 300 s → `5 minutes`, 60 s → `1 minute`, 90 s → `90 seconds`, 0 →
+`0 minutes`.
+
+**Both directions, measured.**
+
+| leg | pin | result |
+|---|---|---|
+| red-first, unchanged v5 | `2075242f9` | 223 cases, **4 failures** (the four named) |
+| after the port | `2075242f9` | 223 cases, **0 failures** (457 s — not a skip) |
+| reverse, after the port | `ffb6b3119` | 223 cases, **4 failures** — the same four, the other way |
+
+The reverse leg is the proof the port moved for v4's reason and not by
+accident. Recorded, not kept.
+
+**Mutation proofs** (revert by FILE BACKUP throughout —
+`/tmp/claude-503/p4d194/db_cmd.rs.good`, each revert confirmed with
+`diff -q`; the replacement asserted present in-script per
+`cargo-fmt-silently-voids-a-string-edit-mutation`):
+
+| # | mutation | result |
+|---|---|---|
+| M1 | restore the old FIRST line | unit test red (`a_fresh_heartbeat_says_…`) **and** the same four Tier R cases red |
+| M2 | restore the old SECOND line only | unit test red **and** the same four Tier R cases red, with v4's and v5's first lines identical in the printed diff — **this is the proof Tier R compares BOTH lines**, which the order asked to verify rather than assume |
+| M3 | drop the `minutes == 1.0` arm | `the_fresh_window_is_worded_as_v4_words_it` red on the 60 s row, and nothing else |
+
+Each reddens exactly what it targets; no proof survived as written.
+
+**Regen recipe** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`; from the
+lane worktree):
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d194-2075242f9      # or …-ffb6b3119 for the reverse leg
+CARGO_INCREMENTAL=0 QT_V4_CHECKOUT=$PIN \
+  QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node TZ=UTC \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```
+
+Tier R builds its own per-case instances; no committed fixture is involved
+and no sibling oracle is invalidated. ⚠ The case count is hidden on PASS
+(`tier-r-case-count-hidden-on-pass`) — the `223 cases, N failures` header
+is printed by the test itself and reaches the log only under `--nocapture`.
+
+### Unit 2 — the `help/**` re-vendor (`23abc1ba1` +10, `2075242f9` +3)
+
+`cp` from `/tmp/qt-v4-pin-p4d194-2075242f9/help/` — byte copies, never
+retyped. Afterwards `diff -r "$PIN/help" help` is EMPTY and both md5s match
+the pin (`database-protection.md` `8e5a64d8b823d297adfc4d3d4cad45fe`,
+`chat-turn-manager.md` `3b0a2467319f19c3ddde37ec4998fe60`). `find help
+-type f | wc -l` = **124** — both commits MODIFIED a file and added none,
+so `VENDORED_FILE_COUNT` does not move and `help_tree_embed_guard` needs no
+edit.
+
+**Which families move — P4.D191's measurement independently re-made.**
+`grep -ln "ensureHelpDocsSynced|cwd(), 'help'"` over `harness/oracle/
+cases/help*.ts` hits five files; reading each: `help-tree-sync.test.ts`
+alone walks `process.cwd()/help` for real, `help-sync-ensure.test.ts` and
+`help-sync-tier2.ts` `process.chdir` into scratch/committed roots before
+importing, and `help-chat-orchestrator-tier3.test.ts` /
+`help-docs-routes.test.ts` mock `ensureHelpDocsSynced` to a no-op. The
+negative is executable: grepping four distinctive sentences from the two
+files (two new, two pre-existing) across `harness/oracle/fixtures/`,
+`crates/` and `apps/` returns **nothing** — no committed fixture carries a
+byte of either page.
+
+**`help_tree_equivalence`, both directions.**
+
+- GREEN against an oracle regenerated from the target pin (3,373,703 bytes;
+  `docs OK (124 rows). chunks OK (701 rows).`). `database-protection.md`'s
+  new paragraphs add the chunk that takes 700 → **701**.
+- RED against an oracle from the baseline pin (3,368,849 bytes):
+  `help-tree content oracle FAILED: ["docs", "chunks"]`.
+- The pin verified per ledger §5.2: the target NDJSON carries `courtesy of
+  the house` ×1 and `always speaks for whoever holds the floor` ×1; the
+  baseline NDJSON carries **0** of each.
+
+**"Exactly those two paths" was MEASURED on the two NDJSONs**, not read off
+the panic (the test's `first_diff` names only the first divergence per
+table). Decomposed against each other: `count` 124 = 124, `jobs` 0 = 0,
+`walkOrder` identical (124 entries, same order), the doc-path SET
+identical, and of the 124 doc rows exactly **two** differ —
+`help/chat-turn-manager.md` and `help/database-protection.md` — the same
+two in the `chunks` table and nothing else.
+
+**The other fourteen help families regenerated and re-run at the target
+pin** through the sweep driver: **15/15 ok, ZERO `SKIP:` lines**
+(`--run-all --families help_chat_orchestrator_tier3_equivalence,
+help_chats_routes_equivalence,help_context_resolver_equivalence,
+help_doc_chunking_equivalence,help_doc_ensure_equivalence,
+help_doc_slug_equivalence,help_doc_sync_equivalence,
+help_doc_sync_guards_equivalence,help_docs_routes_equivalence,
+help_docs_tier2_equivalence,help_docs_upsert_tier2_equivalence,
+help_snippet_equivalence,help_system_prompt_equivalence,
+help_tools_equivalence,help_tree_equivalence --v4 $PIN`).
+
+**The embed is genuinely fresh.** `build.rs` emits `include_str!` with
+ABSOLUTE paths, so rustc's own dependency tracking forces the recompile;
+the generated table was rewritten at 05:08 against help files written at
+05:00, `quilltap-host` recompiled under it, and `strings` over the rebuilt
+`help_tree_embed_guard` test binary finds `courtesy of the house` ×1 and
+`always speaks for whoever holds the floor` ×1. The guard itself is green
+(embedded table == on-disk tree: path set, order, bytes).
+
+**`qtap_schema_embed_guard` / `public_schemas_vendor_guard`: UNMOVED,
+stated not re-vendored** — `git diff --stat ffb6b3119 2075242f9 -- public/`
+is empty (ledger §1 says the same).
+
+**Regen recipe** (from the lane worktree):
+
+```bash
+python3 harness/tools/recipe_sweep.py \
+  --v4 /tmp/qt-v4-pin-p4d194-2075242f9 --v5w "$PWD" --run help_tree_equivalence
+# (--v4 /tmp/qt-v4-pin-p4d194-ffb6b3119 for the RED leg)
+```
+
+### Unit 3 — the two docs-only filings ratified NO-PORT, on FILE LISTS
+
+`git show --format= --name-status`, never the subject line:
+
+```
+064ba85df   M  docs/developer/bugs.md
+            A  docs/developer/bugs/bug-143-collapse-leaves-unprotected-duplicates.md
+81e02f7a2   M  docs/developer/bugs.md
+            A  docs/developer/bugs/bug-144-lock-clean-claims-dead-holder-is-alive.md
+```
+
+Two files each, both under `docs/developer/`. Zero delta on `lib/`, `app/`,
+`packages/`, `plugins/`, `migrations/`, `help/` or `public/schemas/` — every
+surface this port mirrors. Both were written BY this port's own 2026-09-15
+dogfood walk, so there is nothing of v4's to absorb; bug 143 v4 has since
+closed as not a defect, and bug 144 is the convergence unit 1 lands.
+**NO-PORT, ratified on the evidence.**
+
+### Unit 4 — the non-lib files of both code commits, ratified NO-PORT
+
+```
+23abc1ba1   M  README.md
+            A  __tests__/unit/cli/lock-clean-refusal.test.ts
+            M  __tests__/unit/migrations/collapse-duplicate-avatar-rolls.test.ts
+            M  docs/CHANGELOG.md
+            M  docs/developer/CLI.md
+            M  docs/developer/bugs.md
+            D  docs/developer/bugs/bug-143-collapse-leaves-unprotected-duplicates.md
+            A  docs/developer/bugs/fixed/bug-143-collapse-leaves-unprotected-duplicates.md
+          R065 docs/developer/bugs/bug-144-… → docs/developer/bugs/fixed/bug-144-…
+            A  docs/developer/bugs/fixed/bug-145-collapse-takes-album-photos.md
+            M  help/database-protection.md          ← unit 2
+            M  migrations/scripts/collapse-duplicate-avatar-rolls-v1.ts  ← P4.D192
+            M  package-lock.json / package.json / packages/quilltap/package.json
+            M  packages/quilltap/bin/quilltap.js    ← unit 1
+2075242f9   M  README.md
+            A  __tests__/unit/lib/chat/turn-manager/floor-seat.test.ts
+            M  app/salon/[id]/SalonView.tsx         ← P4.D193
+            M  docs/CHANGELOG.md / docs/developer/bugs.md
+            A  docs/developer/bugs/fixed/bug-146-banner-passes-the-composers-seat.md
+            M  help/chat-turn-manager.md            ← unit 2
+            M  lib/chat/turn-manager/index.ts, utils.ts  ← P4.D193
+            M  package-lock.json / package.json / packages/quilltap/package.json
+```
+
+So across all FOUR commits the only hunks touching `lib/`, `app/`,
+`migrations/`, `packages/` or `help/` are the three this round ports
+(P4.D192's migration, P4.D193's turn-manager + SalonView, P4.D194's
+launcher + two help pages) — everything else is READMEs, changelogs, bug
+docs, version markers and v4's own jest suites. **NO-PORT, ratified.**
+
+`__tests__/unit/cli/lock-clean-refusal.test.ts` (NEW, +144) is v4's own
+guard: it drives the real binary with a dead PID and an 82 s heartbeat and
+reads the output. Tier R at the target pin is v5's counterpart and covers
+the same arm from four directions, so no v5 case is owed beyond unit 1's
+unit pin — and Tier R's 223/0 at the pin is the evidence that the CLI half
+of `23abc1ba1` beyond the wording is nothing.
+
+### Tier 2 — both items answered by measurement
+
+- **Item 7, launcher help text / completions: NONE.** `git diff ffb6b3119
+  2075242f9 -- packages/` is the launcher (+24/−2) and its `package.json`
+  version line; grepping the launcher's `+`/`−` lines for `usage`, `help`
+  or `Commands:` returns **0**. v4's `docs/developer/CLI.md` +25 paragraph
+  is reference documentation, not a program string. Tier R's 223/0 at the
+  target pin is the independent confirmation.
+- **Item 8, a v5 site for v4's new CLI.md paragraph: NO v5 SITE.** v5 has
+  no CLI reference doc (`docs/developer/` holds only `running.md`), so the
+  `docs/v4/` mirror is the only home and §R.9 gives it to the unifier. The
+  CLI's own `--help` text (`crates/quilltap-cli/src/help/db_help.txt:85-87`)
+  is v4's captured bytes and did not move; the two `--lock-clean` sentences
+  in `crates/quilltap-host/src/lock.rs:873,890` are the host's lock-conflict
+  copy, a MUST-NOT-TOUCH file for this lane and untouched by v4's hunks.
+
+### The `docs/v4/` mirror inventory (§R.9 — for the UNIFIER; this lane copied nothing)
+
+Byte counts at `/tmp/qt-v4-pin-p4d194-2075242f9`. The four bug files are at
+their POST-commit paths (`fixed/`); bug 143 was deleted from
+`docs/developer/bugs/` and added under `fixed/`, bug 144 was renamed there.
+
+| v4 path (mirror as `docs/v4/<rest>`) | bytes at the pin | v5 mirror now |
+|---|---|---|
+| `docs/CHANGELOG.md` | 71,998 | 66,230 |
+| `docs/developer/CLI.md` | 24,663 | 23,316 |
+| `docs/developer/bugs.md` | 264,952 | 253,704 |
+| `docs/developer/bugs/fixed/bug-143-collapse-leaves-unprotected-duplicates.md` | 9,733 | ABSENT |
+| `docs/developer/bugs/fixed/bug-144-lock-clean-claims-dead-holder-is-alive.md` | 8,069 | ABSENT |
+| `docs/developer/bugs/fixed/bug-145-collapse-takes-album-photos.md` | 8,367 | ABSENT |
+| `docs/developer/bugs/fixed/bug-146-banner-passes-the-composers-seat.md` | 9,398 | ABSENT |
+
+`docs/v4/developer/bugs/fixed/` holds 142 files against the pin's 146; the
+four missing are exactly the four above (`diff <(ls …) <(ls …)`). v4's
+`README.md` (46,041 at the pin) has no `docs/v4/` counterpart at all — the
+mirror has never carried it, so it stays out.
+
+### Findings for the unifier (outside this lane's ownership — recorded, not edited)
+
+1. **`crates/quilltap-harness/tests/help_tree_embed_guard.rs:24-33` — the
+   `VENDORED_FILE_COUNT` provenance comment is now one vintage stale.** It
+   ends "(124 files at v4 `ffb6b3119`: still 124 — the P4.D191 re-vendor
+   …)"; this round's re-vendor is the same shape (two MODIFIED, none added)
+   and the count does not move, so the guard is green untouched, but the
+   comment does not mention `2075242f9`. The file is a MUST-NOT-TOUCH
+   `crates/**` path for P4.D194 and no sibling owns it either. One line for
+   the unifier's wires.
+2. **`quilltap-host` is NOT bumped by this lane, deliberately.** The help
+   re-vendor changes the host's COMPILED output (`build.rs` `include_str!`)
+   without changing any `crates/quilltap-host/**` source file. §R.8 assigns
+   this lane `cli` alone and names host only as P4.D192's conditional, and
+   commit.md §6 bumps "if a crate's source changed" — `help/**` is not
+   crate source. P4.D191 faced the same shape and DID bump host, alongside
+   a harness-file edit it also owned. Flagged rather than silently decided:
+   the unifier may want host bumped for the embed.
+3. **Dogfood row #119's "5 of 223" is corrected to 4** in this lane's cell
+   edit; the same claim also appears verbatim in
+   `dogfood-walks/2026-09-15-six-round-backlog-pass.md` (row I3 and the
+   #119 paragraph), which this lane does not own.
+
+### Deferrals (loud)
+
+- **Tier 3 — the live proof (💸).** SIGKILL the server on the Friday copy,
+  run `quilltap db --lock-clean` inside five minutes and read the two new
+  lines, then wait out the window and clean. Banked for the next dogfood
+  pass: it is the walk's own gesture from 2026-09-15, now with the right
+  sentence. Nothing in this lane is unproven for want of it — Tier R drives
+  v4's real launcher over the same arm from four directions — but the
+  operator-facing wording deserves one look on real data.
+
+### Gate
+
+Recorded with the lane's final report. `CARGO_INCREMENTAL=0` and `TZ=UTC`
+throughout; no gate piped through `tail`.
