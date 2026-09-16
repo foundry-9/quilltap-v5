@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): the P4.D195 lane record — bug 147 closed, and a pre-existing salon-fixture red found
+
+_No crate versions bumped._
+
+The lane record for P4.D195 in `status-log.md`: the red-first trip (10
+failures before a line of the port), the two survey corrections, the six
+mutation proofs including the one that SURVIVED and what was done about it,
+the measured `state.cycleOrder` convergence table, and the corpus blind spot
+Tier 2 item 8 opened — nothing in either turn family had ever driven the
+rotation argument.
+
+It also records a standing red this lane did not cause and does not own:
+`salon_mutations_equivalence` fails every writing `chat_update` case with
+`sqlite error: no such column: generationKey`. The committed salon fixture
+pair predates P4.D182's `files.generationKey`. Proven pre-existing by
+reproducing it with `main`'s untouched `api/salon.rs`, and invisible until now
+because the family has been deliberately skipped behind a withheld env var
+since the `78b381a96` round, where it last ran green.
+
 #### 2026-09-16 — test(harness): v4's bug-147 client/server agreement room as tier-1 corpus rows
 
 _Versions: harness 0.0.823._

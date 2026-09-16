@@ -129101,3 +129101,174 @@ chat-GET pin trips by design); the photos-predicate consolidation done right;
 the loops' `base_params` carry-over class; the maintenance smalls. Versions
 at the move: core 0.0.927, harness 0.0.820, host 0.0.137, web 0.0.147, cli
 0.0.22, SPA 0.5.726; tauri unchanged.
+
+## P4.D195 — bug 147 whole: the chat GET projects the cycle's two turn columns, the SPA seed goes live and grows its spoken half (the `1fefadb9a` bug-147 drift catch-up + maintenance round)
+
+**Branch `claude/cycle-columns-chat-spa-seed-a082a0`, four commits, CLOSED.**
+Order: `docs/developer/porting/work-orders/p4.d195-bug147-cycle-columns-chat-get-spa-seed.md`.
+Every Tier-1 and Tier-2 item landed; nothing is left OPEN under the order.
+
+### The probe and the pins
+
+The drift ledger's §2 freshness probe PASSED at lane start and again before
+every regen batch: branch `main`, tree CLEAN, `1fefadb9a..main` empty,
+`1a2b2164c..bugfix` empty. The ledger stood, so nothing was re-derived and the
+ledger was never written.
+
+Regen rule PIN REQUIRED, two lane-unique detached worktrees per ledger §5.1:
+`/tmp/qt-v4-pin-p4d195-1fefadb9a` (the TARGET — everything the port moves) and
+`/tmp/qt-v4-pin-p4d195-2075242f9` (the BASELINE — the neutrality legs). Both
+verified on changed bytes, not assumed: the target-pinned `salon-reads` NDJSON
+carries `"cycleOrderParticipantIds"` on all five `get_*` bodies, and the
+target-pinned `help-tree` NDJSON carries the bug-147 sentence.
+
+### Unit 1 — the projection, red first
+
+The designed trip fired exactly as the ledger predicted. Against UNCHANGED v5
+at the target pin, `salon_reads_equivalence` failed **10 ways**: all five
+`get_*` bodies (`first_diff` naming the missing key — `GOT "dangerCategories"`
+where v4 has `"cycleOrderParticipantIds": "[]"`) AND all five P4.D183
+key-order pins. That is the P4.D171 both-directions pin retiring on
+measurement rather than on the commit message.
+
+`api::salon::chat_get` now inserts both keys between
+`activeTypingParticipantId` and `isPaused`, as v4's `handlers/get.ts:362-373`
+places them, with v4's `?? '[]'`. The old NOTE is deleted; the replacement
+records that P4.D171 measured v4 CORRECTLY and that `1fefadb9a` is v4 closing
+its own client/server gap — not a correction to this port.
+
+### Unit 2 — the corpus arms, and two survey corrections
+
+**The survey's "NOTHING plants `spokenThisCycleParticipantIds`" was wrong.**
+Measured on the fresh oracle: the committed fixture already carries a
+NON-EMPTY spoken set on both chats (`get_solo` `'["b1…01"]'`, `get_group` two
+ids), so that non-default arm was covered for free the moment the key shipped.
+
+Two arms were genuinely missing, and neither the fixture nor `setCycleOrder`'s
+`JSON.stringify` can pose them, so a `setCycleColumnsRaw` plant was added on
+both sides:
+
+- `get_cycle_columns_empty_string` — **measured, not predicted**: `'' ?? '[]'`
+  is `''` in JS, so v4 puts the EMPTY STRING on the wire, not `'[]'`. v5 agrees.
+- `get_cycle_columns_null` — a genuine SQL NULL in both columns. Neither
+  side's `?? '[]'` fires (v4's chat schema `.default('[]')` and v5's
+  `db::chats_read` coerce first), and this is the ONLY case exercising a null
+  `spokenThisCycleParticipantIds` at all.
+
+16 → 18 cases. The first run of both arms went RED on a leftover route trail —
+the oracle gets a fresh fixture copy per case while the Rust side shares one
+db — fixed the way the neighbouring block already handles the concierge paint.
+
+**The key-order pin already existed.** The order asked for one; P4.D183's
+`get_`-prefixed pin covers every detail case, and M1 proved it does the job.
+
+### Mutation proofs (the salon reads)
+
+| # | mutation | result |
+|---|---|---|
+| M1 | project both keys at the END of the object | **7 key-order pins RED, ZERO body cases** — which is exactly why that pin exists |
+| M2 | `.unwrap_or(Value::Null)` for the default | **SURVIVED** — see below |
+| M3 | drop the spoken key entirely | **all 7 `get_*` cases RED both ways** |
+
+**M2 is a finding, kept rather than deleted.** It survived because
+`db::chats_read` coerces a NULL column to `'[]'` before the verb ever sees it,
+so the projection's `?? '[]'` is UNREACHABLE — kept only for v4 fidelity, so a
+reader change can never reintroduce `undefined`. The honest response was to
+make that reason executable instead of a comment: the null arm now asserts the
+reader's guarantee directly, so the day `chats_read` stops coercing, the
+family reddens and the fallback becomes load-bearing with a named site to
+re-check.
+
+### Unit 3 — the SPA seed
+
+The `_turnEffect` seed, dormant since P4.D177, is LIVE and takes BOTH halves
+off the row. `spokenSinceUserTurn` had NEVER been seeded on this port, so the
+sidebar's `'spoken'` status was unreachable in v5 exactly as v4's filing says
+it was in v4 — the pure function was pinned, production could not reach it.
+
+`parseSpokenThisCycle` ships as an ALIAS of `parseCycleOrder`, and that is a
+measurement: four new `turn-state` corpus rows drive v4's real
+`calculateTurnStateFromHistory` over the same four branches the spoken parse
+takes (seeded / invalid JSON / non-array / non-string elements), and they
+agree. The seed REPLACES rather than merges, because v4 builds a fresh state
+off the row each time. The presence gate stays but now means LEGACY SERVER,
+not dormancy.
+
+**The `chatDetail` spec factory carried NEITHER key**, so the P4.D177 §3 spec's
+`delete` was a no-op on an absent key. It now carries both at `'[]'` —
+behaviourally inert, and it makes that arm load-bearing.
+
+### The `state.cycleOrder` convergence, measured (Tier 2 item 9)
+
+| `state.cycleOrder` | v4 truthy spread | v5 `?? prev` | agree |
+|---|---|---|---|
+| `['p-x']` | adopt | adopt | ✅ |
+| `[]` | **adopt** (`[]` is truthy) | adopt (not nullish) | ✅ |
+| `null` | keep previous | keep previous | ✅ |
+| absent | keep previous | keep previous | ✅ |
+
+Zero code change, as predicted — now pinned as four spec rows so it stays true.
+
+### SPA mutation proofs
+
+| # | mutation | reddens |
+|---|---|---|
+| M4 | seed only `cycleOrder` | **4 tests** — the seed arm, the refetch arm, the elements arm, the sidebar wiring arm |
+| M5 | merge instead of replace | exactly the refetch re-seed arm |
+| M6 | drop the presence gate | exactly the legacy-server arm |
+
+### Tier 2 item 8 — the agreement room, and the blind spot it opened
+
+v4's `client-server-agreement.test.ts` CLIENT leg is a **NO-COUNTERPART**: v5's
+SPA has no `selectNextSpeaker` recompute (the P4.D177 mechanism divergence).
+The pure computations under it are not, and they landed as corpus rows over
+v4's REAL functions — measured to be the better path than Rust unit tests.
+
+**The measurement that decided it is itself the find.** `select-speaker`'s
+`mkState` never set `cycleOrder`, and its `AfterScenario` never passed the 8th
+`cycleOrderJson` argument, so the Rust side hard-coded `&[]` and `None` at both
+call sites with a comment saying so — **nothing in either family had ever
+driven `selectNextSpeaker`'s cycle-order branch**. `turn-state` had the same
+shape: every `calc` row left the rotation unset, so its `cycleOrder` comparand
+was a default matching a default.
+
+Three rows carry v4's reported room (Friday, `e59f8969`), and the AGREEMENT
+between them is asserted separately — on V5's answers, never the oracle's:
+sighted == server (Charlie, `user_turn`); blind diverges to Abigail with
+`weighted_selection` and re-seats an already-spoken seat.
+
+`select-speaker` 28 → 31, `turn-state` 36 → 40. Neutrality proven two ways:
+every pre-existing row's `out` and `consumedDraws` unmoved (decomposed row by
+row against a regen of the committed corpus at the same pin), and the whole
+`select-speaker` file byte-identical when regenerated at the BASELINE pin.
+
+### Unit 4 — the help re-vendor
+
+`help/chat-turn-manager.md` byte-copied from the target pin; `diff -r` over the
+whole tree EMPTY and both trees md5 `81f5d1a67a0d99ed678aa3206fcc10d3`. 124
+stays 124. All fifteen `help_*` content families (P4.D194's list, reused
+verbatim) regenerated at the target pin and re-run: **15/15 ok, zero SKIP**.
+
+### ⚠ A pre-existing standing RED found by the neutrality leg — NOT this lane's
+
+`salon_mutations_equivalence` fails **nine cases**, every one that reaches a
+write (`chat_update`, `_broad`, both `_timeline_*` setters, all five
+`_concierge_*`); every early-return case passes. v5 answers
+`ErrorKind::Internal`.
+
+**Proven pre-existing**, not a regression: the identical nine fail with
+`main`'s untouched `api/salon.rs` swapped in.
+
+**Root cause, instrumented:** `sqlite error: no such column: generationKey`.
+The committed `salon-{main,mount}.db` pair predates P4.D182's
+`files.generationKey`, and `chat_update`'s write path reaches it. It went
+unnoticed because the family has been **deliberately skipped behind a withheld
+env var** since the `78b381a96` round (its own lane record says so: "`ok, 0.00
+s` — DELIBERATELY skipped"), where it last ran green at 0.30 s. This is the
+`a-widened-shared-column-breaks-sibling-fixtures-invisibly` class, and the
+same shape P4.89 closed for the brahma pair.
+
+Both `salon_mutations_equivalence.rs` and the fixture pair are outside this
+lane's ownership, so it is recorded here rather than fixed. `salon_reads_
+equivalence` reads the same pair and is green — it never writes down that path.
+`salon_swipe_generate_equivalence` (the other neutrality leg) is **ok**.
