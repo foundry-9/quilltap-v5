@@ -58,6 +58,23 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — fix(harness): route `floor_seat_equivalence`'s status parse through the one home
+
+_Versions: harness 0.0.816._
+
+The new family hand-rolled its `ParticipantStatus` match, copied from the older
+`turn_pause_filters_equivalence`, and P4.68's `participant_status_home_guard`
+census caught it at the full-workspace gate: four `=> ParticipantStatus::` arms
+outside the census. Routed through `chat_predicates::participant_status_from_str`
+instead (the older family predates the guard and is carried, not a licence to
+copy).
+
+That parser maps anything unknown to `absent` rather than failing, where the
+hand-rolled match panicked, so the corpus's own spelling is asserted first — a
+typo'd status would otherwise become a silently-not-present seat and make its
+row vacuous. Mutation proof M1 re-run after the swap: still reddens exactly
+`v4-6-departed-floor`.
+
 #### 2026-09-16 — test(e2e): the Skip banner's floor seat, walked live on a two-user-seat chat
 
 _Versions: SPA 0.5.725._

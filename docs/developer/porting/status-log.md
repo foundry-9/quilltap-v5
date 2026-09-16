@@ -108,6 +108,24 @@ and a `null` result. The per-row `*Form` fields carry how the v4 call spelled
 each argument (`value` / `null` / `undefined`), which Rust's `Option` cannot
 tell apart, and the test asserts the form agrees with the emitted value.
 
+### Unit 2 addendum — the status-parse census (caught by the gate, not by review)
+
+The full-workspace gate red-flagged the new family: P4.68's
+`participant_status_home_guard` reported *"4 `=> ParticipantStatus::` arm(s)
+outside the census"*. The hand-rolled match was copied from the older
+`turn_pause_filters_equivalence`, which predates the census and is carried
+there — being carried is not a licence to copy. Routed through
+`chat_predicates::participant_status_from_str`.
+
+One difference mattered: the shared parser maps anything unknown to `absent`
+rather than panicking as the hand-rolled match did, so a typo'd corpus status
+would silently become a not-present seat and make its row vacuous. The corpus's
+own spelling is now asserted before the parse. M1 was re-run after the swap and
+still reddens exactly `v4-6-departed-floor`.
+
+This is the `a-new-harness-test-can-trip-a-source-census` shape: only
+`--workspace` sees it, so a per-family run is not enough.
+
 ### Unit 3 — the `turn-order.ts` client twin + v4's suite as its parity spec
 
 `resolveFloorSeatId<T extends SeatView>` beside `isUserDrivenSeat` /

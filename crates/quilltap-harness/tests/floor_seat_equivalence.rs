@@ -23,7 +23,7 @@
 //!   QT_ORACLE_FLOOR_SEAT=/tmp/oracle-floor-seat.ndjson \
 //!     cargo test -p quilltap-harness --test floor_seat_equivalence -- --nocapture
 
-use quilltap_core::chat_predicates::ParticipantStatus;
+use quilltap_core::chat_predicates::participant_status_from_str;
 use quilltap_core::participant_filters::{resolve_floor_seat_id, ParticipantView};
 use serde::Deserialize;
 
@@ -43,12 +43,22 @@ fn parts_to_core(ps: &[WirePart]) -> Vec<ParticipantView> {
             // id/status/controlledBy, and an empty literal keeps a future reader
             // that starts consulting the field from being masked.
             participant_type: String::new(),
-            status: match p.status.as_str() {
-                "active" => ParticipantStatus::Active,
-                "silent" => ParticipantStatus::Silent,
-                "absent" => ParticipantStatus::Absent,
-                "removed" => ParticipantStatus::Removed,
-                other => panic!("unknown status {other}"),
+            // §C: participant-status parsing has ONE home. (The older
+            // `turn_pause_filters_equivalence` hand-rolls this match; it predates
+            // the census and is carried there, not copied here.) That parser maps
+            // anything unknown to `absent` rather than failing, so the corpus's
+            // own spelling is checked first — a typo'd status would otherwise
+            // become a silently-not-present seat and make its row vacuous.
+            status: {
+                assert!(
+                    matches!(
+                        p.status.as_str(),
+                        "active" | "silent" | "absent" | "removed"
+                    ),
+                    "unknown status {} in the corpus",
+                    p.status
+                );
+                participant_status_from_str(Some(p.status.as_str()))
             },
             controlled_by: p.controlled_by.clone(),
             character_id: Some(format!("char-{}", p.id)),
