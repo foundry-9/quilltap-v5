@@ -129326,3 +129326,223 @@ this lane's Owns column. The Tier-3 tripwire is EMPTY — `git diff main...HEAD 
 'crates/quilltap-core/src/api/turn*.rs' select_speaker.rs turn_state.rs db/
 crates/quilltap-web/tests/fixtures/` produces nothing, so no server turn
 handler, no `chats_read.rs`, and neither committed fixture DB was touched.
+## Lane record — P4.91 (the `is_photos_relative_path` consolidation done RIGHT + the collapse census's log shape)
+
+Ordered against oracle baseline **`2075242f9`**, absorbing NO drift row (the
+`1fefadb9a` bug-147 drift catch-up + maintenance round, 2026-09-16; candidate 3
+of the previous round's "What is next" plus that round's two §3 `report_census`
+records). **Drift-ledger §2 freshness probe at lane start:** PASS — v4 checkout
+on `main`, tree CLEAN, `git log 1fefadb9a..main` EMPTY, `git log
+1a2b2164c..bugfix` EMPTY. `git diff --stat 2075242f9..1fefadb9a -- lib/photos/
+migrations/` is EMPTY, as the order predicted, so the lane's v4 surfaces are
+untouched by the drift commit. Regen rule **PIN REQUIRED**; every regen ran from
+the lane-unique detached worktree `/tmp/qt-v4-pin-p4.91-2075242f9`. The lane
+never wrote the ledger.
+
+### Unit 1 — the family repointed FIRST, the corpus grown RED, the Node loop moved
+
+The order's sequencing is the whole method here and it paid: the family drove
+`db::doc_mount_file_links`'s copy, which was ALREADY Node-faithful, so growing
+the corpus against it would have gone green having measured nothing.
+
+1. **Repointed** `photos_relative_path_equivalence` onto
+   `photos::photos_paths::is_photos_relative_path` and regenerated at the pin:
+   **GREEN over all 13 rows** — the baseline measurement the order wanted, and
+   the proof that the two homes agreed on every shape the corpus could see.
+2. **Grew the corpus** 13 → **30** rows with the slash shapes, regenerated at
+   the pin, ran against the UNCHANGED home: **RED on exactly 3 of 30** —
+   `photos-double-slash` (`photos//`), `photos-triple-slash` (`photos///`),
+   `photos-double-slash-upper` (`PHOTOS//`). The order's open question about
+   `photos/sub//` is **answered by measurement: it AGREES** (a one-slash strip
+   lands on `photos/sub`, Node lands on `photos`; both are album paths, so the
+   predicate cannot tell them apart). `photos//a.webp` measured TRUE on both
+   sides — an INTERIOR run leaves the dirname trailing a `/`, so
+   `startsWith("photos/")` fires; pinned as v4 answers it.
+3. **Moved** Node's loop into `photos_paths::posix_dirname` (cut from the twin,
+   not re-derived) → **GREEN over all 30**.
+
+**A real infidelity found in the algorithm being moved.** The twin's
+`has_root && end == 1` arm answered `"/"` where Node's `dirname("//photos")` is
+`"//"` (measured on Node 24.13.1). The moved copy answers `"//"`. The predicate
+is **blind** to it — `"/"` and `"//"` are both non-album — so the corpus can
+never see it; it is pinned directly by a new `posix_dirname_matches_node` table
+of 24 rows of captured Node output, and by mutation M4 below, which reddens that
+table and leaves the differential green.
+
+The harness family also stopped asserting per row: a first-diff comparator names
+ONE row and cannot bound the red set, which is exactly what the red-first step
+needed to read. It now collects every mismatch and the floor is an **exact
+`== 30`**, not a `>=`, so a stale oracle cannot pass.
+
+### Unit 2 — the twin deleted, SIX importers repointed, the two suites consolidated
+
+`db/doc_mount_file_links.rs`'s `is_photos_relative_path` + its private
+`posix_dirname` (62 lines) DELETED. Repointed: `api/chat_media.rs:1716`,
+`photos/photo_link_summary.rs`, `photos/character_gallery_service.rs`,
+`services/maintenance.rs` (module + test mod), `db/avatar_rolls_collapse_heal.rs`
+— **six, not the five every prior record says**; the heal became the sixth at the
+`2075242f9` §3 review. The harness family is the seventh site.
+
+The heal's 13-line justification comment is REWRITTEN: it existed to explain
+which of two disagreeing copies the heal wanted; there is nothing left to choose
+between, and the heal and the runtime roll rule now agree by construction.
+
+`maintenance.rs`'s `photos_relative_path_predicate` is **retired**, not moved
+wholesale — all ten of its asserts were already-covered or newly added in
+`photos_paths::tests::photos_relative_path_detection`, which also carries the run
+rows. A comment at the old site says where they went.
+
+**The writer census (Tier 1 item 5b).** Every `relativePath` that reaches this
+predicate is minted by one of: `build_photos_relative_path(filename)` where
+`filename = "{safe_timestamp}-{slug}.{extension}"` (`keep_image_markdown.rs:430`
+— a slug and an extension, no separator); `normalise_relative_path`
+(`mount_index/path_utils.rs:235` — `path.normalize` then
+`trim_start_matches('/')` + `trim_end_matches('/')`); or `collapse_slashes`
+(`doc_mount_file_links.rs:2182` — collapses runs, then `trim_matches('/')`).
+**No writer can mint even a single trailing slash, let alone a run.** The
+consolidation changes the answer only on inputs no writer produces.
+
+### Unit 3 — `report_census` logs the ARRAY (Tier 2 item 6)
+
+`log_file.rs` gains ONE documented convention: `JSON_FIELD_SUFFIX = "Json"` — a
+string field whose name ends in it is `serde_json::from_str`-parsed into a real
+`Value` and inserted under the name WITHOUT the suffix; a failed parse falls
+back to the raw string under the raw name (never a panic in a logging layer).
+`report_census` renames its field `fileIds` → `fileIdsJson`, so `combined.log`
+now carries `"fileIds":["id1","id2"]` — v4's winston byte shape — where it
+carried a quoted JSON STRING.
+
+**The order's premise that a census capture test already existed is REFUTED:
+there was none.** Nothing pinned that warn at all, which is how the wrong shape
+survived a round. Three new capture pins now cover v4's sentence, the count, the
+parsed array, the twenty-id cap, and the silence leg.
+
+**A doc claim corrected before shipping:** the order's survey says "`valuable` is
+not a dependency anywhere". `valuable` IS in `Cargo.lock`, as `tracing-core`'s
+OPTIONAL dependency; what is true and load-bearing is that the FEATURE is never
+selected (`cargo tree -p tracing-core -e features` shows only `once_cell`), so
+`Visit::record_value` is unavailable. The shipped doc says the accurate thing.
+
+**A weak assertion caught in this lane's own new test.** The first draft of the
+census pin asserted
+`contains("fileIdsJson=\"[…]\"") || contains("fileIdsJson=[…]") ||
+contains("fileIdsJson")` — a disjunction whose third arm subsumes the other two,
+so it could not fail while the field name existed
+(`a-disjunctive-assertion-can-be-unfalsifiable`). Replaced: the NAME is proven by
+`extract_field` panicking without it, the PAYLOAD by parsing it and comparing,
+and a new negative asserts the pre-fix `fileIds=` spelling never comes back.
+
+### Tier 2 item 7 — the ORDER half: RECORDED, ESCALATED, NOT changed
+
+Neither side's census SELECT carries an `ORDER BY`, so both engines take scan
+order. On an unindexed fixture that is stable and the two agree; the REAL
+instance has `idx_files_generationKey` (itself a recorded fresh-instance
+divergence, P4.D192), and SQLite may satisfy the `IN`-subquery through the index
+and hand back a different order — so `fileIds` is instance-dependent in
+production while the harness pins one order. `ORDER BY id` on BOTH sides is the
+fix AND a deliberate divergence from v4's shipped SQL. **Escalated for the
+human's ruling**; written into the code at the bucketing comment rather than
+applied.
+
+### Tier 2 item 8 — stale claims corrected by NEW record (never by editing the old)
+
+- **"five importers"** (`phase-4.md:6824`, `:6904`; the previous round's records)
+  — it is **SIX**; the collapse heal became an importer at the `2075242f9` §3
+  review, after those lines were written.
+- **"two byte-identical homes"** (`status-log.md:124650`, `:124890`, `:125868`)
+  — the BODIES were identical; their private `posix_dirname`s were **not**, which
+  is the entire reason this lane exists. "Byte-identical" was always wrong about
+  the pair.
+- **`docs/CHANGELOG.md`'s "(what v4's migration itself now imports)"** on
+  `photos_paths::is_photos_relative_path` — contradicted by the heal's own later
+  import of the OTHER home. **True again as of this lane**, for the first time.
+
+### Deferrals (Tier 3), loud
+
+- **The four unrelated `posix_dirname` copies stay untouched**, as ordered —
+  `tools/generate_image.rs:1305`, `db/mount_index_case_repair.rs:69`,
+  `photos/save_image_to_album.rs:537`, `services/image_job_storage.rs:401`. Each
+  has its own signature and caller semantics; a later consolidation is its own
+  question with its own differential.
+- **`services/route_trail.rs:421-436`'s `trail` field** is the JSON-field
+  convention's second candidate — `trail = %serde_json::to_string(…)` reaches
+  `combined.log` as a quoted string exactly as `fileIds` did. Out of this lane's
+  ownership; recorded for its owning lane. A census confirms these are the only
+  two: **no field name in `crates/*/src` ends in `Json` today**, so the suffix was
+  free to claim.
+
+### Findings OUTSIDE this lane's ownership — for the unifier
+
+**Two consumer families are RED on a pin-fresh oracle, and it is NOT this lane.**
+`chat_gallery_equivalence` (8 `save_image_*` diffs) and
+`images_routes_equivalence` (`upload_dedup_orphan_cleanup` → `Internal server
+error`) both fail with v5 answering `sqlite error: no such column: generationKey`
+on their write arms. Proven not-mine by **revert-probe**: with the pre-lane
+one-slash `posix_dirname` restored and the same oracles, both reproduce
+**byte-identically**. Cause: their committed fixtures predate P4.D182 —
+`chat-gallery-main.db` was committed 2026-09-09 (`30cd2745`), `images-main.db`
+2026-09-05 (`5247c043`), and `files.generationKey` landed 2026-09-14
+(`587b5565`/`85284c8a`); v5's `files` INSERT binds a fixed column list where v4's
+names only the keys its data object carries, which is precisely the asymmetry
+`test_support::ensure_p4d182_columns` exists for — and neither family calls it,
+nor is either fixture healed. Both harnesses copy the COMMITTED fixture fresh
+every run (`chat_gallery_equivalence.rs:297`), so this is deterministic, not a
+/tmp artifact. The last committed sweep artifact naming either
+(`2026-09-05-d883a5ee1-p4.d158-neutrality.json`) records `images_routes_
+equivalence: ok` — dated nine days BEFORE the column landed, which is consistent:
+neither family has been swept since. **The fixtures belong to no lane in this
+round**, and healing them fans out to every family that reads them, so this is
+recorded rather than fixed. Suggested shape: widen both fixtures in place through
+v4's own migration DDL (the P4.52 precedent), or call `ensure_p4d182_columns` in
+each harness before its first write.
+
+### Verification
+
+1. **§R.2 probe** — PASS at lane start and again before the regen batch.
+2. **The lane's own differential by name**, regenerated fresh from
+   `/tmp/qt-v4-pin-p4.91-2075242f9` through the sweep driver, run with
+   `--nocapture`, zero `SKIP:`: `photos_relative_path_equivalence` — **30/30**
+   (`OK: is_photos_relative_path matched oracle on 30 inputs.`). Fresh NDJSON
+   grepped for the changed bytes: `grep -c 'photos//'` = **4** (> 0).
+   Red-first counts recorded above (13 green → 30 with 3 red → 30 green).
+3. **Neutrality**: the thirteen consumer families re-run by name from the
+   baseline pin through the driver — `photo_tools_equivalence`,
+   `character_photo_upload_tier2_equivalence`, `photos_web_routes`,
+   `collapse_stale_chat_caches_tier2_equivalence`,
+   `maintenance_sweep_tier2_equivalence`, `maintenance_ops_tier2_equivalence`,
+   `avatar_rolls_collapse_heal_equivalence`, `avatar_rolls_tier2_equivalence`,
+   `character_avatar_write_tier2_equivalence`, `seed_avatars_equivalence`,
+   `avatar_cache_key_equivalence` **ok (11)**; `chat_gallery_equivalence` and
+   `images_routes_equivalence` red for the pre-existing cause above.
+4. **Mutation proofs** — each reddening exactly its target, reverted by file
+   backup, never `git checkout <file>`:
+
+   | # | mutation | reddens |
+   |---|---|---|
+   | M1 | `posix_dirname` back to the one-slash strip | the 3 run rows |
+   | M2 | `matched_slash` starts `false` (skip NO trailing slash) | 4 predicate rows **+** `posix_dirname("photos/a.webp/")` in the unit table |
+   | M3 | drop `.to_lowercase()` from the predicate | `Photos/`, `PHOTOS/` |
+   | M4 | `has_root && end == 1` answers `"/"` | ONLY `posix_dirname("//photos")`; the differential stays GREEN |
+   | M5 | visitor never re-parses a `…Json` field | only the array arm |
+   | M6 | a failed parse DROPS the field | both fallback arms |
+   | M7 | `report_census` back to `fileIds` | the 2 payload arms; the silence leg correctly survives |
+   | M8 | `take(20)` removed | only the cap arm |
+
+   **M2's prediction was WRONG and is corrected by measurement.** The order
+   expected it to redden `photos/a.webp/` (the control) at the PREDICATE level;
+   it does not, because the resulting dirname `photos/a.webp` still satisfies
+   `startsWith("photos/")`. It reddens `photos/` instead — and it DOES redden the
+   control at the `posix_dirname` level, which is where that control's contract
+   actually lives. The corpus row stays as the shape both algorithms always
+   agreed on.
+5. **Gate** (numbers in the lane's final report): `cargo fmt --all --check`;
+   `cargo clippy --workspace --all-targets -- -D warnings` in BOTH feature sets;
+   `cargo build --workspace --release`; `cargo test --workspace --no-fail-fast`
+   with the lane's env block.
+6. **Ownership**: `git diff --stat main...HEAD` — every path inside the lane's
+   Owns column; no MUST-NOT-TOUCH path present. No SPA, no `help/**`, no sibling
+   family, no drift ledger.
+
+### Versions
+
+core 0.0.930, harness 0.0.821, web 0.0.148; host/cli/tauri/SPA unchanged.
