@@ -22,14 +22,22 @@
  * three appending invocations below.
  *
  * Emits one line per run:
- *   { kind: 'guard', scenario, totalOnDisk, deleted, failed, helpDocIds }
+ *   { kind: 'guard', scenario, totalOnDisk, deleted, failed, chunksWritten,
+ *     helpDocIds, helpDocContentHashes }
+ *
+ * P4.93: this case reads `QT_FIXTURE_HELP_SYNC_GUARDS_MAIN`, its OWN fixture
+ * variable — `QT_FIXTURE_HELP_MAIN` belongs to the sync family (and, separately,
+ * is the shared builder's OUT path). The two used to be the same name over two
+ * different files. The emitted line also carries `helpDocContentHashes` now: the
+ * six-field compare had no content channel, so it could not tell one fixture
+ * from another even in principle.
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
  *   cd ~/source/quilltap-server
  *   : > /tmp/oracle-help-sync-guards.ndjson
  *   for s in missing-dir no-markdown only-empty-files; do
- *     QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-main.db QT_HELP_SYNC_SCENARIO=$s \
+ *     QT_FIXTURE_HELP_SYNC_GUARDS_MAIN=/tmp/qt-help-sync-guards-main.db QT_HELP_SYNC_SCENARIO=$s \
  *       $N/node --import tsx $V5/harness/oracle/cases/help-sync-guards.ts \
  *       >> /tmp/oracle-help-sync-guards.ndjson
  *   done
@@ -60,9 +68,9 @@ async function main(): Promise<void> {
     readFileSync(join(here, '..', 'fixtures', 'help-sync.json'), 'utf8'),
   ) as Spec;
 
-  const fixtureMain = process.env.QT_FIXTURE_HELP_MAIN;
+  const fixtureMain = process.env.QT_FIXTURE_HELP_SYNC_GUARDS_MAIN;
   if (!fixtureMain || !existsSync(fixtureMain)) {
-    throw new Error('QT_FIXTURE_HELP_MAIN must point at the seed fixture');
+    throw new Error('QT_FIXTURE_HELP_SYNC_GUARDS_MAIN must point at the seed fixture');
   }
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-help-guards-oracle-'));
@@ -86,9 +94,15 @@ async function main(): Promise<void> {
 
   const result = await syncHelpDocs();
 
+  // P4.93: `contentHash` alongside the id, in the SAME id order. Every guard
+  // scenario leaves the seeded rows exactly as the fixture wrote them (a refused
+  // prune writes nothing), so this column reads the fixture's own bytes — which
+  // is precisely what makes the compare below fixture-SENSITIVE. It is also the
+  // value the sync's update/skip decision turns on, so a fixture built from a
+  // different spec cannot agree with an oracle built from this one.
   const rows =
     (await rawQuery<Array<Record<string, unknown>>>(
-      'SELECT id FROM help_docs ORDER BY id ASC',
+      'SELECT id, contentHash FROM help_docs ORDER BY id ASC',
       [],
     )) ?? [];
 
@@ -103,6 +117,7 @@ async function main(): Promise<void> {
       // on every guard scenario — nothing is sliced when nothing changed.
       chunksWritten: result.chunksWritten,
       helpDocIds: rows.map((r) => String(r.id)),
+      helpDocContentHashes: rows.map((r) => String(r.contentHash)),
     }) + '\n',
   );
 

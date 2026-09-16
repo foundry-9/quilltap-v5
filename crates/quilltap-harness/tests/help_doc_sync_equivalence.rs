@@ -14,6 +14,12 @@
 //! and timestamps byte-for-byte, and that the updated row kept its seeded
 //! `createdAt` while clearing its embedding.
 //!
+//! P4.93 — `QT_FIXTURE_HELP_MAIN` is THIS family's fixture variable (and, as an
+//! OUT path, the shared builder's). The prune-guard family next door
+//! (`help_doc_sync_guards_equivalence`) used to read the same name over a
+//! different file; it now reads `QT_FIXTURE_HELP_SYNC_GUARDS_MAIN`. Nothing
+//! here changed: this family's recipe and env block are as they were.
+//!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this tree>
 //!   cd ~/source/quilltap-server

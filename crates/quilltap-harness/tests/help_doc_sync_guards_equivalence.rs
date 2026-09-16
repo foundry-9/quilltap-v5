@@ -17,6 +17,24 @@
 //!     the prune, so the rows survive (oracle-confirmed: `deleted: 0`, all three
 //!     rows left). v5 made the same refusal in this convergence.
 //!
+//! ## This family READS its own fixture variable (P4.93)
+//!
+//! `QT_FIXTURE_HELP_SYNC_GUARDS_MAIN`, not the sync family's
+//! `QT_FIXTURE_HELP_MAIN`. Both families used to read the one name while their
+//! recipes wrote two different files, so whichever value the gate's env block
+//! happened to carry is the file BOTH families opened — and neither could say
+//! which. They passed on each other's fixture because ONE builder
+//! (`fixtures/build-help-sync-fixture.ts`) reads ONE spec (`fixtures/
+//! help-sync.json`), so the two `.db`s are logically identical; the collision
+//! was latent, not yet a red. The shared BUILDER still takes its OUT path from
+//! `QT_FIXTURE_HELP_MAIN` — there it is a write destination, not a family
+//! selector, and the builder is not this lane's to edit.
+//!
+//! The six-field per-scenario compare below is the other half: it used to carry
+//! no content channel at all (`helpDocIds` alone — `SELECT id`), so no fixture
+//! swap could ever redden it. It now carries `helpDocContentHashes` in the same
+//! id order, which is the value the sync's whole update/skip decision turns on.
+//!
 //! Generate (Node 24, from the v4 checkout). The fixture is built by the
 //! recipe's own first stage into a FAMILY-SPECIFIC path — this family used to
 //! read the sync family's `/tmp/qt-help-sync-main.db` without building it,
@@ -28,13 +46,13 @@
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-help-sync-fixture.ts
 //!   : > /tmp/oracle-help-sync-guards.ndjson
 //!   for s in missing-dir no-markdown only-empty-files; do
-//!     QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-guards-main.db QT_HELP_SYNC_SCENARIO=$s \
+//!     QT_FIXTURE_HELP_SYNC_GUARDS_MAIN=/tmp/qt-help-sync-guards-main.db QT_HELP_SYNC_SCENARIO=$s \
 //!       $N/node --import tsx $V5/harness/oracle/cases/help-sync-guards.ts \
 //!       >> /tmp/oracle-help-sync-guards.ndjson
 //!   done
 //! Run:
 //!   QT_ORACLE_HELP_SYNC_GUARDS=/tmp/oracle-help-sync-guards.ndjson \
-//!   QT_FIXTURE_HELP_MAIN=/tmp/qt-help-sync-guards-main.db \
+//!   QT_FIXTURE_HELP_SYNC_GUARDS_MAIN=/tmp/qt-help-sync-guards-main.db \
 //!     cargo test -p quilltap-harness --test help_doc_sync_guards_equivalence
 
 use serde::Deserialize;
@@ -49,7 +67,7 @@ struct Spec {
     test_pepper_base64: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct GuardCase {
     scenario: String,
     #[serde(rename = "totalOnDisk")]
@@ -61,6 +79,13 @@ struct GuardCase {
     chunks_written: usize,
     #[serde(rename = "helpDocIds")]
     help_doc_ids: Vec<String>,
+    /// P4.93 — the family's ONLY content channel. `helpDocIds` reads ids the
+    /// spec pins, so it is identical across ANY fixture this builder produces;
+    /// the hashes are the seeded bytes, so a fixture built from a different
+    /// spec reddens here (proven by building one and running this family
+    /// against the unchanged oracle — see the lane record).
+    #[serde(rename = "helpDocContentHashes")]
+    help_doc_content_hashes: Vec<String>,
 }
 
 fn fixtures_dir() -> std::path::PathBuf {
@@ -71,13 +96,13 @@ fn fixtures_dir() -> std::path::PathBuf {
 fn help_doc_sync_guards_match_oracle() {
     let (oracle_path, fixture_main) = match (
         std::env::var("QT_ORACLE_HELP_SYNC_GUARDS"),
-        std::env::var("QT_FIXTURE_HELP_MAIN"),
+        std::env::var("QT_FIXTURE_HELP_SYNC_GUARDS_MAIN"),
     ) {
         (Ok(o), Ok(f)) => (o, f),
         _ => {
             eprintln!(
                 "SKIP: help_doc_sync_guards_match_oracle: set QT_ORACLE_HELP_SYNC_GUARDS + \
-                 QT_FIXTURE_HELP_MAIN to run the differential"
+                 QT_FIXTURE_HELP_SYNC_GUARDS_MAIN to run the differential"
             );
             return;
         }
@@ -114,19 +139,21 @@ fn help_doc_sync_guards_match_oracle() {
             .write_blocking(move |ws| Ok(sync_help_docs(ws.main().connection(), &files)))
             .expect("sync");
 
-        let ids: Vec<String> = db
+        let rows: Vec<(String, String)> = db
             .read_main(|c| {
                 let mut stmt = c
-                    .prepare("SELECT id FROM help_docs ORDER BY id ASC")
+                    .prepare("SELECT id, contentHash FROM help_docs ORDER BY id ASC")
                     .map_err(quilltap_core::db::DbError::from)?;
                 let mapped = stmt
-                    .query_map([], |r| r.get::<_, String>(0))
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
                     .map_err(quilltap_core::db::DbError::from)?
                     .collect::<Result<Vec<_>, _>>()
                     .map_err(quilltap_core::db::DbError::from)?;
                 Ok(mapped)
             })
-            .expect("dump ids");
+            .expect("dump ids + content hashes");
+        let ids: Vec<String> = rows.iter().map(|(id, _)| id.clone()).collect();
+        let hashes: Vec<String> = rows.iter().map(|(_, h)| h.clone()).collect();
 
         let rust = json!({
             "scenario": case.scenario,
@@ -135,6 +162,7 @@ fn help_doc_sync_guards_match_oracle() {
             "failed": result.failed,
             "chunksWritten": result.chunks_written,
             "helpDocIds": ids,
+            "helpDocContentHashes": hashes,
         });
         let oracle = json!({
             "scenario": case.scenario,
@@ -143,6 +171,7 @@ fn help_doc_sync_guards_match_oracle() {
             "failed": case.failed,
             "chunksWritten": case.chunks_written,
             "helpDocIds": case.help_doc_ids,
+            "helpDocContentHashes": case.help_doc_content_hashes,
         });
         assert_eq!(
             rust, oracle,
@@ -183,4 +212,27 @@ fn help_doc_sync_guards_match_oracle() {
         !by_name("only-empty-files").help_doc_ids.is_empty(),
         "bug 18: the rows must survive an all-blank help/ — the table stays populated."
     );
+
+    // P4.93 — the content channel must actually carry something in EVERY
+    // scenario, or the compare above agrees about an empty list and the
+    // sensitivity it was added for is vacuous (the `a-guard-whose-other-
+    // conjuncts-are-false-is-untested` shape). One hash per surviving id.
+    for case in &cases {
+        assert_eq!(
+            case.help_doc_content_hashes.len(),
+            case.help_doc_ids.len(),
+            "{}: one contentHash per surviving row: {case:?}",
+            case.scenario
+        );
+        assert!(
+            !case.help_doc_content_hashes.is_empty()
+                && case
+                    .help_doc_content_hashes
+                    .iter()
+                    .all(|h| !h.trim().is_empty()),
+            "{}: the content channel must be populated — an empty one cannot \
+             tell one fixture from another",
+            case.scenario
+        );
+    }
 }

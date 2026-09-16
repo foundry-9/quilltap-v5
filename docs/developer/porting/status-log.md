@@ -129944,3 +129944,107 @@ lane-private paths and run by name: `chat_create_capstone_equivalence`
 widened and neither moved a row, as expected — the recording is a
 side-channel on the ORCHESTRATOR family's oracle only; the other two
 families have their own mocks and their own `CannedStreamW`-shaped readers.
+---
+
+## P4.93 — the harness + logging maintenance smalls (lane record, `1fefadb9a` round)
+
+**Lane branch `claude/harness-logging-smalls-b86378`, worktree
+`.claude/worktrees/harness-logging-smalls-b86378`, from `main` `0afb273d`.
+Oracle baseline `2075242f9`; regen rule PIN REQUIRED; lane pin
+`/tmp/qt-v4-pin-p4.93-2075242f9`.**
+
+Opening §2 freshness probe (drift-ledger §2, four read-only commands): branch
+`main`, tree CLEAN, `log 1fefadb9a..main` EMPTY, `log 1a2b2164c..bugfix`
+EMPTY — **PASS**, so §1's verdict and regen rule stand and nothing was
+re-derived. The §R.3 baseline-vs-target record for this lane's v4 surfaces:
+
+```
+git -C ~/source/quilltap-server diff --stat 2075242f9..1fefadb9a \
+  -- lib/background-jobs/ lib/help-docs/ lib/services/help*
+→ EMPTY
+```
+
+so the baseline pin is the right spec for every family and every ported line
+here. (`1fefadb9a` touches `app/`, `help/chat-turn-manager.md`, docs, tests
+and version markers only — none of this lane's surfaces.)
+
+### Unit A — the `QT_FIXTURE_HELP_MAIN` collision, split by name and made measurable
+
+**The rename.** `help_doc_sync_guards_equivalence` reads
+`QT_FIXTURE_HELP_SYNC_GUARDS_MAIN` (test `:92`, skip sentence `:98`, the
+header's recipe and Run blocks); `harness/oracle/cases/help-sync-guards.ts`
+reads the same new name and throws on it by name. `help_doc_sync_equivalence`
+keeps `QT_FIXTURE_HELP_MAIN` and gained one header paragraph naming the split.
+
+**One deliberate non-rename, recorded:** the SHARED builder
+(`harness/oracle/fixtures/build-help-sync-fixture.ts`) still takes its OUT
+path from `QT_FIXTURE_HELP_MAIN`. There it is a write destination, not a
+family selector, and the builder is READ ONLY for this lane (the order's
+Fixtures section). Both headers say so.
+
+**The fixture-sensitive arm.** The order's premise was correct and the survey's
+wording was exact: the guards family's six-field compare
+(`{scenario, totalOnDisk, deleted, failed, chunksWritten, helpDocIds}`) had NO
+content channel — `helpDocIds` is `SELECT id … ORDER BY id`, and every id is
+pinned by the spec, so it reads identically out of ANY fixture this builder
+produces. The family now emits `helpDocContentHashes` (the `contentHash`
+column, same id order) on BOTH sides. `contentHash` over `title` because it is
+the value the sync's entire update/skip decision turns on, and because every
+guard scenario leaves the seeded rows exactly as the fixture wrote them (a
+refused prune writes nothing), so the column reads the fixture's own bytes.
+
+**Fixture MUTATION proof (not a code mutation — the order's item 2).** A second
+fixture was built from a COPY of the spec under `/tmp` with row 2's
+`contentHash` altered (`8b8c4225…` → `deadbeef…`, and its `content` with it),
+through the unmodified committed builder run from the pin. The guards family
+run against that fixture with the **UNCHANGED** oracle went **RED**:
+
+```
+guard scenario missing-dir diverged
+rust:   … "helpDocIds":[…001,…002,…003],"helpDocContentHashes":[…,"deadbeef…",…]
+oracle: … "helpDocIds":[…001,…002,…003],"helpDocContentHashes":[…,"8b8c4225…",…]
+```
+
+`helpDocIds` is **identical in both**, which is the counterfactual: before this
+arm the family would have passed on a fixture built from a different spec. The
+committed builder and spec are unchanged; the mutated copy was deleted.
+
+**The discriminator the order asked for (item 1), recorded:** the guards family
+run under the NEW variable but pointed at the SYNC family's fixture
+(`/tmp/qt-help-sync-main.db`) still **PASSES** today. That is the expected
+answer and it is the survey's finding made executable: ONE builder reads ONE
+spec, so the two `.db`s are logically identical and `cmp` differs only at
+byte 1 (page noise). The naming collision was LATENT, never a red. The rename
+ends the ambiguity about which file a family opened; the content column is what
+turns a future drift between the two specs into a red instead of a coin flip.
+
+**Regen (both families, through the sanctioned driver, from the lane pin):**
+
+```
+PIN=/tmp/qt-v4-pin-p4.93-2075242f9
+rm -f /tmp/oracle-help-sync-guards.ndjson /tmp/qt-help-sync-guards-main.db
+python3 harness/tools/recipe_sweep.py --run help_doc_sync_guards_equivalence \
+  --v4 "$PIN" --v5w "$PWD"          # OK, 1 passed
+rm -f /tmp/oracle-help-sync.ndjson /tmp/qt-help-sync-main.db
+python3 harness/tools/recipe_sweep.py --run help_doc_sync_equivalence \
+  --v4 "$PIN" --v5w "$PWD"          # OK, 1 passed
+```
+
+§5.2 silent-stale-pass discipline: both fixtures and both NDJSONs were `rm -f`'d
+first, the builder's last line read (`built help-sync fixture: … (3 help_docs
+rows, 3 embedding_status rows, 3 help_doc_chunks rows)`), and the fresh guards
+NDJSON grepped for the changed bytes — `grep -c helpDocContentHashes` = **3**
+(one per scenario), > 0.
+
+`recipe_sweep.py --self-test` → 0 failures; `--list` classifies both families
+`ok` (430 ok / 79 ok_restored, unchanged shape).
+
+**Tier 2 item 9 — a no-op with evidence.** `grep -rn QT_FIXTURE_HELP_MAIN
+harness/tools/` → **no hits**, and **zero** committed `sweep-results/*.json`
+mention it. The driver bakes no family env names; it derives every recipe from
+the test header, which is why the rename needed no driver-side alias.
+
+**Cross-lane (§R.10 (a)):** P4.D195 regenerates and RUNS the `help_*` content
+families under TODAY's names and edits none of them — no collision with this
+rename. The unifier re-runs both help-sync families with the renamed block
+after the pick.

@@ -301,6 +301,35 @@ matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
 without executing anything — so `<tool_call>` never reaches the simple-json pass
 on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
 not a change here.
+#### 2026-09-16 — test(harness): split the `QT_FIXTURE_HELP_MAIN` two-family collision by name and give the prune-guard family a content channel
+
+_Versions: harness 0.0.821._
+
+`help_doc_sync_guards_equivalence` now reads `QT_FIXTURE_HELP_SYNC_GUARDS_MAIN`;
+`help_doc_sync_equivalence` keeps `QT_FIXTURE_HELP_MAIN`. The two families used
+to read the one name while their recipes wrote two different files, so whichever
+value the gate's env block carried was the file BOTH opened, and neither could
+say which. The shared builder keeps `QT_FIXTURE_HELP_MAIN` as its OUT path —
+there it is a write destination, not a family selector.
+
+The rename alone would have been cosmetic: the guards family's per-scenario
+compare carried no content channel at all (`totalOnDisk`, `deleted`, `failed`,
+`chunksWritten` and `helpDocIds` — ids the spec pins), so no fixture swap could
+redden it even in principle. It now emits `helpDocContentHashes` in the same id
+order on both sides, which is the value the sync's whole update/skip decision
+turns on. Proven fixture-SENSITIVE by building a second fixture from a copy of
+the spec with one seeded doc's `contentHash` altered and running the family
+against it with the UNCHANGED oracle: RED on the hashes, with `helpDocIds`
+identical in both — which is the counterfactual that the pre-existing columns
+could not have seen it. An anti-vacuity pin asserts one hash per surviving id
+and a populated channel in every scenario.
+
+Recorded, not changed: the two families still pass on each other's fixture
+today, because ONE builder reads ONE spec, so the two `.db`s are logically
+identical (page noise aside). The naming collision was latent; the content
+column is what makes a future drift between them a red instead of a coin flip.
+The sweep driver needed no change — it derives every family's recipe from the
+header — and no committed sweep-results artifact bakes the old name.
 
 #### 2026-09-16 — docs(porting): order the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93)
 
