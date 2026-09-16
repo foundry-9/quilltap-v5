@@ -301,6 +301,63 @@ matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
 without executing anything — so `<tool_call>` never reaches the simple-json pass
 on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
 not a change here.
+#### 2026-09-16 — fix(logging): the fifteen absent `[CharacterAvatar]` handler lines, and the `db::memories` capture rig's interest-cache race
+
+_Versions: core 0.0.929._
+
+v4's `character-avatar.ts` narrates its work at nineteen sites. v5 carried four
+of them — one on the cache-hit path (P4.D184) and three on the shared
+`image_job_common` reroute path — so an operator grepping `combined.log` for a
+job that skipped, refused, rerouted or simply finished found nothing at all.
+Fourteen of the fifteen absent sentences now fire at v4's branch points, at v4's
+levels, with v4's field bags.
+
+Three of them are real fidelity fixes rather than transcriptions. v4 logs the
+Concierge verdict on `isDangerous` ALONE and asks about the mode afterwards; v5
+had collapsed the two into one condition, so in DETECT_ONLY — where nothing is
+rerouted and the verdict is the operator's only signal — it said nothing. v4's
+`resolveCheapLLMSelectionForUser` throw maps onto v5's profiles READ, which
+`unwrap_or_default()` had been swallowing whole. And the reroute's two outcomes
+(a desk was found / none was) are two different sentences v5 had neither of.
+
+One line is a NO-PORT with the reason recorded in a named constant: v4's
+`Prompt classification failed, continuing normally` fires from a catch around
+`classifyDangerousContent`, and v5's `classify_content` is infallible by
+signature — it returns the result type, not a `Result`, and folds its own inner
+error into `safe_fallback()`. There is no v5 branch on which it could fire.
+
+Each line lands with a capturing test over the REAL handler — sentence, level,
+target and whole field bag — and a silence leg, because a line that fires on
+every path says nothing. The scaffold runs over a genuinely provisioned instance
+(`provision_fresh_instance`, full schema, built-in mounts) with one chat,
+character and image profile seeded on top, so it tracks schema moves for free.
+Seven mutations, each reddening exactly its own pins: two swapped sentences, a
+dropped bag key, a skip line fired on the success path, the reroute pair
+swapped, the swallowed read restored, and a success line fired on the failure
+arm. Behaviour is unmoved: `avatar_job_tier3`, `story_background_job_tier3` and
+`image_generation_tier3` are green on pin-fresh oracles.
+
+Deferred loudly: v4's identical `[StoryBackground] Concierge uncensored reroute
+succeeded` is NOT ported. This lane's mandate is the `[CharacterAvatar]` lines,
+and the story handler's own log surface has never been surveyed against v4's;
+the sentence is recorded by name in `image_job_common` so the absence is a
+decision with a next step. The P4.D184 cache-hit line's four camelCase field
+names were respelled snake_case to match the other 347 `tracing::` sites under
+`services/` (message, level and target unmoved).
+
+Separately, `db::memories`' four capture tests moved onto an armed rig.
+`test_support::captured` installs a THREAD-scoped subscriber while `tracing`
+caches each callsite's interest globally, so the two sibling tests that reach
+`delete_with_unlink` with nothing capturing can retire the callsite for the whole
+binary — which is what made
+`delete_with_unlink_logs_v4s_complete_debug` fail once in a full workspace run
+("exactly one complete line: []") and pass alone. A permanently registered empty
+global registry keeps every callsite interesting; the per-test thread-local
+default still wins, so nothing these tests observe changed. This is
+`quilltap-host`'s `lock.rs` idiom, not `test_support`'s `global_capture`: that
+rig is async and renders the message only, while every assertion here reads
+`key=value` fields.
+
 #### 2026-09-16 — refactor(harness): one `CompletionRole` inverse, and every hand-rolled role mapper repointed onto it
 
 _Versions: core 0.0.928, harness 0.0.822._

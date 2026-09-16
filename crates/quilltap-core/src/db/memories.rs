@@ -1079,6 +1079,45 @@ mod tests {
         lines.iter().filter(|l| l.contains(needle)).collect()
     }
 
+    /// P4.93 — the four capture tests below go through THIS, not
+    /// `test_support::captured` directly.
+    ///
+    /// `captured` installs a THREAD-scoped subscriber, and `tracing` caches each
+    /// callsite's `Interest` **globally** on first use. The two sibling tests
+    /// above (`delete_with_unlink_scrubs_neighbours_and_deletes`,
+    /// `delete_with_unlink_missing_is_noop`) reach `delete_with_unlink` with NO
+    /// subscriber armed on their thread; if one of them touches the
+    /// `deleteMemoryWithUnlink complete` callsite first, the interest cache can
+    /// retire it for the whole binary and the capture below sees nothing. That
+    /// is exactly what `delete_with_unlink_logs_v4s_complete_debug` did once in
+    /// a full workspace run ("exactly one complete line: []") while passing
+    /// alone and twice in its own binary.
+    ///
+    /// The fix is to keep a dispatcher permanently registered, so every rebuild
+    /// of the interest cache (one happens on each `set_default`) ANDs in a
+    /// subscriber that says `always`. An empty global registry is enough — the
+    /// per-test thread-local default still takes precedence over it, so nothing
+    /// about what these tests observe changes.
+    ///
+    /// This is `quilltap-host`'s `lock.rs` idiom verbatim (its `heartbeat_tick`
+    /// lines flaked 2 runs in 5 on the same race), NOT `test_support`'s
+    /// `global_capture`: that rig is `async` and renders the MESSAGE only, while
+    /// every assertion here reads `key=value` fields (`memoryId`,
+    /// `neighbourCount`, `durationMs`). The module doc names `global_capture` as
+    /// the sanctioned answer to the `Interest` race, and this is that answer in
+    /// the shape a synchronous, field-asserting test can use — the arming, which
+    /// is the load-bearing half.
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            // `let _`: another test binary layout could have set one already
+            // (`global_capture` does, for `job_runner`'s smoke test), and either
+            // global keeps the callsites interesting.
+            let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+        });
+        crate::test_support::captured(f)
+    }
+
     #[test]
     fn delete_with_unlink_logs_v4s_complete_debug() {
         let (_dir, w) = seed(&[
@@ -1086,7 +1125,7 @@ mod tests {
             ("mA2", "charA", &["mA1"]),
             ("mB1", "charB", &["mA1"]),
         ]);
-        let lines = crate::test_support::captured(|| {
+        let lines = captured(|| {
             w.memories().delete_with_unlink("mA1").unwrap();
         });
         let hits = lines_with(&lines, "[MemoryGate] deleteMemoryWithUnlink complete");
@@ -1131,7 +1170,7 @@ mod tests {
                 .map(|(a, b, c)| (*a, *b, c.as_slice()))
                 .collect();
             let (_dir, w) = seed(&seeds);
-            let lines = crate::test_support::captured(|| {
+            let lines = captured(|| {
                 w.memories().delete_with_unlink("target").unwrap();
             });
             let hits = lines_with(&lines, warn);
@@ -1166,7 +1205,7 @@ mod tests {
             ("mB2", "charB", &[]),
         ]);
         let ids = vec!["mA1".to_string(), "mB2".to_string(), "ghost".to_string()];
-        let lines = crate::test_support::captured(|| {
+        let lines = captured(|| {
             w.memories().delete_many_with_unlink(&ids).unwrap();
         });
         let hits = lines_with(
@@ -1195,7 +1234,7 @@ mod tests {
     #[test]
     fn delete_many_with_unlink_is_silent_on_an_empty_batch() {
         let (_dir, w) = seed(&[("mA1", "charA", &[])]);
-        let lines = crate::test_support::captured(|| {
+        let lines = captured(|| {
             assert_eq!(w.memories().delete_many_with_unlink(&[]).unwrap(), 0);
         });
         assert!(
@@ -1232,7 +1271,7 @@ mod tests {
                 .collect();
             let (_dir, w) = seed(&seeds);
             let ids = vec!["target".to_string()];
-            let lines = crate::test_support::captured(|| {
+            let lines = captured(|| {
                 w.memories().delete_many_with_unlink(&ids).unwrap();
             });
             let hits = lines_with(&lines, warn);

@@ -390,6 +390,37 @@ impl RerouteHandler {
         }
     }
 
+    /// v4's `logger.info('[CharacterAvatar] Concierge uncensored reroute
+    /// succeeded', { context, jobId, fallbackProvider, fallbackModel,
+    /// rerouteDurationMs })` — `character-avatar.ts:439` (P4.93).
+    ///
+    /// **The story handler's twin is NOT ported here** and stays silent:
+    /// `story-background.ts:769` carries the same sentence under its own name,
+    /// but this lane's mandate is the `[CharacterAvatar]` lines, and porting the
+    /// story line means surveying that handler's own log surface as its own
+    /// unit. Named rather than left as a bare empty arm — see
+    /// [`STORY_REROUTE_SUCCEEDED_UNPORTED`].
+    fn log_reroute_succeeded(
+        self,
+        job_id: Option<&str>,
+        fallback_provider: &str,
+        fallback_model: &str,
+        reroute_duration_ms: f64,
+    ) {
+        match self {
+            RerouteHandler::StoryBackground { .. } => {}
+            RerouteHandler::CharacterAvatar => tracing::info!(
+                target: "quilltap::character_avatar",
+                context = "background-jobs.character-avatar",
+                job_id = job_id.unwrap_or(""),
+                fallback_provider = fallback_provider,
+                fallback_model = fallback_model,
+                reroute_duration_ms = reroute_duration_ms,
+                "[CharacterAvatar] Concierge uncensored reroute succeeded"
+            ),
+        }
+    }
+
     /// v4's `logger.error('[…] Image generation failed (Concierge reroute also
     /// failed)', { context, jobId, originalError, rerouteError }, rerouteError)`.
     fn log_after_reroute_failure(
@@ -418,6 +449,20 @@ impl RerouteHandler {
         }
     }
 }
+
+/// v4's `[StoryBackground] Concierge uncensored reroute succeeded`
+/// (`story-background.ts:769`, bag `{context, jobId, fallbackProvider,
+/// fallbackModel, rerouteDurationMs}`) — **UNPORTED, deliberately**.
+///
+/// P4.93's mandate is the `[CharacterAvatar]` lines; the story-background
+/// handler's own log surface has never been surveyed against v4's, and porting
+/// one of its sentences without that survey would leave a half-ported surface
+/// that reads as complete. Recorded here by name so the absence is a decision
+/// with a next step, not a hole: the next lane over `story_background_job.rs`
+/// takes it with the rest of that handler's lines.
+#[allow(dead_code)]
+pub(crate) const STORY_REROUTE_SUCCEEDED_UNPORTED: &str =
+    "[StoryBackground] Concierge uncensored reroute succeeded";
 
 /// v4 `buildImageGenParams` as the two image JOBS call it: `n: 1`, `style:
 /// 'natural'`, the handler's orientation, and the profile's LoRAs + residual
@@ -717,6 +762,16 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver>(
                 reroute_duration_ms,
             )
             .await;
+            // v4 logs this AFTER `logLLMCall` and after swapping the effective
+            // profile in (`character-avatar.ts:427-445`); the bag names the
+            // FALLBACK desk, since the whole point of the line is which one
+            // answered.
+            handler.log_reroute_succeeded(
+                job_id,
+                &reroute.profile.provider,
+                &reroute.profile.model_name,
+                reroute_duration_ms,
+            );
             Ok(GenOutcome {
                 images: response.images,
                 active_provider: reroute.profile.provider.clone(),
@@ -1395,6 +1450,109 @@ mod tests {
                 .any(|l| l.contains("rerouting through Concierge")),
             "nothing to reroute: {lines:?}"
         );
+    }
+
+    /// P4.93 — v4's FOURTH `[CharacterAvatar]` line on this path
+    /// (`character-avatar.ts:439`): the second door opened AND answered. The
+    /// story handler's identical sentence
+    /// ([`STORY_REROUTE_SUCCEEDED_UNPORTED`]) is deliberately not ported, so its
+    /// silence here is the recorded deferral, not an oversight.
+    #[tokio::test]
+    async fn a_successful_avatar_reroute_announces_the_desk_that_answered() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let (out, calls) = {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let guard = tracing::subscriber::set_default(subscriber);
+            // `fail_reroute: false` — the second attempt succeeds.
+            let r = run_blocked(
+                &db,
+                RerouteHandler::CharacterAvatar,
+                Some(UNCENSORED_ID),
+                false,
+            )
+            .await;
+            drop(guard);
+            r
+        };
+        let lines = logs.lock().unwrap().clone();
+
+        assert!(out.is_ok(), "the reroute produced an image");
+        assert_eq!(calls, 2, "original attempt + reroute attempt");
+
+        let line = one_line(
+            &lines,
+            "[CharacterAvatar] Concierge uncensored reroute succeeded",
+        );
+        assert!(
+            line.starts_with("INFO quilltap::character_avatar"),
+            "level + target: {line}"
+        );
+        assert!(
+            line.contains("context=background-jobs.character-avatar"),
+            "{line}"
+        );
+        assert!(line.contains("job_id=job-7"), "{line}");
+        // v4's bag names the FALLBACK desk — which one answered is the point.
+        assert!(line.contains("fallback_provider=OPENAI"), "{line}");
+        assert!(line.contains("fallback_model=uncensored-model"), "{line}");
+        assert!(
+            line.contains("reroute_duration_ms="),
+            "v4 carries the second attempt's own span: {line}"
+        );
+        // The failure twins stayed silent.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[CharacterAvatar] Image generation failed")),
+            "no failure line on a successful reroute: {lines:?}"
+        );
+    }
+
+    /// The silence legs, both of them: a FAILED reroute never says it succeeded,
+    /// and the STORY handler never says it at all (the recorded deferral).
+    #[tokio::test]
+    async fn the_succeeded_line_is_silent_on_a_failed_reroute_and_for_the_story_handler() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = open_db(dir.path());
+        seed_uncensored_profile(&db).await;
+
+        for (handler, label) in [
+            (RerouteHandler::CharacterAvatar, "avatar, reroute FAILS"),
+            (
+                RerouteHandler::StoryBackground {
+                    is_dangerous_chat: true,
+                    has_uncensored_image_provider: true,
+                },
+                "story, reroute SUCCEEDS",
+            ),
+        ] {
+            // The avatar arm fails its reroute; the story arm succeeds — so the
+            // story leg is the one that proves the UNPORTED deferral rather than
+            // merely repeating the failure leg.
+            let fail_reroute = matches!(handler, RerouteHandler::CharacterAvatar);
+            let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            {
+                use tracing_subscriber::layer::SubscriberExt;
+                let subscriber = tracing_subscriber::registry()
+                    .with(crate::test_support::CaptureLayer(logs.clone()));
+                let guard = tracing::subscriber::set_default(subscriber);
+                let (out, calls) =
+                    run_blocked(&db, handler, Some(UNCENSORED_ID), fail_reroute).await;
+                drop(guard);
+                assert_eq!(calls, 2, "{label}: the second door opened either way");
+                assert_eq!(out.is_err(), fail_reroute, "{label}");
+            }
+            let lines = logs.lock().unwrap().clone();
+            assert!(
+                !lines.iter().any(|l| l.contains("reroute succeeded")),
+                "{label}: nothing may claim success here: {lines:?}"
+            );
+        }
     }
 
     /// Exactly one captured line contains `needle`; hand it back.

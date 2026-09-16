@@ -55,6 +55,36 @@ use crate::services::lantern_notifications::{
 };
 use crate::wardrobe::Slots;
 
+/// v4's `context` for this handler (`character-avatar.ts` passes it in every one
+/// of its nineteen log bags) — byte-exact, because it is what an operator greps
+/// `combined.log` for. The two `…concierge-route` / `…concierge-reroute`
+/// variants are the IMAGE-PARAMS builder's log contexts, not this one, and stay
+/// spelled out at their call sites.
+const CONTEXT: &str = "background-jobs.character-avatar";
+
+/// The tracing target the handler's shared-path lines already use
+/// (`image_job_common`'s three `RerouteHandler::CharacterAvatar` arms).
+const LOG_TARGET: &str = "quilltap::character_avatar";
+
+/// v4's `logger.error('[CharacterAvatar] Prompt classification failed,
+/// continuing normally', { context, jobId, error })` — `character-avatar.ts:292`
+/// — kept for the record only. **NO-PORT: the branch does not exist in v5.**
+///
+/// v4 wraps `classifyDangerousContent` in a try/catch and fails safe on a
+/// throw. v5's `classify_content` (`dangerous_content::gatekeeper`) is
+/// INFALLIBLE by signature — it returns `DangerClassificationResult`, not a
+/// `Result`, and catches its own inner error into
+/// `DangerClassificationResult::safe_fallback()` at its one `Err(_) =>` arm.
+/// There is therefore no v5 branch on which this sentence could fire; the
+/// fail-safe behaviour v4's catch provides is already the port's contract.
+///
+/// The eighteen other `character-avatar.ts` sites DO have v5 branches and all
+/// fire (fourteen landed by P4.93, one by P4.D184, three on the shared
+/// `image_job_common` path).
+#[allow(dead_code)]
+const CLASSIFICATION_FAILED_UNREACHABLE: &str =
+    "[CharacterAvatar] Prompt classification failed, continuing normally";
+
 /// The decoded `CHARACTER_AVATAR_GENERATION` payload.
 #[derive(Clone, Debug)]
 pub struct CharacterAvatarPayload {
@@ -147,6 +177,17 @@ where
     A: ApiKeyResolver,
     T: ImageTranscoder,
 {
+    // v4 `:102` — the handler announces itself before it touches the database,
+    // so a job that dies on a missing chat still leaves its own first line.
+    tracing::info!(
+        target: LOG_TARGET,
+        context = CONTEXT,
+        job_id = job_id,
+        chat_id = %payload.chat_id,
+        character_id = %payload.character_id,
+        "[CharacterAvatar] Starting avatar generation"
+    );
+
     let chat_id = payload.chat_id.clone();
     let character_id = payload.character_id.clone();
 
@@ -175,8 +216,18 @@ where
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Image profile not found: {}", payload.image_profile_id))?;
 
-    // apiKeyId / apiKey — WARN+RETURN (a benign skip) when absent.
+    // apiKeyId / apiKey — WARN+RETURN (a benign skip) when absent. v4 `:128`
+    // and `:138`: two DIFFERENT sentences with two different bags, because the
+    // operator's next move differs — one profile has no key attached, the other
+    // points at a key that no longer resolves.
     let Some(api_key_id) = common::owned_field(&image_profile, "apiKeyId") else {
+        tracing::warn!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            profile_id = common::str_field(&image_profile, "id").unwrap_or(""),
+            "[CharacterAvatar] Image profile has no API key, skipping"
+        );
         return Ok(());
     };
     let Some(api_key) = deps
@@ -184,6 +235,15 @@ where
         .resolve(&api_key_id, user_id)
         .filter(|k| !k.is_empty())
     else {
+        // v4's bag here names NO profile — `apiKey?.key_value` is what failed,
+        // and the id it was looked up by is already in the line above when that
+        // one fired.
+        tracing::warn!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            "[CharacterAvatar] API key not found or invalid, skipping"
+        );
         return Ok(());
     };
 
@@ -242,7 +302,14 @@ where
     let leaf_counts = prompt_result.leaf_counts;
     let prompt = prompt_result.prompt;
     if !prompt_result.has_appearance {
-        // No appearance data — WARN+RETURN.
+        // No appearance data — WARN+RETURN (v4 `:167`).
+        tracing::warn!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            character_id = %payload.character_id,
+            "[CharacterAvatar] No appearance data available, skipping"
+        );
         return Ok(());
     }
 
@@ -310,14 +377,20 @@ where
 
             // No Lantern notification: nothing was produced. The avatar still
             // reaches the Salon through the normal realtime path.
+            // P4.93: onto the shared constants, and its four camelCase field
+            // names respelled snake_case. The SENTENCE, level and target are
+            // unmoved (the `avatar_job_tier3` pin reads the sentence); this is
+            // the field convention the other 347 `tracing::` sites under
+            // `services/` use, including `image_job_common`'s three
+            // `[CharacterAvatar]` lines, and the fourteen new ones below.
             tracing::info!(
-                target: "quilltap::character_avatar",
-                context = "background-jobs.character-avatar",
+                target: LOG_TARGET,
+                context = CONTEXT,
                 job_id = job_id,
-                chatId = %payload.chat_id,
-                characterId = %payload.character_id,
-                fileId = %cached.id,
-                leafCounts = ?leaf_counts,
+                chat_id = %payload.chat_id,
+                character_id = %payload.character_id,
+                file_id = %cached.id,
+                leaf_counts = ?leaf_counts,
                 "[CharacterAvatar] Reused cached avatar for this configuration"
             );
             return Ok(());
@@ -347,10 +420,28 @@ where
     let mut eff_api_key = api_key.clone();
 
     if danger_settings.mode != "OFF" && danger_settings.scan_image_prompts {
-        // Build the cheap-LLM selection for classification (errors swallowed).
-        let all_profiles = db
-            .read_main(crate::db::connection_profiles::find_all)
-            .unwrap_or_default();
+        // Build the cheap-LLM selection for classification. v4 wraps
+        // `resolveCheapLLMSelectionForUser` in a try/catch and WARNS on a throw
+        // (`:237`), leaving `cheapLLMSelection` null so the classification is
+        // skipped. v5's `build_cheap_llm_selection` is infallible, so the only
+        // thing that can fail here is the profiles READ — which is the same
+        // failure wearing Rust's clothes, and it used to be swallowed whole by
+        // `unwrap_or_default()`. A successful read that simply finds no eligible
+        // profile answers `None` and stays SILENT, exactly as v4's
+        // `resolved?.selection ?? null` does.
+        let all_profiles = match db.read_main(crate::db::connection_profiles::find_all) {
+            Ok(profiles) => profiles,
+            Err(e) => {
+                tracing::warn!(
+                    target: LOG_TARGET,
+                    context = CONTEXT,
+                    job_id = job_id,
+                    error = %e,
+                    "[CharacterAvatar] Failed to build cheap LLM selection for danger classification"
+                );
+                Vec::new()
+            }
+        };
         let cheap_settings = chat_settings
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"));
@@ -367,6 +458,26 @@ where
                 Some(&payload.chat_id),
             )
             .await;
+            // v4 logs the verdict on `isDangerous` ALONE (`:255`) and only then
+            // asks about the mode (`:274`/`:282` live inside the AUTO_ROUTE
+            // arm). v5 had collapsed the two into one conjunction, which is
+            // routing-equivalent but silent in DETECT_ONLY — where the verdict
+            // is the only thing the operator gets.
+            if classification.is_dangerous {
+                tracing::info!(
+                    target: LOG_TARGET,
+                    context = CONTEXT,
+                    job_id = job_id,
+                    score = classification.score,
+                    categories = ?classification
+                        .categories
+                        .iter()
+                        .map(|c| c.category.as_str())
+                        .collect::<Vec<_>>(),
+                    mode = %danger_settings.mode,
+                    "[CharacterAvatar] Avatar prompt classified as dangerous"
+                );
+            }
             if classification.is_dangerous && danger_settings.mode == "AUTO_ROUTE" {
                 let original = RouteProfile {
                     id: eff_id.clone(),
@@ -397,11 +508,36 @@ where
                     .ok();
                 if let Some(route) = route {
                     if route.rerouted {
+                        // v4 `:274` — the ORIGINAL profile's NAME, not its id
+                        // (this pair of lines is what an operator reads to see
+                        // which desk the portrait actually went to). Read before
+                        // the swap below, which overwrites `eff_*`.
+                        tracing::info!(
+                            target: LOG_TARGET,
+                            context = CONTEXT,
+                            job_id = job_id,
+                            original_profile =
+                                common::str_field(&image_profile, "name").unwrap_or(""),
+                            uncensored_profile = %route.image_profile.name,
+                            reason = %route.reason,
+                            "[CharacterAvatar] Rerouted to uncensored image provider"
+                        );
                         eff_id = route.image_profile.id.clone();
                         eff_provider = route.image_profile.provider.clone();
                         eff_model = route.image_profile.model_name.clone();
                         eff_params = common::load_profile_parameters(db, &eff_id).await;
                         eff_api_key = route.api_key.clone();
+                    } else {
+                        // v4 `:282` — the resolver looked and found nothing, so
+                        // the original desk keeps the job. The reason is the
+                        // resolver's own sentence.
+                        tracing::warn!(
+                            target: LOG_TARGET,
+                            context = CONTEXT,
+                            job_id = job_id,
+                            reason = %route.reason,
+                            "[CharacterAvatar] No uncensored image provider available, using original"
+                        );
                     }
                 }
             }
@@ -463,11 +599,28 @@ where
     // imageData.b64Json; if (!rawData)` — a JS falsy check, so a missing AND an
     // empty-string payload both no-op (W4.7f widened `data` to Option<String>).
     let Some(image_data) = outcome.images.into_iter().next() else {
+        // v4 `:479`.
+        tracing::warn!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            "[CharacterAvatar] No images returned from provider"
+        );
         return Ok(());
     };
     let raw_data = match image_data.data.as_deref() {
         Some(d) if !d.is_empty() => d,
-        _ => return Ok(()),
+        _ => {
+            // v4 `:490` — a DIFFERENT sentence from the one above: the provider
+            // did answer, the answer just carried no bytes.
+            tracing::warn!(
+                target: LOG_TARGET,
+                context = CONTEXT,
+                job_id = job_id,
+                "[CharacterAvatar] Generated image has no data"
+            );
+            return Ok(());
+        }
     };
     let generation_model = outcome.active_model;
 
@@ -510,11 +663,31 @@ where
         revised_prompt: image_data.revised_prompt.clone(),
         generation_key: cache_keys.key.clone(),
     };
-    common::with_both_conns(db, move |main, mount| {
+    match common::with_both_conns(db, move |main, mount| {
         write_avatar_file(main, mount, &write)
     })
     .await
-    .map_err(|e| format!("Failed to save avatar image: {e}"))?;
+    {
+        Ok(()) => tracing::info!(
+            target: LOG_TARGET,
+            context = CONTEXT,
+            job_id = job_id,
+            file_id = %file_id,
+            "[CharacterAvatar] Avatar image saved"
+        ),
+        Err(e) => {
+            // v4 `:589` logs at ERROR with the exception attached and a bag of
+            // just `{context, jobId}` — the message itself rides the thrown
+            // error, which becomes the job's failure text below.
+            tracing::error!(
+                target: LOG_TARGET,
+                context = CONTEXT,
+                job_id = job_id,
+                "[CharacterAvatar] Failed to save avatar image"
+            );
+            return Err(format!("Failed to save avatar image: {e}"));
+        }
+    }
 
     // 11-12. Bind the chat (and the character's per-chat override) to the new
     // avatar — the same helper the cache-hit path above used.
@@ -528,6 +701,17 @@ where
         &now_iso,
     )
     .await?;
+
+    // v4 `:604` — after the bind, before the Lantern post.
+    tracing::info!(
+        target: LOG_TARGET,
+        context = CONTEXT,
+        job_id = job_id,
+        chat_id = %payload.chat_id,
+        character_id = %payload.character_id,
+        file_id = %file_id,
+        "[CharacterAvatar] Avatar generation completed"
+    );
 
     // 13. Lantern notification (avatar → sender aurora; the built prompt as aim).
     let _ = post_lantern_image_notification(
@@ -837,5 +1021,927 @@ mod payload_tests {
         assert!(!read(Some(Value::Bool(false))));
         assert!(!read(Some(Value::Null)));
         assert!(read(Some(Value::Bool(true))), "the manual reroll's payload");
+    }
+}
+
+// ===========================================================================
+// P4.93 — the handler's log surface (v4 `character-avatar.ts`'s nineteen sites)
+// ===========================================================================
+//
+// Log-only work is invisible to every other proof this repo has: the `files`
+// row, `chats.characterAvatars`, the Lantern notification and the job's outcome
+// are identical whether or not a sentence fires (the finding-#103/#110/#116
+// class). So each line gets a capturing layer over the REAL handler, asserting
+// the sentence, its LEVEL, and its whole field bag — and each gets a SILENCE
+// leg, because a line that fires on every path says nothing.
+//
+// The instance is a REAL fresh-provisioned one (`provision_fresh_instance` —
+// full `fresh_schema.json` DDL, the single user, the built-in mounts), with one
+// character (vault and all), one chat and one image profile inserted on top.
+// Hand-rolled DDL would have to track every schema move the port absorbs; this
+// tracks them for free.
+#[cfg(test)]
+mod log_line_tests {
+    use super::*;
+
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::image_gen::params_builder::ImageDeclarations;
+    use crate::model::completion::CannedCompletionProvider;
+    use crate::model::image::{
+        GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse, ImageProvider,
+        PassthroughTranscoder,
+    };
+    use crate::services::dangerous_content::gatekeeper::NoModerationProvider;
+
+    /// The pepper `provision_fresh_instance`'s own self-test uses (never a real one).
+    const PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
+    const USER: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    const CHAT: &str = "11111111-1111-4111-8111-111111111111";
+    const CHARACTER: &str = "22222222-2222-4222-8222-222222222222";
+    const PROFILE: &str = "33333333-3333-4333-8333-333333333333";
+    const JOB: &str = "job-93";
+    /// A 1x1 PNG, base64 — the provider's canned answer.
+    const PNG_B64: &str =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    struct Keys(Option<String>);
+    impl crate::services::dangerous_content::provider_routing::ApiKeyResolver for Keys {
+        fn resolve(&self, _api_key_id: &str, _user_id: &str) -> Option<String> {
+            self.0.clone()
+        }
+    }
+
+    /// What the one provider attempt answers.
+    #[derive(Clone)]
+    enum Answer {
+        Images(Vec<GeneratedImageData>),
+        Fails(String),
+    }
+    struct StubImages(Answer);
+    impl ImageProvider for StubImages {
+        fn generate_image(
+            &self,
+            _provider: &str,
+            _api_key: &str,
+            _params: &ImageGenParams,
+        ) -> impl std::future::Future<Output = Result<ImageGenResponse, ImageGenError>> + Send
+        {
+            let answer = self.0.clone();
+            async move {
+                match answer {
+                    Answer::Images(images) => Ok(ImageGenResponse { images }),
+                    Answer::Fails(m) => Err(ImageGenError::new(m)),
+                }
+            }
+        }
+    }
+
+    fn declarations(_provider: &str) -> ImageDeclarations {
+        ImageDeclarations::default()
+    }
+
+    fn one_png() -> Answer {
+        Answer::Images(vec![GeneratedImageData {
+            data: Some(PNG_B64.to_string()),
+            url: None,
+            mime_type: Some("image/png".to_string()),
+            revised_prompt: None,
+        }])
+    }
+
+    /// How the seeded instance is arranged for one test.
+    struct Arrangement {
+        /// `None` → the profile row carries a NULL `apiKeyId` (v4 `:128`).
+        profile_api_key_id: Option<&'static str>,
+        /// `None` → the resolver finds no key for that id (v4 `:138`).
+        resolved_key: Option<&'static str>,
+        /// `false` → the vault carries no physical description (v4 `:167`).
+        has_appearance: bool,
+        /// The Concierge's `mode`. `"OFF"` (the default) skips the pre-scan
+        /// entirely, so the three classification lines cannot fire.
+        danger_mode: &'static str,
+        /// `true` seeds a SECOND image profile and points the danger settings'
+        /// `uncensoredImageProfileId` at it, so the AUTO_ROUTE resolver has
+        /// somewhere to go (v4 `:274`); `false` leaves it nowhere (v4 `:282`).
+        uncensored_profile: bool,
+        /// Drop `connection_profiles` after seeding, so the profiles READ the
+        /// cheap-LLM selection is built from FAILS (v4's `:237` catch).
+        break_connection_profiles: bool,
+    }
+
+    impl Default for Arrangement {
+        fn default() -> Self {
+            Self {
+                profile_api_key_id: Some("key-1"),
+                resolved_key: Some("sk-test"),
+                has_appearance: true,
+                danger_mode: "OFF",
+                uncensored_profile: false,
+                break_connection_profiles: false,
+            }
+        }
+    }
+
+    const UNCENSORED_PROFILE: &str = "44444444-4444-4444-8444-444444444444";
+
+    /// A moderation provider that flags everything — the moderation-FIRST arm of
+    /// `classify_content`, which needs no completion call at all.
+    struct FlagsEverything;
+    impl crate::services::dangerous_content::gatekeeper::ModerationProvider for FlagsEverything {
+        async fn moderate(
+            &self,
+            _content: &str,
+            _user_id: &str,
+            _settings: &crate::db::chat_settings::DangerousContentSettings,
+            _chat_id: Option<&str>,
+        ) -> crate::services::dangerous_content::gatekeeper::ModerationOutcome {
+            use crate::services::dangerous_content::gatekeeper::{
+                ModerationCategoryScore, ModerationOutcome, ModerationResult,
+            };
+            ModerationOutcome::Moderated {
+                result: ModerationResult {
+                    flagged: true,
+                    categories: vec![ModerationCategoryScore {
+                        category: "violence".to_string(),
+                        flagged: true,
+                        score: 0.92,
+                    }],
+                },
+                provider_name: "STUB".to_string(),
+            }
+        }
+    }
+
+    /// A fresh provisioned instance with one chat / character / image profile.
+    fn instance(a: &Arrangement) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).expect("data dir");
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).expect("provision");
+
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .expect("open instance");
+
+        let now = "2020-01-01T00:00:00.000Z".to_string();
+        let api_key_id = a.profile_api_key_id.map(str::to_string);
+        let danger_mode = a.danger_mode;
+        let uncensored_profile = a.uncensored_profile;
+        let break_connection_profiles = a.break_connection_profiles;
+        let physical =
+            a.has_appearance.then(
+                || crate::db::vault_character_write::PhysicalDescriptionWrite {
+                    full_description: None,
+                    head_and_shoulders_prompt: Some("a head-and-shoulders study".to_string()),
+                    short_prompt: None,
+                    medium_prompt: None,
+                    long_prompt: None,
+                    complete_prompt: None,
+                },
+            );
+        let now_w = now.clone();
+        db.write_blocking(move |ws| {
+            let main = ws.main().connection();
+            let mount = ws
+                .mount_index()
+                .expect("the mount-index partition")
+                .connection();
+
+            crate::db::character_vault::create_character_with_options(
+                main,
+                mount,
+                &crate::db::characters::CharacterCreate {
+                    user_id: USER.to_string(),
+                    name: "Portrait Subject".to_string(),
+                    default_image_id: None,
+                    default_connection_profile_id: None,
+                    default_partner_id: None,
+                    default_roleplay_template_id: None,
+                    default_image_profile_id: None,
+                    silly_tavern_data: None,
+                    is_favorite: false,
+                    npc: false,
+                    controlled_by: "llm".to_string(),
+                    default_agent_mode_enabled: None,
+                    default_help_tools_enabled: None,
+                    default_timestamp_config: None,
+                    default_scenario_id: None,
+                    default_system_prompt_id: None,
+                    character_document_mount_point_id: None,
+                    can_dress_themselves: None,
+                    can_create_outfits: None,
+                    system_transparency: None,
+                    core_whisper_enabled: None,
+                    can_be_carina: None,
+                    partner_links: Vec::new(),
+                    tags: Vec::new(),
+                    avatar_overrides: Vec::new(),
+                },
+                &crate::db::vault_character_write::CharacterVaultWriteInput {
+                    physical_description: physical,
+                    ..Default::default()
+                },
+                &crate::db::characters::CreateOptions {
+                    id: CHARACTER.to_string(),
+                    created_at: now_w.clone(),
+                    updated_at: now_w.clone(),
+                },
+            )?;
+
+            crate::db::image_profiles::ImageProfilesRepository::new(main).create(
+                &crate::db::image_profiles::IpCreate {
+                    user_id: USER.to_string(),
+                    name: "Original Desk".to_string(),
+                    provider: "OPENAI".to_string(),
+                    api_key_id,
+                    base_url: None,
+                    model_name: "dall-e-3".to_string(),
+                    parameters: serde_json::json!({}),
+                    is_default: true,
+                    is_dangerous_compatible: false,
+                    tags: Vec::new(),
+                },
+                &crate::db::image_profiles::CreateOptions {
+                    id: PROFILE.to_string(),
+                    created_at: now_w.clone(),
+                    updated_at: now_w.clone(),
+                },
+            )?;
+
+            // `ChatCreate`/`ChatParticipant` are `Deserialize`-only (every
+            // optional field carries its Zod default through serde), so the
+            // seed goes in as JSON — which is also the shape v4 would write.
+            let chat_create: crate::db::chats::ChatCreate =
+                serde_json::from_value(serde_json::json!({
+                    "userId": USER,
+                    "title": "A Sitting",
+                    "participants": [{
+                        "id": "p1",
+                        "type": "character",
+                        "characterId": CHARACTER,
+                        "createdAt": now_w,
+                        "updatedAt": now_w,
+                    }],
+                }))
+                .expect("chat create shape");
+            // A cheap-LLM candidate: `build_cheap_llm_selection` answers `None`
+            // on an empty list, and then the Concierge pre-scan never runs at
+            // all. Raw INSERT of exactly the NOT NULL columns — every other one
+            // has a DDL default, which is also what v4's `insertOne` relies on.
+            main.execute(
+                "INSERT INTO connection_profiles \
+                 (id, userId, name, provider, modelName, isDefault, isCheap, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'Cheap Desk', 'OPENAI', 'gpt-cheap', 1, 1, ?3, ?3)",
+                rusqlite::params!["55555555-5555-4555-8555-555555555555", USER, now_w],
+            )?;
+
+            if danger_mode != "OFF" {
+                // The second image profile the AUTO_ROUTE resolver can find.
+                if uncensored_profile {
+                    crate::db::image_profiles::ImageProfilesRepository::new(main).create(
+                        &crate::db::image_profiles::IpCreate {
+                            user_id: USER.to_string(),
+                            name: "Uncensored Desk".to_string(),
+                            provider: "OPENAI".to_string(),
+                            api_key_id: Some("key-1".to_string()),
+                            base_url: None,
+                            model_name: "dall-e-uncensored".to_string(),
+                            parameters: serde_json::json!({}),
+                            is_default: false,
+                            is_dangerous_compatible: true,
+                            tags: Vec::new(),
+                        },
+                        &crate::db::image_profiles::CreateOptions {
+                            id: UNCENSORED_PROFILE.to_string(),
+                            created_at: now_w.clone(),
+                            updated_at: now_w.clone(),
+                        },
+                    )?;
+                }
+                // The provisioned instance already HAS the single user's
+                // `chat_settings` row, so this UPDATEs the one column the
+                // pre-scan reads rather than inserting a second.
+                let mut settings = serde_json::json!({
+                    "mode": danger_mode,
+                    "threshold": 0.7,
+                    "scanTextChat": true,
+                    "scanImagePrompts": true,
+                    "scanImageGeneration": false,
+                    "displayMode": "SHOW",
+                    "showWarningBadges": true,
+                });
+                if uncensored_profile {
+                    settings["uncensoredImageProfileId"] =
+                        serde_json::Value::String(UNCENSORED_PROFILE.to_string());
+                }
+                let updated = main.execute(
+                    "UPDATE chat_settings SET dangerousContentSettings = ?1 WHERE userId = ?2",
+                    rusqlite::params![settings.to_string(), USER],
+                )?;
+                assert_eq!(updated, 1, "the provisioned chat_settings row");
+            }
+
+            ws.main().chats().create(
+                &chat_create,
+                &crate::db::chats::CreateOptions {
+                    id: CHAT.to_string(),
+                    created_at: now_w.clone(),
+                    updated_at: now_w,
+                },
+            )?;
+            // The plant for v4 `:237`: the profiles READ itself fails. v5's
+            // `build_cheap_llm_selection` is infallible, so this is the only
+            // thing under it that can go wrong — and it used to be swallowed.
+            if break_connection_profiles {
+                main.execute("DROP TABLE connection_profiles", [])?;
+            }
+            Ok(())
+        })
+        .expect("seed");
+
+        (dir, db)
+    }
+
+    /// Run the handler over a freshly arranged instance and hand back its
+    /// outcome plus everything it narrated.
+    fn run(a: Arrangement, answer: Answer) -> (Result<(), String>, Vec<String>) {
+        run_with_moderation(a, answer, &NoModerationProvider)
+    }
+
+    fn run_with_moderation<M>(
+        a: Arrangement,
+        answer: Answer,
+        moderation: &M,
+    ) -> (Result<(), String>, Vec<String>)
+    where
+        M: crate::services::dangerous_content::gatekeeper::ModerationProvider,
+    {
+        let (_dir, db) = instance(&a);
+        let images = StubImages(answer);
+        let completion = CannedCompletionProvider::new();
+        let keys = Keys(a.resolved_key.map(str::to_string));
+        let transcoder = PassthroughTranscoder;
+        let decl: &common::ImageDeclarationsFn = &declarations;
+        let deps = AvatarJobDeps {
+            image_provider: &images,
+            completion: &completion,
+            moderation,
+            api_keys: &keys,
+            transcoder: &transcoder,
+            now_ms: 1_577_836_800_000,
+            declarations_for: decl,
+        };
+        let payload = CharacterAvatarPayload {
+            chat_id: CHAT.to_string(),
+            character_id: CHARACTER.to_string(),
+            image_profile_id: PROFILE.to_string(),
+            equipped_slots_override: None,
+            force: false,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        crate::test_support::captured_with(|| {
+            rt.block_on(handle_character_avatar_generation(
+                &db, &deps, USER, &payload, JOB,
+            ))
+        })
+    }
+
+    /// Exactly one captured line contains `needle`; hand it back.
+    fn one<'a>(lines: &'a [String], needle: &str) -> &'a str {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one line containing {needle:?}, got {hits:?}\nall: {lines:?}"
+        );
+        hits[0]
+    }
+
+    fn none(lines: &[String], needle: &str) {
+        assert!(
+            !lines.iter().any(|l| l.contains(needle)),
+            "expected NO line containing {needle:?}\nall: {lines:?}"
+        );
+    }
+
+    /// Every line carries v4's `context` and the job id it was handed.
+    fn has_common_bag(line: &str) {
+        assert!(
+            line.contains("context=background-jobs.character-avatar"),
+            "v4's context: {line}"
+        );
+        assert!(
+            line.contains(&format!("job_id={JOB}")),
+            "the job id: {line}"
+        );
+    }
+
+    // --- v4 `:102` — the handler announces itself before touching the DB -----
+
+    /// It fires even when the very next step throws, which is the point: a job
+    /// that dies on a missing chat still leaves its own first line.
+    #[test]
+    fn starting_fires_before_the_first_read_and_survives_a_missing_chat() {
+        let (_dir, db) = instance(&Arrangement::default());
+        let images = StubImages(one_png());
+        let completion = CannedCompletionProvider::new();
+        let moderation = NoModerationProvider;
+        let keys = Keys(Some("sk-test".to_string()));
+        let transcoder = PassthroughTranscoder;
+        let decl: &common::ImageDeclarationsFn = &declarations;
+        let deps = AvatarJobDeps {
+            image_provider: &images,
+            completion: &completion,
+            moderation: &moderation,
+            api_keys: &keys,
+            transcoder: &transcoder,
+            now_ms: 1_577_836_800_000,
+            declarations_for: decl,
+        };
+        let payload = CharacterAvatarPayload {
+            chat_id: "no-such-chat".to_string(),
+            character_id: CHARACTER.to_string(),
+            image_profile_id: PROFILE.to_string(),
+            equipped_slots_override: None,
+            force: false,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (out, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(handle_character_avatar_generation(
+                &db, &deps, USER, &payload, JOB,
+            ))
+        });
+        assert_eq!(out.err().as_deref(), Some("Chat not found: no-such-chat"));
+
+        let line = one(&lines, "[CharacterAvatar] Starting avatar generation");
+        assert!(
+            line.starts_with("INFO quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(line.contains("chat_id=no-such-chat"), "{line}");
+        assert!(
+            line.contains(&format!("character_id={CHARACTER}")),
+            "{line}"
+        );
+        // The silence leg: nothing downstream of the failed read fired.
+        none(&lines, "[CharacterAvatar] Avatar generation completed");
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    // --- v4 `:128` / `:138` — the two key skips, which are NOT the same line --
+
+    #[test]
+    fn a_profile_with_no_api_key_id_skips_and_names_the_profile() {
+        let (out, lines) = run(
+            Arrangement {
+                profile_api_key_id: None,
+                ..Default::default()
+            },
+            one_png(),
+        );
+        assert!(out.is_ok(), "a benign skip, not a failure: {out:?}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] Image profile has no API key, skipping",
+        );
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(line.contains(&format!("profile_id={PROFILE}")), "{line}");
+        // The OTHER key line is a different diagnosis and must NOT fire.
+        none(
+            &lines,
+            "[CharacterAvatar] API key not found or invalid, skipping",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] No appearance data available, skipping",
+        );
+    }
+
+    #[test]
+    fn a_dangling_api_key_id_skips_with_the_other_sentence_and_names_no_profile() {
+        let (out, lines) = run(
+            Arrangement {
+                resolved_key: None,
+                ..Default::default()
+            },
+            one_png(),
+        );
+        assert!(out.is_ok(), "a benign skip: {out:?}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] API key not found or invalid, skipping",
+        );
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        // v4's bag here is `{context, jobId}` and nothing else.
+        assert!(
+            !line.contains("profile_id="),
+            "v4 names no profile here: {line}"
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] Image profile has no API key, skipping",
+        );
+    }
+
+    // --- v4 `:167` — no appearance -------------------------------------------
+
+    #[test]
+    fn a_character_with_no_physical_description_skips_and_names_the_character() {
+        let (out, lines) = run(
+            Arrangement {
+                has_appearance: false,
+                ..Default::default()
+            },
+            one_png(),
+        );
+        assert!(out.is_ok(), "a benign skip: {out:?}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] No appearance data available, skipping",
+        );
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(
+            line.contains(&format!("character_id={CHARACTER}")),
+            "{line}"
+        );
+        // It got past BOTH key gates to reach this one.
+        none(
+            &lines,
+            "[CharacterAvatar] Image profile has no API key, skipping",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] API key not found or invalid, skipping",
+        );
+        // And nothing was generated.
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    // --- v4 `:479` / `:490` — the two empty-payload skips ---------------------
+
+    #[test]
+    fn an_empty_image_list_says_so_and_never_says_the_other_thing() {
+        let (out, lines) = run(Arrangement::default(), Answer::Images(Vec::new()));
+        assert!(out.is_ok(), "a benign skip: {out:?}");
+
+        let line = one(&lines, "[CharacterAvatar] No images returned from provider");
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        none(&lines, "[CharacterAvatar] Generated image has no data");
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+        none(&lines, "[CharacterAvatar] Avatar generation completed");
+    }
+
+    /// v4's `rawData = imageData.data || imageData.b64Json; if (!rawData)` — a
+    /// JS falsy test, so an EMPTY string lands here, not just a missing key.
+    #[test]
+    fn an_image_with_empty_data_says_the_other_thing() {
+        let (out, lines) = run(
+            Arrangement::default(),
+            Answer::Images(vec![GeneratedImageData {
+                data: Some(String::new()),
+                url: None,
+                mime_type: Some("image/png".to_string()),
+                revised_prompt: None,
+            }]),
+        );
+        assert!(out.is_ok(), "a benign skip: {out:?}");
+
+        let line = one(&lines, "[CharacterAvatar] Generated image has no data");
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        none(&lines, "[CharacterAvatar] No images returned from provider");
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    // --- v4 `:583` + `:604` — the happy path's two lines ----------------------
+
+    #[test]
+    fn a_saved_avatar_logs_the_write_and_then_the_completion() {
+        let (out, lines) = run(Arrangement::default(), one_png());
+        assert!(out.is_ok(), "the happy path: {out:?}");
+
+        let saved = one(&lines, "[CharacterAvatar] Avatar image saved");
+        assert!(
+            saved.starts_with("INFO quilltap::character_avatar"),
+            "{saved}"
+        );
+        has_common_bag(saved);
+        assert!(saved.contains("file_id="), "the minted file id: {saved}");
+
+        let done = one(&lines, "[CharacterAvatar] Avatar generation completed");
+        assert!(
+            done.starts_with("INFO quilltap::character_avatar"),
+            "{done}"
+        );
+        has_common_bag(done);
+        assert!(done.contains(&format!("chat_id={CHAT}")), "{done}");
+        assert!(
+            done.contains(&format!("character_id={CHARACTER}")),
+            "{done}"
+        );
+        assert!(done.contains("file_id="), "{done}");
+
+        // v4 logs the save BEFORE the bind and the completion after it.
+        let idx = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap();
+        assert!(
+            idx("Avatar image saved") < idx("Avatar generation completed"),
+            "the save precedes the completion: {lines:?}"
+        );
+        // The failure twin and every skip stayed silent.
+        none(&lines, "[CharacterAvatar] Failed to save avatar image");
+        none(&lines, "skipping");
+        none(&lines, "[CharacterAvatar] No images returned from provider");
+    }
+
+    // --- v4 `:378` (the shared arm) + the completion's silence ---------------
+
+    /// A refused provider ends the job, so neither of the happy path's two
+    /// lines may fire — the silence leg for both of them at once.
+    #[test]
+    fn a_failed_generation_logs_neither_the_save_nor_the_completion() {
+        let (out, lines) = run(
+            Arrangement::default(),
+            Answer::Fails("the provider exploded".to_string()),
+        );
+        assert_eq!(
+            out.err().as_deref(),
+            Some("Avatar image generation failed: the provider exploded")
+        );
+        // `image_job_common`'s shared arm, under this handler's name.
+        let failed = one(&lines, "[CharacterAvatar] Image generation failed");
+        assert!(
+            failed.starts_with("ERROR quilltap::character_avatar"),
+            "{failed}"
+        );
+        none(&lines, "[CharacterAvatar] Avatar image saved");
+        none(&lines, "[CharacterAvatar] Avatar generation completed");
+        none(
+            &lines,
+            "[CharacterAvatar] Concierge uncensored reroute succeeded",
+        );
+    }
+
+    // --- v4 `:255` / `:274` / `:282` — the Concierge pre-scan's three lines ---
+
+    /// v4 logs the VERDICT on `isDangerous` alone and asks about the mode only
+    /// afterwards, so DETECT_ONLY — where nothing is rerouted — is exactly the
+    /// arm where the verdict is the operator's only signal. v5 had collapsed the
+    /// two conditions into one, which routes identically and says nothing here.
+    #[test]
+    fn a_dangerous_verdict_is_logged_in_detect_only_where_nothing_reroutes() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                danger_mode: "DETECT_ONLY",
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        assert!(out.is_ok(), "DETECT_ONLY still draws the portrait: {out:?}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
+        assert!(
+            line.starts_with("INFO quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(
+            line.contains("score=0.92"),
+            "the classifier's score: {line}"
+        );
+        assert!(
+            line.contains("categories=[\"violence\"]"),
+            "v4 maps to the category NAMES: {line}"
+        );
+        assert!(line.contains("mode=DETECT_ONLY"), "{line}");
+        // DETECT_ONLY asks no routing question at all.
+        none(
+            &lines,
+            "[CharacterAvatar] Rerouted to uncensored image provider",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] No uncensored image provider available, using original",
+        );
+        // …and the portrait still lands.
+        one(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    /// AUTO_ROUTE with a configured uncensored desk: the verdict AND the reroute.
+    #[test]
+    fn auto_route_with_an_uncensored_desk_names_both_profiles() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                danger_mode: "AUTO_ROUTE",
+                uncensored_profile: true,
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        assert!(out.is_ok(), "{out:?}");
+
+        let verdict = one(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
+        assert!(verdict.contains("mode=AUTO_ROUTE"), "{verdict}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] Rerouted to uncensored image provider",
+        );
+        assert!(
+            line.starts_with("INFO quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        // v4 logs the profiles' NAMES here, not their ids — the operator is
+        // reading which desk answered.
+        assert!(line.contains("original_profile=Original Desk"), "{line}");
+        assert!(
+            line.contains("uncensored_profile=Uncensored Desk"),
+            "{line}"
+        );
+        assert!(
+            line.contains("reason="),
+            "the resolver's own sentence: {line}"
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] No uncensored image provider available, using original",
+        );
+    }
+
+    /// AUTO_ROUTE with nowhere to go: the OTHER sentence, and the job carries on
+    /// with the original desk (v4 "using original" — not a failure).
+    #[test]
+    fn auto_route_with_no_uncensored_desk_says_so_and_keeps_the_original() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                danger_mode: "AUTO_ROUTE",
+                uncensored_profile: false,
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        assert!(out.is_ok(), "the original desk still draws it: {out:?}");
+
+        one(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
+        let line = one(
+            &lines,
+            "[CharacterAvatar] No uncensored image provider available, using original",
+        );
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(line.contains("reason="), "{line}");
+        none(
+            &lines,
+            "[CharacterAvatar] Rerouted to uncensored image provider",
+        );
+        one(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    /// The silence leg for all three: with the Concierge OFF the pre-scan never
+    /// runs, so no verdict and no routing line — whatever the moderator says.
+    #[test]
+    fn the_concierge_off_says_nothing_even_when_the_moderator_flags_everything() {
+        let (out, lines) = run_with_moderation(Arrangement::default(), one_png(), &FlagsEverything);
+        assert!(out.is_ok(), "{out:?}");
+        none(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] Rerouted to uncensored image provider",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] No uncensored image provider available, using original",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] Failed to build cheap LLM selection for danger classification",
+        );
+        one(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    // --- v4 `:237` — the cheap-LLM selection could not be built --------------
+
+    /// v4 WARNs when `resolveCheapLLMSelectionForUser` throws and carries on with
+    /// no classification. v5's builder is infallible, so the analogous failure is
+    /// the profiles READ — which `unwrap_or_default()` used to swallow whole.
+    #[test]
+    fn a_failed_profiles_read_warns_and_the_job_carries_on_unclassified() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                danger_mode: "AUTO_ROUTE",
+                uncensored_profile: true,
+                break_connection_profiles: true,
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        assert!(out.is_ok(), "v4 never blocks an avatar on this: {out:?}");
+
+        let line = one(
+            &lines,
+            "[CharacterAvatar] Failed to build cheap LLM selection for danger classification",
+        );
+        assert!(
+            line.starts_with("WARN quilltap::character_avatar"),
+            "{line}"
+        );
+        has_common_bag(line);
+        assert!(line.contains("error="), "v4 carries the message: {line}");
+        assert!(
+            line.contains("connection_profiles"),
+            "and it names what actually failed: {line}"
+        );
+        // No selection means no classification — which is v4's behaviour on the
+        // throw, not just ours.
+        none(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
+        none(
+            &lines,
+            "[CharacterAvatar] Rerouted to uncensored image provider",
+        );
+        // The portrait still lands on the original desk.
+        one(&lines, "[CharacterAvatar] Avatar image saved");
+    }
+
+    /// The silence leg for `:237`: a profiles read that SUCCEEDS and simply
+    /// finds no eligible profile is v4's `resolved?.selection ?? null`, which
+    /// warns about nothing.
+    #[test]
+    fn a_successful_profiles_read_never_warns() {
+        let (out, lines) = run_with_moderation(
+            Arrangement {
+                danger_mode: "AUTO_ROUTE",
+                uncensored_profile: true,
+                ..Default::default()
+            },
+            one_png(),
+            &FlagsEverything,
+        );
+        assert!(out.is_ok(), "{out:?}");
+        none(
+            &lines,
+            "[CharacterAvatar] Failed to build cheap LLM selection for danger classification",
+        );
+        // Non-vacuity: the pre-scan really did run on this arrangement.
+        one(
+            &lines,
+            "[CharacterAvatar] Avatar prompt classified as dangerous",
+        );
     }
 }

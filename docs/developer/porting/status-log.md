@@ -130149,3 +130149,147 @@ LATENT, not live. Specifically, for the two the order called LIVE-exposed:
 **The proof obligation (item 4): every edited family re-run by name on a
 pin-fresh oracle, GREEN, zero row change** — the sweep and its numbers are in
 the lane's gate section below.
+
+### Unit C — the `db::memories` capture-rig intermittent
+
+`delete_with_unlink_logs_v4s_complete_debug` (and its three siblings in the same
+module) now go through a LOCAL `captured` shim that arms an empty global
+registry once per binary before delegating to `test_support::captured`.
+
+**The order's prescribed shape fought the file, and the file won (recorded).**
+The mandate said "move it onto the `global_capture` rig `test_support.rs`'s doc
+already prescribes". That rig cannot carry these tests: `global_capture::
+capture_events` is `async` and its `MessageVisitor` records the `message` field
+ONLY, while every assertion here reads `key=value` fields (` memoryId=mA1`,
+` neighbourCount=2`, ` charactersAffected=2`, and `duration_ms_of()` parsing
+` durationMs=`). Adopting it would mean either widening `test_support.rs` (NOT in
+this lane's Owns column) or deleting the field assertions — the pins the tests
+exist for.
+
+What `global_capture` actually contributes is the ARMING, and that half is
+portable: a permanently registered dispatcher makes every interest-cache rebuild
+AND in a subscriber that answers `always`, so a callsite a sibling retired on an
+un-armed thread comes back. `quilltap-host/src/lock.rs:1026-1040` is the same
+fix in the same shape, for the same symptom, on the same rig — its
+`heartbeat_tick` lines flaked 2 runs in 5 before it. This is that idiom, cited
+in the test doc alongside the `global_capture` module doc the order named.
+
+Measured in `tracing-core` 0.1.36 rather than assumed: `set_global_default`
+itself does not rebuild the cache, but the `Dispatch::new` it performs does
+(`callsite.rs:484-487` → `rebuild_interest`), and once ≥2 dispatchers are
+registered `rebuild_callsite_interest` ANDs across all of them (`:496-506`), so
+a permanently-live `always` dispatcher keeps every callsite interesting from
+then on — including across the `set_default` each later `captured` performs.
+
+**The proof is structural + repetition, and that is stated rather than dressed
+up.** A deterministic red is not available: the failure is a cross-thread race
+on a process-global cache, which is why it showed up once in a full workspace
+run and never in isolation. The memories binary was run ×3 at
+`--test-threads=8` (17 passed each time) and the full workspace gate is below.
+Nothing else in the file moved.
+
+### Unit D — the fifteen absent `[CharacterAvatar]` lines
+
+v4's `character-avatar.ts` has NINETEEN log sites. v5 carried four: the
+cache-hit line (P4.D184, `character_avatar_job.rs`) and three on the shared
+`image_job_common` reroute path. **Fourteen landed; one is a NO-PORT with v4's
+source cited.**
+
+| v4 | level | v5 branch | bag (v4's keys) |
+|---|---|---|---|
+| `:102` Starting avatar generation | info | handler entry, before the first read | context, jobId, chatId, characterId |
+| `:128` Image profile has no API key, skipping | warn | the `apiKeyId` else-arm | context, jobId, profileId |
+| `:138` API key not found or invalid, skipping | warn | the resolver else-arm | context, jobId |
+| `:167` No appearance data available, skipping | warn | `!has_appearance` | context, jobId, characterId |
+| `:237` Failed to build cheap LLM selection… | warn | the profiles-read `Err` arm | context, jobId, error |
+| `:255` Avatar prompt classified as dangerous | info | `is_dangerous` (SPLIT from the mode) | context, jobId, score, categories, mode |
+| `:274` Rerouted to uncensored image provider | info | `route.rerouted` | context, jobId, originalProfile, uncensoredProfile, reason |
+| `:282` No uncensored image provider available… | warn | the new `else` | context, jobId, reason |
+| `:292` Prompt classification failed… | error | **NO-PORT** — see below | — |
+| `:439` Concierge uncensored reroute succeeded | info | `image_job_common`'s reroute Ok arm | context, jobId, fallbackProvider, fallbackModel, rerouteDurationMs |
+| `:479` No images returned from provider | warn | the empty-images else | context, jobId |
+| `:490` Generated image has no data | warn | the empty-`data` arm | context, jobId |
+| `:583` Avatar image saved | info | the write's Ok arm | context, jobId, fileId |
+| `:589` Failed to save avatar image | error | the write's Err arm | context, jobId |
+| `:604` Avatar generation completed | info | after the bind, before the Lantern post | context, jobId, chatId, characterId, fileId |
+
+**Three are fidelity fixes, not transcriptions.**
+
+1. **`:255` — the collapsed condition.** v5 had
+   `if classification.is_dangerous && mode == "AUTO_ROUTE"`. v4 logs the verdict
+   on `isDangerous` ALONE and puts the mode test INSIDE. Routing is identical
+   either way, but in DETECT_ONLY — where nothing reroutes and the verdict is
+   the only signal the operator gets — v5 was silent. Split.
+2. **`:237` — the swallowed read.** v4 wraps `resolveCheapLLMSelectionForUser`
+   in a try/catch. v5's `build_cheap_llm_selection` is infallible, so the
+   analogous failure is the profiles READ, which `unwrap_or_default()` swallowed
+   whole. It warns now, with the DbError's message. A read that SUCCEEDS and
+   finds no eligible profile stays silent — that is v4's
+   `resolved?.selection ?? null`, which warns about nothing (its own silence
+   leg).
+3. **`:274`/`:282` — the reroute's two outcomes.** v5 had `if route.rerouted {…}`
+   with no `else` and no line on either side. Both landed; `:274` carries the
+   two profile NAMES v4 logs (not their ids).
+
+**The NO-PORT, with evidence.** v4 `:292`
+`[CharacterAvatar] Prompt classification failed, continuing normally` fires from
+`catch (error)` around `classifyDangerousContent` (`character-avatar.ts:291-297`).
+v5's `classify_content` (`services/dangerous_content/gatekeeper.rs:413-450`)
+returns `DangerClassificationResult` — **not a `Result`** — and folds its own
+inner error into `DangerClassificationResult::safe_fallback()` at its one
+`Err(_) =>` arm. There is no v5 branch on which the sentence could fire; the
+fail-safe behaviour v4's catch provides is already the port's contract. Recorded
+as `CLASSIFICATION_FAILED_UNREACHABLE` in the `headshoulders_backfill_job`
+`SELECT_FAILED_UNREACHABLE` idiom.
+
+**The deferral, loud and typed.** v4's `story-background.ts:769` carries the
+IDENTICAL `Concierge uncensored reroute succeeded` sentence under its own name,
+and v5 has neither. Only the `[CharacterAvatar]` arm landed:
+`RerouteHandler::log_reroute_succeeded`'s `StoryBackground` arm is an explicit
+no-op whose doc names the sentence, and
+`STORY_REROUTE_SUCCEEDED_UNPORTED` records it by name at module scope. The
+reason is scope, not oversight: porting one sentence of a handler whose log
+surface has never been surveyed against v4's leaves a half-ported surface that
+reads as complete. **For the unifier / the next lane over
+`story_background_job.rs`.** A silence leg pins it (the story handler succeeds
+its reroute and says nothing).
+
+**One recorded, deliberate change outside the fifteen.** The P4.D184 cache-hit
+line's four field names (`chatId`, `characterId`, `fileId`, `leafCounts`) were
+respelled snake_case, and it now reads the same two constants as the new lines.
+Its SENTENCE, level and target are unmoved (`avatar_job_tier3`'s pin reads the
+sentence). The tree's convention is snake_case by 347 to 17 under `services/`,
+including `image_job_common`'s own three `[CharacterAvatar]` lines, so leaving
+one camelCase line among fifteen snake_case ones would have been a deliberate
+wart in a surface an operator reads whole.
+
+**The capture scaffold.** The tests drive the REAL handler over a genuinely
+provisioned instance (`provision_fresh_instance` — the full `fresh_schema.json`
+DDL, the single user, the built-in mounts) with one character (vault and all,
+via `create_character_with_options`), one chat and one image profile seeded on
+top. Hand-rolled DDL would have to chase every schema move the port absorbs;
+this tracks them for free. The Concierge arms use a `FlagsEverything`
+`ModerationProvider` stub — the moderation-FIRST arm of `classify_content`,
+which needs no completion call at all — plus a `connection_profiles` row (so
+`build_cheap_llm_selection` answers `Some`) and the provisioned
+`chat_settings` row's `dangerousContentSettings` column UPDATEd in place.
+
+**Mutation proofs** (each reverted by file backup):
+
+| # | mutation | reddens |
+|---|---|---|
+| M2 | swap `Avatar image saved` ↔ `Avatar generation completed` | `a_saved_avatar_logs_the_write_and_then_the_completion` — on the FIELD BAG (the "completed" sentence arrived carrying the save's bag), which proves the bags load-bearing, not just the sentences |
+| M3 | drop `character_id` from the completion line | the same test |
+| M4 | fire the `No appearance data…skipping` line unconditionally | the success test's `none(&lines, "skipping")` silence leg |
+| M5 | swap `Rerouted to uncensored…` ↔ `No uncensored…using original` | BOTH reroute tests |
+| M6 | restore `unwrap_or_default()` on the profiles read | `a_failed_profiles_read_warns_and_the_job_carries_on_unclassified` |
+| M7 | fire `reroute succeeded` on the reroute's FAILURE arm | `the_succeeded_line_is_silent_on_a_failed_reroute_and_for_the_story_handler` |
+
+M2 is recorded honestly as reddening ONE test rather than two: the save and the
+completion are one branch (a successful write followed by a successful bind), so
+one test pins both sentences and their ordering.
+
+**Tier 2 item 8 — a no-op with evidence.** `avatar_job_tier3_equivalence.rs:688-711`
+reads captured lines with `.any(…)` / `!reused`, NOT an exact line count. There
+is no count pin to widen, so that file is untouched (it is also the file the
+order restricts to exactly that case).
