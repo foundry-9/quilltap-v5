@@ -46,8 +46,8 @@ const asChars = (c: WireChars): Map<string, Character> => {
   }
   return m;
 };
-const mkState = (queue: string[], spoken: string[], last: string | null): TurnState =>
-  ({ spokenSinceUserTurn: spoken, currentTurnParticipantId: null, queue, lastSpeakerId: last } as TurnState);
+const mkState = (queue: string[], spoken: string[], last: string | null, cycleOrder: string[] = []): TurnState =>
+  ({ spokenSinceUserTurn: spoken, currentTurnParticipantId: null, queue, lastSpeakerId: last, cycleOrder } as TurnState);
 
 /**
  * Pins `Math.random` to an ORDERED SEQUENCE and reports the draws actually
@@ -92,10 +92,40 @@ type Scenario = {
   /** An explicit draw SEQUENCE, when one value cannot describe the case. */
   draws?: number[];
   impersonating?: string[];
+  /**
+   * P4.D195: the cycle's drawn rotation on the turn state. Defaults to `[]`,
+   * which is what every pre-existing row carried implicitly (`mkState` never
+   * set the field at all) — so those rows stay byte-identical. Until this
+   * field existed NOTHING in this corpus drove `selectNextSpeaker`'s
+   * cycle-order branch, and the Rust side hard-coded `&[]` at the call site
+   * with a comment saying so: a measured blind spot, opened by the bug-147
+   * agreement room below.
+   */
+  cycleOrder?: string[];
 };
 
 const p = (id: string, type: string, status: string, characterId: string | null, controlledBy: string, talkativeness: number | null): WirePart =>
   ({ id, type, status, characterId, controlledBy, talkativeness });
+
+// P4.D195 / v4 bug 147 — the reported room, seat for seat from v4's own
+// `client-server-agreement.test.ts`. Abigail carries all the talkativeness so
+// a weighted re-roll is deterministic; Leilani's column stays 'llm' and she is
+// user-driven only through the impersonation overlay.
+const ABIGAIL = '1cbe72f5';
+const CHARLIE = 'f08a46e0';
+const BARAKA = '788b657a';
+const LEILANI = '2c91e03b';
+const GEN314 = '45be895a';
+const agreementRoom: WirePart[] = [
+  p(ABIGAIL, 'CHARACTER', 'active', `char-${ABIGAIL}`, 'llm', 1),
+  p(CHARLIE, 'CHARACTER', 'active', `char-${CHARLIE}`, 'user', 0),
+  p(BARAKA, 'CHARACTER', 'active', `char-${BARAKA}`, 'llm', 0),
+  p(LEILANI, 'CHARACTER', 'active', `char-${LEILANI}`, 'llm', 0),
+  p(GEN314, 'CHARACTER', 'active', `char-${GEN314}`, 'llm', 0),
+];
+const agreementChars: WireChars = Object.fromEntries(
+  [ABIGAIL, CHARLIE, BARAKA, LEILANI, GEN314].map((id) => [`char-${id}`, 0.5]),
+);
 
 // Weighted trio: A=0.9, B=0.3, C=0.8 (total 2.0).
 const trio: WirePart[] = [
@@ -156,6 +186,54 @@ const scenarios: Scenario[] = [
   // Bug 44 overlay in a weighted pick: the pick lands on an impersonated LLM seat
   // (rv 0.2 < 0.9 → A), whose reason becomes user_turn via the overlay.
   { id: 'impersonated-weighted', participants: trio, characters: {}, queue: [], spoken: [], lastSpeakerId: null, random01: 0.1, impersonating: ['A'] },
+  // --- P4.D195 / v4 bug 147: the client/server agreement room ------------
+  //
+  // v4 `1fefadb9a` ships `__tests__/unit/lib/chat/turn-manager/
+  // client-server-agreement.test.ts` — its own guard that the client's local
+  // recompute answers what the server already drew. v5's SPA has no such
+  // recompute (it asks the server — the P4.D177 mechanism divergence), so the
+  // CLIENT leg is a NO-COUNTERPART; what IS portable is the pair of pure
+  // computations underneath, which v5 has as `select_next_speaker` and
+  // `select_next_speaker_after_user_message`. Transcribed here as corpus rows
+  // over v4's REAL functions rather than as Rust unit tests, because that is
+  // the stronger proof — and because it is what finally drives the rotation
+  // argument these two families had never touched.
+  //
+  // The room is v4's (Friday, chat `e59f8969`): the operator's Charlie plus
+  // four LLM seats, one of them (Leilani) taken up by impersonation.
+  // Talkativeness is lopsided on purpose — Abigail carries all the weight —
+  // so the BLIND re-roll is deterministic and the divergence is exact rather
+  // than statistical.
+  //
+  // (a) SIGHTED: the client's own state, given both columns, reaches the seat
+  //     the rotation reserved — Charlie, the operator's seat → `user_turn`.
+  {
+    id: 'bug147-agreement-client-sighted',
+    participants: agreementRoom,
+    characters: agreementChars,
+    queue: [],
+    spoken: [ABIGAIL, BARAKA, GEN314],
+    lastSpeakerId: LEILANI,
+    cycleOrder: [LEILANI, CHARLIE],
+    random01: 0.5,
+    impersonating: [LEILANI],
+  },
+  // (b) BLIND: the same room with NO rotation and NO spoken set — what the
+  //     client saw before `1fefadb9a` put the two columns on the wire. The
+  //     cycle-order branch is unreachable, so it falls through to a weighted
+  //     roll and lands on Abigail: an LLM seat taking a floor the rotation had
+  //     reserved for the operator, AND a seat that had already spoken.
+  {
+    id: 'bug147-agreement-client-blind',
+    participants: agreementRoom,
+    characters: agreementChars,
+    queue: [],
+    spoken: [],
+    lastSpeakerId: LEILANI,
+    cycleOrder: [],
+    random01: 0.5,
+    impersonating: [LEILANI],
+  },
 ];
 
 // selectNextSpeakerAfterUserMessage (Bug 50 fair rotation): projects the
@@ -175,6 +253,12 @@ type AfterScenario = {
   random01: number;
   draws?: number[];
   impersonating?: string[];
+  /**
+   * P4.D195: the persisted rotation, as the JSON string the 8th argument
+   * takes. `undefined` leaves it unpassed — what every pre-existing row did,
+   * so they stay byte-identical (the Rust side passed `None` to match).
+   */
+  cycleOrderJson?: string;
 };
 
 // The reported room: charlie (user) + lorian (LLM, impersonated) + kumar (sole
@@ -206,6 +290,23 @@ const afterScenarios: AfterScenario[] = [
   // No overlay: the same room but nobody impersonated → after Kumar spoke and
   // Charlie posts, Lorian (a plain LLM) is eligible and answers (no pause).
   { id: 'after-no-overlay-llm-answers', participants: fairRoom, characters: {}, poster: 'charlie', persistedSpokenJson: JSON.stringify(['kumar']), turnQueueJson: '[]', userParticipantId: 'charlie', random01: 0.5 },
+  // P4.D195 / v4 bug 147: the SERVER leg of the agreement room — the exact
+  // projection the orchestrator runs when the operator's post (typed as the
+  // impersonated Leilani) lands. It must hand the floor to Charlie with
+  // `user_turn`, which is the answer row (a) above reaches independently.
+  // This is also the first row in this corpus to pass the 8th argument at all.
+  {
+    id: 'bug147-agreement-server',
+    participants: agreementRoom,
+    characters: agreementChars,
+    poster: LEILANI,
+    persistedSpokenJson: JSON.stringify([ABIGAIL, BARAKA, GEN314]),
+    turnQueueJson: '[]',
+    userParticipantId: CHARLIE,
+    random01: 0.5,
+    impersonating: [LEILANI],
+    cycleOrderJson: JSON.stringify([LEILANI, CHARLIE]),
+  },
 ];
 
 type SelectRow = { kind: 'select'; id: string; scenario: Scenario; out: TurnSelectionResult; consumedDraws: number[] };
@@ -214,7 +315,7 @@ const rows: Array<SelectRow | AfterRow> = [];
 
 for (const s of scenarios) {
   const { out, consumed } = withRandom(s.draws ?? [s.random01], () =>
-    selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId), null, s.impersonating),
+    selectNextSpeaker(asParts(s.participants), asChars(s.characters), mkState(s.queue, s.spoken, s.lastSpeakerId, s.cycleOrder ?? []), null, s.impersonating),
   );
   rows.push({ kind: 'select', id: s.id, scenario: s, out, consumedDraws: consumed });
 }
@@ -229,6 +330,7 @@ for (const s of afterScenarios) {
       s.turnQueueJson,
       s.userParticipantId,
       s.impersonating,
+      s.cycleOrderJson,
     ),
   );
   rows.push({ kind: 'select-after', id: s.id, scenario: s, out, consumedDraws: consumed });

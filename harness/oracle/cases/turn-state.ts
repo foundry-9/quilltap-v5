@@ -70,7 +70,7 @@ const asParts = (ps: WirePart[]) => ps as unknown as ChatParticipantBase[];
 type Row =
   | { kind: 'queueOp'; id: string; op: string; state: WireState; arg: string | null; out: WireState; popped?: string | null }
   | { kind: 'queuePos'; id: string; state: WireState; participantId: string; out: number }
-  | { kind: 'calc'; id: string; messages: WireMsg[]; spokenJson: string | null; out: WireState }
+  | { kind: 'calc'; id: string; messages: WireMsg[]; spokenJson: string | null; cycleJson?: string; out: WireState }
   | { kind: 'update'; id: string; state: WireState; message: WireMsg; out: WireState }
   | { kind: 'computeMsg'; id: string; message: WireMsg; participants: WirePart[]; currentJson: string | null; out: string | null }
   | { kind: 'computeSkip'; id: string; skippedId: string; participants: WirePart[]; currentJson: string | null; out: string | null };
@@ -108,6 +108,21 @@ rows.push({ kind: 'calc', id: 'empty', messages: [], spokenJson: null, out: wire
 rows.push({ kind: 'calc', id: 'bad-json', messages: msgs1, spokenJson: 'not json', out: wire(calculateTurnStateFromHistory({ messages: msgs1 as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: 'not json' })) });
 const msgsNoPid: WireMsg[] = [{ role: 'ASSISTANT', participantId: null }, { role: 'SYSTEM', participantId: 'sys' }];
 rows.push({ kind: 'calc', id: 'no-eligible', messages: msgsNoPid, spokenJson: '["x","y",123]', out: wire(calculateTurnStateFromHistory({ messages: msgsNoPid as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: '["x","y",123]' })) });
+
+// P4.D195 (v4 `1fefadb9a`, bug 147): the CYCLE ORDER argument. Until these
+// rows every `calc` row above passed only `spokenThisCycleParticipantIds`, so
+// `state.cycleOrder = parseCycleOrder(undefined)` = `[]` on both sides and the
+// emitted `cycleOrder` comparand was a default matching a default. These four
+// drive v4's `parseCycleOrder` through `calculateTurnStateFromHistory` over
+// the same four branches the spoken parse takes, so the two are measured to
+// agree rather than assumed to (v5 ships ONE function for both, documented).
+const msgsCycle: WireMsg[] = [{ role: 'ASSISTANT', participantId: 'c1' }];
+rows.push({ kind: 'calc', id: 'cycle-seeded', messages: msgsCycle, spokenJson: '["c1"]', cycleJson: '["c2","c3"]', out: wire(calculateTurnStateFromHistory({ messages: msgsCycle as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: '["c1"]', cycleOrderParticipantIds: '["c2","c3"]' })) });
+rows.push({ kind: 'calc', id: 'cycle-bad-json', messages: msgsCycle, spokenJson: null, cycleJson: '{not json', out: wire(calculateTurnStateFromHistory({ messages: msgsCycle as unknown as MessageEvent[], participants: [], userParticipantId: null, cycleOrderParticipantIds: '{not json' })) });
+rows.push({ kind: 'calc', id: 'cycle-non-array', messages: msgsCycle, spokenJson: null, cycleJson: '{"a":1}', out: wire(calculateTurnStateFromHistory({ messages: msgsCycle as unknown as MessageEvent[], participants: [], userParticipantId: null, cycleOrderParticipantIds: '{"a":1}' })) });
+// Non-string ELEMENTS dropped on BOTH columns at once — v4's `.filter`, never
+// an all-or-nothing refusal, and the empty string (falsy) on the spoken side.
+rows.push({ kind: 'calc', id: 'cycle-mixed-elements', messages: msgsCycle, spokenJson: '', cycleJson: '["c2",7,null,"c3"]', out: wire(calculateTurnStateFromHistory({ messages: msgsCycle as unknown as MessageEvent[], participants: [], userParticipantId: null, spokenThisCycleParticipantIds: '', cycleOrderParticipantIds: '["c2",7,null,"c3"]' })) });
 
 // Turn-pass records (b90cd1f5): a Host turn-pass occupies the passer's floor
 // position — the walk sets lastSpeakerId from hostEvent.participantId and breaks.

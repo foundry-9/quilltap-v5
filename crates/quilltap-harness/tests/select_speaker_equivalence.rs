@@ -50,6 +50,12 @@ struct Scenario {
     #[serde(rename = "lastSpeakerId")]
     last_speaker_id: Option<String>,
     random01: f64,
+    /// P4.D195: the cycle's drawn rotation on the turn state. Absent on every
+    /// row that predates the bug-147 agreement pair, which is what keeps them
+    /// byte-identical — and, until those two rows, this corpus drove
+    /// `select_next_speaker`'s cycle-order branch not at all.
+    #[serde(rename = "cycleOrder", default)]
+    cycle_order: Vec<String>,
     /// P4.D172: an explicit draw SEQUENCE, when one value cannot describe the
     /// case. Absent rows read as the one-element sequence `[random01]`, which is
     /// exactly what the oracle's `withRandom` pins for them.
@@ -101,6 +107,11 @@ struct AfterScenario {
     #[serde(rename = "userParticipantId")]
     user_participant_id: Option<String>,
     random01: f64,
+    /// P4.D195: the persisted rotation as the JSON string v4's 8th argument
+    /// takes. `None` on every pre-existing row — which is what the Rust call
+    /// site used to hard-code for all of them.
+    #[serde(rename = "cycleOrderJson", default)]
+    cycle_order_json: Option<String>,
     #[serde(default)]
     draws: Option<Vec<f64>>,
     #[serde(default)]
@@ -286,6 +297,10 @@ fn select_speaker_matches_oracle() {
 
     let mut count = 0usize;
     let mut after_count = 0usize;
+    // P4.D195: v5's own answers for the bug-147 room, keyed by row id, so the
+    // agreement can be stated as a relation between them below rather than
+    // inferred from three separate row-vs-oracle equalities.
+    let mut agreement: HashMap<String, (Option<String>, String)> = HashMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Select {
@@ -305,9 +320,7 @@ fn select_speaker_matches_oracle() {
                     scenario.last_speaker_id.as_deref(),
                     &draws,
                     scenario.impersonating.as_deref(),
-                    // This corpus predates the rotation: every row's turn state
-                    // carries none, which is what keeps it byte-identical.
-                    &[],
+                    &scenario.cycle_order,
                 );
                 assert_result(&format!("select '{id}'"), &got, &out);
                 assert_draws(
@@ -315,6 +328,12 @@ fn select_speaker_matches_oracle() {
                     &log.lock().unwrap(),
                     &consumed_draws,
                 );
+                if id.starts_with("bug147-agreement-") {
+                    agreement.insert(
+                        id.clone(),
+                        (got.next_speaker_id.clone(), got.reason.to_string()),
+                    );
+                }
                 count += 1;
             }
             OracleRow::SelectAfter {
@@ -335,7 +354,7 @@ fn select_speaker_matches_oracle() {
                     scenario.user_participant_id.as_deref(),
                     &draws,
                     scenario.impersonating.as_deref(),
-                    None,
+                    scenario.cycle_order_json.as_deref(),
                 );
                 assert_result(&format!("select-after '{id}'"), &got, &out);
                 assert_draws(
@@ -343,6 +362,12 @@ fn select_speaker_matches_oracle() {
                     &log.lock().unwrap(),
                     &consumed_draws,
                 );
+                if id.starts_with("bug147-agreement-") {
+                    agreement.insert(
+                        id.clone(),
+                        (got.next_speaker_id.clone(), got.reason.to_string()),
+                    );
+                }
                 after_count += 1;
             }
         }
@@ -353,5 +378,66 @@ fn select_speaker_matches_oracle() {
         after_count > 0,
         "oracle has no select-after rows (Bug 50 helper): regenerate at f6eac168"
     );
+    // -----------------------------------------------------------------------
+    // P4.D195 (v4 `1fefadb9a`, bug 147) — the agreement, stated.
+    //
+    // The three rows above are each pinned against v4 individually. What v4's
+    // own `client-server-agreement.test.ts` asserts is the RELATION between
+    // them, and nothing here would notice if all three moved together, so it
+    // is asserted here on V5's answers (never the oracle's — an assertion on
+    // the oracle cannot catch a v5 regression).
+    //
+    //   sighted client  ==  server        (both hand the floor to Charlie)
+    //   blind client    !=  server        (an LLM seat takes a reserved floor)
+    //   blind client's reason is the signature of the blindness: with no
+    //   rotation on file the cycle-order branch is unreachable.
+    //
+    // v5's SPA has NO client-side `selectNextSpeaker` recompute — it asks the
+    // server (the P4.D177 mechanism divergence), so v4's CLIENT leg is a
+    // NO-COUNTERPART on this port. The pure computation under it is not, and
+    // that is what this pins.
+    {
+        const CHARLIE: &str = "f08a46e0";
+        const ABIGAIL: &str = "1cbe72f5";
+        let want = [
+            "bug147-agreement-client-sighted",
+            "bug147-agreement-client-blind",
+            "bug147-agreement-server",
+        ];
+        for id in want {
+            assert!(
+                agreement.contains_key(id),
+                "the bug-147 agreement row '{id}' is missing from the oracle —                  regenerate `select-speaker.ts` at a pin carrying it"
+            );
+        }
+        let sighted = &agreement["bug147-agreement-client-sighted"];
+        let blind = &agreement["bug147-agreement-client-blind"];
+        let server = &agreement["bug147-agreement-server"];
+
+        assert_eq!(
+            server.0.as_deref(),
+            Some(CHARLIE),
+            "the server leg must hand the floor to the operator's own seat"
+        );
+        assert_eq!(server.1, "user_turn", "the server leg's reason");
+        assert_eq!(
+            sighted, server,
+            "GIVEN the two columns the client's computation must agree with the              server's, seat and reason: got client {sighted:?} vs server {server:?}"
+        );
+        assert_ne!(
+            blind.0, server.0,
+            "the BLIND client must still diverge — that divergence IS bug 147,              and a row where it vanished means the corpus stopped posing it"
+        );
+        assert_eq!(
+            blind.0.as_deref(),
+            Some(ABIGAIL),
+            "blind, the weighted re-roll lands on the talkative LLM seat"
+        );
+        assert_eq!(
+            blind.1, "weighted_selection",
+            "the signature of the blindness: the cycle-order branch is unreachable"
+        );
+    }
+
     eprintln!("OK: select-speaker matched oracle ({count} select, {after_count} select-after).");
 }

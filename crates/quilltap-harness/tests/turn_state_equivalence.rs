@@ -15,10 +15,11 @@
 
 use quilltap_core::chat_predicates::ParticipantStatus;
 use quilltap_core::turn_state::{
-    add_to_queue, calculate_turn_state_from_history, compute_spoken_this_cycle_after_message,
-    compute_spoken_this_cycle_after_skip, get_queue_position, nudge_participant, pop_from_queue,
-    remove_from_queue, reset_cycle_for_user_skip, update_turn_state_after_message, MessageView,
-    ParticipantView, TurnState,
+    add_to_queue, calculate_turn_state_from_history_with_cycle,
+    compute_spoken_this_cycle_after_message, compute_spoken_this_cycle_after_skip,
+    get_queue_position, nudge_participant, pop_from_queue, remove_from_queue,
+    reset_cycle_for_user_skip, update_turn_state_after_message, MessageView, ParticipantView,
+    TurnState,
 };
 use serde::Deserialize;
 
@@ -168,6 +169,11 @@ enum OracleRow {
         messages: Vec<WireMsg>,
         #[serde(rename = "spokenJson")]
         spoken_json: Option<String>,
+        /// P4.D195 (v4 `1fefadb9a`, bug 147): the chat row's drawn rotation.
+        /// Absent on every row predating the bug-147 arms — which is exactly
+        /// what those rows meant, and why they stay byte-identical.
+        #[serde(rename = "cycleJson", default)]
+        cycle_json: Option<String>,
         out: WireState,
     },
     #[serde(rename = "update")]
@@ -256,10 +262,15 @@ fn turn_state_matches_oracle() {
                 id,
                 messages,
                 spoken_json,
+                cycle_json,
                 out,
             } => {
                 let msgs: Vec<MessageView> = messages.iter().map(WireMsg::to_core).collect();
-                let got = calculate_turn_state_from_history(&msgs, spoken_json.as_deref());
+                let got = calculate_turn_state_from_history_with_cycle(
+                    &msgs,
+                    spoken_json.as_deref(),
+                    cycle_json.as_deref(),
+                );
                 assert_state(&got, &out, &id);
                 counts[2] += 1;
             }

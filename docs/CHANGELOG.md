@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — test(harness): v4's bug-147 client/server agreement room as tier-1 corpus rows
+
+_Versions: harness 0.0.823._
+
+v4 `1fefadb9a` ships `client-server-agreement.test.ts`, its own guard that the
+client's local recompute answers what the server already drew. v5's SPA has no
+such recompute — it asks the server (the P4.D177 mechanism divergence) — so
+v4's CLIENT leg is a NO-COUNTERPART, recorded with that evidence. The pure
+computations underneath are not, and they land here as corpus rows over v4's
+REAL functions rather than as transcribed Rust unit tests, which is the
+stronger proof.
+
+Doing that required widening both corpora, and the widening is itself the find:
+`select-speaker`'s `mkState` never set `cycleOrder` and its `AfterScenario`
+never passed the 8th `cycleOrderJson` argument, so the Rust side hard-coded
+`&[]` and `None` at both call sites with a comment saying so. Nothing in either
+family had ever driven `selectNextSpeaker`'s cycle-order branch. Same shape in
+`turn-state`, whose `calc` rows all left the rotation unset so the emitted
+`cycleOrder` comparand was a default matching a default.
+
+The room is v4's own (Friday, chat `e59f8969`): Charlie plus four LLM seats,
+one taken up by impersonation, talkativeness lopsided so the blind re-roll is
+deterministic. Three rows — the sighted client, the blind client, the server —
+and the AGREEMENT between them is asserted on v5's answers, never the oracle's,
+because an assertion on the oracle cannot catch a v5 regression. Sighted equals
+server (Charlie, `user_turn`); blind diverges to Abigail with
+`weighted_selection`, the signature of the blindness, and re-seats a seat that
+had already spoken.
+
+`select-speaker` 28 → 31 rows, `turn-state` 36 → 40. Every pre-existing row's
+output and consumed draws unmoved, and the whole file byte-identical when
+regenerated at the baseline pin — the commit touches no selection code.
+
 #### 2026-09-16 — chore(help): re-vendor `chat-turn-manager.md` at v4 `1fefadb9a`
 
 _Versions: harness 0.0.822._
