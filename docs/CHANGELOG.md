@@ -12,6 +12,54 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
+
+_Docs-only change._
+
+`/setupphase` from the drift ledger (its §2 probe passed: v4 `main` HEAD is
+still `2075242f9`, four past the baseline `ffb6b3119`, tree clean). Five
+work orders, all from `main`, ownership disjoint by file, the round-wide
+meeting points / Ownership table / gate spliced byte-identically into each
+(one md5 over the three blocks, verified at planning):
+
+- **P4.D192** — bug 145's `lib` half: the avatar-roll collapse heal drops
+  the victim's OWN link and frees bytes only when nothing else holds them
+  (`drop_victim_roll_link` over `is_photos_relative_path` +
+  `gc_orphaned_file_row` widened to v4's per-table counts + the existing
+  `parse_mount_blob_storage_key`), the in-pass `protectedKept` census with
+  v4's unexplained-duplicate warn, `keptClause` on both summary sentences,
+  `albumCopiesKept` in the bag; the family's spec grown from 17 to 24
+  scenarios (v4's six + one census-on-early-return arm) with the album
+  cases proven RED against the unported heal first — v5 measurably has
+  the bug. Rider: the `is_photos_relative_path` two-homes consolidation.
+- **P4.D193** — bug 146 whole: `resolveFloorSeatId` as a pure leaf on both
+  sides (a NEW tier-1 `floor_seat_equivalence` over v4's real export; the
+  client twin with v4's seven cases as parity spec) and the Salon banner
+  re-keyed on the FLOOR — the third sentence behind `composerElsewhere`,
+  Skip POSTing the floor seat — with a deterministic two-user-seat e2e beat.
+- **P4.D194** — the bug-144 convergence measured then retired (`--lock-
+  clean` says what it tested; `describe_fresh_window` off `FRESH_MS`; Tier
+  R's five cases moving together), the two docs-only filings + both
+  commits' non-lib files ratified NO-PORT on file lists, the two `help/**`
+  pages re-vendored (124 stays 124), the `docs/v4/` inventory for the
+  unifier, dogfood row #119 → CONVERGED.
+- **P4.89** — the committed `brahma-{main,mount}.db` pair widened in place
+  through v4's own migration DDL (the P4.52 idiom), the standing
+  `brahma_orchestrator_tier3` red on `main` closed with zero core change,
+  the P4.50-class prefix re-measured after the widen.
+- **P4.90** — the `ffb6b3119` §3 review's two pre-existing findings: the
+  tool loops' re-stream carrying the pre-failover model to the post-
+  failover provider (a failover-then-tool-call `orchestrator_tier3` arm
+  red-first, then the caller-side rebuild after the `:2861` refresh) and
+  the six `autoGenerateFirstMessage` log lines v5 never carried, capture-
+  pinned with silence legs.
+
+The ledger's four §3 rows are marked `ORDERED(…)`; phase-4.md carries the
+ORDERED section. Left out on purpose: the shared-fixture title-checkpoint
+hazard (needs a design choice among three named shapes and touches the e2e
+fixture P4.D193's beat avoids), the remaining `31436bae4` maintenance
+smalls, and every 💸 live proof (the dogfood pass after unification).
+
 #### 2026-09-16 — docs(porting): record v4 drift — bugs 145 and 146, and v4's answers to 143/144
 
 _Docs-only; no version bumps._

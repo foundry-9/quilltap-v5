@@ -6628,6 +6628,137 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — ORDERED 2026-09-16
+
+**Baseline `ffb6b3119`; v4 `main` HEAD `2075242f9` (FOUR past — the
+ledger's four §3 rows, every one now `ORDERED(…)`: two docs-only filings
+this port's own walk wrote, two code commits answering them), v4 `bugfix`
+tip `1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on
+`main`, CLEAN at the planning probe (2026-09-16 ~08:30 CDT — the §2 probe
+passed, so the ledger stood and nothing was re-derived); regen rule PIN
+REQUIRED (moving families from a lane-unique detached worktree at
+`2075242f9`; neutrality legs and every untouched family at `ffb6b3119`).**
+The standing rule holds: drift debt clears before new scope — so the three
+drift lanes take the four rows whole, and because the code drift is SMALL
+(one migration hunk, one pure predicate + one banner block, one CLI arm +
+two help pages) the round also carries the two maintenance candidates the
+`ffb6b3119` round's "What is next" ranked 2 and 3, as two more lanes with
+disjoint ownership. ALL FIVE from `main`, no stacking. The round-wide §R
+meeting points, the Ownership table and the verification gate are spliced
+byte-identically into every order (one md5 over the three blocks, verified
+at planning). Fresh surveys (2026-09-16, at `2075242f9` and on `main`
+`4572659b`) are folded into the orders' survey sections.
+
+**Three planning facts that shape the split (each measured, none from
+prose):** v5 MEASURABLY REPRODUCES bug 145 — `delete_victim_blob`
+(`avatar_rolls_collapse_heal.rs:214`) selects and deletes links by `fileId`,
+byte-for-byte the shape v4 replaced, and v5's 17-scenario family seeds one
+link per roll exactly as v4's suite did, so the two-link shape has to reach
+the spec BEFORE the fix can be proven; v4's `parseMountBlobKey` already has
+a v5 twin (`services::file_storage::parse_mount_blob_storage_key`) and
+v4's `gcOrphanedFileRow` a twin that returns a `bool` where the new caller
+needs the BLOB count (so the GC chokepoint's return type widens — its
+callers are all in files one lane owns); and bug 146's predicate has NO
+server consumer in v4 (the client is the only reader), so the Rust twin is
+the differential-proven authority the client mirror cites — the P4.D56 /
+P4.D58 shape — and the client half is provable with a DETERMINISTIC beat
+because a message from one user seat hands the floor to the other user
+seat with no model call.
+
+- **P4.D192 — bug 145, the server half** (`work-orders/p4.d192-bug145-
+  collapse-drops-own-link-server.md`): `drop_victim_roll_link` over the
+  three existing chokepoints (`photos::photos_paths::is_photos_relative_
+  path`, `gc_orphaned_file_row` widened to v4's `{documents, blobs, files}`
+  counts, `parse_mount_blob_storage_key`); `blobs_deleted` on `bytesFreed`,
+  `album_copies_kept` on `linkDropped && !bytesFreed`; `protected_kept`
+  recorded at the keep decision; v4's `unexplainedDuplicateKeys` census
+  over ALL `files` rows on BOTH exits (incl. the nothing-to-collapse early
+  return); `kept_clause` on both ledger sentences; the two new bag fields;
+  the spec 17 → 24 (v4's six cases as data + a census-on-early-return arm
+  v4's suite never opens), the album cases RED against the unported heal
+  first; six mutation proofs. Rider: the `is_photos_relative_path` twin in
+  `db/doc_mount_file_links.rs` deleted, five importers repointed. Bumps
+  core + harness (+ host if the boot test gains its two-link arm).
+- **P4.D193 — bug 146 whole** (`work-orders/p4.d193-bug146-floor-seat-
+  banner.md`): `participant_filters::resolve_floor_seat_id` with the
+  three prose-invisible shapes pinned (the fallback returned verbatim, the
+  empty-string next id falsy, first-match on duplicate ids) under a NEW
+  tier-1 `floor_seat_equivalence` (a tsx oracle over v4's REAL export at
+  the target pin, ≥ 40 rows); the client twin in `turn-order.ts` with v4's
+  `floor-seat.test.ts` transcribed case-for-case; `bannerSeat` resolving
+  the floor, `composerElsewhere` + the third sentence in v4's four-way
+  order in `turn-controls.ts`, `onSkipUserTurn` POSTing the banner's seat;
+  component specs asserting the DISPATCH BODY; a live two-user-seat e2e
+  beat (send as A → the floor is B → pick A in the selector → the third
+  sentence names B and Skip posts B; the reload arm). Bumps core + harness
+  + SPA.
+- **P4.D194 — the bug-144 convergence + ratifications + help**
+  (`work-orders/p4.d194-bug144-convergence-ratifications-help.md`): Tier R
+  at the target pin RED on exactly the five fresh-heartbeat `lock clean …`
+  cases first (§5.4 — the tripwire firing as designed), v4's two lines
+  dumped, then `lock_clean_refusal_lines`' heartbeat arm moved with
+  `describe_fresh_window` off `FRESH_MS` (v4's three arms; the JS
+  arithmetic pinned incl. `0 minutes`), branch order unchanged, 223/0 at
+  the target; the deliberate false-claim pin retired to a pin on the new
+  bytes with a `!contains` guard; `064ba85df` / `81e02f7a2` + both code
+  commits' non-lib files ratified NO-PORT on `--name-status` lists;
+  `help/database-protection.md` + `help/chat-turn-manager.md` byte-copied
+  from the target pin (124 stays 124; every help-content family at the
+  target); the `docs/v4/` inventory with byte counts; dogfood row #119 →
+  CONVERGED. Bumps cli.
+- **P4.89 — the brahma fixture vintage widen** (`work-orders/p4.89-brahma-
+  fixture-vintage-widen.md`): the gap MEASURED with v4's own
+  `compareSchemas` through the P4.52 migrator (its target list extended —
+  expect `chats.cycleOrderParticipantIds` + `chat_messages.routeTrail` on
+  MAIN, nothing on MOUNT, but record what the tool says); the committed
+  pair widened in place, row-preservation proven cell-by-cell, `.db-
+  journal` residue removed, a second run idempotent; all three families
+  regenerated at the baseline pin and run by name — the standing
+  `brahma_orchestrator_tier3` red CLOSED with zero core change (its
+  pre-widen first-diff row recorded as the red-first leg); the withheld
+  `QT_ORACLE_BRAHMA_ORCH` restored to the gate block; the P4.50-class
+  `sqlite error: ` prefix RE-MEASURED after the widen — retired if it has
+  no live site, else recorded as a named core-side candidate. Bumps web
+  (+ harness for the three header notes).
+- **P4.90 — the failover model refresh + the six greeting lines**
+  (`work-orders/p4.90-failover-model-refresh-greeting-lines.md`): a
+  `failover_then_native_tool_call` case in `orchestrator_tier3` whose
+  understudy is on a DIFFERENT provider AND model, RED on the unfixed v5
+  (the re-stream's canned key names the primary's model — no canned
+  answer), then the caller-side rebuild of `params`' profile-derived
+  fields after the `:2861` refresh — WHICH fields is a measurement against
+  v4's `profileParams(streamingState.effectiveProfile)` order (`:1107`),
+  written as a comment naming both line numbers; three mutation proofs
+  incl. the reroute-vs-failover conjunct; the six `route.ts` lines at
+  their `chat_create.rs` sites with v4's levels and bags, each
+  capture-pinned with its silence leg (the api-key warn ONLY on a
+  dangling id; the two success infos swapped must redden both); the
+  recent-conversations warn a NO-PORT with evidence if v5's builder is
+  infallible; five neutrality families at the pin. Bumps core + harness.
+
+**Execution:** all five in parallel from `main`, five worktrees, five lane
+branches, ONE SPA worktree (P4.D193's — `npm ci`, never a copied
+`node_modules`). Most-capable model for P4.D192 (the red-first spec growth
++ the GC widening's neutrality census), P4.D193 (two twins + the Salon
+re-key + a live beat whose discriminator is a measured server fact) and
+P4.90 (a measurement decides which fields move); P4.D194 and P4.89 are
+mechanical against written recipes (P4.D191's, P4.52's) and can run on a
+cheaper agent with the same orders. Unification order D192 → D193 → D194 →
+P4.89 → P4.90; the baseline MOVES to `2075242f9` at the move and the four
+ledger rows retire (two ABSORBED, two NO-PORT-RATIFIED). **Deliberately
+left out:** the shared-fixture title-checkpoint hazard (five P4.D187 beats
+parked — it needs a design choice among the three named shapes and touches
+the e2e fixture P4.D193's beat is told to avoid; its own small order next);
+the remaining `31436bae4` maintenance smalls (the `db::memories` tracing-
+Interest intermittent, the 18 `[CharacterAvatar]` handler lines, the
+`SCENE_STATE_TRACKING` trigger, the rolls save's 500-vs-400 prose); the
+`name`-field turn-path measurement; P4.87's two OPEN coverage items; the
+upstream filing candidates; and every 💸 live proof (a real `--lock-clean`
+inside the five-minute window, a real cross-provider failover followed by
+a tool call, the collapse's album-copy survival on a planted copy — the
+dogfood pass after unification inherits them). PB1 stays parked by the
+standing rule.
+
 ## The `ffb6b3119` bug-141 + bug-142 drift catch-up round (P4.D189 → P4.D190 ∥ P4.D191) — UNIFIED 2026-09-15
 
 **ALL THREE ORDERS CLOSED; the oracle baseline MOVES `31436bae4` →
