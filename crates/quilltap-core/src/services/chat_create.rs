@@ -2543,9 +2543,10 @@ where
             // P4.90: v4 `app/api/v1/chats/route.ts:647` warns here and returns
             // `NO_GREETING`; v5 returned silently. The `_` arm covers BOTH a
             // missing row and a read failure because v4's own
-            // `findApiKeyByIdAndUserId`
-            // (`lib/database/repositories/connection-profiles.repository.ts:288`)
-            // is a `safeQuery` with a `null` fallback — a read error reaches
+            // `findApiKeyById` (`route.ts:645` →
+            // `lib/database/repositories/connection-profiles.repository.ts:266`;
+            // the §3 review corrected the lane's `findApiKeyByIdAndUserId:288`
+            // citation — both are 4-arg `safeQuery`s with a `null` fallback) — a read error reaches
             // v4's `if (!storedKey)` exactly as a missing row does, so both
             // reach the same warn on both sides.
             _ => {
@@ -3145,11 +3146,22 @@ pub fn build_recent_conversations_block(
     }
     // P4.90: v4 wraps the ONE call to this helper in a try/catch and warns
     // (`app/api/v1/chats/route.ts:692`, `{ characterId, error }`). v5's helper is
-    // infallible by SIGNATURE — the throw v4 catches is this `Err`, swallowed
-    // here — so the warn belongs at the swallow, not at the (unreachable) caller
-    // arm. The greeting is the only caller on either side (v4
-    // `lib/memory/memory-recap.ts:69` is imported once, by `route.ts:686`), so
-    // the two sites are the same site.
+    // infallible by SIGNATURE, so the warn sits at the swallowed read. The
+    // greeting is the only caller on either side (v4 `lib/memory/memory-recap.ts
+    // :69` is imported once, by `route.ts:686`).
+    //
+    // ⚠ RECORDED DIVERGENCE (the `2075242f9` round's §3 review, measured on v4
+    // at `ffb6b3119`): on THIS failure — a broken `chats` read — v4's catch never
+    // fires. `chats.repository.ts:181-206` wraps `findByFilter`, and
+    // `base.repository.ts:272-287` is a FALLBACK-mode `safeQuery` that logs the
+    // repository's own `ERROR Error finding entities by filter` and returns `[]`,
+    // so `buildRecentConversationsBlock` answers `''` and `route.ts:692` is
+    // reached only for a non-repository throw (`getRepositories()` /
+    // `getModelContextLimit`), which this infallible helper cannot produce. v5
+    // has no repository-layer fallback log to twin, so the failure is NAMED here
+    // with v4's `:692` sentence rather than swallowed in silence (the #103/#110
+    // class) — the same failure, a different sentence, on both sides an empty
+    // block. `a_failed_recent_conversations_read_is_named` pins that choice.
     let eligible = match chats_read::find_recent_summarized_by_character(
         main,
         character_id,
@@ -4399,10 +4411,13 @@ mod tests {
     }
 
     /// v4 `:692`. v5's helper is infallible by signature, so the pin is on the
-    /// helper itself at the swallow (see its own comment for why that is the
-    /// same site). Renaming the ordered column is what makes the read fail —
-    /// dropping a table is the less reliable poke (`a-dropped-table-raises-no-
-    /// read-error`).
+    /// helper itself at the swallow. ⚠ A RECORDED DIVERGENCE, not a fidelity
+    /// pin: on a broken `chats` read v4 logs its repository layer's
+    /// `Error finding entities by filter` (fallback-mode `safeQuery`) and never
+    /// reaches `:692` — see the helper's own comment. v5 names the failure with
+    /// v4's `:692` sentence instead of swallowing it. Renaming the ordered
+    /// column is what makes the read fail — dropping a table is the less
+    /// reliable poke (`a-dropped-table-raises-no-read-error`).
     #[test]
     fn a_failed_recent_conversations_read_is_named() {
         let (_d, _db, w) = ladder_venue(false);

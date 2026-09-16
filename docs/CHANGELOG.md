@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — fix(unify): the `2075242f9` round's §3 review fixes — the heal reads the Node-faithful photos predicate, the recent-conversations warn recorded as a divergence, an oracle-side failover pin
+
+_Versions: core 0.0.927, harness 0.0.820._
+
+Three findings from the unification review, none blocking, each landed with
+its reasoning in the code:
+
+- **P4.D192 — the heal imported the wrong `is_photos_relative_path` twin.**
+  v4's migration imports `lib/photos/photos-paths.ts`, whose
+  `path.posix.dirname` skips a RUN of trailing slashes; v5's
+  `photos::photos_paths` twin strips one, and the lane itself measured that
+  the `db::doc_mount_file_links` twin is the Node-faithful one (which is why
+  its ordered consolidation did not land). The heal now imports the faithful
+  home — the one v5's runtime roll rule (`classify_roll_links` through
+  `photo_link_summary`'s `isPhotoAlbum`) already reads, so heal and runtime
+  agree on every input, as v4's two callers do. Neutral on every corpus row
+  (the family re-ran green at the target pin); the consolidation stays a named
+  follow-up.
+- **P4.90 — the `:692` warn is a RECORDED DIVERGENCE, not a fidelity pin.** On
+  a broken `chats` read v4 never reaches its `route.ts:692` catch:
+  `findByFilter` is a fallback-mode `safeQuery` that logs the repository's own
+  `Error finding entities by filter` and returns `[]`. v5 has no repository-
+  layer log to twin, so the failure is named with v4's sentence rather than
+  swallowed (the #103/#110 class); the helper's comment and the test's doc now
+  say so. Also corrected: the api-key arm's citation (`findApiKeyById:266`,
+  not `findApiKeyByIdAndUserId:288`).
+- **P4.90 — the new corpus arm pins that v4 really failed over**: at least one
+  recorded canned stream keyed to the understudy (`OPENAI` / `gpt-stands-in`)
+  carries a `tool`-role message, so a future oracle regen that quietly stopped
+  failing over cannot go green having measured nothing (the P4.D186 held-cases
+  idiom). Orchestrator family green by name with the pin.
+
 #### 2026-09-16 — chore(unify): the `2075242f9` round's unification wires — the docs/v4 mirror, the version recount, the eighth floor-seat case, seven skip sentinels, and the record corrections
 
 _Versions: core 0.0.926, harness 0.0.819, host 0.0.137, SPA 0.5.726._

@@ -1238,6 +1238,27 @@ fn orchestrator_tier3_matches_oracle() {
         assert_events_eq(name, got, want);
     }
 
+    // --- P4.90: the failover-then-tool-call arm must have FAILED OVER on v4 ---
+    // The frame + table diffs compare `failover_then_native_tool_call` end to
+    // end, and the pre-fix v5 reddens on the truncated trace (the loop's
+    // re-stream keyed to the primary's model has no canned answer). What that
+    // cannot say is that the ORACLE still measures a failover: if a future regen
+    // quietly stopped failing over (the mock's `502` reclassified, say), both
+    // sides would re-stream on the primary and the case would go green having
+    // measured nothing. So the arm is pinned against v4's own recorded calls: at
+    // least one canned stream keyed to the UNDERSTUDY (`OPENAI` /
+    // `gpt-stands-in`) whose messages carry a `tool` role — the re-stream after
+    // the tool call, on the provider the chain fell over to. (The `2075242f9`
+    // round's §3 review.)
+    assert!(
+        canned_streams.iter().any(|s| s.provider == "OPENAI"
+            && s.model == "gpt-stands-in"
+            && s.messages.iter().any(|m| m.role == "tool")),
+        "failover_then_native_tool_call: v4 recorded no understudy-keyed (OPENAI / \
+         gpt-stands-in) re-stream carrying a `tool` message — the oracle no longer \
+         fails over before the tool loop, so the arm measures nothing"
+    );
+
     // --- P4.D186 (v4 `31436bae4` bug 137): the held user turn ---
     // The frame + table diffs above already compare these cases end to end. What
     // they cannot do alone is prove the case is MEANINGFUL: if both sides failed
