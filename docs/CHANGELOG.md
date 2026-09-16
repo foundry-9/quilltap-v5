@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): record v4 drift — bugs 145 and 146, and v4's answers to 143/144
+
+_Docs-only; no version bumps._
+
+`/driftcheck` against v4 main. The baseline stays `ffb6b3119`; HEAD is
+`2075242f9` (`4.10.0-dev.40`), four commits past it, and the checkout is clean
+again — the human's in-progress migration edit recorded at the last check
+landed as `23abc1ba1`.
+
+Two of the four carry code, and both answer the 2026-09-15 dogfood walk.
+`23abc1ba1` fixes bug 145: the avatar-roll collapse deleted a victim's bytes by
+`fileId`, so collapsing a duplicate took any album photo sharing those bytes —
+19% of avatar links on the real instance had that shape. **v5 reproduces it**
+(`db/avatar_rolls_collapse_heal.rs:214-237`, the boot heal ported in P4.D184),
+so this is a data-loss port, and v4's note that every one of its tests seeded a
+roll with exactly one link applies to v5's 17-scenario family as well. The same
+commit fixes bug 144, which the walk filed and v5 is deliberately pinned to —
+that pin now trips by design — and closes bug 143 as not a defect: all ten
+duplicate keys were the deliberate protected-portrait branch, and the walk's
+diagnosis had reconstructed a mutable invariant from a later snapshot.
+`2075242f9` is bug 146: a new pure `resolveFloorSeatId` predicate and the Skip
+banner following the floor rather than the composer's seat.
+
+No DDL moved, `public/schemas/` is untouched, and `help/` stays at 124 files
+with two of them changed. The regen rule stays PIN REQUIRED — for HEAD now
+rather than a dirty tree.
+
 #### 2026-09-15 — docs(cli): pin v4's `--lock-clean` wording and file it as v4 bug 144 (dogfood #119)
 
 _Versions: cli 0.0.21._
