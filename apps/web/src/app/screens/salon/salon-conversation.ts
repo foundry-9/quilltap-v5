@@ -114,6 +114,7 @@ import {
   nudgeParticipant,
   parseCycleOrder,
   removeFromQueue,
+  resolveFloorSeatId,
   type TurnSelectionResult,
   type TurnState,
 } from '../../chat/turn-order';
@@ -431,6 +432,7 @@ interface CascadePrompt {
         [userTurnName]="userTurnName()"
         [mustSpeak]="mustSpeak()"
         [isSeatsTurn]="isSeatsTurn()"
+        [composerElsewhere]="composerElsewhere()"
         [nudgeTargetName]="nudgeTargetName()"
         (selectSpeaker)="onSelectSpeaker($event)"
         (skipUserTurn)="onSkipUserTurn()"
@@ -2237,10 +2239,12 @@ export class SalonConversation {
   });
 
   /**
-   * The name of the seat the Skip banner is about — the seat the composer
-   * speaks as, on or off turn since v4 bug 123 — or null when the banner is
-   * hidden (`bannerSeat` holds the three gates; `isSeatsTurn` says whether the
-   * rotation has actually landed on it).
+   * The name of the seat the Skip banner is about — the seat that holds the
+   * FLOOR since v4 bug 146, falling back to the seat the composer speaks as
+   * when the floor belongs to nobody the human drives (bug 123's off-turn
+   * affordance) — or null when the banner is hidden (`bannerSeat` holds the
+   * three gates; `isSeatsTurn` says whether the rotation has actually landed on
+   * it, and `composerElsewhere` whether the composer agrees).
    *
    * Gated on `isUserDrivenSeat` over the impersonation overlay, matching v4's
    * Skip banner (`SalonView.tsx:1457-1515` at `fef7ce4f7` —
@@ -2274,14 +2278,38 @@ export class SalonConversation {
    *
    * Bug 123's change is gate 3: the banner used to key on the rotation's
    * `nextSpeakerId`, so it appeared only once the rotation had formally landed
-   * on the seat. It now keys on the seat the composer will take words as, on or
-   * off turn — a pass is "let someone else respond", and that is as meaningful
-   * mid-rotation as it is on-turn.
+   * on the seat. It then keyed on the seat the composer will take words as, on
+   * or off turn — a pass is "let someone else respond", and that is as
+   * meaningful mid-rotation as it is on-turn.
+   *
+   * Bug 146 (v4 `2075242f9`, `SalonView.tsx:1531-1558`) is what gate 3 resolves
+   * NOW: the banner is about the FLOOR, not about the composer. With two seats
+   * the human drives, "whose turn is it" and "whose voice will the composer
+   * take" disagree routinely — the rotation moves every turn, the speaking-as
+   * only follows it as a client-side default. When they disagree, passing the
+   * *composer's* seat records a Host turn-pass for a seat that never held the
+   * floor and leaves the real turn outstanding, so the human is prompted again.
+   * {@link resolveFloorSeatId} settles it — the rotation's seat wins when it is
+   * one the human drives, and the composer's seat is kept only for the off-turn
+   * case bug 123 added — and the existing `isUserDrivenSeat` gate then runs over
+   * the RESOLVED seat, unchanged, because the resolver hands back its fallback
+   * verbatim and un-validated.
    */
   private readonly bannerSeat = computed<ParticipantDetail | null>(() => {
     if (this.busy()) return null;
     if (!this.hasAnyActiveCharacter()) return null;
-    const seat = this.speakingSeat();
+    const participants = this.chat()?.participants ?? [];
+    // v4 passes `turnSelectionResult?.nextSpeakerId`, the server's answer; v5's
+    // analogue is `effectiveNextSpeakerId()` — the same server answer with bug
+    // 48's client override layered above it, which is what `isSeatsTurn`
+    // already compares against, so the banner and its wording cannot disagree.
+    const floorSeatId = resolveFloorSeatId(
+      this.effectiveNextSpeakerId(),
+      participants,
+      this.impersonatingIds(),
+      this.speakingSeat()?.id ?? null,
+    );
+    const seat = floorSeatId ? (participants.find((pp) => pp.id === floorSeatId) ?? null) : null;
     if (
       !seat ||
       !isUserDrivenSeat(
@@ -2292,6 +2320,17 @@ export class SalonConversation {
       return null;
     return seat;
   });
+
+  /**
+   * The floor is the banner's seat, but the composer is pointed somewhere else
+   * — say so rather than inviting words that would land in another character's
+   * voice (v4 bug 146, `SalonView.tsx:1562`). Normally bug 49's turn-follow has
+   * already moved the composer; this is the reload case and the deliberate
+   * same-turn SpeakerSelector choice.
+   */
+  protected readonly composerElsewhere = computed<boolean>(
+    () => this.isSeatsTurn() && this.speakingSeat()?.id !== this.bannerSeat()?.id,
+  );
 
   /**
    * v4 `useParticipants.hasActiveCharacters` (`useParticipants.ts:70-72`) — any
@@ -2408,7 +2447,10 @@ export class SalonConversation {
    * v4 `handleSkipUserTurn` (`useTurnManagement.ts:210-242`, rewritten by bug
    * 123). v4 takes the seat id as an argument and the banner passes `seat.id`;
    * v5's banner is presentational and emits void, so the parent resolves the
-   * SAME seat it drew the banner from.
+   * SAME seat it drew the banner from — {@link bannerSeat}, which since v4 bug
+   * 146 is the seat holding the FLOOR. It used to read `speakingSeat()`, and
+   * the two disagree exactly when bug 146 bites: a pass recorded against the
+   * composer's seat leaves the real turn outstanding and prompts again.
    */
   protected async onSkipUserTurn(): Promise<void> {
     const chatId = this.chatId();
@@ -2420,7 +2462,7 @@ export class SalonConversation {
     // user-driven seat, records the pass and picks the next speaker from there;
     // the client's guard must agree, so it reads the OVERLAY rather than the
     // bare `controlledBy` column (Bug 44).
-    const participant = this.speakingSeat();
+    const participant = this.bannerSeat();
     if (
       !participant ||
       !isUserDrivenSeat(

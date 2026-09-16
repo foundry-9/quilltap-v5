@@ -151,6 +151,23 @@ function llmSeatChat(): ChatDetail {
   });
 }
 
+/**
+ * The shape that produced v4 bug 146: TWO seats the human drives (pU and pV)
+ * alongside one LLM seat, with the composer deliberately pointed at pU. The
+ * rotation and the speaking-as can then disagree, which is the whole feature.
+ */
+function twoUserSeatChat(over: Partial<ChatDetail> = {}): ChatDetail {
+  return groupChat({
+    participants: [
+      participant({ id: 'pA', character: charOf('cA', 'Aaron') }),
+      participant({ id: 'pU', controlledBy: 'user', character: charOf('cU', 'Bertie') }),
+      participant({ id: 'pV', controlledBy: 'user', character: charOf('cV', 'Violet') }),
+    ],
+    activeTypingParticipantId: 'pU',
+    ...over,
+  });
+}
+
 /** A history where both LLM characters have passed since the last substantive
  *  message, so the floor falls to the user seat. */
 function allOthersPassedChat(): ChatDetail {
@@ -220,6 +237,13 @@ interface StubOptions {
   chatAfterSend?: ChatDetail;
   /** A `chatSend` that never resolves — holds the component in `busy()`. */
   hangSend?: boolean;
+  /**
+   * What `chatSetActiveSpeaker` answers. The default replaces the overlay with
+   * the picked seat; a case that must keep an impersonation alive across a
+   * deliberate pick says so here (the real server returns the UPDATED list, and
+   * picking an owner seat does not end an impersonation of somebody else).
+   */
+  setSpeakerReply?: (participantId: string) => Record<string, unknown>;
 }
 
 function stubClient(
@@ -237,10 +261,10 @@ function stubClient(
   // applies it — the chat GET projects no activeTypingParticipantId).
   const dispatchData = vi.fn(async (req: CoreRequest) =>
     req.type === 'chatSetActiveSpeaker'
-      ? {
+      ? (opts.setSpeakerReply?.(req.participantId as string) ?? {
           impersonatingParticipantIds: [req.participantId as string],
           activeTypingParticipantId: req.participantId as string,
-        }
+        })
       : {},
   );
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
@@ -557,6 +581,195 @@ describe('Salon turn controls', () => {
     const fixture = await render(client);
     expect(banner(fixture)).toBe(
       'Everyone else has passed — it falls to Bertie to say something.',
+    );
+    expect(skipButton(fixture)).toBeFalsy();
+  });
+
+  // -------------------------------------------------------------------------
+  // The banner keyed on the FLOOR, not on the composer (v4 bug 146,
+  // `2075242f9`, `SalonView.tsx:1531-1596`)
+  // -------------------------------------------------------------------------
+
+  /** The `skipUserTurn` dispatches this render made, in order. */
+  function skipPosts(dispatch: ReturnType<typeof vi.fn>): string[] {
+    return calls(dispatch, 'chatTurnAction')
+      .filter((r) => (r as { action?: string }).action === 'skipUserTurn')
+      .map((r) => (r as { participantId?: string }).participantId ?? '(none)');
+  }
+
+  /**
+   * v4's own named route to a composer that is elsewhere: "the deliberate
+   * same-turn SpeakerSelector choice" (`SalonView.tsx:1559-1562`). On a fresh
+   * render bug 49's turn-follow has ALREADY moved the composer onto the floor,
+   * so the two agree and the fourth sentence is unreachable — picking another
+   * seat on the same turn is what parts them, and the follow's latch (keyed on
+   * the turn SEAT) leaves the pick alone.
+   */
+  async function pickSpeaker(
+    fixture: ComponentFixture<SalonConversation>,
+    participantId: string,
+  ): Promise<void> {
+    await (
+      fixture.componentInstance as unknown as {
+        onSelectSpeaker(id: string): Promise<void>;
+      }
+    ).onSelectSpeaker(participantId);
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  async function clickSkip(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    skipButton(fixture)!.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  // (a) The heart of bug 146: the rotation has handed the floor to Violet while
+  // the composer is still pointed at Bertie. Before the fix the banner named
+  // Bertie and Skip passed BERTIE'S turn — a Host turn-pass against a seat that
+  // never held the floor, with Violet's turn still outstanding.
+  it('names the FLOOR’s seat and skips it, not the composer’s', async () => {
+    const { client, dispatch } = stubClient(twoUserSeatChat(), {
+      query: { nextSpeakerId: 'pV', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    // The turn-follow has already moved the composer to the floor, so the two
+    // agree and the banner reads the plain turn sentence…
+    expect(banner(fixture)).toBe(
+      "Violet's turn — type as them, or skip to let someone else respond.",
+    );
+    // …until the human deliberately points the composer back at Bertie.
+    await pickSpeaker(fixture, 'pU');
+    expect(banner(fixture)).toBe(
+      "Violet's turn — switch the speaker to them to type, or skip to let someone else respond.",
+    );
+    await clickSkip(fixture);
+    expect(skipPosts(dispatch)).toEqual(['pV']);
+  });
+
+  // (b) Bug 123 preserved by construction: the floor belongs to an LLM, so the
+  // resolver falls back to the composer's seat and nothing about the off-turn
+  // affordance moves.
+  it('keeps the composer’s seat — and its wording — when the floor is an LLM’s', async () => {
+    const { client, dispatch } = stubClient(twoUserSeatChat(), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      'Speaking as Bertie — type, or skip to let someone else take the floor.',
+    );
+    await clickSkip(fixture);
+    expect(skipPosts(dispatch)).toEqual(['pU']);
+  });
+
+  // (c) The two agree — the unchanged second sentence, with no "switch the
+  // speaker" invitation to a composer that is already there.
+  it('words it as a plain turn when the floor and the composer agree', async () => {
+    const { client, dispatch } = stubClient(twoUserSeatChat(), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      "Bertie's turn — type as them, or skip to let someone else respond.",
+    );
+    await clickSkip(fixture);
+    expect(skipPosts(dispatch)).toEqual(['pU']);
+  });
+
+  // (d) Bug 44's overlay preserved: the floor is an LLM seat the human is
+  // impersonating, whose durable `controlledBy` is still 'llm'. A reader that
+  // consulted the column would hand the floor back to the composer and pass the
+  // wrong turn.
+  it('follows the floor onto an impersonated LLM seat', async () => {
+    const chat = twoUserSeatChat({
+      participants: [
+        participant({ id: 'pA', character: charOf('cA', 'Aaron') }),
+        participant({ id: 'pL', character: charOf('cL', 'Lorian') }),
+        participant({ id: 'pU', controlledBy: 'user', character: charOf('cU', 'Bertie') }),
+      ],
+      activeTypingParticipantId: 'pU',
+      impersonatingParticipantIds: ['pL'],
+    });
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pL', nextSpeakerControlledBy: 'llm' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+      // Picking Bertie does not end the impersonation of Lorian.
+      setSpeakerReply: (id) => ({
+        impersonatingParticipantIds: ['pL'],
+        activeTypingParticipantId: id,
+      }),
+    });
+    const fixture = await render(client);
+    await pickSpeaker(fixture, 'pU');
+    expect(banner(fixture)).toBe(
+      "Lorian's turn — switch the speaker to them to type, or skip to let someone else respond.",
+    );
+    await clickSkip(fixture);
+    expect(skipPosts(dispatch)).toEqual(['pL']);
+  });
+
+  // (e) Must-speak is computed over the banner's seat, which is now the FLOOR's
+  // — so it is Violet the floor falls to, and her copy wins over the
+  // composer-elsewhere sentence. No Skip button at all.
+  it('lets must-speak over the FLOOR’s seat win over the composer-elsewhere copy', async () => {
+    const chat = twoUserSeatChat({
+      messages: [
+        message({
+          id: 's0',
+          role: 'USER',
+          participantId: 'pU',
+          content: 'Off we go.',
+          createdAt: '2024-01-01T00:00:00.500Z',
+        }),
+        message({
+          id: 'a1',
+          role: 'ASSISTANT',
+          participantId: 'pA',
+          content: 'I lead.',
+          createdAt: '2024-01-01T00:00:01.000Z',
+        }),
+        message({
+          id: 'p-a',
+          role: 'ASSISTANT',
+          participantId: null,
+          systemSender: 'host',
+          systemKind: 'turn-pass',
+          hostEvent: { participantId: 'pA' },
+          content: 'Aaron has nothing to add.',
+          createdAt: '2024-01-01T00:00:02.000Z',
+        }),
+        message({
+          id: 'p-u',
+          role: 'ASSISTANT',
+          participantId: null,
+          systemSender: 'host',
+          systemKind: 'turn-pass',
+          hostEvent: { participantId: 'pU' },
+          content: 'Bertie has nothing to add.',
+          createdAt: '2024-01-01T00:00:03.000Z',
+        }),
+      ],
+    });
+    const { client } = stubClient(chat, {
+      query: { nextSpeakerId: 'pV', nextSpeakerControlledBy: 'user' },
+    });
+    const fixture = await render(client);
+    // Point the composer away, so `composerElsewhere` is genuinely TRUE and the
+    // precedence is exercised rather than assumed — without this the turn-follow
+    // leaves the two agreeing and the case says nothing about the arm order.
+    await pickSpeaker(fixture, 'pU');
+    expect(
+      (fixture.componentInstance as unknown as { composerElsewhere(): boolean }).composerElsewhere(),
+    ).toBe(true);
+    expect(banner(fixture)).toBe(
+      'Everyone else has passed — it falls to Violet to say something.',
     );
     expect(skipButton(fixture)).toBeFalsy();
   });

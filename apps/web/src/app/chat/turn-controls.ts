@@ -36,11 +36,14 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
  *
  *   - The **Speaking-As** selector (v4 `SpeakerSelector`), shown when the user
  *     controls two or more characters.
- *   - The **Skip banner** (v4 SalonView ~1457–1515, bug 123): shown whenever the
- *     human can type as a seat — their own character OR one they are
- *     impersonating this session — and not only when the rotation has formally
- *     landed on it. The wording says whose turn it is; when everyone else has
- *     passed, the must-speak copy with no Skip button.
+ *   - The **Skip banner** (v4 SalonView ~1543–1608, bugs 123 + 146): shown
+ *     whenever the human can type as a seat — their own character OR one they
+ *     are impersonating this session — and not only when the rotation has
+ *     formally landed on it. Since bug 146 the seat it speaks for is the one
+ *     holding the FLOOR, not the one the composer is pointed at, and a fourth
+ *     sentence says so when the two disagree. The wording says whose turn it
+ *     is; when everyone else has passed, the must-speak copy with no Skip
+ *     button.
  *   - The **paused-state notice** (the Pause/Resume button itself lives in the
  *     chat sidebar, v4's home for it).
  *   - **Nudge** (v4 `handleNudge`): summon the next LLM speaker out of turn.
@@ -121,6 +124,13 @@ export class TurnControls {
    * user-driven seat, on or off turn, so the wording has to say which it is.
    */
   readonly isSeatsTurn = input(false);
+  /**
+   * The floor is this seat's, but the composer is pointed somewhere else — v4
+   * bug 146's fourth wording (`SalonView.tsx:1562`, `isSeatsTurn &&
+   * speakingSeat?.id !== seat.id`). It invites the human to move the speaker
+   * rather than to type words that would land in another character's voice.
+   */
+  readonly composerElsewhere = input(false);
   /** The next LLM speaker's name, or null to hide the Nudge button. */
   readonly nudgeTargetName = input<string | null>(null);
 
@@ -128,11 +138,20 @@ export class TurnControls {
   readonly skipUserTurn = output<void>();
   readonly nudge = output<void>();
 
-  /** v4 `SalonView.tsx:1499-1506` — three-way, in v4's order. */
+  /**
+   * v4 `SalonView.tsx:1588-1596` — FOUR-way since bug 146, in v4's order:
+   * must-speak, then "the floor is yours but the composer is elsewhere", then
+   * on-turn, then the off-turn speaking-as. The order is load-bearing:
+   * `composerElsewhere` implies `isSeatsTurn`, so testing `isSeatsTurn` first
+   * would swallow it.
+   */
   protected readonly bannerText = computed(() => {
     const name = this.userTurnName() ?? 'this character';
     if (this.mustSpeak()) {
       return `Everyone else has passed — it falls to ${name} to say something.`;
+    }
+    if (this.composerElsewhere()) {
+      return `${name}'s turn — switch the speaker to them to type, or skip to let someone else respond.`;
     }
     return this.isSeatsTurn()
       ? `${name}'s turn — type as them, or skip to let someone else respond.`

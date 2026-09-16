@@ -139,6 +139,83 @@ first id match and bail, and that is the discriminator:
 Spec run: `node tools/ng-run.mjs test --watch=false --filter "resolveFloorSeatId"`
 → 12 passed.
 
+### Unit 4 — the banner re-keyed on the floor
+
+`bannerSeat` gate 3 resolves `resolveFloorSeatId(effectiveNextSpeakerId(),
+participants, impersonatingIds(), speakingSeat()?.id ?? null)`, looks the
+`ParticipantDetail` up, and runs the **unchanged** `isUserDrivenSeat` gate over
+the resolved seat — which is what validates the resolver's verbatim fallback, as
+v4's caller does. `composerElsewhere = isSeatsTurn() && speakingSeat()?.id !==
+bannerSeat()?.id`. `turn-controls` gains the input and the fourth arm in v4's
+order. `onSkipUserTurn` resolves `bannerSeat()` — plain, no fallback: v4's
+handler can only ever be called with the banner's seat, and where the banner is
+hidden v5's existing guard refuses exactly as before (the `llmSeatChat` refusal
+spec still passes unchanged). `mustSpeak` needed no edit; it already read
+`bannerSeat()`.
+
+**Which id v5 passes as v4's `turnSelectionResult?.nextSpeakerId`:**
+`effectiveNextSpeakerId()` — the server's answer with bug 48's `turnOverride`
+layered above it. That is what `isSeatsTurn` already compares against, so the
+banner's seat and its wording cannot disagree; passing the raw `turnInfo()` id
+would have let an impersonate-takes-the-turn override name one seat and the
+sentence another.
+
+**A finding the order did not anticipate: the fourth sentence is unreachable on
+a fresh render.** v4's comment says so in passing ("normally the Bug 49
+turn-follow has already moved it; this is the reload case and the deliberate
+same-turn SpeakerSelector choice") and v5's `turnFollow` effect behaves
+identically — it moves `activeTypingLocal` onto any user-driven floor seat, so
+the composer and the floor agree and `composerElsewhere` is false. The first
+draft of specs (a) and (d) asserted the fourth sentence straight after render
+and went RED naming the right seat with the wrong wording, which is what
+surfaced it. Both now make the deliberate pick through the component's own
+`onSelectSpeaker`, and the follow's latch (keyed on the turn SEAT) leaves it
+alone. The same trap made spec (e) **vacuous as first written** — with the two
+agreeing, the must-speak-over-composer-elsewhere precedence it claimed was never
+exercised; it now picks the other seat first and asserts `composerElsewhere()`
+is genuinely true before reading the sentence.
+
+`StubOptions` gained `setSpeakerReply` for case (d): the default
+`chatSetActiveSpeaker` reply REPLACES the overlay with the picked seat, which
+would have ended the very impersonation that case is about.
+
+**Specs (`salon-turn-controls.spec.ts`), each asserting the dispatch body:**
+
+| | Scenario | Sentence | Skip POSTs |
+|---|---|---|---|
+| (a) | floor pV, composer picked back to pU | the fourth (`switch the speaker to them`) | `pV` |
+| (b) | floor pA (LLM), composer pU | the off-turn speaking-as (bug 123 intact) | `pU` |
+| (c) | floor pU, composer pU | the plain turn sentence | `pU` |
+| (d) | floor pL (impersonated LLM), composer picked to pU | the fourth, naming Lorian | `pL` |
+| (e) | floor pV must-speak, composer pU | the must-speak copy, no Skip button | — |
+
+**Mutation proofs:**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M6 | `onSkipUserTurn` resolves `speakingSeat()` again | (a) and (d) — on the POST body |
+| M7 | drop the `composerElsewhere` arm from the four-way | (a) and (d) — on the sentence |
+| M8 | swap the arm order (`isSeatsTurn` before `composerElsewhere`) | (a) and (d) |
+| M9 | `bannerSeat` keyed on the composer again (pre-fix gate 3) | (a) and (d) |
+| M10 | demote the `mustSpeak` arm below `composerElsewhere` | (e) |
+
+M9 leaves (e) green, honestly: with the turn-follow in play the composer is
+already on the floor seat there, so (e) discriminates the ARM ORDER, not the
+re-key. (a) and (d) are the re-key's discriminators.
+
+**Tier 2 item 6 — `salon-dialogs-flow.spec.ts:412-418` left as it is, with the
+reasoning.** That beat's chooser cannot learn the third arm: `composerElsewhere`
+needs the floor and the composer to disagree, and bug 49's turn-follow makes
+them agree on every fresh load. The only route to the disagreement is a
+deliberate same-turn speaker pick, which that beat never makes, so the fourth
+sentence is unreachable there. `readOwnerSeatAndTurn` also reads the first
+`controlledBy === 'user'` seat rather than the floor, so it could not name the
+seat even if the wording did change. Nothing about that beat's existing
+assertion moves under this port.
+
+SPA gate at this unit: lint clean, `npm test` 434 spec files / 7,342 tests / 0
+failed, `npm run build` clean.
+
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 
 Ordered against baseline **`2f4254b42`** with **ZERO drift** (the generator

@@ -58,6 +58,35 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — fix(spa): the Skip banner speaks for the FLOOR, not the composer's seat (v4 bug 146)
+
+_Versions: SPA 0.5.724._
+
+`bannerSeat`'s third gate now resolves the floor through `resolveFloorSeatId`
+and then runs the existing `isUserDrivenSeat` check over the RESOLVED seat,
+unchanged — the resolver hands back its fallback verbatim, so the gate is what
+validates it. `onSkipUserTurn` POSTs that same seat, which is what its doc
+comment already claimed and what the code now does; it used to read
+`speakingSeat()`, and the two disagree exactly when bug 146 bites.
+
+`turn-controls` gains a `composerElsewhere` input and v4's fourth sentence —
+`<name>'s turn — switch the speaker to them to type, or skip to let someone
+else respond.` — in v4's order. The order is load-bearing: `composerElsewhere`
+implies `isSeatsTurn`, so testing `isSeatsTurn` first would swallow it.
+
+v5 passes `effectiveNextSpeakerId()` where v4 passes
+`turnSelectionResult?.nextSpeakerId` — the same server answer with bug 48's
+client override layered above it, which is what `isSeatsTurn` already compares
+against, so the banner and its wording cannot disagree. Bug 123's off-turn
+affordance and bug 44's overlay are preserved by construction.
+
+Five component specs. Reaching the fourth sentence needs v4's own named
+scenario — a deliberate same-turn SpeakerSelector choice — because on a fresh
+render bug 49's turn-follow has already moved the composer onto the floor and
+the two agree; without the pick the case is vacuous, which is how the
+must-speak precedence case was first written and then fixed. Each spec asserts
+the DISPATCH BODY, not only the sentence.
+
 #### 2026-09-16 — feat(spa): the `resolveFloorSeatId` client twin, with v4's own suite as its parity spec
 
 _Versions: core 0.0.923, SPA 0.5.723._
