@@ -203,6 +203,36 @@ the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
 conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
 the room (`fallback-not-in-room`), and treating an empty-string floor id as
 a name (`empty-string-floor-matching-seat`).
+#### 2026-09-16 — docs(porting): record the P4.D194 gate, and two harness findings it turned up
+
+_Docs-only change._
+
+The lane's gate: fmt, both clippy feature sets and the release build clean;
+`cargo test --workspace --no-fail-fast` **570 test binaries / 3,307 passed / 0
+failed / 2 ignored, exit 0**; ownership clean at nine paths. Every family the
+lane touches is confirmed RUN by non-zero duration rather than by the absence
+of a `SKIP:` line, and the nine sub-0.05 s help families were re-run by name
+under `--nocapture` with the discriminator proven non-vacuous by unsetting
+each var.
+
+Two findings the gate itself produced, both on paths this lane must not
+touch, both recorded for the unifier rather than patched. **A first gate run
+silently skipped two families** — the env block omitted
+`QT_FIXTURE_HELP_MAIN`, so both `help_doc_sync` families took their
+`env::var` bail at 0.00 s and PASSED; caught only by reading the per-binary
+durations, and the corrected re-run is the gate of record. **And
+`help_doc_chunking_equivalence` announces its skip as `skipping …`, not
+`SKIP:`** — so the round gate's `grep -c 'SKIP:'` is structurally blind to
+it. Also recorded: `QT_FIXTURE_HELP_MAIN` names two different fixture files
+for two different families, so one workspace run can satisfy only one of them,
+and both crossings pass — a coverage question worth its own look.
+
+One red in the corrected re-run is classified NOT this lane's:
+`activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`,
+a live-count contamination from a sibling test's span — green in the first
+gate run, green 5/5 by name, and the whole core lib binary green 3/3, over a
+lane that changes no core file at all.
+
 #### 2026-09-16 — docs(porting): ratify the P4.D194 NO-PORTs, converge dogfood #119, and record the lane
 
 _Docs-only change._

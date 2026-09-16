@@ -128159,6 +128159,28 @@ mirror has never carried it, so it stays out.
    edit; the same claim also appears verbatim in
    `dogfood-walks/2026-09-15-six-round-backlog-pass.md` (row I3 and the
    #119 paragraph), which this lane does not own.
+4. **`help_doc_chunking_equivalence` skips with `skipping …`, not `SKIP:`**
+   (`crates/quilltap-harness/tests/help_doc_chunking_equivalence.rs:72-78`)
+   — so the round gate's `grep -c 'SKIP:'` check is STRUCTURALLY BLIND to
+   it, and to any sibling written the same way. Proven by consequence:
+   unsetting `QT_ORACLE_HELP_DOC_CHUNKING` produces a silent 0.00 s pass
+   while the four families beside it announce themselves. This lane proved
+   the family ran by DURATION instead (0.05 s with the var, 0.00 s
+   without). A one-word fix on a MUST-NOT-TOUCH path; the wider question —
+   how many families spell it the second way — is a maintenance item.
+5. **`QT_FIXTURE_HELP_MAIN` is shared by two families with DIFFERENT
+   fixture files**: `help_doc_sync_equivalence` wants
+   `/tmp/qt-help-sync-main.db` and `help_doc_sync_guards_equivalence` wants
+   `/tmp/qt-help-sync-guards-main.db`, and the two files DIFFER (`cmp`
+   parts at byte 1). One workspace run can satisfy only one of them — the
+   `a-second-family-on-one-table-collides-by-default` shape. Both crossings
+   were measured: each family PASSES on the other's fixture (the guards
+   family additionally logging `[HelpDocSync] No help docs on disk have
+   usable content …`), so at least one arm of at least one family is
+   insensitive to which fixture it receives — a coverage question worth its
+   own look. Both were also proven green on their OWN fixtures by name. Not
+   chased here: both test files are MUST-NOT-TOUCH for this lane, and
+   neither family reads the shipped help tree.
 
 ### Deferrals (loud)
 
@@ -128172,5 +128194,65 @@ mirror has never carried it, so it stays out.
 
 ### Gate
 
-Recorded with the lane's final report. `CARGO_INCREMENTAL=0` and `TZ=UTC`
-throughout; no gate piped through `tail`.
+`CARGO_INCREMENTAL=0` and `TZ=UTC` throughout, one logged sentinel-guarded
+chain per long step, full capture read from the file — no gate piped through
+`tail`, no `pgrep` loop.
+
+| step | result |
+|---|---|
+| §R.2 probe (lane start, and again before the regen batch) | PASS — `main`, clean, both logs empty; `git worktree list` confirmed the four sibling pins are other lanes' |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| … `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` | **570 test binaries / 3,307 passed / 0 failed / 2 ignored, exit 0** |
+| §10 ownership (`git diff --stat main...HEAD`) | 9 paths, every one in the Owns column; no MUST-NOT-TOUCH path; `cli_differential.rs` untouched (no new case, as the order predicted) |
+
+**The lane's families confirmed RUN by non-zero duration**, not by the
+absence of a `SKIP:` line — cargo captures a passing test's output, so
+silence is the capture and not a claim: `cli_differential` 330.74 s,
+`help_tree_equivalence` 1.11 s, `help_chat_orchestrator_tier3` 1.36 s,
+`help_doc_ensure` 0.21 s, `help_doc_sync` / `help_doc_sync_guards` 0.05 /
+0.10 s, `help_docs_routes` 0.13 s, `help_chats_routes` 0.11 s.
+`help_tree_embed_guard` is 0.02 s and has no env gate at all (it compares
+the embedded table to the on-disk tree), so its speed is not a skip.
+`brahma_orchestrator_tier3` is 0.00 s — **withheld BY NAME per §8**, its
+oracle var deliberately unset; P4.89 restores it.
+
+**The nine sub-0.05 s help families were positively proven by re-running
+them by NAME under `--nocapture`** — zero `SKIP:` lines, several printing
+their own work (`help_doc_slug: 40 cases matched`, `help_docs tier-2
+matched oracle (3 rows)`, `help_docs upsert tier-2 matched oracle (4
+rows)`, `help-tools matched oracle (19 settings, 16 navigate, 13
+submit)`). The discriminator was then proven non-vacuous by CONSEQUENCE:
+unsetting each oracle var makes the SKIP line appear at the same 0.00 s.
+
+**⚠ The first gate run silently skipped two families, and the correction
+is the honest gate of record.** The env block omitted
+`QT_FIXTURE_HELP_MAIN`, so `help_doc_sync_equivalence` and
+`help_doc_sync_guards_equivalence` both took their `env::var` bail at
+0.00 s and PASSED — the exact `a-family-env-var-is-not-its-regen-var`
+shape, caught only because the per-binary durations were read rather than
+the SKIP grep trusted. The workspace test step was re-run with the
+corrected block (570 binaries again; both families now 0.05 s / 0.10 s).
+Neither family reads the shipped help tree, so no part of unit 2's proof
+depended on them; the correction is recorded because the first run's "0
+SKIP lines" would otherwise have read as coverage.
+
+**One red in the corrected re-run, classified NOT this lane's:**
+`quilltap_core::services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+failed its SECOND assertion (`activity_counts().summary` = 1, expected 0 —
+a *live* count contaminated by a sibling test's span; the process-global
+seam race `ActivityTestGuard` exists to bound). It is **green in the first
+gate run**, green **5/5** re-run by name, and the whole `quilltap-core
+--lib` binary is green **3/3** (2,346 passed each).
+`git diff --name-only main...HEAD -- crates/quilltap-core/` is **EMPTY** —
+this lane changes no core file. Pre-existing intermittent of the class the
+`f3892158d` round recorded; named, re-run, not re-classified.
+
+Corrected-run totals: 570 binaries / 3,306 passed / 1 failed (that
+intermittent) / 2 ignored.
+
+**No SPA gate** — this lane touches no `apps/web/**` file, and the help
+prose reaches the Guide through the embedded tree the SPA already reads.
+No Playwright run.
