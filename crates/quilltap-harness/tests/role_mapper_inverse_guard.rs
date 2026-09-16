@@ -34,17 +34,12 @@ use std::path::{Path, PathBuf};
 /// the cheapest total needle.
 const NEEDLE: &str = "\"assistant\" => CompletionRole::Assistant";
 
-/// Files allowed to carry the needle, each with the reason.
-///
-/// `orchestrator_tier3_equivalence.rs` is P4.92's file this round (§R.10 (b)):
-/// its mapper already carries the `"tool"` arm P4.90 added, so it is correct
-/// but still hand-rolled. **The unifier repoints it onto the inverse at the
-/// wire and DELETES this exemption** — one line, recorded in the round's §R.10.
-const EXEMPT: &[(&str, &str)] = &[(
-    "crates/quilltap-harness/tests/orchestrator_tier3_equivalence.rs",
-    "P4.92 owns this file this round; the unifier repoints it at the wire and \
-     removes this row (round §R.10 (b))",
-)];
+/// Files allowed to carry the needle, each with the reason. EMPTY since the
+/// `1fefadb9a` round's unification: the one row it ever held —
+/// `orchestrator_tier3_equivalence.rs`, P4.92's file that round (§R.10 (b)) —
+/// was repointed onto the inverse at the wire and the row deleted with it. A
+/// new row here needs a reason that names the lane that owns the file.
+const EXEMPT: &[(&str, &str)] = &[];
 
 /// This file names the needle in its own prose and census.
 const SELF: &str = "crates/quilltap-harness/tests/role_mapper_inverse_guard.rs";

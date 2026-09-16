@@ -1,0 +1,69 @@
+{
+  "label": "2026-09-16-1fefadb9a-unify-fixes",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "avatar_rolls_collapse_heal_equivalence",
+    "orchestrator_tier3_equivalence",
+    "select_speaker_equivalence",
+    "turn_state_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "avatar_rolls_collapse_heal_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "select_speaker_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "turn_state_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 4
+  }
+}

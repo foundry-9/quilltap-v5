@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — chore(unify): the `1fefadb9a` round's unification wires — the orchestrator role mapper onto the shared inverse, the guard's exemption deleted, the version recount, the two sweep artifacts, the ledger's baseline move, the four order headers
+
+_Versions: core 0.0.935, harness 0.0.827, web 0.0.148, SPA 0.5.727._
+
+§R.10 (b): `orchestrator_tier3_equivalence`'s hand-rolled role mapper now
+goes through `CompletionRole::from_v4_wire` (P4.93's inverse) and
+`role_mapper_inverse_guard`'s one exemption row is deleted — the guard's
+allow-list is empty. The version recount is base + Σ lane bumps (core
+0.0.927 + 8, harness 0.0.820 + 7, web 0.0.147 + 1, SPA 0.5.726 + 1); every
+lane's manifest delta was audited version-only before the picks. The
+pinned 60-family sweep and the by-name re-run after the review fixes are
+committed under `harness/tools/sweep-results/`. The drift ledger's baseline
+moves `2075242f9` → `1fefadb9a` (§3 empty, v4 AT the baseline at the
+close, regen rule: no pin required); each order's status header carries
+the unification verdict and what the review fixed on it.
+
 #### 2026-09-16 — fix(unify): the `1fefadb9a` round's §3 review fixes — the avatar save-failure line gains v4's error and a firing pin, two structured log fields ride the JSON convention, the routing read's swallowed error logs v4's sentence, the two missing re-stream floors, the post-post agreement row, the busy-flip re-seed pinned, the e2e Skip arm made deterministic, and the collapse census reader repointed
 
 _No crate versions bumped (the round's recount lands in the wires commit)._

@@ -1,0 +1,588 @@
+{
+  "label": "2026-09-16-1fefadb9a-unify",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "announcer_tier3_equivalence",
+    "answer_confirmation_tier3_equivalence",
+    "avatar_cache_key_equivalence",
+    "avatar_rolls_collapse_heal_equivalence",
+    "avatar_rolls_tier2_equivalence",
+    "brahma_console_tier3_equivalence",
+    "brahma_orchestrator_tier3_equivalence",
+    "build_context_tier3_equivalence",
+    "carina_query_tier3_equivalence",
+    "character_avatar_write_tier2_equivalence",
+    "character_photo_upload_tier2_equivalence",
+    "chat_create_capstone_equivalence",
+    "chat_gallery_equivalence",
+    "collapse_stale_chat_caches_tier2_equivalence",
+    "compression_cache_tier3_equivalence",
+    "compression_tier3_equivalence",
+    "courier_images_routes_equivalence",
+    "danger_gatekeeper_tier3_equivalence",
+    "enclave_step_tier3_equivalence",
+    "external_prompt_tier3_equivalence",
+    "file_attachment_tier3_equivalence",
+    "fold_episode_tier3_equivalence",
+    "help_chat_orchestrator_tier3_equivalence",
+    "help_chats_routes_equivalence",
+    "help_context_resolver_equivalence",
+    "help_doc_chunking_equivalence",
+    "help_doc_ensure_equivalence",
+    "help_doc_slug_equivalence",
+    "help_doc_sync_equivalence",
+    "help_doc_sync_guards_equivalence",
+    "help_docs_routes_equivalence",
+    "help_docs_tier2_equivalence",
+    "help_docs_upsert_tier2_equivalence",
+    "help_snippet_equivalence",
+    "help_system_prompt_equivalence",
+    "help_tools_equivalence",
+    "help_tree_equivalence",
+    "image_generation_tier3_equivalence",
+    "images_routes_equivalence",
+    "in_scene_voiced_tier3_equivalence",
+    "initial_greeting_equivalence",
+    "maintenance_ops_tier2_equivalence",
+    "maintenance_sweep_tier2_equivalence",
+    "memory_processor_tier3_equivalence",
+    "native_tool_loop_tier3_equivalence",
+    "orchestrator_tier3_equivalence",
+    "pascal_custom_tools_route_equivalence",
+    "pascal_run_custom_handler_equivalence",
+    "pascal_workbench_route_equivalence",
+    "photo_tools_equivalence",
+    "photos_relative_path_equivalence",
+    "primary_stream_tier3_equivalence",
+    "regenerate_swipe_tier3_equivalence",
+    "salon_mutations_equivalence",
+    "salon_reads_equivalence",
+    "salon_swipe_generate_equivalence",
+    "seed_avatars_equivalence",
+    "select_speaker_equivalence",
+    "text_tool_loop_tier3_equivalence",
+    "turn_state_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "announcer_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "answer_confirmation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "avatar_cache_key_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "avatar_rolls_collapse_heal_equivalence",
+      "status": "run_failed",
+      "cause": "failures:\n    avatar_rolls_collapse_matches_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s\n   Compiling quilltap-harness v0.0.827 (/Users/csebold/source/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s\n     Running tests/avatar_rolls_collapse_heal_equivalence.rs (target/debug/deps/avatar_rolls_collapse_heal_equivalence-dac8351404ad2fe9)\nthread 'avatar_rolls_collapse_matches_oracle' (9463492) panicked at crates/quilltap-harness/tests/avatar_rolls_collapse_heal_equivalence.rs:688:9:\nassertion `left == right` failed: the-census-names-a-duplicate-key-this-pass-did-not-double-up-on-purpose: the warn lines diverged\n  left: Array [Object {\"message\": String(\"Avatar rolls share a generation key this pass did not choose to double up\"), \"context\": String(\"migration.collapse-duplicate-avatar-rolls\"), \"fileId\": Null, \"blobId\": Null, \"avatarRows\": Null, \"configurations\": Null, \"victims\": Null, \"rowsKeyed\": Null, \"victimsDeleted\": Null, \"blobsDeleted\": Null, \"chatsChanged\": Null, \"charactersChanged\": Null, \"messagesChanged\": Null, \"protectedKept\": Null, \"albumCopiesKept\": Null, \"unexplainedCount\": Number(1), \"fileIds\": Null}]\n right: Array [Object {\"message\": String(\"Avatar rolls share a generation key this pass did not choose to double up\"), \"context\": String(\"migration.collapse-duplicate-avatar-rolls\"), \"fileId\": Null, \"blobId\": Null, \"avatarRows\": Null, \"configurations\": Null, \"victims\": Null, \"rowsKeyed\": Null, \"victimsDeleted\": Null, \"blobsDeleted\": Null, \"chatsChanged\": Null, \"charactersChanged\": Null, \"messagesChanged\": Null, \"protectedKept\": Null, \"albumCopiesKept\": Null, \"unexplainedCount\": Number(1), \"fileIds\": Array [String(\"stowaway\")]}]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test avatar_rolls_collapse_heal_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "avatar_rolls_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "brahma_console_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "brahma_orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "build_context_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "carina_query_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "character_avatar_write_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "character_photo_upload_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chat_create_capstone_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chat_gallery_equivalence",
+      "status": "run_failed",
+      "cause": "[save_image_empty_body] body OK.\n[save_image_blank_ids] body OK.\n[save_image_wrong_types] body OK.\n[save_image_missing_chat] body OK.\n[message_save_non_uuid] body OK.\n[message_save_empty_body] body OK.\n[chat_file_delete_link_id] body OK.\n[chat_file_delete_file_id] body OK.\nthread 'chat_gallery_equivalence' (9468925) panicked at crates/quilltap-harness/tests/chat_gallery_equivalence.rs:830:5:\nchat-gallery differences: [\"save_image_file_status\", \"save_image_file\", \"save_image_vault_status\", \"save_image_vault\", \"save_image_link_status\", \"save_image_link\", \"save_image_already_status\", \"save_image_already\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test chat_gallery_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "collapse_stale_chat_caches_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "compression_cache_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "compression_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "courier_images_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[resolve_not_pending] body OK.\n[resolve_cadence] body OK.\n[resolve_cadence tables] OK.\n[cancel] body OK.\n[cancel tables] OK.\n[file_delete] body OK.\n[file_delete tables] OK.\n[file_delete_missing] body OK.\nthread 'courier_images_routes_match_oracle' (9470742) panicked at crates/quilltap-harness/tests/courier_images_routes_equivalence.rs:755:5:\ncourier-images-routes FAILED: [\"save_image_riya_status\", \"save_image_riya\", \"save_image_general_status\", \"save_image_general\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test courier_images_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "danger_gatekeeper_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "enclave_step_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "external_prompt_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "file_attachment_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "fold_episode_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_chat_orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_chats_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_context_resolver_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_doc_chunking_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_doc_ensure_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_doc_slug_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_doc_sync_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_doc_sync_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_docs_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_docs_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_docs_upsert_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_snippet_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_system_prompt_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "help_tree_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "image_generation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "images_routes_equivalence",
+      "status": "run_failed",
+      "cause": "test images_routes_match_oracle ... FAILED\nfailures:\nfailures:\n    images_routes_match_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s\n   Compiling quilltap-harness v0.0.827 (/Users/csebold/source/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s\n     Running tests/images_routes_equivalence.rs (target/debug/deps/images_routes_equivalence-47ea7c3b62192e0f)\nthread 'images_routes_match_oracle' (9482446) panicked at crates/quilltap-harness/tests/images_routes_equivalence.rs:685:22:\nfirst upload of upload_dedup_orphan_cleanup did not answer Images: Error(CoreError { kind: Internal, message: \"Internal server error\", pepper_state: None, code: None, associations: None, character_id: None, entity: None, details: None, already_saved: None })\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test images_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "in_scene_voiced_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "initial_greeting_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "maintenance_ops_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "maintenance_sweep_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "memory_processor_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "native_tool_loop_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "pascal_custom_tools_route_equivalence",
+      "status": "run_failed",
+      "cause": "failures:\n    custom_tools_route_matches_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n   Compiling quilltap-harness v0.0.827 (/Users/csebold/source/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.71s\n     Running tests/pascal_custom_tools_route_equivalence.rs (target/debug/deps/pascal_custom_tools_route_equivalence-2ef25d0b145addd0)\nthread 'custom_tools_route_matches_oracle' (9486798) panicked at crates/quilltap-harness/tests/pascal_custom_tools_route_equivalence.rs:847:9:\nassertion `left == right` failed: case 'list' status\n  left: 500\n right: 200\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test pascal_custom_tools_route_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "pascal_run_custom_handler_equivalence",
+      "status": "run_failed",
+      "cause": "test run_custom_handler_matches_oracle ... FAILED\nfailures:\nfailures:\n    run_custom_handler_matches_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s\n   Compiling quilltap-harness v0.0.827 (/Users/csebold/source/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.69s\n     Running tests/pascal_run_custom_handler_equivalence.rs (target/debug/deps/pascal_run_custom_handler_equivalence-44e1f717d4c9f70f)\nthread 'run_custom_handler_matches_oracle' (9487587) panicked at crates/quilltap-harness/tests/common/mod.rs:347:6:\nstore dump reads: Sqlite(SqliteFailure(Error { code: Unknown, extended_code: 1 }, Some(\"no such column: cycleOrderParticipantIds\")))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test pascal_run_custom_handler_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "pascal_workbench_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "photo_tools_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "photos_relative_path_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "primary_stream_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "regenerate_swipe_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "salon_mutations_equivalence",
+      "status": "run_failed",
+      "cause": "[chat_update_concierge_wrong_type] done.\n[chat_update_concierge_with_bag] section `body` MISMATCH:\n   = {\n  GOT :   \"kind\": \"internal\",\n  WANT:   \"chat\": {\n[chat_update_concierge_with_bag] done.\n[chat_update_concierge_invalid_with_bag] done.\n[message_delete_cascade] done.\nthread 'salon_mutations_match_oracle' (9491477) panicked at crates/quilltap-harness/tests/salon_mutations_equivalence.rs:655:5:\nsalon-mutations FAILED: [\"chat_update/body\", \"chat_update_broad/body\", \"chat_update_timeline_set/body\", \"chat_update_timeline_null/body\", \"chat_update_concierge_flagged/body\", \"chat_update_concierge_vouched/body\", \"chat_update_concierge_uncensored/body\", \"chat_update_concierge_noop/body\", \"chat_update_concierge_with_bag/body\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test salon_mutations_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "salon_reads_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "salon_swipe_generate_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "seed_avatars_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "select_speaker_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "text_tool_loop_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    },
+    {
+      "family": "turn_state_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 53,
+    "run_failed": 7
+  }
+}

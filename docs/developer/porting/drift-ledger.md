@@ -19,55 +19,34 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `2075242f9`** — "fix(salon): Skip passes the turn that
-  is outstanding, not the composer's seat (bug 146)" (v4 main, 2026-09-15,
-  `4.10.0-dev.40`), adopted at the `2075242f9` bug-145/146 drift catch-up +
-  maintenance round unification (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥
-  P4.90, 2026-09-16). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-16 at the CLOSE of that round's `/unify` (v4 moved
-  while the gate ran — the drift step below was run after the fast-forward,
-  per `/unify` §6). Previously checked at the unification's open and at
-  ~08:00 CDT by `/driftcheck`.
-- **v4 `main` HEAD at check:** `1fefadb9a` (`4.10.0-dev.41`, 2026-09-16 06:57)
-  — **ONE commit past the baseline**: bug 147 (see §3), the very commit the
-  unification's §1 note below predicted from the dirty tree.
+- **Oracle baseline: `1fefadb9a`** — "fix(salon): send the cycle rotation to
+  the client so it stops guessing the turn (bug 147)" (v4 main, 2026-09-16
+  06:57, `4.10.0-dev.41`), adopted at the `1fefadb9a` bug-147 drift catch-up
+  + maintenance round unification (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93,
+  2026-09-16). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-16 at the CLOSE of that round's `/unify` (the probe
+  was run at the unification's open, before the docs commit, and again after
+  the fast-forward, per `/unify` §6). Previously checked at the round's
+  `/setupphase` the same morning.
+- **v4 `main` HEAD at check:** `1fefadb9a` — **AT the baseline, zero
+  drift.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. The dirt the
-  unification recorded mid-round (`handlers/get.ts`, `useTurnManagement.ts`,
-  the two tests, the new `client-server-agreement.test.ts`, the bug-146/147
-  docs) has LANDED as `1fefadb9a` — bug 147. The eighth `resolveFloorSeatId`
-  case it carries is ALREADY in v5's corpus and parity spec (taken from the
-  dirty test at the unification's wires, since the function exists at the
-  pin).
-- **Verdict: DRIFT PENDING — 1 commit, carrying code on TWO ported surfaces
-  + one help page.** `1fefadb9a` is a PORT (the chat GET now projects
-  `spokenThisCycleParticipantIds` + `cycleOrderParticipantIds` as the raw
-  JSON strings — v5's `api/salon.rs:366-381` deliberately OMITS both,
-  measured at P4.D171 and pinned by `salon_reads_equivalence`, which WILL RED
-  at the target by design) + a CONVERGENCE (the client's `TurnActionResponse.
-  state.cycleOrder` read — v5's `applyTurnResponse` has read it since
-  P4.D177; and v5's chat-GET seed at `salon-conversation.ts:2066` is gated on
-  PRESENCE, so the moment the server projects the key that dormant leg goes
-  live with no client change) + a one-line `help/chat-turn-manager.md`
-  re-vendor. Docs/tests/version markers NO-PORT.
-- ⚠ **Regen rule: PIN REQUIRED.** HEAD is one commit past the baseline and
-  it touches `app/` and `help/` (`git diff --stat 2075242f9..1fefadb9a -- lib/
-  app/ packages/ plugins/ migrations/ help/ public/schemas/` is non-empty).
-  Pin a worktree at `2075242f9` for every regen until the bug-147 catch-up
-  moves the baseline. The unification's own regens ran from pins at
-  `2075242f9` / `ffb6b3119` BEFORE this commit landed (both removed at
-  cleanup) — the gate of record was never exposed to it.
-- **The workspace gate is unaffected** — `public/schemas/` did not move across
-  `ffb6b3119..2075242f9`, so `qtap_schema_embed_guard` stays green at 93,384
-  bytes; `1fefadb9a` touches no `public/` path either.
-- **Schema state: CLEAR at the baseline.** The round moved no DDL (the
-  avatar-roll collapse rewrite is a *data* script; no `generateDDL`, no
-  `lib/database/` hunk), so no D23 re-dump was owed. `help/**` is **124
-  files**, v5's vendored tree md5-identical to v4's at `2075242f9` after
-  P4.D194's two-file re-vendor — `1fefadb9a` moves ONE line of
-  `help/chat-turn-manager.md` (+1/−1), owed to the catch-up's re-vendor.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**.
+- **Verdict: NO DRIFT.** §3 is EMPTY.
+- **Regen rule: NO PIN REQUIRED** — HEAD is the baseline and the tree is
+  clean, so a regen from the checkout imports exactly the baseline's code.
+  A lane-unique pin stays the recommended discipline for any multi-unit lane
+  (the checkout can go dirty mid-lane — §5.1), but nothing currently forces
+  it.
+- **The workspace gate is unaffected** — `public/schemas/` did not move
+  across `2075242f9..1fefadb9a`, so `qtap_schema_embed_guard` stays green at
+  93,384 bytes.
+- **Schema state: CLEAR at the baseline.** The round moved no DDL (bug 147
+  is a projection + a client field + one help line), so no D23 re-dump was
+  owed. `help/**` is **124 files**, v5's vendored tree md5-identical to v4's
+  at `1fefadb9a` after P4.D195's one-file re-vendor.
 
 ## §2 The freshness probe
 
@@ -106,7 +85,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `1fefadb9a` | 2026-09-16 | fix(salon): send the cycle rotation to the client so it stops guessing the turn (bug 147) | **PORT** + **CONVERGENCE** | **(a) PORT — the chat GET** (`app/api/v1/chats/[id]/handlers/get.ts:362-373`, +12): two new whitelist keys, `spokenThisCycleParticipantIds: chatMetadata.spokenThisCycleParticipantIds ?? '[]'` and `cycleOrderParticipantIds: chatMetadata.cycleOrderParticipantIds ?? '[]'` — RAW JSON STRINGS on purpose ("re-encoding it here would put a second shape of the same fact on the wire"), placed after `activeTypingParticipantId` and before `isPaused`. v5's twin `crates/quilltap-core/src/api/salon.rs:366-381` carries a NOTE deliberately NOT projecting `cycleOrderParticipantIds` (P4.D171 measured v4 never did — a genuine v4 client/server gap this commit closes); `salon_reads_equivalence` pins the projection byte-for-byte and WILL RED at the target by design (§5.4 — measure the two keys' exact positions and the `?? '[]'` defaults, then port). **(b) CONVERGENCE — the client** (`app/salon/[id]/hooks/useTurnManagement.ts`, +13/−1): `TurnActionResponse.state.cycleOrder?: string[]` declared and spread into `setTurnState`; v5's `applyTurnResponse` (`salon-conversation.ts:2093`, P4.D177 §C.2) has read `state.cycleOrder` since the `78b381a96` round — zero client change owed. And v5's chat-GET seed (`salon-conversation.ts:2049-2070`) is gated on PRESENCE of `chat.cycleOrderParticipantIds` precisely so that "this seed runs only if a server ever sends the key" — (a) makes it live; the P4.D187 turn-tail / reconcile interplay deserves one measured look (a chat refetch now carries the rotation). **(c)** `help/chat-turn-manager.md` +1/−1 (the sidebar-and-banner sentence) → the vendored tree (124 stays 124). NO-PORT: `README.md`, `docs/**`, the three version markers (`4.10.0-dev.41`), `get.test.ts` (+41) and the NEW `client-server-agreement.test.ts` (+156 — v4's own guard that the client's recompute agrees with the server's draw; a candidate parity spec, not a port), the eighth `floor-seat.test.ts` case (already in v5). | ORDERED(P4.D195) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -260,6 +238,25 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `1fefadb9a` bug-147 drift catch-up + maintenance round (2026-09-16,
+  baseline `2075242f9` → `1fefadb9a`):** `1fefadb9a` ABSORBED(P4.D195 — the
+  chat GET projects `spokenThisCycleParticipantIds` + `cycleOrderParticipantIds`
+  as RAW JSON strings at v4's position with v4's `?? '[]'` shape, the P4.D171
+  both-directions omission pin tripped at the target on all five `get_*`
+  cases and retired, the corpus grown with the raw-`''` and raw-NULL arms;
+  the SPA's dormant chat-GET seed made LIVE and grown its spoken half [the
+  sidebar's `spoken` status was unreachable in v5 exactly as v4's filing says
+  of v4], the P4.D187 refetch interplay and the busy-flip re-seed both pinned;
+  the `state.cycleOrder` client read MEASURED as a convergence over a
+  four-row table [v5 has read it since P4.D177]; v4's client/server agreement
+  room as tier-1 corpus rows over the REAL `selectNextSpeaker` incl. the
+  post-post half, which also opened and closed a blind spot — nothing had
+  ever driven the rotation argument of `selectNextSpeaker` /
+  `calculateTurnStateFromHistory` before; `help/chat-turn-manager.md`
+  byte-copied, 124 stays 124; the non-lib files ratified NO-PORT on the
+  `--name-status` list in the lane record). Round record: `status-log.md` →
+  "Round record — the `1fefadb9a` bug-147 drift catch-up + maintenance round
+  unification".
 - **The `2075242f9` bug-145/146 drift catch-up + maintenance round
   (2026-09-16, baseline `ffb6b3119` → `2075242f9`):** `23abc1ba1`
   ABSORBED(P4.D192 — bug 145's migration hunk: `drop_victim_roll_link` over
