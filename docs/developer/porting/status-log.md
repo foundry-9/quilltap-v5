@@ -129535,10 +129535,23 @@ each harness before its first write.
    control at the `posix_dirname` level, which is where that control's contract
    actually lives. The corpus row stays as the shape both algorithms always
    agreed on.
-5. **Gate** (numbers in the lane's final report): `cargo fmt --all --check`;
-   `cargo clippy --workspace --all-targets -- -D warnings` in BOTH feature sets;
-   `cargo build --workspace --release`; `cargo test --workspace --no-fail-fast`
-   with the lane's env block.
+5. **Gate**: `cargo fmt --all --check` clean; `cargo clippy --workspace
+   --all-targets -- -D warnings` clean in BOTH feature sets (default and
+   `--features quilltap-core/native-transport`); `cargo build --workspace
+   --release` clean (6m 00s); `cargo test --workspace --no-fail-fast` with the
+   lane's env block — **571 test binaries / 3,327 passed / 1 failed / 2 ignored,
+   ZERO `SKIP:` lines**. The one failure was `cli_differential` and it was **the
+   gate's own env error, not a result**: the block set `QT_NODE` to the node
+   **bin directory** where Tier R spawns `$QT_NODE` as the v4 launcher's
+   interpreter, so every case died on `spawn CLI: PermissionDenied` (execing a
+   directory) — the standing `qt-node-must-be-the-binary-not-the-bin-directory`
+   note, walked into again. Re-run by name with `QT_NODE=…/bin/node`:
+   **223 cases / 0 failures** (359 s). The lane's own tests are confirmed RUN
+   inside the workspace run by name: `photos_relative_path_equivalence`
+   (`photos_relative_path_matches_oracle ... ok`), the three
+   `report_census_tests`, the four `log_file::json_field_tests`, and
+   `photos_paths::tests::{photos_relative_path_detection, posix_dirname_matches_
+   node}`.
 6. **Ownership**: `git diff --stat main...HEAD` — every path inside the lane's
    Owns column; no MUST-NOT-TOUCH path present. No SPA, no `help/**`, no sibling
    family, no drift ledger.
