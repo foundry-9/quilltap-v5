@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — chore(harness): commit the `2075242f9` unification's two sweep artifacts
+
+_Docs-only change._
+
+The sweep driver's `--run-all` results for the unified gate, as previous
+rounds keep them: the 16-family baseline-pin sweep (`ffb6b3119`, 16 ok) and
+the 17-family target-pin sweep (`2075242f9`, 17 ok), both zero SKIP.
+
 #### 2026-09-16 — docs(porting): unify the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90) — the baseline moves to `2075242f9`
 
 _Docs-only change (the code landed in the lanes' entries and the two unify commits above)._
