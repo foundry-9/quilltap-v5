@@ -9,6 +9,103 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D193 (bug 146: `resolveFloorSeatId` on both sides + the Skip banner re-keyed on the floor)
+
+Ordered against oracle baseline **`ffb6b3119`**, absorbing the code half of v4
+**`2075242f9`** (the `2075242f9` bug-145/146 drift catch-up + maintenance
+round, 2026-09-16). **Drift-ledger §2 freshness probe at lane start:** PASS —
+v4 checkout on `main`, tree clean, `git log 2075242f9..main` EMPTY,
+`git log 1a2b2164c..bugfix` EMPTY. Regen rule **PIN REQUIRED**; every regen ran
+from the lane-unique detached worktree `/tmp/qt-v4-pin-p4d193-2075242f9`. The
+lane never wrote the ledger.
+
+### Unit 1 — `participant_filters::resolve_floor_seat_id` + the NEW tier-1 `floor_seat_equivalence`
+
+v4's `utils.ts:219-262` ported shape-for-shape, including the three shapes the
+doc prose does not state and the order flagged: the `speaking_seat_id` fallback
+is returned **verbatim and un-validated** (a seat not in the room, or an LLM
+seat, comes back as given — v4's caller gates with `isUserDrivenSeat`
+afterwards, and v5's does the same); an **empty-string** `next_speaker_id` is
+JS-falsy and falls straight through to the fallback; and `find` returns the
+**first** id match, so duplicate ids take the first.
+
+The twin has no production caller in the core — v4's consumer is its client —
+so it is the differential-proven authority the SPA mirror cites, exactly as
+`is_user_driven_seat` is for its own mirror (P4.D56/P4.D58). Its doc comment
+says so.
+
+**The corpus: 52 floor rows + 1 re-export row** (`harness/oracle/cases/
+floor-seat.ts`), driving v4's REAL exported function. v4's own seven
+`__tests__/unit/lib/chat/turn-manager/floor-seat.test.ts` cases are carried
+case-for-case as ten emitted calls (`v4-1-…` … `v4-7b-…`), every one matching
+v4's own expectations; the other 42 ask the shapes that suite does not — the
+empty-string floor id (with and without a seat of that id in the room), a
+SILENT user seat on the floor (present → wins) against an ABSENT one (falls
+back), the overlay naming a seat that is already `controlledBy: 'user'`, the
+three spellings of "no overlay" (`[]` / `null` / omitted), a fallback not in
+the room / naming an LLM seat / naming a removed seat / empty-string /
+omitted, duplicate ids in three orders, an empty room, an unknown floor id, an
+all-LLM room, and two rows proving the overlay cannot resurrect a removed or
+absent seat (presence is checked first).
+
+**A resolution finding, recorded because the order predicted the opposite.**
+The order asked the oracle to import from the `@/lib/chat/turn-manager` barrel,
+"the surface v4's consumer uses". It cannot: with the entry script living in
+the v5 repo and cwd inside the pinned v4 worktree, tsx transpiles the barrel as
+CJS, so `import * as tm` yields `{ default, 'module.exports' }` and a NAMED
+import off it fails outright — `SyntaxError: The requested module
+'@/lib/chat/turn-manager' does not provide an export named
+'resolveFloorSeatId'` — while the deep `…/utils` path resolves as ESM and
+works. (The committed `turn-pause-filters.ts` recipe imports the deep path for
+the same reason, which is why no existing family had hit this.) So the corpus
+drives the defining module and pins the barrel **separately and by
+measurement**: a `reexport` row reaches the barrel through the CJS-interop
+`default` and asserts the function object is **identical** to the one the
+corpus drove. That is v4's `index.ts:83` hunk, measured rather than assumed.
+
+**Pin verification (the order's own):** `resolveFloorSeatId` does not exist at
+`ffb6b3119` (`grep -c` in that pin's `utils.ts` → **0**), so a baseline-pinned
+run of the case fails to import with the sentence above. Confirmed against a
+lane-unique baseline pin `/tmp/qt-v4-pin-p4d193-ffb6b3119`.
+
+**Regen (as run, and as the committed header spells it):**
+
+```
+V5W=<this worktree>
+N=~/.nvm/versions/node/v24.13.1/bin
+rm -f /tmp/oracle-floor-seat.ndjson
+cd /tmp/qt-v4-pin-p4d193-2075242f9
+$N/npx tsx $V5W/harness/oracle/cases/floor-seat.ts > /tmp/oracle-floor-seat.ndjson
+cd $V5W
+QT_ORACLE_FLOOR_SEAT=/tmp/oracle-floor-seat.ndjson \
+  cargo test -p quilltap-harness --test floor_seat_equivalence -- --nocapture
+```
+
+Run end-to-end through the sanctioned driver too:
+`python3 harness/tools/recipe_sweep.py --run floor_seat_equivalence --v4
+/tmp/qt-v4-pin-p4d193-2075242f9 --v5w <worktree>` → `OK: floor_seat_equivalence
+recipe ran end-to-end`.
+
+**Mutation proofs (M1–M4), each reddening exactly its target row:**
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M1 | drop the presence conjunct | `v4-6-departed-floor` (`Some("departed")` vs `Some("helene")`) |
+| M2 | drop the user-driven conjunct | `v4-2-llm-floor-keeps-composer` (`Some("wahno")` vs `Some("helene")`) |
+| M3 | validate the fallback against the room | `fallback-not-in-room` (`None` vs `Some("ghost-seat")`) |
+| M4 | treat `Some("")` as a name | `empty-string-floor-matching-seat` (`Some("")` vs `Some("helene")`) |
+
+Each revert was by file backup, never `git checkout <file>`. M4's row is the
+one built for the purpose: without a seat carrying the empty id in the room,
+the falsy fallthrough and a failed lookup are indistinguishable.
+
+The family also carries three shape asserts so a future trimmed regen cannot go
+green having stopped asking: ≥ 40 floor rows, exactly one re-export row, and at
+least one row each spelling an `undefined` argument, an empty-string floor id,
+and a `null` result. The per-row `*Form` fields carry how the v4 call spelled
+each argument (`value` / `null` / `undefined`), which Rust's `Option` cannot
+tell apart, and the test asserts the form agrees with the emitted value.
+
 ## Lane record — P4.82 (the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its boot-time enqueuer)
 
 Ordered against baseline **`2f4254b42`** with **ZERO drift** (the generator

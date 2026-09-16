@@ -104,6 +104,70 @@ pub fn find_active_user_participant<'a>(
     find_user_participant(participants)
 }
 
+/// The seat the "your turn" banner speaks for — and the seat its Skip passes
+/// (v4 `2075242f9`, bug 146).
+///
+/// Two different questions can both have an answer at once, and they are not
+/// the same question:
+///
+///   - **Whose turn is it?** `turnSelectionResult.nextSpeakerId`.
+///   - **Whose voice will the composer take?** `activeTypingParticipantId`, via
+///     [`find_active_user_participant`].
+///
+/// With two seats the human drives (their own character plus an impersonated
+/// one, or two owned characters) the two disagree routinely: the rotation moves
+/// on every turn, the speaking-as does not (v4 bug 49's follow is a client-side
+/// default and a reload restores the last *deliberate* choice). Bug 146 is what
+/// happens when the banner answers the second question while the human reads it
+/// as the first: it offers to pass a turn that is not outstanding, records a
+/// Host turn-pass for a seat that never held the floor, and leaves the real turn
+/// where it was — so the human is prompted again and has to pass twice.
+///
+/// So: **the floor wins when there is one.** When the rotation has landed on a
+/// seat the human drives, that seat is what the banner names and what Skip
+/// passes. Only when the floor belongs to nobody the human drives — an LLM is up
+/// next, or there is no selection yet — does it fall back to the composer's
+/// seat, which is the off-turn "let someone else respond" affordance v4 bug 123
+/// added. It consults [`is_user_driven_seat`] rather than the bare
+/// `controlled_by` column, so an impersonated seat's turn is not lost to its
+/// durable `'llm'` value (v4 bug 44).
+///
+/// Returns `None` when neither is available (an all-LLM room, or a chat still
+/// loading), which the caller reads as "no banner".
+///
+/// Three shapes v4's prose does not state, carried here on purpose:
+///
+///  1. `speaking_seat_id` comes back **verbatim, un-validated** — a seat that is
+///     not in the room, or an LLM seat nobody impersonates, is returned as
+///     given. v4's caller gates the result with `isUserDrivenSeat` afterwards,
+///     and v5's does the same.
+///  2. v4 guards on JS truthiness, so an **empty-string** `next_speaker_id` is
+///     falsy and falls straight through to the fallback.
+///  3. `find` returns the **first** id match, so duplicate ids take the first.
+///
+/// v4's consumer is its client (`app/salon/[id]/SalonView.tsx`), so this twin
+/// has no production caller in the core: it is the differential-proven
+/// authority that the client mirror in `apps/web/src/app/chat/turn-order.ts`
+/// cites — exactly as [`is_user_driven_seat`] is for its own client mirror
+/// (P4.D56/P4.D58).
+pub fn resolve_floor_seat_id(
+    next_speaker_id: Option<&str>,
+    participants: &[ParticipantView],
+    impersonating_ids: Option<&[String]>,
+    speaking_seat_id: Option<&str>,
+) -> Option<String> {
+    // v4 guards on truthiness, so an empty id falls through to the fallback.
+    if let Some(id) = next_speaker_id.filter(|s| !s.is_empty()) {
+        if let Some(on_floor) = participants
+            .iter()
+            .find(|p| p.id == id && p.is_present() && p.is_user_driven(impersonating_ids))
+        {
+            return Some(on_floor.id.clone());
+        }
+    }
+    speaking_seat_id.map(|s| s.to_string())
+}
+
 /// All present, user-controlled participants.
 pub fn find_user_controlled_participants(
     participants: &[ParticipantView],

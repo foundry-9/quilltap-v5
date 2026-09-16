@@ -58,6 +58,36 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+#### 2026-09-16 — feat(core): `resolve_floor_seat_id` — the seat the Skip banner speaks for (v4 bug 146)
+
+_Versions: core 0.0.922, harness 0.0.815._
+
+v4 `2075242f9`'s `lib/chat/turn-manager/utils.ts` + `index.ts` hunks, ported
+as a pure leaf in `participant_filters`. With two seats the human drives,
+"whose turn is it" and "whose voice will the composer take" are different
+questions; the banner answered the second while the operator read it as the
+first. The rotation's seat wins whenever it names a present seat the human
+drives (consulting `is_user_driven_seat`, so an impersonated seat's turn is
+not lost to its durable `'llm'` column); the composer's seat is kept only
+off-turn, which is v4 bug 123's affordance.
+
+Three shapes v4's prose does not state are carried on purpose and pinned:
+the fallback comes back verbatim and un-validated (the caller gates it), an
+empty-string floor id is JS-falsy and falls straight through, and `find`
+takes the first match on duplicate ids.
+
+The twin has no production caller in the core — v4's consumer is its client
+— so, exactly as `is_user_driven_seat` does for its own mirror, it is the
+differential-proven authority the SPA twin cites. New tier-1 family
+`floor_seat_equivalence` over `harness/oracle/cases/floor-seat.ts`: v4's own
+seven `floor-seat.test.ts` cases plus 42 more, 52 floor rows, driving v4's
+REAL exported function. The `index.ts:83` re-export is pinned by its own
+row, which compares the barrel's binding against the function the corpus
+drove. Four mutation proofs, each reddening exactly its target row: dropping
+the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
+conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
+the room (`fallback-not-in-room`), and treating an empty-string floor id as
+a name (`empty-string-floor-matching-seat`).
 
 #### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
 
