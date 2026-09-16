@@ -26,6 +26,16 @@
 //! into, matching v5's own "never throws" `fail(...)` idiom already used for
 //! the api-key/tool-build failure paths above).
 //!
+//! ## Fixture vintage (P4.89)
+//!
+//! This family does NOT read the committed `brahma-{main,mount}.db` pair: the
+//! recipe below BUILDS `/tmp/qt-brahma-{main,mount}.db` fresh from
+//! `build-brahma-console-fixture.ts` through v4's real repositories, so its
+//! schema is always the pin's `generateDDL` vintage by construction. It shares
+//! only the file NAME with the committed pair. P4.89's in-place widen of that
+//! pair therefore cannot reach this family; it was regenerated and re-run at v4
+//! `ffb6b3119` alongside its two siblings and stayed green.
+//!
 //! Generate the fixture + oracle output (Node 24, from the v4 checkout — the
 //! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
 //!   N=~/.nvm/versions/node/v24.13.1/bin

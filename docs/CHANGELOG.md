@@ -330,6 +330,37 @@ wins). Three mutations: restoring the old first line reds the unit test and
 the same four Tier R cases; restoring the old second line alone reds them too,
 which is the proof Tier R compares both lines; dropping the `minutes === 1`
 arm reds the 60 s pin.
+#### 2026-09-16 — test(harness): widen the committed brahma fixture pair to v4's current schema vintage (P4.89)
+
+_Versions: harness 0.0.815, web 0.0.147._
+
+The committed `crates/quilltap-web/tests/fixtures/brahma-{main,mount}.db`
+pair predated P4.D171's two schema moves, which had left
+`brahma_orchestrator_tier3_equivalence` red on `main` since 2026-09-10 and
+`brahma_console_routes_equivalence` un-passable behind its SKIP guard.
+
+The gap was MEASURED at v4 `ffb6b3119` with v4's own
+`extractSchemaMetadata` + `compareSchemas` + `generateAlterStatements` over
+the live repository registry: MAIN needs exactly
+`chats.cycleOrderParticipantIds` and `chat_messages.routeTrail`; MOUNT needs
+nothing; no removed and no modified field on either partition. The pair was
+then widened IN PLACE through `migrate-memories-fixture-columns.ts` with
+v4's own migration DDL — a cell-by-cell dump of all twelve tables is
+byte-identical before and after once the two added columns are projected
+out, and a second migrator run reports `already current`.
+
+Both families are now GREEN at the pin with **zero v5 source change**; the
+third (`brahma_console_tier3_equivalence`, which builds its own fixture and
+only shares the file name) was regenerated and re-run unchanged. The
+routes widen is not cosmetic: four write cases that used to compare v4's
+`500 Internal server error` now compare real 201/200 payloads, and
+`cycleOrderParticipantIds` became a live comparand in four of them.
+
+The migrator gained a read-only `--report-only` dry run and the brahma
+recipe; the three harness headers gained vintage notes. The P4.50-class
+`sqlite error: ` prefix is RE-MEASURED and has no live site left in these
+families (zero occurrences across the three fresh oracles and the v5 run);
+`DbError::Sqlite`'s Display arm is untouched.
 
 #### 2026-09-16 — docs(porting): order the `2075242f9` bug-145/146 drift catch-up + maintenance round (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥ P4.90)
 

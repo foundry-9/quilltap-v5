@@ -34,11 +34,32 @@
 //! — so this oracle must be regenerated at v4 `6452e2c3`+ (P4.D57).)
 //!
 //! The committed `brahma-{main,mount}.db` pair (shared with
-//! `brahma_console_routes_equivalence`) was REBUILT from
-//! `harness/oracle/fixtures/build-brahma-console-web-fixture.ts` after adding its
-//! pinned CHAT_G (`c1000000-...011`) for this case — every pre-existing id/row
-//! reproduced byte-identical (the one legitimate drift, CHAT_A's wall-clock
-//! `lastMessageAt`, is already blanked by the routes differential).
+//! `brahma_console_routes_equivalence` — and NOT with
+//! `brahma_console_tier3_equivalence`, which builds its own `/tmp/qt-brahma-*.db`
+//! from `build-brahma-console-fixture.ts` and only shares the file NAME) was
+//! REBUILT from `harness/oracle/fixtures/build-brahma-console-web-fixture.ts`
+//! after adding its pinned CHAT_G (`c1000000-...011`) for this case — every
+//! pre-existing id/row reproduced byte-identical (the one legitimate drift,
+//! CHAT_A's wall-clock `lastMessageAt`, is already blanked by the routes
+//! differential).
+//!
+//! ## Fixture vintage (P4.89)
+//!
+//! The pair was **widened in place 2026-09-16** through
+//! `harness/oracle/fixtures/migrate-memories-fixture-columns.ts` at v4
+//! `ffb6b3119` — the two P4.D171 columns, `chats.cycleOrderParticipantIds` and
+//! `chat_messages.routeTrail`, and nothing else (the gap was measured with v4's
+//! own `extractSchemaMetadata` + `compareSchemas`: MAIN needed exactly those
+//! two, MOUNT needed nothing, no removed and no modified field anywhere). Every
+//! pre-existing cell is byte-preserved — the REBUILD note above predates the
+//! widen and still describes how the rows were baked.
+//!
+//! Until that widen this family had been RED on `main` since P4.D171 moved the
+//! schema (`78b381a96`, 2026-09-10): v4's own jest side recorded `no such
+//! column: cycleOrderParticipantIds` as the expected `fatal_error`, and v5
+//! rendered it with `DbError::Sqlite`'s `sqlite error: ` prefix, then panicked
+//! on `routeTrail` in the row dump. Both halves were fixture rot; closing it
+//! needed ZERO v5 source change.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — the oracle lives under
 //! `.claude/`, which jest ignores, so mirror it to /tmp):

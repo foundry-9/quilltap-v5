@@ -128256,3 +128256,296 @@ intermittent) / 2 ignored.
 **No SPA gate** — this lane touches no `apps/web/**` file, and the help
 prose reaches the Guide through the embedded tree the SPA already reads.
 No Playwright run.
+## P4.89 — the brahma fixture vintage widen (lane record, 2026-09-16)
+
+**Branch `claude/brahma-fixture-vintage-widen-4878d6`, from `main`
+`e9173924`. CLOSED — every Tier-1 and Tier-2 deliverable landed. Baseline
+`ffb6b3119`, PIN REQUIRED throughout; no drift row absorbed (this lane is
+candidate 2 of the `ffb6b3119` round's "What is next").**
+
+### §2 freshness probe
+
+Run at lane start and again before the regen batch. Both PASSED: checkout on
+`main`, tree clean, `2075242f9..main` EMPTY, `1a2b2164c..bugfix` EMPTY.
+`git worktree list` before each batch confirmed the lane-unique pin
+`/tmp/qt-v4-pin-p489-ffb6b3119` and four sibling pins, none shared.
+
+### The order's two false premises, both corrected by measurement
+
+1. **The migrator does NOT call `compareSchemas`.** The Preamble says
+   `migrate-memories-fixture-columns.ts` "CALLS v4's `compareSchemas` +
+   `generateAlterStatements`". It does not: it applies a hard-coded list of
+   v4's REAL migration ALTERs, verbatim, behind v4's own
+   "only-if-missing" guard (its own "The DDL is v4's own" section says so).
+   The order's Tier-1 item 1 was therefore discharged two ways — a
+   `--report-only` dry run of that list (new, mine), AND an independent
+   measurement that really does drive v4's `extractSchemaMetadata` +
+   `compareSchemas` + `generateAlterStatements`. The two agree exactly.
+2. **`brahma_console_tier3_equivalence` does not read the committed pair.**
+   The order calls its `/tmp/qt-brahma-*.db` "a DIFFERENT staging of the
+   same pair". It is a different FIXTURE: `build-brahma-console-fixture.ts`
+   bakes it fresh through v4's real repositories, so it is always the pin's
+   `generateDDL` vintage by construction and the widen cannot reach it. It
+   shares only the file name. Recorded in its header.
+
+### Unit 1 — the gap, MEASURED (not assumed)
+
+The independent measurement ran from the pin against v4's live repository
+registry (39 collections from `getRepositories()`, plus the two SECONDARY
+ones the container does not expose as a `collectionName`: `chat_messages`
+via `ChatMessageRowSchema` and `api_keys` via `ApiKeySchema` — without them
+the first pass reported `chat_messages` as "no repository" and would have
+MISSED `routeTrail` entirely). Per repo-backed table it ran
+`extractSchemaMetadata` → `compareSchemas(metadata, PRAGMA table_info)` →
+`generateAlterStatements`:
+
+```
+=== brahma-main.db ===
+  api_keys: current
+  chat_messages: ADDED routeTrail
+      ALTER TABLE "chat_messages" ADD COLUMN "routeTrail" TEXT
+  chats: ADDED cycleOrderParticipantIds
+      ALTER TABLE "chats" ADD COLUMN "cycleOrderParticipantIds" TEXT DEFAULT '[]'
+  connection_profiles: current
+  users: current
+=== brahma-mount.db ===
+  doc_mount_blobs: (no repository — hand-rolled table, skipped)
+  doc_mount_chunks / _documents / _file_links / _files / _folders / _points: current
+```
+
+**Exactly the two P4.D171 columns on MAIN; NOTHING on MOUNT; no removed and
+no modified field anywhere.** `doc_mount_blobs` has no Zod schema and no
+`ensureCollection` — it is hand-rolled raw DDL, correctly outside
+`generateDDL`'s governance. The pair carries no `characters` table, so the
+migrator's two MANAGED_FIELDS exclusions never arise for it. `chats` did NOT
+report `transcriptVersion` (P4.D182) as missing — confirming that column is
+outside v4's Zod chat schema by design, a boot-ensure-only move.
+
+The migrator's `--report-only` dry run agreed byte-for-byte:
+`brahma-main.db: WOULD ADD chats.cycleOrderParticipantIds WOULD ADD
+chat_messages.routeTrail` / `brahma-mount.db: already current`.
+
+⚠ **One measured DDL disagreement, recorded not resolved:**
+`generateAlterStatements` renders `routeTrail` as bare
+`ADD COLUMN "routeTrail" TEXT` where v4's migration renders
+`TEXT DEFAULT NULL`. Semantically identical in SQLite (an absent default IS
+NULL); they differ only in `sqlite_master` text. The migration form was
+applied, for the same reason the script already records for
+`multiCharacterPrefill` — a real instance gets the column from the
+migration, and that is the shape v5 must read.
+
+### Unit 1b — the red-first leg (pre-widen, against a FRESH oracle at the pin)
+
+`brahma_orchestrator_tier3_equivalence`, reproduced byte-identically to
+P4.D189's diagnosis:
+
+```
+[plain] ERROR TEXT MISMATCH:
+  GOT : sqlite error: no such column: cycleOrderParticipantIds
+  WANT: no such column: cycleOrderParticipantIds
+… panicked at brahma_orchestrator_tier3_equivalence.rs:584:
+   Sqlite(… Some("no such column: routeTrail"))
+test result: FAILED. 0 passed; 1 failed
+```
+
+v4's own side is half of it: 7 of the 14 pre-widen oracle rows carry
+`{"error":"no such column: cycleOrderParticipantIds","errorType":"fatal_error"}`
+as the EXPECTED value — the P4.52 class exactly.
+
+### Unit 2 — the widen, in place, row-preserving
+
+Applied from the pin with v4's own migration DDL:
+
+```
+brahma-main.db: +chats.cycleOrderParticipantIds +chat_messages.routeTrail
+brahma-mount.db: already current
+```
+
+- **Idempotence:** a second run reports `already current` for BOTH files.
+- **Row preservation, cell by cell:** a dump of every column of every one of
+  the twelve tables across both partitions (values sorted, blobs base64'd),
+  taken BEFORE and AFTER with the two added columns projected out, is
+  **byte-identical** — md5 `c1444484c8154de7356ff8d2031489f9` both times.
+  Row counts unchanged: `api_keys` 1, `chat_messages` 4, `chats` 8,
+  `connection_profiles` 3, `users` 2, every mount table 0.
+- **Back-fill is v4's:** `chats DDL tail: , "cycleOrderParticipantIds" TEXT
+  DEFAULT '[]'` with all 8 rows `'[]'`; `chat_messages DDL tail: ,
+  "routeTrail" TEXT DEFAULT NULL` with all 4 rows NULL.
+- **No `.db-journal` residue** after either the apply or the second run;
+  `--report-only` opens read-only so a dry run cannot leave any.
+- `brahma-mount.db` is **byte-untouched** (`git status` lists only
+  `brahma-main.db`).
+
+### Unit 3 — all three families regenerated at the pin and run by name
+
+Through `harness/tools/recipe_sweep.py --run <family> --v4
+/tmp/qt-v4-pin-p489-ffb6b3119 --v5w <worktree>`, one family at a time
+(never a concurrent sweep), each ending `OK: <family> recipe ran
+end-to-end`, exit 0. The driver shielded the committed pair into
+`/tmp/qt-recipe-shield-<family>/` for the two families that read it — the
+shield copies were taken AFTER the widen, so both engines saw the widened
+bytes. No `.meta.json` sidecar exists beside the pair, so the
+sidecar-dropping shield trap does not arise.
+
+| family | result | duration | SKIP |
+|---|---|---|---|
+| `brahma_orchestrator_tier3_equivalence` | **ok**, 1 passed | 0.15 s | none |
+| `brahma_console_tier3_equivalence` | ok, 1 passed | 0.12 s | none |
+| `brahma_console_routes_equivalence` | ok, 1 passed | 0.04 s | none |
+
+The orchestrator run printed all seven cases green —
+`[plain] [run_sql] [textblock] [submit_final] [dup_stuck]
+[budget_exhausted] [stream_error_mid_turn]`, frames + messages OK on each —
+and `[llm_logs] 15 CHAT_MESSAGE row(s), expected 15`.
+
+**`git diff --stat main...HEAD -- crates/quilltap-core` is EMPTY.** The
+standing red closed with ZERO v5 source change, as ordered.
+
+Changed bytes in the fresh NDJSONs (§5.2): the routes oracle gained
+`"cycleOrderParticipantIds":"[]"` in **4** payloads where the pre-widen
+oracle had **0**.
+
+### ⚠ The widen closed a SECOND latent red — `brahma_console_routes`
+
+The order (and P4.D189) recorded the other two families as "GREEN because
+they never read the two columns". **Measured, that is false for the routes
+family.** Regenerating its oracle at the pin against the PRE-widen fixture
+and running the v5 side against it (fixture swapped by file backup, restored
+and `cmp`-verified afterwards):
+
+```
+[list] STATUS 500 != 200
+[list] BODY MISMATCH:
+  GOT :   "error": "sqlite error: no such column: cycleOrderParticipantIds"
+  WANT:   "chats": [ …
+… every one of the 50 comparands diverged
+```
+
+and on v4's side the four WRITE cases — `create_default`,
+`create_with_profile`, `rename`, `set_model` — answered
+`500 {"error":"Internal server error"}`: v4's repository writes the WHOLE
+validated entity on both create and update (`_update`'s `$set: validated` is
+the update half), so every schema field is named and a column the fixture
+predates is fatal.
+
+Since v5 answered `500 sqlite error: …` to EVERY case, no oracle v4 can
+produce could have matched: this family has been **un-passable on `main`
+since P4.D171 (`78b381a96`, 2026-09-10)** and passed gates only by SKIPping
+on an unset `QT_ORACLE_BRAHMA_ROUTES` — `a-widened-shared-column-breaks-
+sibling-fixtures-invisibly`, whose one-line form is "they SKIP, and a SKIP
+passes". Post-widen, the four write cases compare REAL 201/200 payloads and
+the diff between the pre- and post-widen oracles is exactly the new key.
+
+### Unit 4 — the three vintage notes
+
+Each header gained a "## Fixture vintage (P4.89)" section naming the widen
+date, the migrator, the pin, the two columns, the measured gap, and the
+byte-preservation. The orchestrator header's REBUILD paragraph is kept and
+explicitly marked as predating the widen; it also gained the correction that
+the pair is NOT shared with `brahma_console_tier3_equivalence`. The routes
+header carries the second-latent-red finding above. `recipe_sweep.py
+--self-test` reports **0 failures** after the edits, and all three recipes
+still extract (`--show` renders the regen+run blocks unchanged apart from
+the notes).
+
+### Unit 5 — the withheld var returns
+
+`QT_ORACLE_BRAHMA_ORCH` has been withheld BY NAME from the unified gate's
+env block since 2026-09-15. **It returns**: this lane's full
+`cargo test --workspace` ran with it SET and the family confirmed RUN by
+non-zero duration. The unifier should restore it (and set
+`QT_ORACLE_BRAHMA_ROUTES` + `QT_ORACLE_BRAHMA` too — the routes family's
+latent red above is invisible without its var).
+
+### Unit 6 — the P4.50-class re-measure: **OUTCOME A, the item RETIRES**
+
+Post-widen, `sqlite error: ` occurs **zero** times across all three fresh
+NDJSONs and zero times in the v5 run output. The 16 / 18 remaining `no such
+column` hits in the orchestrator and console oracles are the Brahma SQL
+SYSTEM PROMPT's own advice text (``a `no such column` or `no such table`
+error means you guessed the schema wrong``), not error values — confirmed by
+context grep, not by the count.
+
+The prefix surfaced **only** because the column was missing: `DbError`'s
+`Display` renders `DbError::Sqlite(e) => "sqlite error: {e}"`
+(`crates/quilltap-core/src/db/mod.rs:202`), and with the column present no
+brahma path constructs that variant. Core is UNTOUCHED by this lane. The
+divergence class itself is latent rather than dead — any genuine
+`DbError::Sqlite` reaching a surface whose v4 counterpart renders the bare
+driver sentence would still diverge — but it has **no measured live site**,
+so it is recorded as an observation for a future round, not an ordered fix.
+
+### Tier 2
+
+- **Sweep-driver self-test:** 0 failures (above).
+- **The core unit readers:** `crates/quilltap-core/src/services/
+  brahma_console/orchestrator/tests.rs` copies the committed pair and calls
+  `test_support::ensure_p4d171_columns` on the copy; post-widen that call is
+  a harmless no-op and stays where it is, as ordered. `cargo test -p
+  quilltap-core --lib brahma_console` → **29 passed, 0 failed**.
+
+### Deferrals (loud)
+
+- **A core-side fix for the `sqlite error: ` prefix** — not this lane's, and
+  Outcome A means there is nothing to fix here: no live site. Named above as
+  a latent class only.
+- **Rebuilding the pair through `build-brahma-console-web-fixture.ts`** —
+  ruled out in favour of migrate-in-place, as ordered. The migrator never
+  refused (no removed or retyped field anywhere), so the STOP condition
+  never arose.
+
+### For the unifier
+
+- Restore `QT_ORACLE_BRAHMA_ORCH` to the gate env block, and add
+  `QT_ORACLE_BRAHMA_ROUTES` / `QT_ORACLE_BRAHMA` so the routes family cannot
+  go back to passing by SKIPping.
+- The widened `brahma-main.db` is read by `brahma_orchestrator_tier3_
+  equivalence`, `brahma_console_routes_equivalence` and
+  `quilltap-core`'s `brahma_console/orchestrator/tests.rs`. No other family
+  reads it; no sibling lane regenerates any of them.
+- Versions bumped by this lane: harness 0.0.814 → 0.0.815, web 0.0.146 →
+  0.0.147. Core, host, cli, tauri and the SPA untouched.
+
+### The gate (P4.89)
+
+1. **§2 probe** — PASS at lane start and again before the regen batch
+   (`main`, tree clean, `2075242f9..main` EMPTY, `1a2b2164c..bugfix` EMPTY);
+   re-run at lane close, PASS.
+2. `cargo fmt --all --check` — exit 0.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — exit 0 in BOTH
+   feature sets (default, and `--features quilltap-core/native-transport`),
+   zero warnings. Exit codes read without a pipe
+   (`gate-exit-code-after-a-pipe`).
+4. **The lane's three differentials by NAME**, each regenerated fresh from
+   `/tmp/qt-v4-pin-p489-ffb6b3119` through the sweep driver, run with
+   `--nocapture`: 3/3 ok, zero `SKIP:`, non-zero durations. Changed bytes
+   grepped in the fresh NDJSONs (`"cycleOrderParticipantIds":"[]"` ×4 in the
+   routes oracle, ×0 pre-widen). Red-first recorded above.
+5. `harness/tools/check_spelling.py` — exit 0.
+6. `recipe_sweep.py --self-test` — 0 failures; all three recipes still
+   extract after the header edits.
+7. `cargo build --workspace --release` — exit 0.
+8. `cargo test --workspace --no-fail-fast` with the lane's env block
+   (`QT_ORACLE_BRAHMA_ORCH` + `QT_ORACLE_BRAHMA_ROUTES` + `QT_ORACLE_BRAHMA`
+   + `QT_FIXTURE_BRAHMA_MAIN/MOUNT` + `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the
+   pin + `QT_NODE` = the node BINARY): **570 test binaries / 3,306 passed /
+   0 failed / 2 ignored, ZERO `SKIP:` lines — exit 0.** The lane's three
+   families confirmed RUN by non-zero duration inside it:
+   `brahma_console_routes` 0.05 s, `brahma_console_tier3` 0.13 s,
+   `brahma_orchestrator_tier3` 0.14 s.
+9. No SPA change — no `apps/web` gate needed.
+10. **Ownership:** `git diff --stat main...HEAD` touches only
+    `crates/quilltap-web/tests/fixtures/brahma-main.db`, the three brahma
+    harness headers, `migrate-memories-fixture-columns.ts`, the two
+    `Cargo.toml` version lines, `Cargo.lock`, `docs/CHANGELOG.md`,
+    `status-log.md` and this order's header. Every MUST-NOT-TOUCH path is
+    absent — `crates/quilltap-core/src/**`, `apps/web/**`, `help/**`, every
+    other fixture, the drift ledger.
+
+⚠ **One process slip, recorded because it was proven harmless rather than
+assumed so:** a comment-only edit to the routes header landed after the gate
+chain was launched, against the standing "never edit source during a
+workspace gate" rule. The release build was still compiling at the time, so
+`cargo test`'s compile came later — confirmed by mtime, the test binary
+(05:12:08) is newer than the edited source (05:05:15). The gate therefore
+tested the committed tree.

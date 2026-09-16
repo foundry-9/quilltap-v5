@@ -9,6 +9,30 @@
 //! layer), so the differential encodes the v4-faithful status per case and diffs
 //! that + the body; the error arms' status comes straight from the `ErrorKind`.
 //!
+//! ## Fixture vintage (P4.89)
+//!
+//! The committed pair was **widened in place 2026-09-16** through
+//! `harness/oracle/fixtures/migrate-memories-fixture-columns.ts` at v4
+//! `ffb6b3119` — the two P4.D171 columns, `chats.cycleOrderParticipantIds` and
+//! `chat_messages.routeTrail`, measured with v4's own `compareSchemas` and
+//! applied with v4's own migration DDL; every pre-existing cell byte-preserved.
+//!
+//! ⚠ That widen closed a SECOND latent red, not just
+//! `brahma_orchestrator_tier3`'s. Measured pre-widen against a fresh oracle at
+//! the pin, EVERY case here diverged: v5 answered
+//! `500 {"error":"sqlite error: no such column: cycleOrderParticipantIds"}` to
+//! reads that v4 serves normally, and v4's own side answered `500 Internal
+//! server error` to the four write cases (`create_default`,
+//! `create_with_profile`, `rename`, `set_model`) — v4's repository writes the
+//! WHOLE validated entity on both create and update, so every schema field is
+//! named and a column the fixture predates is fatal. v5 500s on every
+//! case, so no oracle could have matched — this family has been un-passable on
+//! `main` since P4.D171 (`78b381a96`) and went unnoticed because it SKIPs
+//! without `QT_ORACLE_BRAHMA_ROUTES` and a SKIP passes
+//! (`a-widened-shared-column-breaks-sibling-fixtures-invisibly`). Post-widen the
+//! four write cases compare REAL 201/200 payloads and the new
+//! `cycleOrderParticipantIds` key is a live comparand in four of them.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-brahma-routes.ndjson npx jest -- brahma-console-routes
 //! Run:
