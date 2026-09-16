@@ -3661,9 +3661,54 @@ records THERE. Update this summary only when a phase or round completes.
   sentence, the six greeting lines on a dangling key. **Next: bug 147's
   catch-up when v4 commits it, then the owed dogfood pass** — see
   phase-4.md. Round record: `status-log.md`.
-- **Oracle baseline: `2075242f9` (2026-09-15, v4 main — "fix(salon): Skip
-  passes the turn that is outstanding, not the composer's seat (bug 146)",
-  `4.10.0-dev.40`), adopted at the `2075242f9` bug-145/146 drift catch-up +
+- **The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥
+  P4.91 ∥ P4.92 ∥ P4.93): UNIFIED on main (2026-09-16) — ALL FOUR CLOSED
+  WHOLE; the oracle baseline MOVES to `1fefadb9a` and the ledger's §3 is
+  EMPTY (v4 AT the baseline at the close).** Bug 147 absorbed whole: the chat
+  GET projects the cycle's two turn columns as RAW JSON strings at v4's
+  position (`salon_reads_equivalence` regenerated at the target FIRST — the
+  P4.D171 both-directions omission pin tripped on all five `get_*` cases as
+  the ledger predicted, then retired; raw-`''` and raw-NULL arms added), the
+  SPA's dormant chat-GET seed LIVE and grown its spoken half — **v5 had
+  bug 147's sidebar half exactly as v4 did** (`spokenSinceUserTurn` had never
+  been seeded, so the `spoken` status was unreachable) — with the P4.D187
+  refetch interplay and the busy-flip re-seed both pinned, the
+  `state.cycleOrder` read measured as a convergence, v4's agreement room as
+  tier-1 corpus rows (which opened and closed a blind spot: nothing had ever
+  driven `selectNextSpeaker`'s rotation argument), the help page byte-copied
+  ∥ P4.91: the photos predicate consolidated RIGHT (the family repointed
+  BEFORE the corpus grew 13 → 30 with the slash-run shapes RED on exactly
+  three; Node's loop MOVED — and found un-Node-faithful on one arm itself;
+  the twin deleted, SIX importers repointed) + the collapse census's
+  `fileIds` as the ARRAY v4 logs through a named `…Json` file-layer
+  convention; the ORDER half escalated for a ruling ∥ P4.92: the tool loops'
+  `base_params` carry-over closed (the corpus taught to SEE
+  `previousResponseId`/`stop` as side-channels; THREE cases — the tool
+  modes are NOT exclusive; the strip on the three loop CLONES because the
+  empty-response recovery is a fourth consumer v4 passes `stop` to); the
+  `cacheKey` carry MEASURED (six of eleven providers; ONE v5 input) and
+  ESCALATED ∥ P4.93: the help-sync collision split by NAME with a
+  fixture-sensitive channel, ONE `CompletionRole` inverse over 32 mapper
+  hunks with every default preserved (the "exposed pair" measured NOT
+  exposed), the memories rig armed through `global_capture`, the fifteen
+  absent `[CharacterAvatar]` lines. **The §3 review (four parallel readers):
+  NO blocking findings, but ONE false Tier-1 claim** — the avatar
+  save-failure line had only a silence leg and dropped v4's exception —
+  fixed with a trigger plant + firing pin; five should-fixes fixed (two
+  `Debug`-rendered structured fields onto the JSON convention, the routing
+  read's swallowed error, P4.92's two missing re-stream floors + a dead
+  fixture key, P4.D195's post-post agreement row + the busy-flip pin + a
+  draw-dependent e2e Skip arm made deterministic). **The unified sweep's own
+  catch:** the collapse family read the census warn's `fileIds` by its raw
+  name after P4.91's rename (the thread-scoped capture sees the raw field;
+  only the file layer applies the convention) — reader repointed.
+  Gate: 53/60 sweep families ok at the pin (the seven reds = six pre-existing fixture-vintage + the sweep's own catch, fixed); 572 test binaries / 3,343 / 6 (the six pre-existing reds) / 2 ignored, every round family confirmed RUN; clippy both feature sets; release build; ng 434 files / 7,349; full Playwright 320 passed / 1 failed (the documented quill intermittent, green by file in isolation (1/1, 1.1 m)) / 6 skipped (the standing parks). Versions: core 0.0.935, harness 0.0.827, web 0.0.148, SPA
+  0.5.727; host/cli/tauri unchanged. **Next: the fixture-vintage heal (six
+  pre-existing reds, one order), the `cacheKey` order, the owed dogfood
+  pass** — see phase-4.md. Round record: `status-log.md`.
+- **Oracle baseline: `1fefadb9a` (2026-09-16, v4 main — "fix(salon): send the
+  cycle rotation to the client so it stops guessing the turn (bug 147)",
+  `4.10.0-dev.41`), adopted at the `1fefadb9a` bug-147 drift catch-up +
   maintenance round unification (2026-09-16).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained

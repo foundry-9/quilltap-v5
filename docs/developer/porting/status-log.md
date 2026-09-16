@@ -130378,3 +130378,217 @@ failed once across five full core-lib runs and passed in the other four plus in
 isolation. It PASSED in the lane's first (pre-fix) gate run too. It belongs to
 the documented `ActivityTestGuard` global-counter class; its counters are
 atomics, not tracing state, so nothing this lane touches reaches them.
+
+## Round record — the `1fefadb9a` bug-147 drift catch-up + maintenance round unification (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93), 2026-09-16
+
+**ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `2075242f9` →
+`1fefadb9a`; the drift ledger's §3 is EMPTY and v4 sat AT the baseline at the
+close (regen rule: no pin required).** Eighteen lane commits cherry-picked in
+the order P4.D195 → P4.91 → P4.92 → P4.93 onto `unify/1fefadb9a` (the only
+conflicts were the version-file class — every lane's manifest delta was
+audited version-only before any `--theirs`), then the §3 review's fixes, the
+wires, the gate, and the docs.
+
+### What landed (by lane; the lane records above carry the detail)
+
+- **P4.D195** — the chat GET projects the cycle's two turn columns as RAW JSON
+  strings at v4's position with v4's `?? '[]'` shape; `salon_reads_
+  equivalence` regenerated at the target pin FIRST and all five `get_*` cases
+  RED (the P4.D171 both-directions pin tripping as the ledger predicted),
+  then green with two raw-arm cases (`''` and SQL NULL); the SPA's dormant
+  seed LIVE and grown its spoken half — `spokenSinceUserTurn` had never been
+  seeded in v5, so the sidebar's `spoken` status was unreachable exactly as
+  v4's filing says of v4; the P4.D187 refetch interplay pinned; the
+  `state.cycleOrder` read measured as a convergence over four rows; v4's
+  agreement room as tier-1 corpus rows, which opened a real blind spot (no
+  corpus row had ever driven the rotation argument) and closed it; the help
+  page byte-copied. Three order premises refuted by measurement (the fixture
+  already carried a spoken set; the `get` key-order pin already existed;
+  `chatDetail()` carried neither key). Mutation M2 SURVIVED and was kept for
+  fidelity with its reason made executable (the reader coerces NULL first).
+- **P4.91** — the family repointed onto the survivor FIRST (green over 13),
+  the corpus grown 13 → 30 with the slash-run shapes RED on exactly three,
+  Node's loop MOVED, the twin deleted and its SIX importers repointed, the
+  two suites consolidated; the census `fileIds` as an ARRAY through the new
+  `…Json` file-layer convention; the ORDER half escalated. Found beyond the
+  order: the moved loop itself was un-Node-faithful on one arm
+  (`dirname("//photos")` is `"//"`), fixed and table-pinned.
+- **P4.92** — the orchestrator corpus made able to SEE `previousResponseId`
+  and `stop` (side-channels, never the key; 69 pre-existing rows byte-
+  identical with the keys stripped); the builder seeds a `rawResponse`;
+  THREE cases, not two — the tool modes are NOT mutually exclusive on either
+  side, so the `stop` half is a corpus case; the caller-side strip on the
+  three loop CLONES because `params` has a FOURTH consumer (the empty-
+  response recovery) that v4 passes `stop` to; a named mutation SURVIVED and
+  was closed by Case C. The `cacheKey` carry MEASURED (six of eleven
+  providers write it; v5 agrees key for key; ONE production input sends
+  `None`) and ESCALATED as a primary-path wire divergence.
+- **P4.93** — the help-sync collision split by NAME with a content channel
+  proven fixture-sensitive by a fixture mutation; `CompletionRole::from_v4_
+  wire` and every hand-rolled mapper repointed (32 hunks, defaults preserved,
+  no key byte moved; M1's witness is `native_tool_loop_tier3`, not the
+  exempted orchestrator family); the "exposed pair" measured NOT exposed
+  (v4 emits `role: 'tool'` at exactly one site); the memories rig armed
+  through `global_capture`'s own entry point after an empty-registry arming
+  measurably starved `job_runner`'s test; the fifteen `[CharacterAvatar]`
+  lines (v4 has 19, v5 had 4) with capture pins and silence legs, one loud
+  NO-PORT.
+
+### The §3 review (four parallel readers; the verdict owned at the unify)
+
+**NO blocking findings in any lane — but one Tier-1 claim was FALSE and
+five should-fixes would have shipped. All fixed on the unify branch
+(`c53be0d0`), each with its pin:**
+
+1. **P4.93 — the `Failed to save avatar image` line had only a SILENCE leg
+   and dropped v4's exception.** Deleting the whole `tracing::error!`
+   survived every test (§R.6's finding shape); the line now carries
+   `error = %e`, and a `break_files_insert` plant — a BEFORE INSERT trigger
+   on `files`, chosen over a DROP because the cache lookup SELECTs `files`
+   first and must still succeed — drives a firing pin (ERROR, the bag, the
+   plant's own sentence in `error=`, the job failing with v4's prefix, the
+   completion silent).
+2. **P4.93 — two structured fields rendered Rust `Debug` strings** (the
+   `:255` `categories` array, the P4.D184 cache-hit `leafCounts` object)
+   where v4 logs structure — the exact case P4.91's `…Json` convention was
+   landed for, on the same branch; both retargeted. The lane could not have
+   known.
+3. **P4.93 — the `:292` NO-PORT was one branch short.** v4's `try` wraps the
+   routing resolver too, and v5 swallowed that read's `Err` with `.ok()`;
+   the arm now logs v4's sentence with the error and carries on unrouted
+   (silence leg pinned; a firing pin is not plantable — the resolver reads
+   `image_profiles`, which the job's own profile read reaches first —
+   recorded).
+4. **P4.92 — the two re-stream non-vacuity floors the order asked for were
+   missing.** The stale-oracle floors guarded the PRIMARY rows only, so a
+   marker rename silencing detection on both sides would have left every
+   strip arm comparing nothing; two pins in P4.90's idiom now require the
+   `gpt-chains` re-stream row WITHOUT a `previousResponseId` and the
+   `o1-mini` one with EMPTY `stop`. Also: the dead `modelSupportsNativeTools`
+   key deleted from all three case specs, the `:2150` comment gains the
+   empty-response chain leg (the consumer that decided the placement), two
+   line refs.
+5. **P4.D195 — v4's agreement suite has a POST-POST sighted half the corpus
+   did not carry** — landed as `bug147-agreement-client-sighted-post` with
+   its equality pin, and the `mkState` shape's argument difference from v4's
+   test RECORDED in the row; **the busy-flip re-seed with the CACHED row**
+   (a `query`'s adopted rotation overwritten by the row's own string on the
+   next send, as v4's effect re-runs on the optimistic bubble) doc'd and
+   spec-pinned beside the legacy arm; **the e2e Skip arm made
+   deterministic** — it depended on the server's draw two ways (an off-turn
+   Skip could hand the floor to a still-LLM-driven seat and run a real turn
+   whose reply reset the column; a floor on the OWNER seat can never read
+   `spoken`) — every LLM seat is impersonated now and a second Skip moves
+   the floor off the owner.
+6. **Nits:** P4.91's "briefly had a second copy" (the twin dated from Phase
+   3), a doc note that the `…Json` stem lands in `context`, the memories
+   rig doc's "four" tests are five.
+
+**The unified sweep caught one red no lane could see:** `avatar_rolls_
+collapse_heal_equivalence` read the census warn's `fileIds` by its RAW name;
+P4.91's rename to `fileIdsJson` (unit 3) landed AFTER its consumer re-run of
+that family (unit 2), and the thread-scoped capture sees the raw name where
+only the file layer applies the convention. The reader now asks for
+`fileIdsJson` and re-parses — green at the pin. The convention's two tiers
+(file layer vs test capture) are now written on the reader.
+
+**Decided at the unify:** P4.93's snake_case respelling of the P4.D184
+cache-hit line's four keys is a recorded convergence onto the tree's key
+spelling, not a regression to hold a lane on — but `combined.log` key case
+(v5 snake_case bags, v4 camelCase, P4.91's `fileIds` the exception because
+the convention names v4's exact key) is a standing tree-wide divergence,
+named here ONCE.
+
+### The unification wires (`d95a341c`)
+
+- **§R.10 (b):** `orchestrator_tier3_equivalence`'s role mapper repointed onto (the hunk rides the review-fixes commit, whose floors share the file)
+  `CompletionRole::from_v4_wire` and the census guard's one exemption
+  DELETED (the guard's `EXEMPT` is empty; a new row needs a lane that owns
+  the file).
+- **The version recount** — base + Σ lane bumps: core 0.0.927 + (1+3+1+3) =
+  **0.0.935**; harness 0.0.820 + (3+1+1+2) = **0.0.827**; web 0.0.147 + 1 =
+  **0.0.148**; SPA 0.5.726 + 1 = **0.5.727**; host/cli/tauri unchanged. Every
+  lane's manifest delta was version-only (audited before the picks).
+- **§R.10 (a):** both help-sync families re-run after the pick under the
+  renamed var (`QT_FIXTURE_HELP_SYNC_GUARDS_MAIN` + the sync family's
+  `QT_FIXTURE_HELP_MAIN`) — the gate's env block carries both.
+- The two sweep artifacts committed (`2026-09-16-1fefadb9a-unify-pin.json`,
+  `…-fixes-by-name.json`).
+
+### Pre-existing reds surfaced by the round — the next maintenance order
+
+Six families are RED on pin-fresh oracles, every one PROVEN pre-existing by
+the lane that found it (identical with `main`'s untouched source swapped in,
+or a revert-probe), none attributable to this round, and none in any lane's
+Owns column: **`salon_mutations_equivalence`** (nine writing `chat_update`
+cases — `no such column: generationKey`; hidden since the `78b381a96` round
+behind a deliberately withheld env var), **`chat_gallery_equivalence`** (8
+`save_image_*`), **`images_routes_equivalence`** (`upload_dedup_orphan_
+cleanup`), **`courier_images_routes_equivalence`** — all four the P4.D182
+`files.generationKey` vintage gap (`a-widened-shared-column-breaks-sibling-
+fixtures-invisibly`; v5's `files` INSERT binds a fixed column list) —
+**`pascal_run_custom_handler_equivalence`** (`no such column:
+cycleOrderParticipantIds`, the P4.D171 `chats` gap) and **`pascal_custom_
+tools_route_equivalence`** (the Pascal fixture rot the `49769ec4` round
+recorded). The shape is P4.89's: widen each committed pair in place through
+v4's own migration DDL (the P4.52 migrator) or call `ensure_p4d182_columns`
+before the first write, then regenerate every family that reads the pair.
+One order, six fixtures — ordered next.
+
+### The gate (the gate of record)
+
+Run from the main worktree on `unify/1fefadb9a` after `c53be0d0` (the review
+fixes) + `d95a341c` (the wires), `CARGO_INCREMENTAL=0`, `TZ=UTC`, one detached
+sentinel-guarded chain with every log captured whole (the SPA gate detached
+beside it; the Bash tool's ten-minute cap killed the first launch mid-build —
+the chain is `nohup … & disown` + a Monitor on the sentinel):
+
+1. §2 probe — PASS at the open, before the docs commit, and after the
+   fast-forward (v4 `main` at `1fefadb9a`, clean; `bugfix`/`release`
+   unmoved).
+2. `cargo fmt --all --check` — clean (re-checked after every review fix).
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets.
+4. **The pinned 60-family sweep** (`harness/tools/recipe_sweep.py --run-all
+   --families … --v4 /tmp/qt-v4-pin-unify-1fefadb9a`, ONE pin at the new
+   baseline — the maintenance lanes' v4 surfaces are untouched by
+   `1fefadb9a`, each lane recorded the diff EMPTY): **53 ok / 7 run_failed**.
+   Six of the seven are the pre-existing fixture-vintage reds above; the
+   seventh (`avatar_rolls_collapse_heal_equivalence`) was the unified
+   sweep's own catch, fixed at the reader. After the review fixes, the four
+   moved families re-run by name (`avatar_rolls_collapse_heal`,
+   `orchestrator_tier3`, `select_speaker`, `turn_state`): **4/4 ok, zero
+   `SKIP:`**, the fresh oracles grepped for the changed bytes
+   (`bug147-agreement-client-sighted-post` ×1; `previousResponseId` on 75
+   orchestrator rows; `modelSupportsNativeTools` ×0). Artifacts:
+   `harness/tools/sweep-results/2026-09-16-1fefadb9a-unify-{pin,fixes-by-name}.json`.
+5. Unit proofs for the review fixes: core `character_avatar_job` +
+   `memories::` 30/0; web `log_file` 37/0; the role-mapper guard 1/0 with an
+   EMPTY exemption list.
+6. `cargo build --workspace --release` — clean.
+7. `cargo test --workspace --no-fail-fast` with the sweep-derived env block
+   (109 `QT_*` vars incl. BOTH help-sync fixture names, `QT_V4_ROOT`/
+   `QT_V4_CHECKOUT` at the pin, `QT_NODE` the node binary): **572 test
+   binaries / 3,343 passed / 6 failed / 2 ignored** — the six failures are
+   EXACTLY the six pre-existing fixture-vintage reds (`salon_mutations`,
+   `chat_gallery`, `images_routes`, `courier_images_routes`, `pascal_run_
+   custom_handler`, `pascal_custom_tools_route`), none attributable to the
+   round, all next order's; every one of the round's 60 families confirmed
+   RUN (the 343 binaries that printed `SKIP:` are families outside this
+   round's env block, proven at their own gates on main — the intersection
+   with the round's list is EMPTY).
+8. SPA: `npm run lint` (incl. the qt-class guard) clean; `npm test` **434
+   spec files / 7,349 passed / 0 failed**; `npm run build` clean; the two
+   touched spec files re-run after the review fixes, green.
+9. Full Playwright against the release binary: **320 passed / 1 failed /
+   6 skipped (8.8 m)** — the six skips the standing parks (the five P4.D187
+   title-checkpoint beats + the gallery store-probe park); the one red the
+   documented P4.d17 quill intermittent, green by file in isolation (1/1, 1.1 m); the round's own beats
+   green in the full run (`salon-sidebar-flow` 5/5 incl. the made-
+   deterministic Skip arm, `salon-floor-seat-flow` 2/2).
+10. Ownership: every path of the combined diff in some lane's Owns column
+    or the wires; the drift ledger written only at unification.
+
+**Versions:** core 0.0.935, harness 0.0.827, web 0.0.148, SPA 0.5.727;
+host/cli/tauri unchanged.
+

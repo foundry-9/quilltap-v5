@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): unify the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — the baseline moves to `1fefadb9a`
+
+_Docs-only change._
+
+The round record (`status-log.md`), the phase plan's UNIFIED section with
+what is next (the fixture-vintage heal for six pre-existing reds, the
+`cacheKey` order, the owed dogfood pass, two rulings), CLAUDE.md's Status
+bullet, and the round's memory note. Gate: 53/60 sweep families ok at the pin (the seven reds = six pre-existing fixture-vintage + the sweep's own catch, fixed); 572 test binaries / 3,343 / 6 (the six pre-existing reds) / 2 ignored, every round family confirmed RUN; clippy both feature sets; release build; ng 434 files / 7,349; full Playwright 320 passed / 1 failed (the documented quill intermittent, green by file in isolation (1/1, 1.1 m)) / 6 skipped (the standing parks).
+
 #### 2026-09-16 — chore(unify): the `1fefadb9a` round's unification wires — the orchestrator role mapper onto the shared inverse, the guard's exemption deleted, the version recount, the two sweep artifacts, the ledger's baseline move, the four order headers
 
 _Versions: core 0.0.935, harness 0.0.827, web 0.0.148, SPA 0.5.727._

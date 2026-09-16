@@ -6628,6 +6628,78 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — UNIFIED 2026-09-16
+
+**ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `2075242f9` →
+`1fefadb9a`; the ledger's one row is ABSORBED and its §3 is EMPTY; v4 sat AT
+the baseline at the close (regen rule: no pin required).** Round record:
+`status-log.md` → "Round record — the `1fefadb9a` bug-147 drift catch-up +
+maintenance round unification" (the §3 review's findings — one false Tier-1
+claim and five should-fixes, all fixed; the wires; the gate numbers).
+CHANGELOG: the three unification entries of 2026-09-16. Every order's status
+header names what the review fixed on it.
+
+**What is next, in order:**
+
+1. **The fixture-vintage heal — ONE order, six committed fixtures.** Six
+   families are RED on pin-fresh oracles, each PROVEN pre-existing by the lane
+   that surfaced it and none in any lane's Owns column: `salon_mutations_
+   equivalence` (hidden since the `78b381a96` round behind a withheld env
+   var), `chat_gallery_equivalence`, `images_routes_equivalence`,
+   `courier_images_routes_equivalence` (all the P4.D182 `files.generationKey`
+   gap — v5's `files` INSERT binds a fixed column list), `pascal_run_custom_
+   handler_equivalence` (the P4.D171 `chats` gap) and `pascal_custom_tools_
+   route_equivalence` (the Pascal fixture rot the `49769ec4` round recorded).
+   The shape is P4.89's: widen each pair in place through v4's own migration
+   DDL (the P4.52 migrator, its target list extended) or call
+   `ensure_p4d182_columns` before the first write; then regenerate every
+   family that reads each pair; restore the withheld vars to the gate block.
+2. **The `cacheKey` primary-path divergence** (P4.92's escalation): v4's
+   funnel derives `cacheKey = buildCharacterCacheKey(characterId)` per call and
+   six of eleven providers write it (OPENAI/GROK `prompt_cache_key`,
+   OPENROUTER/NANOGPT/Z_AI `user`, DEEPSEEK `user_id`); v5's builders agree
+   key for key and the machinery is LIVE on the external-prompt generator, the
+   optimizer, the cheap-LLM executor, the greeting and the help chat — the gap
+   is ONE input, `orchestrator.rs`'s `StreamParams` literal sending `None`, so
+   the whole Salon turn path sends no cache key. Ordered shape: set it at the
+   literal; keep it on the native loop's first re-stream and clear it on the
+   force-final (loop-internal); clear it on the text continuation; pin the six
+   wire keys present-and-absent per provider in the request-envelopes corpus
+   plus a tier-3 side-channel like P4.92's (the canned key cannot see it);
+   `restream_into` clones `params`, so the recovery legs inherit it with no
+   change.
+3. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: a real `spoken` mark in the participant sidebar after a reload
+   (the first time v5 can show one); the banner and sidebar reading the SAME
+   stored rotation; a chained OPENAI conversation (a `resp_` id in history)
+   with a native tool call, `combined.log` showing ONE chained primary and
+   ZERO `Conversation chaining failed` lines on the re-stream; the census
+   `fileIds` ARRAY and the `[CharacterAvatar]` lines in a real `combined.log`;
+   plus the standing 💸 queue (the Brahma deep query, dedup/summaries, #101).
+4. **Two items awaiting the human's RULING before any lane:** the census
+   `ORDER BY` (P4.91's escalation — the SELECT has no `ORDER BY` on either
+   side and the real instance's `idx_files_generationKey` can reorder the
+   scan, so the logged `fileIds` order is instance-dependent; `ORDER BY id`
+   on both sides is a deliberate divergence from v4) and the lock-conflict
+   503-vs-409 (v4's server module and launcher module DISAGREE with each
+   other; the smallest shape is a third `LockStatus` verdict + one match arm
+   + the flipped `lock_conflict_boot_status` pin).
+5. **Named, not order-sized yet:** `combined.log` key case — v5's bags are
+   snake_case where v4's are camelCase (P4.91's `fileIds` the exception,
+   because the convention names v4's exact key) — a standing tree-wide
+   divergence, named once this round; the `SCENE_STATE_TRACKING` trigger +
+   handler (lane-sized: v5 has the vocabulary and a `services/scene_state_
+   tracking/mod.rs` but neither the handler nor the `orchestrator.service.
+   ts:230-246` trigger; wants its own order with a tier-3 family); the
+   `avatar_rolls_collapse_heal.rs` census rig's `Interest`-cache exposure
+   (green today; if it reds with empty lines the fix is P4.93's arming
+   shape); the shared-fixture title-checkpoint hazard (five P4.D187 beats
+   still parked); the `name`-field turn-path measurement; P4.87's two OPEN
+   coverage items; the upstream filing candidates.
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — ORDERED 2026-09-16
 
 **Baseline `2075242f9`; v4 `main` HEAD `1fefadb9a` (ONE past — the
