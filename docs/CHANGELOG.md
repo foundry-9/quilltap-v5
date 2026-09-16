@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): record v4 drift at the unification's close — bug 147 landed mid-round
+
+_Docs-only change._
+
+`/unify` §6's drift step after the fast-forward: v4 `main` moved ONE commit
+past the new `2075242f9` baseline while the gate ran — `1fefadb9a`, bug 147
+("send the cycle rotation to the client so it stops guessing the turn"), the
+commit the unification had recorded as in-flight dirt. Classified from the
+hunks: a PORT (the chat GET now projects `spokenThisCycleParticipantIds` +
+`cycleOrderParticipantIds` as raw JSON strings — v5's `api/salon.rs`
+deliberately omits both, pinned by `salon_reads_equivalence`, which reds at
+the target by design) + a CONVERGENCE (the client's `state.cycleOrder` read,
+which v5 has had since P4.D177; v5's presence-gated chat-GET seed goes live
+with no change) + one help line. The tree is clean again; regen rule PIN
+REQUIRED at `2075242f9`. The catch-up is the next round's first row.
+
 #### 2026-09-16 — chore(harness): commit the `2075242f9` unification's two sweep artifacts
 
 _Docs-only change._

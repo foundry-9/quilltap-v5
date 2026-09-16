@@ -24,54 +24,50 @@ probe verifies against._
   `4.10.0-dev.40`), adopted at the `2075242f9` bug-145/146 drift catch-up +
   maintenance round unification (P4.D192 ∥ P4.D193 ∥ P4.D194 ∥ P4.89 ∥
   P4.90, 2026-09-16). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-16 at the `/unify` of that round (the §2 probe was run
-  at the unification's open and again before the regen sweeps). Previously
-  checked 2026-09-16 at ~08:00 CDT by `/driftcheck`.
-- **v4 `main` HEAD at check:** `2075242f9` — **IS the baseline.** Zero commits
-  past it.
+- **Checked:** 2026-09-16 at the CLOSE of that round's `/unify` (v4 moved
+  while the gate ran — the drift step below was run after the fast-forward,
+  per `/unify` §6). Previously checked at the unification's open and at
+  ~08:00 CDT by `/driftcheck`.
+- **v4 `main` HEAD at check:** `1fefadb9a` (`4.10.0-dev.41`, 2026-09-16 06:57)
+  — **ONE commit past the baseline**: bug 147 (see §3), the very commit the
+  unification's §1 note below predicted from the dirty tree.
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **DIRTY** — and the dirt
-  GREW during the round. At the unification's open: `__tests__/unit/lib/chat/
-  turn-manager/floor-seat.test.ts` (+11, an eighth `resolveFloorSeatId` case —
-  the second sighting of bug 146 on an impersonated seat), `docs/developer/
-  bugs.md`, `docs/developer/bugs/fixed/bug-146-…md`. By the §3 review:
-  also `app/api/v1/chats/[id]/handlers/get.ts`, `app/salon/[id]/hooks/
-  useTurnManagement.ts`, `__tests__/unit/app/api/v1/chats/[id]/handlers/
-  get.test.ts`, `docs/CHANGELOG.md`, and two NEW files — `__tests__/unit/lib/
-  chat/turn-manager/client-server-agreement.test.ts` and `docs/developer/
-  bugs/fixed/bug-147-chat-get-omits-the-rotation.md`. **That is v4 bug 147
-  in flight** ("the chat GET omits the rotation" — the chat GET projecting
-  `cycleOrderParticipantIds` / the client reading `TurnActionResponse.state.
-  cycleOrder`). Two v5 consequences, both pre-recorded: (a) v5's
-  `applyTurnResponse` ALREADY reads `state.cycleOrder` (P4.D177), so the
-  client half is a CONVERGENCE when it lands; (b) P4.D171's survey correction
-  pinned BOTH DIRECTIONS that "v4 never projects `cycleOrderParticipantIds`
-  on the chat GET" — **that pin will TRIP at the next baseline move by
-  design** (§5.4: measure, then retire). The eighth floor-seat case is
-  ALREADY in v5's corpus and parity spec (added at this unification's wires
-  from the dirty test, since the function exists at the pin).
-- **Verdict: NO DRIFT at HEAD — but bug 147 is IN FLIGHT in a dirty `app/`
-  tree.** Nothing to absorb until it commits; when it does, expect a PORT
-  (the chat-GET projection) + a CONVERGENCE (the client `cycleOrder` read)
-  + a docs row.
-- ⚠ **Regen rule: PIN REQUIRED.** HEAD is the baseline, but the checkout is
-  dirty in `app/` (bug 147's hunks poison any regen that imports the chat
-  GET handler or the client turn-management hook from the working tree —
-  ledger §5.1's mid-lane note). Pin a worktree at `2075242f9` for every
-  regen until the tree is clean. The unification's own regens ran from
-  `/tmp/qt-v4-pin-unify-2075242f9` (moved families) and
-  `/tmp/qt-v4-pin-unify-ffb6b3119` (neutrality legs); both pins were removed
-  at cleanup.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**. The dirt the
+  unification recorded mid-round (`handlers/get.ts`, `useTurnManagement.ts`,
+  the two tests, the new `client-server-agreement.test.ts`, the bug-146/147
+  docs) has LANDED as `1fefadb9a` — bug 147. The eighth `resolveFloorSeatId`
+  case it carries is ALREADY in v5's corpus and parity spec (taken from the
+  dirty test at the unification's wires, since the function exists at the
+  pin).
+- **Verdict: DRIFT PENDING — 1 commit, carrying code on TWO ported surfaces
+  + one help page.** `1fefadb9a` is a PORT (the chat GET now projects
+  `spokenThisCycleParticipantIds` + `cycleOrderParticipantIds` as the raw
+  JSON strings — v5's `api/salon.rs:366-381` deliberately OMITS both,
+  measured at P4.D171 and pinned by `salon_reads_equivalence`, which WILL RED
+  at the target by design) + a CONVERGENCE (the client's `TurnActionResponse.
+  state.cycleOrder` read — v5's `applyTurnResponse` has read it since
+  P4.D177; and v5's chat-GET seed at `salon-conversation.ts:2066` is gated on
+  PRESENCE, so the moment the server projects the key that dormant leg goes
+  live with no client change) + a one-line `help/chat-turn-manager.md`
+  re-vendor. Docs/tests/version markers NO-PORT.
+- ⚠ **Regen rule: PIN REQUIRED.** HEAD is one commit past the baseline and
+  it touches `app/` and `help/` (`git diff --stat 2075242f9..1fefadb9a -- lib/
+  app/ packages/ plugins/ migrations/ help/ public/schemas/` is non-empty).
+  Pin a worktree at `2075242f9` for every regen until the bug-147 catch-up
+  moves the baseline. The unification's own regens ran from pins at
+  `2075242f9` / `ffb6b3119` BEFORE this commit landed (both removed at
+  cleanup) — the gate of record was never exposed to it.
 - **The workspace gate is unaffected** — `public/schemas/` did not move across
   `ffb6b3119..2075242f9`, so `qtap_schema_embed_guard` stays green at 93,384
-  bytes.
+  bytes; `1fefadb9a` touches no `public/` path either.
 - **Schema state: CLEAR at the baseline.** The round moved no DDL (the
   avatar-roll collapse rewrite is a *data* script; no `generateDDL`, no
   `lib/database/` hunk), so no D23 re-dump was owed. `help/**` is **124
   files**, v5's vendored tree md5-identical to v4's at `2075242f9` after
-  P4.D194's two-file re-vendor.
+  P4.D194's two-file re-vendor — `1fefadb9a` moves ONE line of
+  `help/chat-turn-manager.md` (+1/−1), owed to the catch-up's re-vendor.
 
 ## §2 The freshness probe
 
@@ -110,7 +106,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| _(empty — v4 `main` HEAD `2075242f9` IS the baseline as of the 2026-09-16 unification; bug 147 is in flight in a dirty tree and has no row until it commits)_ | | | | | |
+| `1fefadb9a` | 2026-09-16 | fix(salon): send the cycle rotation to the client so it stops guessing the turn (bug 147) | **PORT** + **CONVERGENCE** | **(a) PORT — the chat GET** (`app/api/v1/chats/[id]/handlers/get.ts:362-373`, +12): two new whitelist keys, `spokenThisCycleParticipantIds: chatMetadata.spokenThisCycleParticipantIds ?? '[]'` and `cycleOrderParticipantIds: chatMetadata.cycleOrderParticipantIds ?? '[]'` — RAW JSON STRINGS on purpose ("re-encoding it here would put a second shape of the same fact on the wire"), placed after `activeTypingParticipantId` and before `isPaused`. v5's twin `crates/quilltap-core/src/api/salon.rs:366-381` carries a NOTE deliberately NOT projecting `cycleOrderParticipantIds` (P4.D171 measured v4 never did — a genuine v4 client/server gap this commit closes); `salon_reads_equivalence` pins the projection byte-for-byte and WILL RED at the target by design (§5.4 — measure the two keys' exact positions and the `?? '[]'` defaults, then port). **(b) CONVERGENCE — the client** (`app/salon/[id]/hooks/useTurnManagement.ts`, +13/−1): `TurnActionResponse.state.cycleOrder?: string[]` declared and spread into `setTurnState`; v5's `applyTurnResponse` (`salon-conversation.ts:2093`, P4.D177 §C.2) has read `state.cycleOrder` since the `78b381a96` round — zero client change owed. And v5's chat-GET seed (`salon-conversation.ts:2049-2070`) is gated on PRESENCE of `chat.cycleOrderParticipantIds` precisely so that "this seed runs only if a server ever sends the key" — (a) makes it live; the P4.D187 turn-tail / reconcile interplay deserves one measured look (a chat refetch now carries the rotation). **(c)** `help/chat-turn-manager.md` +1/−1 (the sidebar-and-banner sentence) → the vendored tree (124 stays 124). NO-PORT: `README.md`, `docs/**`, the three version markers (`4.10.0-dev.41`), `get.test.ts` (+41) and the NEW `client-server-agreement.test.ts` (+156 — v4's own guard that the client's recompute agrees with the server's draw; a candidate parity spec, not a port), the eighth `floor-seat.test.ts` case (already in v5). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
