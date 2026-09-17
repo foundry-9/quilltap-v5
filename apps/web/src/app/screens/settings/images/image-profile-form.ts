@@ -10,12 +10,30 @@ import type { ApiKeyDto, ImageProfileDto, ImageProviderInfo } from '../../../cor
 /**
  * v4 `FALLBACK_PROVIDERS` — used only when the `list-providers` fetch fails.
  * (Model lists are v4-verbatim and intentionally stale vs the runtime registry.)
+ *
+ * ⚠ The OPENAI row is byte-copied from v4's CLIENT file
+ * (`ImageProfileForm.tsx:49` at `d8d2890ee`), which spells `gpt-image-1`
+ * BEFORE `gpt-image-1-mini` — the REVERSE of the plugin's own capability table
+ * (`plugins/dist/qtap-plugin-openai/image-models.ts`, where `gpt-image-1-mini`
+ * comes first so its longest-prefix match beats `gpt-image-1`). That
+ * disagreement is v4's own and is carried faithfully: this list is the offline
+ * fallback, the registry's order is what a live fetch shows, and copying the
+ * server's order here would be a v5 invention. (A candidate upstream nit.)
  */
 export const FALLBACK_PROVIDERS: ImageProviderInfo[] = [
   {
     value: 'OPENAI',
     label: 'OpenAI (DALL-E / GPT Image)',
-    defaultModels: ['gpt-image-2', 'gpt-image-1', 'dall-e-3', 'dall-e-2'],
+    defaultModels: [
+      'gpt-image-2.5-sunburst',
+      'gpt-image-2.5-flare',
+      'gpt-image-2',
+      'gpt-image-1.5',
+      'gpt-image-1',
+      'gpt-image-1-mini',
+      'dall-e-3',
+      'dall-e-2',
+    ],
     apiKeyProvider: 'OPENAI',
     legacyNames: [],
   },

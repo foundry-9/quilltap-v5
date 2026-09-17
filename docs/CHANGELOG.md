@@ -221,6 +221,22 @@ dispatcher and the tool schema follow in this lane's later commits. Unit tests
 pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
 beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
 size shapes v4's `it.each` names, and the schema's group/field shape per family.
+#### 2026-09-17 — port(spa): the eight OpenAI image models in the offline fallback list (v4 `d8d2890ee`)
+
+_Versions: SPA 0.5.728._
+
+v4's PR #62 adds the two GPT Image 2.5 families to the image-profile form's
+`FALLBACK_PROVIDERS` list — the model list the editor shows when the
+`list-providers` fetch fails. v5's copy was four ids, two of them already
+stale against v4 at the old baseline (`gpt-image-1.5` and `gpt-image-1-mini`
+had never been carried); it is now v4's eight, in v4's order.
+
+That order is v4's CLIENT file's, which spells `gpt-image-1` before
+`gpt-image-1-mini` — the reverse of the plugin's own capability table, where
+`gpt-image-1-mini` comes first so its longest-prefix match beats
+`gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
+than quietly resolved: a spec pins the ordering so a future copy from the
+server's list would have to say so. (A candidate upstream nit.)
 
 #### 2026-09-17 — docs(porting): record the `5f0a57dc4` drift (v4's bug-150 fix) and re-point the ordered round at it
 

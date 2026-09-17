@@ -128,7 +128,7 @@ describe('imageProfileToForm', () => {
 
 /**
  * The `FALLBACK_PROVIDERS` rows, asserted verbatim against v4
- * `components/image-profiles/ImageProfileForm.tsx:41-47` (at `d5830439`). Only
+ * `components/image-profiles/ImageProfileForm.tsx:48-53` (at `d8d2890ee`). Only
  * used when the `list-providers` fetch fails, but the strings are user-visible
  * the moment it does, so they are pinned character-for-character.
  */
@@ -141,6 +141,33 @@ describe('FALLBACK_PROVIDERS', () => {
       'Z_AI',
       'NANOGPT',
     ]);
+  });
+
+  it('carries the OpenAI row verbatim (v4 `d8d2890ee` — PR #62, GPT Image 2.5)', () => {
+    const openai = FALLBACK_PROVIDERS.find((p) => p.value === 'OPENAI');
+    expect(openai?.label).toBe('OpenAI (DALL-E / GPT Image)');
+    expect(openai?.defaultModels).toEqual([
+      'gpt-image-2.5-sunburst',
+      'gpt-image-2.5-flare',
+      'gpt-image-2',
+      'gpt-image-1.5',
+      'gpt-image-1',
+      'gpt-image-1-mini',
+      'dall-e-3',
+      'dall-e-2',
+    ]);
+    expect(openai?.apiKeyProvider).toBe('OPENAI');
+  });
+
+  /**
+   * v4's CLIENT file and its plugin capability table disagree about which of
+   * `gpt-image-1` / `gpt-image-1-mini` comes first. This list is the CLIENT
+   * one, so the spec pins the disagreement rather than quietly resolving it —
+   * a future copy from the server's order would redden here and have to say so.
+   */
+  it('keeps v4’s client-side ordering of gpt-image-1 before gpt-image-1-mini', () => {
+    const models = FALLBACK_PROVIDERS.find((p) => p.value === 'OPENAI')?.defaultModels ?? [];
+    expect(models.indexOf('gpt-image-1')).toBeLessThan(models.indexOf('gpt-image-1-mini'));
   });
 
   it('carries the Z.AI row verbatim (v4 `ca22ec45`)', () => {
