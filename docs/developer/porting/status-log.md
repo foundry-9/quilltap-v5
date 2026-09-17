@@ -131577,3 +131577,284 @@ no host SOURCE, so no host bump (the P4.D194 precedent, as §R.8 predicts).
   (`/tmp/qt-v4-pin-p4d197-5f0a57dc4`), along with the lane-private regen
   staging `/tmp/p4.d197/`; both recipes above rebuild them from scratch.
   P4.D196's pin at the same sha is its own and was not touched.
+
+---
+
+## P4.95 — the `cacheKey` primary-path carry (P4.92's escalation)
+
+**Lane branch `claude/p4-95-cache-key-primary-path-db8346`, from `main`
+`6d78d229`. CLOSED — Tier 1 and Tier 2 landed whole; one finding is deferred
+loud (below) and one is an ownership expansion the lane took rather than
+leave the differential red.**
+
+### §0 — the probe, the pin, and the drift
+
+The drift ledger's §2 probe PASSED at lane start and again before every regen
+batch: v4 `main` at `5f0a57dc4`, tree CLEAN, `log 5f0a57dc4..main` and
+`log 1a2b2164c..bugfix` both empty. The order's required emptiness check is
+recorded: `git diff --stat 1fefadb9a..5f0a57dc4 -- lib/services/chat-message
+lib/chat lib/llm 'plugins/dist/*/provider.ts'` is **EMPTY**. (The order's
+Preamble named `lib/llm/streaming.service.ts` as the funnel; the funnel is
+actually `lib/services/chat-message/streaming.service.ts:392`, and the check
+above is over the paths this lane really imports. `lib/` as a whole did move
+— four files, all P4.D196's image path.)
+
+Regen rule PIN REQUIRED: a lane-unique detached worktree at the BASELINE,
+`/tmp/qt-v4-pin-p495-1fefadb9a`, with all three symlink classes. Pin
+verification: `git -C $PIN rev-parse` = `1fefadb9a`, and the usual
+"a marker only one tree has" check is **vacuous for this family, measured**:
+zero occurrences of `generate_image`, `gpt-image`, `1536x1024` or `xhigh` in
+the NDJSON, so no PR-#62 byte can reach this corpus either way. Per §R.10(f)
+every artifact was staged under `/tmp/p4.95/` and the committed recipe header
+was left canonical; the lane record's §6 has the commands as run.
+
+### §1 — v4's rule, MEASURED (§R.4: from the code, not the escalation's prose)
+
+v4 has ONE `streamMessage` funnel and it derives the key ITSELF —
+`lib/services/chat-message/streaming.service.ts:392`,
+`const cacheKey = buildCharacterCacheKey(characterId)`. So the funnel takes no
+cache key at all, and "does this leg cache" is really "does this call site
+pass a `characterId`". Measured line by line at `1fefadb9a`:
+
+| leg | v4 site | passes characterId? |
+|---|---|---|
+| PRIMARY stream | `primary-stream.service.ts:197` call → `:207` | YES |
+| primary TOOL-UNSUPPORTED retry | `primary-stream.service.ts:261` call → options end at `chatId` (`:270`) | **no** |
+| native loop FIRST re-stream | `native-tool-loop.service.ts:340` call → `:350` | YES |
+| native loop FORCE-FINAL | `native-tool-loop.service.ts:421` call → ends at `chatId` (`:431`) | **no** |
+| text loop CONTINUATION | `text-tool-loop.service.ts:390` call → ends at `stop` (`:400`) | **no** |
+| `restreamInto` (empty-response + failover) | `provider-failover.service.ts:482` call → `:492` | YES |
+| token/content-limit recovery | `recovery.service.ts:303` — no `characterId` in the file | **no** |
+| **Carina consultation** | `carina.service.ts:684` — `answerer.id` | YES |
+| help chat | `help-chat/orchestrator.service.ts:370` | YES |
+| Brahma console ×2 | none (`characterId: ''` at `:322`/`:497` is a STATUS field) | **no** |
+
+The order's four-leg table (primary YES / native re-stream YES / force-final
+NO / text continuation NO) is CONFIRMED. Three legs it did not name were
+measured too, and one of them was a live v5 gap (Carina, §3).
+
+### §2 — the wire, MEASURED: SEVEN emitting providers, not six
+
+| provider | wire key | v4 source at `1fefadb9a` |
+|---|---|---|
+| OPENAI | `prompt_cache_key` | `qtap-plugin-openai/provider.ts:387` |
+| GROK | `prompt_cache_key` | `qtap-plugin-grok/provider.ts:369`, `:468` |
+| OPENROUTER | `user` | `qtap-plugin-openrouter/provider.ts:211`, `:362`, `:549` |
+| NANOGPT | `user` | `qtap-plugin-nanogpt/provider.ts:260` |
+| Z_AI | `user` | `qtap-plugin-z-ai/provider.ts:327`, `:430` |
+| **OPENAI_COMPATIBLE** | **`user`** | `packages/plugin-utils/src/providers/openai-compatible.ts:421` |
+| DEEPSEEK | `user_id` | `qtap-plugin-deepseek/provider.ts:245`, `:346` |
+| ANTHROPIC / GOOGLE / OLLAMA | — | ignored by comment (`:76` / `:108` / `:64`) |
+| MCP | — | its `cacheKey` is a schema cache, never a wire key |
+
+**The order's "OAC never reads it" is REFUTED.** The OAC plugin's own
+`provider.ts` really does contain no `cacheKey` — it only re-exports the
+shared `OpenAICompatibleProvider` — and the base class writes `user`. v5's
+`build_openai_compatible_body` was already faithful; the survey had read the
+wrong file. This matters beyond bookkeeping: the P4.95 carry makes that
+emission live on the main chat path for the first time.
+
+### §3 — what landed
+
+**(a) The corpus can SEE the key.** The oracle's `streamMessage` mock now
+records `cacheKey` per call as a SIDE CHANNEL — never in the call key. Note
+the shape: the mock STANDS IN FOR the funnel, so the funnel's own body never
+executes and `buildCharacterCacheKey` would never run on the v4 side. The
+mock therefore imports v4's REAL `buildCharacterCacheKey` with
+`jest.requireActual('@/lib/llm/cache-key')` and calls it on
+`options.characterId` — exactly the P4.D83 precedent for the sampling
+resolver, and the reason the order's "the funnel's own
+`buildCharacterCacheKey` runs for real on the v4 side" needed correcting.
+
+**Neutrality PROVEN** (the P4.92 §2 shape): the pre-P4.95 mock was
+re-generated over the SAME corpus and all **78 of 78** `cannedStream` rows
+are byte-identical with `cacheKey` stripped, with `cacheKey` the only field
+added and none removed. (The comparison normalizes the character-vault
+mount-point UUIDs, which this family MINTS FRESH on every fixture build — two
+regens at the same pin differ there by construction, the
+`regenerate-at-both-pins-and-cmp-is-not-universal` class.)
+
+**(b) RED-FIRST, counted.** The first-diff comparator names one row, so the
+red set was bounded by a temporary census (reverted; not committed):
+**78 v5 stream calls, 76 mismatching — every one v5 `None` against a v4 key —
+and the 2 that agreed on `None` were exactly the two legs v4 clears.** v5 was
+already making the same 78 calls as v4; only the key was missing.
+
+**(c) The carry.** `orchestrator.rs`'s `StreamParams` literal now derives the
+key from the responding character's id through `cheap_llm::
+build_character_cache_key` (the ONE home — imported, not copied), and the
+P4.92 escalation comment at `loop_base_params` is retired by new text that
+says WHY the cache key is not part of that strip: the rule is per-LEG, not
+per-clone, so the clones inherit and each loop clears on its own keyless leg
+(`native_tool_loop.rs`'s force-final clone, `text_tool_loop.rs`'s
+continuation clone). `PROMPT_CACHE_STRUCTURE_VERSION` is untouched at 4.
+
+**(d) The force-final leg now exists in the corpus.** No case had ever
+reached `native-tool-loop`'s force-final branch. `agent_force_final` does:
+agent mode on, one tool round, three streams (primary with a native call →
+first re-stream → force-final). It needed the shared
+`agentModeSettings.maxTurns` lowered 15 → 1, because `maxTurns` has NO
+per-chat level (v4's `resolveAgentModeSetting` reads it from the global row
+alone) and the branch is gated on `toolIterations >= effectiveMaxTurns`;
+seeding fifteen rounds was the only alternative. `agent_mode_on` is
+behaviourally unaffected (its stream carries no tool call, so
+`toolIterations` never leaves 0) and still banks custom-maxTurns propagation,
+since 1 is not the default 10. The case diffed GREEN on its first run —
+events and tables — so v5's force-final leg already agreed with v4's; what it
+adds is the keyless-leg comparand.
+
+**(e) Item 5 — the empty-response / failover leg inherits.** Covered by
+corpus rows: the `gpt-stands-in` (understudy) rows carry the primary's key on
+both the hard-error and empty-response walks, matching v4's `restreamInto`,
+which passes `characterId: opts.character.id`. Proven non-vacuous by mutation
+M6 (clearing the key inside `restream_into` reds the family) — a mutation
+only, nothing landed in `provider_failover.rs`, which this lane must not
+touch.
+
+**(f) Item 6 — the builders' emission pins, all new.** Not one of the eight
+`cache_key` emission sites carried a test. Three pins now cover them: a
+table-driven pin over the request dispatcher asserting, per provider, that a
+key lands under v4's wire key and that absence OMITS the key rather than
+emitting null (v4's guards are `typeof … === 'string' && .length > 0`, or the
+truthiness spread in the shared base) — with the stronger statement for the
+ignoring providers, that ANTHROPIC/GOOGLE/OLLAMA build BYTE-IDENTICAL bodies
+with and without a key; an empty-key pin; and OPENAI's
+`prompt_cache_retention` rider, which sits INSIDE the same guard (no key, no
+retention hint, however new the model). All three passed on their first run —
+the emissions were already correct; what was missing was anything holding
+them there.
+
+### §4 — the two findings the measurement produced
+
+**(1) A NINTH site, fixed here: Carina.** The new comparand went red on a
+`Reference Query` row the order's survey never named. v4's Carina
+consultation passes `characterId: answerer.id` (`carina.service.ts:684`) — a
+consultation caches under the ANSWERER, not the character who asked — and
+v5's `carina_query.rs` sent `None`. Fixed with the same one-home derivation.
+`carina_query.rs` is not in this lane's Owns column, but it is in no other
+lane's either (P4.94 is fixtures, P4.D196 the image path, P4.D197 the SPA),
+and the alternative was landing a RED differential. Recorded here as an
+ownership expansion rather than taken silently.
+
+**(2) DEFERRED LOUD — the tool-unsupported retry now diverges.**
+`primary_stream.rs`'s tool-unsupported retry (`:1260`) clones `params` and
+clears only `tools`, so it INHERITS the primary's cache key — while v4's
+retry (`primary-stream.service.ts:261-270`) passes no `characterId` and
+therefore sends no key. **This lane's carry is what makes that observable**:
+before it, the inherited value was `None` and the two agreed by accident.
+`primary_stream.rs` is explicitly in this order's MUST-NOT-TOUCH column, so
+the one-line fix (`retry_params.cache_key = None;` beside the existing
+`retry_params.tools = None;`) is NOT landed.
+
+Two things bound the exposure. It is invisible to this corpus — no case
+exercises the retry, so nothing is red and nothing is masked. And it is the
+THIRD field on that leg already diverging the same way: the retry also
+inherits `previous_response_id` and `stop`, which v4's retry omits too (a
+pre-existing P4.92-class gap on a leg P4.92 did not reach either). So the
+honest shape of the follow-up is "make the tool-unsupported retry agree with
+v4's option bag", not "clear one more field" — with a corpus case that
+reaches it, which is what would make any of the three measurable.
+
+### §5 — the mutation table
+
+Every mutation reverted by FILE BACKUP, never `git checkout`. One runner.
+
+| # | mutation | expected | got |
+|---|---|---|---|
+| M1 | the primary literal back to `None` | primary rows red | **RED** (per-call arm) |
+| M2 | clear the key on EVERY loop clone (`loop_base_params`) | the native re-stream reds | **RED** |
+| M3a | drop the native force-final clear | the force-final row reds | **RED** |
+| M3b | drop the text-continuation clear | the continuation row reds | **RED** |
+| M4a | rename the recorded field on the RUST side | caught | **RED** |
+| M5 | drop OAC's `user` emission | the builder pin reds | **RED** (`chat_completions.rs` pin) |
+| M6 | clear the key inside `restream_into` | the understudy rows red | **RED** |
+| F-a | oracle silent AND v5 silent everywhere | **floor (a)** fires | **RED**, `no oracle row recorded a cacheKey` |
+| F-b | no row-ending-in-a-tool-result carries a key, v5 clears every clone | **floor (b)** fires | **RED**, `no oracle row is a re-stream CARRYING a cacheKey` |
+| F-c | every re-stream carries a key, v5 keeps it on both clearing legs | **floor (c)** fires | **RED**, `fewer than two oracle rows are KEYLESS re-streams` (re-run against the tightened predicate) |
+
+**§5.1 — the floor proofs caught a hole in my own floor.** F-a and F-b were
+mis-posed on the first attempt and fired the PER-CALL arm instead of their
+floors: F-a had silenced only the orchestrator literal, leaving Carina
+deriving a key; and F-b doctored rows by the LOOSE predicate "carries a tool
+result anywhere", which is what floor (b) itself used. Measured on this
+corpus: **13 rows carry a tool message somewhere, only 5 END in one** — the
+other eight are PRIMARY calls whose chat history already holds tool messages
+(the three rng_* cases, the prefill pair, …). So floor (b) as first written
+could have been satisfied entirely by primary rows and would have passed with
+the native loop's re-stream unreached — precisely the vacuity it exists to
+prevent. The predicate is now "the slate ENDS in a tool result", with the
+measurement in the comment, and both proofs were re-posed against it.
+
+### §6 — the regen, exactly as run
+
+The committed recipe header is unchanged and canonical. Per §R.10(f) this
+lane ran it with the v4 checkout replaced by its own pin and every output
+path under `/tmp/p4.95/`; the script is reproduced here in full because the
+paths differ from the header's:
+
+```zsh
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<the lane worktree>
+PIN=/tmp/qt-v4-pin-p495-1fefadb9a          # git worktree add --detach, at 1fefadb9a,
+                                          # with the three symlink classes
+TMPO=/tmp/p4.95/oracle
+MAIN=/tmp/p4.95/qt-orch-main.db
+MOUNT=/tmp/p4.95/qt-orch-mount.db
+NDJSON=/tmp/p4.95/oracle-orchestrator.ndjson
+
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/lib/pinned-draws.ts"              "$TMPO/lib/"
+cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
+rm -f "$MAIN" "$MOUNT" "$NDJSON"          # ledger §5.2: no stale pass
+cd "$PIN"
+QT_FIXTURE_OUT="$MAIN" QT_FIXTURE_MOUNT_OUT="$MOUNT" \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-orchestrator-fixture.ts
+QT_FIXTURE_ORCH_MAIN="$MAIN" QT_FIXTURE_ORCH_MOUNT="$MOUNT" \
+TZ=UTC QT_ORACLE_OUT="$NDJSON" \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- orchestrator-tier3
+```
+
+Run:
+
+```zsh
+QT_ORACLE_ORCHESTRATOR=/tmp/p4.95/oracle-orchestrator.ndjson \
+QT_FIXTURE_ORCH_MAIN=/tmp/p4.95/qt-orch-main.db \
+QT_FIXTURE_ORCH_MOUNT=/tmp/p4.95/qt-orch-mount.db \
+  cargo test -p quilltap-harness --test orchestrator_tier3_equivalence -- --nocapture
+```
+
+Changed-bytes greps on the fresh NDJSON (ledger §5.2): `"cacheKey"` present
+on **78** `cannedStream` rows (76 non-null, 2 null — the force-final and the
+text continuation, by inspection of their slates); `agent_force_final` present
+×2.
+
+### §7 — Tier 2, recorded
+
+- **item 8 — no DEBUG line, and none invented.** `git grep -n cacheKey
+  1fefadb9a -- lib/` returns the derivation, its five direct callers and the
+  funnel's own `const`; not one `logger.*` mentions it. The proof is the
+  corpus comparand plus the builder pins.
+- **item 9 — Brahma and the help chat, measured.** Brahma passes NO
+  `characterId` from either console service, so v5's two `cache_key: None`
+  sites (`brahma_console/mod.rs:309`, `orchestrator.rs:870`) are faithful:
+  Brahma has no character to key on. The help chat passes one and v5 already
+  derives it (`help_chat/orchestrator.rs:858`). Both unchanged.
+- **Also surveyed, left alone** (v4 passes no `characterId` either):
+  `services/recovery.rs:301`, `services/file_fallback.rs:712`,
+  `generators/ai_import.rs:1066`, `api/settings.rs:2765`.
+- **A v4 inconsistency reproduced, not "fixed":**
+  `services/regenerate_swipe.rs:458` sends the RAW `character_id` as the
+  cache key — because v4 does (`regenerate-swipe.service.ts:150`, `cacheKey:
+  character.id`, not the derived `quilltap:char:…:v4`). Recorded so a future
+  reader does not tidy it.
+
+### §8 — Tier 3, the deferral the order named
+
+The **request-envelopes corpus pin** (present-and-absent per provider on a
+PRIMARY row) is NOT taken: P4.D196 owns and regenerates every recorded
+provider corpus this round (§R.10(b)). §2 above is the six-key table the next
+wire needs, and the row shape is the ordinary one — a `mode`-tagged vector
+per provider with `cacheKey` set and a sibling with it absent. `cheap_llm.rs`
+was imported, never edited; `PROMPT_CACHE_STRUCTURE_VERSION` stays 4.

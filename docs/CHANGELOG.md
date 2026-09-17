@@ -326,6 +326,57 @@ That order is v4's CLIENT file's, which spells `gpt-image-1` before
 `gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
 than quietly resolved: a spec pins the ordering so a future copy from the
 server's list would have to say so. (A candidate upstream nit.)
+#### 2026-09-17 — fix(chat): carry the per-character prompt-cache key on the Salon turn (P4.95)
+
+_Versions: core 0.0.936, harness 0.0.828._
+
+v4 derives the per-character prompt-cache key INSIDE its one `streamMessage`
+funnel (`streaming.service.ts:392`, `buildCharacterCacheKey(characterId)`), so
+whether a leg caches is decided by whether its call site passes a
+`characterId`. v5 has no funnel — nine call sites instead of one — and the
+Salon's own turn was the one that passed nothing: `orchestrator.rs` built its
+`StreamParams` with `cache_key: None`, so on every provider whose builder
+writes the key (OPENAI/GROK `prompt_cache_key`, OPENROUTER/NANOGPT/Z_AI/
+OPENAI_COMPATIBLE `user`, DEEPSEEK `user_id`) the main chat path never cached,
+while the greeting, the help chat, the cheap-LLM executor, the optimizer and
+the external-prompt generator all did. P4.92 measured that and escalated it;
+this closes it.
+
+The per-leg rule was measured line by line at `1fefadb9a` rather than taken
+from the escalation's prose: the primary (`primary-stream.service.ts:207`),
+the native loop's FIRST re-stream (`native-tool-loop.service.ts:350`) and
+`restreamInto` (`provider-failover.service.ts:492`, the empty-response and
+failover legs) pass the id; the native force-final (`:421-431`), the text
+continuation (`text-tool-loop.service.ts:390-400`), the primary's
+tool-unsupported retry (`primary-stream.service.ts:261-270`) and the
+token-limit recovery (`recovery.service.ts:303`) do not. Because that rule is
+NOT uniform across the loop clones, the clears live in the two loops rather
+than on `orchestrator.rs`'s `loop_base_params` seam, which now says so.
+
+The measurement found a ninth site the order's four-leg survey did not name:
+v4's Carina consultation passes `characterId: answerer.id`
+(`carina.service.ts:684`) — a consultation caches under the ANSWERER, not the
+character who asked — and v5's `carina_query.rs` was sending none. Fixed with
+the rest; the differential is what caught it.
+
+`orchestrator_tier3_equivalence` grew the comparand that can see any of this:
+the oracle's `streamMessage` mock now calls v4's REAL `buildCharacterCacheKey`
+(the mock stands IN PLACE OF the funnel, so the funnel's own body never runs)
+and records the derived key per call as a side channel — never in the call
+key, so every pre-existing recorded row is byte-identical with the field
+stripped (proven by regenerating the pre-P4.95 mock over the same corpus: 78
+of 78 rows identical, `cacheKey` the only field added). Red-first, the family
+measured **76 of 78 stream calls diverging** (v5 `None`, v4 a key); the two
+that agreed were exactly the legs v4 clears.
+
+A new corpus case, `agent_force_final`, walks the native loop's force-final
+branch, which no case had reached: agent mode on, one tool round, and the
+shared `agentModeSettings.maxTurns` lowered 15 → 1 (it has no per-chat level,
+so a shared cap of 1 is the only way to reach `toolIterations >=
+effectiveMaxTurns` without seeding fifteen rounds; `agent_mode_on` is
+unaffected — its stream carries no tool call). Three non-vacuity floors guard
+the new arms: something carries a key at all, a re-stream carries one, and at
+least two re-streams carry none.
 
 #### 2026-09-17 — docs(porting): record the `5f0a57dc4` drift (v4's bug-150 fix) and re-point the ordered round at it
 

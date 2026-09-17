@@ -98,7 +98,7 @@
   "answerConfirmationEnabled": false,
   "dangerMode": "AUTO_ROUTE",
   "agentModeSettings": {
-   "maxTurns": 15,
+   "maxTurns": 1,
    "defaultEnabled": false
   }
  },
@@ -1796,6 +1796,29 @@
      "participantId": "cb13000b-0000-4000-8000-0000000000c3"
     }
    ]
+  },
+  {
+   "id": "ac000001-0000-4000-8000-000000000001",
+   "chatType": "salon",
+   "contextSummary": null,
+   "agentModeEnabled": true,
+   "agentTurnCount": 0,
+   "participants": [
+    {
+     "id": "ac0a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "cb110001-0000-4000-8000-000000000c11"
+    },
+    {
+     "id": "ac0b0002-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -2431,6 +2454,16 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "cb13000b-0000-4000-8000-0000000000c3"
+  },
+  {
+   "name": "agent_force_final",
+   "kind": "chain",
+   "chatId": "ac000001-0000-4000-8000-000000000001",
+   "content": "Audit the vault.",
+   "continueMode": false,
+   "streamLabel": "agent_force_final",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
   }
  ],
  "streams": {
@@ -3662,6 +3695,60 @@
      }
     }
    ]
+  ],
+  "agent_force_final": [
+   [
+    {
+     "content": "Friday opens the vault ledger."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 24,
+      "completionTokens": 6,
+      "totalTokens": 30
+     },
+     "rawResponse": {
+      "marker": "agent_force_final_call",
+      "tool_calls": [
+       {
+        "id": "aff-0001",
+        "type": "function",
+        "function": {
+         "name": "read_conversation",
+         "arguments": "{}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " The ledger is blank."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 38,
+      "completionTokens": 5,
+      "totalTokens": 43
+     }
+    }
+   ],
+   [
+    {
+     "content": " Nothing more to report."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 52,
+      "completionTokens": 5,
+      "totalTokens": 57
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -3684,6 +3771,13 @@
     "name": "read_conversation",
     "arguments": {},
     "callId": "sjc-0001"
+   }
+  ],
+  "agent_force_final_call": [
+   {
+    "name": "read_conversation",
+    "arguments": {},
+    "callId": "aff-0001"
    }
   ]
  },

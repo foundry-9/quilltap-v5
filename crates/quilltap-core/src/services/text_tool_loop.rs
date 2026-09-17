@@ -678,6 +678,13 @@ where
     params.tools = continuation_tools.clone();
     params.web_search_enabled = continuation_use_native_web_search;
     params.stop = strategy.stop_sequences();
+    // P4.95: v4's continuation call (`text-tool-loop.service.ts:390-400`) passes
+    // no `characterId`, and the funnel derives the prompt-cache key from that id
+    // (`streaming.service.ts:392`) — so this leg sends none. v5 inherits the
+    // primary's key through `base_params`; clear it here, on the leg, because
+    // the native loop's FIRST re-stream KEEPS it (the rule is per-leg, not
+    // per-clone — see `orchestrator.rs`'s `loop_base_params`).
+    params.cache_key = None;
 
     // A provider that answers with headers and then goes silent would otherwise
     // hold this loop open forever — the SDK's own timeout stops at the headers.

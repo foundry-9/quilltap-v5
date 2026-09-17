@@ -102,7 +102,8 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use crate::cheap_llm::{
-    get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
+    build_character_cache_key, get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile,
+    CheapLlmSelection,
 };
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, connection_profiles, DbError};
@@ -2800,7 +2801,26 @@ where
         tools: actual_tools_value.clone(),
         web_search_enabled: use_native_web_search,
         profile_parameters: Some(model_params.clone()),
-        cache_key: None,
+        // P4.95 (P4.92's escalation). v4's ONE `streamMessage` funnel does not
+        // take a cache key — it takes a `characterId` and derives one itself
+        // (`streaming.service.ts:392`, `buildCharacterCacheKey(characterId)`) —
+        // and the PRIMARY call site passes `characterId: character.id`
+        // (`primary-stream.service.ts:207`). v5 has no funnel (eleven call sites
+        // instead of one), so the derivation happens here, where the turn's
+        // `StreamParams` is built, from the same `character.id` v4 names: this is
+        // the responding participant's CHARACTER id (`:1153`,
+        // `character["id"]`), not the participant id.
+        //
+        // The derivation itself is `cheap_llm::build_character_cache_key` — the
+        // ONE home, already called by the greeting, the help chat, the cheap-LLM
+        // executor, the optimizer and the external-prompt generator. Until now
+        // the Salon's own turn was the only caller sending `None`, so on every
+        // provider whose builder writes the key (OPENAI/GROK `prompt_cache_key`,
+        // OPENROUTER/NANOGPT/Z_AI/OPENAI_COMPATIBLE `user`, DEEPSEEK `user_id`)
+        // the main chat path was the one path that never cached.
+        //
+        // Which LEGS keep it is NOT decided here — see `loop_base_params` below.
+        cache_key: build_character_cache_key(Some(&character_id)),
         previous_response_id,
         stop: initial_stop_sequences.clone(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
@@ -2949,11 +2969,20 @@ where
     // it on every leg already — but keeping both fields on one seam keeps the
     // rule readable.)
     //
-    // `cacheKey` is NOT fixed here: v5 sends `cache_key: None` on the PRIMARY
-    // too, which is a pre-existing primary-path divergence on every provider
-    // whose builder writes it (OPENAI/GROK `prompt_cache_key`,
-    // OPENROUTER/NANOGPT/Z_AI `user`, DEEPSEEK `user_id`) and needs the
-    // request-envelopes corpus, not this seam. Escalated by P4.92.
+    // `cacheKey` is deliberately NOT part of this strip (P4.95 — the order that
+    // closed P4.92's escalation). The two fields above are cleared on EVERY loop
+    // clone because v4 omits them on every loop leg; the cache key is not
+    // uniform that way. v4's funnel derives it per call from whatever
+    // `characterId` the call site passed, and the native loop's FIRST re-stream
+    // passes one (`native-tool-loop.service.ts:350`) while the force-final
+    // (`:421-431`) and the text continuation (`text-tool-loop.service.ts:
+    // 390-400`) do not. Clearing it here would take the key off the re-stream
+    // v4 caches — so the clones INHERIT the primary's key and each loop clears
+    // it on its own keyless leg (`native_tool_loop.rs`'s force-final clone,
+    // `text_tool_loop.rs`'s continuation clone). The fourth consumer,
+    // `attempt_empty_response_recovery`, inherits it too, matching v4's
+    // `restreamInto`, which passes `characterId: opts.character.id`
+    // (`provider-failover.service.ts:492`).
     let loop_base_params = || {
         let mut p = params.clone();
         p.previous_response_id = None;

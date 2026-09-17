@@ -577,6 +577,14 @@ where
 
             let mut params = base_params.clone();
             params.messages = to_stream_messages(&current_messages);
+            // P4.95: that missing `characterId` is not only a log field. v4's
+            // funnel derives the prompt-cache key FROM it
+            // (`streaming.service.ts:392`), so a call site that omits the id
+            // sends no key — and this force-final site omits it while the first
+            // re-stream above passes it. v5 inherits the primary's key through
+            // `base_params`, so the clear belongs here, on the leg, rather than
+            // on the shared `loop_base_params` seam in `orchestrator.rs`.
+            params.cache_key = None;
             // The watchdog, as above. v4's force-final call
             // (`native-tool-loop.service.ts:421`) passes NO `characterId` — only
             // `userId`, `messageId` and `chatId`.

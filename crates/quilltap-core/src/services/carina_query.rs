@@ -45,6 +45,7 @@ use std::future::Future;
 
 use serde_json::{json, Value};
 
+use crate::cheap_llm::build_character_cache_key;
 use crate::db::runtime::Db;
 use crate::db::{api_keys, chats_read, connection_profiles};
 use crate::model::embedding::EmbeddingProvider;
@@ -1169,7 +1170,14 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         tools: tools_value,
         web_search_enabled: use_native_web_search,
         profile_parameters: ctx.profile_parameters.cloned(),
-        cache_key: None,
+        // P4.95: v4's Carina call passes `characterId: answerer.id`
+        // (`carina.service.ts:684`), and the funnel derives the prompt-cache key
+        // from it (`streaming.service.ts:392`) — so a consultation caches under
+        // the ANSWERER, not the character who asked. Found by the
+        // `orchestrator_tier3` cacheKey comparand: this site is a NINTH v5
+        // consumer of the funnel v4 has only one of, and the order's four-leg
+        // survey did not name it.
+        cache_key: build_character_cache_key(Some(ctx.answerer_id)),
         previous_response_id: None,
         stop: Vec::new(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).

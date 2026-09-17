@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; attachments: unknown[][]; previousResponseId: string | null; stop: string[]; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; attachments: unknown[][]; previousResponseId: string | null; stop: string[]; cacheKey: string | null; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -268,6 +268,15 @@ async function main(): Promise<void> {
         topP?: number;
       };
     };
+    // P4.95: the REAL `buildCharacterCacheKey` (`lib/llm/cache-key.ts`) — the
+    // other derivation the mocked-away `streamMessage` would have run, at
+    // `streaming.service.ts:392`. Imported, never reimplemented, for the same
+    // reason the sampling resolver is: this mock STANDS IN FOR the funnel, so
+    // the funnel's own body never executes and nothing else on the v4 side would
+    // compute the key.
+    const { buildCharacterCacheKey } = jest.requireActual('@/lib/llm/cache-key') as {
+      buildCharacterCacheKey: (characterId: string | undefined) => string | undefined;
+    };
     return {
       __esModule: true,
       ...actual,
@@ -290,6 +299,16 @@ async function main(): Promise<void> {
         // recorded them.
         previousResponseId?: string;
         stop?: string[];
+        // P4.95: the THIRD asymmetric option. v4's funnel does not take a
+        // `cacheKey` — it takes `characterId` and derives the key itself
+        // (`streaming.service.ts:392`), so "which legs cache" is spelled as
+        // "which legs pass a characterId". Measured at `1fefadb9a`: the primary
+        // (`primary-stream.service.ts:207`) and the native loop's FIRST
+        // re-stream (`native-tool-loop.service.ts:350`) pass it; the native
+        // force-final (`:421-431`), the text continuation
+        // (`text-tool-loop.service.ts:390-400`) and the primary's
+        // tool-unsupported retry (`primary-stream.service.ts:261-270`) do not.
+        characterId?: string;
       }) {
         const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
         // P4.D154 (bug 121): the per-message attachment slate reaching the wire,
@@ -337,9 +356,15 @@ async function main(): Promise<void> {
         // exactly what the omitting call sites produce.
         const previousResponseIdAtWire = options.previousResponseId ?? null;
         const stopAtWire = options.stop ?? [];
+        // P4.95: run v4's own derivation on whatever `characterId` this call site
+        // supplied, and record the RESULT (`quilltap:char:<id>:v<version>`, or
+        // null where the site passed none). Recording the derived key rather
+        // than the id keeps the comparand on the byte that reaches the provider
+        // — v5 carries the derived string in `StreamParams.cache_key`.
+        const cacheKeyAtWire = buildCharacterCacheKey(options.characterId) ?? null;
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, cacheKey: cacheKeyAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);

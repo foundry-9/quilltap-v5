@@ -288,6 +288,17 @@ struct CannedStreamW {
     /// re-stream, and that is where the carry-over is observable.
     #[serde(default)]
     stop: Vec<String>,
+    /// P4.95: the per-character prompt-cache key v4 derived for this call key
+    /// (`null` where the call site passed no `characterId`). v4's funnel takes a
+    /// `characterId` and runs `buildCharacterCacheKey` on it itself
+    /// (`streaming.service.ts:392`), so "which legs cache" is really "which legs
+    /// pass a characterId" — and the mock calls v4's REAL derivation, because it
+    /// stands IN PLACE OF the funnel and the funnel's own body never runs.
+    /// Measured at `1fefadb9a`: the primary and the native loop's FIRST
+    /// re-stream pass one; the native force-final, the text continuation and the
+    /// primary's tool-unsupported retry do not.
+    #[serde(rename = "cacheKey", default)]
+    cache_key: Option<String>,
     sequences: Vec<Vec<ChunkW>>,
 }
 #[derive(Deserialize)]
@@ -374,6 +385,11 @@ struct QueuedStreamingProvider {
     recorded_previous_response_id: Mutex<HashMap<String, Option<String>>>,
     expected_stop: HashMap<String, Vec<String>>,
     recorded_stop: Mutex<HashMap<String, Vec<String>>>,
+    /// P4.95: the prompt-cache key the ORACLE recorded at the wire, per call
+    /// key, and what the RUST side actually passed. Like the two above, it is
+    /// NOT in the key, so this is the only comparand that can see it.
+    expected_cache_key: HashMap<String, Option<String>>,
+    recorded_cache_key: Mutex<HashMap<String, Option<String>>>,
 }
 
 /// The three knobs as `{temperature?, maxTokens?, topP?}` with absent knobs
@@ -401,6 +417,7 @@ impl QueuedStreamingProvider {
         let mut expected_attachments: HashMap<String, Value> = HashMap::new();
         let mut expected_previous_response_id: HashMap<String, Option<String>> = HashMap::new();
         let mut expected_stop: HashMap<String, Vec<String>> = HashMap::new();
+        let mut expected_cache_key: HashMap<String, Option<String>> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
@@ -439,7 +456,8 @@ impl QueuedStreamingProvider {
             };
             expected_attachments.insert(key.clone(), atts);
             expected_previous_response_id.insert(key.clone(), row.previous_response_id.clone());
-            expected_stop.insert(key, row.stop.clone());
+            expected_stop.insert(key.clone(), row.stop.clone());
+            expected_cache_key.insert(key, row.cache_key.clone());
         }
         Self {
             queues: Mutex::new(queues),
@@ -455,6 +473,8 @@ impl QueuedStreamingProvider {
             recorded_previous_response_id: Mutex::new(HashMap::new()),
             expected_stop,
             recorded_stop: Mutex::new(HashMap::new()),
+            expected_cache_key,
+            recorded_cache_key: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -531,6 +551,15 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .unwrap()
                 .entry(key.clone())
                 .or_insert_with(|| params.stop.clone());
+            // P4.95: the third primary-only-ish option. v5 already carries the
+            // DERIVED key in `StreamParams.cache_key` (v4 derives inside the
+            // funnel from `characterId`), so the two comparands meet on the
+            // string that reaches the provider builder.
+            self.recorded_cache_key
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| params.cache_key.clone());
         }
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
@@ -1654,6 +1683,15 @@ fn orchestrator_tier3_matches_oracle() {
     //   option               | primary | native re-stream | force-final | text cont.
     //   previousResponseId   |  yes    |       no         |     no      |    no
     //   stop                 |  yes    |       no         |     no      |    yes
+    //   characterId→cacheKey |  yes    |       yes        |     no      |    no
+    //
+    // The third row is P4.95's: v4's funnel does not TAKE a cacheKey, it takes a
+    // `characterId` and derives one (`streaming.service.ts:392`), so the leg rule
+    // is which sites pass the id — measured line by line at `1fefadb9a`
+    // (`primary-stream.service.ts:207` yes, `native-tool-loop.service.ts:350`
+    // yes, `:421-431` no, `text-tool-loop.service.ts:390-400` no). It is the one
+    // option whose per-leg answer is NOT uniform across the loop clones, which
+    // is why its clears live in the two loops rather than in `loop_base_params`.
     //
     // v5 hands the loops `base_params: params.clone()` — the primary's whole
     // `StreamParams` — so both fields rode into every re-stream. Neither is in
@@ -1684,6 +1722,14 @@ fn orchestrator_tier3_matches_oracle() {
                 panic!("Rust made a stream call with no oracle-recorded stop for key:\n{key}")
             });
             assert_eq!(got, want, "stop at wire mismatch for key:\n{key}");
+        }
+        // P4.95: the same per-call compare for the prompt-cache key.
+        let recorded_cache_key = streaming.recorded_cache_key.lock().unwrap();
+        for (key, got) in recorded_cache_key.iter() {
+            let want = streaming.expected_cache_key.get(key).unwrap_or_else(|| {
+                panic!("Rust made a stream call with no oracle-recorded cacheKey for key:\n{key}")
+            });
+            assert_eq!(got, want, "cacheKey at wire mismatch for key:\n{key}");
         }
         // Stale-oracle floors. Both fields default to the "v4 passed none"
         // value, so an oracle regenerated from a tree WITHOUT the recording
@@ -1735,6 +1781,75 @@ fn orchestrator_tier3_matches_oracle() {
         assert!(
             text_continuations_with_stop > 0,
             "no oracle row is a text continuation carrying stop sequences: text_tool_loop's `params.stop = strategy.stop_sequences()` is untested, and a mutation deleting it would survive"
+        );
+
+        // --- P4.95's floors, the same idiom ---
+        //
+        // `cacheKey` defaults to `None` on BOTH sides, so an oracle regenerated
+        // from a tree without the recording — or a corpus that stopped reaching
+        // a leg — would make every arm above compare `None == None` and pass
+        // having measured nothing. Three floors, one per direction of the rule:
+        //
+        //  (a) SOMETHING carries a key at all (the primary rows);
+        //  (b) a RE-STREAM carries one — the native loop's first re-stream is
+        //      the only leg where "inherit" is the correct answer, so if no case
+        //      reaches it, a mutation clearing the key in `loop_base_params`
+        //      would survive;
+        //  (c) a re-stream carries `null` — the force-final and the text
+        //      continuation are where v4 drops the id, so if neither is reached,
+        //      a mutation deleting the two `params.cache_key = None` lines in the
+        //      loops would survive.
+        assert!(
+            streaming.expected_cache_key.values().any(|v| v.is_some()),
+            "no oracle row recorded a cacheKey: the oracle predates the P4.95 recording, or the mock stopped calling v4's buildCharacterCacheKey; every cacheKey arm above is vacuous"
+        );
+        // A RE-STREAM row is one whose slate ENDS in a tool result: the loops
+        // append the results and re-stream immediately, so the result is the
+        // last thing in the body — the native loop threads a `tool` role
+        // message (`buildToolResultMessages`), the text loop writes a user-role
+        // ledger entry (`<tool_result name="…">` for simple-json,
+        // `[Tool Result: …]` for text-block).
+        //
+        // ⚠ "carries a tool result ANYWHERE" is NOT the discriminator, and the
+        // difference is load-bearing: a PRIMARY call whose chat HISTORY already
+        // holds tool messages satisfies it. Measured on this corpus — 13 rows
+        // carry one somewhere, only 5 end in one — so the loose spelling let
+        // eight primary rows stand in for a re-stream, and floor (b) would have
+        // passed with the native loop's re-stream unreached. Found by posing
+        // floor (b)'s own scenario (P4.95's F-b proof) and watching the per-call
+        // arm fire instead of the floor.
+        let is_restream = |r: &CannedStreamW| {
+            r.messages.last().is_some_and(|m| {
+                m.role == "tool"
+                    || m.content.contains("<tool_result name=")
+                    || m.content.contains("[Tool Result: ")
+            })
+        };
+        let restreams_with_key = canned_streams
+            .iter()
+            .filter(|r| is_restream(r) && r.cache_key.is_some())
+            .count();
+        assert!(
+            restreams_with_key > 0,
+            "no oracle row is a re-stream CARRYING a cacheKey: the native loop's first re-stream (v4 `native-tool-loop.service.ts:350`, which passes `characterId`) is unreached, so a mutation clearing the key on every loop clone would survive"
+        );
+        // The force-final's own slate is not a tool-result row (v4 appends the
+        // assistant prose + the force-final USER nudge), so it is named by that
+        // nudge; the text continuation is named by its ledger entry above.
+        let keyless_restreams = canned_streams
+            .iter()
+            .filter(|r| {
+                r.cache_key.is_none()
+                    && (is_restream(r)
+                        || r.messages.iter().any(|m| {
+                            m.content
+                                .contains("You have reached the maximum number of agent turns")
+                        }))
+            })
+            .count();
+        assert!(
+            keyless_restreams >= 2,
+            "fewer than two oracle rows are KEYLESS re-streams: v4 drops the characterId on the native force-final (`:421-431`) and on the text continuation (`text-tool-loop.service.ts:390-400`), and if neither leg is reached the two `params.cache_key = None` clears in the loops are untested — a mutation deleting them would survive (got {keyless_restreams})"
         );
     }
 
@@ -2255,13 +2370,22 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             // Agent mode (W4.4): the fixture's single chat_settings row sets
-            // `agentModeSettings = { maxTurns: 15, defaultEnabled: false }` (a
-            // NON-default maxTurns so the `agent_mode_on` case banks custom-maxTurns
-            // propagation into the injected instruction). `defaultEnabled` stays
-            // false, so every non-opted-in chat resolves agent mode OFF; the
-            // `agent_mode_on` chat opts in at the Chat level (`agentModeEnabled`).
+            // `agentModeSettings = { maxTurns: 1, defaultEnabled: false }` (a
+            // NON-default maxTurns — the default is 10 — so the `agent_mode_on`
+            // case still banks custom-maxTurns propagation into the injected
+            // instruction). `defaultEnabled` stays false, so every non-opted-in
+            // chat resolves agent mode OFF; the `agent_mode_on` chat opts in at
+            // the Chat level (`agentModeEnabled`).
+            //
+            // P4.95 lowered it 15 → 1. `maxTurns` has NO per-chat level (v4's
+            // `resolveAgentModeSetting` reads it from the global row alone), and
+            // the native loop's force-final branch is gated on `toolIterations >=
+            // effectiveMaxTurns` — so one shared cap of 1 is the only way to reach
+            // that branch without seeding fifteen tool rounds. `agent_force_final`
+            // is the case that walks it; `agent_mode_on` is unaffected (its stream
+            // carries no tool call, so `toolIterations` never leaves 0).
             agent_mode_default_enabled: false,
-            agent_mode_max_turns: 15,
+            agent_mode_max_turns: 1,
             // W4.2u: the fixture's single chat_settings row sets
             // `dangerousContentSettings = { mode: AUTO_ROUTE }` (no
             // `uncensoredTextProfileId`, so the empty-response uncensored failover
