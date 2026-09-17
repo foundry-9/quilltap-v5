@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): order the `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95)
+
+_Docs-only change._
+
+Four work orders from `main`, no stacking, spliced with one byte-identical
+§R / §S / Ownership / gate block (md5 `b4771598…`). **P4.D196** takes the
+server half of v4's PR #62: the OpenAI image capability table as one module
+(eight families, longest-prefix snapshot resolution), the OPENAI image
+dialect rewritten over it red-first against the `image-dialects` corpus
+re-recorded at the target with v4's 24 provider-params cases as rows, the
+per-model options schema through the existing `options-schema` action, v4
+bugs 148 and 149 in `generate_image.rs` (v5 has both — the tier-3 corpus
+already holds a row that moves), the tool definition's moved bytes, the one
+quality list at the tool schema and the `?action=generate` route arm, the
+manifests regen, and the openai-SDK 7.10 → 7.15 wire re-check over every
+recorded corpus. **P4.D197** takes the client half + help: the offline
+fallback list, the modal header's stale OPENAI deferral rewritten (the
+JSON-textarea fallback stays a recorded divergence), a recorded copy of
+v4's `getOpenAIImageOptionsSchema` output rendered in a spec + a gated live
+beat, the manual-dialog measurement that settles bug 150's v5 exposure, the
+two `help/` pages byte-copied, and `53294163f` ratified NO-PORT on its file
+list. **P4.94** heals the five committed fixture pairs behind the six
+pre-existing reds the previous round surfaced (the P4.52 / P4.89 migrator
+shape, every sibling reader measured pre- and post-widen, the Playwright
+seed among them). **P4.95** closes P4.92's `cacheKey` escalation: the one
+production input in `orchestrator.rs`, the per-leg rule measured from v4's
+funnel, the `orchestrator_tier3` side-channel extended in P4.92's idiom.
+The drift ledger's two rows are marked ORDERED; the round record is in
+`phase-4.md`.
+
 #### 2026-09-16 — docs(porting): record the `53294163f` drift — v4's GPT Image 2.5 PR and a version stamp
 
 _Docs-only change._

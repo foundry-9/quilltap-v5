@@ -6628,6 +6628,171 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — ORDERED 2026-09-16
+
+**Baseline `1fefadb9a`; v4 `main` HEAD `53294163f` (TWO past — the
+ledger's two §3 rows: `d8d2890ee`, PR #62's GPT Image 2.5 + the full
+OpenAI image parameter set, now `ORDERED(P4.D196, P4.D197)`; `53294163f`,
+a version stamp + plugin-bundle rebuild, now `ORDERED(P4.D197)` for
+ratification), v4 `bugfix` tip `1a2b2164c` and `release` tip `8fbf2afe0`
+unmoved; the checkout on `main`, CLEAN at the planning-START probe
+(2026-09-16 evening — the §2 probe PASSED, so the ledger stood and nothing
+was re-derived) and DIRTY at the planning-CLOSE probe with a v4 bug-150
+client fix in flight (HEAD unmoved; the five paths recorded in the ledger's
+§1 so the lanes' probes pass on exactly that dirt and STOP on anything
+more); regen rule PIN REQUIRED (the two drift lanes' moving families
+from lane-unique detached worktrees at `53294163f`; every other family and
+both maintenance lanes at `1fefadb9a`).** The standing rule holds: drift
+debt clears before new scope — the drift splits by SIDE (server / SPA+help)
+along the seam PR #62 itself draws (the options-schema WIRE is unchanged;
+only its OPENAI answer is new), and because the previous round's "What is
+next" ranked two maintenance items above everything else, the round also
+carries them as two more lanes with disjoint ownership. ALL FOUR from
+`main`, no stacking. The round-wide §R meeting points, the §S contract,
+the Ownership table and the verification gate are spliced byte-identically
+into every order (one md5 over the four blocks, verified at planning:
+`b4771598…`). Fresh surveys (2026-09-16, at `53294163f` / `1fefadb9a` and
+on `main` `201ae34d`) are folded into the orders' survey sections.
+
+**Five planning facts that shape the split (each measured, none from
+prose):** the ledger's row is right that v5 HAS bugs 148 and 149 —
+`generate_image.rs:326-331` materializes the three schema defaults as
+overrides and `:627` `orientation_of` is v4's `?? 'square'` verbatim — and
+the tier-3 corpus already carries a `"size": "512x512"`-no-orientation row
+(`image-generation.json:246`) that MOVES at the target, so bug 149 is
+red-first with zero new rows; NO recorded corpus embeds the `generate_image`
+tool catalog (`grep -rl 'produces finer details and greater consistency'`
+hits only `tools/definitions/data.rs`), so the tool-definition bytes move
+exactly ONE family and the request-envelopes corpus is untouched by the
+port — which is what lets P4.95 run beside P4.D196 with the corpus owned by
+one lane; v5's options-schema plumbing is COMPLETE (P4.D138 unit 6's action,
+the P4.D84 renderer with `number` fields and enum `description`s, the
+modal's model-keyed refetch), so the SPA half of a schema-served feature is
+PROOF not code — a recorded copy of v4's `getOpenAIImageOptionsSchema`
+output rendered in a spec plus a gated beat; v5 has NO twin of v4's
+`components/images/image-generation-dialog.tsx` (the upload dialog bug 150
+names — the ledger's "v5's dialog goes through `?action=generate`" reasoned
+from the CHAT dialog's port, the wrong file; P4.D197 settles it by
+measurement); and the six pre-existing reds sit on FIVE committed pairs, one
+of which (`courier-images-*`) is ALSO the Playwright seed
+(`seed-courier-fixture.ts:124`), so the fixture lane runs the full e2e suite.
+
+- **P4.94 — the fixture-vintage heal** (`work-orders/p4.94-fixture-vintage-
+  heal-five-pairs.md`): the gap MEASURED per pair with v4's own
+  `compareSchemas` at the baseline pin (expected `files.generationKey` +
+  its index on every main partition with a `files` table; the two P4.D171
+  columns on the pascal pair; `chats.transcriptVersion` only if v4's own
+  migration path adds it — P4.D182 landed it OUTSIDE v4's Zod chat schema
+  by design), the P4.52 migrator's `MIGRATIONS` list + target list
+  extended with v4's REAL statements, the five pairs widened IN PLACE
+  (cell-by-cell md5 identical outside the added NULL columns, sidecars
+  untouched, no `.db-journal` residue — never a builder rebuild: the
+  courier seed hard-codes the builder's minted ids), every reader family
+  (~19) regenerated from the pin and run by name with the six reds
+  RED→GREEN and `git diff --stat main...HEAD -- crates/*/src` EMPTY, every
+  SIBLING reader measured pre- and post-widen (the P4.89 corollary — a
+  green sibling may have been SKIPping), the six withheld oracle vars
+  restored to the gate block, the full Playwright suite on the widened
+  seed. Bumps web (+ harness only if a harness-crate file moves).
+- **P4.D196 — PR #62, the server half** (`work-orders/p4.d196-gpt-image-25-
+  openai-image-params-server.md`): the capability table as ONE module
+  (eight families in v4's order — `gpt-image-1-mini` BEFORE `gpt-image-1`;
+  `findImageModel`'s exact-then-longest-prefix over `match_model`'s idiom;
+  `checkArbitrarySize`'s five sentences; `mimeTypeForFormat`), the OPENAI
+  dialect rewritten over it RED-FIRST against the `image-dialects` corpus
+  re-recorded at the target with v4's 24 `openai-image-provider-params`
+  cases transcribed as rows (per-family quality tiers, arbitrary WxH,
+  the four extras off the residual bag with v4's drop-with-WARN semantics,
+  `n` capped at `maxN`, the transparent-needs-png rule, the body key
+  order, the returned `mimeType` following the forced format), the
+  options schema per §S.1 proven by `image_profiles_routes` rows for five
+  inputs, bugs 148 + 149 red-first over `image_generation_tier3` (the
+  three defaults → `None`, `count` keeps 1 with v4's why;
+  `requested_orientation` at BOTH call sites incl. the Concierge reroute),
+  the tool-definition bytes regenerated and copied (`tool_definitions`
+  RED at the target by design), the ONE quality list at the tool schema
+  and the `api/images.rs:1461` arm with a unit test playing v4's
+  compile-time assertion + `images_generate_route` `max`/`ludicrous`
+  rows, the manifests regenerated (only `openai.json` may move), and the
+  openai-SDK 7.10 → 7.15 wire re-check over every recorded corpus (the
+  P4.D158 method — `image-dialects` and `openai.json` move by design,
+  everything else byte-identical or self-dating markers). Tier 2: does
+  v4's profile-id generate route THREAD its optional body fields (v5's
+  parses prompt + count only — measure before touching); the
+  `profile_parameters` `quality` lift. Bumps core + harness (+ web only
+  if the Tier-2 measurement reaches the web edge).
+- **P4.D197 — PR #62, the client half + help + the ratification**
+  (`work-orders/p4.d197-gpt-image-25-spa-help-ratification.md`): the
+  offline fallback list → v4's eight ids in the CLIENT file's order
+  (which spells `gpt-image-1` before `1-mini` — the opposite of the
+  plugin table; recorded as v4's own disagreement), the modal header's
+  OPENAI "STILL DEFERRED" paragraph rewritten to the post-drift truth
+  (v5's JSON-textarea fallback stays a RECORDED divergence — the
+  hand-written union panel is NOT ported), a recorder at the target pin
+  writing v4's REAL `getOpenAIImageOptionsSchema` output for five inputs
+  into ONE committed fixture + a render spec over `ProviderOptionsPanel`
+  with three mutation proofs, a GATED live beat (`P4D196_SERVER_LANDED`,
+  flipped at unification — sunburst → both groups; `dall-e-3` → Style
+  present, GPT Image Output absent; save five values → reload → the
+  stored bag through `imageProfileGet`), the manual-dialog measurement
+  (bug 150's v5 exposure settled by the grep, the ledger row's reasoning
+  corrected by NEW record), the two `help/` pages byte-copied (124 stays
+  124; the embed guard's doc list; every `help_*` content family at the
+  target), `53294163f` ratified NO-PORT on its `--name-status` list, the
+  `docs/v4/` mirror paths pre-listed for the unifier. Bumps harness + SPA.
+- **P4.95 — the `cacheKey` primary-path carry** (`work-orders/p4.95-cache-
+  key-primary-path-carry.md`): the ONE production input closed
+  (`orchestrator.rs:2803` → `build_character_cache_key(Some(&character_
+  id))`), the per-leg rule MEASURED from v4's funnel + loops at the pin
+  (P4.92's "primary YES / native re-stream YES / force-final NO / text
+  continuation NO" is prose of the same kind) and landed where the rule
+  says — `loop_base_params` if uniform, the loops' production clones if
+  not — the `orchestrator_tier3` side-channel extended to `cacheKey` in
+  the P4.92 idiom (every pre-existing row byte-identical with the field
+  stripped; RED-FIRST on every primary row; a force-final case added; the
+  P4.90-idiom floors on BOTH a carrying and a clearing re-stream row), the
+  recovery leg's inheritance pinned, the six builders' present-AND-absent
+  emission pins verified (+ the three ignoring providers), four mutation
+  proofs. Tier 3, loud: the request-envelopes corpus pin (P4.D196 owns
+  that corpus this round — the six-key table recorded for a later wire).
+  Bumps core + harness.
+
+**Execution:** all four in parallel from `main`, four worktrees, four lane
+branches, TWO SPA worktrees (P4.D197's for the port, P4.94's for the full
+Playwright run on the widened seed — each `npm ci`, never a copied
+`node_modules`). Most-capable model for P4.D196 (a 500-line v4 wire rewrite
+ported red-first through a re-recorded corpus, two bugs v5 has, the
+manifests + a whole-corpus SDK re-check, and a Tier-2 measurement that may
+reach the web edge) and P4.95 (a per-leg rule that must be measured, not
+copied, with the edits landing in production zones the measurement
+chooses); P4.94 and P4.D197 are mechanical against written recipes (the
+P4.89 migrator shape; the P4.D194 help shape + a recorder/spec/gated-beat
+trio the P4.D102/P4.D139 orders already walked) and can run on a cheaper
+agent with the same orders — P4.94's fan-out is ~19 families and wants
+care with the sibling measurement, not judgment. Unification order
+P4.94 → P4.D196 → P4.D197 → P4.95; the baseline MOVES to `53294163f` at the
+move, `d8d2890ee` retires ABSORBED(P4.D196, P4.D197) and `53294163f`
+NO-PORT-RATIFIED(P4.D197); the unifier flips `P4D196_SERVER_LANDED`,
+`diff -q`s the two lanes' schema recordings (§R.10(c)), re-runs P4.D196's
+route families over P4.94's widened pair (§R.10(a)), regenerates the
+orchestrator family itself (§R.10(f)), and refreshes `docs/v4/developer/
+IMAGE_GENERATION.md` (§R.9). **Deliberately left out, each with its
+reason:** the owed dogfood pass (item 3 of the previous "What is next" —
+`/dogfood`'s, not a work order; it gains this round's live surfaces: a
+GPT Image 2.5 profile with `quality: max` + a transparent WebP through a
+real Salon `generate_image` turn — the FIRST time v5 sends the four extras
+— the schema-built editor on real data, bug 148's symptom gone on a
+profile storing `hd`, and a real `prompt_cache_key` on an OPENAI primary
+in `llm_logs.request`); the two items awaiting the human's RULING (the
+census `ORDER BY` — P4.91's escalation; the lock-conflict 503-vs-409); the
+`SCENE_STATE_TRACKING` trigger + handler (lane-sized, its own order with a
+tier-3 family); the shared-fixture title-checkpoint hazard (five P4.D187
+beats still parked); the `combined.log` key-case divergence (named, not
+order-sized); the `name`-field turn-path measurement; P4.87's two OPEN
+coverage items; the upstream filing candidates (this round adds v4's own
+client-vs-plugin model-order disagreement, P4.D197's finding). PB1 stays
+parked by the standing rule.
+
 ## The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — UNIFIED 2026-09-16
 
 **ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `2075242f9` →
