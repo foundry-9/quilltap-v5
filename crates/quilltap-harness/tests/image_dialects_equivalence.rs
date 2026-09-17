@@ -158,6 +158,7 @@ fn image_dialects_match_v4() {
     let mut models_rows = 0usize;
     let mut models_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut providers = std::collections::HashSet::new();
+    let mut openai_cases: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -208,16 +209,25 @@ fn image_dialects_match_v4() {
         }
 
         let case = row["case"].as_str().unwrap();
+        if provider == "OPENAI" {
+            openai_cases.insert(case.to_string());
+        }
         // Absent when the case deliberately supplies NO model (P4.D101's
-        // nanogpt `default_model`, which proves the plugin's own `?? 'hidream'`).
-        // `model` only selects the Google dialect downstream, so an empty string
-        // is correct for every provider that can omit it.
+        // nanogpt `default_model`, which proves the plugin's own `?? 'hidream'`;
+        // `d8d2890ee`'s openai `no_model_at_all`, which proves the raw
+        // `requestParams.model` never reaches the wire).
         let model = row["model"].as_str().unwrap_or_default();
         let label = format!("{provider}/{case}");
         rows += 1;
 
         // 1. Request bytes (method / url / body).
         let params = params_from_json(&row["input"]);
+        // `d8d2890ee`: the parse now reads the whole `params` (OPENAI's
+        // `mimeType` follows the requested output format), so the row's own
+        // `model` field is no longer a second source. Pin that they agree
+        // rather than drop it — a recorder that stopped writing `model` would
+        // otherwise be invisible here.
+        assert_eq!(params.model, model, "{label}: row.model vs input.model");
         let built = build_image_request(&provider, &params)
             .unwrap_or_else(|e| panic!("{label}: build failed: {e}"));
         let req = &row["request"];
@@ -259,10 +269,10 @@ fn image_dialects_match_v4() {
         // providers' rows are driven through the whole composed
         // `generate_image`, with the recorded download answer canned per URL.
         if provider == "Z_AI" || provider == "NANOGPT" {
-            check_download_row(&row, &provider, model, &params, &resp, &built);
+            check_download_row(&row, &provider, &params, &resp, &built);
             continue;
         }
-        let parsed = parse_image_response(&provider, model, &resp);
+        let parsed = parse_image_response(&provider, &params, &resp);
         match row["outcome"].as_str().unwrap() {
             "ok" => {
                 let got = parsed.unwrap_or_else(|e| panic!("{label}: expected ok, got err {e}"));
@@ -288,6 +298,50 @@ fn image_dialects_match_v4() {
     assert!(rows >= 25, "expected a substantial corpus, got {rows}");
     for p in ["OPENAI", "GOOGLE", "GROK", "OPENROUTER", "Z_AI"] {
         assert!(providers.contains(p), "corpus missing provider {p}");
+    }
+
+    // `d8d2890ee` coverage floor. A green run over a corpus that lost these
+    // rows would measure nothing: each names one arm of the OpenAI rewrite
+    // that has no other pin — the premium tiers, the arbitrary-size accept and
+    // every rejection reason, the four GPT Image extras, the transparent-JPEG
+    // force, the per-format mimeType, the `n` cap, and the unknown-model
+    // passthrough. Names, not a count, so a rename is as loud as a deletion.
+    for case in [
+        "q25_sunburst_xhigh",
+        "q25_flare_max",
+        "q_dated_snapshot_max",
+        "q_drop_xhigh_on_gpt_image_2",
+        "q_omit_for_gpt_image_unset",
+        "q_dalle3_bogus_falls_back",
+        "size_arbitrary_accepted",
+        "size_experimental_arbitrary",
+        "size_bad_edge_multiple",
+        "size_bad_aspect",
+        "size_bad_edge",
+        "size_bad_pixels",
+        "size_unparseable",
+        "size_arbitrary_refused_on_1_5",
+        "extras_all_four",
+        "extras_force_png_for_transparent_jpeg",
+        "extras_drop_compression_for_png",
+        "extras_drop_bad_values",
+        "extras_never_on_dalle",
+        "extras_numeric_string_compression",
+        "extras_zero_compression",
+        "mime_webp",
+        "mime_jpeg",
+        "mime_unset_png",
+        "style_not_on_dalle2",
+        "style_dropped_on_gpt_image",
+        "n_capped_on_dalle3",
+        "n_kept_on_sunburst",
+        "unknown_model_forwarded",
+        "no_model_at_all",
+    ] {
+        assert!(
+            openai_cases.contains(case),
+            "image-dialects corpus lost the d8d2890ee OPENAI case {case}"
+        );
     }
 
     // Shape, not a hand count: every provider must carry a no-key row AND at
@@ -343,7 +397,6 @@ fn image_dialects_match_v4() {
 fn check_download_row(
     row: &Value,
     provider: &str,
-    model: &str,
     params: &ImageGenParams,
     resp: &WireResponse,
     built: &quilltap_core::model::request_builder::BuiltRequest,
@@ -352,7 +405,7 @@ fn check_download_row(
     let label = format!("{provider}/{case}");
 
     // The pure parse still has to agree (the pre-download shape).
-    let pure = parse_image_response(provider, model, resp);
+    let pure = parse_image_response(provider, params, resp);
 
     let mut bytes = CannedImageBytes::new();
     let recorded_downloads = row["downloadRequests"]

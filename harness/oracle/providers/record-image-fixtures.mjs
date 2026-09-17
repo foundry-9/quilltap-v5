@@ -129,6 +129,121 @@ function casesFor(provider) {
       ok(400, { error: { message: 'Your request was rejected as a result of our safety system.', type: 'image_generation_user_error', code: 'moderation_blocked' } }));
     add('invalid_response', { prompt: 'a cat', model: 'dall-e-3', n: 1 },
       ok(200, { created: 1, foo: 1 }));
+    // === d8d2890ee (PR #62): GPT Image 2.5 and the full OpenAI parameter set ===
+    // One row per case in v4's own `__tests__/unit/openai-image-provider-params.
+    // test.ts`, plus the JS-coercion edges its `it` blocks never reach
+    // (`readEnum`'s `String(raw)`, `readIntInRange`'s `Number(raw)`, the
+    // empty-string-is-unset gate, and `??` vs truthiness on `style`/`quality`).
+    // Every one answers the same 200 so the comparand is the REQUEST BODY and
+    // the returned `mimeType`, never the wire.
+    const okImage = () => ok(200, { created: 1, data: [{ b64_json: 'aGVsbG8=', revised_prompt: 'a revised prompt' }] });
+
+    // -- quality tiers --------------------------------------------------
+    add('q25_sunburst_xhigh', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', quality: 'xhigh' }, okImage());
+    add('q25_sunburst_max', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', quality: 'max' }, okImage());
+    add('q25_flare_xhigh', { prompt: 'a cat', model: 'gpt-image-2.5-flare', quality: 'xhigh' }, okImage());
+    add('q25_flare_max', { prompt: 'a cat', model: 'gpt-image-2.5-flare', quality: 'max' }, okImage());
+    // A dated snapshot rides its family's tiers via the longest-prefix match.
+    add('q_dated_snapshot_max', { prompt: 'a cat', model: 'gpt-image-2.5-flare-2026-09-08', quality: 'max' }, okImage());
+    // xhigh is 2.5's alone: gpt-image-2 drops it and sends NO quality.
+    add('q_drop_xhigh_on_gpt_image_2', { prompt: 'a cat', model: 'gpt-image-2', quality: 'xhigh' }, okImage());
+    // The DALL-E spelling on a GPT Image model is dropped, not translated.
+    add('q_drop_hd_on_gpt_image', { prompt: 'a cat', model: 'gpt-image-1.5', quality: 'hd' }, okImage());
+    add('q_omit_for_gpt_image_unset', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst' }, okImage());
+    add('q_dalle3_hd', { prompt: 'a cat', model: 'dall-e-3', quality: 'hd' }, okImage());
+    add('q_dalle3_unset_standard', { prompt: 'a cat', model: 'dall-e-3' }, okImage());
+    // A tier dall-e-3 does not offer falls back to its historical default.
+    add('q_dalle3_bogus_falls_back', { prompt: 'a cat', model: 'dall-e-3', quality: 'max' }, okImage());
+    // `!quality` is a TRUTHY test, so an empty string is "unset".
+    add('q_empty_string_is_unset', { prompt: 'a cat', model: 'dall-e-3', quality: '' }, okImage());
+
+    // -- size handling ---------------------------------------------------
+    add('size_arbitrary_accepted', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '1536x864' }, okImage());
+    add('size_max_documented', { prompt: 'a cat', model: 'gpt-image-2.5-flare', size: '3840x2160' }, okImage());
+    // The experimental band is reachable only by an ARBITRARY size: the
+    // picker-list check returns FIRST, so `3840x2160` (which is on the list)
+    // never gets the experimental DEBUG line. 3840x1280 is past the threshold,
+    // /16 on both edges, exactly 3:1, and off the list.
+    add('size_experimental_arbitrary', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '3840x1280' }, okImage());
+    // The four `it.each` failure shapes, one per rule in checkArbitrarySize.
+    add('size_bad_edge_multiple', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '1000x1000' }, okImage());
+    add('size_bad_aspect', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '3200x800' }, okImage());
+    add('size_bad_edge', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '3856x2160' }, okImage());
+    add('size_bad_pixels', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: '3840x3840' }, okImage());
+    // Not-a-size at all: the fifth reason.
+    add('size_unparseable', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: 'wide' }, okImage());
+    // gpt-image-1.5 takes only the standard list, so an arbitrary size falls back.
+    add('size_arbitrary_refused_on_1_5', { prompt: 'a cat', model: 'gpt-image-1.5', size: '1536x864' }, okImage());
+    add('size_standard_on_gpt_image_1', { prompt: 'a cat', model: 'gpt-image-1', size: '1024x1536' }, okImage());
+    add('size_auto_on_gpt_image', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', size: 'auto' }, okImage());
+    add('size_dalle3_ok', { prompt: 'a cat', model: 'dall-e-3', size: '1792x1024' }, okImage());
+    // A GPT Image size on dall-e-3 is not on its list.
+    add('size_dalle3_wrong', { prompt: 'a cat', model: 'dall-e-3', size: '1536x1024' }, okImage());
+    // `!size` is truthy-tested, so an empty string takes the 1024x1024 default
+    // WITHOUT a warning (the fallback log sits past the early return).
+    add('size_empty_string', { prompt: 'a cat', model: 'gpt-image-2', size: '' }, okImage());
+
+    // -- GPT Image output controls ---------------------------------------
+    add('extras_all_four', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst',
+      profileParameters: { background: 'transparent', output_format: 'webp', output_compression: 80, moderation: 'low' } }, okImage());
+    // Transparency wins over the requested jpeg; the mimeType follows the FORCE.
+    add('extras_force_png_for_transparent_jpeg', { prompt: 'a cat', model: 'gpt-image-2.5-flare',
+      profileParameters: { background: 'transparent', output_format: 'jpeg' } }, okImage());
+    // webp is already alpha-capable, so nothing is forced.
+    add('extras_transparent_with_webp', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { background: 'transparent', output_format: 'webp' } }, okImage());
+    // No format at all: the force needs `outputFormat !== undefined`, so the
+    // background rides alone and the mimeType stays png.
+    add('extras_transparent_without_format', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { background: 'transparent' } }, okImage());
+    add('extras_drop_compression_for_png', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst',
+      profileParameters: { output_format: 'png', output_compression: 50 } }, okImage());
+    // …and with no format at all, the DEBUG says `png (default)`.
+    add('extras_compression_without_format', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { output_compression: 50 } }, okImage());
+    add('extras_drop_bad_values', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst',
+      profileParameters: { background: 'chartreuse', output_format: 'tiff', output_compression: 300, moderation: 'off' } }, okImage());
+    add('extras_never_on_dalle', { prompt: 'a cat', model: 'dall-e-3',
+      profileParameters: { background: 'transparent', output_format: 'webp', moderation: 'low' } }, okImage());
+    // The mimeType follows the requested format on every arm.
+    add('mime_webp', { prompt: 'a cat', model: 'gpt-image-2', profileParameters: { output_format: 'webp' } }, okImage());
+    add('mime_jpeg', { prompt: 'a cat', model: 'gpt-image-2', profileParameters: { output_format: 'jpeg' } }, okImage());
+    add('mime_unset_png', { prompt: 'a cat', model: 'gpt-image-2' }, okImage());
+    // `readEnum`/`readIntInRange`'s own gates, which v4's suite never drives:
+    // an empty string is "unset" (silently), a non-string enum is String()'d
+    // into the warning, `Number('80')` is 80, 0 survives the `!== undefined`
+    // test, and a fractional value fails `Number.isInteger`.
+    add('extras_empty_strings_are_unset', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { background: '', output_format: '', moderation: '', output_compression: '' } }, okImage());
+    add('extras_non_string_enum_values', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { background: 5, output_format: ['webp'], moderation: true } }, okImage());
+    add('extras_numeric_string_compression', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { output_format: 'jpeg', output_compression: '80' } }, okImage());
+    add('extras_zero_compression', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { output_format: 'webp', output_compression: 0 } }, okImage());
+    add('extras_fractional_compression', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { output_format: 'webp', output_compression: 50.5 } }, okImage());
+    add('extras_null_values_are_unset', { prompt: 'a cat', model: 'gpt-image-2',
+      profileParameters: { background: null, output_compression: null } }, okImage());
+
+    // -- family-specific parameters --------------------------------------
+    add('style_not_on_dalle2', { prompt: 'a cat', model: 'dall-e-2' }, okImage());
+    add('style_dropped_on_gpt_image', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', style: 'natural' }, okImage());
+    // `params.style ?? 'vivid'` is NULLISH, not truthy: an empty string rides.
+    add('style_empty_string_rides', { prompt: 'a cat', model: 'dall-e-3', style: '' }, okImage());
+    add('n_capped_on_dalle3', { prompt: 'a cat', model: 'dall-e-3', n: 4 }, okImage());
+    add('n_kept_on_sunburst', { prompt: 'a cat', model: 'gpt-image-2.5-sunburst', n: 4 }, okImage());
+    // Math.max(requested, 1) raises a zero as well as capping a too-large one.
+    add('n_zero_raised_to_one', { prompt: 'a cat', model: 'gpt-image-2', n: 0 }, okImage());
+    // An unrecognised model is forwarded untouched — size, quality AND n.
+    add('unknown_model_forwarded', { prompt: 'a cat', model: 'gpt-image-3-supernova', size: '4096x4096', quality: 'ludicrous' }, okImage());
+    add('unknown_model_uncapped_n', { prompt: 'a cat', model: 'gpt-image-3-supernova', n: 50 }, okImage());
+    // An unknown NON-gpt-image id still gets `response_format` and `style`,
+    // because `isGptImageModel` falls back to the bare id prefix.
+    add('unknown_non_gpt_model', { prompt: 'a cat', model: 'mystery-painter-9', size: '4096x4096' }, okImage());
+    // No model at all: `requestParams.model = params.model` is the RAW value, so
+    // the key is absent from the wire while `?? 'dall-e-3'` drove validation.
+    add('no_model_at_all', { prompt: 'a cat', n: 1 }, okImage());
   } else if (provider === 'grok') {
     add('happy_b64', { prompt: 'a cat', model: 'grok-imagine-image', n: 1 },
       ok(200, { data: [{ b64_json: 'QUJD', revised_prompt: 'rp' }] }));

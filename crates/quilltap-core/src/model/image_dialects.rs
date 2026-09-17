@@ -40,6 +40,11 @@ use crate::db::js_number_to_json;
 use crate::jsstr;
 use crate::model::image::{GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse};
 use crate::model::nanogpt_loras::{apply_loras, apply_passthrough_parameters};
+use crate::model::openai_image_models::{
+    arbitrary_size_rules, check_arbitrary_size, find_image_model, is_gpt_image_model,
+    mime_type_for_format, openai_image_model_ids, parse_size, ArbitrarySizeCheck, BACKGROUNDS,
+    COMPRESSIBLE_FORMATS, MODERATIONS, OUTPUT_FORMATS, TRANSPARENCY_CAPABLE_FORMATS,
+};
 use crate::model::request_builder::BuiltRequest;
 use crate::model::wire::WireResponse;
 
@@ -131,71 +136,345 @@ pub fn build_image_request_with_extras(
     ))
 }
 
-fn is_gpt_image_model(model: &str) -> bool {
-    model.starts_with("gpt-image-")
-}
-
-/// v4 OpenAI `validateAndNormalizeSize`.
+/// v4 OpenAI `validateAndNormalizeSize` (`d8d2890ee`).
+///
+/// GPT Image 2 and both GPT Image 2.5 models take any `WIDTHxHEIGHT` meeting
+/// the documented edge, aspect and pixel rules, so those are forwarded as
+/// given; everything else is checked against its family's standard list. An
+/// unusable size falls back to `1024x1024` — the one size every family
+/// supports — and says in the log what was wrong, because silently returning a
+/// differently-shaped image is the harder failure to diagnose.
+///
+/// A model the table does not recognise (a live `/v1/models` listing can name
+/// one) has its size forwarded untouched rather than guessed at.
 fn validate_and_normalize_size(size: Option<&str>, model: &str) -> String {
+    // v4 `if (!size)` — a truthy test, so `''` takes the default and the
+    // fallback WARN below is never reached for it.
     let Some(size) = size.filter(|s| !s.is_empty()) else {
         return "1024x1024".to_string();
     };
-    if is_gpt_image_model(model) {
-        let ok = ["1024x1024", "1024x1536", "1536x1024", "auto"];
-        return if ok.contains(&size) {
-            size
-        } else {
-            "1024x1024"
+    let Some(caps) = find_image_model(Some(model)) else {
+        return size.to_string();
+    };
+    if caps.sizes.contains(&size) {
+        return size.to_string();
+    }
+    if caps.arbitrary_sizes {
+        match check_arbitrary_size(size) {
+            ArbitrarySizeCheck::Ok => {
+                // `parseSize(size)!` — the check already proved it parses.
+                if let Some(p) = parse_size(size) {
+                    if p.width * p.height > arbitrary_size_rules::EXPERIMENTAL_ABOVE_PIXELS {
+                        tracing::debug!(
+                            context = "OpenAIImageProvider.validateAndNormalizeSize",
+                            model = %model,
+                            size = %size,
+                            "Requesting an experimental OpenAI image resolution"
+                        );
+                    }
+                }
+                return size.to_string();
+            }
+            ArbitrarySizeCheck::Rejected(reason) => {
+                tracing::warn!(
+                    context = "OpenAIImageProvider.validateAndNormalizeSize",
+                    model = %model,
+                    size = %size,
+                    reason = %reason,
+                    "Falling back to 1024x1024: unsupported OpenAI image size"
+                );
+                return "1024x1024".to_string();
+            }
         }
-        .to_string();
     }
-    if model == "dall-e-3" {
-        let ok = ["1024x1024", "1024x1792", "1792x1024"];
-        return if ok.contains(&size) {
-            size
-        } else {
-            "1024x1024"
-        }
-        .to_string();
-    }
-    let ok = ["256x256", "512x512", "1024x1024"];
-    if ok.contains(&size) {
-        size
-    } else {
-        "1024x1024"
-    }
-    .to_string()
+    tracing::warn!(
+        context = "OpenAIImageProvider.validateAndNormalizeSize",
+        model = %model,
+        size = %size,
+        supported = %caps.sizes.join(", "),
+        "Falling back to 1024x1024: size not supported by this OpenAI model"
+    );
+    "1024x1024".to_string()
 }
 
+/// v4 OpenAI `resolveQuality` (`d8d2890ee`).
+///
+/// The tiers are family-specific — `xhigh` and `max` are GPT Image 2.5's alone,
+/// and `hd` is DALL·E 3's — so a profile carrying a tier the chosen model does
+/// not know is dropped rather than forwarded into a 400. GPT Image sends
+/// nothing when unset (the API's own `auto` default applies); DALL·E keeps its
+/// historical `standard` default.
+fn resolve_quality(quality: Option<&str>, model: &str) -> Option<String> {
+    let caps = find_image_model(Some(model));
+    let is_gpt = is_gpt_image_model(Some(model));
+    let default = || {
+        if is_gpt {
+            None
+        } else {
+            Some("standard".to_string())
+        }
+    };
+    // v4 `if (!quality)` — truthy, so `''` is "unset".
+    let Some(quality) = quality.filter(|q| !q.is_empty()) else {
+        return default();
+    };
+    let Some(caps) = caps else {
+        return Some(quality.to_string());
+    };
+    if caps.qualities.contains(&quality) {
+        return Some(quality.to_string());
+    }
+    tracing::warn!(
+        context = "OpenAIImageProvider.resolveQuality",
+        model = %model,
+        quality = %quality,
+        supported = %caps.qualities.join(", "),
+        "Ignoring quality tier unsupported by this OpenAI model"
+    );
+    default()
+}
+
+/// Read one of a known set of strings out of the profile's residual parameter
+/// bag (v4 `readEnum`). Anything unrecognised is dropped with a warning rather
+/// than forwarded — the Images API rejects the whole request over one bad
+/// enum, so a typo in a stored profile would otherwise take the image down
+/// with it.
+///
+/// `undefined` / `null` / `''` are all "unset", silently. The warning renders
+/// the offending value through JS `String()`, so an object arrives as
+/// `[object Object]` and an array as its join — v4's own `String(raw)`.
+fn read_enum(bag: Option<&Value>, key: &str, allowed: &[&str]) -> Option<String> {
+    let raw = bag?.get(key)?;
+    if raw.is_null() || raw.as_str() == Some("") {
+        return None;
+    }
+    if let Some(s) = raw.as_str() {
+        if allowed.contains(&s) {
+            return Some(s.to_string());
+        }
+    }
+    tracing::warn!(
+        context = "OpenAIImageProvider.readEnum",
+        key = %key,
+        value = %crate::pascal::js_value::to_js_string(raw),
+        allowed = %allowed.join(", "),
+        "Ignoring unsupported OpenAI image parameter value"
+    );
+    None
+}
+
+/// Read an integer in `[min, max]` from the residual bag, dropping anything
+/// else (v4 `readIntInRange`). The conversion is JS `Number()` — `'80'` is 80,
+/// `true` is 1, `[]` is 0, `{}` is NaN — and the guard is
+/// `Number.isFinite && Number.isInteger`, so a fractional value is refused.
+fn read_int_in_range(bag: Option<&Value>, key: &str, min: f64, max: f64) -> Option<f64> {
+    let raw = bag?.get(key)?;
+    if raw.is_null() || raw.as_str() == Some("") {
+        return None;
+    }
+    // v4 `typeof raw === 'number' ? raw : Number(raw)` — the two branches agree
+    // for a JSON number, so `to_number` covers both.
+    let value = crate::pascal::js_value::to_number(raw);
+    if !value.is_finite() || value.fract() != 0.0 || value < min || value > max {
+        tracing::warn!(
+            context = "OpenAIImageProvider.readIntInRange",
+            key = %key,
+            value = %crate::pascal::js_value::to_js_string(raw),
+            min = min,
+            max = max,
+            "Ignoring out-of-range OpenAI image parameter"
+        );
+        return None;
+    }
+    Some(value)
+}
+
+/// The MIME type OPENAI's parsed images carry: v4 computes it in
+/// `generateImage` from the `outputFormat` local the BODY used — i.e. after the
+/// transparent-background force — so it is a pure function of `params` and the
+/// parser can ask for it directly rather than take it down a side channel.
+///
+/// `None` (a DALL·E model, or a GPT Image call with no `output_format` in the
+/// bag) renders as `image/png`, which is what v4's `mimeTypeForFormat(undefined)`
+/// returns and what the hardcoded value used to be.
+fn openai_output_format(params: &ImageGenParams) -> Option<String> {
+    let model_name = model_or_default(params, "dall-e-3");
+    if !is_gpt_image_model(Some(model_name)) {
+        return None;
+    }
+    let bag = params.profile_parameters.as_ref();
+    // The read order is v4's: `output_format` first, then `background` — a
+    // warning's position in the log is a comparand too.
+    let output_format = read_enum(bag, "output_format", &OUTPUT_FORMATS);
+    let background = read_enum(bag, "background", &BACKGROUNDS);
+    match (&background, &output_format) {
+        (Some(b), Some(f))
+            if b == "transparent" && !TRANSPARENCY_CAPABLE_FORMATS.contains(&f.as_str()) =>
+        {
+            Some("png".to_string())
+        }
+        _ => output_format,
+    }
+}
+
+/// v4 OpenAI `generateImage`'s request assembly (`d8d2890ee`).
+///
+/// Every per-model fact this branches on — which parameters a family accepts,
+/// which quality tiers, which sizes — comes from
+/// [`crate::model::openai_image_models`], so the wire logic never re-states a
+/// model's limits.
+///
+/// Body KEY ORDER is v4's assignment order: `model, prompt, n,
+/// [response_format], size, [quality], [style], [background], [output_format],
+/// [output_compression], [moderation]`.
 fn build_openai(params: &ImageGenParams) -> (String, Value) {
-    // requestParams.model = params.model; size validation uses `params.model ?? 'dall-e-3'`.
+    // `requestParams.model = params.model` is the RAW value — an absent model
+    // never reaches the wire — while `?? 'dall-e-3'` drove every validation
+    // below. v5's `model` is a `String`, so "absent" is the empty one.
     let model = params.model.as_str();
     let model_name = model_or_default(params, "dall-e-3");
-    let is_gpt = is_gpt_image_model(model);
+    let caps = find_image_model(Some(model_name));
+    let is_gpt = is_gpt_image_model(Some(model_name));
+    let bag = params.profile_parameters.as_ref();
+
+    let requested_n = params.n.unwrap_or(1.0);
+    let n = match caps {
+        Some(c) => requested_n.max(1.0).min(c.max_n),
+        None => requested_n,
+    };
+    if n != requested_n {
+        tracing::warn!(
+            context = "OpenAIImageProvider.generateImage",
+            model = %model_name,
+            requested = requested_n,
+            capped = n,
+            "Capping image count to the model maximum"
+        );
+    }
+
     let mut body = obj();
-    body.insert("model".into(), Value::String(model.to_string()));
+    if !model.is_empty() {
+        body.insert("model".into(), Value::String(model.to_string()));
+    }
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
-    body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
+    body.insert("n".into(), js_number_to_json(n));
+
+    // gpt-image models always return base64 and reject response_format;
+    // DALL-E models default to a URL, so ask them for b64_json explicitly.
     if !is_gpt {
         body.insert("response_format".into(), Value::String("b64_json".into()));
     }
-    body.insert(
-        "size".into(),
-        Value::String(validate_and_normalize_size(
-            params.size.as_deref(),
-            model_name,
-        )),
-    );
-    if !is_gpt {
-        body.insert(
-            "quality".into(),
-            Value::String(params.quality.clone().unwrap_or_else(|| "standard".into())),
-        );
+
+    let size = validate_and_normalize_size(params.size.as_deref(), model_name);
+    body.insert("size".into(), Value::String(size.clone()));
+
+    let quality = resolve_quality(params.quality.as_deref(), model_name);
+    if let Some(q) = &quality {
+        body.insert("quality".into(), Value::String(q.clone()));
+    }
+
+    // style is DALL-E 3's alone — dall-e-2 and the GPT Image families reject
+    // it. `params.style ?? 'vivid'` is NULLISH, so an empty string rides.
+    let supports_style = match caps {
+        Some(c) => c.supports_style,
+        None => !is_gpt,
+    };
+    if supports_style {
         body.insert(
             "style".into(),
             Value::String(params.style.clone().unwrap_or_else(|| "vivid".into())),
         );
     }
+
+    // ---- GPT Image extras -------------------------------------------------
+    // background / output_format / output_compression / moderation are the
+    // GPT Image families' own parameters; they ride the profile's residual bag
+    // under their wire names, so the host never has to enumerate them.
+    if is_gpt {
+        let mut output_format = read_enum(bag, "output_format", &OUTPUT_FORMATS);
+        let background = read_enum(bag, "background", &BACKGROUNDS);
+        let moderation = read_enum(bag, "moderation", &MODERATIONS);
+        let output_compression = read_int_in_range(bag, "output_compression", 0.0, 100.0);
+
+        if let Some(background) = background {
+            // A transparent background needs an alpha-capable format. Honour
+            // the more specific intent — the user asked for transparency — and
+            // say so, rather than letting the API return a silently flattened
+            // JPEG.
+            if background == "transparent" {
+                if let Some(f) = output_format.clone() {
+                    if !TRANSPARENCY_CAPABLE_FORMATS.contains(&f.as_str()) {
+                        tracing::warn!(
+                            context = "OpenAIImageProvider.generateImage",
+                            model = %model_name,
+                            requestedFormat = %f,
+                            "Forcing PNG output: a transparent background needs png or webp"
+                        );
+                        output_format = Some("png".to_string());
+                    }
+                }
+            }
+            body.insert("background".into(), Value::String(background));
+        }
+
+        if let Some(f) = &output_format {
+            body.insert("output_format".into(), Value::String(f.clone()));
+        }
+
+        if let Some(c) = output_compression {
+            // Only webp and jpeg are compressed; png ignores the parameter, and
+            // the API rejects it outright on some families.
+            match &output_format {
+                Some(f) if COMPRESSIBLE_FORMATS.contains(&f.as_str()) => {
+                    body.insert("output_compression".into(), js_number_to_json(c));
+                }
+                _ => {
+                    tracing::debug!(
+                        context = "OpenAIImageProvider.generateImage",
+                        model = %model_name,
+                        // v4 `outputFormat ?? 'png (default)'`.
+                        outputFormat =
+                            %output_format.clone().unwrap_or_else(|| "png (default)".into()),
+                        "Dropping output_compression: it applies only to jpeg and webp"
+                    );
+                }
+            }
+        }
+
+        if let Some(m) = moderation {
+            body.insert("moderation".into(), Value::String(m));
+        }
+    }
+
+    // v4's `logger.debug('Calling OpenAI Images API', …)` reads the ASSEMBLED
+    // body, each optional key rendered `?? '(model default)'`.
+    //
+    // Hoisted out of the macro: a `tracing` field expression cannot name
+    // `Value::as_str` — inside the macro `Value` resolves to the `tracing`
+    // trait of that name (the standing note).
+    const DFLT: &str = "(model default)";
+    let rendered = |key: &str| -> String {
+        body.get(key)
+            .map(crate::pascal::js_value::to_js_string)
+            .unwrap_or_else(|| DFLT.to_string())
+    };
+    let log_background = rendered("background");
+    let log_output_format = rendered("output_format");
+    let log_output_compression = rendered("output_compression");
+    let log_moderation = rendered("moderation");
+    tracing::debug!(
+        context = "OpenAIImageProvider.generateImage",
+        model = %model_name,
+        size = %size,
+        quality = %quality.as_deref().unwrap_or(DFLT),
+        background = %log_background,
+        outputFormat = %log_output_format,
+        outputCompression = %log_output_compression,
+        moderation = %log_moderation,
+        n = n,
+        "Calling OpenAI Images API"
+    );
+
     (
         "https://api.openai.com/v1/images/generations".to_string(),
         Value::Object(body),
@@ -392,17 +671,30 @@ fn build_openrouter(params: &ImageGenParams) -> (String, Value) {
 // ===========================================================================
 
 /// Parse a provider's response into an [`ImageGenResponse`], or the exact error
-/// string v4 throws. `model` selects the Google dialect (Imagen vs Gemini).
+/// string v4 throws. `params.model` selects the Google dialect (Imagen vs
+/// Gemini); OPENAI additionally reads the requested output format back off
+/// `params` (see [`openai_output_format`]).
+///
+/// Taking the whole [`ImageGenParams`] rather than a bare `model` is the
+/// `d8d2890ee` shape: v4's parse happens INSIDE `generateImage`, where the
+/// `outputFormat` local the body used is still in scope, so `mimeType` follows
+/// the (possibly forced) requested format instead of always claiming png. One
+/// source beats a side channel — the format is pure in `params`.
 ///
 /// For SDK providers (OPENAI / GROK / Z_AI) this is only ever called on a
 /// successful body (a transport throw is surfaced by [`RealImageProvider`]).
 pub fn parse_image_response(
     provider: &str,
-    model: &str,
+    params: &ImageGenParams,
     resp: &WireResponse,
 ) -> Result<ImageGenResponse, ImageGenError> {
+    let model = params.model.as_str();
     match provider {
-        "OPENAI" => parse_openai_like(resp, "OpenAI", "image/png"),
+        "OPENAI" => parse_openai_like(
+            resp,
+            "OpenAI",
+            mime_type_for_format(openai_output_format(params).as_deref()),
+        ),
         "GROK" => parse_openai_like(resp, "Grok", "image/jpeg"),
         "Z_AI" => parse_zai(resp),
         "GOOGLE" => parse_google(model, resp),
@@ -414,7 +706,8 @@ pub fn parse_image_response(
     }
 }
 
-/// OpenAI / Grok: `data: img.b64_json || img.url || ''`, mimeType HARDCODED.
+/// OpenAI / Grok: `data: img.b64_json || img.url || ''`. Grok's `mime` is
+/// fixed; OPENAI's follows the requested output format (`d8d2890ee`).
 fn parse_openai_like(
     resp: &WireResponse,
     name: &str,
@@ -811,6 +1104,13 @@ pub struct ModelsPage {
 /// v4 `models.ts`'s `STATIC_IMAGE_MODEL_IDS = STATIC_IMAGE_MODELS.map(m => m.id)`:
 /// the six documented flagships FOLLOWED by one entry per LoRA family, in the
 /// dialect table's order. Built once; the table is compiled data.
+/// `[...OPENAI_IMAGE_MODEL_IDS]` (`d8d2890ee`) — the capability table's own ids
+/// in its own order, the NanoGPT idiom applied to OpenAI's table.
+fn openai_static_image_model_ids() -> &'static [&'static str] {
+    static IDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    IDS.get_or_init(openai_image_model_ids).as_slice()
+}
+
 fn nanogpt_static_image_model_ids() -> &'static [&'static str] {
     static IDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
     IDS.get_or_init(|| {
@@ -840,14 +1140,11 @@ pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str],
         // hand — a hand-copied list drifted from the table once already (the
         // unit-4 manifest regen), and the unification review caught the copy.
         "NANOGPT" => nanogpt_static_image_model_ids(),
-        "OPENAI" => &[
-            "gpt-image-2",
-            "gpt-image-1.5",
-            "gpt-image-1",
-            "gpt-image-1-mini",
-            "dall-e-3",
-            "dall-e-2",
-        ],
+        // `[...OPENAI_IMAGE_MODEL_IDS]` (`d8d2890ee`) — derived from the
+        // capability table, never restated, so a family added there appears
+        // here for free. NOTE the table's order: `gpt-image-1-mini` precedes
+        // `gpt-image-1`, the reverse of every pre-`d8d2890ee` v5 list.
+        "OPENAI" => openai_static_image_model_ids(),
         // `[...IMAGEN_MODELS, ...GEMINI_IMAGE_MODELS]` — imagen FIRST.
         "GOOGLE" => &[
             "imagen-4",
@@ -1518,7 +1815,6 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
             );
         }
         // The Google dialect is selected by model on the parse side too.
-        let model = params.model.clone();
         let body = request.body_string();
         let sent = match self
             .transport
@@ -1592,7 +1888,7 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
                 return Err(error);
             }
         };
-        let parsed = parse_image_response(provider, &model, &resp)?;
+        let parsed = parse_image_response(provider, params, &resp)?;
         // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
         // Quilltap consumer (chat handler, avatar/background jobs) reads only
         // base64 `data`. Download each image here so the response is usable.
@@ -1950,6 +2246,395 @@ mod tests {
         );
     }
 
+    // ── `d8d2890ee`: the dropped-parameter log lines. The corpus proves the
+    // DROP (the body bytes); these prove the SENTENCE and its bag, and each
+    // carries its silence leg — a line that fires on the accepting arm too is
+    // noise the operator learns to ignore. ──
+
+    /// Build with a profile bag, the shape every GPT Image extras row uses.
+    fn params_with_bag(model: &str, bag: serde_json::Value) -> ImageGenParams {
+        let mut p = params(model);
+        p.profile_parameters = Some(bag);
+        p
+    }
+
+    fn lines_for(p: &ImageGenParams) -> Vec<String> {
+        crate::test_support::captured(|| {
+            build_openai(p);
+        })
+    }
+
+    fn one(lines: &[String], needle: &str) -> String {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one {needle:?} in {lines:?}"
+        );
+        hits[0].clone()
+    }
+
+    fn none(lines: &[String], needle: &str) {
+        assert!(
+            !lines.iter().any(|l| l.contains(needle)),
+            "unexpected {needle:?} in {lines:?}"
+        );
+    }
+
+    #[test]
+    fn size_fallback_warns_with_the_rule_it_broke() {
+        let mut p = params("gpt-image-2.5-sunburst");
+        p.size = Some("1000x1000".into());
+        let lines = lines_for(&p);
+        let line = one(
+            &lines,
+            "Falling back to 1024x1024: unsupported OpenAI image size",
+        );
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(
+            line.contains("context=OpenAIImageProvider.validateAndNormalizeSize"),
+            "{line}"
+        );
+        assert!(line.contains("model=gpt-image-2.5-sunburst"), "{line}");
+        assert!(line.contains("size=1000x1000"), "{line}");
+        assert!(
+            line.contains("reason=both edges must be divisible by 16"),
+            "{line}"
+        );
+
+        // The non-arbitrary family takes the OTHER sentence, naming its list.
+        let mut q = params("gpt-image-1.5");
+        q.size = Some("1536x864".into());
+        let qlines = lines_for(&q);
+        let qline = one(
+            &qlines,
+            "Falling back to 1024x1024: size not supported by this OpenAI model",
+        );
+        assert!(
+            qline.contains("supported=auto, 1024x1024, 1536x1024, 1024x1536"),
+            "{qline}"
+        );
+
+        // Silence: an accepted size, and the truthy-falsy empty string that
+        // returns before either sentence.
+        let mut ok = params("gpt-image-2.5-sunburst");
+        ok.size = Some("1536x864".into());
+        none(&lines_for(&ok), "Falling back to 1024x1024");
+        let mut blank = params("gpt-image-2.5-sunburst");
+        blank.size = Some(String::new());
+        none(&lines_for(&blank), "Falling back to 1024x1024");
+    }
+
+    /// Only an ARBITRARY size can reach this line: `caps.sizes.includes(size)`
+    /// returns first, so the picker's own `3840x2160` is never called
+    /// experimental even though it clears the threshold. The measured shape,
+    /// not the obvious one.
+    #[test]
+    fn an_experimental_resolution_is_a_debug_line_not_a_refusal() {
+        let mut p = params("gpt-image-2.5-flare");
+        // 3840×1280 = 4,915,200 px: past the threshold, edges /16, aspect
+        // exactly 3:1, and NOT in the picker list.
+        p.size = Some("3840x1280".into());
+        let lines = lines_for(&p);
+        let line = one(&lines, "Requesting an experimental OpenAI image resolution");
+        assert!(line.starts_with("DEBUG"), "{line}");
+        assert!(line.contains("size=3840x1280"), "{line}");
+        // …and the size still rides.
+        let (_, body) = build_openai(&p);
+        assert_eq!(body["size"], "3840x1280");
+
+        // Silence at exactly the threshold (`>`, not `>=`): 2560×1440 as an
+        // ARBITRARY size on a family whose picker does not list it.
+        let mut edge = params("gpt-image-2");
+        edge.size = Some("1920x1920".into()); // 3,686,400 — exactly the budget.
+        none(
+            &lines_for(&edge),
+            "Requesting an experimental OpenAI image resolution",
+        );
+        // …and for a listed size, which returns before the check runs at all.
+        let mut listed = params("gpt-image-2.5-flare");
+        listed.size = Some("3840x2160".into());
+        none(
+            &lines_for(&listed),
+            "Requesting an experimental OpenAI image resolution",
+        );
+    }
+
+    #[test]
+    fn an_unsupported_quality_tier_warns_and_falls_back() {
+        let mut p = params("gpt-image-2");
+        p.quality = Some("xhigh".into());
+        let lines = lines_for(&p);
+        let line = one(
+            &lines,
+            "Ignoring quality tier unsupported by this OpenAI model",
+        );
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(
+            line.contains("context=OpenAIImageProvider.resolveQuality"),
+            "{line}"
+        );
+        assert!(line.contains("quality=xhigh"), "{line}");
+        assert!(line.contains("supported=auto, low, medium, high"), "{line}");
+
+        // Silence on a tier the family does offer, and on an unknown model
+        // (whose quality is forwarded rather than judged).
+        let mut ok = params("gpt-image-2");
+        ok.quality = Some("high".into());
+        none(&lines_for(&ok), "Ignoring quality tier");
+        let mut unknown = params("gpt-image-3-supernova");
+        unknown.quality = Some("ludicrous".into());
+        none(&lines_for(&unknown), "Ignoring quality tier");
+    }
+
+    #[test]
+    fn a_bad_enum_in_the_bag_warns_with_the_js_string_of_the_value() {
+        let lines = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "background": "chartreuse" }),
+        ));
+        let line = one(&lines, "Ignoring unsupported OpenAI image parameter value");
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(
+            line.contains("context=OpenAIImageProvider.readEnum"),
+            "{line}"
+        );
+        assert!(line.contains("key=background"), "{line}");
+        assert!(line.contains("value=chartreuse"), "{line}");
+        assert!(line.contains("allowed=auto, transparent, opaque"), "{line}");
+
+        // `String(raw)` over a non-string: an object is `[object Object]`, an
+        // array its join — v4's own coercion, not a Rust `Debug`.
+        let objs = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "background": {}, "output_format": ["webp"] }),
+        ));
+        assert!(
+            one(&objs, "key=background").contains("value=[object Object]"),
+            "{objs:?}"
+        );
+        assert!(
+            one(&objs, "key=output_format").contains("value=webp"),
+            "{objs:?}"
+        );
+
+        // Silence: an accepted value, and the three "unset" spellings.
+        none(
+            &lines_for(&params_with_bag(
+                "gpt-image-2",
+                serde_json::json!({ "background": "auto" }),
+            )),
+            "Ignoring unsupported OpenAI image parameter value",
+        );
+        none(
+            &lines_for(&params_with_bag(
+                "gpt-image-2",
+                serde_json::json!({ "background": "", "moderation": null }),
+            )),
+            "Ignoring unsupported OpenAI image parameter value",
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_compression_warns_with_its_bounds() {
+        let lines = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "output_format": "webp", "output_compression": 300 }),
+        ));
+        let line = one(&lines, "Ignoring out-of-range OpenAI image parameter");
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(
+            line.contains("context=OpenAIImageProvider.readIntInRange"),
+            "{line}"
+        );
+        assert!(line.contains("key=output_compression"), "{line}");
+        assert!(line.contains("value=300"), "{line}");
+        assert!(line.contains("min=0"), "{line}");
+        assert!(line.contains("max=100"), "{line}");
+
+        // A fractional value fails `Number.isInteger`, not the bounds.
+        let frac = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "output_format": "webp", "output_compression": 50.5 }),
+        ));
+        assert!(
+            one(&frac, "Ignoring out-of-range OpenAI image parameter").contains("value=50.5"),
+            "{frac:?}"
+        );
+
+        // Silence: `Number('80')` is 80, and 0 is in range (the `!== undefined`
+        // gate is what keeps a falsy zero).
+        for bag in [
+            serde_json::json!({ "output_format": "webp", "output_compression": "80" }),
+            serde_json::json!({ "output_format": "webp", "output_compression": 0 }),
+            serde_json::json!({ "output_format": "webp", "output_compression": "" }),
+        ] {
+            none(
+                &lines_for(&params_with_bag("gpt-image-2", bag)),
+                "Ignoring out-of-range OpenAI image parameter",
+            );
+        }
+    }
+
+    #[test]
+    fn capping_the_image_count_warns_once_with_both_numbers() {
+        let mut p = params("dall-e-3");
+        p.n = Some(4.0);
+        let lines = lines_for(&p);
+        let line = one(&lines, "Capping image count to the model maximum");
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(line.contains("model=dall-e-3"), "{line}");
+        assert!(line.contains("requested=4"), "{line}");
+        assert!(line.contains("capped=1"), "{line}");
+
+        // `Math.max(requested, 1)` raises a zero, which is also a change.
+        let mut zero = params("gpt-image-2");
+        zero.n = Some(0.0);
+        assert!(
+            one(&lines_for(&zero), "Capping image count").contains("capped=1"),
+            "the zero arm"
+        );
+
+        // Silence: within the cap, and on an unknown model (uncapped).
+        let mut ok = params("gpt-image-2.5-sunburst");
+        ok.n = Some(4.0);
+        none(&lines_for(&ok), "Capping image count");
+        let mut unknown = params("gpt-image-3-supernova");
+        unknown.n = Some(50.0);
+        none(&lines_for(&unknown), "Capping image count");
+    }
+
+    #[test]
+    fn forcing_png_for_a_transparent_background_warns_and_moves_the_mime() {
+        let p = params_with_bag(
+            "gpt-image-2.5-flare",
+            serde_json::json!({ "background": "transparent", "output_format": "jpeg" }),
+        );
+        let lines = lines_for(&p);
+        let line = one(
+            &lines,
+            "Forcing PNG output: a transparent background needs png or webp",
+        );
+        assert!(line.starts_with("WARN"), "{line}");
+        assert!(line.contains("requestedFormat=jpeg"), "{line}");
+        let (_, body) = build_openai(&p);
+        assert_eq!(body["output_format"], "png");
+        // The parse follows the FORCED format, which is the whole point.
+        assert_eq!(openai_output_format(&p).as_deref(), Some("png"));
+
+        // Silence: webp is already alpha-capable, and a background with no
+        // format at all cannot be forced (`outputFormat !== undefined`).
+        for bag in [
+            serde_json::json!({ "background": "transparent", "output_format": "webp" }),
+            serde_json::json!({ "background": "transparent" }),
+            serde_json::json!({ "background": "opaque", "output_format": "jpeg" }),
+        ] {
+            none(
+                &lines_for(&params_with_bag("gpt-image-2", bag)),
+                "Forcing PNG output",
+            );
+        }
+    }
+
+    #[test]
+    fn dropping_compression_for_png_is_a_debug_line_naming_the_format() {
+        let lines = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "output_format": "png", "output_compression": 50 }),
+        ));
+        let line = one(
+            &lines,
+            "Dropping output_compression: it applies only to jpeg and webp",
+        );
+        assert!(line.starts_with("DEBUG"), "{line}");
+        assert!(line.contains("outputFormat=png"), "{line}");
+
+        // With no format at all v4 renders `png (default)`.
+        let bare = lines_for(&params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "output_compression": 50 }),
+        ));
+        assert!(
+            one(&bare, "Dropping output_compression").contains("outputFormat=png (default)"),
+            "{bare:?}"
+        );
+
+        // Silence: jpeg and webp take it.
+        for f in ["jpeg", "webp"] {
+            none(
+                &lines_for(&params_with_bag(
+                    "gpt-image-2",
+                    serde_json::json!({ "output_format": f, "output_compression": 50 }),
+                )),
+                "Dropping output_compression",
+            );
+        }
+    }
+
+    #[test]
+    fn the_calling_line_renders_every_absent_key_as_the_model_default() {
+        let lines = lines_for(&params("gpt-image-2"));
+        let line = one(&lines, "Calling OpenAI Images API");
+        assert!(line.starts_with("DEBUG"), "{line}");
+        for f in [
+            "model=gpt-image-2",
+            "size=1024x1024",
+            "quality=(model default)",
+            "background=(model default)",
+            "outputFormat=(model default)",
+            "outputCompression=(model default)",
+            "moderation=(model default)",
+            "n=1",
+        ] {
+            assert!(line.contains(f), "missing {f} in {line}");
+        }
+
+        // …and the assembled values when they are there. `outputCompression`
+        // is a NUMBER on the bag, so it renders unquoted through `String()`.
+        let full = lines_for(&params_with_bag(
+            "gpt-image-2.5-sunburst",
+            serde_json::json!({
+                "background": "transparent",
+                "output_format": "webp",
+                "output_compression": 80,
+                "moderation": "low"
+            }),
+        ));
+        let line = one(&full, "Calling OpenAI Images API");
+        for f in [
+            "background=transparent",
+            "outputFormat=webp",
+            "outputCompression=80",
+            "moderation=low",
+        ] {
+            assert!(line.contains(f), "missing {f} in {line}");
+        }
+    }
+
+    /// The GPT Image extras never reach a DALL·E body, and the readers never
+    /// even run — so a bag full of rubbish on a DALL·E profile is silent.
+    #[test]
+    fn a_dall_e_profile_neither_sends_nor_judges_the_gpt_image_extras() {
+        let p = params_with_bag(
+            "dall-e-3",
+            serde_json::json!({ "background": "chartreuse", "output_format": "tiff" }),
+        );
+        let (_, body) = build_openai(&p);
+        for k in [
+            "background",
+            "output_format",
+            "output_compression",
+            "moderation",
+        ] {
+            assert!(body.get(k).is_none(), "dall-e-3 body carried {k}");
+        }
+        none(
+            &lines_for(&p),
+            "Ignoring unsupported OpenAI image parameter value",
+        );
+        assert_eq!(openai_output_format(&p), None);
+    }
+
     #[test]
     fn imagen_model_map_and_empty_200_moderation() {
         let mut p = params("imagen-4");
@@ -1961,7 +2646,7 @@ mod tests {
         );
         // empty predictions with a raiFilteredReason → manufactured moderation error.
         let resp = WireResponse::new(200, r#"{"predictions":[{"raiFilteredReason":"policy X"}]}"#);
-        let err = parse_image_response("GOOGLE", "imagen-4", &resp).unwrap_err();
+        let err = parse_image_response("GOOGLE", &params("imagen-4"), &resp).unwrap_err();
         assert_eq!(
             err.message,
             "Google Imagen rejected prompt by content policy: policy X"
@@ -1979,7 +2664,8 @@ mod tests {
             200,
             r#"{"choices":[{"message":{"images":[{"image_url":{"url":"data:image/png;base64,QUJD"}}]}}]}"#,
         );
-        let ok = parse_image_response("OPENROUTER", OPENROUTER_DEFAULT_MODEL, &resp).unwrap();
+        let ok =
+            parse_image_response("OPENROUTER", &params(OPENROUTER_DEFAULT_MODEL), &resp).unwrap();
         assert_eq!(ok.images[0].data.as_deref(), Some("QUJD"));
         assert_eq!(ok.images[0].mime_type.as_deref(), Some("image/png"));
 
@@ -1987,8 +2673,8 @@ mod tests {
             200,
             r#"{"choices":[{"message":{"refusal":"nope, policy"}}]}"#,
         );
-        let err =
-            parse_image_response("OPENROUTER", OPENROUTER_DEFAULT_MODEL, &declined).unwrap_err();
+        let err = parse_image_response("OPENROUTER", &params(OPENROUTER_DEFAULT_MODEL), &declined)
+            .unwrap_err();
         assert_eq!(
             err.message,
             "Model declined to generate an image: nope, policy"
@@ -2148,7 +2834,7 @@ mod tests {
             200,
             r#"{"data":[{"url":"https://z.ai/img.png"},{"b64_json":"QUJD"}]}"#,
         );
-        let ok = parse_image_response("Z_AI", "glm-image", &resp).unwrap();
+        let ok = parse_image_response("Z_AI", &params("glm-image"), &resp).unwrap();
         assert_eq!(ok.images[0].data, None);
         assert_eq!(ok.images[0].url.as_deref(), Some("https://z.ai/img.png"));
         assert_eq!(ok.images[1].data.as_deref(), Some("QUJD"));

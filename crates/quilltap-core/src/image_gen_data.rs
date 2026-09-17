@@ -116,15 +116,24 @@ fn model(id: &str, support: OrientationSupport) -> ModelInfo {
 /// `getImageProviderConstraints(...).orientationSupport`.
 pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<OrientationSupport>) {
     match provider {
+        // `d8d2890ee`: v4's `getImageGenerationModels()` now maps the
+        // capability table, adding only the orientation mapping per id —
+        // `orientationFor(id)`. The standard gpt-image trio stays the mapping
+        // even for the arbitrary-resolution families: those accept far more,
+        // but a documented standard size is the safe thing to send for a
+        // semantic "make it portrait" (v4's comment).
         "OPENAI" => (
-            vec![
-                model("gpt-image-2", gpt_image_orientation()),
-                model("gpt-image-1.5", gpt_image_orientation()),
-                model("gpt-image-1", gpt_image_orientation()),
-                model("gpt-image-1-mini", gpt_image_orientation()),
-                model("dall-e-3", dalle3_orientation()),
-                model("dall-e-2", dalle2_orientation()),
-            ],
+            crate::model::openai_image_models::OPENAI_IMAGE_MODELS
+                .iter()
+                .map(|m| {
+                    let support = match m.id {
+                        "dall-e-3" => dalle3_orientation(),
+                        "dall-e-2" => dalle2_orientation(),
+                        _ => gpt_image_orientation(),
+                    };
+                    model(m.id, support)
+                })
+                .collect(),
             None,
         ),
         "GOOGLE" => (

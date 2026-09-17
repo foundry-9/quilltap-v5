@@ -89,6 +89,41 @@ each regenerated fresh from the pin and run by name: `salon_mutations`,
 this lane's pre/post sibling measurement found (all ten of its generate cases
 answered 500 where v4 answers 201). Seven more readers were green before and
 after.
+#### 2026-09-17 — feat(images): the OpenAI image dialect over the capability table
+
+_Versions: core 0.0.937, harness 0.0.828._
+
+v4 `d8d2890ee`'s wire half. `build_openai` is rewritten over
+`model/openai_image_models.rs` and no longer restates a model's limits:
+per-family quality tiers (`resolve_quality` — unset means nothing on the wire
+for GPT Image and `standard` for DALL·E; an unsupported tier is dropped with a
+warning), arbitrary `WIDTHxHEIGHT` sizes for GPT Image 2 and both 2.5 models
+(`checkArbitrarySize`, with the experimental band a debug line), `n` clamped to
+the family's `maxN`, `style` only where the family supports it, and the four
+GPT Image extras (`background`, `output_format`, `output_compression`,
+`moderation`) read off the profile's residual bag with v4's `readEnum` /
+`readIntInRange` drop-with-a-warning semantics, the transparent-background PNG
+force, and the jpeg/webp-only compression rule.
+
+The parsed images' `mimeType` now follows the requested (possibly forced)
+output format instead of always claiming `image/png`. `parse_image_response`
+takes the whole `ImageGenParams` in place of a bare `model` for that reason —
+v4 parses inside `generateImage`, where the format local is still in scope.
+
+`supportedModels` and the orientation declarations are both derived from the
+table, so OPENAI now advertises eight ids in v4's order (note
+`gpt-image-1-mini` before `gpt-image-1`).
+
+The `image-dialects` corpus was re-recorded at v4 `5f0a57dc4` and grew 97 → 150
+rows: 53 new OPENAI cases transcribing v4's own
+`openai-image-provider-params.test.ts` plus the JS-coercion edges its suite
+never reaches. Exactly seven pre-existing rows moved, all predicted — the
+dall-e-2 `style` drop, the five `supportedModels` lists and the orientation
+row; every other provider's rows are byte-identical, which is also the openai
+SDK 7.10 → 7.15 neutrality evidence for grok / z-ai / nanogpt. Ten new log
+lines land with capture pins and silence legs; eight mutations each reddened
+exactly their target.
+
 #### 2026-09-17 — feat(images): the OpenAI image capability table and its options schema, as one source
 
 _Versions: core 0.0.936._
