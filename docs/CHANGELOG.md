@@ -326,6 +326,17 @@ That order is v4's CLIENT file's, which spells `gpt-image-1` before
 `gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
 than quietly resolved: a spec pins the ordering so a future copy from the
 server's list would have to say so. (A candidate upstream nit.)
+#### 2026-09-17 — docs(porting): record P4.95's lane gate
+
+_Docs-only change._
+
+572 test binaries / 3,352 passed / 0 failed / 2 ignored, exit 0; fmt clean;
+clippy clean in both feature sets; release build clean; the lane's
+differential green by name over a pin-fresh oracle. The six fixture-vintage
+oracle vars were withheld by name per the round's gate step 8 — they are
+P4.94's to heal — and the note records why "zero SKIP lines" in a capturing
+workspace run proves nothing, so the positive proof is the by-name run.
+
 #### 2026-09-17 — docs(porting): close P4.95's order header (the cacheKey primary-path carry)
 
 _Docs-only change._

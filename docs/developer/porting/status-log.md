@@ -131885,3 +131885,50 @@ pre-existing structural gap far wider than a cache key — a whole unmodelled
 request shape — and it is NOT this lane's: recorded here because the carry is
 what makes its cache-key symptom reachable, and because the pin now states
 the absence explicitly so a future reader does not "fix" the faithful half.
+
+### §10 — the lane gate (the gate of record)
+
+Run from the lane worktree on `claude/p4-95-cache-key-primary-path-db8346`
+after all three commits, `CARGO_INCREMENTAL=0`, `TZ=UTC`, ONE logged
+sentinel-guarded chain with every log captured whole (never piped through
+`tail`):
+
+1. **§2 probe — PASS** at lane open, before every regen batch, and at the
+   gate: v4 `main` at `5f0a57dc4`, tree CLEAN, `log 5f0a57dc4..main` and
+   `log 1a2b2164c..bugfix` both empty.
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. **The lane's differential by name**, regenerated fresh from the
+   `1fefadb9a` pin, run with `--nocapture`: `orchestrator_tier3_equivalence`
+   **1 passed / 0 failed**, zero `SKIP:`. Red-first recorded at §3(b); the
+   changed-bytes greps at §6.
+5. **Neutrality leg:** the pre-P4.95 mock re-generated over the same corpus
+   from the same pin — 78/78 `cannedStream` rows byte-identical with
+   `cacheKey` stripped (§3(a)).
+6. **Mutations:** the ten proofs of §5, each reverted by file backup.
+7. `cargo build --workspace --release` — clean (6 m 39 s).
+8. `cargo test --workspace --no-fail-fast` with the LANE-SCOPED env block
+   (`QT_ORACLE_ORCHESTRATOR` + the two `QT_FIXTURE_ORCH_*` at the lane's
+   private paths, `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the pin, `QT_NODE` the
+   node BINARY): **572 test binaries / 3,352 passed / 0 failed / 2 ignored,
+   exit 0.** The lane's family is confirmed RUN by non-zero duration
+   (`orchestrator_tier3_equivalence` 3.56 s) and the three new builder pins
+   by their own targeted run. Per the round's gate step 8 the six
+   fixture-vintage oracle vars (`salon_mutations`, `chat_gallery`,
+   `images_routes`, `courier_images_routes`, `pascal_run_custom_handler`,
+   `pascal_custom_tools_route`) were WITHHELD BY NAME — those families
+   skip-pass without them and are P4.94's to heal. Note the workspace run is
+   capturing, so a passing test's `SKIP:` line never reaches the log; the
+   positive proof is the by-name run at step 4, not the absence of `SKIP:`
+   here.
+9. SPA: **not applicable** — this lane touches no `apps/web` file.
+10. **Ownership:** `git diff --stat main...HEAD` is nine source/doc paths,
+    all in the Owns column except the one recorded expansion,
+    `services/carina_query.rs` (§4(1)). Every MUST-NOT-TOUCH path is absent:
+    `cheap_llm.rs`, `streaming_provider.rs`, `primary_stream.rs`,
+    `provider_failover.rs`, every recorded provider corpus, `apps/web/**`,
+    `help/**`, every other harness family, the drift ledger.
+
+**Versions:** core 0.0.937, harness 0.0.828; host/web/cli/tauri/SPA
+unchanged.
