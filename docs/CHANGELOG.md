@@ -326,6 +326,18 @@ That order is v4's CLIENT file's, which spells `gpt-image-1` before
 `gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
 than quietly resolved: a spec pins the ordering so a future copy from the
 server's list would have to say so. (A candidate upstream nit.)
+#### 2026-09-17 — docs(porting): close P4.95's order header (the cacheKey primary-path carry)
+
+_Docs-only change._
+
+The lane's close: what landed, the three order premises the measurement
+refuted (the funnel's path, OPENAI_COMPATIBLE's `user` emission through the
+shared plugin-utils base, and the fact that the oracle mock REPLACES
+`streamMessage` so v4's own derivation never runs unless the mock calls it),
+the ninth consumer the survey missed (`carina_query.rs`), and the one item
+left OPEN: `primary_stream.rs`'s tool-unsupported retry, which this carry
+makes diverge on a leg the order forbids touching and no corpus case reaches.
+
 #### 2026-09-17 — test(request-builder): pin where each provider writes the prompt-cache key, and where it writes nothing (P4.95)
 
 _Versions: core 0.0.937._
