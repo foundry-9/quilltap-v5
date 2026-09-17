@@ -131932,3 +131932,299 @@ sentinel-guarded chain with every log captured whole (never piped through
 
 **Versions:** core 0.0.937, harness 0.0.828; host/web/cli/tauri/SPA
 unchanged.
+
+## Round record — the `53294163f` GPT-Image-2.5 drift catch-up + maintenance round unification (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95), 2026-09-17
+
+**ALL FOUR ORDERS CLOSED (P4.D196 with its Tier-2 item 10 and P4.95 with one
+leg deferred LOUDLY by name — both ordered as follow-ups below); the oracle
+baseline MOVES `1fefadb9a` → `5f0a57dc4`; the ledger's three §3 rows retire
+(`d8d2890ee` ABSORBED, `53294163f` + `5f0a57dc4` NO-PORT-RATIFIED) and ONE new
+row arrives UNPROCESSED — v4 landed `bcd7e4852` (bug 151) at 10:15, after the
+lanes had launched, so the regen rule stays PIN REQUIRED.** Sixteen lane
+commits cherry-picked in the order P4.94 → P4.D196 → P4.D197 → P4.95 onto
+`unify/53294163f` (every conflict the version-file class; every lane's manifest
+delta audited version-only before any `--ours`), then the wires, the §3 review's
+fixes, the gate, and the docs.
+
+### The mid-round drift, recorded first
+
+The `/unify` opening §2 probe FAILED: v4 `main` had moved one commit past the
+recorded HEAD — `bcd7e4852` "fix(images): send a model the picture, not the
+archive of it (bug 151)", 2026-09-17 10:15. Classified from its hunks (ledger
+§3, class PORT): a NEW `lib/files/llm-image-budget.ts` (long-edge 1024 cap +
+WebP quality ladder to a 500 KiB base64 ceiling, never throwing), the shrink
+applied FIRST at both attachment loaders in `lib/chat-files-v2.ts` with the
+provider ceiling as a backstop, a per-turn `LANTERN_IMAGE_BASE64_BUDGET` (2 MiB)
+spent newest-first over the unseen-image walk in `context-builder.service.ts`
+with chronological restore, three log lines, `help/connection-profiles.md`
+(+12), v4's own `CLAUDE.md`, the filing, version stamps. v5 surfaces: the two
+loaders in `services/chat_files.rs`, `files/image_processing.rs`, the walk in
+`services/message_context.rs`, the host pixel-codec seam (core has no image
+codec — the shrink is a HOST leg behind a core budget), and the vendored help
+tree (md5-identical to v4 at `5f0a57dc4` after P4.D197; one file behind again
+at HEAD). Every lane had already pinned at `5f0a57dc4` or `1fefadb9a`
+(P4.D196's closing probe caught the same move and STOPped its porting on it —
+its oracles are all pin-recorded); the unified gate ran from ONE pin at
+`5f0a57dc4`, the new baseline. Nothing in this round is affected; the catch-up
+is the next round's first row.
+
+### What landed (by lane; the lane records above carry the detail)
+
+- **P4.94** — the gap MEASURED per pair with v4's own `compareSchemas` (an
+  independent step from the migrator, as P4.89 found) and the migrator's dry
+  run agreeing column for column on all twelve files; **three columns no round
+  predicted** (`connection_profiles.fallbackProfileId` + `allowTierFallback`
+  from P4.D135, `llm_logs.connectionProfileId` + `imageProfileId` from P4.D49 —
+  BOTH committed llm-logs partitions lagged and no family had ever regenerated
+  across them); the widen in place, cell-by-cell md5-identical outside the
+  added NULL columns, sidecars untouched, five mount partitions untouched;
+  **the six ordered reds CLOSED with zero v5 source change — and a SEVENTH
+  latent red found and closed** (`images_generate_route_equivalence`, all ten
+  generate cases 500-vs-201, invisible because the previous unification's
+  60-family sweep never listed it); which column each red turned on isolated
+  by probe (`generationKey` alone closes four; the P4.D171 pair alone closes
+  both pascal families — the `49769ec4` round's "Pascal fixture rot" and the
+  handler's `no such column` are ONE gap); four order premises refuted (three
+  readers DO call `ensure_p4d182_columns`; two named families are not readers
+  of these pairs; the `images-*` pair is keyed with a SECOND test pepper, which
+  made the single-pepper migrator die `SQLITE_NOTADB` — exactly like a corrupt
+  file). Fourteen families regenerated at the pin, 14/14; the full Playwright
+  suite on the widened e2e seed classified (two contended runs with DISJOINT
+  red sets, 30/30 by file).
+- **P4.D196** — the capability table as ONE module (`model/openai_image_
+  models.rs`, eight families in v4's order — `1-mini` before `1`; exact-then-
+  longest-prefix over `match_model`'s idiom; the five `checkArbitrarySize`
+  sentences byte-exact), the OPENAI dialect rewritten over it RED-FIRST
+  against the `image-dialects` corpus re-recorded at the target (97 → 150
+  rows; exactly the seven predicted pre-existing rows moved; every non-openai
+  provider's rows byte-identical — which is also the SDK-neutrality evidence
+  for grok / z-ai / nanogpt), the options schema (`model/openai_image_options.
+  rs`) byte-exact incl. U+00D7 / U+2019 and the `2048x2048` experimental
+  description the order had not counted, proven by seven `image_profiles_
+  routes` rows (a vacuous first run caught — the family runs a hard-coded case
+  table), bugs 148 + 149 in `generate_image.rs` red-first (`schema_defaults_
+  only` IS the "profile bag wins" row; the bug-149 row needed a UNIQUE prompt
+  to discriminate — a corpus-craft finding), the tool definition's bytes, the
+  ONE quality list at the tool schema and `api/images.rs`, the eight-model
+  manifest (only `openai.json` moved), and the SDK re-check over every
+  recorded corpus (byte-identical everywhere the port did not move them) —
+  with an honest environment finding: **the four SDK-bundling plugin dirs
+  still have openai 7.10.0 installed**, so neutrality is proven where the
+  version actually moved (the root) and the four plugin-driven corpora were
+  recorded under the old SDK. Tier-2 item 10 MEASURED (v4's profile-id
+  generate route threads all five optional fields; v5 parses prompt + count —
+  a pre-existing gap) and deferred loudly with its shape in the doc comment.
+  Two order premises refuted (`512x512` is a refusal at both pins; the
+  picker's `3840x2160` never reaches the experimental DEBUG line — the
+  size-list check returns first).
+- **P4.D197** — the eight-id fallback list in v4's CLIENT order (v4's client
+  list and its plugin table disagree on `gpt-image-1` vs `-1-mini` — carried
+  and spec-pinned as v4's own); the modal header's OPENAI paragraph rewritten
+  to a recorded divergence (v5's JSON-textarea fallback stays); the recorded
+  schema fixture from v4's REAL `getOpenAIImageOptionsSchema` at the pin
+  (five inputs; the recorder beside the eight existing SPA recorders); the
+  28-test render spec over the real `ProviderOptionsPanel` (the order's "two
+  experimental sizes" refuted — THREE, derived from the threshold); the gated
+  beat; the two `help/` pages byte-copied (whole tree md5-identical to v4 at
+  the pin, 124 stays 124); both stamp commits NO-PORT-ratified on their
+  `--name-status` lists; bug 150's v5 exposure settled by measurement — v5 has
+  no twin of the image-UPLOAD dialog the fix lands on, and its two in-chat
+  dialogs post through the dispatch client, never a REST path, so the class
+  is unreachable by construction (the ledger row's earlier reasoning corrected
+  by new record). `provider-options-panel.ts` needed no change — measured.
+- **P4.95** — v4's per-leg rule MEASURED from the code (the order's four legs
+  CONFIRMED; three more legs measured — and one was a live v5 gap: **Carina's
+  consultation**, which v4 keys under the ANSWERER, fixed as a recorded
+  ownership expansion); **SEVEN emitting providers, not six** — the order's
+  "OPENAI_COMPATIBLE never reads it" refuted (the shared base class writes
+  `user`; v5 was already faithful, and this carry makes that emission live on
+  the main chat path for the first time); the corpus taught to SEE the key as
+  a side-channel with the v4 mock deriving it through `requireActual` of the
+  real `buildCharacterCacheKey` (the P4.D83 shape — the mock REPLACES the
+  funnel, so the funnel's own call never runs); neutrality proven 78/78 rows;
+  RED-FIRST 76 of 78 stream calls; the literal fixed; the per-leg clears in
+  the two loops (the rule is per-LEG, not per-clone — `loop_base_params` left
+  alone, with the reasoning); a force-final case that had never existed
+  (`agentModeSettings.maxTurns` 15 → 1, the only way to reach the branch);
+  the recovery leg's inheritance pinned by mutation; the six builders'
+  emission pins (present / absent / empty / the three ignoring providers
+  byte-identical / OPENAI's `prompt_cache_retention` rider inside the guard) —
+  all new, none had existed. Deferred loudly: the tool-unsupported retry
+  (landed at unification, below) and the request-envelopes corpus pin.
+
+### The §3 review (four parallel readers + the unifier's own reads; the verdict owned at the unify)
+
+**NO blocking finding in any lane — the seventh such round.** The
+should-fixes, all landed on the unify branch (commit "fix(unify): the
+`53294163f` round's §3 review fixes …"), each with its pin:
+
+1. **P4.D196 — the OPENAI response parser warned TWICE for a bad bag value
+   (found independently by the unifier's own read and the lane's reader).**
+   `openai_output_format` re-derived the MIME type by re-running `read_enum`
+   on `output_format` and `background`, whose `warn!` fired again at parse
+   time; v4 reads the bag once inside `generateImage`. Every capture test
+   wrapped `build_openai` alone, so no pin could see the parse-side repeat.
+   Fixed with a quiet reader variant for the parse path; a new capture test
+   spans build + parse and pins exactly one warn per bad key —
+   mutation-proven (the loud reads restored count four).
+2. **P4.95 — the tool-unsupported retry now inherited the primary's cache
+   key** where v4's retry passes no `characterId` (the carry made a
+   by-accident agreement into a live wire divergence). The lane deferred it
+   correctly (MUST-NOT-TOUCH); the unifier owns the file and landed the
+   one-line clear with the honest note that `previous_response_id` and `stop`
+   still inherit there (a pre-existing P4.92-class gap) and that NO corpus
+   case reaches the retry — the follow-up "make the retry agree with v4's
+   option bag, with a case that reaches it" is ordered below.
+3. **P4.94 — `chats.transcriptVersion` left off the widened pairs on a FALSE
+   premise.** The lane wrote "no v4 write ever names it": v4 has a REGISTERED
+   migration adding it (`add-transcript-version-column-v1.ts:53`, one step
+   BEFORE the `generationKey` migration at `index.ts:793-795`) and writes it
+   fail-soft (`chats-messages.ops.ts:277`). A pair with `generationKey` but
+   not `transcriptVersion` is a vintage no real v4 instance can be in. Added
+   as a migrator row with v4's statement and applied to the five main
+   partitions (the oracle cases' plants are guarded ALTERs / PRAGMA-checked,
+   so nothing breaks; the second run reports `already current`; no journal
+   residue). Also: the `extraSql` index statements lifted out of the column
+   guard (v4's `llm_logs` migration creates its indexes OUTSIDE the guard;
+   every statement is `IF NOT EXISTS`), the five pairs added to the header's
+   recipe set (item 2 was half-met), three prose counts and four `source:`
+   citations corrected. The order's "refuses loudly on a removed/retyped
+   field" rule never existed in the migrator — the assurance came from the
+   separate `compareSchemas` measurement; recorded as an order inaccuracy.
+4. **P4.D197 — the render spec pinned every field's key and order but never
+   a `label`.** A new block asserts the labels per family and reads each
+   rendered `<label for>`; the beat's size list gained value discriminators
+   (`2048x2048` present on the 2.5 family, absent on DALL·E 3 — a bare count
+   of fourteen could pass fourteen wrong sizes) and its cleanup now deletes
+   the profile in `finally`; the modal header's v4 line references
+   re-measured at the pin (GOOGLE `:177-218`, GROK `:239-248`, OPENAI
+   `:98-175`).
+5. **Comment fidelity (P4.95):** the OPENROUTER streaming pin's comment
+   implied v4 omits `user` on OpenRouter streams — v4's SDK branch WRITES it
+   on the plain no-tools stream; v5 models only the raw-fetch branch (the
+   recorded `streaming_provider.rs:49-53` divergence), and the row pins v5's
+   shape; the orchestrator's carry sentence now excepts that half; the
+   harness's `agent_mode_on` "unaffected" narrowed to the legs it reaches
+   (its prompt bytes DO move with `maxTurns`); floor (c)'s whole-slate nudge
+   scan annotated.
+
+**Recorded, not changed:** `tools/definitions/mod.rs` (+65) is outside
+P4.D196's Owns column and unflagged in its record (no sibling owns it; the
+two tests are item 7's assertion-as-test); P4.D196's md5 table for the
+§R.10(c) recording is over compact JSON with `ensure_ascii=False` (the
+unifier reproduced all five, below); v5's `String` model cannot distinguish
+an absent model from `''` (`model_or_default`), a pre-existing
+representational divergence unreachable from a stored profile; `image_gen_
+data.rs`'s `ModelInfo` carries neither v4's `name` nor `supportedSizes` (the
+order's anticipated branch); `image-profile-form.spec.ts` is implied by
+P4.D197's item 1 but not literally in its Owns column; `regenerate_swipe.rs`
+sends the RAW character id as `cache_key` exactly as v4's `regenerate-swipe.
+service.ts:150` does (a candidate upstream nicety); the DOM `min`/`max`
+null assertions in the render spec are structurally unfalsifiable against the
+fixture (the key-set assertion carries the weight — the spec says so).
+
+### The unification wires (`0269d65e`)
+
+- **§R.8 version recount** — base + Σ lane bumps (identical first bumps
+  auto-merged silently across lanes, as every round): core 0.0.935 + 4
+  (P4.D196) + 2 (P4.95) = 0.0.941; harness 0.0.827 + 1 + 2 + 1 + 1 = 0.0.832;
+  web 0.0.149; SPA 0.5.729 — then the review-fixes commit's own bumps to
+  core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730.
+- **§R.10(d)** — `P4D196_SERVER_LANDED` flipped `true`; the beat's first
+  execution is this gate's.
+- **§R.10(c)** — P4.D197's committed `openai-image-options-schemas.json`
+  hashed identical to P4.D196's recorded table on all five inputs (sunburst
+  = no-model `395fcb0d…`, `gpt-image-2` `5e93d442…`, `dall-e-3` `1c69daa6…`,
+  `dall-e-2` `cddbece2…`; compact JSON, `ensure_ascii=False`).
+- **§R.9** — the three `docs/v4/` mirror paths copied from the `5f0a57dc4`
+  pin: `developer/IMAGE_GENERATION.md` 39,133 bytes, `developer/bugs.md`
+  273,262, `CHANGELOG.md` 79,413.
+- **§R.10(a)** — P4.D196's two route families re-run over P4.94's widened
+  `images-*.db` pair in the unified sweep (below).
+- **The pins.** The first two detached worktrees created under `/tmp`
+  vanished between tool calls (registered but directory-less — `worktree
+  prune` cleared them; the cause was not chased); both pins were re-created
+  under the session scratchpad, verified by `rev-parse`, with all three
+  symlink classes.
+
+### The gate (the gate of record)
+
+Run from the main worktree on `unify/53294163f`, `CARGO_INCREMENTAL=0`,
+`TZ=UTC`, ONE detached sentinel-guarded chain per phase with every log
+captured whole (fmt → clippy ×2 → release build → SPA lint/test/build → the
+full Playwright suite → the pinned sweep → the env-block extraction → the
+workspace test), then the fixes, then the re-checks by name:
+
+1. **§2 probe** — FAILED at the open (v4 moved one commit mid-round —
+   `bcd7e4852`, recorded above and in the ledger); the checkout on `main`,
+   CLEAN; `bugfix`/`release` unmoved. Every regen ran from ONE pin at the new
+   baseline `5f0a57dc4` (verified by `rev-parse`; the `/tmp` pins that
+   vanished were pruned and re-created under the session scratchpad).
+2. `cargo fmt --all --check` — clean; re-checked after the review fixes and
+   after the two harness fixes.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets, three times (the picks, after the review fixes, after the
+   harness fixes).
+4. `cargo build --workspace --release` — clean (twice: after the picks and
+   after the review fixes; the harness fixes touch no binary).
+5. **SPA:** `npm run lint` (the qt-class guard 5/5) clean; `npm test` **435
+   spec files / 7,382 passed / 0 failed** (+2 over the picks: the label
+   block) — one vitest "unhandled error" in the full run,
+   `b.container.scrollTo is not a function` from `auto-scroll.ts:203`, a
+   timer outliving `salon-turn-controls.spec.ts`'s last test, GREEN ×3 in
+   isolation and touched by no lane: an intermittent, recorded; `npm run
+   build` clean.
+6. **Full Playwright against the release binary: 322 passed / 0 failed / 6
+   skipped (8.7 m), exit 0** — the six skips are the standing parks (the
+   five P4.D187 title-checkpoint beats in `salon-chain-pause-toast-flow` /
+   `salon-paused-hold-flow` + the `salon-chat-gallery-flow` store-probe
+   park); **P4.D197's `settings-image-openai-options-flow` beat ran LIVE for
+   the first time and passed (#233)** on the round's widened e2e seed.
+7. **The pinned 21-family sweep** (`recipe_sweep.py --run-all` at
+   `5f0a57dc4`, artifact `harness/tools/sweep-results/2026-09-17-5f0a57dc4-
+   unify-pin.json`): **19 ok / 2 run_failed — both HARNESS-side, both fixed
+   at the wire and green by name on the same pin-fresh oracles:**
+   - `images_generate_route_equivalence` — the driven case list and the
+     oracle's disagreed: P4.D196 grew the oracle case file's three quality
+     rows but not the family's hard-coded `cases()` (the lane's "three new
+     rows green by name" could not have driven them — the
+     `a-case-added-only-to-the-oracle-is-never-run` class the same lane
+     caught on `image_profiles_routes`); the three cases added, 1/0.
+   - `salon_skip_equivalence` — `[skip_refusal] chats.transcriptVersion` v5
+     2 vs v4 1: the harness seeded its two prior turn-pass rows with two
+     `add_message` calls where the oracle uses ONE `addMessages` batch (one
+     announce, one bump). A harness seeding-shape divergence, not a port
+     one (the production skip writes one message and bumps once) —
+     invisible until P4.94's widen plus the review's `transcriptVersion` row
+     made the counter a comparand. Batched; 1/0.
+   Changed bytes grepped in the fresh NDJSONs (`gpt-image-2.5-sunburst`,
+   `xhigh`, `output_compression`, `image/webp` in image-dialects; `cacheKey`
+   ×78 in orchestrator; `The Two Lamps of GPT Image 2.5` in help-tree).
+8. **`cargo test --workspace --no-fail-fast`** with the 24-variable
+   sweep-derived block (+ `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the pin, `QT_NODE`
+   the node BINARY), run BEFORE the two harness fixes: **572 test binaries /
+   3,380 passed / 3 failed / 2 ignored, ZERO `SKIP:` lines** — the three:
+   the two harness reds above (green by name after the fixes) and
+   `image_generation_tier3_equivalence`, a **staging collision**, not a
+   port red: it shares the `/tmp/qt-imggen-{main,mount}.db` pair AND its
+   fixture env names with `image_generate_route_equivalence`, whose recipe
+   rebuilt the pair after the tier-3 oracle was recorded — the only
+   divergence a freshly minted vault `mountPointId` (`29ff…` vs `7e07…`),
+   the round-2 record's exact class; green through the driver on its own
+   fresh staging (`OK: image-generation differential matched the oracle
+   across all cases`). The round's families all confirmed RUN by non-zero
+   duration; the P4.94-restored vars (`QT_ORACLE_SALON_MUTATIONS`,
+   `_CHAT_GALLERY`, `_IMAGES_ROUTES`, `_COURIER_IMAGES`,
+   `_PASCAL_RUN_CUSTOM_HANDLER`, `_PASCAL_CUSTOM_TOOLS_ROUTE`) plus
+   `QT_ORACLE_IMAGES_GENERATE` all SET and their families green.
+9. **Unit proofs for the review fixes:** `image_dialects` module 27/0 with
+   the once-only pin mutation-proven (loud reads restored → counts four);
+   the migrator's second run `already current` on all five main partitions,
+   zero `.db-journal` residue.
+10. **Ownership:** every path of the combined diff in some lane's Owns
+    column, the two recorded expansions (`carina_query.rs`; `tools/
+    definitions/mod.rs`), or the wires/fixes; the drift ledger written only
+    here.
+
+**Versions:** core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730;
+host 0.0.137 / cli 0.0.22 / tauri 0.0.7 unchanged.

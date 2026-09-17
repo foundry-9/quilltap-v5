@@ -6628,6 +6628,94 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — UNIFIED 2026-09-17
+
+**ALL FOUR ORDERS CLOSED (two follow-ups deferred loudly by name — P4.D196's
+Tier-2 item 10, P4.95's tool-unsupported retry option bag); the oracle
+baseline MOVES `1fefadb9a` → `5f0a57dc4`; the ledger's three rows retire
+(`d8d2890ee` ABSORBED, `53294163f` + `5f0a57dc4` NO-PORT-RATIFIED) and ONE
+new row sits UNPROCESSED — `bcd7e4852` (bug 151), which v4 landed at 10:15
+after the lanes had launched; the regen rule stays PIN REQUIRED.** Round
+record: `status-log.md` → "Round record — the `53294163f` GPT-Image-2.5 drift
+catch-up + maintenance round unification" (the §3 review's findings — no
+blocking, five should-fix groups landed; the wires; the mid-round drift; the
+gate numbers). CHANGELOG: the unification entries of 2026-09-17. Every
+order's status header names what the review fixed on it.
+
+**What is next, in order:**
+
+1. **The `bcd7e4852` bug-151 drift catch-up** (drift-ledger §3, ONE row,
+   UNPROCESSED — it landed mid-round at 10:15 on 2026-09-17, after the four
+   lanes had launched). PORT on ported surfaces: the transport-vs-storage
+   image budget — a `shrinkImageForLlmTransport` at BOTH attachment loaders
+   (`services/chat_files.rs` `read_file_as_base64` / `load_mount_file_as_
+   attachment`, over the host pixel-codec seam P4.73 threaded — core has no
+   image codec, so the long-edge cap + WebP quality ladder is a HOST leg
+   behind a core budget), the Lantern unseen-image walk's per-turn
+   `LANTERN_IMAGE_BASE64_BUDGET` spent newest-first with chronological
+   restore (`services/message_context.rs`), the WARN/DEBUG lines, and
+   `help/connection-profiles.md` re-vendored (the tree lags v4 by that one
+   file again). PIN REQUIRED at `5f0a57dc4` for every regen until it lands;
+   the ledger row names the families to grow.
+2. **P4.D196's Tier-2 item 10, as its own small order:** the profile-id
+   generate route's five optional body fields (`size`/`quality`/`style`/
+   `aspectRatio`/`negativePrompt`) — v4 threads all five into the tool input
+   and v5's `image_profile_generate` parses prompt + count only (a
+   pre-existing gap `d8d2890ee` made visible). The shape is in `api/image_
+   profiles.rs`'s doc comment: the five as `Option<String>` on
+   `Request::ImageProfileGenerate` (`api/types.rs`), the `engine.rs` arm, the
+   `quilltap-web` body parser, the dispatch wrong-type census, `quality`
+   through `is_image_quality` and `style` through the two-value enum (400
+   `Validation error`), `image_generate_route_equivalence` grown a row per
+   field.
+3. **The tool-unsupported retry's option bag** (P4.95 §4(2)): `primary_
+   stream.rs:1260`'s retry clones `params` and clears only `tools`, so it
+   inherits `cache_key`, `previous_response_id` AND `stop` where v4's retry
+   (`primary-stream.service.ts:261-270`) passes none of the three — the
+   P4.95 carry made the first of these observable. One order: make the
+   retry agree with v4's option bag, with a corpus case that REACHES it
+   (nothing does today).
+4. **The request-envelopes cache-key pin** (P4.95's Tier-3 deferral, now
+   unblocked — P4.D196's corpus regen is done): present-and-absent per
+   provider on a PRIMARY row for the seven emitting providers (OPENAI/GROK
+   `prompt_cache_key`, OPENROUTER/NANOGPT/Z_AI/OPENAI_COMPATIBLE `user`,
+   DEEPSEEK `user_id`) and byte-identity for the three ignoring ones. A
+   small wire for any lane that owns that corpus.
+5. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: a GPT Image 2.5 profile through the schema-built editor
+   (Quality `max`, Background transparent, Output Format webp — the FIRST
+   time v5 sends the four extras) and a real Salon `generate_image` turn on
+   it; bug 148's symptom gone on a profile storing `hd`; a real
+   `prompt_cache_key` on an OPENAI primary in `llm_logs.request`; the seven
+   healed families' surfaces (a `chat_update` write, a gallery save, an
+   image upload) on real data; plus the standing 💸 queue (the Brahma deep
+   query, dedup/summaries, #101).
+6. **A human item:** the four SDK-bundling plugin dirs in the v4 checkout
+   (`qtap-plugin-{openai,grok,z-ai,nanogpt}`) declare `openai ^7.15.0` but
+   still have **7.10.0 installed** — nobody has run `npm install` there since
+   `d8d2890ee`. P4.D196's wire re-check proved neutrality where the version
+   actually moved (the root); the four plugin-driven corpora were recorded
+   under the OLD SDK. `npm install` in those four dirs, then re-record
+   `regenerate-image-fixtures.sh` + `regenerate-request-envelopes.sh` at the
+   pin and `diff` — a lane cannot do it in the human's live tree.
+7. **Two items awaiting the human's RULING before any lane** (carried): the
+   census `ORDER BY` (P4.91's escalation) and the lock-conflict 503-vs-409.
+8. **Named, not order-sized yet** (carried): the `SCENE_STATE_TRACKING`
+   trigger + handler; the shared-fixture title-checkpoint hazard (five
+   P4.D187 beats still parked); `combined.log` key case; the `name`-field
+   turn-path measurement; P4.87's two OPEN coverage items; the upstream
+   filing candidates — this round adds v4's own client-vs-plugin
+   `gpt-image-1` / `gpt-image-1-mini` ordering disagreement (P4.D197's
+   finding) and the `salon-turn-controls.spec.ts` vitest unhandled error
+   (`auto-scroll.ts:203` `scrollTo is not a function` from a timer outliving
+   its test — a full-run intermittent, green ×3 in isolation, recorded here
+   so it is not re-diagnosed).
+
+PB1 stays parked by the standing rule.
+
+_The ordering record below is kept as written at planning (re-pointed
+2026-09-17 morning); the status headers carry what changed._
+
 ## The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — ORDERED 2026-09-16
 
 **Baseline `1fefadb9a`; v4 `main` HEAD `53294163f` (TWO past — the

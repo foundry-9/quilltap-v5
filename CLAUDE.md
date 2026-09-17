@@ -3706,10 +3706,57 @@ records THERE. Update this summary only when a phase or round completes.
   0.5.727; host/cli/tauri unchanged. **Next: the fixture-vintage heal (six
   pre-existing reds, one order), the `cacheKey` order, the owed dogfood
   pass** — see phase-4.md. Round record: `status-log.md`.
-- **Oracle baseline: `1fefadb9a` (2026-09-16, v4 main — "fix(salon): send the
-  cycle rotation to the client so it stops guessing the turn (bug 147)",
-  `4.10.0-dev.41`), adopted at the `1fefadb9a` bug-147 drift catch-up +
-  maintenance round unification (2026-09-16).**
+- **The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥
+  P4.D196 ∥ P4.D197 ∥ P4.95): UNIFIED on main (2026-09-17) — ALL FOUR CLOSED
+  (two follow-ups deferred loudly by name); the oracle baseline MOVES to
+  `5f0a57dc4`; ⚠ v4 landed `bcd7e4852` (bug 151, the image transport budget)
+  MID-ROUND — UNPROCESSED, the next catch-up's first row; PIN REQUIRED.** v4's
+  PR #62 absorbed whole: the OpenAI image capability table as ONE module
+  (eight families, exact-then-longest-prefix), the OPENAI image dialect
+  rewritten over it RED-FIRST against the `image-dialects` corpus re-recorded
+  at the target (97 → 150 rows; exactly the seven predicted pre-existing rows
+  moved), the per-model options schema byte-exact (incl. the `2048x2048`
+  experimental description the order had not counted) through the existing
+  `options-schema` action, v4 bugs 148 + 149 in `generate_image.rs` (v5 had
+  both — the three schema defaults that outranked the profile, and the
+  `?? 'square'` that erased every explicit size), the tool definition's bytes,
+  the ONE quality list at the tool schema and the `?action=generate` arm, the
+  eight-model manifest, the openai-SDK wire re-check (every other corpus
+  byte-identical where the port did not move it — and the four SDK-bundling
+  plugin dirs measured still on 7.10.0, a human `npm install` item) ∥ the
+  SPA's eight-id fallback list (v4's client and plugin table DISAGREE on the
+  `gpt-image-1`/`-1-mini` order — carried as v4's own), a recorded copy of
+  v4's REAL `getOpenAIImageOptionsSchema` rendered in a 30-test spec + the
+  live beat, the two `help/` pages byte-copied, both stamp commits
+  NO-PORT-ratified (bug 150's fix lands on the image-UPLOAD dialog v5 never
+  ported; v5's in-chat dialogs post through the dispatch client, never a REST
+  path) ∥ **five committed fixture pairs widened to v4's 4.10 vintage through
+  v4's own migration statements — SEVEN pre-existing differential reds
+  CLOSED with zero core change** (the seventh latent, never in any sweep;
+  three columns no round predicted, incl. BOTH llm-logs partitions lagging
+  P4.D49) ∥ **the Salon turn's per-character prompt-cache key carried on
+  every leg v4 carries it** — SEVEN emitting providers not six (the OAC base
+  class writes `user`), a NINTH v5 consumer found and fixed (Carina keys
+  under the ANSWERER), the corpus taught to see the key (RED-FIRST 76 of 78
+  calls), a force-final case that had never existed, the builders' emission
+  pins written for the first time. **The §3 review (four parallel readers +
+  the unifier's own reads): NO blocking finding — the seventh such round;
+  five should-fix groups landed at unification:** the OPENAI parser's DOUBLED
+  bag warnings (found twice over), the tool-unsupported retry's inherited
+  cache key, `chats.transcriptVersion` on the widened pairs (the lane's "no
+  v4 write ever names it" was FALSE — v4's migration adds it one step before
+  `generationKey`'s), the migrator's index gating + recipe set, the render
+  spec's missing label assertions. Gate: fmt + clippy both feature sets clean (re-checked after every fix); release build; the pinned 21-family sweep at `5f0a57dc4` 19 ok + 2 harness-side reds fixed and green by name, zero SKIP; 572 test binaries / 3,380 passed / 3 failed / 2 ignored with the 24-var block, zero `SKIP:` lines — the three reds the two harness fixes (green by name) and the known `/tmp/qt-imggen-*` staging collision (green through the driver on its own staging); ng 435 files / 7,382; full Playwright 322 passed / 0 failed / 6 skipped (the standing parks; P4.D197's beat LIVE and green). Versions: core
+  0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730; host/cli/tauri
+  unchanged. 💸 the dogfood queue gains a GPT Image 2.5 profile end to end
+  (the FIRST time v5 sends the four extras), bug 148's symptom gone on a
+  profile storing `hd`, a real `prompt_cache_key` on an OPENAI primary.
+  **Next: the `bcd7e4852` bug-151 catch-up, then the two follow-ups, then
+  the owed dogfood pass** — see phase-4.md. Round record: `status-log.md`.
+- **Oracle baseline: `5f0a57dc4` (2026-09-17, v4 main — "fix(images): the
+  manual image-generation dialog posts to a route that exists (bug 150)",
+  `4.10.0-dev.44`), adopted at the `53294163f` GPT-Image-2.5 drift catch-up +
+  maintenance round unification (2026-09-17).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — unify: the `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — the baseline moves to `5f0a57dc4`
+
+_Versions: core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730; host/cli/tauri unchanged._
+
+All four orders closed (P4.D196's Tier-2 item 10 and P4.95's tool-unsupported
+retry option bag deferred loudly by name, both ordered as follow-ups in
+`phase-4.md`). What landed: the OpenAI image capability table as one module
+with the OPENAI image dialect rewritten over it red-first against the
+`image-dialects` corpus re-recorded at the target (97 → 150 rows), the
+per-model options schema through the existing `options-schema` action, v4
+bugs 148 and 149 in `generate_image.rs` (v5 had both), the tool definition's
+moved bytes, one quality list at the tool schema and the `?action=generate`
+arm, the eight-model manifest, the openai-SDK wire re-check (every other
+recorded corpus byte-identical where the port did not move it); the SPA's
+eight-id fallback list, a recorded copy of v4's real options schema rendered
+in a 30-test spec plus a live beat, the two help pages byte-copied; the five
+committed fixture pairs widened to v4's 4.10 vintage through v4's own
+migration statements, closing seven pre-existing differential reds (the
+seventh latent, never in a sweep) with zero core change; and the Salon
+turn's per-character prompt-cache key carried on every leg v4 carries it
+(seven emitting providers, the Carina consultation included), the corpus
+taught to see it, and the builders' emission pins written for the first
+time.
+
+The §3 review (four parallel readers plus the unifier's own reads) found no
+blocking issue; the should-fixes landed in their own commit (the OPENAI
+parser's doubled bag warnings, the retry's inherited cache key,
+`chats.transcriptVersion` on the widened pairs, the migrator's index gating
+and recipe block, the render spec's label assertions, five comment repairs).
+Wires: the version recount, the beat flipped live, the `docs/v4/` mirror
+refreshed, the two lanes' schema recordings hashed identical on all five
+inputs. v4 drifted one commit mid-round (`bcd7e4852`, bug 151 — the image
+transport budget), recorded UNPROCESSED in the ledger; every regen ran from
+a pin at the new baseline.
+
+Gate: fmt + clippy both feature sets clean (re-checked after every fix); release build; the pinned 21-family sweep at `5f0a57dc4` 19 ok + 2 harness-side reds fixed and green by name, zero SKIP; 572 test binaries / 3,380 passed / 3 failed / 2 ignored with the 24-var block, zero `SKIP:` lines — the three reds the two harness fixes (green by name) and the known `/tmp/qt-imggen-*` staging collision (green through the driver on its own staging); ng 435 files / 7,382; full Playwright 322 passed / 0 failed / 6 skipped (the standing parks; P4.D197's beat LIVE and green).
+
 #### 2026-09-17 — fix(unify): two harness-side reds the unified sweep caught — `images_generate_route`'s three quality rows were never DRIVEN, and `salon_skip`'s seed bumped `transcriptVersion` twice where v4's batch bumps once
 
 _Versions: harness 0.0.834._

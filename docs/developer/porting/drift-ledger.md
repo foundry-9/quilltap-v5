@@ -19,53 +19,46 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `1fefadb9a`** — "fix(salon): send the cycle rotation to
-  the client so it stops guessing the turn (bug 147)" (v4 main, 2026-09-16
-  06:57, `4.10.0-dev.41`), adopted at the `1fefadb9a` bug-147 drift catch-up
-  + maintenance round unification (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93,
-  2026-09-16). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-17 (morning), a standalone `/driftcheck` from the main
-  checkout, run at the human's request right after the `53294163f` round was
-  ordered — and used to RE-POINT that round's four orders at the new HEAD
-  before any lane launched. Previously checked 2026-09-16 evening (the
-  standalone check that recorded PR #62) and at the `53294163f` round's
-  planning close (which found the tree dirty with the bug-150 fix in
-  flight — now committed as `5f0a57dc4`).
-- **v4 `main` HEAD at check:** `5f0a57dc4` ("fix(images): the manual
-  image-generation dialog posts to a route that exists (bug 150)",
-  `4.10.0-dev.44`, 2026-09-17 06:45) — **THREE commits past the baseline.**
+- **Oracle baseline: `5f0a57dc4`** — "fix(images): the manual image-generation
+  dialog posts to a route that exists (bug 150)" (v4 main, 2026-09-17 06:45,
+  `4.10.0-dev.44`), adopted at the `53294163f` GPT-Image-2.5 drift catch-up +
+  maintenance round unification (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95,
+  2026-09-17). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-17 (midday), at the `53294163f` round's `/unify` — its
+  opening §2 probe FAILED (v4 had moved one commit past the recorded HEAD
+  during the round), so the drift was classified there and the round's gate
+  ran from ONE pin at the new baseline. Previously checked 2026-09-17 morning
+  (the standalone `/driftcheck` that re-pointed the round at `5f0a57dc4`).
+- **v4 `main` HEAD at check:** `bcd7e4852` ("fix(images): send a model the
+  picture, not the archive of it (bug 151)", `4.10.0-dev.45`, 2026-09-17
+  10:15) — **ONE commit past the baseline.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content probe clean:
-  `git diff main bugfix -- lib app components` is main AHEAD of bugfix; no
+  `git diff main bugfix -- lib app components` is main ahead of bugfix; no
   unabsorbed bugfix work).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** (the five bug-150
-  paths the planning close recorded dirty are now the `5f0a57dc4` commit; the
-  recorded-dirt allowance in the orders' probe is withdrawn — a dirty tree is
-  a STOP again). No fetch was run.
-- **Verdict: DRIFT PENDING — 3 commits, ALL ORDERED.** §3 carries three rows,
-  every one `ORDERED` into the `53294163f` GPT-Image-2.5 round (P4.94 ∥
-  P4.D196 ∥ P4.D197 ∥ P4.95 — the label predates the third row): the large
-  PORT-NEW (`d8d2890ee`, PR #62, carrying v4 bugs 148 + 149 which v5
-  measurably HAS) and two NO-PORT? candidates (`53294163f`, a version stamp +
-  bundle rebuild; `5f0a57dc4`, bug 150's one-string client fix on a dialog v5
-  never ported + a stamp + eight bundle rebuilds). At unification the
-  baseline moves to `5f0a57dc4`.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**. No fetch was run.
+- **Verdict: DRIFT PENDING — 1 commit.** §3 carries one row UNPROCESSED — a
+  PORT on ported surfaces (the image transport budget: both attachment
+  loaders, the Lantern unseen-image walk, a new pure module, one `help/`
+  page). It is the next catch-up's first row.
 - **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
-  oracle regeneration must run from a worktree pinned per §5.1 — the two
-  drift lanes at the TARGET `5f0a57dc4`, every other family at the baseline
-  `1fefadb9a` — until the round moves the baseline. A regen from the checkout
-  now imports PR #62's code, including a `generate_image` tool definition
-  whose bytes have moved.
-- **The workspace gate is unaffected** — `public/schemas/` did not move in
-  any of the three commits, so `qtap_schema_embed_guard` stays green at
-  93,384 bytes.
-- **Schema state: CLEAR.** None of the three touches `lib/db/**` or
-  `generateDDL`, so no D23 re-dump is owed. **`help/**` has DRIFTED**: still
-  124 files, but two moved in `d8d2890ee` (`image-generation-profiles.md`,
-  `provider-recommendations.md`) — `5f0a57dc4` touches no `help/` file — so
-  v5's vendored tree is **no longer md5-identical** to v4's; the two-file
-  re-vendor is P4.D197's.
+  oracle regeneration must run from a worktree pinned at `5f0a57dc4` per §5.1
+  until a catch-up round moves the baseline. ⚠ Two detached worktrees created
+  under `/tmp` at this unification VANISHED between tool calls (registered,
+  directory gone; `worktree prune` cleared them) — pins live under the
+  session scratchpad now; verify every pin by `rev-parse` before its first
+  regen.
+- **The workspace gate is unaffected** — `public/schemas/` did not move, so
+  `qtap_schema_embed_guard` stays green at 93,384 bytes.
+- **Schema state: CLEAR.** `bcd7e4852` touches neither `lib/db/**` nor
+  `generateDDL`; no D23 re-dump is owed. **`help/**` has DRIFTED by one
+  file:** the vendored tree was md5-identical to v4 at `5f0a57dc4` after
+  P4.D197's re-vendor, and `bcd7e4852` moved `help/connection-profiles.md`
+  (+12, "A travelling portrait packs light") — the re-vendor rides the
+  catch-up. **The v4 checkout's four SDK-bundling plugin dirs still have
+  `openai` 7.10.0 installed** against a declared `^7.15.0` (P4.D196's
+  environment proof) — a human `npm install` item, recorded in phase-4.md.
 
 ## §2 The freshness probe
 
@@ -104,9 +97,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `d8d2890ee` | 2026-09-16 | Add GPT Image 2.5 models and complete OpenAI image parameters (#62) | **PORT-NEW** (carrying two PORT rows) | **The largest image-path change since the family was ported.** (a) **New feature:** `gpt-image-2.5-flare`/`-sunburst` with longest-prefix dated-snapshot resolution, and the four GPT Image parameters v4 had never sent (`quality` on GPT Image at all, `background`, `output_format`/`output_compression` with the returned `mimeType` following the requested format, `moderation`), plus arbitrary WxH resolutions (edges /16, AR 1:3..3:1, inside 3840x2160). Per-family capabilities in ONE new table `plugins/dist/qtap-plugin-openai/image-models.ts`; an unaccepted parameter is DROPPED WITH A WARNING, an unusable size falls back to 1024x1024. v5's native OPENAI image provider (`image_dialects.rs` / `model/image.rs`) + the manifests generator are the surfaces. (b) **The OpenAI plugin now implements `getImageProviderOptionsSchema`**, so the image-profile editor is schema-built per selected model and the hand-written OPENAI panel survives only as the schema-fetch-failure fallback (refreshed to the family union) — v5's image-profile editor + the `options-schema` action (P4.D138 units 5–7) and the SPA's manual generation dialog. (c) **v4 bug 148 — `generate_image`'s `.default(...)` on `size`/`style`/`quality` outranked the profile.** ⚠ **v5 measurably HAS it**: `crates/quilltap-core/src/tools/generate_image.rs:325-331` materializes all three (`SCHEMA_SIZES[0]`/`SCHEMA_STYLES[0]`/`SCHEMA_QUALITIES[0]`) and feeds them to the params builder as overrides — faithful to pre-fix v4, and live since P4.D138 made tool-input defaults apply. `count` keeps its default deliberately. (d) **v4 bug 149 — the injected default orientation erased an explicit `size`.** ⚠ **v5 measurably HAS it**: `generate_image.rs:628` `orientation_of()` is v4's `input.orientation ?? 'square'` verbatim, so the builder's orientation precedence applies unconditionally. v4's fix is a new `requestedOrientation()` consumed at BOTH call sites (ordinary + Concierge reroute). (e) **The shared `imageQualitySchema` (`lib/image-gen/quality.ts`, NEW)** replaces `z.enum(['standard','hd'])` on BOTH generate routes — v5's `api/images.rs:1461` (P4.73's `?action=generate`, 37-case oracle) and `image_profiles_routes_equivalence` (P4.67's Zod parse) both still spell the two-value enum, so a profile storing `max` is refused before the provider is called. (f) **Byte-exact catalog move:** the `generate_image` tool definition JSON changes (three `default` keys removed, `quality` enum + description widened, `size` gains `1536x1024`/`1024x1536`, `style` description) — v5's `tools/definitions/data.rs:167` and every recorded corpus embedding the tool catalog. (g) `@quilltap/plugin-types` 2.7.0 widens `ImageGenParams.quality` to 8 values and documents `quality` as a THIRD host-lifted field beside `size`/`aspectRatio`. (h) **openai SDK `^7.10.0` → `^7.15.0`** — the provider-corpus wire re-check (the P4.D44/P4.D76 shape). (i) `help/image-generation-profiles.md` + `help/provider-recommendations.md` — the vendored tree re-vendor. (j) `docs/developer/IMAGE_GENERATION.md` — the `docs/v4/` mirror. **NOT a v5 exposure: v4 bug 150** (the manual dialog posting the dead `/api/v1/images/generate`) is filed OPEN and deliberately unfixed here; v5's `apps/web/src/app/images/generate-image-dialog.ts` already goes through `?action=generate`, so there is nothing to port — confirm during the lane rather than assume. | ORDERED(P4.D196, P4.D197) |
-| `53294163f` | 2026-09-16 | docs: Update version | **NO-PORT?** | Version stamp only — `README.md`'s badge and both `package.json`s move `4.10.0-claude-amazing-fermi-3hh73g.44` → `4.10.0-dev.43` (a CI-tagged dev version normalized), plus a rebuild of all fifteen bundled `plugins/dist/*/index.js` artifacts (net −24k lines: the openai-SDK bundle churn from `d8d2890ee` settling). **No `lib/`, `app/`, `components/`, `packages/*/src`, `help/` or `public/schemas/` hunks**, and no `manifest.json` content beyond the version bumps already carried by `d8d2890ee`. v5 consumes v4's plugin SOURCES (`index.ts`/`manifest.json`) for the manifests generator, never the bundled `index.js`. Ratify on the file list at the catch-up. | ORDERED(P4.D197) |
-| `5f0a57dc4` | 2026-09-17 | fix(images): the manual image-generation dialog posts to a route that exists (bug 150) | **NO-PORT?** | ONE string in `components/images/image-generation-dialog.tsx:174` (`/api/v1/images/generate` → `/api/v1/images?action=generate`), its suite renamed `.test.ts` → `.test.tsx` gaining a render test that asserts the REQUESTED URL, `docs/developer/bugs.md` + the filing moved to `bugs/fixed/`, `docs/CHANGELOG.md`, `README.md`, three `package.json`s + the lockfile (`4.10.0-dev.43` → `.44`), and eight `plugins/dist/*/index.js` rebuilt (openai-SDK streaming churn — no plugin SOURCE, `manifest.json`, `lib/`, `app/`, `help/` or `public/schemas/` hunk). **v5 has NO twin of that dialog** — `grep -rn 'image-generation-dialog\|ImageGenerationDialog' apps/web/src` hits only the CHAT dialog's port (`images/generate-image-dialog.ts`, a port of `components/chat/GenerateImageDialog.tsx`); the fixed file is the image-UPLOAD dialog reached from the character editor / avatar selector, which v5 never ported. So the client hunk is a NO-COUNTERPART, not a convergence (v5 never filed bug 150), and the rest is the `53294163f` class. ⚠ The `d8d2890ee` row's "v5's dialog already goes through `?action=generate`" reasoned from the wrong file (the chat dialog's port); the conclusion holds for the right reason — there is nothing in v5 to fix. P4.D197 ratifies both stamp commits on their file lists and records the measurement. | ORDERED(P4.D197) |
+| `bcd7e4852` | 2026-09-17 | fix(images): send a model the picture, not the archive of it (bug 151) | **PORT** | **Landed MID-ROUND (10:15, after the `53294163f` round's lanes had launched) — recorded by the round's `/unify` opening probe; UNPROCESSED, the next catch-up's first row.** Bug 151: two 2.2 MB base64 avatars, each under the provider's 4 MB per-image ceiling, summed to 4.52 MB and NanoGPT answered `413 Request Entity Too Large`; the token budget could not see it (image bytes are not tokens). The fix separates STORAGE from TRANSPORT: (a) NEW `lib/files/llm-image-budget.ts` (191) — `shrinkImageForLlmTransport({buffer, mimeType, provider, filename})`: long edge capped at `LLM_TRANSPORT_MAX_EDGE = 1024` (never enlarging), re-encoded WebP down a quality ladder `[78, 65, 55, 45]` until the base64 fits `min(LLM_TRANSPORT_TARGET_BASE64 = 500 KiB, getProviderMaxBase64Size(provider))`; a small-enough input is returned unchanged; a re-encode that GREW a ≤1024-edge input is discarded; never throws (an unresizable format / an encode failure returns the input with `wasShrunk: false` + a WARN `Could not shrink image for LLM transport; sending stored bytes`); a DEBUG `Image shrunk for LLM transport` bag on success; `LANTERN_IMAGE_BASE64_BUDGET = 2 MiB` per turn. (b) `lib/chat-files-v2.ts` `readFileAsBase64` (+27) and `loadMountFileAsAttachment` (+18): the shrink runs FIRST on every image bound for a model (gated on the caller's `provider`/`autoResize` switch — an `autoResize: false` caller still gets stored bytes verbatim), then the existing provider-ceiling resize as a BACKSTOP over the (possibly WebP) output. (c) `lib/services/chat-message/context-builder.service.ts` (+50/−?): the Lantern unseen-image walk under `ASSISTANT_IMAGE_LOOKBACK = 6` now spends `LANTERN_IMAGE_BASE64_BUDGET` NEWEST-FIRST over `fileAttachment.data.length` (the wire bytes, post-shrink), drops what does not fit (`droppedForBudget`), WARNs `Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent` `{droppedForBudget, kept, budget, budgetUsed, characterParticipantId}`, and restores CHRONOLOGICAL order for both the describe-fallback prefixes and the attachments (`reverse()` twice). (d) `help/connection-profiles.md` (+12 — "A travelling portrait packs light"); `CLAUDE.md` (v4's, one rule line); `docs/developer/bugs.md` + `bugs/fixed/bug-151-…md`; the 211-line `__tests__/unit/lib/files/llm-image-budget.test.ts`; version stamps `4.10.0-dev.45`. **v5 surfaces (all ported):** `services/chat_files.rs` `read_file_as_base64` (`:78`) + `load_mount_file_as_attachment` (`:134`) with `files/image_processing.rs` (`resize_image_for_provider`, `get_provider_max_base64_size`, `calculate_base64_size`) — the P4.D109/W4.4b attachment loaders; `services/message_context.rs`'s unseen-image walk (`ASSISTANT_IMAGE_LOOKBACK` twin — the P4.D106/P4.D109 anchor family); the host pixel codec seam P4.73 threaded into chat uploads (`NotConfiguredPixelCodec` / the host codec) is where a `sharp`-class resize+WebP re-encode must come from — core has no image codec, so the shrink is a HOST-side leg behind a core budget; the `help/` re-vendor (the vendored tree is md5-identical to v4 at `5f0a57dc4` after P4.D197 and lags again by this one file). Differentials to grow: `file_attachment_tier3` (the loaders), `build_context_tier3` / `orchestrator_tier3` (the walk's budget + order), a NEW tier-1 family over the budget module's pure arms (the ladder, the ceiling, the grow-discard rule) with the codec mocked below v4's real function. Not a convergence (v5 filed nothing here). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -260,6 +251,28 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round
+  (2026-09-17, baseline `1fefadb9a` → `5f0a57dc4`):** `d8d2890ee`
+  ABSORBED(P4.D196 — the OpenAI image capability table as one module
+  [`model/openai_image_models.rs`, eight families, exact-then-longest-prefix],
+  the OPENAI dialect rewritten over it red-first against the `image-dialects`
+  corpus re-recorded at the target [97 → 150 rows; exactly the seven predicted
+  pre-existing rows moved], the per-model options schema [`model/
+  openai_image_options.rs`] through the existing `options-schema` action, v4
+  bugs 148 + 149 in `generate_image.rs` [v5 measurably had both], the tool
+  definition's bytes, the ONE quality list [`image_gen/quality.rs`] at the tool
+  schema and the `?action=generate` arm, the eight-model manifest, the
+  openai-SDK wire re-check [every other recorded corpus byte-identical] ∥
+  P4.D197 — the offline fallback list in v4's CLIENT order, the modal header's
+  recorded divergence, a recorded copy of v4's REAL `getOpenAIImageOptionsSchema`
+  rendered in a 28-test spec + the live beat, the two `help/` pages
+  byte-copied [124 stays 124]); `53294163f` and `5f0a57dc4`
+  NO-PORT-RATIFIED(P4.D197 — both `--name-status` lists in the lane record;
+  bug 150's client fix lands on the image-UPLOAD dialog v5 never ported, and
+  v5's two in-chat generate dialogs post through the dispatch client, never a
+  REST path, so the class is unreachable by construction). Round record:
+  `status-log.md` → "Round record — the `53294163f` GPT-Image-2.5 drift
+  catch-up + maintenance round unification".
 - **The `1fefadb9a` bug-147 drift catch-up + maintenance round (2026-09-16,
   baseline `2075242f9` → `1fefadb9a`):** `1fefadb9a` ABSORBED(P4.D195 — the
   chat GET projects `spokenThisCycleParticipantIds` + `cycleOrderParticipantIds`
