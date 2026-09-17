@@ -628,6 +628,27 @@ pub fn image_provider_list() -> Response {
 /// four (`prompt/chatId/count` + the profile id); v4's `size/quality/style/
 /// aspectRatio/negativePrompt` extras are the KNOWN narrowing divergence and stay
 /// `None`.
+///
+/// **P4.D196 measured that divergence rather than assuming it.** v4 at
+/// `5f0a57dc4` DOES thread all five: `generateImageSchema` parses them
+/// (`app/api/v1/image-profiles/[id]/route.ts:21-29`) and the handler hands
+/// every one to `executeImageGenerationTool` (`:246-255`), so a caller of this
+/// route can shape the image and a v5 caller cannot. `d8d2890ee` widened that
+/// schema's `quality` from `z.enum(['standard','hd'])` to the shared
+/// `imageQualitySchema`, which is a NO-OP for v5 precisely because v5 never
+/// parsed the key.
+///
+/// Closing it is an ORDERED FOLLOW-UP, not this lane's: the five fields have to
+/// reach `Request::ImageProfileGenerate` (`api/types.rs`), its `engine.rs` arm,
+/// the `quilltap-web` body parser and the dispatch wrong-type census — four
+/// files P4.D196 does not own, and a contract widening its sibling SPA lane
+/// cannot see (§S.3). The shape, for whoever takes it: add
+/// `size/quality/style/aspect_ratio/negative_prompt` to the variant as
+/// `Option<String>`, parse `quality` through
+/// [`crate::image_gen::quality::is_image_quality`] and `style` through
+/// `['vivid','natural']` (400 `Validation error` on either), leave `size` and
+/// `aspectRatio` as free strings as v4's `z.string()` does, and grow
+/// `image_generate_route_equivalence` a row per field.
 pub async fn image_profile_generate(
     db: &Db,
     runner: &ErasedImageGeneration,

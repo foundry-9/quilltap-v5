@@ -89,6 +89,32 @@ each regenerated fresh from the pin and run by name: `salon_mutations`,
 this lane's pre/post sibling measurement found (all ten of its generate cases
 answered 500 where v4 answers 201). Seven more readers were green before and
 after.
+#### 2026-09-17 — test(images): the OpenAI dialect's local pins, and the profile-generate narrowing measured
+
+_Versions: core 0.0.939._
+
+The `d8d2890ee` lane's Tier-2 items.
+
+Unit pins for the OpenAI body: the assembled key order with all four GPT Image
+extras, the unrecognised-model passthrough (size, quality and `n` all
+forwarded), the bare-prefix fallback that still keeps `response_format` and
+`style` off an unknown `gpt-image-*`, and the absent-model body that carries no
+`model` key at all. Fast and corpus-free, so a capability-table edit reddens
+locally before anyone runs a regen.
+
+Measured, not assumed: v4's `POST /api/v1/image-profiles/[id]?action=generate`
+DOES thread `size` / `quality` / `style` / `aspectRatio` / `negativePrompt`
+from its parsed body into the tool input, so v5's prompt-and-count narrowing is
+a real gap — `d8d2890ee`'s widening of that schema's `quality` is a no-op for
+v5 precisely because v5 never parsed the key. Closing it needs `api/types.rs`,
+`engine.rs`, the web body parser and the dispatch census, so it is an ordered
+follow-up; the doc comment now carries the measurement and the exact shape.
+
+Also measured: `image_gen/params_builder.rs` already lifts `quality` onto the
+named field beside `size` and `aspectRatio`, matching v4's
+`HOST_OWNED_PARAMETER_KEYS` — `d8d2890ee`'s documentation change describes
+behaviour v5 already had.
+
 #### 2026-09-17 — feat(images): bugs 148 + 149, the shared quality list, the OpenAI options schema and the eight-model manifest
 
 _Versions: core 0.0.938, harness 0.0.829._

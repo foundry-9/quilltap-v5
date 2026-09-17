@@ -2611,6 +2611,64 @@ mod tests {
         }
     }
 
+    /// The body's KEY ORDER is v4's assignment order, and an unrecognised model
+    /// is forwarded untouched — size, quality and `n` all uncapped, plus the
+    /// `response_format`/`style` a bare non-`gpt-image-` prefix still earns.
+    ///
+    /// Fast, no corpus: a table edit reddens here before anyone runs a regen.
+    #[test]
+    fn body_key_order_and_the_unknown_model_passthrough() {
+        let mut p = params_with_bag(
+            "gpt-image-2.5-sunburst",
+            serde_json::json!({
+                "background": "transparent",
+                "output_format": "webp",
+                "output_compression": 80,
+                "moderation": "low"
+            }),
+        );
+        p.size = Some("1536x864".into());
+        p.quality = Some("max".into());
+        let (_, body) = build_openai(&p);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"model":"gpt-image-2.5-sunburst","prompt":"a cat","n":1,"size":"1536x864","quality":"max","background":"transparent","output_format":"webp","output_compression":80,"moderation":"low"}"#
+        );
+
+        // An unknown `gpt-image-*` id: no caps, so everything rides and the
+        // bare-prefix fallback still keeps `response_format` and `style` off.
+        let mut u = params("gpt-image-3-supernova");
+        u.size = Some("4096x4096".into());
+        u.quality = Some("ludicrous".into());
+        u.n = Some(50.0);
+        let (_, body) = build_openai(&u);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"model":"gpt-image-3-supernova","prompt":"a cat","n":50,"size":"4096x4096","quality":"ludicrous"}"#
+        );
+
+        // An unknown NON-gpt-image id: the same passthrough, but it DOES get
+        // `response_format` and a defaulted `style`.
+        let mut m = params("mystery-painter-9");
+        m.size = Some("4096x4096".into());
+        let (_, body) = build_openai(&m);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"model":"mystery-painter-9","prompt":"a cat","n":1,"response_format":"b64_json","size":"4096x4096","quality":"standard","style":"vivid"}"#
+        );
+
+        // No model at all: `requestParams.model = params.model` is the RAW
+        // value, so the key never reaches the wire while `?? 'dall-e-3'` drove
+        // every validation.
+        let mut none = params("");
+        none.n = Some(1.0);
+        let (_, body) = build_openai(&none);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"prompt":"a cat","n":1,"response_format":"b64_json","size":"1024x1024","quality":"standard","style":"vivid"}"#
+        );
+    }
+
     /// The GPT Image extras never reach a DALL·E body, and the readers never
     /// even run — so a bag full of rubbish on a DALL·E profile is silent.
     #[test]
