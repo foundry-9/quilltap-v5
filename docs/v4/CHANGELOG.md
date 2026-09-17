@@ -4,6 +4,119 @@
 
 ### 4.10-dev
 
+#### Fixed: the manual image-generation dialog's Generate button did nothing (bug 150)
+
+The dialog posted to `/api/v1/images/generate`, a path no route serves — it resolved to the item
+route with `id = "generate"`, a 404. The generate action actually lives at
+`POST /api/v1/images?action=generate`. The dialog's own test suite never caught it because it
+asserted against a fetch call the test made itself, never against what the component requests; it
+now renders the real component and checks the URL.
+
+#### Added: GPT Image 2.5 (Flare and Sunburst), and the rest of the OpenAI image parameters
+
+Two new OpenAI image models: `gpt-image-2.5-flare` (faster and cheaper, at GPT Image 2 quality)
+and `gpt-image-2.5-sunburst` (slower and more expensive, better at detailed editing). Dated
+snapshots such as `gpt-image-2.5-flare-2026-09-08` resolve to their family automatically.
+
+With them, four parameters the plugin never sent:
+
+- **Quality** — `auto`/`low`/`medium`/`high` on every GPT Image model, plus `xhigh` and `max` on
+  the 2.5 pair. Previously only DALL-E's `standard`/`hd` were offered, and quality was not sent to
+  GPT Image models at all.
+- **Background** — `transparent` cuts the subject out, which is what avatars want. Asking for
+  transparency with a JPEG output format switches the format to PNG rather than flattening it.
+- **Output format** and **output compression** — `png`/`jpeg`/`webp`, with compression applied only
+  where it means something. The returned image's MIME type now matches the format requested
+  instead of always claiming PNG.
+- **Moderation** — `auto` or the less restrictive `low`. Not an off switch; OpenAI's usage policies
+  still apply.
+
+GPT Image 2 and both 2.5 models also accept arbitrary resolutions: any `WIDTHxHEIGHT` with both
+edges divisible by 16, an aspect ratio between 1:3 and 3:1, and up to 3840x2160. Anything above
+2560x1440 is experimental.
+
+The OpenAI plugin now implements `getImageProviderOptionsSchema`, so the image-profile editor is
+built per selected model instead of using the old hand-written panel — a model is never offered a
+knob it would reject. Parameters a model does not accept are dropped with a warning rather than
+sent, because the Images API rejects the whole request over one unknown value; an unusable size
+falls back to 1024x1024.
+
+Per-family capabilities live in one table (`plugins/dist/qtap-plugin-openai/image-models.ts`) that
+the wire logic, the host's model list and the editor schema all read from.
+
+The manual image-generation dialog's OpenAI controls were DALL-E-shaped too — its size list held
+no GPT Image size but 1024x1024, and its quality picker offered only Standard/HD, with Standard
+sent on every generation. Both lists now span the families, and quality defaults to sending
+nothing so the profile's own setting stands.
+
+The `openai` SDK is updated to 7.15.0 in the main app and all six plugins that use it.
+
+`@quilltap/plugin-types` 2.7.0 widens `ImageGenParams.quality` past DALL-E's `standard`/`hd` to
+cover the GPT Image tiers. The host stores and forwards the value without interpreting it, so the
+union is the sum of what the plugins accept and each plugin validates its own model's subset.
+Purely widening — no existing plugin changes behavior. The app now requires `^2.7.0`; the plugins
+still build against `^2.6.0`, since none of their own code depends on the wider type.
+
+#### Fixed: the new quality tiers were rejected by the HTTP generate routes
+
+Caught in review. The GPT Image tiers reached the `generate_image` tool schema, but
+`POST /api/v1/images?action=generate` and `POST /api/v1/image-profiles/[id]?action=generate` each
+spelled the union out for themselves and still read `standard`/`hd` — so a profile could store
+`max` and those routes would reject it before the provider was ever called. All three now share
+one `imageQualitySchema` (`lib/image-gen/quality.ts`), pinned to `ImageGenParams['quality']` by
+compile-time assertions in both directions: adding a tier to one without the other is now a build
+error rather than a silent rejection. Image profile *saving* was never affected — `parameters` is
+stored as an open bag.
+
+#### Fixed: `generate_image`'s `size` parameter has never done anything (bug 149)
+
+The params builder lets orientation outrank a raw `size`, deliberately — a caller asking for a
+shape means the shape. But the handler passed `orientation: toolInput.orientation ?? 'square'`,
+so the builder was told a shape had been requested on every call, and square's 1024x1024 landed on
+top of whatever size the merge produced. No input survived it. The default is now injected only
+when the model named no size of its own; an explicit orientation still wins over an explicit size.
+The same line was also discarding the profile's configured default size.
+
+#### Fixed: image profile size, quality and style were ignored in chat (bug 148)
+
+The `generate_image` tool's schema declared `size`, `quality` and `style` with Zod `.default(...)`.
+Zod applies those defaults when the key is absent, and the tool's parsed output is handed to the
+params builder as *overrides* — which outrank the profile's stored settings by design. So every
+image a character generated carried `standard`/`1024x1024`/`vivid` regardless of what the profile
+said. The defaults are removed; an omitted field now leaves the profile's value in place. `count`
+keeps its default of 1 deliberately.
+
+#### Fixed: the Salon no longer guesses whose turn it is (bug 147)
+
+The turn rotation for a cycle is drawn once and stored on the chat, so that every reader agrees
+about who follows whom. The Salon recomputes "whose turn is it" in the browser from that stored
+rotation plus the message history — but `GET /api/v1/chats/[id]` was not sending the two columns
+it reads. Both arrived as `undefined`, which reads as an empty rotation and an empty
+spoken-this-cycle set: exactly what a brand-new chat looks like.
+
+So the browser never followed the rotation. It fell back to a fresh weighted-random pick on every
+recompute, contradicting the decision the server had already made and saved. Two things showed it:
+
+- The turn banner named the wrong character, and its **Skip** passed the wrong turn — recording
+  "X declining the floor" for a character who had just spoken, and leaving the real turn
+  outstanding so you were prompted twice. Worst in rooms where you drive two characters, where the
+  server hands the floor from one of yours to the other.
+- The participant sidebar's predicted order was a talkativeness guess rather than the real
+  rotation, and no character was ever marked as having already spoken this cycle.
+
+Both columns are now sent, as the JSON strings the turn code already parses, defaulting to `[]`
+for rows that predate them. The turn API's response also carries the rotation, and the client no
+longer discards it. A test now asserts directly that the browser and the server pick the same
+speaker from the same inputs, rather than assuming it.
+
+This supersedes the previous entry's diagnosis: bug 146's fix was necessary but not sufficient —
+it keyed the banner to the browser's answer, which was itself wrong.
+
+Files: `app/api/v1/chats/[id]/handlers/get.ts`, `app/salon/[id]/hooks/useTurnManagement.ts`,
+`__tests__/unit/app/api/v1/chats/[id]/handlers/get.test.ts`,
+`__tests__/unit/lib/chat/turn-manager/client-server-agreement.test.ts`,
+`help/chat-turn-manager.md`.
+
 #### Fixed: Skip now passes the turn that is actually outstanding (bug 146)
 
 When you drive two characters in one room — your own plus a guest whose pen you have taken up —

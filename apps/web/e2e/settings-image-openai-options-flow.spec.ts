@@ -43,7 +43,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * probe would silently park the beat forever instead of failing loudly when
  * the server half regresses (the standing e2e rule).
  */
-const P4D196_SERVER_LANDED = false;
+const P4D196_SERVER_LANDED = true;
 
 /** The 2.5 family: six quality tiers, the thirteen wide sizes, no style. */
 const SUNBURST = 'gpt-image-2.5-sunburst';
