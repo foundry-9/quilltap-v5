@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-16 — docs(porting): record the `53294163f` drift — v4's GPT Image 2.5 PR and a version stamp
+
+_Docs-only change._
+
+A standalone `/driftcheck` from the main checkout. v4 landed two commits
+past the `1fefadb9a` baseline that evening, so the verdict moves to **DRIFT
+PENDING — 2 commits** and the regen rule flips to **PIN REQUIRED**.
+
+`d8d2890ee` (PR #62) is PORT-NEW and large: the two GPT Image 2.5 models
+with longest-prefix dated-snapshot resolution, the four GPT Image parameters
+the plugin had never sent, arbitrary resolutions, a per-family capability
+table, `getImageProviderOptionsSchema` on the OpenAI plugin (so the
+image-profile editor is schema-built per model), a shared
+`imageQualitySchema` widening both generate routes past `standard`/`hd`, the
+openai SDK at `^7.15.0`, and a moved `generate_image` tool definition. It
+carries v4 bugs 148 and 149, and the check measured **v5 has both**:
+`generate_image.rs:325-331` materializes the three schema defaults that
+outrank the profile, and `orientation_of()` at :628 is v4's
+`input.orientation ?? 'square'` verbatim, so the builder's orientation
+precedence applies on every call and an explicit `size` cannot survive. v4
+bug 150 is filed OPEN and is not a v5 exposure — the SPA's dialog already
+goes through `?action=generate`.
+
+`53294163f` is a version stamp plus a rebuild of the fifteen bundled plugin
+artifacts, with no `lib/`, `app/`, `components/`, `packages/*/src`, `help/`
+or `public/schemas/` hunks — a NO-PORT? candidate to ratify on the file list.
+
+Also recorded: `help/**` stays at 124 files but two of them moved, so v5's
+vendored tree is no longer md5-identical and a two-file re-vendor is owed;
+no DDL moved, so no D23 re-dump is owed; `qtap_schema_embed_guard` stays
+green.
+
 #### 2026-09-16 — docs(porting): unify the `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — the baseline moves to `1fefadb9a`
 
 _Docs-only change._

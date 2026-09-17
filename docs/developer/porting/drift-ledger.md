@@ -24,29 +24,34 @@ probe verifies against._
   06:57, `4.10.0-dev.41`), adopted at the `1fefadb9a` bug-147 drift catch-up
   + maintenance round unification (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93,
   2026-09-16). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-16 at the CLOSE of that round's `/unify` (the probe
-  was run at the unification's open, before the docs commit, and again after
-  the fast-forward, per `/unify` §6). Previously checked at the round's
-  `/setupphase` the same morning.
-- **v4 `main` HEAD at check:** `1fefadb9a` — **AT the baseline, zero
-  drift.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED.
+- **Checked:** 2026-09-16, a standalone `/driftcheck` from the main checkout
+  (v4 committed PR #62 and a version stamp that evening). Previously checked
+  the same day at the close of the `1fefadb9a` round's `/unify`.
+- **v4 `main` HEAD at check:** `53294163f` ("docs: Update version",
+  `4.10.0-dev.43`) — **TWO commits past the baseline.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content probe clean).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: NO DRIFT.** §3 is EMPTY.
-- **Regen rule: NO PIN REQUIRED** — HEAD is the baseline and the tree is
-  clean, so a regen from the checkout imports exactly the baseline's code.
-  A lane-unique pin stays the recommended discipline for any multi-unit lane
-  (the checkout can go dirty mid-lane — §5.1), but nothing currently forces
-  it.
-- **The workspace gate is unaffected** — `public/schemas/` did not move
-  across `2075242f9..1fefadb9a`, so `qtap_schema_embed_guard` stays green at
-  93,384 bytes.
-- **Schema state: CLEAR at the baseline.** The round moved no DDL (bug 147
-  is a projection + a client field + one help line), so no D23 re-dump was
-  owed. `help/**` is **124 files**, v5's vendored tree md5-identical to v4's
-  at `1fefadb9a` after P4.D195's one-file re-vendor.
+- **Checkout at check:** branch **`main`**, tree **CLEAN**. No fetch was run;
+  local `main` had no unmerged `origin/main` commits recorded.
+- **Verdict: DRIFT PENDING — 2 commits.** §3 carries both rows UNPROCESSED.
+  One is a large PORT-NEW on ported surfaces (v4's GPT Image 2.5 /
+  OpenAI-image-parameter PR #62, carrying v4 bugs 148 + 149, **both of which
+  v5 measurably HAS**); the other is a version stamp + plugin-bundle rebuild,
+  a NO-PORT? candidate.
+- **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
+  oracle regeneration must run from a worktree pinned at `1fefadb9a` (§5.1)
+  until a catch-up round moves the baseline. A regen from the checkout now
+  imports PR #62's code — including a `generate_image` tool definition whose
+  bytes have moved.
+- **The workspace gate is unaffected** — `public/schemas/` did not move in
+  either commit, so `qtap_schema_embed_guard` stays green at 93,384 bytes.
+- **Schema state: CLEAR.** Neither commit touches `lib/db/**` or
+  `generateDDL`, so no D23 re-dump is owed. **`help/**` has DRIFTED**: still
+  124 files, but two of them moved in `d8d2890ee`
+  (`image-generation-profiles.md`, `provider-recommendations.md`), so v5's
+  vendored tree is **no longer md5-identical** to v4's — a two-file re-vendor
+  is owed with the catch-up.
 
 ## §2 The freshness probe
 
@@ -85,6 +90,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `d8d2890ee` | 2026-09-16 | Add GPT Image 2.5 models and complete OpenAI image parameters (#62) | **PORT-NEW** (carrying two PORT rows) | **The largest image-path change since the family was ported.** (a) **New feature:** `gpt-image-2.5-flare`/`-sunburst` with longest-prefix dated-snapshot resolution, and the four GPT Image parameters v4 had never sent (`quality` on GPT Image at all, `background`, `output_format`/`output_compression` with the returned `mimeType` following the requested format, `moderation`), plus arbitrary WxH resolutions (edges /16, AR 1:3..3:1, inside 3840x2160). Per-family capabilities in ONE new table `plugins/dist/qtap-plugin-openai/image-models.ts`; an unaccepted parameter is DROPPED WITH A WARNING, an unusable size falls back to 1024x1024. v5's native OPENAI image provider (`image_dialects.rs` / `model/image.rs`) + the manifests generator are the surfaces. (b) **The OpenAI plugin now implements `getImageProviderOptionsSchema`**, so the image-profile editor is schema-built per selected model and the hand-written OPENAI panel survives only as the schema-fetch-failure fallback (refreshed to the family union) — v5's image-profile editor + the `options-schema` action (P4.D138 units 5–7) and the SPA's manual generation dialog. (c) **v4 bug 148 — `generate_image`'s `.default(...)` on `size`/`style`/`quality` outranked the profile.** ⚠ **v5 measurably HAS it**: `crates/quilltap-core/src/tools/generate_image.rs:325-331` materializes all three (`SCHEMA_SIZES[0]`/`SCHEMA_STYLES[0]`/`SCHEMA_QUALITIES[0]`) and feeds them to the params builder as overrides — faithful to pre-fix v4, and live since P4.D138 made tool-input defaults apply. `count` keeps its default deliberately. (d) **v4 bug 149 — the injected default orientation erased an explicit `size`.** ⚠ **v5 measurably HAS it**: `generate_image.rs:628` `orientation_of()` is v4's `input.orientation ?? 'square'` verbatim, so the builder's orientation precedence applies unconditionally. v4's fix is a new `requestedOrientation()` consumed at BOTH call sites (ordinary + Concierge reroute). (e) **The shared `imageQualitySchema` (`lib/image-gen/quality.ts`, NEW)** replaces `z.enum(['standard','hd'])` on BOTH generate routes — v5's `api/images.rs:1461` (P4.73's `?action=generate`, 37-case oracle) and `image_profiles_routes_equivalence` (P4.67's Zod parse) both still spell the two-value enum, so a profile storing `max` is refused before the provider is called. (f) **Byte-exact catalog move:** the `generate_image` tool definition JSON changes (three `default` keys removed, `quality` enum + description widened, `size` gains `1536x1024`/`1024x1536`, `style` description) — v5's `tools/definitions/data.rs:167` and every recorded corpus embedding the tool catalog. (g) `@quilltap/plugin-types` 2.7.0 widens `ImageGenParams.quality` to 8 values and documents `quality` as a THIRD host-lifted field beside `size`/`aspectRatio`. (h) **openai SDK `^7.10.0` → `^7.15.0`** — the provider-corpus wire re-check (the P4.D44/P4.D76 shape). (i) `help/image-generation-profiles.md` + `help/provider-recommendations.md` — the vendored tree re-vendor. (j) `docs/developer/IMAGE_GENERATION.md` — the `docs/v4/` mirror. **NOT a v5 exposure: v4 bug 150** (the manual dialog posting the dead `/api/v1/images/generate`) is filed OPEN and deliberately unfixed here; v5's `apps/web/src/app/images/generate-image-dialog.ts` already goes through `?action=generate`, so there is nothing to port — confirm during the lane rather than assume. | UNPROCESSED |
+| `53294163f` | 2026-09-16 | docs: Update version | **NO-PORT?** | Version stamp only — `README.md`'s badge and both `package.json`s move `4.10.0-claude-amazing-fermi-3hh73g.44` → `4.10.0-dev.43` (a CI-tagged dev version normalized), plus a rebuild of all fifteen bundled `plugins/dist/*/index.js` artifacts (net −24k lines: the openai-SDK bundle churn from `d8d2890ee` settling). **No `lib/`, `app/`, `components/`, `packages/*/src`, `help/` or `public/schemas/` hunks**, and no `manifest.json` content beyond the version bumps already carried by `d8d2890ee`. v5 consumes v4's plugin SOURCES (`index.ts`/`manifest.json`) for the manifests generator, never the bundled `index.js`. Ratify on the file list at the catch-up. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
