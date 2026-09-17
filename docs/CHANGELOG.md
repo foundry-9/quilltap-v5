@@ -221,6 +221,36 @@ dispatcher and the tool schema follow in this lane's later commits. Unit tests
 pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
 beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
 size shapes v4's `it.each` names, and the schema's group/field shape per family.
+#### 2026-09-17 — docs(porting): the P4.D197 lane record and the two NO-PORT ratifications
+
+_No crate versions bumped._
+
+The lane record for the `d8d2890ee` drift's client half: what landed, the two
+order premises refuted by measurement (three experimental sizes not two;
+fourteen rebuilt plugin bundles not fifteen), the five mutation proofs, the
+regen recipes as run, and the gate.
+
+The two stamp commits are ratified NO-PORT on their `--name-status` lists.
+`53294163f` is version markers plus fourteen `plugins/dist/*/index.js`
+rebuilds, which v5 never imports — it consumes plugin SOURCES through the
+manifests generator. `5f0a57dc4` is that class plus v4's own bug bookkeeping
+plus one code hunk, bug 150's dead-URL fix, which is a measured NO-COUNTERPART:
+v5 never ported `components/images/image-generation-dialog.tsx` or the upload
+dialog that mounts it, and both v5 surfaces that correspond to v4's mount
+points say so in their headers as named deferrals.
+
+That corrects the ledger's reasoning by a new record, as §R.7 requires. The
+`d8d2890ee` row reasoned from `images/generate-image-dialog.ts`, which is the
+CHAT dialog's port; the `5f0a57dc4` row caught that. The real reason is
+narrower than either: v5 has no twin of the fixed file, and the two dialogs it
+does have never build a REST path at all — they post through the dispatch
+client — so bug 150's class is unreachable by construction rather than by
+having spelled a URL correctly.
+
+Also recorded for the unifier: the `docs/v4/` mirror paths with byte counts at
+the pin (§R.9), the `diff -q` handoff against P4.D196's recording of the same
+function (§R.10(c)), and the gate constant to flip (§R.10(d)).
+
 #### 2026-09-17 — port(help): re-vendor the two GPT-Image-2.5 help pages (v4 `d8d2890ee`)
 
 _Versions: harness 0.0.828._

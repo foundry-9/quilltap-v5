@@ -131216,3 +131216,364 @@ column, with two one-line module registrations the new modules require —
 route's five optional fields), deferred loudly with its shape for a follow-up
 order. Everything else in Tiers 1 and 2 landed; Tier 3's deferrals stand as
 written.
+
+---
+
+## Lane record — P4.D197, the `d8d2890ee` drift's CLIENT half + help + the `53294163f` / `5f0a57dc4` ratifications (2026-09-17)
+
+Branch `claude/p4-d197-gpt-image-spa-d6b27c`, three commits, from `main`
+`6d78d229`. The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round
+(P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95). Oracle baseline `1fefadb9a`; every regen
+from the lane-unique pin `/tmp/qt-v4-pin-p4d197-5f0a57dc4` at the TARGET
+`5f0a57dc4` (§R.3 — PIN REQUIRED).
+
+**Freshness probe (§R.2):** PASS at lane open and again before the regen batch
+— branch `main`, tree CLEAN, `log 5f0a57dc4..main` and `log 1a2b2164c..bugfix`
+both EMPTY, HEAD `5f0a57dc4`. `git worktree list` before the batch showed the
+four lane pins, no shared path.
+
+### What landed
+
+**Item 1 — the offline OPENAI model list** (`image-profile-form.ts:18`).
+v5 carried four ids; v4 carries eight. Byte-copied from v4's CLIENT file
+(`ImageProfileForm.tsx:49`), spec-pinned in `image-profile-form.spec.ts` with
+a second spec pinning the ORDER.
+
+⚠ **A v4-internal disagreement, carried not resolved:** v4's client list spells
+`gpt-image-1` BEFORE `gpt-image-1-mini`; the plugin's own capability table
+(`plugins/dist/qtap-plugin-openai/image-models.ts`) spells `gpt-image-1-mini`
+first, deliberately, so its longest-prefix match beats `gpt-image-1`. The
+fallback list is the client's, so v5 copies the client's; a future copy from
+the server's order would redden the ordering spec and have to say so. **A
+candidate upstream nit.** (Two of the eight — `gpt-image-1.5`,
+`gpt-image-1-mini` — were already in v4 at the old baseline and had never been
+carried: a pre-existing staleness closed on the way past.)
+
+**Item 2 — the modal header's stale OPENAI paragraph** (`image-profile-modal
+.ts`). OPENAI leaves "STILL DEFERRED" for a recorded-divergence paragraph
+naming `d8d2890ee`: both apps are schema-served now and the schema arm is
+identical; only the fetch-FAILURE fallback diverges (v4 refreshed its
+hand-written branch to the family UNION — Quality nine entries, Style, Default
+Size eleven, each led by `(model default)`; v5 keeps the JSON textarea). Not
+ported, by the order's Tier-3 deferral. Measured while writing it: v4's
+refreshed branch DROPPED the `Response Format` field the old v5 header listed
+under the deferral, so that mention is gone rather than carried.
+
+**Items 3 + 4 — the recorded schema differential.**
+`apps/web/oracle/openai-image-options.recorder.ts` (beside the existing SPA
+recorders, per `spa-oracle-recorders-live-outside-src`) imports v4's REAL
+`getOpenAIImageOptionsSchema` from the pin and writes the five §R.10(c)
+outputs to ONE committed JSON,
+`apps/web/src/app/screens/settings/images/__fixtures__/openai-image-options-schemas.json`
+(23,594 bytes). `openai-image-options.spec.ts` mounts `ProviderOptionsPanel`
+over each — 28 tests.
+
+⚠ **An order premise REFUTED by the recording (§R.4 — the order's paragraph is
+the same kind of prose).** The order said the experimental `description` lands
+on "exactly the two >2560×1440 sizes". It is **THREE**: `2048x2048` is
+4,194,304 pixels, over v4's `experimentalAbovePixels` = 2560×1440 = 3,686,400,
+so it is flagged alongside `3840x2160` and `2160x3840`. The spec DERIVES the
+set from the threshold rather than listing it, so it cannot go stale the way
+the prediction did, and M4 below pins the entry the ordered claim would have
+left unguarded.
+
+**No §S.3 event.** The renderer draws v4's schema unchanged: `default: ''` on
+every enum preselects the blank, and the `number` field with no bounds emits no
+`min`/`max`/`step` at all. `provider-options-panel.ts` untouched, as ordered.
+One honest narrowing, documented in the spec header: an enum value's
+`description` is rendered by NEITHER app (v4's `EnumField` draws `option.label`
+alone), so the description assertions read the recorded SCHEMA — they are what
+tells sunburst's quality list from `gpt-image-2`'s, and losing them would be a
+silent recording failure.
+
+**Item 5 — the gated live beat** `apps/web/e2e/settings-image-openai-options-
+flow.spec.ts`, `P4D196_SERVER_LANDED = false` (§R.10(d) — the unifier flips it;
+its first execution is the unifier's). Walks OPENAI → `gpt-image-2.5-sunburst`
+→ both groups → `dall-e-3` (Style present, `GPT Image Output` gone, Quality
+exactly blank/standard/hd) → back → the five values → Create → reload →
+re-open → every control reads back → AND `imageProfileGet` off the wire carries
+them, with `output_compression` asserted as a NUMBER (a string `'80'` would be
+a silent behaviour change every visual assertion would still pass). The
+dogfood-#108 "row 0" assertion is carried at both the create and the re-open,
+with a comment saying why the re-open one is weak on its own (OPENAI IS row 0)
+and that the model select is the discriminator there.
+
+The beat MEASURES its own api-key precondition rather than editing another
+lane's seeder: global setup seeds SERPER and NANOGPT rows explicitly and
+everything else inherits its provider from a connection profile, so whether an
+OPENAI row exists depends on the committed fixture's vintage. `ensureOpenAiKey`
+asks `apiKeyList`, creates one through `apiKeyCreate` if absent (never SQL —
+the standing store-overlay note), and the `finally` removes ONLY a key it
+created.
+
+**Item 6 — the two `help/` pages re-vendored** at the pin; `cmp` clean against
+`git show 5f0a57dc4:help/<file>`, and the WHOLE tree is md5-identical to v4's
+again (`65179f72d6233b94cf674d5edaba3f6c` both sides, 124 files both sides).
+`help_tree_embed_guard.rs`'s vendor list and module doc updated to the new pin.
+
+**Items 7 + 8 + 9 — the ratifications and the measurements.** Below.
+
+### The NO-PORT ratifications (§R.1)
+
+**`53294163f` — "docs: Update version". NO-PORT-RATIFIED on its file list.**
+`git show --name-status --format= 53294163f`, all `M`:
+
+```
+README.md  package-lock.json  package.json  packages/quilltap/package.json
+plugins/dist/{qtap-plugin-anthropic,qtap-plugin-curl,qtap-plugin-deepseek,
+qtap-plugin-default-system-prompts,qtap-plugin-google,qtap-plugin-grok,
+qtap-plugin-mcp,qtap-plugin-nanogpt,qtap-plugin-ollama,
+qtap-plugin-openai-compatible,qtap-plugin-openai,qtap-plugin-openrouter,
+qtap-plugin-search-serper,qtap-plugin-z-ai}/index.js
+```
+
+Two classes, one reason each: **version markers** (`README.md` + three
+manifests + the lockfile — v5 carries its own versions) and **bundle
+rebuilds** (`plugins/dist/*/index.js` — v5's manifests generator consumes plugin
+SOURCES, `index.ts` / `manifest.json`, never the bundled `index.js`). No `lib/`,
+`app/`, `components/`, `packages/*/src`, `help/`, `public/schemas/` or
+`manifest.json` content hunk. ⚠ **A count correction:** the order's preamble
+and the ledger both say "fifteen" `plugins/dist/*/index.js`; the list is
+**FOURTEEN** (the order's own Survey section says fourteen — the two
+disagreed). Measured.
+
+**`5f0a57dc4` — bug 150's client fix. NO-PORT-RATIFIED on its file list.**
+`git show --name-status --format= 5f0a57dc4`:
+
+```
+M README.md
+R087 __tests__/unit/image-generation-dialog.test.ts → .test.tsx
+M components/images/image-generation-dialog.tsx
+M docs/CHANGELOG.md   M docs/developer/bugs.md
+R057 docs/developer/bugs/bug-150-…md → docs/developer/bugs/fixed/bug-150-…md
+M package-lock.json  M package.json  M packages/quilltap/package.json
+M plugins/dist/{anthropic,curl,default-system-prompts,google,mcp,ollama,
+openrouter,search-serper}/index.js      (eight — matches the order)
+```
+
+Three classes: the `53294163f` classes above, v4's own docs/bug-filing
+bookkeeping, and **the one code hunk — a NO-COUNTERPART**, measured below.
+
+### Item 8 — the manual dialog measured, and the ledger row's reasoning corrected
+
+`grep -rn 'image-generation-dialog\|ImageGenerationDialog' apps/web/src` →
+**no hits.** v4's `components/images/image-generation-dialog.tsx` is mounted by
+`components/images/image-upload-dialog.tsx` alone, which in turn is mounted by
+`components/images/avatar-selector.tsx` and `app/aurora/[id]/edit/
+CharacterEditView.tsx`. **v5 ported neither dialog**, and both of its
+corresponding surfaces say so in their own headers as named deferrals:
+`screens/characters/edit/avatar-picker-modal.ts:15` ("Uploading new photos into
+the gallery is a named deferral (v4's `ImageUploadDialog` — out of scope this
+round)") and `screens/profile/avatar-picker.ts:22,30` ("DEFERRED, loudly …
+importing a NEW image from inside the picker (v4's `ImageUploadDialog` leg)").
+So v5 has no Generate tab there at all — no dead URL, and nothing for
+`d8d2890ee`'s `OPENAI_SIZES` / `OPENAI_QUALITIES` hunks to land on either.
+
+⚠ **The ledger's reasoning is corrected by THIS record** (§R.7 — by a new
+record, never by editing the old one). The `d8d2890ee` row said "v5's
+`apps/web/src/app/images/generate-image-dialog.ts` already goes through
+`?action=generate`, so there is nothing to port"; the `5f0a57dc4` row already
+caught that this named the CHAT dialog's port rather than the fixed file. Both
+conclusions hold, and the real reason is narrower than either: **v5 has no twin
+of the fixed file, and the two dialogs it DOES have never build a REST path at
+all** — they post `{type: …}` through the dispatch client (`core.dispatch`,
+`generate-image-dialog.ts:166`, `standalone-generate-image-dialog.ts:323`), so
+the class of bug 150 is unreachable in v5 by construction, not by having
+spelled a URL correctly.
+
+### Item 9 — the two in-chat generate dialogs, measured
+
+`git diff --stat 1fefadb9a..5f0a57dc4 -- components/chat/GenerateImageDialog.tsx
+components/chat/StandaloneGenerateImageDialog.tsx` → **EMPTY.** v5's
+`images/generate-image-dialog.ts` (a port of the first) and
+`images/standalone-generate-image-dialog.ts` (a port of the second) have no v4
+drift to absorb. Neither carries a quality or size control on either side
+(`grep -c quality` = 0 in both v5 files), which is why the `d8d2890ee` dialog
+hunks have no home in v5 even indirectly.
+
+### §R.9 — the `docs/v4/` mirror paths for the UNIFIER (no lane copies them)
+
+Three mirrored paths move between `1fefadb9a` and `5f0a57dc4`; byte counts are
+at the target pin:
+
+| v4 path | v5 mirror | bytes at `5f0a57dc4` | bytes on v5 today |
+|---|---|---|---|
+| `docs/developer/IMAGE_GENERATION.md` | `docs/v4/developer/IMAGE_GENERATION.md` | 39,133 | 35,700 |
+| `docs/developer/bugs.md` | `docs/v4/developer/bugs.md` | 273,262 | 264,952 |
+| `docs/CHANGELOG.md` | `docs/v4/CHANGELOG.md` | 79,413 | 71,998 |
+
+Also ADDED v4-side, with no v5 mirror today (v5 mirrors no `docs/developer/
+bugs/` tree): `bugs/fixed/bug-148-tool-defaults-outrank-image-profile.md`,
+`bugs/fixed/bug-149-orientation-default-erases-size.md`,
+`bugs/fixed/bug-150-generation-dialog-dead-endpoint.md`.
+
+### Regen recipes as run
+
+**The recorded schema fixture** (the differential's v4 side; also in the
+recorder's own header):
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d197-5f0a57dc4
+git -C ~/source/quilltap-server worktree add --detach "$PIN" 5f0a57dc4
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+cp <V5>/apps/web/oracle/openai-image-options.recorder.ts "$PIN/"
+cd "$PIN" && npx tsx openai-image-options.recorder.ts \
+  > <V5>/apps/web/src/app/screens/settings/images/__fixtures__/openai-image-options-schemas.json
+```
+
+Pin verification: the recorded sunburst quality list carries `xhigh` (2 hits in
+the file); the module does not EXIST at `1fefadb9a`, so a baseline-pinned run
+cannot resolve the import at all.
+
+**`help_tree_equivalence`** (the committed recipe, with `/tmp` staged
+lane-private per §R.3):
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d197-5f0a57dc4; LANE=/tmp/p4.d197; mkdir -p $LANE
+TMPO=$LANE/qt-help-tree-oracle; rm -rf $TMPO; mkdir -p $TMPO/cases
+cp <V5>/harness/oracle/cases/help-tree-sync.test.ts $TMPO/cases/
+rm -f $LANE/oracle-help-tree.ndjson
+cd "$PIN" && QT_ORACLE_OUT=$LANE/oracle-help-tree.ndjson \
+  npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots $TMPO/cases -- 'help-tree-sync\.test\.ts$'
+QT_ORACLE_HELP_TREE=$LANE/oracle-help-tree.ndjson \
+  cargo test -p quilltap-harness --test help_tree_equivalence
+```
+
+Builder's last line: `help-tree-sync oracle wrote … (124 docs, 702 chunks)`;
+3,380,968 bytes, non-empty. Changed bytes grepped in the FRESH NDJSON:
+`The Two Lamps of GPT Image 2.5` ×1, `The GPT Image Output Tray` ×1,
+`gpt-image-2.5-sunburst` ×1 — all three ABSENT from the pre-drift tree.
+
+**Which `help_*` families move:** measured, not assumed. Of the sixteen
+`help_*` harness families only **two** read the repo's vendored tree —
+`help_tree_equivalence` (content, whole tree) and `help_tree_embed_guard`
+(embedded table vs disk). `help_doc_ensure_equivalence` walks a synthetic
+`fixtures/help-ensure` root, `help_doc_sync_equivalence` and
+`help_doc_sync_guards_equivalence` their own scenario roots; the other eleven
+never touch it. Both moving families run green; the rest are unaffected.
+
+### Mutation proofs
+
+| # | Mutation | Reddened | Result |
+|---|---|---|---|
+| M1 | drop `xhigh` from the sunburst quality list in the fixture | `renders the six quality tiers…`, `carries the premium-tier descriptions…` | exactly 2 failed, 10 passed |
+| M2 | add `min: 0` to `output_compression` in the fixture | `renders output_compression as an unbounded number box…` | exactly 1 failed, 11 passed |
+| M3 | copy `style` into `gpt-image-2`'s Image Parameters group | `GPT Image 2 … offers no Style row` | exactly 1 failed, 4 passed |
+| M4 | *(lane-added)* drop the experimental `description` from `2048x2048` | `flags exactly the sizes over 2560×1440 as experimental (three, not the ordered two)` | exactly 1 failed, 11 passed |
+| M5 | *(lane-added)* revert `help/image-generation-profiles.md` to its pre-copy bytes | `help_tree_equivalence::shipped_help_tree_matches_oracle` | FAILED (exit 101) |
+
+M4 exists because the ordered "exactly two" would have left `2048x2048`
+unguarded; M5 is what makes the re-vendor a measurement rather than a copy.
+Every revert by file backup (`mutation-proof-revert-by-file-backup`), each
+verified byte-identical to the pin afterwards. No mutation survived as first
+written.
+
+### Deferred, loudly
+
+- **v4's hand-written OPENAI fallback branch** (`ImageProfileParameters.tsx:
+  96-175`) — NOT ported, per the order's Tier-3 list. v5's fetch-failure
+  stand-in stays the JSON textarea, recorded in the modal header with the sha
+  and the reason. If the union lists are wanted instead, that is a separate
+  small order.
+- **The beat's first live run** is the unifier's (§R.10(d)) — a beat authored
+  while gated has never executed. The gate constant is
+  `P4D196_SERVER_LANDED`.
+- **`provider-options-panel.ts`** untouched; no change was needed, so no §S.3
+  STOP was raised.
+
+### Gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0 TZ=UTC`, one logged
+sentinel-guarded chain, never `| tail`:
+
+1. **§R.2 probe** — PASS twice (open; before the regen batch).
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean; and again
+   with `--features quilltap-core/native-transport` — clean.
+4. **The lane's differentials by NAME**, `--nocapture`, oracle regenerated
+   fresh from the `5f0a57dc4` pin: `help_tree_equivalence` +
+   `help_tree_embed_guard` → **2 passed / 0 failed, ZERO `SKIP:`**; the fresh
+   NDJSON grepped for the changed bytes (3 markers, all > 0).
+5. **Neutrality:** none owed. Measured, not assumed — only two of the sixteen
+   `help_*` families read the repo tree (above), and `git diff --stat
+   1fefadb9a..5f0a57dc4 -- components/chat/GenerateImageDialog.tsx
+   components/chat/StandaloneGenerateImageDialog.tsx` is EMPTY.
+6. **Mutation proofs** — the five in the table, each reddening exactly its
+   target, every revert by file backup and re-verified byte-identical.
+7. `cargo build --workspace --release` — clean (7m 21s).
+8. `cargo test --workspace --no-fail-fast` with the lane's env block
+   (`QT_ORACLE_HELP_TREE` at the lane-private path, `QT_V4_ROOT` /
+   `QT_V4_CHECKOUT` at the pin, `QT_NODE` = the node BINARY):
+   **572 test binaries / 3,349 passed / 0 failed / 2 ignored — exit 0.**
+   Both lane families confirmed RUN by name in that log
+   (`shipped_help_tree_matches_oracle`,
+   `embedded_table_equals_the_on_disk_help_tree`, both `ok`).
+
+   ⚠ Two honest readings of that number. (a) The six fixture-vintage families
+   the order names are RED on `main`; this lane withheld their six oracle vars
+   BY NAME, so all six skip-passed in **0.00 s** — `chat_gallery`,
+   `courier_images_routes`, `images_routes`, `pascal_custom_tools_route`,
+   `pascal_run_custom_handler`, `salon_mutations`, each confirmed at 0.00 s in
+   the log. That is exactly the +6 between the `1fefadb9a` unified gate's
+   3,343-passed/6-failed and this run's 3,349-passed/0-failed; no lane change
+   is involved. (b) `grep -c 'SKIP:'` on the workspace log reads 0, which is
+   the CARGO CAPTURE, not a claim — a passing test's stdout is swallowed
+   without `--nocapture`. The lane's own families' zero-SKIP is proven by the
+   by-name `--nocapture` run in step 4, and every other family's silence is the
+   capture. This lane set no oracle var but its own, so the families outside
+   its env block are skip-passing exactly as they do in every lane gate.
+9. **SPA:** `npm run lint` (incl. the qt-class guard, 5/5 self-test, 952
+   `qt-*` classes, every guarded reference resolving) clean; `npm test`
+   **435 spec files / 7,380 passed / 0 failed** (main: 434 / 7,349 — +1 file,
+   +31 tests, exactly this lane's 28 new + the 2 fallback-list pins + the
+   existing file's re-count); `npm run build` clean.
+   **The lane's beats by FILE** against the release binary
+   (`settings-image-openai-options-flow` + `settings-image-lora-flow` +
+   `settings-flow`): **10 passed / 0 failed / 1 skipped (2.0 m)** — the one
+   skip is this lane's own gated beat, parked by `P4D196_SERVER_LANDED`
+   exactly as designed; the two sibling image-profile specs are unaffected.
+   **One full Playwright run at lane close: 321 passed / 0 failed / 7 skipped
+   (11.4 m), exit 0.** The seven skips are the six standing parks (the five
+   P4.D187 title-checkpoint beats + the `salon-chat-gallery-flow` store-probe
+   park) plus this lane's gated beat — enumerated from the log, none
+   unexplained. Against `main`'s 320 passed / 1 failed / 6 skipped that is
+   +1 test (this lane's beat, skipped) and the documented P4.d17 quill
+   intermittent green this time; it is NOT re-classified as this lane's.
+10. **Ownership:** `git diff --stat main...HEAD` — every path in P4.D197's Owns
+    column; no MUST-NOT-TOUCH path present. No `crates/*/src` file, no other
+    SPA file, no committed `.db` fixture, no other harness family's source, and
+    the drift ledger untouched.
+
+### Version bumps (§R.8)
+
+**SPA 0.5.727 → 0.5.729** (two bumps: the fallback list; the schema
+differential + header + beat). **harness 0.0.827 → 0.0.828** (one bump: the
+embed guard's doc list). core / web / host / cli / tauri UNCHANGED — the
+`help/**` re-vendor changes the table `quilltap-host`'s `build.rs` produces but
+no host SOURCE, so no host bump (the P4.D194 precedent, as §R.8 predicts).
+
+### For the unifier
+
+- **Flip `P4D196_SERVER_LANDED` to `true`** in
+  `apps/web/e2e/settings-image-openai-options-flow.spec.ts` once P4.D196's
+  OPENAI options-schema unit is picked, and run that beat — its FIRST
+  execution is yours (§R.10(d)).
+- **`diff -q` the two recordings (§R.10(c)):** this lane's committed
+  `apps/web/src/app/screens/settings/images/__fixtures__/openai-image-options-schemas.json`
+  against P4.D196's lane-record JSON for `gpt-image-2.5-sunburst`,
+  `gpt-image-2`, `dall-e-3`, `dall-e-2` and the no-model call. Both are v4's
+  REAL `getOpenAIImageOptionsSchema` at the same pin, so any difference is a
+  finding.
+- **The `docs/v4/` mirror** is yours (§R.9) — the table above.
+- **Candidate upstream nit:** v4's client fallback list and its own plugin
+  capability table disagree on `gpt-image-1` vs `gpt-image-1-mini` ordering.
+- **Ledger correction to carry at the baseline move:** `53294163f` rebuilds
+  FOURTEEN `plugins/dist/*/index.js`, not fifteen; and the bug-150
+  NO-COUNTERPART holds because v5 never ported the upload dialog AND its two
+  in-chat dialogs post through the dispatch client rather than a REST path
+  (item 8 above).
+- Lane pin ALREADY REMOVED at lane close
+  (`/tmp/qt-v4-pin-p4d197-5f0a57dc4`), along with the lane-private regen
+  staging `/tmp/p4.d197/`; both recipes above rebuild them from scratch.
+  P4.D196's pin at the same sha is its own and was not touched.
