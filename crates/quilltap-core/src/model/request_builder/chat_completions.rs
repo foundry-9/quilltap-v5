@@ -2147,6 +2147,12 @@ mod cache_key_wire_pins {
             // streaming half v5 models is v4's raw-fetch escape hatch
             // (`streamViaChatCompletions`, provider.ts:745-755), whose body
             // literal has no `user` at all — the row below pins that absence.
+            // ⚠ v4 takes that branch ONLY when tools or images are present
+            // (`provider.ts:496-500`); the plain no-tools stream — the common
+            // Salon case — takes the SDK branch and DOES write `user` (`:549`).
+            // v5 models only the raw-fetch shape, a pre-existing recorded
+            // divergence (`streaming_provider.rs:49-53`); this row pins v5's
+            // shape, not a claim that v4 omits `user` on OpenRouter streams.
             ("OPENROUTER", "router-model", false, Some("user")),
             ("OPENROUTER", "router-model", true, None),
             ("ANTHROPIC", "claude-sonnet", true, None),

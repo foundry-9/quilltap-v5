@@ -223,8 +223,13 @@ test.describe('P4.D197 — the OpenAI image options schema in the profile editor
         optionSelect(page, 'quality').locator('option[value="xhigh"]'),
       ).toHaveCount(1);
 
-      // Default Size: the thirteen wide sizes plus the blank.
+      // Default Size: the thirteen wide sizes plus the blank — and `2048x2048`
+      // as the discriminator (it is in the WIDE list only), so fourteen wrong
+      // options cannot pass the count.
       await expect(optionSelect(page, 'size').locator('option')).toHaveCount(14);
+      await expect(
+        optionSelect(page, 'size').locator('option[value="2048x2048"]'),
+      ).toHaveCount(1);
 
       // The GPT Image Output group's four fields, by their storage keys.
       for (const key of ['background', 'output_format', 'moderation']) {
@@ -245,8 +250,13 @@ test.describe('P4.D197 — the OpenAI image options schema in the profile editor
       await expect(optionSelect(page, 'style').locator('option')).toHaveCount(3);
       await expect(page.getByRole('heading', { name: 'GPT Image Output' })).toHaveCount(0);
       await expect(page.locator('#pof-output_compression')).toHaveCount(0);
-      // DALL·E 3's quality list is exactly blank + standard + hd.
+      // DALL·E 3's quality list is exactly blank + standard + hd, and its size
+      // list the three DALL·E 3 shapes plus the blank (no `2048x2048`).
       await expect(optionSelect(page, 'quality').locator('option')).toHaveCount(3);
+      await expect(optionSelect(page, 'size').locator('option')).toHaveCount(4);
+      await expect(
+        optionSelect(page, 'size').locator('option[value="2048x2048"]'),
+      ).toHaveCount(0);
       await expect(
         optionSelect(page, 'quality').locator('option[value="max"]'),
       ).toHaveCount(0);
@@ -335,6 +345,10 @@ test.describe('P4.D197 — the OpenAI image options schema in the profile editor
       await page.getByRole('button', { name: 'Cancel' }).click();
       await deleteProfile(page, PROFILE_NAME);
     } finally {
+      // A mid-beat failure must not leave the profile behind for the next run
+      // to trip over in strict mode; `deleteProfile` is a no-op when the card
+      // is absent, and a cleanup failure must never mask the beat's own error.
+      await deleteProfile(page, PROFILE_NAME).catch(() => undefined);
       if (seededKeyId) {
         await page.request.post('/api/dispatch', {
           data: { type: 'apiKeyDelete', apiKeyId: seededKeyId },

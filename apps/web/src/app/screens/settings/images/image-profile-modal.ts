@@ -90,7 +90,7 @@ import {
  *
  * What remains a RECORDED DIVERGENCE is the fetch-FAILURE fallback, and only
  * the fallback. `d8d2890ee` refreshed v4's hand-written OPENAI branch
- * (`ImageProfileParameters.tsx:96-175`) to the UNION across the families —
+ * (`ImageProfileParameters.tsx:98-175`) to the UNION across the families —
  * because a failed fetch means the app cannot know which model is selected —
  * with a `(model default)` blank leading each list. v5 has never had that
  * branch, and this lane deliberately did not add it: v5's stand-in for a
@@ -103,8 +103,8 @@ import {
  * STILL DEFERRED LOUDLY: the `Validate` key button (its wire pair,
  * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title —
  * v4 did not move it this round. And v4's other hand-written structured cases
- * are still unported: `GOOGLE`/`GOOGLE_IMAGEN` (`:84-125` — Aspect Ratio,
- * Person Generation, Sample Count) and `GROK` (`:183-192` — a static "minimal
+ * are still unported: `GOOGLE`/`GOOGLE_IMAGEN` (`:177-218` — Aspect Ratio,
+ * Person Generation, Sample Count) and `GROK` (`:239-248` — a static "minimal
  * parameters" paragraph). Those providers get the schema panel when their
  * plugin declares one and v5's JSON textarea stand-in otherwise. Unknown keys
  * survive editing on both sides.

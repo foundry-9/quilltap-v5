@@ -244,6 +244,20 @@ fn resolve_quality(quality: Option<&str>, model: &str) -> Option<String> {
 /// the offending value through JS `String()`, so an object arrives as
 /// `[object Object]` and an array as its join — v4's own `String(raw)`.
 fn read_enum(bag: Option<&Value>, key: &str, allowed: &[&str]) -> Option<String> {
+    read_enum_impl(bag, key, allowed, true)
+}
+
+/// [`read_enum`] without the warning — for a SECOND read of a key the request
+/// assembly has already read and warned about once. v4 reads each key exactly
+/// once, inside `generateImage`, so one bad value is one warning per request;
+/// [`openai_output_format`] re-derives the format at parse time and must not
+/// double it (caught by the `53294163f` round's §3 review — the build-only
+/// capture in the tests below could not see the parse-side repeat).
+fn read_enum_quiet(bag: Option<&Value>, key: &str, allowed: &[&str]) -> Option<String> {
+    read_enum_impl(bag, key, allowed, false)
+}
+
+fn read_enum_impl(bag: Option<&Value>, key: &str, allowed: &[&str], warn: bool) -> Option<String> {
     let raw = bag?.get(key)?;
     if raw.is_null() || raw.as_str() == Some("") {
         return None;
@@ -253,13 +267,15 @@ fn read_enum(bag: Option<&Value>, key: &str, allowed: &[&str]) -> Option<String>
             return Some(s.to_string());
         }
     }
-    tracing::warn!(
-        context = "OpenAIImageProvider.readEnum",
-        key = %key,
-        value = %crate::pascal::js_value::to_js_string(raw),
-        allowed = %allowed.join(", "),
-        "Ignoring unsupported OpenAI image parameter value"
-    );
+    if warn {
+        tracing::warn!(
+            context = "OpenAIImageProvider.readEnum",
+            key = %key,
+            value = %crate::pascal::js_value::to_js_string(raw),
+            allowed = %allowed.join(", "),
+            "Ignoring unsupported OpenAI image parameter value"
+        );
+    }
     None
 }
 
@@ -303,10 +319,11 @@ fn openai_output_format(params: &ImageGenParams) -> Option<String> {
         return None;
     }
     let bag = params.profile_parameters.as_ref();
-    // The read order is v4's: `output_format` first, then `background` — a
-    // warning's position in the log is a comparand too.
-    let output_format = read_enum(bag, "output_format", &OUTPUT_FORMATS);
-    let background = read_enum(bag, "background", &BACKGROUNDS);
+    // QUIET reads: `build_openai` already read both keys and warned about a
+    // bad value once, which is v4's count — the parse-side re-derivation is a
+    // pure function of the same bag and must add no log line.
+    let output_format = read_enum_quiet(bag, "output_format", &OUTPUT_FORMATS);
+    let background = read_enum_quiet(bag, "background", &BACKGROUNDS);
     match (&background, &output_format) {
         (Some(b), Some(f))
             if b == "transparent" && !TRANSPARENCY_CAPABLE_FORMATS.contains(&f.as_str()) =>
@@ -2432,6 +2449,37 @@ mod tests {
                 serde_json::json!({ "background": "", "moderation": null }),
             )),
             "Ignoring unsupported OpenAI image parameter value",
+        );
+    }
+
+    /// A bad bag value warns ONCE per key per request, as v4's single read in
+    /// `generateImage` does — the parser's MIME re-derivation reads the same
+    /// keys again and must stay silent. Before `read_enum_quiet`, this counted
+    /// four (two from the build, two more from the parse) where v4 logs two.
+    #[test]
+    fn a_bad_bag_value_warns_once_across_build_and_parse() {
+        let p = params_with_bag(
+            "gpt-image-2",
+            serde_json::json!({ "output_format": "tiff", "background": "chartreuse" }),
+        );
+        let lines = crate::test_support::captured(|| {
+            build_openai(&p);
+            let resp = WireResponse {
+                status: 200,
+                status_text: "OK".into(),
+                body: r#"{"data":[{"b64_json":"aGVsbG8="}]}"#.into(),
+            };
+            let parsed = parse_image_response("OPENAI", &p, &resp).expect("parsed");
+            // Both bad keys dropped, so the format is the png default.
+            assert_eq!(parsed.images[0].mime_type.as_deref(), Some("image/png"));
+        });
+        let hits = lines
+            .iter()
+            .filter(|l| l.contains("Ignoring unsupported OpenAI image parameter value"))
+            .count();
+        assert_eq!(
+            hits, 2,
+            "one warning per bad key from the build and NONE from the parse: {lines:?}"
         );
     }
 

@@ -2817,7 +2817,10 @@ where
         // the Salon's own turn was the only caller sending `None`, so on every
         // provider whose builder writes the key (OPENAI/GROK `prompt_cache_key`,
         // OPENROUTER/NANOGPT/Z_AI/OPENAI_COMPATIBLE `user`, DEEPSEEK `user_id`)
-        // the main chat path was the one path that never cached.
+        // the main chat path was the one path that never cached. (OPENROUTER's
+        // STREAMING half excepted: v5 models v4's raw-fetch branch, which never
+        // writes `user` — the recorded divergence in `streaming_provider.rs:49-53`
+        // — so the carry reaches OpenRouter only on its non-streaming calls.)
         //
         // Which LEGS keep it is NOT decided here — see `loop_base_params` below.
         cache_key: build_character_cache_key(Some(&character_id)),

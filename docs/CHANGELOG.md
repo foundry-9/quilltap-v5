@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — fix(unify): the `53294163f` round's §3 review fixes — the OPENAI parser's doubled bag warnings, the tool-unsupported retry's inherited cache key, `chats.transcriptVersion` on the five widened pairs, the migrator's index gating and recipe block, the render spec's label assertions, and five comment-fidelity repairs
+
+_Versions: core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730._
+
+Four parallel §3 readers plus the unifier's own reads found NO blocking
+issue in any lane; these are the should-fixes, each landed with its pin:
+
+- **P4.D196 — the OPENAI response parser re-ran the bag readers to derive
+  the MIME type, so a bad stored `output_format` or `background` warned
+  TWICE per request where v4 warns once** (v4 reads the bag once inside
+  `generateImage`). The parse-side derivation now reads through a quiet
+  variant; a capture test spans build + parse and pins exactly one warn per
+  bad key (mutation-proven: the loud reads restored count four).
+- **P4.95 — `primary_stream.rs`'s tool-unsupported retry inherited the
+  primary's new cache key** where v4's retry passes no `characterId` and so
+  sends none; cleared on the retry (the lane deferred it as MUST-NOT-TOUCH;
+  the unifier owns the file). The retry still inherits `previous_response_id`
+  and `stop` — a pre-existing P4.92-class gap, recorded as a follow-up with a
+  case that reaches the retry. Two comment-fidelity repairs: the OPENROUTER
+  streaming pin's comment now says v4's SDK branch DOES write `user` on a
+  plain stream (v5 models only the raw-fetch branch — the recorded
+  divergence), and the orchestrator's carry comment excepts that half.
+- **P4.94 — `chats.transcriptVersion` was left off the widened pairs on a
+  false premise** ("no v4 write ever names it"): v4 has a registered
+  migration adding it, one step before the `generationKey` migration, and
+  writes it fail-soft. Added as a migrator row with v4's statement and
+  applied to the five main partitions (idempotent re-run reports current;
+  the oracle cases' plants are guarded ALTERs, so nothing breaks). The
+  `extraSql` index statements now run whenever the table exists (v4's
+  `llm_logs` migration creates its indexes outside the column guard; every
+  statement is `IF NOT EXISTS`); the five pairs join the header's recipe
+  set; three prose counts and four `source:` citations corrected.
+- **P4.D197 — the render spec pinned every field's key and order but never
+  a `label`;** a new block asserts the labels per family and reads each
+  rendered `<label for>`. The beat's size list gains value discriminators
+  (`2048x2048` present on the 2.5 family, absent on DALL·E 3) and its
+  cleanup now deletes the profile in `finally`; the modal header's v4 line
+  references re-measured at `5f0a57dc4`.
+- Harness comments: the `agent_mode_on` "unaffected" claim narrowed to the
+  legs it reaches (its prompt bytes DO move with `maxTurns`), and floor (c)'s
+  whole-slate nudge scan annotated.
+
 #### 2026-09-17 — docs(porting): record P4.94's lane — the measured gap, the seven closed reds, and the gate
 
 _Docs-only change._

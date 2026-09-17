@@ -137,6 +137,43 @@ describe('the recorded corpus itself', () => {
   });
 });
 
+describe('field labels — keys and order were pinned; the labels are the third thing the order asked for', () => {
+  // Added at the `53294163f` unification (§3 review): every field's `label` is
+  // rendered as the control's `<label>`, and until this block nothing read one.
+  const IMAGE_PARAMS = ['Quality', 'Default Size'];
+  const OUTPUT = ['Background', 'Output Format', 'Output Compression', 'Moderation'];
+
+  it('spells every field label as v4 does, per family', () => {
+    for (const model of ['gpt-image-2.5-sunburst', 'gpt-image-2', '(no model)']) {
+      expect(fieldsOf(model, 'Image Parameters').map((f) => f.label)).toEqual(IMAGE_PARAMS);
+      expect(fieldsOf(model, 'GPT Image Output').map((f) => f.label)).toEqual(OUTPUT);
+    }
+    expect(fieldsOf('dall-e-3', 'Image Parameters').map((f) => f.label)).toEqual([
+      ...IMAGE_PARAMS,
+      'Style',
+    ]);
+    expect(fieldsOf('dall-e-2', 'Image Parameters').map((f) => f.label)).toEqual(IMAGE_PARAMS);
+  });
+
+  it('renders each label as the <label> of its own control', async () => {
+    const fixture = await renderPanel('gpt-image-2.5-sunburst');
+    const host = fixture.nativeElement as HTMLElement;
+    const expected: Array<[string, string]> = [
+      ['pof-quality', 'Quality'],
+      ['pof-size', 'Default Size'],
+      ['pof-background', 'Background'],
+      ['pof-output_format', 'Output Format'],
+      ['pof-output_compression', 'Output Compression'],
+      ['pof-moderation', 'Moderation'],
+    ];
+    for (const [id, text] of expected) {
+      const label = host.querySelector(`label[for="${id}"]`);
+      expect(label, `rendered label for ${id}`).not.toBeNull();
+      expect(label?.textContent?.trim()).toBe(text);
+    }
+  });
+});
+
 describe('GPT Image 2.5 Sunburst', () => {
   const MODEL = 'gpt-image-2.5-sunburst';
 

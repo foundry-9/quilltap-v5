@@ -103,15 +103,24 @@
  * BOTH committed llm-logs partitions lag, which no family had ever regenerated
  * across.
  *
- * ⚠ `chats.transcriptVersion` is NOT added, and the measurement is why: v4
- * declares it in neither `ChatMetadataSchema` nor `ChatMetadataBaseSchema` (two
- * identical comment blocks in `lib/schemas/chat.types.ts` say so — a counter
- * inside the schema could be REWOUND by `$set: validated`), so `compareSchemas`
- * does not list it and no v4 write ever names it. v5's own
- * `db/chats_transcript_version_repair.rs` boot ensure and the per-copy
- * `test_support::ensure_p4d182_columns` heal keep handling it, exactly as they
- * do on a real v4-written instance. The P4.89 precedent (which measured the
- * same absence on the brahma pair) is followed, not re-opened.
+ * ⚠ `chats.transcriptVersion` — ADDED, by a correction at the `53294163f`
+ * unification (§3 review). The lane left it out on the ground that
+ * `compareSchemas` does not list it (true: v4 declares it in neither
+ * `ChatMetadataSchema` nor `ChatMetadataBaseSchema`, so a counter inside the
+ * schema cannot be rewound by `$set: validated`) "and no v4 write ever names
+ * it" — FALSE on both halves: v4 has a REGISTERED migration adding it
+ * (`migrations/scripts/add-transcript-version-column-v1.ts:53`,
+ * `addColumnIfMissing('chats', 'transcriptVersion', 'INTEGER DEFAULT 0')`,
+ * registered at `migrations/scripts/index.ts:793` — one step BEFORE the
+ * `files.generationKey` migration at `:795`), and v4 writes it
+ * (`lib/database/repositories/chats-messages.ops.ts:277`, `$inc`, wrapped in a
+ * fail-soft `safeQuery`). So a real migrated v4 instance that has
+ * `generationKey` necessarily has `transcriptVersion` too, and a pair with one
+ * but not the other is a vintage no real instance can be in. The row below
+ * follows v4's own migration statement; v5's `db/chats_transcript_version_
+ * repair.rs` boot ensure and the per-copy `ensure_p4d182_columns` heal become
+ * no-ops on these pairs. (The brahma pair, P4.89, still lacks it — the same
+ * correction applies there at the next widen.)
  *
  * ⚠ The `salon-long-{main,mount}.db` pair was measured and DELIBERATELY NOT
  * widened: no red names it, and the order confines P4.94 to pairs a red names.
@@ -177,6 +186,18 @@
  *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
  *     $W/crates/quilltap-web/tests/fixtures/brahma-main.db \
  *     $W/crates/quilltap-web/tests/fixtures/brahma-mount.db
+ *
+ * The five P4.94 pairs (widened in place 2026-09-17 at v4 `1fefadb9a`; the
+ * `chats.transcriptVersion` row re-applied at the `53294163f` unification):
+ *   F=$W/crates/quilltap-web/tests/fixtures
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     $F/salon-main.db $F/salon-mount.db $F/salon-llm-logs.db \
+ *     $F/chat-gallery-main.db $F/chat-gallery-mount.db \
+ *     $F/images-main.db $F/images-mount.db \
+ *     $F/courier-images-main.db $F/courier-images-mount.db $F/courier-images-llmlogs.db \
+ *     $F/pascal-run-custom-main.db $F/pascal-run-custom-mount.db
+ *   (the mount partitions and `salon-long-*` report `current` — measured, not
+ *   skipped; `salon-long-*` is deliberately NOT widened, see above)
  *
  * `--report-only` (anywhere on argv) reports what WOULD be applied and writes
  * nothing — the dry run that measures a gap before touching a committed file.
@@ -254,7 +275,7 @@ const MIGRATIONS: {
     extraSql: [
       'CREATE INDEX IF NOT EXISTS "idx_llm_logs_connectionProfileId" ON "llm_logs" ("connectionProfileId")',
     ],
-    source: 'migrations/scripts/add-llm-logs-profile-columns.ts:78,84',
+    source: 'migrations/scripts/add-llm-logs-profile-columns.ts:77,85',
   },
   {
     table: 'llm_logs',
@@ -263,7 +284,7 @@ const MIGRATIONS: {
     extraSql: [
       'CREATE INDEX IF NOT EXISTS "idx_llm_logs_imageProfileId" ON "llm_logs" ("imageProfileId")',
     ],
-    source: 'migrations/scripts/add-llm-logs-profile-columns.ts:78,84',
+    source: 'migrations/scripts/add-llm-logs-profile-columns.ts:77,85',
   },
   {
     table: 'connection_profiles',
@@ -280,7 +301,7 @@ const MIGRATIONS: {
     table: 'connection_profiles',
     column: 'fallbackProfileId',
     sql: 'ALTER TABLE "connection_profiles" ADD COLUMN "fallbackProfileId" TEXT',
-    source: 'migrations/scripts/add-profile-fallback-fields.ts:31,63',
+    source: 'migrations/scripts/add-profile-fallback-fields.ts:31,62',
   },
   {
     // v4 follows the ALTER with
@@ -291,7 +312,7 @@ const MIGRATIONS: {
     table: 'connection_profiles',
     column: 'allowTierFallback',
     sql: 'ALTER TABLE "connection_profiles" ADD COLUMN "allowTierFallback" INTEGER DEFAULT 0',
-    source: 'migrations/scripts/add-profile-fallback-fields.ts:32,63',
+    source: 'migrations/scripts/add-profile-fallback-fields.ts:32,62',
   },
   {
     table: 'chat_settings',
@@ -339,19 +360,33 @@ const MIGRATIONS: {
     source: 'migrations/scripts/add-route-trail-message-column-v1.ts:49',
   },
   {
-    // P4.94 (v4 `7fbf8a55b`, the P4.D182 avatar configuration cache). The one
-    // row in this list whose v4 migration issues a SECOND statement: an index
-    // a Zod field cannot express, so `generateDDL` never emits it and
-    // `compareSchemas` — which populates neither `addedIndexes` nor
-    // `removedIndexes` — cannot see it either. v4 creates it inside a `run()`
-    // gated on the COLUMN being absent, so applying it with the column is
-    // faithful.
+    // P4.94 (v4 `7fbf8a55b`, the P4.D182 avatar configuration cache). The
+    // first of THREE rows in this list whose v4 migration issues a SECOND
+    // statement (the two `llm_logs` rows above are the others): an index a Zod
+    // field cannot express, so `generateDDL` never emits it and `compareSchemas`
+    // — which populates neither `addedIndexes` nor `removedIndexes` — cannot see
+    // it either. v4 creates THIS one inside a `run()` gated on the COLUMN being
+    // absent; the `llm_logs` pair's indexes are created OUTSIDE their column
+    // guard (`add-llm-logs-profile-columns.ts:84`, after the `if` closes at
+    // `:82`) — which is why the apply loop below runs `extraSql` whenever the
+    // TABLE exists, not only when the column was just added.
     //
-    // This is the column behind five of the six reds this widen closes: v5's
+    // This is the column behind four of the six ordered reds this widen closes
+    // (five of seven with the latent `images_generate_route`; the two pascal
+    // families are the P4.D171 `chats` pair): v5's
     // `files` INSERT is a fixed column list that always binds `generationKey`,
     // where v4's insert names only the keys its data object carries — so v4
     // writes happily to a pre-4.10 `files` table and v5 answers
     // `no such column` (`db/files_generation_key_repair.rs`).
+    table: 'chats',
+    column: 'transcriptVersion',
+    sql: 'ALTER TABLE "chats" ADD COLUMN "transcriptVersion" INTEGER DEFAULT 0',
+    // `addColumnIfMissing('chats', 'transcriptVersion', 'INTEGER DEFAULT 0')`
+    // expands through `migrations/lib/database-utils.ts:354` to exactly this
+    // quoting. See the header for why this row exists.
+    source: 'migrations/scripts/add-transcript-version-column-v1.ts:53',
+  },
+  {
     table: 'files',
     column: 'generationKey',
     sql: 'ALTER TABLE "files" ADD COLUMN "generationKey" TEXT',
@@ -404,13 +439,14 @@ function main(): void {
       const cols = (db.prepare(`PRAGMA table_info("${m.table}")`).all() as { name: string }[]).map(
         (c) => c.name,
       );
+      // The index statements ride OUTSIDE the column guard: v4's `llm_logs`
+      // migration creates its indexes on every `run()` (`add-llm-logs-profile-
+      // columns.ts:84`, after the `if` at `:82` closes), and every statement
+      // here is `IF NOT EXISTS`, so a partition carrying the column but not its
+      // index still gets the index — the shape v5's own boot ensures produce.
+      if (!reportOnly) for (const extra of m.extraSql ?? []) db.exec(extra);
       if (cols.includes(m.column)) continue; // v4's guard: already migrated
-      if (!reportOnly) {
-        db.exec(m.sql);
-        // v4's own migration issues these in the same `run()`; they are gated
-        // on the COLUMN being absent exactly as this loop is.
-        for (const extra of m.extraSql ?? []) db.exec(extra);
-      }
+      if (!reportOnly) db.exec(m.sql);
       applied.push(`${m.table}.${m.column}`);
     }
     db.close();

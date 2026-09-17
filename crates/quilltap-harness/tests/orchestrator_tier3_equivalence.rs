@@ -1836,6 +1836,10 @@ fn orchestrator_tier3_matches_oracle() {
         // The force-final's own slate is not a tool-result row (v4 appends the
         // assistant prose + the force-final USER nudge), so it is named by that
         // nudge; the text continuation is named by its ledger entry above.
+        // ⚠ The nudge scan below reads the WHOLE slate, not `.last()`: correct
+        // while the nudge is a transient loop message never persisted to history
+        // (so no later primary row can carry it); a change that persisted it
+        // would silently inflate this count.
         let keyless_restreams = canned_streams
             .iter()
             .filter(|r| {
@@ -2382,8 +2386,13 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // the native loop's force-final branch is gated on `toolIterations >=
             // effectiveMaxTurns` — so one shared cap of 1 is the only way to reach
             // that branch without seeding fifteen tool rounds. `agent_force_final`
-            // is the case that walks it; `agent_mode_on` is unaffected (its stream
-            // carries no tool call, so `toolIterations` never leaves 0).
+            // is the case that walks it; `agent_mode_on` is unaffected in which LEGS
+            // it reaches (its stream carries no tool call, so `toolIterations`
+            // never leaves 0) — its prompt BYTES do move, on both sides at once:
+            // `buildAgentModeInstructions(maxTurns)` interpolates the number
+            // (v4 `agent-mode-resolver.service.ts:113`, v5 `agent_mode.rs:168`),
+            // so that case now reads "up to 1 tool iterations", still a
+            // non-default value and still a discriminator.
             agent_mode_default_enabled: false,
             agent_mode_max_turns: 1,
             // W4.2u: the fixture's single chat_settings row sets

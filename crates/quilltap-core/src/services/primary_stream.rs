@@ -1260,6 +1260,16 @@ where
 
         let mut retry_params = params.clone();
         retry_params.tools = None;
+        // P4.95 made the primary carry the prompt-cache key, and v4's retry call
+        // (`primary-stream.service.ts:261-270`) passes NO `characterId` — so the
+        // funnel derives no key for it and the wire carries none. Clear the
+        // inherited one here (landed at the `53294163f` unification, the §3
+        // review's call). ⚠ The retry still inherits `previous_response_id` and
+        // `stop`, which v4's retry omits too — the P4.92 class on a leg P4.92
+        // did not reach; no corpus case reaches this retry, so all three are
+        // pinned by nothing yet. The follow-up is "make this retry agree with
+        // v4's option bag, with a case that reaches it" (phase-4.md).
+        retry_params.cache_key = None;
         // The retry re-issues the SAME messages (the tool schemas were never in
         // the message body), so it must key to the same canned stream slot as the
         // primary call keyed on (provider, model, temperature, messages).
