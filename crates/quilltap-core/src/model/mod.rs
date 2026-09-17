@@ -33,6 +33,8 @@ pub mod nanogpt_catalog;
 pub mod nanogpt_loras;
 pub mod ollama_think_parser;
 pub mod ollama_think_retry;
+pub mod openai_image_models;
+pub mod openai_image_options;
 pub(crate) mod provider_auth;
 pub mod provider_io;
 pub mod provider_models_api;

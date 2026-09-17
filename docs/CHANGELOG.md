@@ -89,6 +89,28 @@ each regenerated fresh from the pin and run by name: `salon_mutations`,
 this lane's pre/post sibling measurement found (all ten of its generate cases
 answered 500 where v4 answers 201). Seven more readers were green before and
 after.
+#### 2026-09-17 — feat(images): the OpenAI image capability table and its options schema, as one source
+
+_Versions: core 0.0.936._
+
+The substrate half of v4's PR #62 (`d8d2890ee`): `model/openai_image_models.rs`
+is a transcription of v4's new `plugins/dist/qtap-plugin-openai/image-models.ts`
+— the eight families newest first (both GPT Image 2.5 models, GPT Image 2, 1.5,
+1-mini, 1, DALL·E 3, DALL·E 2), their quality tiers, size lists, arbitrary-size
+capability, `style` support and `maxN`, plus `ARBITRARY_SIZE_RULES`,
+`findImageModel`'s exact-then-longest-prefix resolution, `parseSize`,
+`checkArbitrarySize` with its five reason sentences and `mimeTypeForFormat`.
+
+`model/openai_image_options.rs` is v4's new `image-options-schema.ts`: the
+per-model editor schema, every string byte-copied (including the two
+apostrophe spellings in the moderation field and the U+00D7 in the size
+labels).
+
+Neither module is wired yet — the dialect, the model lists, the options-schema
+dispatcher and the tool schema follow in this lane's later commits. Unit tests
+pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
+beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
+size shapes v4's `it.each` names, and the schema's group/field shape per family.
 
 #### 2026-09-17 — docs(porting): record the `5f0a57dc4` drift (v4's bug-150 fix) and re-point the ordered round at it
 
