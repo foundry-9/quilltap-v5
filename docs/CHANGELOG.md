@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — docs(porting): order the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97)
+
+_Docs-only change._
+
+Four work orders for the next round, all from `main`, no stacking. The one
+drift row (v4 `bcd7e4852`, bug 151 — the image transport budget) splits
+along the seam its own hunks draw: P4.D198 takes the loader half (the
+`llm_image_budget` core module, a fallible `shrink_to_webp` primitive on the
+existing `ImageTranscoder` seam with the host codec implementing it, the
+shrink ahead of the provider backstop at both attachment loaders, a new
+tier-1 family with `sharp` scripted below v4's real function, and
+`file_attachment_tier3` grown to see the shrink); P4.D199 takes the walk
+half (the Lantern per-turn byte budget spent newest-first in
+`message_context.rs` over the seam's `LanternLoad`, orchestrator arms that
+see attachment membership and order, the help page re-vendored, the commit's
+non-lib files ratified). P4.96 closes P4.D196's Tier-2 item 10 (the generate
+verb's five optional fields as raw `Option<Value>` on the variant, v4's
+validation envelope, the census, the differential grown red-first; the
+survey found the verb is dispatch-only — no REST edge to widen). P4.97
+closes the two wire-key follow-ups (the tool-unsupported retry's whole
+option bag with the primary-stream side-channel widened to see all three
+fields — the survey found the existing retry cases already reach the leg,
+only the driver left the fields empty; and the request-envelopes cache-key
+pin as a named coverage table over a corpus re-recorded with the
+anthropic/ollama rows it never had). The drift ledger's row is marked
+`ORDERED(P4.D198, P4.D199)`; phase-4.md carries the ORDERED block with the
+execution arrangement and the deliberate exclusions. The shared §R/§S/
+Ownership/gate block is byte-identical across the four orders (md5
+`d9cd2c02…`).
+
 #### 2026-09-17 — unify: the `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — the baseline moves to `5f0a57dc4`
 
 _Versions: core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730; host/cli/tauri unchanged._

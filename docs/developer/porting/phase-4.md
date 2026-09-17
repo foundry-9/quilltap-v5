@@ -6628,6 +6628,125 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — ORDERED 2026-09-17
+
+**Baseline `5f0a57dc4`; v4 `main` HEAD `bcd7e4852` (ONE past — the
+ledger's one §3 row, bug 151, now `ORDERED(P4.D198, P4.D199)`), v4 `bugfix`
+tip `1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on
+`main`, CLEAN at the planning probe (2026-09-17 afternoon — the §2 probe
+PASSED, so the ledger stood and nothing was re-derived); regen rule PIN
+REQUIRED (the two drift lanes' moving families from lane-unique detached
+worktrees at `bcd7e4852`, their neutrality legs and both maintenance lanes
+at `5f0a57dc4`).** The standing rule holds: drift debt clears before new
+scope — the one drift commit splits by the SEAM its own hunks draw (the
+loaders' per-image shrink vs the walk's per-turn budget, meeting at the
+existing `LanternLoad` the seam returns; §S.1), and because the drift is
+one commit the round also carries the previous round's "What is next"
+items 2, 3 and 4 as two more lanes with disjoint ownership. ALL FOUR from
+`main`, no stacking. The round-wide §R meeting points, the §S contract, the
+Ownership table and the verification gate are spliced byte-identically
+into every order (one md5 over the block, verified at planning:
+`d9cd2c02…`). Fresh surveys (2026-09-17, at `bcd7e4852` / `5f0a57dc4` and
+on `main` `78884832`, two parallel survey agents + the planner's own hunk
+reads) are folded into the orders' survey sections.
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d198-llm-image-budget-loaders-server.md` — P4.D198, bug 151's
+   LOADER half.** The transport-vs-storage budget as ONE core module
+   (`files/llm_image_budget.rs` — the four constants, `shrink_image_for_
+   llm_transport` with v4's nine arms in order, never throwing and never
+   refusing); the pixel primitive as a NEW `shrink_to_webp` method on the
+   EXISTING `ImageTranscoder` seam (a `Result`, default `Err`, so "threw"
+   and "nothing to do" never collapse — the recorded `try_downsize`
+   anti-pattern) with `HostImageCodec` implementing it over `image` +
+   `webp`; the shrink FIRST at both loaders in `chat_files.rs` with the
+   provider-ceiling resize as the backstop; v4's WARN + DEBUG lines
+   capture-pinned; a NEW tier-1 family over v4's REAL function with
+   `sharp` SCRIPTED below it (the same script as a Rust `Scripted
+   Transcoder`, so `buffer` is byte-comparable — D19 stands for the real
+   encoders); `file_attachment_tier3` grown to see the loaders' shrink on
+   both paths incl. the `autoResize: false` verbatim arm; a composition
+   pin that production's loader arm reaches a transcoder whose shrink is
+   real. Survey facts that shaped it: the loaders already receive the
+   transcoder, so NO signature changes anywhere; core has no image crate;
+   `HostImageCodec` is one type behind three traits.
+2. **`p4.d199-lantern-byte-budget-walk-help.md` — P4.D199, bug 151's WALK
+   half + help + ratifications.** The per-turn `LANTERN_IMAGE_BASE64_
+   BUDGET` spent NEWEST-first over `data.len()` (the base64 STRING) of the
+   raw-kept attachments the seam returns, dropped-for-budget counted,
+   v4's WARN once per turn, CHRONOLOGICAL restore — done post-hoc in
+   `message_context.rs` section K over `LanternLoad`, which is v4's
+   pre-fix `extra` after the fallback pass (the equivalence argument is
+   in the order: the prefix is order-neutral under v4's double reverse,
+   only attachment membership moves); `orchestrator_tier3` arms that can
+   SEE which attachments were sent and in what order (an `fsmBytesFill`
+   spec key on both sides — megabyte junk that v4's real sharp passes
+   through with its `Could not shrink` warn, so the lane is independent
+   of P4.D198); the private budget constant with the §R.10(a) handoff
+   marker; `help/connection-profiles.md` byte-copied (124 stays 124);
+   the commit's non-lib files ratified on their list (Tier R once at the
+   target pin); the `docs/v4/` mirror paths pre-listed.
+3. **`p4.96-image-profile-generate-fields.md` — P4.96, P4.D196's Tier-2
+   item 10.** The five optional body fields on `Request::ImageProfile
+   Generate` as RAW `Option<Value>` (the `ChatCreate`-trio / `Images
+   Generate` idiom — NOT the doc comment's `Option<String>`, which would
+   turn v4's 400 into a serde decode error at the web edge), a single
+   validation stage ahead of any work answering v4's `Validation error`
+   envelope (`quality` through `is_image_quality`, `style` through the
+   two-value enum, the 404 before the body), the five threaded into the
+   tool input's existing keys, the census moved by exactly five rows, a
+   dispatch-path wire pin, the `core-contract.ts` type widened, and
+   `image_generate_route_equivalence` grown a row per field + the
+   refusal arms (red-first: v5 answered 201 having ignored the key).
+   Survey correction: there is NO `/api/v1/image-profiles` REST edge in
+   `quilltap-web` (dispatch-only) — no body parser to widen.
+4. **`p4.97-retry-option-bag-envelope-cache-key-pin.md` — P4.97, the
+   `53294163f` round's items 3 + 4.** (A) the tool-unsupported retry
+   clears `previous_response_id` and `stop` beside `tools` and `cache_
+   key` (v4's `:261-270` passes none of the three) with `primary_stream_
+   tier3` taught to SEE all three on every call through the P4.92
+   side-channel and the two existing retry cases grown to carry them SET
+   — survey correction: those cases already REACH the retry; the
+   blindness was the Rust driver's all-empty `StreamParams` and the
+   mock's silence, not an unreached leg; (B) the request-envelopes
+   cache-key pin as a NAMED coverage table (present AND absent per
+   emitting provider, set-but-ignored for anthropic/ollama/google) over
+   a corpus re-recorded at the pin with the anthropic/ollama rows it
+   never had, every pre-existing row byte-identical.
+
+**Execution arrangement:** all four in parallel, one worktree each from
+`main`. P4.D198 and P4.D199 want the most capable model (each has a
+design decision the survey settled but the lane must verify by
+measurement — the seam mechanism mapping in D198, the post-hoc
+equivalence in D199 — and each writes a differential instrument that did
+not exist). P4.96 and P4.97 are mechanical against written shapes
+(P4.62/P4.73's raw-crossing idiom; P4.92/P4.95's side-channel idiom) and
+can run on a cheaper agent with the same orders. Unification order
+P4.D198 → P4.D199 → P4.96 → P4.97; the baseline MOVES to `bcd7e4852` at
+the move and the row retires `ABSORBED(P4.D198, P4.D199)`; the unifier
+lands the §R.10(a) constant wire, re-runs `orchestrator_tier3` +
+`file_attachment_tier3` over the union (§R.10(b)), asserts the three
+non-P4.96 lanes' `api/types.rs`/`engine.rs`/census diffs EMPTY
+(§R.10(c)), regenerates `image_generation_tier3` LAST (§R.10(d)), and
+copies P4.D199's three `docs/v4/` paths (§R.9). **Deliberately left out,
+each with its reason:** the owed dogfood pass (item 5 of the previous
+"What is next" — `/dogfood`'s, not a work order; it gains this round's
+live surfaces: a turn carrying several fresh Lantern portraits on a
+vision seat with the `Image shrunk for LLM transport` debug line and, on
+a contrived four-portrait turn, the per-turn WARN in `combined.log`; a
+GPT Image 2.5 profile through the schema-built editor; the seven healed
+families' surfaces); the human `npm install` item in the four
+SDK-bundling plugin dirs (a lane cannot do it in the human's live tree);
+the two items awaiting the human's RULING (the census `ORDER BY`; the
+lock-conflict 503-vs-409); the named-not-order-sized set (the
+`SCENE_STATE_TRACKING` trigger + handler; the shared-fixture
+title-checkpoint hazard; `combined.log` key case; the `name`-field
+turn-path measurement; P4.87's two OPEN coverage items; the upstream
+filing candidates incl. the `gpt-image-1`/`-1-mini` ordering
+disagreement and the `salon-turn-controls.spec.ts` vitest intermittent).
+PB1 stays parked by the standing rule.
+
 ## The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95) — UNIFIED 2026-09-17
 
 **ALL FOUR ORDERS CLOSED (two follow-ups deferred loudly by name — P4.D196's
