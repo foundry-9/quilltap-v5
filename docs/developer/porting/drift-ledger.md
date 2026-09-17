@@ -44,11 +44,14 @@ probe verifies against._
   page). It is the next catch-up's first row.
 - **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
   oracle regeneration must run from a worktree pinned at `5f0a57dc4` per §5.1
-  until a catch-up round moves the baseline. ⚠ Two detached worktrees created
-  under `/tmp` at this unification VANISHED between tool calls (registered,
-  directory gone; `worktree prune` cleared them) — pins live under the
-  session scratchpad now; verify every pin by `rev-parse` before its first
-  regen.
+  until a catch-up round moves the baseline. ⚠ Two pins created under `/tmp`
+  at this unification LOOKED vanished — they were never gone: zsh does not
+  word-split `set -- $pin`, so each directory was named
+  `qt-v4-pin-unify-<sha> <sha>` (with a space) and `git -C /tmp/qt-v4-pin-
+  unify-<sha>` found nothing. Removed by their real names; the round's pins
+  were re-created under the session scratchpad. Verify every pin by
+  `rev-parse` before its first regen, and never build a path from an
+  unsplit zsh variable (`zsh-env-var-does-not-word-split`).
 - **The workspace gate is unaffected** — `public/schemas/` did not move, so
   `qtap_schema_embed_guard` stays green at 93,384 bytes.
 - **Schema state: CLEAR.** `bcd7e4852` touches neither `lib/db/**` nor

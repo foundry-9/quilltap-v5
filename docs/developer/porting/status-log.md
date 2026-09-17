@@ -132228,3 +132228,12 @@ workspace test), then the fixes, then the re-checks by name:
 
 **Versions:** core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730;
 host 0.0.137 / cli 0.0.22 / tauri 0.0.7 unchanged.
+
+**Correction to "The pins" above, same day:** the two `/tmp` pins did NOT
+vanish. The creation loop's `set -- $pin` was not word-split by zsh, so each
+worktree was created at `/tmp/qt-v4-pin-unify-<sha> <sha>` — a path with a
+space — and every later `git -C /tmp/qt-v4-pin-unify-<sha>` looked at a name
+that never existed. Found at cleanup, when `worktree list` kept showing them
+after `prune` and `ls -ld` printed the space. The third zsh no-word-split bite
+of this unification (the conflict resolver's `for f in $conf` was the second);
+the standing note `zsh-env-var-does-not-word-split` now names all three.
