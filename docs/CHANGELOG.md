@@ -89,6 +89,55 @@ each regenerated fresh from the pin and run by name: `salon_mutations`,
 this lane's pre/post sibling measurement found (all ten of its generate cases
 answered 500 where v4 answers 201). Seven more readers were green before and
 after.
+#### 2026-09-17 — feat(images): bugs 148 + 149, the shared quality list, the OpenAI options schema and the eight-model manifest
+
+_Versions: core 0.0.938, harness 0.0.829._
+
+The rest of v4 `d8d2890ee`'s server half.
+
+**Bug 148** — `generate_image`'s `size` / `style` / `quality` no longer carry a
+Zod `.default(...)`. Their output is fed to the params builder as *overrides*,
+which outrank the profile's stored bag by design, so a default there was not a
+fallback but a value that silently beat whatever the user configured: every
+image a character generated carried `standard` / `1024x1024` / `vivid` no
+matter what the profile said. `count` keeps its default, deliberately.
+
+**Bug 149** — `requested_orientation` replaces `orientation_of` at both call
+sites (ordinary and Concierge reroute): the explicit orientation, `None` when
+the model named a size, and `Square` only when it asked for neither. The old
+`input.orientation ?? 'square'` made the builder's orientation-beats-size
+precedence unconditional, so the tool's `size` parameter could never do
+anything.
+
+**The shared quality list** (`image_gen/quality.rs`) is v4's new
+`lib/image-gen/quality.ts`: the eight tiers, read by the `generate_image`
+schema and by `POST /api/v1/images?action=generate`, which still spelled
+DALL·E's pair and refused a profile storing `max` at the door. v4's
+compile-time assertions land as a test against the tool definition's own enum.
+
+**The options schema** is served for OPENAI through the existing
+`options-schema` action, built per model from the capability table.
+
+**The manifest** regen moves `openai.json`'s `imageGenerationModels` to the
+eight ids in v4's table order (`gpt-image-1-mini` before `gpt-image-1`); no
+other manifest moved.
+
+**The openai SDK 7.10 → 7.15 wire re-check**: every recorded provider corpus
+regenerated at v4 `5f0a57dc4` and byte-identical — request-envelopes,
+google-wire, response-bodies, the stream fixtures, tool-wire, moderation-wire
+and web-search-wire. ⚠ The bump is only partly exercised: the four
+SDK-bundling plugin directories declare `^7.15.0` but still have 7.10.0
+installed, so their corpora were recorded under the old SDK. Recorded, not
+papered over.
+
+Differentials: the tool-definition catalog (RED at the pin, then the bytes
+regenerated), `image_generation_tier3` (+3 rows — the existing corpus was
+measurably BLIND to bug 149 until one of them got a prompt no sibling shares),
+`image_profiles_routes` (+7 OpenAI schema rows, and the harness's hard-coded
+case table taught about them — rows added to the oracle alone are never run),
+`images_generate_route` (+3 quality rows), `image_generate_route` and
+`provider_registry`.
+
 #### 2026-09-17 — feat(images): the OpenAI image dialect over the capability table
 
 _Versions: core 0.0.937, harness 0.0.828._

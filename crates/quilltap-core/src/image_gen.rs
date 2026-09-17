@@ -35,6 +35,7 @@ pub mod huggingface_repo_id;
 pub mod lora_support;
 pub mod lora_validation;
 pub mod params_builder;
+pub mod quality;
 
 pub use lora_support::{ImageLoraSpec, ImageLoraSupport, LoraScale};
 

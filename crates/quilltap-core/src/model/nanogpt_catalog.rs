@@ -369,13 +369,20 @@ pub fn nanogpt_image_options_schema(model: Option<&str>) -> Value {
 /// v4 `plugin.getImageProviderOptionsSchema?.({ modelName: model }) ?? null` —
 /// the per-provider hook, dispatched by provider id.
 ///
-/// NanoGPT is the ONLY built-in that declares it (`84f33ce94`; grep
-/// `getImageProviderOptionsSchema` across v4's plugins). Every other provider
-/// answers `None`, which the route serves as `null` and the editor reads as
-/// "fall back to the legacy hand-written panel".
+/// NanoGPT was the only built-in that declared it (`84f33ce94`); `d8d2890ee`
+/// added OpenAI's, built per model from its capability table, so the
+/// image-profile editor is schema-built instead of using the old hand-written
+/// panel. Every other provider still answers `None`, which the route serves as
+/// `null` and the editor reads as "fall back to the legacy hand-written panel".
+///
+/// The dispatcher stays here rather than moving to a neutral module: it is two
+/// arms and one call site, and relocating it would touch a file this lane does
+/// not own for no behavioural gain. A third declaring provider is the moment to
+/// move it.
 pub fn image_provider_options_schema(provider: &str, model: Option<&str>) -> Option<Value> {
     match provider {
         "NANOGPT" => Some(nanogpt_image_options_schema(model)),
+        "OPENAI" => Some(crate::model::openai_image_options::openai_image_options_schema(model)),
         _ => None,
     }
 }

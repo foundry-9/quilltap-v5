@@ -495,6 +495,22 @@ function buildCases(): CaseSpec[] {
       name: 'zod_quality_bad',
       body: { prompt, profileId: PROFILE_MAIN, options: { quality: 'ultra' } },
     },
+    // `d8d2890ee`: the route now shares `imageQualitySchema`, so every GPT
+    // Image tier is accepted where this schema used to spell DALL·E's pair and
+    // refuse a profile storing `max` before the provider was ever called.
+    // `ludicrous` is the control — a tier no provider offers still 400s.
+    {
+      name: 'generate_quality_max',
+      body: { prompt, profileId: PROFILE_MAIN, options: { quality: 'max' } },
+    },
+    {
+      name: 'generate_quality_xhigh',
+      body: { prompt, profileId: PROFILE_MAIN, options: { quality: 'xhigh' } },
+    },
+    {
+      name: 'zod_quality_ludicrous',
+      body: { prompt, profileId: PROFILE_MAIN, options: { quality: 'ludicrous' } },
+    },
     {
       name: 'zod_style_bad',
       body: { prompt, profileId: PROFILE_MAIN, options: { style: 'painterly' } },

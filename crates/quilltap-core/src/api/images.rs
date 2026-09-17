@@ -1455,10 +1455,15 @@ fn parse_generate_body(
                 *slot = Some(v.as_str().ok_or_else(bad)?.to_string());
             }
         }
-        // `quality: z.enum(['standard','hd'])`, `style: z.enum(['vivid','natural'])`.
+        // `quality: imageQualitySchema` (`d8d2890ee`) — the SHARED eight-tier
+        // list, not DALL·E's pair. Before v4's fix this route refused a profile
+        // storing `max` before the provider was ever called.
+        // `style: z.enum(['vivid','natural'])` is unchanged.
         if let Some(v) = o.get("quality") {
             match v.as_str() {
-                Some(s @ ("standard" | "hd")) => overrides.quality = Some(s.to_string()),
+                Some(s) if crate::image_gen::quality::is_image_quality(s) => {
+                    overrides.quality = Some(s.to_string())
+                }
                 _ => return Err(bad()),
             }
         }

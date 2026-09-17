@@ -196,14 +196,26 @@ impl ImageGenerationToolInput {
     }
 }
 
-/// The `size` enum (v4 `imageGenerationToolInputSchema.size`).
-const SCHEMA_SIZES: [&str; 3] = ["1024x1024", "1792x1024", "1024x1792"];
+/// The `size` enum (v4 `imageGenerationToolInputSchema.size`). `d8d2890ee`
+/// appended the two standard GPT Image shapes; v4 deliberately did NOT widen it
+/// to arbitrary strings ("it is the model-facing surface"), so the five values
+/// are the whole list.
+const SCHEMA_SIZES: [&str; 5] = [
+    "1024x1024",
+    "1792x1024",
+    "1024x1792",
+    "1536x1024",
+    "1024x1536",
+];
 /// The `orientation` enum.
 const SCHEMA_ORIENTATIONS: [&str; 3] = ["portrait", "landscape", "square"];
 /// The `style` enum.
 const SCHEMA_STYLES: [&str; 2] = ["vivid", "natural"];
-/// The `quality` enum.
-const SCHEMA_QUALITIES: [&str; 2] = ["standard", "hd"];
+/// The `quality` enum — the SHARED list (`d8d2890ee`), not a local copy: this
+/// schema, both HTTP generate routes and the profile editor all read
+/// [`IMAGE_QUALITY_VALUES`], because two of them were still spelling DALL·E's
+/// pair after the GPT Image tiers arrived.
+const SCHEMA_QUALITIES: [&str; 8] = crate::image_gen::quality::IMAGE_QUALITY_VALUES;
 /// The `aspectRatio` enum.
 const SCHEMA_ASPECT_RATIOS: [&str; 5] = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
@@ -295,11 +307,19 @@ fn raw_arguments_of(input: &ImageGenerationToolInput) -> Cow<'_, Value> {
 /// passes; 2001 refuses).
 ///
 /// The returned value is v4's `parsed.data`: the caller's fields with the
-/// `llmNumber` conversion applied to `count` and the schema's four defaults
-/// materialized (`size: '1024x1024'`, `style: 'vivid'`, `quality: 'standard'`,
-/// `count: 1`). The handler reads THAT from here on, exactly as v4 does — the
-/// defaults are an OVERRIDE and outrank the profile's stored bag, which is why
-/// a profile storing `quality: 'hd'` still generates `standard`.
+/// `llmNumber` conversion applied to `count` and `count`'s default materialized.
+/// The handler reads THAT from here on, exactly as v4 does.
+///
+/// **`size` / `style` / `quality` no longer default** (v4 bug 148, fixed in
+/// `d8d2890ee`). `toolInputOverrides` feeds this output straight into the
+/// params builder as *overrides*, and overrides outrank the profile's stored
+/// bag by design — so a Zod `.default()` here was not a fallback but a value
+/// that silently beat whatever the user configured, and every image a character
+/// generated carried `standard` / `1024x1024` / `vivid` no matter what the
+/// profile said. An absent key parses to `None`, leaving the profile's own
+/// setting to stand. `count` keeps its default deliberately: it carries a cost
+/// per extra image, its description promises the model a default of 1, and no
+/// OpenAI profile editor exposes `n` to be overridden in the first place.
 pub fn validate_image_generation_input(
     input: &ImageGenerationToolInput,
 ) -> Option<ImageGenerationToolInput> {
@@ -322,13 +342,12 @@ fn parse_schema(obj: &Map<String, Value>) -> Result<ImageGenerationToolInput, ()
     let negative_prompt = zod_optional_string(obj.get("negativePrompt"), 1000)?;
     let orientation = zod_optional_enum(obj.get("orientation"), &SCHEMA_ORIENTATIONS)?;
     let aspect_ratio = zod_optional_enum(obj.get("aspectRatio"), &SCHEMA_ASPECT_RATIOS)?;
-    // The four `.default(...)` fields: absent takes the schema's value.
-    let size = zod_optional_enum(obj.get("size"), &SCHEMA_SIZES)?
-        .unwrap_or_else(|| SCHEMA_SIZES[0].to_string());
-    let style = zod_optional_enum(obj.get("style"), &SCHEMA_STYLES)?
-        .unwrap_or_else(|| SCHEMA_STYLES[0].to_string());
-    let quality = zod_optional_enum(obj.get("quality"), &SCHEMA_QUALITIES)?
-        .unwrap_or_else(|| SCHEMA_QUALITIES[0].to_string());
+    // Bug 148 (`d8d2890ee`): these three are plain `.optional()` — no
+    // `.default(...)`. An absent key stays absent, so the profile's stored
+    // value survives the override merge.
+    let size = zod_optional_enum(obj.get("size"), &SCHEMA_SIZES)?;
+    let style = zod_optional_enum(obj.get("style"), &SCHEMA_STYLES)?;
+    let quality = zod_optional_enum(obj.get("quality"), &SCHEMA_QUALITIES)?;
 
     // count: llmNumber(z.number().int().min(1).max(10)).default(1).optional().
     // The preprocess runs FIRST, so `"3"` becomes 3 and the bounds then apply to
@@ -349,9 +368,9 @@ fn parse_schema(obj: &Map<String, Value>) -> Result<ImageGenerationToolInput, ()
         prompt,
         negative_prompt,
         orientation,
-        size: Some(size),
-        style: Some(style),
-        quality: Some(quality),
+        size,
+        style,
+        quality,
         aspect_ratio,
         count: Some(count),
         // The parse is done; the raw has no further reader.
@@ -623,12 +642,29 @@ fn tool_input_overrides(input: &ImageGenerationToolInput) -> ImageGenOverrides {
     }
 }
 
-/// v4's `input.orientation ?? 'square'` → the [`Orientation`] enum.
-fn orientation_of(input: &ImageGenerationToolInput) -> Orientation {
-    match input.orientation.as_deref() {
-        Some("portrait") => Orientation::Portrait,
-        Some("landscape") => Orientation::Landscape,
-        _ => Orientation::Square,
+/// The orientation this call should resolve, or `None` to leave the merged
+/// `size` / `aspectRatio` alone (v4 `requestedOrientation`, `d8d2890ee` —
+/// bug 149).
+///
+/// Orientation outranks any raw size in the builder, by design — a caller
+/// asking for a shape means the shape, not a string. But defaulting an *absent*
+/// orientation to `'square'` made that precedence unconditional, so a `size` the
+/// model passed was always overwritten by square's 1024x1024 and the tool's
+/// `size` parameter could never do anything. Square stays the default only when
+/// the model named no size of its own; `None` is the builder's documented
+/// "leave size alone", which `POST /api/v1/images` already passes for exactly
+/// this reason.
+fn requested_orientation(input: &ImageGenerationToolInput) -> Option<Orientation> {
+    // v4 `if (input.orientation)` — truthy, so an empty string falls through.
+    match input.orientation.as_deref().filter(|o| !o.is_empty()) {
+        Some("portrait") => Some(Orientation::Portrait),
+        Some("landscape") => Some(Orientation::Landscape),
+        Some(_) => Some(Orientation::Square),
+        // `input.size ? undefined : 'square'` — truthy again.
+        None => match input.size.as_deref().filter(|s| !s.is_empty()) {
+            Some(_) => None,
+            None => Some(Orientation::Square),
+        },
     }
 }
 
@@ -2453,7 +2489,7 @@ where
         },
         &tool_input.prompt,
         &tool_input_overrides(tool_input),
-        Some(orientation_of(original_input)),
+        requested_orientation(original_input),
         DEFAULT_IMAGE_MODEL,
         &(deps.declarations_for)(&image_profile.provider),
         &ImageParamsLogContext {
@@ -2551,7 +2587,7 @@ where
                 },
                 &tool_input.prompt,
                 &tool_input_overrides(tool_input),
-                Some(orientation_of(original_input)),
+                requested_orientation(original_input),
                 DEFAULT_IMAGE_MODEL,
                 &(deps.declarations_for)(&reroute.profile.provider),
                 &ImageParamsLogContext {
@@ -3001,18 +3037,96 @@ mod schema_tests {
         validate_image_generation_input(&ImageGenerationToolInput::from_arguments(&raw))
     }
 
+    /// v4 bug 148 (`d8d2890ee`): only `count` still defaults. The three that
+    /// used to — `size` / `style` / `quality` — now stay absent, because
+    /// `toolInputOverrides` feeds them in as OVERRIDES that outrank the
+    /// profile's stored bag.
     #[test]
-    fn absent_fields_take_the_schema_defaults() {
+    fn only_count_takes_a_schema_default() {
         let p = parse(json!({ "prompt": "a cat" })).expect("accepted");
         assert_eq!(p.prompt, "a cat");
-        assert_eq!(p.size.as_deref(), Some("1024x1024"));
-        assert_eq!(p.style.as_deref(), Some("vivid"));
-        assert_eq!(p.quality.as_deref(), Some("standard"));
+        assert_eq!(p.size, None);
+        assert_eq!(p.style, None);
+        assert_eq!(p.quality, None);
+        // Deliberately unlike the three above: `count` carries a cost per extra
+        // image and its description promises the model a default of 1.
         assert_eq!(p.count, Some(1));
-        // The three fields with no `.default()` stay absent.
+        // The three that never defaulted stay absent too.
         assert_eq!(p.negative_prompt, None);
         assert_eq!(p.orientation, None);
         assert_eq!(p.aspect_ratio, None);
+    }
+
+    /// The widened enums (`d8d2890ee`): every shared quality tier and both new
+    /// standard GPT Image sizes parse, and a tier no provider offers still
+    /// refuses.
+    #[test]
+    fn the_widened_enums_accept_what_v4_accepts() {
+        for quality in crate::image_gen::quality::IMAGE_QUALITY_VALUES {
+            let p = parse(json!({ "prompt": "a cat", "quality": quality }))
+                .unwrap_or_else(|| panic!("quality {quality} should parse"));
+            assert_eq!(p.quality.as_deref(), Some(quality));
+        }
+        for size in [
+            "1024x1024",
+            "1536x1024",
+            "1024x1536",
+            "1792x1024",
+            "1024x1792",
+        ] {
+            let p = parse(json!({ "prompt": "a cat", "size": size }))
+                .unwrap_or_else(|| panic!("size {size} should parse"));
+            assert_eq!(p.size.as_deref(), Some(size));
+        }
+        assert!(parse(json!({ "prompt": "a cat", "quality": "ludicrous" })).is_none());
+        // v4 deferred widening `size` to arbitrary strings: it is the
+        // model-facing surface, and the five values are the whole list.
+        assert!(parse(json!({ "prompt": "a cat", "size": "1536x864" })).is_none());
+        assert!(parse(json!({ "prompt": "a cat", "size": "512x512" })).is_none());
+    }
+
+    /// v4 bug 149 (`d8d2890ee`) — `requestedOrientation`. v5 had v4's pre-fix
+    /// `input.orientation ?? 'square'` verbatim, so the builder was told a shape
+    /// had been requested on every call and square's 1024x1024 landed on top of
+    /// whatever the merge produced.
+    #[test]
+    fn requested_orientation_yields_to_an_explicit_size() {
+        let mk = |v: Value| ImageGenerationToolInput::from_arguments(&v);
+        // Neither shape nor size: square, as before.
+        assert_eq!(
+            requested_orientation(&mk(json!({ "prompt": "a brass zeppelin" }))),
+            Some(Orientation::Square)
+        );
+        // An explicit size: leave the merged size alone.
+        assert_eq!(
+            requested_orientation(&mk(
+                json!({ "prompt": "a brass zeppelin", "size": "1536x1024" })
+            )),
+            None
+        );
+        // An explicit orientation is still honoured…
+        assert_eq!(
+            requested_orientation(&mk(
+                json!({ "prompt": "a brass zeppelin", "orientation": "portrait" })
+            )),
+            Some(Orientation::Portrait)
+        );
+        assert_eq!(
+            requested_orientation(&mk(
+                json!({ "prompt": "a brass zeppelin", "orientation": "landscape" })
+            )),
+            Some(Orientation::Landscape)
+        );
+        // …and wins when the model supplied both: the documented precedence,
+        // a shape request outranking a raw string.
+        assert_eq!(
+            requested_orientation(&mk(json!({
+                "prompt": "a brass zeppelin",
+                "orientation": "portrait",
+                "size": "1536x1024"
+            }))),
+            Some(Orientation::Portrait)
+        );
     }
 
     #[test]
@@ -3172,9 +3286,10 @@ mod schema_tests {
             raw_arguments: None,
         };
         let p = validate_image_generation_input(&built).expect("accepted");
-        assert_eq!(p.size.as_deref(), Some("1024x1024"));
-        assert_eq!(p.style.as_deref(), Some("vivid"));
-        assert_eq!(p.quality.as_deref(), Some("standard"));
+        // Bug 148 (`d8d2890ee`): the three no longer default on EITHER path.
+        assert_eq!(p.size, None);
+        assert_eq!(p.style, None);
+        assert_eq!(p.quality, None);
         assert_eq!(p.count, Some(1));
 
         // And an out-of-bounds count refuses on this path too.

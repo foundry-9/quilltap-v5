@@ -175,6 +175,23 @@
       "op": "generate",
       "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "landscape", "size": "1792x1024", "style": "natural", "quality": "hd", "negativePrompt": "blurry, low quality, watermark", "count": 3}
     },
+    "bug149_size_without_orientation_survives": {
+      "id": "aaaa0014-0000-4000-8000-000000000014",
+      "op": "generate",
+      "toolInput": {"prompt": "A brass zeppelin moored above a canyon at dusk", "size": "1792x1024"},
+      "$comment": "d8d2890ee / bug 149: a size with NO orientation. Before the fix the handler passed `orientation ?? 'square'`, so square's 1024x1024 overwrote it and the tool's `size` could never do anything. The other three `requestedOrientation` arms are already covered — neither (schema_defaults_only), orientation only (bug149_orientation_only_landscape) and both (schema_full_enums). The prompt is DELIBERATELY unique: with the bug restored this case's built body collapses onto `schema_defaults_only`'s (same prompt, same profile, square's 1024x1024) and the canned wire answers it happily, so the row measures nothing. A prompt no sibling shares turns the overwrite into a loud canned MISS — measured, not assumed."
+    },
+    "bug149_orientation_only_landscape": {
+      "id": "aaaa0015-0000-4000-8000-000000000015",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "landscape"}
+    },
+    "bug148_quality_max_reaches_the_provider": {
+      "id": "aaaa0016-0000-4000-8000-000000000016",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "quality": "max"},
+      "$comment": "d8d2890ee: the widened tool enum end to end. `max` used to be a schema REFUSAL; it now parses, and the dall-e-3 profile's own dialect is what declines it back to `standard`."
+    },
     "schema_unknown_key_stripped": {
       "id": "aaaa0013-0000-4000-8000-000000000013",
       "op": "generate",

@@ -319,6 +319,18 @@ fn image_profiles_routes_match_oracle() {
         "options_schema_nanogpt_prefix_match",
         "options_schema_nanogpt_weights_family",
         "options_schema_nanogpt_url_family",
+        // `d8d2890ee` — OpenAI's own per-model options schema. The former
+        // `options_schema_schemaless_image_provider` row WAS the OPENAI
+        // no-model call answering null; it is now GROK, and these seven are
+        // the schema across the table's families plus both
+        // `findImageModel(...) ?? OPENAI_IMAGE_MODELS[0]` fallbacks.
+        "options_schema_openai_no_model",
+        "options_schema_openai_sunburst",
+        "options_schema_openai_gpt_image_2",
+        "options_schema_openai_dalle3",
+        "options_schema_openai_dalle2",
+        "options_schema_openai_dated_snapshot",
+        "options_schema_openai_unknown_model",
         // P4.D138 unit 7 (`2ece98c90`) — the lora-metadata action.
         "lora_metadata_bad_json",
         "lora_metadata_non_object_body",
@@ -729,7 +741,32 @@ fn image_profiles_routes_match_oracle() {
         }
         for (name, provider, model) in [
             ("options_schema_text_only_provider", "ANTHROPIC", None),
-            ("options_schema_schemaless_image_provider", "OPENAI", None),
+            // `d8d2890ee`: OPENAI declares a schema now, so GROK is the
+            // surviving schemaless image provider.
+            ("options_schema_schemaless_image_provider", "GROK", None),
+            ("options_schema_openai_no_model", "OPENAI", None),
+            (
+                "options_schema_openai_sunburst",
+                "OPENAI",
+                Some("gpt-image-2.5-sunburst"),
+            ),
+            (
+                "options_schema_openai_gpt_image_2",
+                "OPENAI",
+                Some("gpt-image-2"),
+            ),
+            ("options_schema_openai_dalle3", "OPENAI", Some("dall-e-3")),
+            ("options_schema_openai_dalle2", "OPENAI", Some("dall-e-2")),
+            (
+                "options_schema_openai_dated_snapshot",
+                "OPENAI",
+                Some("gpt-image-2.5-flare-2026-09-08"),
+            ),
+            (
+                "options_schema_openai_unknown_model",
+                "OPENAI",
+                Some("gpt-image-3-supernova"),
+            ),
             ("options_schema_nanogpt_no_model", "NANOGPT", None),
             ("options_schema_nanogpt_empty_model", "NANOGPT", Some("")),
             (

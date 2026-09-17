@@ -422,7 +422,10 @@ async function main(): Promise<void> {
       },
     },
     // === 84f33ce94 (P4.D138 unit 6): the list's loraSupport map + the new
-    // options-schema action. NanoGPT is the only provider declaring either.
+    // options-schema action. NanoGPT is the only provider declaring LoRA
+    // support; since `d8d2890ee` it is no longer the only one declaring an
+    // options schema — OpenAI declares one too, built per model from its
+    // capability table.
     {
       // The one provider with real per-model LoRA support: ten family prefixes
       // carry a support object, the six flagships resolve nothing and are
@@ -468,11 +471,90 @@ async function main(): Promise<void> {
         ),
     },
     {
-      // An image provider that declares no hook: null schema, null support.
-      name: 'options_schema_schemaless_image_provider',
+      // `d8d2890ee`: OpenAI now DECLARES the hook, so the no-model call answers
+      // the widest family's schema (the table's first entry) rather than the
+      // null the editor read as "fall back to the hand-written panel".
+      // (This row is the former `options_schema_schemaless_image_provider`;
+      // GROK below is the surviving schemaless arm.)
+      name: 'options_schema_openai_no_model',
       run: async () =>
         respond(
           await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=OPENAI`)),
+        ),
+    },
+    {
+      // The premium 2.5 family: six quality tiers with `xhigh`/`max`
+      // described, the wide size list with the experimental flags, no `style`,
+      // and the whole GPT Image Output group.
+      name: 'options_schema_openai_sunburst',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=OPENAI&model=gpt-image-2.5-sunburst`),
+          ),
+        ),
+    },
+    {
+      // Arbitrary sizes but only the four ordinary tiers — the other half of
+      // the `max`-capable helpText branch.
+      name: 'options_schema_openai_gpt_image_2',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=OPENAI&model=gpt-image-2`),
+          ),
+        ),
+    },
+    {
+      // The one family with `style`, and no GPT Image Output group.
+      name: 'options_schema_openai_dalle3',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=OPENAI&model=dall-e-3`),
+          ),
+        ),
+    },
+    {
+      // Neither style nor the output group, and a single quality tier.
+      name: 'options_schema_openai_dalle2',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=OPENAI&model=dall-e-2`),
+          ),
+        ),
+    },
+    {
+      // A dated snapshot rides its family's schema by longest prefix, and an
+      // unknown id falls back to the table's first entry — both arms of
+      // `findImageModel(modelName) ?? OPENAI_IMAGE_MODELS[0]`.
+      name: 'options_schema_openai_dated_snapshot',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(
+              `${B}?action=options-schema&provider=OPENAI&model=gpt-image-2.5-flare-2026-09-08`,
+            ),
+          ),
+        ),
+    },
+    {
+      name: 'options_schema_openai_unknown_model',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=OPENAI&model=gpt-image-3-supernova`),
+          ),
+        ),
+    },
+    {
+      // An image provider that declares no hook: null schema, null support.
+      // GROK is the surviving schemaless arm now OpenAI declares one.
+      name: 'options_schema_schemaless_image_provider',
+      run: async () =>
+        respond(
+          await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=GROK`)),
         ),
     },
     {
