@@ -326,6 +326,34 @@ That order is v4's CLIENT file's, which spells `gpt-image-1` before
 `gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
 than quietly resolved: a spec pins the ordering so a future copy from the
 server's list would have to say so. (A candidate upstream nit.)
+#### 2026-09-17 — test(request-builder): pin where each provider writes the prompt-cache key, and where it writes nothing (P4.95)
+
+_Versions: core 0.0.937._
+
+The eight `cache_key` emission sites in `request_builder/{responses_api,
+chat_completions}.rs` carried no test at all, so nothing held them to v4's
+plugin sources — and the P4.95 carry has just made every one of them live on
+the main chat path for the first time.
+
+A table-driven pin over the request dispatcher now asserts, per provider, that
+a key lands under v4's wire key and that ABSENCE omits the key rather than
+emitting null (v4's guards are `typeof params.cacheKey === 'string' &&
+params.cacheKey.length > 0`, or the truthiness spread in the shared
+`plugin-utils` base). The ignoring providers get the stronger statement: with
+and without a key, ANTHROPIC, GOOGLE and OLLAMA build byte-identical bodies. A
+second pin covers the empty-key arm, and a third covers OPENAI's
+`prompt_cache_retention` rider, which sits inside the same guard — no key, no
+retention hint, however new the model.
+
+One survey correction rides along, measured not assumed: OPENAI_COMPATIBLE
+does write `user`. Its own `provider.ts` contains no `cacheKey`, because it
+only re-exports the shared `OpenAICompatibleProvider`, and the base class
+writes it (`packages/plugin-utils/src/providers/openai-compatible.ts:421`) —
+so the emitting set is seven providers, not six. In the other direction,
+OpenRouter's STREAMING body correctly writes nothing: the shape v5 models is
+v4's raw-fetch escape hatch (`streamViaChatCompletions`), whose body literal
+has no `user`.
+
 #### 2026-09-17 — fix(chat): carry the per-character prompt-cache key on the Salon turn (P4.95)
 
 _Versions: core 0.0.936, harness 0.0.828._

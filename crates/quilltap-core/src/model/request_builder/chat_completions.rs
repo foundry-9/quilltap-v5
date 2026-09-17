@@ -2088,3 +2088,134 @@ mod deepseek_thinking_turn_tests {
         )));
     }
 }
+#[cfg(test)]
+mod cache_key_wire_pins {
+    use crate::model::request_builder::{build_request, RequestInput};
+    use crate::model::stream::StreamMessage;
+    use serde_json::Value;
+
+    const KEY: &str = "quilltap:char:c0ffee00-0000-4000-8000-00000000000a:v4";
+
+    fn input(model: &str, cache_key: Option<&str>, stream: bool) -> RequestInput {
+        RequestInput {
+            model: model.to_string(),
+            messages: vec![StreamMessage::user("hi")],
+            temperature: Some(0.7),
+            max_tokens: Some(64),
+            cache_key: cache_key.map(str::to_string),
+            stream,
+            ..Default::default()
+        }
+    }
+
+    /// Where each provider writes the per-character prompt-cache key, measured
+    /// from v4's plugin sources at `1fefadb9a` — and, just as load-bearing,
+    /// which providers write NOTHING. `None` must omit the key entirely rather
+    /// than emit `null`: v4's guards are `typeof params.cacheKey === 'string' &&
+    /// params.cacheKey.length > 0` (the per-plugin sites) or the truthiness
+    /// spread `...(params.cacheKey ? { user: … } : {})` (the shared
+    /// `plugin-utils` base), and an absent key is not the same wire byte as a
+    /// null one.
+    ///
+    ///   OPENAI  `prompt_cache_key`  qtap-plugin-openai/provider.ts:387
+    ///   GROK    `prompt_cache_key`  qtap-plugin-grok/provider.ts:369, :468
+    ///   OPENROUTER `user`           qtap-plugin-openrouter/provider.ts:211, :362, :549
+    ///   NANOGPT `user`              qtap-plugin-nanogpt/provider.ts:260
+    ///   Z_AI    `user`              qtap-plugin-z-ai/provider.ts:327, :430
+    ///   OPENAI_COMPATIBLE `user`    packages/plugin-utils/src/providers/openai-compatible.ts:421
+    ///   DEEPSEEK `user_id`          qtap-plugin-deepseek/provider.ts:245, :346
+    ///   ANTHROPIC / GOOGLE / OLLAMA — deliberately ignored, each with a comment
+    ///   (anthropic provider.ts:76, google :108, ollama :64).
+    ///
+    /// ⚠ OPENAI_COMPATIBLE is the one the P4.95 order's survey got wrong: its
+    /// own `provider.ts` contains no `cacheKey`, because it only re-exports the
+    /// shared `OpenAICompatibleProvider` base class, and the base class writes
+    /// `user`. Measured, not assumed.
+    #[test]
+    fn every_provider_writes_the_cache_key_where_v4_writes_it() {
+        // (provider, model, stream, the wire key it writes — None = writes none)
+        let table: &[(&str, &str, bool, Option<&str>)] = &[
+            ("OPENAI", "gpt-4o", true, Some("prompt_cache_key")),
+            ("OPENAI", "gpt-4o", false, Some("prompt_cache_key")),
+            ("GROK", "grok-4", true, Some("prompt_cache_key")),
+            ("GROK", "grok-4", false, Some("prompt_cache_key")),
+            ("DEEPSEEK", "deepseek-chat", true, Some("user_id")),
+            ("Z_AI", "glm-4.6", true, Some("user")),
+            ("NANOGPT", "chroma", true, Some("user")),
+            ("OPENAI_COMPATIBLE", "local-model", true, Some("user")),
+            // OpenRouter's NON-streaming halves are the two that write it; the
+            // streaming half v5 models is v4's raw-fetch escape hatch
+            // (`streamViaChatCompletions`, provider.ts:745-755), whose body
+            // literal has no `user` at all — the row below pins that absence.
+            ("OPENROUTER", "router-model", false, Some("user")),
+            ("OPENROUTER", "router-model", true, None),
+            ("ANTHROPIC", "claude-sonnet", true, None),
+            ("GOOGLE", "gemini-3-pro", true, None),
+            ("OLLAMA", "llama3", true, None),
+        ];
+        for (provider, model, stream, wire_key) in table {
+            let with = build_request(provider, &input(model, Some(KEY), *stream))
+                .unwrap_or_else(|e| panic!("{provider} (stream={stream}) build failed: {e}"))
+                .body;
+            let without = build_request(provider, &input(model, None, *stream))
+                .unwrap_or_else(|e| panic!("{provider} (stream={stream}) build failed: {e}"))
+                .body;
+            match wire_key {
+                Some(k) => {
+                    assert_eq!(
+                        with.get(*k),
+                        Some(&Value::String(KEY.to_string())),
+                        "{provider} (stream={stream}) must put the cache key under `{k}`"
+                    );
+                    assert!(
+                        without.get(*k).is_none(),
+                        "{provider} (stream={stream}) must OMIT `{k}` when there is no cache key, \
+                         not emit null"
+                    );
+                }
+                None => {
+                    for k in ["prompt_cache_key", "user", "user_id"] {
+                        assert!(
+                            with.get(k).is_none(),
+                            "{provider} (stream={stream}) ignores the cache key in v4, but v5 \
+                             emitted `{k}`"
+                        );
+                    }
+                    // …and the two bodies are otherwise the same bytes, which is
+                    // the stronger statement: nothing at all moved.
+                    assert_eq!(
+                        serde_json::to_string(&with).unwrap(),
+                        serde_json::to_string(&without).unwrap(),
+                        "{provider} (stream={stream}) must build byte-identical bodies with and \
+                         without a cache key"
+                    );
+                }
+            }
+        }
+    }
+
+    /// An EMPTY key is falsy on v4's side at every one of the seven sites
+    /// (`params.cacheKey.length > 0` / the truthiness spread), so it must behave
+    /// exactly like no key — not emit `""`. `build_character_cache_key` already
+    /// answers `None` for an empty id, so this pins the builders' own guard
+    /// rather than the derivation's.
+    #[test]
+    fn an_empty_cache_key_is_omitted_like_an_absent_one() {
+        for (provider, model, wire_key) in [
+            ("OPENAI", "gpt-4o", "prompt_cache_key"),
+            ("GROK", "grok-4", "prompt_cache_key"),
+            ("DEEPSEEK", "deepseek-chat", "user_id"),
+            ("Z_AI", "glm-4.6", "user"),
+            ("NANOGPT", "chroma", "user"),
+            ("OPENAI_COMPATIBLE", "local-model", "user"),
+        ] {
+            let body = build_request(provider, &input(model, Some(""), true))
+                .expect("build")
+                .body;
+            assert!(
+                body.get(wire_key).is_none(),
+                "{provider} must omit `{wire_key}` for an empty cache key"
+            );
+        }
+    }
+}

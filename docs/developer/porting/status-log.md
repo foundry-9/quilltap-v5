@@ -131858,3 +131858,30 @@ provider corpus this round (§R.10(b)). §2 above is the six-key table the next
 wire needs, and the row shape is the ordinary one — a `mode`-tagged vector
 per provider with `cacheKey` set and a sibling with it absent. `cheap_llm.rs`
 was imported, never edited; `PROMPT_CACHE_STRUCTURE_VERSION` stays 4.
+
+### §9 — the builder emission pins (P4.95's second commit)
+
+The eight `cache_key` emission sites had no test at all, and the carry above
+makes every one of them live on the main chat path for the first time. Three
+`#[cfg(test)]` pins now hold them to v4's plugin sources (§2's table): a
+table-driven pin over the request DISPATCHER (so the ignoring providers are
+covered in the same table as the emitting ones), an empty-key pin, and
+OPENAI's `prompt_cache_retention` rider. The dispatcher-level home is why
+they live in `chat_completions.rs` — six of the eight sites are there, and a
+per-file split would have left ANTHROPIC and GOOGLE (whose builders are in
+sibling modules) unpinned rather than pinned as "emits nothing".
+
+Two measurements ride along. **OPENAI_COMPATIBLE emits `user`** through the
+shared `plugin-utils` base class (§2) — the order's survey said it never
+reads the key, having read the plugin's own `provider.ts`, which only
+re-exports the base. And **OpenRouter's STREAMING body correctly emits
+nothing**: the shape v5 models is v4's raw-fetch escape hatch
+(`streamViaChatCompletions`, `provider.ts:745-755`), whose body literal has
+no `user` — v4's OTHER streaming branch (the SDK `callModel` path at
+`:537-551`, taken when there are no tools and no images) does send it, but v5
+does not model that branch at all (`build_openrouter_body` routes every
+stream to the raw-fetch shape, as its own doc comment says). That is a
+pre-existing structural gap far wider than a cache key — a whole unmodelled
+request shape — and it is NOT this lane's: recorded here because the carry is
+what makes its cache-key symptom reachable, and because the pin now states
+the absence explicitly so a future reader does not "fix" the faithful half.

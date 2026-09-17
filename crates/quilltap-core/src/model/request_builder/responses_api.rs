@@ -634,3 +634,73 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod cache_key_retention_pins {
+    use crate::model::request_builder::{build_request, RequestInput};
+    use crate::model::stream::StreamMessage;
+    use serde_json::{json, Value};
+
+    const KEY: &str = "quilltap:char:c0ffee00-0000-4000-8000-00000000000a:v4";
+
+    fn input(model: &str, cache_key: Option<&str>) -> RequestInput {
+        RequestInput {
+            model: model.to_string(),
+            messages: vec![StreamMessage::user("hi")],
+            temperature: Some(0.7),
+            max_tokens: Some(64),
+            cache_key: cache_key.map(str::to_string),
+            stream: true,
+            ..Default::default()
+        }
+    }
+
+    /// The `prompt_cache_retention` rider is OPENAI's alone and rides the CACHE
+    /// KEY: v4 sets it inside the same `if (cacheKey)` block, so no key means no
+    /// retention hint however new the model is. The three-way table pins both
+    /// halves — which is worth pinning precisely because the Salon turn only
+    /// started carrying a key at P4.95, so this rider had never fired on the
+    /// main chat path at all.
+    ///
+    /// GROK writes the same `prompt_cache_key` and has no retention rider
+    /// (`qtap-plugin-grok/provider.ts:369`), which is the second arm.
+    #[test]
+    fn extended_retention_rides_the_cache_key() {
+        // A retention-capable model WITH a key: both.
+        let body = build_request("OPENAI", &input("gpt-5.1-mini", Some(KEY)))
+            .expect("build")
+            .body;
+        assert_eq!(
+            body.get("prompt_cache_key"),
+            Some(&Value::String(KEY.into()))
+        );
+        assert_eq!(body.get("prompt_cache_retention"), Some(&json!("24h")));
+
+        // The same model WITHOUT a key: neither (the rider is inside the guard).
+        let body = build_request("OPENAI", &input("gpt-5.1-mini", None))
+            .expect("build")
+            .body;
+        assert!(body.get("prompt_cache_key").is_none());
+        assert!(body.get("prompt_cache_retention").is_none());
+
+        // A model outside the prefix list WITH a key: the key only.
+        let body = build_request("OPENAI", &input("gpt-4o", Some(KEY)))
+            .expect("build")
+            .body;
+        assert_eq!(
+            body.get("prompt_cache_key"),
+            Some(&Value::String(KEY.into()))
+        );
+        assert!(body.get("prompt_cache_retention").is_none());
+
+        // GROK: the key, never a retention hint.
+        let body = build_request("GROK", &input("grok-4", Some(KEY)))
+            .expect("build")
+            .body;
+        assert_eq!(
+            body.get("prompt_cache_key"),
+            Some(&Value::String(KEY.into()))
+        );
+        assert!(body.get("prompt_cache_retention").is_none());
+    }
+}
