@@ -130951,3 +130951,268 @@ green siblings green. The artifact records `venue_is_worktree: true` and the
    `docs/developer/porting/status-log.md`, this order's header, and the sweep
    artifact. No `crates/*/src`, no `apps/web/**`, no `help/**`, no drift
    ledger, no other family's sources.
+
+## Lane record — P4.D196 (v4 `d8d2890ee`, PR #62: GPT Image 2.5 + the full OpenAI image parameter set, SERVER half)
+
+**Branch:** `claude/openai-image-params-server-4ca48f`. **Round:** the
+`53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥
+P4.D197 ∥ P4.95). **Status: CLOSED** on every Tier-1 and Tier-2 item bar the one
+named below.
+
+**Commits (four):** `f2e1a64d` the capability table + the options-schema module ·
+`e5b7c9d4` the dialect rewritten over the table · `b950ee32` bugs 148 + 149, the
+shared quality list, the options-schema wiring, the manifest regen and the SDK
+wire re-check · `fe756f10` the Tier-2 local pins + the profile-generate
+measurement.
+
+### Pins and the probe
+
+Target pin `/tmp/qt-v4-pin-p4d196-5f0a57dc4`, baseline pin
+`/tmp/qt-v4-pin-p4d196-1fefadb9a`, both lane-unique with all three symlink
+classes. **Pin verification passed as §R.3 specifies:** the target-pinned
+image-dialects NDJSON carries 26 `gpt-image-2.5` occurrences, the
+baseline-pinned one carries ZERO.
+
+⚠ **v4 DRIFTED MID-LANE.** The §2 probe passed at lane start (HEAD
+`5f0a57dc4`, branch `main`, tree clean, both logs empty) and again before every
+regen batch, but the probe run after the last unit **FAILED**: v4 HEAD is now
+`bcd7e4852` ("fix(images): send a model the picture, not the archive of it (bug
+151)", 2026-09-17 10:15). Per §R.2 the lane STOPPED porting on that probe and
+did not touch the ledger. **Nothing in this lane is poisoned** — every oracle
+was recorded from the pinned worktree at `5f0a57dc4`, which the new commit
+cannot move. For the unifier, read-only and deliberately UNCLASSIFIED (that is
+`/driftcheck`'s call): the commit touches `lib/files/llm-image-budget.ts` (NEW),
+`lib/chat-files-v2.ts`, `lib/services/chat-message/context-builder.service.ts`,
+a test, `help/connection-profiles.md`, docs and three version stamps. None of
+those files is read by any oracle this lane regenerated.
+
+**One post-STOP regen was run deliberately and is disclosed here:** the unified
+gate's first run failed `image_generation_tier3` on a `mountPointId` mismatch —
+the tier-3 and `image_generate_route` families SHARE `QT_FIXTURE_IMGGEN_MAIN/
+MOUNT`, and the later route regen rebuilt the pair, minting a fresh vault id the
+tier-3 oracle no longer agreed with. The repair rebuilds the fixture ONCE and
+records both oracles against that build with no rebuild between. It ran entirely
+from the `5f0a57dc4` pin, so it is immune to the drift by construction; it added
+no rows and changed no port.
+
+### What landed
+
+1. **`model/openai_image_models.rs`** — v4's `image-models.ts` transcribed: the
+   eight families in v4's order, `ARBITRARY_SIZE_RULES`, `find_image_model`
+   (exact → longest prefix, citing `match_model`'s tie note — the ids are
+   distinct and no two share a length while both prefix one model, so
+   `max_by_key`'s last-max and v4's sort-desc-first agree), `is_gpt_image_model`
+   with the bare-prefix fallback, `parse_size` (f64 edges, because v4 tests
+   `Number.isInteger` on a `Number()` of a digit run), `check_arbitrary_size`
+   with the five reason sentences rendered from the rule constants, and
+   `mime_type_for_format`.
+2. **The OPENAI dialect** rewritten over the table — RED-FIRST. `resolve_quality`,
+   `validate_and_normalize_size`, the `n` clamp, the `style` gate, the four
+   extras via `read_enum` / `read_int_in_range` (JS `String()` and `Number()`
+   through `pascal::js_value`), the transparent-background PNG force, the
+   jpeg/webp-only compression rule, and the body key order.
+   **`parse_image_response` now takes `&ImageGenParams` in place of `model:
+   &str`** — the recorded `mimeType` follows the (possibly forced) requested
+   format, and v4 computes it inside `generateImage` where that local is still
+   in scope. One source beats a side channel; `openai_output_format(params)` is
+   pure. The harness's former second source is now an ASSERTION that
+   `row.model == input.model`.
+3. **`supported_image_models("OPENAI")` and `orientation_data_for("OPENAI")`**
+   derived from the table (the NanoGPT `OnceLock` idiom), so a family added
+   there appears in both for free.
+4. **The options schema** — v4's `image-options-schema.ts` byte-copied into
+   `model/openai_image_options.rs` and dispatched from
+   `nanogpt_catalog::image_provider_options_schema`. The dispatcher STAYS there:
+   two arms, one call site, and relocating it would touch a file this lane does
+   not own for no behavioural gain — a third declaring provider is the moment to
+   move it.
+5. **Bugs 148 + 149** in `generate_image.rs`, both of which v5 measurably HAD.
+6. **The tool-definition bytes** regenerated at the pin and copied by the
+   committed generator — exactly ONE line of `data.rs` moved.
+7. **`image_gen/quality.rs`** — the eight tiers, read by `SCHEMA_QUALITIES` and
+   by `api/images.rs`'s `?action=generate` arm.
+8. **The manifests regen** — only `openai.json`'s `imageGenerationModels` moved,
+   to §S.2's eight ids. No augmentation rot.
+9. **The SDK wire re-check** — see the finding below.
+
+### §R.10(c) — the options-schema recording for the unifier's diff
+
+Recorded from v4's REAL `getOpenAIImageOptionsSchema` at `5f0a57dc4`, via the
+`image_profiles_routes` oracle's `body.optionsSchema`, serialized with
+`separators=(',',':')`. **md5 IS the `diff -q`** — P4.D197 reproduces these from
+its own recording:
+
+| input | bytes | md5 |
+|---|---|---|
+| `gpt-image-2.5-sunburst` | 3825 | `395fcb0dcf64a2570238ffae8b25e60c` |
+| `gpt-image-2` | 3514 | `5e93d4424e8d6e3bcc2deca7a1644d5d` |
+| `dall-e-3` | 1085 | `1c69daa658285a735b1ab0487a7a97a3` |
+| `dall-e-2` | 691 | `cddbece2487a08ad9bb309035c763979` |
+| (no model) | 3825 | `395fcb0dcf64a2570238ffae8b25e60c` |
+
+The no-model call is byte-identical to `gpt-image-2.5-sunburst`, which is v4's
+`?? OPENAI_IMAGE_MODELS[0]` fallback measured rather than asserted.
+
+### Findings
+
+- **⚠ The openai-SDK 7.10 → 7.15 bump is only PARTLY exercisable from this
+  checkout, and the environment proof is what caught it.** At the pin the root
+  resolves `openai@7.15.0`, but the four SDK-bundling plugin directories
+  (`qtap-plugin-openai`, `-grok`, `-z-ai`, `-nanogpt`) declare `^7.15.0` and
+  still have **7.10.0** installed — nobody has run `npm install` in them since
+  `d8d2890ee`. `-openrouter` and `-google` declare no `openai` dep and resolve
+  the root's 7.15.0. So the wire re-check proves neutrality **where the version
+  actually moved**, and the four plugin-driven corpora were recorded under the
+  OLD SDK. Recorded, not papered over; a lane cannot `npm install` in the
+  human's live tree. (This is the `pinned-regen-still-uses-current-node-modules`
+  note biting on a version question rather than a code one.)
+- **`images_generate_route_equivalence` is PRE-EXISTING RED on `main`** —
+  13 `generate_*` 201 cases answer 500. **Classified by measurement, not
+  assumption** (§R.5): a detached worktree of `main` at `6d78d229`, run against
+  the SAME target-pinned oracle, produces the identical failure set on
+  unmodified code. It is the fixture-vintage class P4.94 heals over
+  `images-{main,mount}.db`. **§8's six-family withhold list should have named
+  it** — the unifier should add it, or confirm P4.94's widen covers it. This
+  lane withheld `QT_ORACLE_IMAGES_GENERATE` from the gate block for that reason
+  and says so; its three NEW quality rows were run by name and are GREEN
+  (`generate_quality_max` 201, `generate_quality_xhigh` 201,
+  `zod_quality_ludicrous` 400, and `zod_quality_bad`'s details list widened to
+  the eight tiers).
+- **The tier-3 corpus was measurably BLIND to bug 149** until a row got a prompt
+  no sibling shares. The first attempt reddened NOTHING under the
+  bug-149-restored mutation: with the bug back, `size: '1792x1024'` is
+  overwritten by square's `1024x1024` and the built body collapses onto
+  `schema_defaults_only`'s, which the canned wire answers happily. A unique
+  prompt turns the overwrite into a loud canned MISS. **Recorded as a corpus-
+  craft trap: in a family whose comparand is the RESULT, a row only discriminates
+  if the change makes its request UNANSWERABLE.**
+- **`image_profiles_routes` runs a hard-coded case table**, so the seven new
+  OpenAI rows were in the oracle and NOT RUN — they "passed" vacuously on the
+  first attempt. Both the stale-oracle name list and the runner table were
+  taught about them (`a-case-added-only-to-the-oracle-is-never-run`).
+- **Tier 2 item 10, MEASURED:** v4's `POST /api/v1/image-profiles/[id]?action=
+  generate` DOES thread `size`/`quality`/`style`/`aspectRatio`/`negativePrompt`
+  into the tool input (`route.ts:21-29` parses, `:246-255` threads), so v5's
+  prompt-and-count narrowing is a real pre-existing gap and `d8d2890ee`'s
+  widening of that schema's `quality` is a NO-OP for v5 because v5 never parsed
+  the key. **NOT closed here:** it needs `api/types.rs`, `engine.rs`, the
+  `quilltap-web` body arm and the dispatch wrong-type census — four files
+  outside this lane's Ownership, and a contract widening P4.D197 cannot see
+  (§S.3). The exact shape is recorded in `image_profiles.rs`'s doc comment.
+- **Tier 2 item 11, MEASURED: no divergence.** `image_gen/params_builder.rs`'s
+  `HOST_OWNED_PARAMETER_KEYS` already lifts `quality` beside `size`/
+  `aspectRatio`, matching v4's set exactly — `d8d2890ee`'s docs change describes
+  behaviour v5 already had. Nothing to fix.
+- **An order premise corrected:** the order predicted `image-generation.json`'s
+  `"size": "512x512"` no-orientation row would MOVE at the target. It does not —
+  `512x512` is not in the tool's five-value enum at either pin, so the row is a
+  REFUSAL and stays one.
+- **A second order premise corrected:** the experimental-resolution DEBUG line
+  is reachable only by an ARBITRARY size. `caps.sizes.includes(size)` returns
+  FIRST, so the picker's own `3840x2160` is never called experimental even
+  though it clears the threshold. The corpus row and the unit pin both use
+  `3840x1280`.
+
+### Mutation proofs
+
+Ten, each reddening exactly its target; reverts by file backup.
+
+| # | mutation | corpus | unit |
+|---|---|---|---|
+| M1 | `style` gate ignores `caps.supports_style` | RED `OPENAI/size_normalize` | — |
+| M2 | an unsupported quality tier is forwarded | RED | RED (1 test) |
+| M3 | `mimeType` hardcoded to png | RED `OPENAI/extras_all_four` | — |
+| M4 | no transparent-jpeg PNG force | RED | RED (1) |
+| M5 | `n` never capped | RED | RED (1) |
+| M6 | compression rides for png | RED | RED (1) |
+| M7 | fractional compression accepted | RED | RED (1) |
+| M8 | arbitrary size never checked | RED | RED (1) |
+| N1 | bug 148 restored | RED `image_generation_tier3` | — |
+| N2 | bug 149 restored | RED (only after the unique-prompt row) | — |
+
+### Regen recipes
+
+Every one runs from the TARGET pin `/tmp/qt-v4-pin-p4d196-5f0a57dc4`, Node 24 at
+`~/.nvm/versions/node/v24.13.1/bin`, outputs staged under the lane-private
+`/tmp/p4d196/`.
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d196-5f0a57dc4 ; WT=<this worktree> ; N=~/.nvm/versions/node/v24.13.1/bin
+export PATH="$N:$PATH"
+
+# image-dialects (committed fixture)
+V4=$PIN V5=$WT bash $WT/harness/oracle/providers/regenerate-image-fixtures.sh
+
+# tool definitions (+ the catalog copy)
+cd $PIN
+npx tsx $WT/harness/oracle/cases/tool-definitions.ts > /tmp/p4d196/oracle-tool-definitions.ndjson
+npx tsx $WT/harness/oracle/cases/tool-definitions-canonical.ts > /tmp/p4d196/oracle-tool-definitions-canonical.ndjson
+node $WT/harness/oracle/tools/gen-tool-catalog.mjs /tmp/p4d196/oracle-tool-definitions.ndjson \
+  $WT/crates/quilltap-core/src/tools/definitions/data.rs
+
+# ⚠ ONE fixture build, BOTH oracles, no rebuild between (they share the pair)
+export QT_FIXTURE_IMGGEN_MAIN=/tmp/p4d196/tier3/qt-imggen-main.db
+export QT_FIXTURE_IMGGEN_MOUNT=/tmp/p4d196/tier3/qt-imggen-mount.db
+rm -f $QT_FIXTURE_IMGGEN_MAIN $QT_FIXTURE_IMGGEN_MOUNT
+node --import tsx $WT/harness/oracle/fixtures/build-image-generation-fixture.ts
+#   then image-generation.test, then image-generate-route.test, each with its own
+#   /tmp mirror of cases/ + fixtures/ and QT_ORACLE_OUT (jest ignores .claude/).
+
+# image-profiles-routes (over the committed groups-projects pair)
+# images-generate-route  (over a COPY of the committed images-*.db pair — P4.94's)
+# provider-registry:  npx tsx $WT/harness/oracle/cases/provider-registry.ts > …
+# manifests:          node $WT/harness/oracle/providers/gen-provider-manifests.mjs \
+#                       $WT/crates/quilltap-core/src/provider_manifest/manifests
+# the SDK re-check:   regenerate-{request-envelopes,google-wire,response-bodies,
+#                     stream-fixtures,tool-wire}.sh, plus record-moderation-wire.mjs
+#                     (from qtap-plugin-openai) and record-web-search-wire.mjs
+#                     (from qtap-plugin-search-serper, TZ=UTC).
+```
+
+### Fixtures changed, and what that invalidates
+
+- `harness/oracle/fixtures/image-dialects/image-dialects.recorded.ndjson` —
+  97 → 150 rows. Sole reader: `image_dialects_equivalence`. Exactly SEVEN
+  pre-existing rows moved, all predicted (the dall-e-2 `style` drop on
+  `size_normalize`, five `supportedModels` lists, the orientation row); every
+  non-openai provider's rows are byte-identical, which is also the SDK
+  neutrality evidence for grok / z-ai / nanogpt.
+- `harness/oracle/fixtures/image-generation.json` — +3 rows. Readers:
+  `image_generation_tier3_equivalence` and `image_generate_route_equivalence`
+  (both regenerated).
+- `crates/quilltap-core/src/tools/definitions/data.rs` — one `ToolDef` line.
+  Sole reader that embeds the catalog: `tool_definitions_equivalence` (grep
+  confirmed no recorded corpus embeds it).
+- `crates/quilltap-core/src/provider_manifest/manifests/openai.json` — one line.
+  Readers: `image_profiles_routes_equivalence` (`list_providers`) and
+  `provider_registry_equivalence`; both re-run green.
+- Every other recorded provider corpus was regenerated at the target pin and is
+  **byte-identical** (`diff -rq` clean): request-envelopes, google-wire,
+  response-bodies, the stream fixtures, tool-wire, moderation-wire,
+  web-search-wire. P4.95's request-envelopes deferral is unaffected.
+
+### Gate
+
+`cargo fmt --all --check` clean · clippy `--workspace --all-targets -D warnings`
+clean in BOTH feature sets (default and `quilltap-core/native-transport`) ·
+`cargo build --workspace --release` clean · `cargo test --workspace
+--no-fail-fast` with the lane's env block: **572 test binaries / 3,379 passed /
+0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines.** The lane's families all ran
+(`image_dialects` 0.02 s, `tool_definitions` 0.02 s, `image_generation_tier3`
+0.30 s, `image_generate_route` 0.08 s, `image_profiles_routes` 0.10 s,
+`provider_registry` 0.01 s). **`images_generate_route_equivalence` reads
+0.00 s: it SKIPPED, deliberately** — its oracle var was withheld for the
+measured pre-existing red above, and cargo captures a passing test's `SKIP:`
+line, so its silence is the capture, not a claim. No SPA gate: this lane touches
+no `apps/web/**`.
+
+**Ownership:** `git diff --stat main...HEAD` is 25 files, every one in the Owns
+column, with two one-line module registrations the new modules require —
+`model/mod.rs` (+2) and `image_gen.rs` (+1) — flagged rather than assumed.
+
+**Versions:** core 0.0.939, harness 0.0.829; web/host/cli/tauri/SPA unchanged.
+
+**Still OPEN under this order:** the Tier-2 item-10 closure (the profile-generate
+route's five optional fields), deferred loudly with its shape for a follow-up
+order. Everything else in Tiers 1 and 2 landed; Tier 3's deferrals stand as
+written.
