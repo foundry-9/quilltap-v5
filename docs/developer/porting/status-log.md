@@ -130592,3 +130592,362 @@ the chain is `nohup … & disown` + a Monitor on the sentinel):
 **Versions:** core 0.0.935, harness 0.0.827, web 0.0.148, SPA 0.5.727;
 host/cli/tauri unchanged.
 
+## P4.94 — the fixture-vintage heal: five committed pairs (lane record, 2026-09-17)
+
+**Branch `claude/fixture-vintage-heal-five-pairs-ab8c58`, from `main`
+`6d78d229`. Commits `3b5fcff6` (the widen) and `41c10900` (the emitter header
++ the sweep artifact). Baseline `1fefadb9a`, PIN REQUIRED throughout; no drift
+row absorbed — this lane is item 1 of the `1fefadb9a` round's "What is next".
+CLOSED: every Tier-1 and Tier-2 deliverable landed.**
+
+### §2 freshness probe
+
+Run at lane start, before the regen batch, and again before the gate. **All
+three PASSED**: checkout on `main`, tree CLEAN, `5f0a57dc4..main` EMPTY,
+`1a2b2164c..bugfix` EMPTY. `git worktree list` before each batch confirmed the
+lane-unique pin `/tmp/qt-v4-pin-p494-1fefadb9a` alongside four sibling pins,
+none shared.
+
+The Preamble's required v4-surface record: `git -C ~/source/quilltap-server
+diff --stat 1fefadb9a..5f0a57dc4 -- lib/db lib/database` is **EMPTY**, so every
+regen here ran at the BASELINE pin, as ordered.
+
+### Seven order premises, corrected by measurement
+
+1. **"none calls `ensure_p4d182_columns`" — FALSE.** Three readers do:
+   `salon_reads_equivalence:236`, `transcript_route_equivalence:92` and
+   `chat_upload_codec_wiring:150`. That is exactly why those three were GREEN
+   pre-widen while their siblings were red.
+2. **`post_office_routes_equivalence` is NOT a courier-pair reader.** The grep
+   hit is a prose line in `build-post-office-fixture.ts` ("Modeled on
+   `build-courier-images-web-fixture.ts`"); the family reads
+   `harness/oracle/fixtures/post-office-web.json` and no committed `.db`.
+3. **`pascal_run_custom_equivalence` is NOT a committed-pair reader** — a
+   tier-1 tsx family (`harness/oracle/cases/pascal-run-custom.ts`) that shares
+   only the fixture's name.
+4. **`chat-gallery` in `help_tree_embed_guard.rs` is a doc mention** of
+   `help/chat-gallery.md` (P4.D197's file), not a reader.
+5. **The migrator's single-pepper assumption was wrong.** The `images-*` pair
+   is keyed with `images-collection.json`'s own `testPepperBase64`, not the
+   `quilltap-web/tests/common/mod.rs:17` one — the migrator died `SQLITE_NOTADB`
+   on it, a failure that reads exactly like a corrupt file. The script now tries
+   each known pepper and refuses loudly when none opens a target.
+6. **The predicted gap was INCOMPLETE.** Three columns no round predicted turned
+   up: the P4.D135 fallback pair (`connection_profiles.fallbackProfileId` +
+   `allowTierFallback`) and the P4.D49 attribution pair on `llm_logs`
+   (`connectionProfileId` + `imageProfileId`) — **BOTH committed llm-logs
+   partitions lag**, and no family had ever regenerated across them.
+7. **`chats.transcriptVersion` is confirmed NOT a `compareSchemas` column** —
+   the P4.89 finding reproduced on five more pairs. Not added; see below.
+
+### Unit 1 — the gap, MEASURED per pair (not assumed)
+
+Ran from the pin against v4's live repository registry — **41 collections**
+from `getRepositories()` plus the two SECONDARY ones the container does not
+expose as a `collectionName` (`chat_messages` via `ChatMessageRowSchema`,
+`api_keys` via `ApiKeySchema`). Per repo-backed table: `extractSchemaMetadata`
+→ `compareSchemas(metadata, PRAGMA table_info)` → `generateAlterStatements`.
+
+| file | added fields the measurement names |
+|---|---|
+| `salon-main.db` | `chat_messages.routeTrail`, `chat_settings.impersonationVoiceRewrite`, `chats.cycleOrderParticipantIds`, `connection_profiles.fallbackProfileId` + `allowTierFallback`, `files.generationKey` |
+| `salon-mount.db` | (nothing) |
+| `salon-llm-logs.db` | `llm_logs.connectionProfileId` + `imageProfileId` |
+| `chat-gallery-main.db` | `files.generationKey` |
+| `chat-gallery-mount.db` | (nothing) |
+| `images-main.db` | `chat_messages.routeTrail`, `chat_settings.impersonationVoiceRewrite`, `chats.cycleOrderParticipantIds`, `files.generationKey` |
+| `images-mount.db` | (nothing) |
+| `courier-images-main.db` | the three `characters.archive*`, `chat_messages.routeTrail`, the four `chat_settings` columns, `chats.cycleOrderParticipantIds`, `connection_profiles.multiCharacterPrefill` + `fallbackProfileId` + `allowTierFallback`, `files.generationKey` |
+| `courier-images-mount.db` | (nothing) |
+| `courier-images-llmlogs.db` | `llm_logs.connectionProfileId` + `imageProfileId` |
+| `pascal-run-custom-main.db` | `chat_messages.routeTrail`, `chat_settings.impersonationVoiceRewrite`, `chats.cycleOrderParticipantIds` |
+| `pascal-run-custom-mount.db` | (nothing) |
+
+**No removed and no modified field anywhere; every mount partition is
+`current`.** The tables compared are every repo-backed table in each file;
+`doc_mount_blobs`, `vector_entries`, `vector_indices` and `instance_settings`
+are hand-rolled (no Zod schema, no `ensureCollection`) and correctly outside
+`generateDDL`'s governance — named as skipped in the report.
+
+The extended migrator's `--report-only` dry run agrees with that measurement
+**column for column on all twelve files**, which is the P4.89 two-ways
+discharge repeated.
+
+⚠ **`compareSchemas` populates neither `addedIndexes` nor `removedIndexes`** —
+it initialises both and never pushes. So the index half of v4's
+`add-file-generation-key-column-v1` and `add-llm-logs-profile-columns`
+migrations is structurally invisible to the measurement, which is why the
+migrator grew an `extraSql` slot rather than leaning on the report.
+
+⚠ **`chats.transcriptVersion` is NOT added**, and the measurement is the
+reason: v4 declares it in neither `ChatMetadataSchema` nor
+`ChatMetadataBaseSchema` (two identical comment blocks in
+`lib/schemas/chat.types.ts` say a counter inside the schema could be REWOUND by
+`$set: validated`), so `compareSchemas` does not list it and no v4 write names
+it. v5's `db/chats_transcript_version_repair.rs` boot ensure and the per-copy
+`test_support::ensure_p4d182_columns` heal keep handling it exactly as they do
+on a real v4-written instance — the P4.89 precedent, followed rather than
+re-opened.
+
+⚠ **`salon-long-{main,mount}.db` measured and DELIBERATELY NOT widened** — no
+red names it, and the order confines the lane to pairs a red names. Recorded
+for whoever needs it: its gap is `characters.{metadata, archivedAt,
+archiveFileId, archivedAvatarFileId, canChooseOutfit}`,
+`chat_messages.routeTrail`, the four `chat_settings` columns,
+`chats.cycleOrderParticipantIds`, `connection_profiles.{multiCharacterPrefill,
+fallbackProfileId, allowTierFallback}` and `files.generationKey` — the two
+MANAGED_FIELDS columns among them are the ones the migrator never adds.
+`salon-long-mount.db` is a visibly older index vintage too (no
+`idx_doc_mount_files_sha256`; `idx_doc_mount_folders_mp_parent_name` and
+`idx_doc_mount_file_links_mp_path` where every other mount partition carries
+the `_nocase` forms) — outside `compareSchemas`'s scope, recorded, untouched.
+
+### Unit 1b — the reds reproduced RED first, against pin-fresh oracles
+
+All six, before any widen, each through the sweep driver at the pin:
+
+```
+salon_mutations            FAILED: 9 chat_update* cases, body `"kind":"internal"` where v4 answers `"chat": {…}`
+chat_gallery               FAILED: 8 save_image_* cases, STATUS 400 != 200/409,
+                                   body `"sqlite error: no such column: generationKey"`
+images_routes              FAILED: first upload of upload_dedup_orphan_cleanup — CoreError Internal
+courier_images_routes      FAILED: ["save_image_riya_status","save_image_riya",
+                                    "save_image_general_status","save_image_general"] — same sentence
+pascal_run_custom_handler  panicked: store dump reads: Sqlite(… "no such column: cycleOrderParticipantIds")
+pascal_custom_tools_route  assertion `left == right` failed: case 'list' status — left 500, right 200
+```
+
+### ⚠ A SEVENTH pre-existing red, found by the sibling measurement
+
+`images_generate_route_equivalence` was RED pre-widen too — **all ten of its
+generate cases** (`generate_with_tags`, `generate_with_chat_id`,
+`generate_chat_id_and_chat_tag`, `generate_png_transcode`,
+`generate_danger_detect_only`, `generate_danger_autoroute`,
+`generate_danger_autoroute_no_target`, `generate_danger_autoroute_safe`,
+`generate_danger_off`, `generate_scan_disabled`) answering `500 {"error":
+"Internal server error"}` where v4 answers 201. GREEN after the widen.
+
+Why it stayed invisible is measurable, not speculative: the `1fefadb9a`
+unification's 60-family pinned sweep **did not include it** (checked against
+`harness/tools/sweep-results/2026-09-16-1fefadb9a-unify-pin.json` — its sibling
+`images_routes_equivalence` IS in that list, this one is ABSENT). It was last
+regenerated at the `d883a5ee1` round, before `files.generationKey` existed.
+This is the P4.89 corollary firing a second time — **a sibling recorded green
+may simply never have been asked.**
+
+Cross-lane note for the unifier: **P4.D196 owns this family's sources and runs
+it** (§R.10(a)). It is green over the widened pair as of this lane.
+
+### Unit 2 — the widen, in place, row-preserving
+
+Applied from the pin with v4's real migration DDL (the report above, verbatim
+per file). Seven files changed; five mount partitions and every `.meta.json`
+sidecar are byte-untouched (`git diff --stat -- '*.meta.json'` EMPTY).
+
+- **Idempotence:** a second run reports `already current` for **all twelve**
+  targets.
+- **Row preservation, cell by cell:** every column of every table across all
+  twelve files, values serialized in `rowid` order with blobs base64'd, dumped
+  BEFORE and AFTER with the added columns projected out **by construction**
+  (the post pass re-reads the pre pass's recorded column list per table). The
+  two dumps are **byte-identical**, md5
+  `2def5b55a474368d2064f937c3fab4e6` both times.
+- **Back-fill is v4's**, verified per column: `cycleOrderParticipantIds` reads
+  `'[]'` on every row, `routeTrail`/`generationKey`/`fallbackProfileId`/the
+  `llm_logs` pair read NULL, `allowTierFallback`/`impersonationVoiceRewrite`
+  read 0, `composerEmoji`/`composerUnicode`/`multiCharacterPrefill` read 1, and
+  `smartTypographySettings` reads v4's exact default JSON.
+- **The three indexes v4's migrations create alongside the ALTER are present:**
+  `idx_files_generationKey` on all four widened `files` tables,
+  `idx_llm_logs_connectionProfileId` and `idx_llm_logs_imageProfileId` on both
+  llm-logs partitions.
+- **No `.db-journal` residue** after the apply, the second run, or the
+  `--report-only` pass (which opens read-only).
+
+### Unit 3 — every reader regenerated at the pin and run by name
+
+Fourteen families, each in its own clean invocation through
+`harness/tools/recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-p494-1fefadb9a
+--v5w <this worktree>`, never two sweeps at once. **14/14 ok, zero `SKIP:`.**
+
+| family | pre-widen | post-widen |
+|---|---|---|
+| `salon_mutations_equivalence` | **RED** | ok |
+| `chat_gallery_equivalence` | **RED** | ok |
+| `images_routes_equivalence` | **RED** | ok |
+| `courier_images_routes_equivalence` | **RED** | ok |
+| `pascal_run_custom_handler_equivalence` | **RED** | ok |
+| `pascal_custom_tools_route_equivalence` | **RED** | ok |
+| `images_generate_route_equivalence` | **RED** (latent — above) | ok |
+| `salon_reads_equivalence` | green | green |
+| `salon_swipe_generate_equivalence` | green | green |
+| `salon_skip_equivalence` | green | green |
+| `transcript_route_equivalence` | green | green |
+| `chat_upload_codec_wiring` | green (2 tests) | green |
+| `pascal_definition_reader_equivalence` | green | green |
+| `pascal_build_tools_roster` | green | green |
+| `images_edge_routes` (web crate, no oracle) | green | green |
+| `salon_fixture_p4d171_ensure` (`#[ignore]`d emitter) | — | green |
+
+The pre-widen sibling pass ran against the fixtures restored from `HEAD` by
+file backup; the widened files were restored afterwards and `cmp`-verified
+byte-identical, seven for seven.
+
+**`git diff --stat main...HEAD -- 'crates/*/src'` is EMPTY.** Seven reds closed
+with ZERO v5 source change, as ordered.
+
+### The §5.2 changed-bytes check: the widen moves NO oracle
+
+Measured rather than asserted, because the honest answer is a negative and the
+guard would otherwise have been reported as vacuous.
+
+- **The four `generationKey` families:** `grep -c generationKey` on every fresh
+  oracle is **0**. v4 never projects the column, so its output cannot move on
+  that account — the discriminator is v5's status flipping 400/500 → 200/201/409.
+- **`salon_mutations`:** the oracle was regenerated a second time against the
+  PRE-widen fixture extracted from `HEAD` and diffed row by row against the
+  post-widen one. Both are 813,766 bytes and 26 rows; the only differences are
+  four wall-clock `dangerClassifiedAt`/`updatedAt` values the harness
+  normalizes. `cycleOrderParticipantIds` and `routeTrail` appear **26 times in
+  BOTH** — because v4's own side already heals its copy
+  (`harness/oracle/lib/p4d171-columns.ts`, P4.D172).
+
+So the whole red→green is v5-side, and the red-first/green-after measurement
+above IS the discriminator.
+
+### Which column each red actually turned on — isolated by probe
+
+The five `no such column` reds name their own cause. The other two did not, so
+they were bisected with minimal probe fixtures (pre-widen + exactly one group
+of ALTERs), the committed file swapped in by copy and restored + `cmp`-verified
+afterwards:
+
+- **`salon_mutations`: `files.generationKey` ALONE closes it** (green, 0.83 s).
+  Adding only the P4.D135 fallback pair leaves all nine cases red — so the
+  fallback pair, while a real vintage gap, is not this family's cause. That
+  family already calls `ensure_p4d171_columns` on its copy, so `generationKey`
+  was its one remaining gap.
+- **`pascal_custom_tools_route` and `pascal_run_custom_handler`: the P4.D171
+  pair ALONE closes both** (`chats.cycleOrderParticipantIds` +
+  `chat_messages.routeTrail`), so the `49769ec4` round's "Pascal fixture
+  vintage rot" and the handler's `no such column` are one gap, not two.
+
+### Unit 4 — the Tier-2 items
+
+- **`salon_fixture_p4d171_ensure.rs`'s header** gained a "P4.94: the premise
+  above is STALE" section. Measured, not reasoned: the `ensure_p4d171_columns`
+  call is now a no-op (the columns are in the committed pair), its assertion is
+  the tripwire that would fire if the widen were reverted, and **nothing
+  consumes the two `/tmp/qt-salon-p4d171-*.db` files any more** — a repo-wide
+  grep finds only that file and the P4.D173 round record, because the salon
+  recipes moved to the v4-side twin (`harness/oracle/lib/p4d171-columns.ts`,
+  P4.D172) called on the sweep driver's own shield copy, which is what
+  `QT_FIXTURE_SALON_MAIN` points at today. **The seam is kept, not deleted** —
+  it is green, both arms still assert something true, and it is the cheapest
+  way to hand a future oracle a healed copy without touching a committed pair.
+  (That TS heal is now a no-op for the same reason — recorded for the unifier;
+  it is not this lane's file.)
+- **The sweep artifact:**
+  `harness/tools/sweep-results/2026-09-17-1fefadb9a-p4.94-fixture-vintage-heal.json`
+  — one `--run-all` over all fourteen readers, **totals `{'ok': 14}`**.
+  It ran mid-lane with the widen still uncommitted, so the driver's
+  `tracked fixture bytes modified` warning names this lane's own seven files
+  and the migrator on every family; the driver reads the working tree, which is
+  exactly what was under test.
+- **The "pair is SHARED" re-check** (Tier 2 item 10): all fourteen readers
+  `std::fs::copy` the committed file out of `crates/quilltap-web/tests/fixtures/`
+  — not one bakes a same-named fixture fresh, so P4.89's
+  `brahma_console_tier3` surprise has no analogue here. The two near-misses are
+  premises 2 and 3 above (`post_office_routes_equivalence` and
+  `pascal_run_custom_equivalence`), which read no committed pair at all.
+
+### The venue question (the order's Tier-3 caveat)
+
+The sweep ran with an absolute `--v5w` pointing INTO
+`.claude/worktrees/fixture-vintage-heal-five-pairs-ab8c58`, because that is
+where the widened fixtures are — running it against `~/source/quilltap-v5`
+would have measured main's pre-widen files. The confound the caveat guards
+against is mechanically excluded rather than argued: v4's jest ignores
+`/\.claude/` paths only for a recipe that hands jest a `--roots` under the v5
+checkout, and the driver refuses to `--run` such a family from a worktree venue
+(`refused_venue`). **None of the fourteen is unstaged** — every one is `ok` or
+`ok_restored` and stages its case into its own `/tmp` mirror, which is why the
+pre-widen pass reproduced all six recorded reds exactly and the eight
+green siblings green. The artifact records `venue_is_worktree: true` and the
+`v5w` path, so the claim is self-describing.
+
+### For the unifier
+
+- **Restore the six withheld oracle vars to the workspace gate's env block:**
+  `QT_ORACLE_SALON_MUTATIONS`, `QT_ORACLE_CHAT_GALLERY`,
+  `QT_ORACLE_IMAGES_ROUTES`, `QT_ORACLE_COURIER_IMAGES`,
+  `QT_ORACLE_PASCAL_RUN_CUSTOM_HANDLER`, `QT_ORACLE_PASCAL_CUSTOM_TOOLS_ROUTE`
+  — and **add `QT_ORACLE_IMAGES_GENERATE` with them**, without which the
+  seventh red stays invisible. The fixture vars named in the order
+  (`QT_FIXTURE_IMGCOL_*`, `QT_FIXTURE_PASCAL_*`) are ORACLE-side only: every
+  reader copies the committed fixture through `fixtures_dir()`, so `cargo test`
+  needs none of them (`a-family-env-var-is-not-its-regen-var`).
+- **Regen recipes:** each family's own header, run through
+  `python3 harness/tools/recipe_sweep.py --run <family> --v4 <pin at the
+  baseline> --v5w <checkout>`. No recipe was edited by this lane.
+- **Fixtures delivered:** `salon-main.db`, `salon-llm-logs.db`,
+  `chat-gallery-main.db`, `images-main.db`, `courier-images-main.db`,
+  `courier-images-llmlogs.db`, `pascal-run-custom-main.db` — widened in place.
+  Every family in the table above depends on them and must be re-run after the
+  picks; `apps/web/e2e/support/seed-courier-fixture.ts` and
+  `apps/web/e2e/global-setup.ts` copy four of them into the Playwright instance.
+- **Versions:** web 0.0.149, harness 0.0.828. Nothing else touched.
+
+### The gate (P4.94's, run from the lane worktree, `CARGO_INCREMENTAL=0`, `TZ=UTC`)
+
+1. **§2 probe** — PASS at the open, before the regen batch, and again before
+   the gate.
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default and `quilltap-core/native-transport`).
+4. The fourteen sweep families regenerated fresh from the pin and run by name:
+   **14/14 ok, zero `SKIP:`** — artifact
+   `harness/tools/sweep-results/2026-09-17-1fefadb9a-p4.94-fixture-vintage-heal.json`
+   (`totals: {"ok": 14}`). Plus `images_edge_routes` (no oracle) and the
+   `#[ignore]`d emitter, run directly.
+5. `cargo build --workspace --release` — clean.
+6. **`cargo test --workspace --no-fail-fast`: 572 test binaries / 3,349 passed
+   / 0 failed / 2 ignored — exit 0, ZERO `SKIP:` lines**, with the lane's
+   twelve oracle vars + `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the pin + `QT_NODE`.
+   All fifteen of the lane's families confirmed RUN by non-zero duration
+   (`salon_mutations` 0.52 s, `chat_gallery` 0.33 s, `images_routes` 2.51 s,
+   `courier_images_routes` 0.10 s, `pascal_run_custom_handler` 1.51 s,
+   `pascal_custom_tools_route` 2.34 s, `images_generate_route` 2.85 s,
+   `salon_reads` 0.14 s, `salon_swipe_generate` 0.09 s, `salon_skip` 0.07 s,
+   `transcript_route` 0.11 s, `pascal_definition_reader` 0.05 s,
+   `pascal_build_tools_roster` 0.03 s, `chat_upload_codec_wiring` 0.23 s,
+   `images_edge_routes` 1.69 s; the emitter is the 1 ignored, by design).
+7. **Playwright (§R.11), against the release binary on the widened courier
+   seed.** ⚠ **Both full runs were CPU-contended** by the round's other three
+   lanes compiling (load average 24 through the window) and by this lane's own
+   572-binary cargo run, and the numbers degrade accordingly:
+   - **Run 1** (concurrent with the release/test compile): **320 passed / 1
+     failed / 6 skipped (11.6 m)** — the one red
+     `workbench-flow.spec.ts:349`, a strict-mode LOCATOR violation
+     (`getByText('Cleared the gate.')` matching the verdict `<p>` AND a `<pre>`
+     JSON preview of the definition the test itself had just typed).
+   - **Run 2** (concurrent with the 572-binary `cargo test`): **311 passed /
+     10 failed / 6 skipped (14.1 m)** — a consecutive band (beats 158–194 plus
+     wardrobe), **none of them run 1's red**, and **run 1's red PASSED here**.
+   - **The by-file re-run of every affected file** (the seven specs from both
+     runs, one invocation): **30 passed / 0 failed, exit 0 (3.3 m)** — incl.
+     `workbench-flow.spec.ts:349` green at 1.2 s.
+
+   **Classification: every red is the standing full-suite intermittent class,
+   amplified by contention — not this lane's.** The evidence is threefold:
+   the two runs' red sets are DISJOINT; run 1's red passes in run 2 over
+   byte-identical fixtures; and all of them pass re-run by file. The named
+   families are the documented ones (P4.D161 bubble-reconcile, P4.d17 quill,
+   the wardrobe `set_all`, streaming-avatar) plus roleplay-template and
+   transcript-subscribed-read. The 6 skips are the standing parks.
+8. **Ownership check:** `git diff --stat main...HEAD` lists only the seven
+   committed `.db` pairs, the migrator, the emitter's header comment, the two
+   own-crate versions, `Cargo.lock`, `docs/CHANGELOG.md`,
+   `docs/developer/porting/status-log.md`, this order's header, and the sweep
+   artifact. No `crates/*/src`, no `apps/web/**`, no `help/**`, no drift
+   ledger, no other family's sources.

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — docs(porting): record P4.94's lane — the measured gap, the seven closed reds, and the gate
+
+_Docs-only change._
+
+The lane record for the fixture-vintage heal: the per-pair `compareSchemas`
+measurement, the seven order premises corrected by measurement (three unpredicted
+columns, two non-readers, three readers that DO call the P4.D182 heal, and the
+second test pepper), the red-first reproduction of all six ordered reds plus the
+seventh latent one, the row-preservation proof, the probe that isolates which
+column each red turned on, and the gate — including the Playwright
+classification: both full runs ran CPU-contended by the round's other lanes,
+their red sets are disjoint, run 1's red passes in run 2, and all thirty affected
+beats pass re-run by file.
+
 #### 2026-09-17 — docs(harness): correct the salon P4.D171 fixture emitter's now-stale premise, and record P4.94's sweep
 
 _Versions: harness 0.0.828._
