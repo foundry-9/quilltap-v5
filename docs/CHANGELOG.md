@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — fix(fixtures): widen five committed pairs to v4's 4.10 schema vintage, closing seven pre-existing differential reds
+
+_Versions: web 0.0.149._
+
+The P4.52 / P4.89 fixture-vintage idiom, applied to the five committed pairs
+the `1fefadb9a` round left red: `salon-*`, `chat-gallery-*`, `images-*`,
+`courier-images-*`, `pascal-run-custom-*`. Each pair's gap was measured at the
+`1fefadb9a` pin with v4's OWN `extractSchemaMetadata` + `compareSchemas` +
+`generateAlterStatements` over the live repository registry (41 collections),
+per repo-backed table, then closed in place with v4's real migration ALTERs.
+No v5 source changed.
+
+The generic migrator (`harness/oracle/fixtures/migrate-memories-fixture-columns.ts`)
+gained five rows, an `extraSql` slot for the index statements v4's migrations
+issue beside the ALTER, and a second test pepper — the `images-*` pair is keyed
+with `images-collection.json`'s own pepper, and the single-pepper assumption
+made the migrator die `SQLITE_NOTADB` on it, which reads exactly like a corrupt
+file. Three of the columns no round had predicted: the P4.D135 fallback pair
+(`connection_profiles.fallbackProfileId` + `allowTierFallback`) and the P4.D49
+attribution pair on `llm_logs` — both committed llm-logs partitions lag, and no
+family had ever regenerated across them.
+
+Row preservation is proven cell by cell: every column of every table across all
+twelve files, dumped before and after with the added columns projected out by
+construction, is byte-identical (md5 `2def5b55a474368d2064f937c3fab4e6` both
+times). A second migrator run reports `already current` for all twelve; there is
+no `.db-journal` residue; the `.meta.json` sidecars are untouched; the mount
+partitions needed nothing.
+
+`chats.transcriptVersion` is deliberately NOT added — v4 declares it in neither
+chat schema (a counter inside the schema could be rewound by `$set: validated`),
+so `compareSchemas` does not list it and no v4 write names it; v5's boot ensure
+and the per-copy heal keep handling it, exactly as on a real instance. The
+`salon-long-*` pair was measured and left alone: no red names it.
+
+Seven differential families were RED before the widen and are GREEN after it,
+each regenerated fresh from the pin and run by name: `salon_mutations`,
+`chat_gallery`, `images_routes`, `courier_images_routes`,
+`pascal_run_custom_handler`, `pascal_custom_tools_route` — and
+`images_generate_route`, a SEVENTH latent red the P4.89 corollary predicted and
+this lane's pre/post sibling measurement found (all ten of its generate cases
+answered 500 where v4 answers 201). Seven more readers were green before and
+after.
+
 #### 2026-09-17 — docs(porting): record the `5f0a57dc4` drift (v4's bug-150 fix) and re-point the ordered round at it
 
 _Docs-only change._
