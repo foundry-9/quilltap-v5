@@ -1,0 +1,169 @@
+{
+  "label": "P4.94 \u2014 the fixture-vintage heal: every reader of the five widened pairs, regenerated at the 1fefadb9a pin and run by name",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-five-pairs-ab8c58",
+  "venue_is_worktree": true,
+  "requested": [
+    "salon_reads_equivalence",
+    "salon_mutations_equivalence",
+    "salon_swipe_generate_equivalence",
+    "salon_skip_equivalence",
+    "transcript_route_equivalence",
+    "chat_gallery_equivalence",
+    "images_routes_equivalence",
+    "images_generate_route_equivalence",
+    "courier_images_routes_equivalence",
+    "chat_upload_codec_wiring",
+    "pascal_run_custom_handler_equivalence",
+    "pascal_custom_tools_route_equivalence",
+    "pascal_definition_reader_equivalence",
+    "pascal_build_tools_roster"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "salon_reads_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "salon_mutations_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "salon_swipe_generate_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "salon_skip_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "transcript_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "chat_gallery_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "images_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "images_generate_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "courier_images_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "chat_upload_codec_wiring",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "pascal_run_custom_handler_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "pascal_custom_tools_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "pascal_definition_reader_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    },
+    {
+      "family": "pascal_build_tools_roster",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/chat-gallery-main.db\n M crates/quilltap-web/tests/fixtures/courier-images-llmlogs.db\n M crates/quilltap-web/tests/fixtures/courier-images-main.db\n M crates/quilltap-web/tests/fixtures/images-main.db\n M crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db\n M crates/quilltap-web/tests/fixtures/salon-llm-logs.db\n M crates/quilltap-web/tests/fixtures/salon-main.db\n M harness/oracle/fixtures/migrate-memories-fixture-columns.ts"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 14
+  }
+}

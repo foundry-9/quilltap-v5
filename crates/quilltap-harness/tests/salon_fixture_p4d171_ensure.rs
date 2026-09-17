@@ -36,6 +36,35 @@
 //! P4.D172's this round; the one-line fix is the same
 //! `ensure_p4d171_columns` call on its fixture copy. P4.D171's own gate never
 //! saw any of this because all three families SKIP without their oracle vars.
+//!
+//! ## P4.94: the premise above is STALE, and what this still does
+//!
+//! Everything before this section describes the world as it was on 2026-09-10.
+//! The sentence "the committed `salon-*.db` pair predates both" is no longer
+//! true: P4.94 widened `salon-main.db` IN PLACE through v4's own migration DDL
+//! (`harness/oracle/fixtures/migrate-memories-fixture-columns.ts`, measured at
+//! v4 `1fefadb9a` with v4's real `compareSchemas`), so the committed pair now
+//! carries `chats.cycleOrderParticipantIds` and `chat_messages.routeTrail`
+//! — along with `connection_profiles.fallbackProfileId`/`allowTierFallback`,
+//! `chat_settings.impersonationVoiceRewrite` and `files.generationKey`.
+//!
+//! Two consequences, both MEASURED rather than reasoned:
+//!
+//!  1. **The heal below is now a no-op** — `ensure_p4d171_columns` finds both
+//!     columns present and writes nothing. The assertion after it is NOT
+//!     vacuous: it is the tripwire that would fire if the widen were ever
+//!     reverted or a fixture rebuilt from a pre-4.10 builder.
+//!  2. **Nothing consumes the two files this emits any more.** A repo-wide
+//!     grep for `qt-salon-p4d171` finds only this file and the P4.D173 round
+//!     record. The salon recipes moved to the v4-side twin
+//!     (`harness/oracle/lib/p4d171-columns.ts`, P4.D172) called on the sweep
+//!     driver's own shield copy, which is what `QT_FIXTURE_SALON_MAIN` points
+//!     at today. That TS heal is now a no-op for the same reason.
+//!
+//! The seam is kept, not deleted: it is a working, green staging step whose
+//! premise moved, and both of its arms still assert something true. It is the
+//! cheapest way to hand any future oracle a healed copy without touching a
+//! committed pair four families and the Playwright seeder read.
 
 use std::path::PathBuf;
 

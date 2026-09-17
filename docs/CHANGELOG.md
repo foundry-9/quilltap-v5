@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — docs(harness): correct the salon P4.D171 fixture emitter's now-stale premise, and record P4.94's sweep
+
+_Versions: harness 0.0.828._
+
+`salon_fixture_p4d171_ensure.rs`'s header opened on "the committed `salon-*.db`
+pair predates both", which P4.94's widen made false. The header now carries a
+P4.94 section saying what the seam does today, measured rather than reasoned:
+the `ensure_p4d171_columns` call is a no-op (both columns are in the committed
+pair), its assertion is the tripwire that would fire if the widen were reverted,
+and nothing consumes the two `/tmp/qt-salon-p4d171-*.db` files any more — a
+repo-wide grep finds only this file and the P4.D173 round record, because the
+salon recipes moved to the v4-side twin (`harness/oracle/lib/p4d171-columns.ts`)
+called on the sweep driver's shield copy. The seam is kept, not deleted: it is
+green, both arms still assert something true, and it is the cheapest way to hand
+a future oracle a healed copy without touching a committed pair.
+
+Beside it, the committed proof: one `recipe_sweep.py --run-all` over all
+fourteen readers of the five widened pairs, every oracle regenerated fresh from
+the `1fefadb9a` pin.
+
 #### 2026-09-17 — fix(fixtures): widen five committed pairs to v4's 4.10 schema vintage, closing seven pre-existing differential reds
 
 _Versions: web 0.0.149._
