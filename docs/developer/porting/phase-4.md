@@ -6651,7 +6651,7 @@ carries them as two more lanes with disjoint ownership. ALL FOUR from
 `main`, no stacking. The round-wide §R meeting points, the §S contract,
 the Ownership table and the verification gate are spliced byte-identically
 into every order (one md5 over the four blocks, verified at planning:
-`b4771598…`). Fresh surveys (2026-09-16, at `53294163f` / `1fefadb9a` and
+`d2e185cb…`). Fresh surveys (2026-09-16, at `53294163f` / `1fefadb9a` and
 on `main` `201ae34d`) are folded into the orders' survey sections.
 
 **Five planning facts that shape the split (each measured, none from
@@ -6792,6 +6792,21 @@ order-sized); the `name`-field turn-path measurement; P4.87's two OPEN
 coverage items; the upstream filing candidates (this round adds v4's own
 client-vs-plugin model-order disagreement, P4.D197's finding). PB1 stays
 parked by the standing rule.
+
+**Re-pointed 2026-09-17 (morning), before any lane launched.** The
+`/driftcheck` the human asked for found the planning-close dirt committed as
+**`5f0a57dc4`** (bug 150's one-string fix to `components/images/image-
+generation-dialog.tsx` + a render test + a version stamp + eight bundle
+rebuilds; no `lib/`, `app/`, `help/`, schema or plugin-SOURCE hunk) — v4
+HEAD now THREE past the baseline, tree CLEAN. The orders were re-pointed in
+place: the §R block's HEAD, probe and target pin are `5f0a57dc4` (the
+recorded-dirt allowance withdrawn — a dirty tree is a STOP again), P4.D196
+and P4.D197 pin the target at `5f0a57dc4`, P4.D197 ratifies BOTH stamp
+commits and its manual-dialog measurement covers the bug-150 hunk (v5 has no
+twin of that dialog — the ledger row's earlier reasoning named the chat
+dialog's port, the wrong file), and the baseline moves to `5f0a57dc4` at
+unification. The round keeps its `53294163f` label. The re-spliced shared
+block's md5 is `d2e185cb…`.
 
 ## The `1fefadb9a` bug-147 drift catch-up + maintenance round (P4.D195 ∥ P4.91 ∥ P4.92 ∥ P4.93) — UNIFIED 2026-09-16
 

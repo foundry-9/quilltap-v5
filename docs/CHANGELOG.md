@@ -12,12 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — docs(porting): record the `5f0a57dc4` drift (v4's bug-150 fix) and re-point the ordered round at it
+
+_Docs-only change._
+
+A standalone `/driftcheck` the morning after the `53294163f` round was
+ordered. v4 committed the bug-150 fix that was in flight at the planning
+close — `5f0a57dc4`: one string in the manual image-generation dialog's
+fetch URL, a render test on the requested URL, a version stamp and eight
+bundle rebuilds; no `lib/`, `app/`, `help/`, schema or plugin-source hunk.
+v5 has no twin of that dialog (the earlier row reasoned from the chat
+dialog's port, the wrong file), so the row is a NO-PORT? candidate with a
+measured no-counterpart client hunk. The verdict moves to **DRIFT PENDING —
+3 commits, all ORDERED**; the regen rule stays PIN REQUIRED; the checkout is
+clean again.
+
+Because no lane had launched, the four orders were re-pointed in place
+rather than left to STOP on a moved HEAD: the shared §R block's HEAD, probe
+and target pin are `5f0a57dc4`, the recorded-dirt allowance is withdrawn,
+P4.D197 ratifies both stamp commits, and the baseline moves to `5f0a57dc4`
+at unification. The round keeps its `53294163f` label.
+
 #### 2026-09-16 — docs(porting): order the `53294163f` GPT-Image-2.5 drift catch-up + maintenance round (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95)
 
 _Docs-only change._
 
 Four work orders from `main`, no stacking, spliced with one byte-identical
-§R / §S / Ownership / gate block (md5 `b4771598…`). **P4.D196** takes the
+§R / §S / Ownership / gate block (md5 `d2e185cb…`). **P4.D196** takes the
 server half of v4's PR #62: the OpenAI image capability table as one module
 (eight families, longest-prefix snapshot resolution), the OPENAI image
 dialect rewritten over it red-first against the `image-dialects` corpus
