@@ -77,15 +77,37 @@ import {
  * `default:` case renders NOTHING; v5's is the size panel OR the JSON
  * textarea, the textarea being a v5 invention. The schema arm is identical.
  *
+ * P4.D197 (v4 `d8d2890ee`, PR #62) moved OPENAI out of that deferral by
+ * moving it out of the hand-written path ENTIRELY: the OpenAI plugin now
+ * declares `getImageProviderOptionsSchema`, so the image-profile editor builds
+ * its OpenAI fields from the served schema, per selected model — Quality and
+ * Default Size for the chosen family, Style only for DALL·E 3, and a `GPT
+ * Image Output` group (Background, Output Format, Output Compression,
+ * Moderation) only for the `gpt-image-*` families. That arm is IDENTICAL in
+ * both apps and needs no OpenAI-specific client code on either side; the
+ * recorded corpus in `openai-image-options.spec.ts` is the proof, taken from
+ * v4's REAL `getOpenAIImageOptionsSchema` at the `5f0a57dc4` pin.
+ *
+ * What remains a RECORDED DIVERGENCE is the fetch-FAILURE fallback, and only
+ * the fallback. `d8d2890ee` refreshed v4's hand-written OPENAI branch
+ * (`ImageProfileParameters.tsx:96-175`) to the UNION across the families —
+ * because a failed fetch means the app cannot know which model is selected —
+ * with a `(model default)` blank leading each list. v5 has never had that
+ * branch, and this lane deliberately did not add it: v5's stand-in for a
+ * failed fetch stays the JSON textarea. v4's own reason for keeping a stale
+ * fallback at all — a provider whose editor offers nothing would be worse than
+ * a slightly stale size list — applies to the textarea just as well, and the
+ * textarea additionally cannot go stale as the model table grows. (If the
+ * union lists are wanted instead, that is a separate small order.)
+ *
  * STILL DEFERRED LOUDLY: the `Validate` key button (its wire pair,
  * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title —
- * v4 did not move it this round. And v4's OTHER structured cases are still
- * unported: `OPENAI` (`:28-83` — Quality, Style, Size, Response Format),
- * `GOOGLE`/`GOOGLE_IMAGEN` (`:84-125` — Aspect Ratio, Person Generation,
- * Sample Count) and `GROK` (`:183-192` — a static "minimal parameters"
- * paragraph). Those four providers get the schema panel when their plugin
- * declares one and v5's JSON textarea stand-in otherwise. Unknown keys survive
- * editing on both sides.
+ * v4 did not move it this round. And v4's other hand-written structured cases
+ * are still unported: `GOOGLE`/`GOOGLE_IMAGEN` (`:84-125` — Aspect Ratio,
+ * Person Generation, Sample Count) and `GROK` (`:183-192` — a static "minimal
+ * parameters" paragraph). Those providers get the schema panel when their
+ * plugin declares one and v5's JSON textarea stand-in otherwise. Unknown keys
+ * survive editing on both sides.
  */
 /**
  * Parse the Parameters textarea into v4's `formData.parameters` shape, or

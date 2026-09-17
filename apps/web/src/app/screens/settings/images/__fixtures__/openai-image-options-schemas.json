@@ -1,0 +1,716 @@
+{
+  "gpt-image-2.5-sunburst": {
+    "groups": [
+      {
+        "title": "Image Parameters",
+        "fields": [
+          {
+            "key": "quality",
+            "label": "Quality",
+            "type": "enum",
+            "default": "",
+            "helpText": "How much effort the model spends on the image. Extra High and Max are GPT Image 2.5’s premium tiers — sharper detail, at a higher price and a longer wait.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "low",
+                "label": "Low — fastest and cheapest"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              },
+              {
+                "value": "xhigh",
+                "label": "Extra High",
+                "description": "GPT Image 2.5 only. Slower and dearer than High."
+              },
+              {
+                "value": "max",
+                "label": "Max — the finest the model offers",
+                "description": "GPT Image 2.5 only. The slowest and most expensive tier."
+              }
+            ]
+          },
+          {
+            "key": "size",
+            "label": "Default Size",
+            "type": "enum",
+            "default": "",
+            "helpText": "Default dimensions for this profile. This model also accepts any size whose edges divide by 16, at an aspect ratio between 1:3 and 3:1, up to 3840×2160 — the list below is a selection, not the limit. Asking for a portrait or landscape image in chat overrides this.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses the shape"
+              },
+              {
+                "value": "1024x1024",
+                "label": "Square (1024×1024)"
+              },
+              {
+                "value": "1536x1024",
+                "label": "Landscape (1536×1024)"
+              },
+              {
+                "value": "1024x1536",
+                "label": "Portrait (1024×1536)"
+              },
+              {
+                "value": "1792x1024",
+                "label": "Landscape (1792×1024)"
+              },
+              {
+                "value": "1024x1792",
+                "label": "Portrait (1024×1792)"
+              },
+              {
+                "value": "1920x1088",
+                "label": "Landscape (1920×1088)"
+              },
+              {
+                "value": "1088x1920",
+                "label": "Portrait (1088×1920)"
+              },
+              {
+                "value": "2048x2048",
+                "label": "Square (2048×2048)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2560x1440",
+                "label": "Landscape (2560×1440)"
+              },
+              {
+                "value": "1440x2560",
+                "label": "Portrait (1440×2560)"
+              },
+              {
+                "value": "3840x2160",
+                "label": "Landscape (3840×2160)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2160x3840",
+                "label": "Portrait (2160×3840)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "GPT Image Output",
+        "helpText": "Parameters the GPT Image families accept. DALL·E models ignore this section because it is not offered for them.",
+        "fields": [
+          {
+            "key": "background",
+            "label": "Background",
+            "type": "enum",
+            "default": "",
+            "helpText": "Transparent backgrounds need a PNG or WebP output format; ask for one with JPEG selected and the format is switched to PNG so the transparency survives.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "opaque",
+                "label": "Opaque — always a filled background"
+              },
+              {
+                "value": "transparent",
+                "label": "Transparent — cut-out subject"
+              }
+            ]
+          },
+          {
+            "key": "output_format",
+            "label": "Output Format",
+            "type": "enum",
+            "default": "",
+            "helpText": "The file format the model returns. PNG is the default and the safest for transparency.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "png",
+                "label": "PNG — lossless, supports transparency"
+              },
+              {
+                "value": "webp",
+                "label": "WebP — smaller, supports transparency"
+              },
+              {
+                "value": "jpeg",
+                "label": "JPEG — smallest, no transparency"
+              }
+            ]
+          },
+          {
+            "key": "output_compression",
+            "label": "Output Compression",
+            "type": "number",
+            "helpText": "Compression level from 0 to 100, applied only when the output format is WebP or JPEG. Higher keeps more detail; the model defaults to 100. Ignored for PNG."
+          },
+          {
+            "key": "moderation",
+            "label": "Moderation",
+            "type": "enum",
+            "default": "",
+            "helpText": "OpenAI's own content filter for GPT Image models. Low is less restrictive; it does not disable filtering, and OpenAI's usage policies still apply.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — OpenAI’s standard filtering"
+              },
+              {
+                "value": "low",
+                "label": "Low — less restrictive"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "gpt-image-2": {
+    "groups": [
+      {
+        "title": "Image Parameters",
+        "fields": [
+          {
+            "key": "quality",
+            "label": "Quality",
+            "type": "enum",
+            "default": "",
+            "helpText": "How much effort the model spends on the image. Higher tiers cost more and take longer.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "low",
+                "label": "Low — fastest and cheapest"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              }
+            ]
+          },
+          {
+            "key": "size",
+            "label": "Default Size",
+            "type": "enum",
+            "default": "",
+            "helpText": "Default dimensions for this profile. This model also accepts any size whose edges divide by 16, at an aspect ratio between 1:3 and 3:1, up to 3840×2160 — the list below is a selection, not the limit. Asking for a portrait or landscape image in chat overrides this.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses the shape"
+              },
+              {
+                "value": "1024x1024",
+                "label": "Square (1024×1024)"
+              },
+              {
+                "value": "1536x1024",
+                "label": "Landscape (1536×1024)"
+              },
+              {
+                "value": "1024x1536",
+                "label": "Portrait (1024×1536)"
+              },
+              {
+                "value": "1792x1024",
+                "label": "Landscape (1792×1024)"
+              },
+              {
+                "value": "1024x1792",
+                "label": "Portrait (1024×1792)"
+              },
+              {
+                "value": "1920x1088",
+                "label": "Landscape (1920×1088)"
+              },
+              {
+                "value": "1088x1920",
+                "label": "Portrait (1088×1920)"
+              },
+              {
+                "value": "2048x2048",
+                "label": "Square (2048×2048)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2560x1440",
+                "label": "Landscape (2560×1440)"
+              },
+              {
+                "value": "1440x2560",
+                "label": "Portrait (1440×2560)"
+              },
+              {
+                "value": "3840x2160",
+                "label": "Landscape (3840×2160)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2160x3840",
+                "label": "Portrait (2160×3840)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "GPT Image Output",
+        "helpText": "Parameters the GPT Image families accept. DALL·E models ignore this section because it is not offered for them.",
+        "fields": [
+          {
+            "key": "background",
+            "label": "Background",
+            "type": "enum",
+            "default": "",
+            "helpText": "Transparent backgrounds need a PNG or WebP output format; ask for one with JPEG selected and the format is switched to PNG so the transparency survives.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "opaque",
+                "label": "Opaque — always a filled background"
+              },
+              {
+                "value": "transparent",
+                "label": "Transparent — cut-out subject"
+              }
+            ]
+          },
+          {
+            "key": "output_format",
+            "label": "Output Format",
+            "type": "enum",
+            "default": "",
+            "helpText": "The file format the model returns. PNG is the default and the safest for transparency.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "png",
+                "label": "PNG — lossless, supports transparency"
+              },
+              {
+                "value": "webp",
+                "label": "WebP — smaller, supports transparency"
+              },
+              {
+                "value": "jpeg",
+                "label": "JPEG — smallest, no transparency"
+              }
+            ]
+          },
+          {
+            "key": "output_compression",
+            "label": "Output Compression",
+            "type": "number",
+            "helpText": "Compression level from 0 to 100, applied only when the output format is WebP or JPEG. Higher keeps more detail; the model defaults to 100. Ignored for PNG."
+          },
+          {
+            "key": "moderation",
+            "label": "Moderation",
+            "type": "enum",
+            "default": "",
+            "helpText": "OpenAI's own content filter for GPT Image models. Low is less restrictive; it does not disable filtering, and OpenAI's usage policies still apply.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — OpenAI’s standard filtering"
+              },
+              {
+                "value": "low",
+                "label": "Low — less restrictive"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "dall-e-3": {
+    "groups": [
+      {
+        "title": "Image Parameters",
+        "fields": [
+          {
+            "key": "quality",
+            "label": "Quality",
+            "type": "enum",
+            "default": "",
+            "helpText": "How much effort the model spends on the image. Higher tiers cost more and take longer.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "standard",
+                "label": "Standard"
+              },
+              {
+                "value": "hd",
+                "label": "HD — finer detail"
+              }
+            ]
+          },
+          {
+            "key": "size",
+            "label": "Default Size",
+            "type": "enum",
+            "default": "",
+            "helpText": "Default dimensions for this profile. Asking for a portrait or landscape image in chat overrides this.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "1024x1024",
+                "label": "Square (1024×1024)"
+              },
+              {
+                "value": "1792x1024",
+                "label": "Landscape (1792×1024)"
+              },
+              {
+                "value": "1024x1792",
+                "label": "Portrait (1024×1792)"
+              }
+            ]
+          },
+          {
+            "key": "style",
+            "label": "Style",
+            "type": "enum",
+            "default": "",
+            "helpText": "DALL·E 3 only. Vivid leans dramatic and hyper-real; Natural is more restrained.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "vivid",
+                "label": "Vivid — dramatic, hyper-real"
+              },
+              {
+                "value": "natural",
+                "label": "Natural — realistic, less exaggerated"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "dall-e-2": {
+    "groups": [
+      {
+        "title": "Image Parameters",
+        "fields": [
+          {
+            "key": "quality",
+            "label": "Quality",
+            "type": "enum",
+            "default": "",
+            "helpText": "How much effort the model spends on the image. Higher tiers cost more and take longer.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "standard",
+                "label": "Standard"
+              }
+            ]
+          },
+          {
+            "key": "size",
+            "label": "Default Size",
+            "type": "enum",
+            "default": "",
+            "helpText": "Default dimensions for this profile. Asking for a portrait or landscape image in chat overrides this.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "256x256",
+                "label": "Square (256×256)"
+              },
+              {
+                "value": "512x512",
+                "label": "Square (512×512)"
+              },
+              {
+                "value": "1024x1024",
+                "label": "Square (1024×1024)"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "(no model)": {
+    "groups": [
+      {
+        "title": "Image Parameters",
+        "fields": [
+          {
+            "key": "quality",
+            "label": "Quality",
+            "type": "enum",
+            "default": "",
+            "helpText": "How much effort the model spends on the image. Extra High and Max are GPT Image 2.5’s premium tiers — sharper detail, at a higher price and a longer wait.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "low",
+                "label": "Low — fastest and cheapest"
+              },
+              {
+                "value": "medium",
+                "label": "Medium"
+              },
+              {
+                "value": "high",
+                "label": "High"
+              },
+              {
+                "value": "xhigh",
+                "label": "Extra High",
+                "description": "GPT Image 2.5 only. Slower and dearer than High."
+              },
+              {
+                "value": "max",
+                "label": "Max — the finest the model offers",
+                "description": "GPT Image 2.5 only. The slowest and most expensive tier."
+              }
+            ]
+          },
+          {
+            "key": "size",
+            "label": "Default Size",
+            "type": "enum",
+            "default": "",
+            "helpText": "Default dimensions for this profile. This model also accepts any size whose edges divide by 16, at an aspect ratio between 1:3 and 3:1, up to 3840×2160 — the list below is a selection, not the limit. Asking for a portrait or landscape image in chat overrides this.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses the shape"
+              },
+              {
+                "value": "1024x1024",
+                "label": "Square (1024×1024)"
+              },
+              {
+                "value": "1536x1024",
+                "label": "Landscape (1536×1024)"
+              },
+              {
+                "value": "1024x1536",
+                "label": "Portrait (1024×1536)"
+              },
+              {
+                "value": "1792x1024",
+                "label": "Landscape (1792×1024)"
+              },
+              {
+                "value": "1024x1792",
+                "label": "Portrait (1024×1792)"
+              },
+              {
+                "value": "1920x1088",
+                "label": "Landscape (1920×1088)"
+              },
+              {
+                "value": "1088x1920",
+                "label": "Portrait (1088×1920)"
+              },
+              {
+                "value": "2048x2048",
+                "label": "Square (2048×2048)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2560x1440",
+                "label": "Landscape (2560×1440)"
+              },
+              {
+                "value": "1440x2560",
+                "label": "Portrait (1440×2560)"
+              },
+              {
+                "value": "3840x2160",
+                "label": "Landscape (3840×2160)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              },
+              {
+                "value": "2160x3840",
+                "label": "Portrait (2160×3840)",
+                "description": "Experimental resolution — slower, and the model may decline it."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "GPT Image Output",
+        "helpText": "Parameters the GPT Image families accept. DALL·E models ignore this section because it is not offered for them.",
+        "fields": [
+          {
+            "key": "background",
+            "label": "Background",
+            "type": "enum",
+            "default": "",
+            "helpText": "Transparent backgrounds need a PNG or WebP output format; ask for one with JPEG selected and the format is switched to PNG so the transparency survives.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — the model chooses"
+              },
+              {
+                "value": "opaque",
+                "label": "Opaque — always a filled background"
+              },
+              {
+                "value": "transparent",
+                "label": "Transparent — cut-out subject"
+              }
+            ]
+          },
+          {
+            "key": "output_format",
+            "label": "Output Format",
+            "type": "enum",
+            "default": "",
+            "helpText": "The file format the model returns. PNG is the default and the safest for transparency.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "png",
+                "label": "PNG — lossless, supports transparency"
+              },
+              {
+                "value": "webp",
+                "label": "WebP — smaller, supports transparency"
+              },
+              {
+                "value": "jpeg",
+                "label": "JPEG — smallest, no transparency"
+              }
+            ]
+          },
+          {
+            "key": "output_compression",
+            "label": "Output Compression",
+            "type": "number",
+            "helpText": "Compression level from 0 to 100, applied only when the output format is WebP or JPEG. Higher keeps more detail; the model defaults to 100. Ignored for PNG."
+          },
+          {
+            "key": "moderation",
+            "label": "Moderation",
+            "type": "enum",
+            "default": "",
+            "helpText": "OpenAI's own content filter for GPT Image models. Low is less restrictive; it does not disable filtering, and OpenAI's usage policies still apply.",
+            "enumValues": [
+              {
+                "value": "",
+                "label": "(model default)"
+              },
+              {
+                "value": "auto",
+                "label": "Auto — OpenAI’s standard filtering"
+              },
+              {
+                "value": "low",
+                "label": "Low — less restrictive"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

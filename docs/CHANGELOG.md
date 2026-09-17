@@ -221,6 +221,45 @@ dispatcher and the tool schema follow in this lane's later commits. Unit tests
 pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
 beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
 size shapes v4's `it.each` names, and the schema's group/field shape per family.
+#### 2026-09-17 — port(spa): prove the OpenAI image options schema through the shared panel (v4 `d8d2890ee`)
+
+_Versions: SPA 0.5.729._
+
+v4's PR #62 makes the OpenAI plugin declare `getImageProviderOptionsSchema`,
+so the image-profile editor builds its OpenAI fields from a served,
+model-aware schema instead of a hand-written branch. No bespoke client code
+is needed on either side — the shared `ProviderOptionsPanel` already renders
+it — so the port's client half is PROOF, not code.
+
+A recorded fixture is that proof. `apps/web/oracle/openai-image-options
+.recorder.ts` runs v4's REAL `getOpenAIImageOptionsSchema` at the
+`5f0a57dc4` pin for five inputs (`gpt-image-2.5-sunburst`, `gpt-image-2`,
+`dall-e-3`, `dall-e-2`, and the no-model call) and writes one committed
+JSON; `openai-image-options.spec.ts` mounts the panel over each and asserts
+the fields, labels, option order, the leading `(model default)` blank, the
+premium-tier descriptions, the group help text, the unbounded
+`output_compression` number box, and the per-family presence of `style` and
+the `GPT Image Output` group.
+
+The order's "exactly the two >2560×1440 sizes carry the experimental
+description" was refuted by that recording: it is THREE. `2048x2048` is
+4,194,304 pixels, over v4's 2560×1440 = 3,686,400 threshold, so it is
+flagged alongside the two 4K entries. The spec derives the set from the
+threshold rather than listing it, so the assertion cannot go stale the way
+the prediction did.
+
+The modal's header paragraph that listed OPENAI under STILL DEFERRED is
+replaced. What remains a recorded divergence is only the fetch-FAILURE
+fallback: v4 refreshed its hand-written OPENAI branch to the union across
+families, v5 keeps the JSON textarea it has always had there, and v4's own
+reason for keeping a stale fallback at all applies to the textarea too.
+
+A gated e2e beat (`P4D196_SERVER_LANDED = false`, flipped at unification)
+carries the wire proof the specs cannot: a model change re-serving the
+schema, and the five chosen values surviving a create plus a reload in the
+stored `parameters` bag — read back off `imageProfileGet`, with
+`output_compression` asserted as a number rather than a string.
+
 #### 2026-09-17 — port(spa): the eight OpenAI image models in the offline fallback list (v4 `d8d2890ee`)
 
 _Versions: SPA 0.5.728._
