@@ -221,6 +221,26 @@ dispatcher and the tool schema follow in this lane's later commits. Unit tests
 pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
 beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
 size shapes v4's `it.each` names, and the schema's group/field shape per family.
+#### 2026-09-17 — port(help): re-vendor the two GPT-Image-2.5 help pages (v4 `d8d2890ee`)
+
+_Versions: harness 0.0.828._
+
+v4's PR #62 moved two of the 124 vendored help pages:
+`help/image-generation-profiles.md` gains the two GPT Image 2.5 ids on its
+model line and rewrites the OpenAI section's Sizes and Quality, adding "The
+Two Lamps of GPT Image 2.5" and "The GPT Image Output Tray";
+`help/provider-recommendations.md` gains one sentence. Both byte-copied at
+the `5f0a57dc4` pin, so v5's whole `help/` tree is md5-identical to v4's
+again. The count stays 124 — two modified, none added — and the embed
+guard's per-round vendor list records that.
+
+Proven by `help_tree_equivalence` over an oracle regenerated fresh at the
+pin, which drives v4's real `ensureHelpDocsSynced()` across the whole tree:
+the vendored bytes, the front-matter parse, the section chunker and the walk
+order in one diff. Non-vacuous by mutation — reverting either page to its
+pre-copy bytes reddens it. (`help_tree_embed_guard` passes either way by
+design: it holds the embedded table equal to the tree on disk, not to v4.)
+
 #### 2026-09-17 — port(spa): prove the OpenAI image options schema through the shared panel (v4 `d8d2890ee`)
 
 _Versions: SPA 0.5.729._
