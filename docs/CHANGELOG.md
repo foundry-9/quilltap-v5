@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — fix(unify): two harness-side reds the unified sweep caught — `images_generate_route`'s three quality rows were never DRIVEN, and `salon_skip`'s seed bumped `transcriptVersion` twice where v4's batch bumps once
+
+_Versions: harness 0.0.834._
+
+Both reds were on the harness side, neither a port defect: P4.D196 added its
+three quality cases (`generate_quality_max`, `generate_quality_xhigh`,
+`zod_quality_ludicrous`) to the oracle case file but not to the family's
+hard-coded driven list — the list-equality assertion caught it at the unified
+gate (the `a-case-added-only-to-the-oracle-is-never-run` class the same lane
+had caught elsewhere); and the skip family seeded its two prior turn-pass rows
+with two `add_message` calls where v4's oracle uses ONE `addMessages` batch, so
+v5's copy bumped `chats.transcriptVersion` twice against v4's once — invisible
+until P4.94's widen plus the review's `transcriptVersion` row made the counter
+a comparand. Seeding batched to mirror v4; both families green by name on the
+pin-fresh oracles. The unified sweep's artifact committed.
+
 #### 2026-09-17 — fix(unify): the `53294163f` round's §3 review fixes — the OPENAI parser's doubled bag warnings, the tool-unsupported retry's inherited cache key, `chats.transcriptVersion` on the five widened pairs, the migrator's index gating and recipe block, the render spec's label assertions, and five comment-fidelity repairs
 
 _Versions: core 0.0.942, harness 0.0.833, web 0.0.150, SPA 0.5.730._

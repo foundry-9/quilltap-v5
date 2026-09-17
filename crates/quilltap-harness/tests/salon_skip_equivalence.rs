@@ -186,22 +186,36 @@ fn response_data(r: &Response) -> Value {
     v.get("data").cloned().unwrap_or(Value::Null)
 }
 
-/// Seed a Host turn-pass record (explicit id + createdAt) via the ported
-/// `add_message`, mirroring the oracle's `repos.chats.addMessages` seed.
-fn seed_turn_pass(db: &Db, id: &str, participant_id: &str, created_at: &str) {
-    let event: quilltap_core::db::chats_messages::ChatEventInput = serde_json::from_value(json!({
-        "type": "message",
-        "id": id,
-        "role": "ASSISTANT",
-        "content": "A pass, quietly noted.",
-        "createdAt": created_at,
-        "attachments": [],
-        "systemSender": "host",
-        "systemKind": "turn-pass",
-        "hostEvent": { "participantId": participant_id },
-    }))
-    .expect("seed event");
-    db.write_blocking(move |w| w.main().chat_messages().add_message(GROUP, &event))
+/// Seed the Host turn-pass records (explicit ids + createdAt) via the ported
+/// `add_messages`, mirroring the oracle's ONE `repos.chats.addMessages` batch.
+///
+/// ⚠ Batched on purpose (the `53294163f` unification's catch). The oracle seeds
+/// both rows in a single `addMessages` call, which announces the transcript
+/// change ONCE; this helper used to call `add_message` per row and so bumped
+/// `chats.transcriptVersion` TWICE. Invisible while the committed pair lacked
+/// the column (both sides' bumps failed soft, `a-widened-shared-column-breaks-
+/// sibling-fixtures-invisibly`); P4.94's widen made the count a comparand and
+/// the `skip_refusal` chats dump read 2 against v4's 1. A harness seeding-shape
+/// divergence, not a port one — the production skip path writes one message.
+fn seed_turn_passes(db: &Db, rows: &[(&str, &str, &str)]) {
+    let events: Vec<quilltap_core::db::chats_messages::ChatEventInput> = rows
+        .iter()
+        .map(|(id, participant_id, created_at)| {
+            serde_json::from_value(json!({
+                "type": "message",
+                "id": id,
+                "role": "ASSISTANT",
+                "content": "A pass, quietly noted.",
+                "createdAt": created_at,
+                "attachments": [],
+                "systemSender": "host",
+                "systemKind": "turn-pass",
+                "hostEvent": { "participantId": participant_id },
+            }))
+            .expect("seed event")
+        })
+        .collect();
+    db.write_blocking(move |w| w.main().chat_messages().add_messages(GROUP, &events))
         .expect("seed write");
 }
 
@@ -256,8 +270,13 @@ fn salon_skip_matches_oracle() {
         })
         .expect("heal the fixture copy");
         if seed {
-            seed_turn_pass(&db, SEED_ID_1, ARIA_P, "2026-02-02T00:00:00.000Z");
-            seed_turn_pass(&db, SEED_ID_2, BRAM_P, "2026-02-03T00:00:00.000Z");
+            seed_turn_passes(
+                &db,
+                &[
+                    (SEED_ID_1, ARIA_P, "2026-02-02T00:00:00.000Z"),
+                    (SEED_ID_2, BRAM_P, "2026-02-03T00:00:00.000Z"),
+                ],
+            );
         }
         let body = response_data(&rt.block_on(salon::turn_action(
             &db,

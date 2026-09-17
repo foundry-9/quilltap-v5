@@ -672,6 +672,24 @@ fn cases() -> Vec<Case> {
             options: Some(json!({ "quality": "ultra" })),
             ..ok("zod_quality_bad")
         },
+        // `d8d2890ee` (P4.D196): the route shares `imageQualitySchema`, so every
+        // GPT Image tier is accepted where this schema used to spell DALL·E's
+        // pair; `ludicrous` is the control. Added to the DRIVEN list at the
+        // `53294163f` unification — the lane grew the oracle case file only
+        // (`a-case-added-only-to-the-oracle-is-never-run`; the list-equality
+        // assertion below is what caught it at the unified gate).
+        Case {
+            options: Some(json!({ "quality": "max" })),
+            ..ok("generate_quality_max")
+        },
+        Case {
+            options: Some(json!({ "quality": "xhigh" })),
+            ..ok("generate_quality_xhigh")
+        },
+        Case {
+            options: Some(json!({ "quality": "ludicrous" })),
+            ..ok("zod_quality_ludicrous")
+        },
         Case {
             options: Some(json!({ "style": "painterly" })),
             ..ok("zod_style_bad")

@@ -1,0 +1,198 @@
+{
+  "label": null,
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "image_dialects_equivalence",
+    "tool_definitions_equivalence",
+    "image_generation_tier3_equivalence",
+    "image_generate_route_equivalence",
+    "images_generate_route_equivalence",
+    "image_profiles_routes_equivalence",
+    "provider_registry_equivalence",
+    "help_tree_equivalence",
+    "salon_reads_equivalence",
+    "salon_mutations_equivalence",
+    "salon_swipe_generate_equivalence",
+    "salon_skip_equivalence",
+    "transcript_route_equivalence",
+    "chat_gallery_equivalence",
+    "images_routes_equivalence",
+    "courier_images_routes_equivalence",
+    "pascal_run_custom_handler_equivalence",
+    "pascal_custom_tools_route_equivalence",
+    "pascal_definition_reader_equivalence",
+    "pascal_build_tools_roster",
+    "orchestrator_tier3_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "image_dialects_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "tool_definitions_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "image_generation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "image_generate_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "images_generate_route_equivalence",
+      "status": "run_failed",
+      "cause": "failures:\n    images_generate_matches_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.59s\n   Compiling quilltap-harness v0.0.833 (/Users/csebold/source/quilltap-v5/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s\n     Running tests/images_generate_route_equivalence.rs (target/debug/deps/images_generate_route_equivalence-2d3931040175f2e4)\nthread 'images_generate_matches_oracle' (11089742) panicked at crates/quilltap-harness/tests/images_generate_route_equivalence.rs:891:5:\nassertion `left == right` failed: the driven case list and the oracle's disagree\n  left: [\"generate_chat_id_and_chat_tag\", \"generate_chat_id_not_uuid\", \"generate_chat_id_null\", \"generate_count3\", \"generate_danger_autoroute\", \"generate_danger_autoroute_no_target\", \"generate_danger_autoroute_safe\", \"generate_danger_detect_only\", \"generate_danger_off\", \"generate_lantern_unprovisioned\", \"generate_no_image_data\", \"generate_ok\", \"generate_options_all\", \"generate_png_transcode\", \"generate_profile_missing\", \"generate_provider_no_images\", \"generate_provider_throws\", \"generate_scan_disabled\", \"generate_with_chat_id\", \"generate_with_tags\", \"zod_body_not_object\", \"zod_count_fractional\", \"zod_count_over_max\", \"zod_count_string\", \"zod_count_zero\", \"zod_options_not_object\", \"zod_options_null\", \"zod_profile_missing\", \"zod_profile_not_uuid\", \"zod_profile_null\", \"zod_prompt_empty\", \"zod_prompt_missing\", \"zod_prompt_too_long\", \"zod_prompt_wrong_type\", \"zod_quality_bad\", \"zod_size_wrong_type\", \"zod_style_bad\", \"zod_tags_bad_tagtype\", \"zod_tags_not_array\", \"zod_tags_null\", \"zod_tags_raw_tagid\"]\n right: [\"generate_chat_id_and_chat_tag\", \"generate_chat_id_not_uuid\", \"generate_chat_id_null\", \"generate_count3\", \"generate_danger_autoroute\", \"generate_danger_autoroute_no_target\", \"generate_danger_autoroute_safe\", \"generate_danger_detect_only\", \"generate_danger_off\", \"generate_lantern_unprovisioned\", \"generate_no_image_data\", \"generate_ok\", \"generate_options_all\", \"generate_png_transcode\", \"generate_profile_missing\", \"generate_provider_no_images\", \"generate_provider_throws\", \"generate_quality_max\", \"generate_quality_xhigh\", \"generate_scan_disabled\", \"generate_with_chat_id\", \"generate_with_tags\", \"zod_body_not_object\", \"zod_count_fractional\", \"zod_count_over_max\", \"zod_count_string\", \"zod_count_zero\", \"zod_options_not_object\", \"zod_options_null\", \"zod_profile_missing\", \"zod_profile_not_uuid\", \"zod_profile_null\", \"zod_prompt_empty\", \"zod_prompt_missing\", \"zod_prompt_too_long\", \"zod_prompt_wrong_type\", \"zod_quality_bad\", \"zod_quality_ludicrous\", \"zod_size_wrong_type\", \"zod_style_bad\", \"zod_tags_bad_tagtype\", \"zod_tags_not_array\", \"zod_tags_null\", \"zod_tags_raw_tagid\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test images_generate_route_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "image_profiles_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "provider_registry_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_tree_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "salon_reads_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "salon_mutations_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "salon_swipe_generate_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "salon_skip_equivalence",
+      "status": "run_failed",
+      "cause": "[skip_success] done.\n[skip_refusal] section `chats` MISMATCH:\n   =     \"title\": \"Group Expedition\",\n   =     \"totalCompletionTokens\": 0,\n   =     \"totalPromptTokens\": 0,\n  GOT :     \"transcriptVersion\": 2,\n  WANT:     \"transcriptVersion\": 1,\n[skip_refusal] done.\nthread 'salon_skip_matches_oracle' (11093700) panicked at crates/quilltap-harness/tests/salon_skip_equivalence.rs:361:5:\nsalon-skip FAILED: [\"skip_refusal/chats\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test salon_skip_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "transcript_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "chat_gallery_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "images_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "courier_images_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_run_custom_handler_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_custom_tools_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_definition_reader_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "pascal_build_tools_roster",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 19,
+    "run_failed": 2
+  }
+}
