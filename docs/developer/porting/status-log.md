@@ -132877,3 +132877,46 @@ lane-private paths were supplied through the family's env vars only.
   carries each attachment's whole base64, and the budget arms are megabyte-scale
   by construction. Nothing is committed — the NDJSON and the fixture pair are
   both `/tmp`.
+
+---
+
+## P4.D199 unit 2 — the `help/connection-profiles.md` re-vendor (v4 `bcd7e4852`)
+
+`cp "$PIN/help/connection-profiles.md" help/` from
+`/tmp/qt-v4-pin-p4d199-bcd7e4852`; md5 `e082e2c6…` → `1fbc0558…`. The whole
+vendored tree was then compared file-for-file against the pin:
+**124 files, every md5 identical** (the P4.D197 re-vendor had left it identical
+at `5f0a57dc4`, and `bcd7e4852` moves exactly this one page). The
+`help_tree_embed_guard` history doc gained the `bcd7e4852` row; `124` stays
+`124`.
+
+**Which families read the tree, MEASURED** (`grep -l connection-profiles` over
+`crates/quilltap-harness/tests/help_*` returns only the embed guard — every
+other `connection-profiles` hit in the harness is the `connection_profiles`
+TABLE, not the page): `help_tree_equivalence` is the one family that compares
+the vendored bytes to v4's, and `help_tree_embed_guard` compares the embedded
+table to what is on disk. Both regenerated/run at the target pin and green
+(`shipped_help_tree_matches_oracle`, `embedded_table_equals_the_on_disk_help_tree`).
+
+**Red-first:** with the pre-re-vendor page restored, `help_tree_equivalence`
+panics at `docs[38] differs` on `help/connection-profiles.md` against the
+target-pinned oracle. Restored from a file backup.
+
+**Pin verification:** the target-pinned help-tree NDJSON carries
+`A travelling portrait packs light` (1 hit); the baseline-pinned
+`help/connection-profiles.md` does not (0 hits).
+
+Regen as run:
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d199-bcd7e4852; N=~/.nvm/versions/node/v24.13.1/bin
+TMPH=/tmp/p4.d199/help-tree-oracle; rm -rf "$TMPH"; mkdir -p "$TMPH/cases"
+cp "$V5W/harness/oracle/cases/help-tree-sync.test.ts" "$TMPH/cases/"
+cd "$PIN"
+QT_ORACLE_OUT=/tmp/p4.d199/oracle-help-tree.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPH/cases" -- "help-tree-sync\.test\.ts$"
+```
+
+No host bump: `help/` changes the embedded table but no `quilltap-host` source
+(the P4.D194 rule, §R.8).

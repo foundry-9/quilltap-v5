@@ -22,7 +22,11 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `5f0a57dc4`: still 124 — the
+/// The shipped tree at the vendored pin (v4 `bcd7e4852`: still 124 — the
+/// P4.D199 re-vendor MODIFIED `help/connection-profiles.md` alone (bug 151,
+/// `bcd7e4852` — the "A travelling portrait packs light" section on the
+/// transport shrink and the per-turn image byte budget) and added none; v4
+/// `5f0a57dc4`: still 124 — the
 /// P4.D197 re-vendor MODIFIED `help/image-generation-profiles.md` and
 /// `help/provider-recommendations.md` for `d8d2890ee` (PR #62, GPT Image 2.5
 /// and the full OpenAI image parameter set) and added none; `53294163f` and

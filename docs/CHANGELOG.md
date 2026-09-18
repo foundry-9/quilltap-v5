@@ -184,6 +184,17 @@ resized it — down to 342,376 bytes (456,502 base64) at quality 78 and 242,366
 (323,155) at 45. v4's sharp reached ~98 KB of base64 on its own gaussian-noise
 fixture, so an LCG is the less compressible of the two fixtures; the ceiling is
 cleared either way.
+#### 2026-09-17 — chore(help): re-vendor `help/connection-profiles.md` at v4 `bcd7e4852` (bug 151)
+
+_Versions: harness 0.0.836._
+
+The twelve-line "A travelling portrait packs light" section bug 151 added, on
+the transport shrink and the per-turn image byte budget, byte-copied from the
+pinned v4 worktree. The vendored tree stays at 124 files and is again
+md5-identical to v4's, file for file. `help_tree_equivalence` was regenerated
+at the target pin and is green; with the old page in place it fails on
+`docs[38] differs`, which is the red-first proof.
+
 #### 2026-09-17 — fix(chat): the Lantern unseen-image walk spends a per-turn byte budget (bug 151, the walk half)
 
 _Versions: core 0.0.943, harness 0.0.835._
