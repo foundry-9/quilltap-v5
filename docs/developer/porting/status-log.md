@@ -129840,6 +129840,54 @@ the text continuation; pin the six wire keys in the request-envelopes corpus
 (present and absent per provider) plus a tier-3 side-channel like this lane's,
 since `canned_stream_key` cannot see `cache_key` either.
 
+### §4b — the gate
+
+1. **§R.2 probe** — FAILED at lane start (see §0), PASSED against the updated
+   ledger, and re-run PASSING before the regen batch.
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. **The lane's differentials by name**, each fresh from the `bcd7e4852` pin,
+   `--nocapture`, zero `SKIP:`, the changed bytes grepped (§4).
+5. **Neutrality legs** — `images_routes_equivalence` (untouched family, after
+   the edge rewrite) and `image_generate_route_equivalence` (after the Tier-2
+   DRY), both green with zero row change.
+6. **Mutation proofs** — four, each reddening exactly its target, none
+   surviving (§3); reverts by file backup.
+7. `cargo build --workspace --release` — clean (8 m 49 s).
+8. `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+   block (its own five vars; every other family's var WITHHELD so it SKIPs
+   honestly): **576 test binaries / 3,430 passed / 0 failed / 2 ignored,
+   GATE_EXIT=0.** The four families confirmed RUN by non-zero duration —
+   `images_generate_route` 3.77 s, `images_routes` 3.07 s,
+   `image_generate_route` 0.24 s, `images_generate_dispatch_wire` 4.39 s —
+   with ZERO `SKIP:` lines from any of the lane's own oracle vars.
+9. **The source census the change moves** — `dispatch_wrong_type_census`
+   re-run by name, 9 tests green, `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`
+   still 441 with the arithmetic recorded in the constant's comment.
+
+**⚠ The FIRST workspace run went 1 red, and it is NOT this lane's — diagnosed
+to root cause rather than re-run until green.**
+`realtime::publish_sites::memory_gate_tests::the_by_chat_delete_route_
+announces_once_from_the_gate` failed with `left: []` against
+`right: [("memories", None)]`. Classification:
+
+- **Green 3/3 in isolation** and **green 2/2 in the whole `quilltap-core
+  --lib` binary alone**; green in the second workspace run. Red only under
+  `--workspace`, i.e. only with the machine loaded by concurrent binaries.
+- **Mechanism, read from the source:** `HintCapture::drain`
+  (`realtime/publish_sites.rs:100-108`) sleeps a FIXED `COALESCE_WINDOW_MS +
+  20` ms of wall clock and then does a NON-BLOCKING `try_recv`. Under load the
+  coalescing publisher's own timer misses that 20 ms margin and the drain
+  reads an empty queue. A fixed-margin race in the test harness, not a product
+  defect (`coalescing-hides-its-own-mutation-proofs`).
+- **Not reachable from this lane by construction:** the three commits touch
+  the `ImagesGenerate` variant, its engine arm, the images REST edge, a
+  `parsed_type` import alias, three test files and one oracle case. Nothing
+  reaches the realtime memory gate.
+- **`realtime/publish_sites.rs` is in NO lane's Owns column this round**, so
+  the margin was NOT widened here. Named below for the unifier.
+
 ### §5 — findings for the unifier (outside this lane's ownership)
 
 - **The `cacheKey` escalation above** — one line in `orchestrator.rs` plus a
@@ -134181,3 +134229,243 @@ analogue; v5's items are `pub` in their modules), and the two `__tests__` files
   `doc_list_files` and `doc_grep` from an opaque seat showing no vault names;
   and the five restored log lines in a real `combined.log`.
 - **Nothing was banked or stubbed.** No `TODO`, no typed refusal was needed.
+## P4.98 — `Request::ImagesGenerate`'s five body keys as the `Option<Option<Value>>` tri-state (2026-09-18)
+
+Lane branch `claude/p4-98-images-tri-state-8f131b`, from `main` `5018df46`.
+Three commits: `bd0679f0` (the route family's `zod_prompt_null` row),
+`470e828e` (the tri-state across all three transports + the census + the new
+dispatch wire test), `6a1a5aa9` (Tier 2 — the Zod type-renderer DRY).
+
+### §0 — the probe, the pin, and the drift the lane opened on
+
+- **The §R.2 probe FAILED at lane start and the lane STOPPED, as ordered.**
+  Branch `main` ✓, HEAD unmoved at `89fcc3c0d` ✓, both logs empty ✓ — but the
+  tree was dirty on **seventeen** paths against the ledger's recorded
+  thirteen. The four extra: `help/character-system-prompts.md` (+27 — `help/`
+  is explicitly named in §R.2's STOP list), `docs/developer/bugs.md`,
+  `docs/CHANGELOG.md`, and a new `bugs/fixed/bug-154-default-prompt-star-dead-
+  action.md`. The in-flight fix the ledger had recorded anonymously had become
+  v4 **bug 154**. Reported and did nothing else; a lane never writes the
+  ledger.
+- **Resumed after the human ran `/driftcheck`** (`db1fdfe4` on `main`): the
+  fix landed as `baa85e19b`, recorded as a third §3 row, and the re-run probe
+  PASSED against the updated §1 (branch `main`, tree CLEAN, HEAD
+  `baa85e19b` = §1, both logs empty). Note for the unifier: **this order's
+  §R.2 paragraph still names `89fcc3c0d` as the expected HEAD** and was not
+  amended — the ledger is the record the lane probed, per `/carryout`'s
+  ground rule 1, and §1 measures `baa85e19b` as disjoint from all three
+  lanes' surfaces.
+- **The §R.3 / preamble measurement, re-recorded before the first regen (and
+  re-confirmed against the NEW head):** `git diff --stat bcd7e4852..89fcc3c0d
+  -- app/api/v1/images/ lib/api/ lib/services/chat-message/ plugins/` is
+  EMPTY, and `git status --short` over those same paths is EMPTY. This lane's
+  v4 surface is untouched by all three drift commits.
+- **Pin:** `/tmp/qt-v4-pin-p4-98-bcd7e4852`, lane-unique, verified by
+  `rev-parse` (`bcd7e485266be2efa5bacd9644a9814e7dc32d89`) AND `ls -ld`, with
+  `git worktree list` checked before each regen batch (the three sibling pins
+  were present and untouched). Every regen ran with `cd "$PIN"`, its cwd
+  echoed into the log. The three symlink classes were linked per ledger §5.1.
+- **Staging (§R.10(d)):** every output under `/tmp/p4.98/`, one family at a
+  time, the committed recipe headers left canonical. The `qt-imgcol-*` pair
+  was re-staged fresh for each of the two families that read it.
+
+### §1 — the red-first measurement (the whole point of the lane)
+
+`crates/quilltap-web/tests/images_generate_dispatch_wire.rs` was written and
+run BEFORE any source changed. The discriminator arm passed on unported
+`main`, so the parse stage was provably reachable and the reds below are the
+keys and not the gate. All five null arms, measured (the loop was temporarily
+made non-fatal so all five were recorded rather than stopping at the first):
+
+| key | pre-fix answer | verdict |
+|---|---|---|
+| `prompt: null` | 400 `Validation error` | GREEN |
+| `profileId: null` | 400 `Validation error` | GREEN |
+| `chatId: null` | 400 **`Connection profile not found`** | **RED** |
+| `tags: null` | 400 **`Connection profile not found`** | **RED** |
+| `options: null` | 400 **`Connection profile not found`** | **RED** |
+
+Three red, two green — the order's predicted shape. `Connection profile not
+found` is the proof: the null had collapsed to ABSENT, v4's parse stage was
+SATISFIED, and only a deliberately absent profile stopped the request. On a
+body naming a real profile those three generated and saved an image v4
+refuses.
+
+**The order's open question, answered by measurement:** the two required keys
+are green because **this route drops v4's `details` array** (the standing
+`drop_zod_details` deferral in `images_generate_route_equivalence`), and that
+array is the only place the two words differ. v4 DOES differ — the
+`bcd7e4852`-pinned oracle records, for this route:
+
+```
+zod_prompt_missing   Invalid input: expected string, received undefined
+zod_prompt_null      Invalid input: expected string, received null
+zod_profile_missing  Invalid input: expected string, received undefined
+zod_profile_null     Invalid input: expected string, received null
+```
+
+So the tri-state is load-bearing for all five on v4's side; v5's deferral is
+the only reason two of them cannot yet show it. They carry the tri-state
+anyway, so lifting that deferral is a rendering change and not another
+variant change.
+
+### §2 — what landed
+
+1. **The variant** (`api/types.rs`) — five `#[serde(default, deserialize_with
+   = "double_option")] Option<Option<serde_json::Value>>`, field for field the
+   `ImageProfileGenerate` shape, with the measured evidence in its doc. The
+   `:1062` rule paragraph corrected: the `ChatCreate` trio, `ImageProfile
+   Generate` and `ImagesGenerate` now carry the IDENTICAL shape, so it is one
+   rule rather than a family resemblance.
+2. **The engine arm** (`api/engine.rs`) — one `collapse` closure,
+   `v.map(|inner| inner.unwrap_or(Value::Null))`, applied to all five; the
+   handler signature is UNCHANGED (`Option<&Value>` × 5).
+3. **The REST edge** (`quilltap-web/src/images_routes.rs`) — the order's
+   PREFERRED shared-decoder shape, not a hand-mirror. `images_generate_
+   request` lifts the five keys into a dispatch envelope (`{"type":
+   "imagesGenerate", …}`) and runs `serde_json::from_value::<CoreRequest>`,
+   the same decode `dispatch.rs:69` runs. The tri-state now has ONE
+   implementation. Unknown keys are dropped, which is v4's own `z.object`
+   strip; a non-object body folds to all-absent as before.
+   Three `#[cfg(test)]` pins: the edge/dispatch `==` for all five keys × four
+   states, a distinctness pin (absent ≠ null ≠ value), and the strip/fold pin.
+   **No new derive was needed — `Request` already derives `PartialEq`.**
+4. **The wire test** — five null arms, five wrong-type arms, the
+   all-five-well-formed discriminator, and an absent-control arm.
+5. **The route family** grew `zod_prompt_null` on both sides (44 → 45 cases).
+6. **The REST-edge null arms** (`images_edge_routes.rs`) for the three
+   optional keys — green before AND after, which is their job.
+7. **The census** — `IMAGES_GENERATE_RAW_FIVE` with per-row `note` prose, the
+   raw-field walker GENERALIZED (`image_profile_generate_value_fields` →
+   `raw_value_fields_of(variant)`, every existing row byte-identical), a
+   shape-coverage test, a decode-raw test, and a decode-DISTINCTNESS test.
+9. **Tier 2** — `generate_parsed_type` retired onto `settings::zod_parsed_
+   type` after `diff`-proving the bodies byte-identical (no output).
+
+**`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`: 441 → 441**, recorded in the lane
+before `census_covers_every_typed_request_field` was run, and confirmed by it.
+All five were ALREADY `Value`-typed (raw since P4.76; only the carrier
+changed), so `typed_request_fields` has always skipped them and the `*_id`
+rule never saw `profile_id` or `chat_id` to drop. The arithmetic is untouched
+in both directions; the ledger comment says so with the reasoning.
+
+**The handler did NOT change**, as the order predicted: `parse_generate_body`
+already refuses `Some(Value::Null)` on all five. The collapse was entirely at
+the variant. Verified by reading and by the four null rows that were green on
+both sides throughout.
+
+**Tier 2 item 10 — the Tauri IPC leg, RECORDED not tested.**
+`quilltap-tauri`'s `dispatch` command is `dispatch_inner`
+(`crates/quilltap-tauri/src/commands.rs:19-26`), which serializes the request
+`Value` and calls `quilltap_web::dispatch::dispatch_body` — the same function
+the wire test drives over HTTP, and therefore the same
+`serde_json::from_slice::<Request>` at `dispatch.rs:69`. One decoder, both
+transports; no Tauri venue was invented.
+
+### §3 — mutation proofs (reverts by file backup, never `git checkout`)
+
+| # | mutation | reddened |
+|---|---|---|
+| **M1** | `chat_id` back to a plain `Option<Value>` (engine arm adapted so it compiles) | the wire test's `chatId: null` arm; `the_images_generate_raw_list_covers_every_raw_field_on_the_variant` (shape); `images_generate_keeps_absent_and_explicit_null_apart_at_the_decode` |
+| **M2** | the engine collapse dropped for `tags` (`and_then` folds `Some(None)` → `None`) | the wire test's **`tags`** arm and no other; every census test stayed green |
+| **M3** | the edge skips a `null` as if absent | `images_edge_and_dispatch_decode_the_five_keys_identically`; `absent_null_and_value_stay_three_distinct_requests`; the REST-edge `chatId: null` arm |
+| **M4** | `zod_prompt_null` driven with a valid prompt instead of the null | the family, naming that row: v5 **201 with a generated image** vs v4's 400 |
+
+**M1's most useful result is what it did NOT redden.**
+`images_generate_five_decode_raw_so_the_handler_can_refuse` — the direct
+mirror of its `ImageProfileGenerate` sibling — stayed GREEN under M1, because
+a plain `Option<Value>` still DECODES `null` successfully; it just decodes it
+to the wrong thing. A raw list pinned only by that test would pin the wrong
+half of its own claim. That is why
+`images_generate_keeps_absent_and_explicit_null_apart_at_the_decode` exists,
+and it is worth carrying to the sibling list (named below).
+
+### §4 — the regen recipes AS RUN
+
+All from `cd /tmp/qt-v4-pin-p4-98-bcd7e4852` (HEAD `bcd7e4852`, echoed in
+each log), `N=~/.nvm/versions/node/v24.13.1/bin`, `W=` the lane worktree.
+Every jest filter anchored `…\.test\.ts$`. §5.2 discipline on each: the
+output `rm -f`'d first, the last line read, the changed bytes grepped.
+
+```bash
+# images_generate_route_equivalence  (REGENERATED — this lane's one grown family)
+TMPO=/tmp/p4.98/qt-images-generate-oracle
+rm -rf "$TMPO" /tmp/p4.98/qt-imgcol-*.db /tmp/p4.98/oracle-images-generate.ndjson
+mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/images-generate-route.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/images-collection.json"     "$TMPO/fixtures/"
+cp "$W/crates/quilltap-web/tests/fixtures/images-main.db"           /tmp/p4.98/qt-imgcol-main.db
+cp "$W/crates/quilltap-web/tests/fixtures/images-main.db.meta.json" /tmp/p4.98/qt-imgcol-main.db.meta.json
+cp "$W/crates/quilltap-web/tests/fixtures/images-mount.db"          /tmp/p4.98/qt-imgcol-mount.db
+TZ=UTC QT_FIXTURE_IMGCOL_MAIN=/tmp/p4.98/qt-imgcol-main.db \
+QT_FIXTURE_IMGCOL_MOUNT=/tmp/p4.98/qt-imgcol-mount.db \
+QT_ORACLE_OUT=/tmp/p4.98/oracle-images-generate.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "images-generate-route\.test\.ts$"
+# → "45 cases"; grep -c zod_prompt_null = 1 (> 0, the changed bytes)
+QT_ORACLE_IMAGES_GENERATE=/tmp/p4.98/oracle-images-generate.ndjson \
+  cargo test -p quilltap-harness --test images_generate_route_equivalence -- --nocapture
+# → ok, 3.11 s, zero SKIP
+
+# images_routes_equivalence  (NEUTRALITY — untouched family, re-run by name)
+#   same staging pattern, TMPO=/tmp/p4.98/qt-images-routes-oracle,
+#   cases/images-routes.test.ts, --testTimeout=180000,
+#   QT_ORACLE_OUT=/tmp/p4.98/oracle-images-routes.ndjson  → "38 cases"
+QT_ORACLE_IMAGES_ROUTES=/tmp/p4.98/oracle-images-routes.ndjson \
+  cargo test -p quilltap-harness --test images_routes_equivalence -- --nocapture
+# → ok, 2.20 s, zero SKIP
+
+# image_generate_route_equivalence  (NEUTRALITY for Tier 2's DRY)
+#   build-image-generation-fixture.ts into /tmp/p4.98/qt-imggen-{main,mount}.db
+#   (PRIVATE staging — it shares /tmp/qt-imggen-* with image_generation_tier3),
+#   TMPO=/tmp/p4.98/qt-imggenroute-oracle, --testTimeout=120000  → "75 lines"
+QT_ORACLE_IMGGEN_ROUTE=/tmp/p4.98/oracle-image-generate-route.ndjson \
+QT_FIXTURE_IMGGEN_MAIN=/tmp/p4.98/qt-imggen-main.db \
+QT_FIXTURE_IMGGEN_MOUNT=/tmp/p4.98/qt-imggen-mount.db \
+  cargo test -p quilltap-harness --test image_generate_route_equivalence -- --nocapture
+# → ok, 0.24 s, zero SKIP, zero row change after the DRY
+```
+
+**The Tier-2 neutrality leg is not vacuous:** its oracle's refusal rows
+exercise six of the renderer's seven arms — `received null` ×2, `number` ×5,
+`boolean`, `object`, `string` (ten rows in all).
+
+### §5 — findings for the unifier (outside this lane's ownership)
+
+- **`IMAGE_PROFILE_GENERATE_RAW_FIVE` has no distinctness pin.** P4.96's list
+  is held by a shape test and a decode-raw test, and M1 proved here that those
+  two together do NOT catch a plain `Option<Value>` regression on the SHAPE
+  the list records — only the shape test does, and only because the
+  `rust_type` string is transcribed. A sibling of
+  `images_generate_keeps_absent_and_explicit_null_apart_at_the_decode` for
+  `ImageProfileGenerate` would close it. Not touched: that list is P4.96's
+  record and this lane owns only the census file's additions.
+- **The order's §R.2 paragraph is stale** (it names HEAD `89fcc3c0d`; v4 is at
+  `baa85e19b`). The lane probed the LEDGER, which is current. The unifier may
+  want to note the divergence when it moves the baseline.
+- **The remaining Zod DRY candidate**, as Tier 3 requires naming it: the ISSUE
+  renderers — `run_sql.rs:219 zod_issue`, `settings.rs:680 zod_error_message`
+  and the `generators_wizard.rs` twin — are a different layer from the
+  parsed-type word and want one `zod_issues` home. A cross-module refactor;
+  NOT this lane's.
+- **A load-sensitive intermittent, newly characterized:**
+  `realtime::publish_sites::memory_gate_tests::the_by_chat_delete_route_
+  announces_once_from_the_gate` (and, by construction, every sibling that
+  calls `HintCapture::drain`/`drain_sorted`) can read an empty queue under
+  `--workspace` load, because `drain` waits a FIXED `COALESCE_WINDOW_MS + 20`
+  ms and then `try_recv`s. Measured here: 1 red in 2 workspace runs, green
+  3/3 in isolation and 2/2 in the full core binary. The fix shape is a
+  bounded WAIT for the expected count rather than a fixed sleep. Out of every
+  lane's ownership this round, so recorded rather than fixed.
+- **The shared-decoder class, as Tier 3 asks:** other `quilltap-web`
+  `*_routes.rs` edges still hand-build `CoreRequest::…` variants from a parsed
+  body. Recorded as candidates, deliberately NOT converted here.
+
+### §6 — deferred loud
+
+- **`count`'s unsafe-integer edge** on the PROFILE route (P4.96's record) —
+  not chased here, as Tier 3 directs.
+- 💸 **the dogfood queue** keeps its P4.96-era item and can now name the fix:
+  a `chatId: null` posted to `POST /api/dispatch` with `{"type":
+  "imagesGenerate"}` must answer v4's `Validation error` and write nothing,
+  where before the round it generated and saved an image.

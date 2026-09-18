@@ -218,6 +218,27 @@ New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 op
 diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
 (v5 had no way to express the option). Those two are the rows this commit turns
 green.
+#### 2026-09-18 — docs(porting): the P4.98 lane record — the tri-state's red-first measurement, the gate, and a load-sensitive intermittent characterized
+
+_No crate versions bumped._
+
+The P4.98 lane record: the failed opening probe and the resumption after the
+human's `/driftcheck`, the red-first table (three arms red — `chatId`, `tags`,
+`options` — each answering `Connection profile not found` because the null had
+collapsed to ABSENT and v4's parse stage had been satisfied), the measured v4
+`received null` / `received undefined` bytes that explain why the two required
+keys are green either way, the four mutation proofs, the regen recipes as run
+from the `bcd7e4852` pin under lane-private staging, and the gate.
+
+Also characterized, and deliberately NOT fixed (it is in no lane's ownership
+this round): `realtime::publish_sites::memory_gate_tests::the_by_chat_delete_
+route_announces_once_from_the_gate` reddened once under `--workspace` and is
+green 3/3 in isolation, 2/2 in the full core binary and in the second
+workspace run. `HintCapture::drain` waits a FIXED `COALESCE_WINDOW_MS + 20` ms
+and then `try_recv`s, so under load the coalescing publisher's timer misses
+the margin and the drain reads an empty queue. The fix shape is a bounded wait
+for the expected count rather than a fixed sleep.
+
 #### 2026-09-18 — refactor(images): the fourth hand-copy of v4's `util.parsedType` retires onto the shared one
 
 _Versions: core 0.0.952._
