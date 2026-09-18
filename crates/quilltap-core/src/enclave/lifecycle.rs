@@ -1178,8 +1178,13 @@ mod tests {
         (dir, db)
     }
 
+    /// `expected` is the number of hints `op` is known to publish — 0 for a
+    /// silence leg (the fixed-margin `drain_sorted`, widened per P4.100;
+    /// there is nothing to wait FOR), otherwise the bounded
+    /// `drain_sorted_expecting`.
     async fn autonomous_hints_with_jobs(
         seed_run_state: &'static str,
+        expected: usize,
         op: impl AsyncFnOnce(&Db, &LifecycleDeps<'_>),
     ) -> Vec<(String, Option<String>)> {
         let mut cap = crate::realtime::publish_sites::HintCapture::start();
@@ -1193,11 +1198,17 @@ mod tests {
             next_occurrence: cron,
         };
         op(&db, &deps).await;
-        cap.drain_sorted().await
+        if expected == 0 {
+            cap.drain_sorted().await
+        } else {
+            cap.drain_sorted_expecting(expected).await
+        }
     }
 
+    /// See [`autonomous_hints_with_jobs`]'s `expected` doc.
     async fn autonomous_hints(
         seed_run_state: &'static str,
+        expected: usize,
         op: impl AsyncFnOnce(&Db, &LifecycleDeps<'_>),
     ) -> Vec<(String, Option<String>)> {
         let mut cap = crate::realtime::publish_sites::HintCapture::start();
@@ -1211,7 +1222,11 @@ mod tests {
             next_occurrence: cron,
         };
         op(&db, &deps).await;
-        cap.drain().await
+        if expected == 0 {
+            cap.drain().await
+        } else {
+            cap.drain_expecting(expected).await
+        }
     }
 
     fn rooms() -> Vec<(String, Option<String>)> {
@@ -1223,7 +1238,7 @@ mod tests {
     /// come from the start patch. (The enqueue publishes `jobs` of its own.)
     #[tokio::test]
     async fn begin_publishes_on_the_start_patch() {
-        let hints = autonomous_hints_with_jobs("idle", async |db, deps| {
+        let hints = autonomous_hints_with_jobs("idle", 2, async |db, deps| {
             // The run-begun ANNOUNCEMENT needs a mount-index partition this
             // main-only fixture has not got, so the call errors after the
             // enqueue. That is past both publishes and past the rollback arm —
@@ -1252,7 +1267,7 @@ mod tests {
     /// `quilltap-harness/tests/realtime_publish_sites_guard.rs`.
     #[tokio::test]
     async fn a_failed_begin_still_announces_the_room() {
-        let hints = autonomous_hints("idle", async |db, deps| {
+        let hints = autonomous_hints("idle", 1, async |db, deps| {
             let _ = start_autonomous_room_manually(db, deps, "chat-1", "user-1").await;
         })
         .await;
@@ -1261,7 +1276,7 @@ mod tests {
 
     #[tokio::test]
     async fn pause_publishes() {
-        let hints = autonomous_hints("running", async |db, deps| {
+        let hints = autonomous_hints("running", 1, async |db, deps| {
             pause_autonomous_room(db, deps, "chat-1").await.unwrap();
         })
         .await;
@@ -1270,7 +1285,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_publishes() {
-        let hints = autonomous_hints("running", async |db, deps| {
+        let hints = autonomous_hints("running", 1, async |db, deps| {
             stop_autonomous_room(db, deps, "chat-1").await.unwrap();
         })
         .await;
@@ -1284,7 +1299,7 @@ mod tests {
     /// v4's does).
     #[tokio::test]
     async fn resume_publishes() {
-        let hints = autonomous_hints_with_jobs("paused", async |db, deps| {
+        let hints = autonomous_hints_with_jobs("paused", 2, async |db, deps| {
             db.write(|ws| {
                 ws.main()
                     .connection()
@@ -1313,7 +1328,7 @@ mod tests {
 
     #[tokio::test]
     async fn updating_settings_publishes() {
-        let hints = autonomous_hints("idle", async |db, deps| {
+        let hints = autonomous_hints("idle", 1, async |db, deps| {
             let patch = AutonomousRoomSettingsPatch {
                 budget_max_turns: Some(Some(9.0)),
                 ..Default::default()
@@ -1330,7 +1345,7 @@ mod tests {
     /// sits after the `fields_set === 0` early return.
     #[tokio::test]
     async fn an_empty_settings_patch_publishes_nothing() {
-        let hints = autonomous_hints("idle", async |db, deps| {
+        let hints = autonomous_hints("idle", 0, async |db, deps| {
             update_autonomous_room_settings(
                 db,
                 deps,
@@ -1347,7 +1362,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconcile_after_a_failed_turn_publishes() {
-        let hints = autonomous_hints("running", async |db, deps| {
+        let hints = autonomous_hints("running", 1, async |db, deps| {
             // The reconcile only acts on the LIVE run, so give the row one.
             db.write(|ws| {
                 ws.main()
@@ -1371,7 +1386,7 @@ mod tests {
     /// UPDATE-only trigger rather than by breaking the table.
     #[tokio::test]
     async fn a_reconcile_whose_write_fails_publishes_nothing() {
-        let hints = autonomous_hints("running", async |db, deps| {
+        let hints = autonomous_hints("running", 0, async |db, deps| {
             db.write(|ws| {
                 let conn = ws.main().connection();
                 conn.execute("UPDATE chats SET currentRunId = 'run-x'", [])?;
@@ -1395,7 +1410,7 @@ mod tests {
     async fn a_guarded_reconcile_publishes_nothing() {
         // `stopped` is not a reconcilable state, so the guard returns before any
         // write — and therefore before any hint.
-        let hints = autonomous_hints("stopped", async |db, deps| {
+        let hints = autonomous_hints("stopped", 0, async |db, deps| {
             db.write(|ws| {
                 ws.main()
                     .connection()

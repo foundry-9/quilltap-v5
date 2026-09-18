@@ -629,7 +629,7 @@ mod tests {
         apply_writes(&mut host, "j", &writes, Some("EMBEDDING_GENERATE")).unwrap();
 
         assert_eq!(
-            cap.drain_sorted().await,
+            cap.drain_sorted_expecting(2).await,
             vec![
                 ("characters".to_string(), Some("ch-1".to_string())),
                 ("chats".to_string(), Some("c-1".to_string())),
@@ -653,7 +653,7 @@ mod tests {
             "the premise: this batch moves no cache key"
         );
         assert_eq!(
-            cap.drain().await,
+            cap.drain_expecting(1).await,
             vec![("chats".to_string(), Some("c-1".to_string()))]
         );
     }

@@ -135972,3 +135972,138 @@ commit's tree compiles on its own.
 
 **Versions:** core 0.0.962, harness 0.0.851; web / host / cli / tauri / SPA
 unchanged.
+## P4.100 unit 1 — the bounded `HintCapture` drain (lane record, 2026-09-18)
+
+Lane branch `claude/bounded-hint-drain-opacity-9b7dcc`, from `main` `57fd1680`.
+Order: `docs/developer/porting/work-orders/p4.100-bounded-hint-drain-opacity-
+corpus-rows.md`. Part of the `baa85e19b` bug-154 default-system-prompt drift
+catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102).
+This unit is phase-4 candidate 2 of the `89fcc3c0d` unification's list; it
+absorbs no drift (the order's §R.3 measured empty diff over this lane's v4
+surfaces holds — this unit touches no v4 surface at all, it is test
+infrastructure only).
+
+### §0 Probe
+
+The drift ledger's §2 freshness probe at lane start: branch `main`, HEAD
+`baa85e19b`, tree CLEAN, both drift logs EMPTY — **PASS**. No regen this unit
+touches v4 at all (production code moves zero bytes); the pinned worktree
+built for unit 2 is unrelated to this one.
+
+### §1 Reproduced two ways before the fix landed
+
+**(a) Deterministic**, via a NEW test-only seam,
+`QT_TEST_INJECT_FLUSH_DELAY_MS`, read once per `HintCapture::start()` and
+applied inside the spawner closure (delaying the spawned flush by that many
+ms on top of `COALESCE_WINDOW_MS`) — entirely within `publish_sites.rs`
+(already `#[cfg(test)]`-gated at its `mod` declaration), no `bus.rs` seam
+needed. With the seam set to 100 ms (matching the order's literal
+`COALESCE_WINDOW_MS + 100`) on the PRE-FIX code (old fixed
+`COALESCE_WINDOW_MS + 20` margin): **27 of 39** tests in `publish_sites.rs`'s
+three modules reddened (12 silence-only tests stayed green, as expected),
+plus **2 of 12** in `write_apply.rs` and **7 of 14** in `enclave/lifecycle.rs`
+— **36 total**, exactly the lane's own recount of positive-count call sites
+(below). Sample: `assertion left == right failed … left: [] right:
+[("jobs", None)]`.
+
+**(b) Under real `cargo test --workspace` load** — not independently
+re-run this unit (the workspace gate below is itself two full runs, 3450/0
+both times, which is the same venue P4.98 characterized the flake in); the
+mechanism match (an empty-channel read after a fixed sleep) is the same
+class P4.98 recorded (`memory_gate_tests::the_by_chat_delete_route_
+announces_once_from_the_gate`, 1 red in 2 workspace runs).
+
+### §2 Call-site recount (measured, not the order's guess)
+
+`publish_sites.rs`: **40 positive-count** call sites (19 in `mod tests`, 3 in
+`memory_gate_tests`, 18 in `transcript_publish_sites` — several of the 18 via
+a discarded `let _ = cap.drain_expecting(1).await` consuming a setup hint
+before the assertion) + **16 silence legs** (7 + 4 + 5, the fifth in
+`transcript_publish_sites` being `deleting_a_chat_does_not_announce_its_
+transcript`'s unbounded "no hint containing X" check, which stays on the
+widened fixed `drain()` because there is no fixed `n` to wait for) = 56 raw
+test call sites, +1 for `drain_sorted`'s own internal `self.drain()` = 57,
+matching the order's "publish_sites.rs 57" once the internal call is
+counted. `write_apply.rs`: 2 positive (`:632` n=2, `:656`
+n=1) + 1 silence (`:675`) = 3, exactly as the order recorded.
+`enclave/lifecycle.rs`: 2 RAW `.drain()`/`.drain_sorted()` occurrences
+(inside the two now-parametrized helper functions), exercised by **7
+positive** + **3 silence** of the 10 call sites. **62 total** raw
+occurrences, confirming the order's census.
+
+### §3 The fix
+
+`HintCapture::drain_expecting(n)`/`drain_sorted_expecting(n)`: loop
+`tokio::time::timeout(deadline, self.rx.recv())` per hint (`deadline =
+COALESCE_WINDOW_MS * 8` = 2000 ms, named `DRAIN_EXPECTING_TIMEOUT_MS`) until
+`n` hints collected or a timeout PANICS naming the partial; then one more
+`COALESCE_WINDOW_MS + 20` ms `try_recv` sweep for stragglers. `drain()`/
+`drain_sorted()` KEPT, widened `COALESCE_WINDOW_MS + 20` → `COALESCE_WINDOW_
+MS * 2`, doc'd as SILENCE-LEGS-ONLY. All 40 positive sites in `publish_
+sites.rs` migrated to their exact expected count (mechanical line-targeted
+script, not global find/replace, since several sites share identical
+`cap.drain().await` text at different expected counts); both in `write_
+apply.rs`; `enclave/lifecycle.rs`'s two helpers gained an `expected: usize`
+parameter (`0` routes to the plain `drain()`/`drain_sorted()`, non-zero to
+the `_expecting` form) threaded through all 10 call sites.
+
+**A genuine timing interaction found and fixed along the way (not a bug in
+the bounded wait):** `the_claim_transition_publishes_on_its_own` and
+`the_failure_transition_publishes_on_its_own`'s `SlowHandler` sleeps
+`COALESCE_WINDOW_MS + 60` to force the claim and completion hints into
+SEPARATE coalescing windows (`coalescing-hides-its-own-mutation-proofs`'s
+idiom). Under the reproduction seam at 100 ms, the claim's OWN flush now
+lands 100 ms LATER than baseline — after the handler's completion already
+published — so the completion's publish finds the claim's key still
+`pending` and COALESCES into it, merging two hints into one and starving the
+test's SECOND `drain_expecting(1)` call (a clean 2000 ms timeout with zero
+collected, not a hang — diagnosed via a granular debug pass tracing
+`out.len()` across both calls). Fixed by widening the margin to `+ 150 ms`
+(> the seam's 100 ms), restoring separation; documented in place. Debug
+`eprintln!`s used during diagnosis were fully removed before commit (`grep -c
+eprintln` = 0).
+
+### §4 Mutation proofs
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `DRAIN_EXPECTING_TIMEOUT_MS` → `0` | **33 of 40** tests touching `drain_expecting` (even as a setup discard) FAILED; the 7 silence-only tests stayed green — the whole class, confirmed by full rerun, not one test |
+| M2 | the straggler sweep deleted from `drain_expecting` | exactly `an_over_publish_still_surfaces_past_the_expected_count` (new test, published FIRST then proven) FAILED — `left: [("jobs", None)] right: [("chats", …), ("jobs", None)]`; 39 others green |
+
+Each reverted by file backup (`mutation-proof-revert-by-file-backup`), never
+`git checkout`.
+
+### §5 Gate
+
+1. §0 probe — PASS.
+2. `cargo fmt --all --check` — clean after `cargo fmt --all` (several lines
+   grew past the width once `drain()` became `drain_expecting(N)`).
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. `cargo build --workspace --release` — clean (8m 26s).
+5. `cargo test --workspace --no-fail-fast -- --nocapture`, **run TWICE** (the
+   flake's own venue): **run 1: 577 test binaries / 3450 passed / 0 failed,
+   exit 0. Run 2: identical — 577 / 3450 / 0, exit 0.** (3450 = the prior
+   baseline 3449 + the new `an_over_publish_still_surfaces_past_the_
+   expected_count` test; unit 2's `doc_opacity_matches_oracle` — now 47 ops —
+   ran green in both, confirmed by name.)
+6. Source census: none expected, none moved (`realtime/publish_sites.rs`,
+   `write_apply.rs`, `enclave/lifecycle.rs` are the only files this unit
+   touches; no `DbError`/`api/types.rs`/dispatch surface).
+7. `git status --short` after both commits: no `apps/web/**` file touched —
+   the SPA gate does not apply to this order.
+
+### §6 Retiring the memory note
+
+`hintcapture-drain-is-a-fixed-margin-race`'s fact is RETIRED as of this
+commit — `drain`/`drain_sorted` no longer carry positive-count callers; the
+note should be updated (not deleted, its trap-diagnosis lesson stands) by
+whoever next touches memory (a lane does not edit files outside the repo).
+
+**Deferred:** none — Tier 1 items 1–2 and Tier 2 items 5–6 all landed whole.
+Tier 3's one deferral (drain sites outside `quilltap-core`) is confirmed
+NONE by `grep -rl "drain_sorted()" crates/` hitting only the three files
+already covered.
+
+Versions: core 0.0.961. harness/host/web/cli/tauri/SPA unchanged by this
+unit (unit 2 bumps harness).

@@ -17,6 +17,24 @@
 //! scaffolding lives there: the seven autonomous run-state transitions in
 //! `enclave::lifecycle`, and the post-commit write-batch hook in
 //! `write_apply`.
+//!
+//! ## The bounded drain (P4.100)
+//!
+//! `drain`/`drain_sorted` used to wait a FIXED `COALESCE_WINDOW_MS + 20` ms
+//! and then `try_recv` — correct on an idle machine, but under `cargo test
+//! --workspace` scheduling load the coalescer's spawned flush can land AFTER
+//! that sleep already returned, so the read races an empty channel. Measured
+//! (P4.98): `memory_gate_tests::the_by_chat_delete_route_announces_once_
+//! from_the_gate` red 1-in-2 under `--workspace`, green 3/3 in isolation and
+//! 2/2 in the whole `quilltap-core --lib` binary — the tell that it is a
+//! scheduling race, not a logic bug. Reproduced two ways before the fix
+//! landed: under real `cargo test --workspace` load, and deterministically
+//! via `QT_TEST_INJECT_FLUSH_DELAY_MS` (see [`HintCapture::start`]), which
+//! delays every spawned flush past the fixed margin on demand.
+//! [`HintCapture::drain_expecting`]/[`HintCapture::drain_sorted_expecting`]
+//! replace the fixed sleep with a bounded WAIT for the expected count on
+//! every positive-count call site; `drain`/`drain_sorted` remain — widened —
+//! for SILENCE legs only, where there is no event to wait for.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -49,6 +67,15 @@ impl Drop for HintCapture {
     }
 }
 
+/// Bound for [`HintCapture::drain_expecting`]'s wait per hint — comfortably
+/// above the coalescing window even under `cargo test --workspace`
+/// scheduling load (P4.98's characterization: the spawned flush landing
+/// after a fixed `COALESCE_WINDOW_MS + 20` ms sleep is exactly the race this
+/// replaces), short enough that a genuine hang still fails a test promptly.
+/// ≥ 8 × [`COALESCE_WINDOW_MS`]. A timeout is a hard test failure — never a
+/// silently-returned partial.
+const DRAIN_EXPECTING_TIMEOUT_MS: u64 = COALESCE_WINDOW_MS * 8;
+
 impl HintCapture {
     /// Arm the bus and start capturing.
     pub fn start() -> Self {
@@ -58,8 +85,27 @@ impl HintCapture {
         // A captured Handle, not bare `tokio::spawn`: the flush may be queued
         // from the writer thread, which has no ambient runtime.
         let handle = tokio::runtime::Handle::current();
+        // P4.100's reproduction seam: `QT_TEST_INJECT_FLUSH_DELAY_MS`, read
+        // once per capture, delays the SPAWNED flush landing by that many
+        // extra milliseconds on top of `COALESCE_WINDOW_MS` — reproducing,
+        // deterministically, the `cargo test --workspace` scheduling delay
+        // the old fixed-margin `drain` flaked under (see the module doc's
+        // "The bounded drain" section). Set it only to reproduce the pre-fix
+        // race; every committed test run leaves it unset (0 = no injected
+        // delay). Never read outside this test-only file.
+        let injected_delay_ms: u64 = std::env::var("QT_TEST_INJECT_FLUSH_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
         let spawner: BusSpawner = Arc::new(move |fut| {
-            handle.spawn(fut);
+            if injected_delay_ms > 0 {
+                handle.spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(injected_delay_ms)).await;
+                    fut.await;
+                });
+            } else {
+                handle.spawn(fut);
+            }
         });
         arm_realtime_bus_for_current_thread(tx.clone(), spawner.clone(), crate::clock::now_unix_ms);
         Self {
@@ -95,10 +141,20 @@ impl HintCapture {
         .expect("arming the writer thread's bus");
     }
 
-    /// Let every coalescing window close, then drain the hints as
+    /// Let two coalescing windows close, then drain whatever arrived, as
     /// `(topic, id)` pairs in arrival order.
+    ///
+    /// **Silence legs only.** There is no event to wait FOR when the
+    /// expected count is zero (or unbounded — see
+    /// `deleting_a_chat_does_not_announce_its_transcript`), so a fixed wait
+    /// is the only shape available here; P4.100 widens the margin to
+    /// `2 × COALESCE_WINDOW_MS` (from the old `+ 20 ms`, which flaked under
+    /// `cargo test --workspace` scheduling load — see the module doc). Any
+    /// POSITIVE expected count belongs on [`Self::drain_expecting`] instead,
+    /// which waits for the event rather than guessing how long it takes to
+    /// arrive.
     pub async fn drain(&mut self) -> Vec<(String, Option<String>)> {
-        tokio::time::sleep(Duration::from_millis(COALESCE_WINDOW_MS + 20)).await;
+        tokio::time::sleep(Duration::from_millis(COALESCE_WINDOW_MS * 2)).await;
         let mut out = Vec::new();
         while let Ok(ev) = self.rx.try_recv() {
             if let EventPayload::Realtime(RealtimeHint { topic, id, .. }) = &ev.payload {
@@ -108,10 +164,57 @@ impl HintCapture {
         out
     }
 
-    /// The drained hints, sorted — for sites whose several hints have no
-    /// contractual order.
+    /// [`Self::drain`], sorted — silence legs only; see its doc.
     pub async fn drain_sorted(&mut self) -> Vec<(String, Option<String>)> {
         let mut out = self.drain().await;
+        out.sort();
+        out
+    }
+
+    /// Wait until exactly `n` realtime hints have arrived (arrival order),
+    /// each bounded by [`DRAIN_EXPECTING_TIMEOUT_MS`] rather than a fixed
+    /// sleep — see the module doc's "The bounded drain" section. A timeout
+    /// is a hard assertion FAILURE naming the partial collected so far,
+    /// never a silent truncation. After the `n`th hint, a further
+    /// `COALESCE_WINDOW_MS + 20` ms is swept for stragglers, so an
+    /// unexpected EXTRA hint still surfaces instead of being silently capped
+    /// at `n` (`toHaveCount(N)` cannot prove "never became N + 1", and
+    /// neither can stopping the instant N arrives).
+    pub async fn drain_expecting(&mut self, n: usize) -> Vec<(String, Option<String>)> {
+        let mut out = Vec::new();
+        let deadline = Duration::from_millis(DRAIN_EXPECTING_TIMEOUT_MS);
+        while out.len() < n {
+            match tokio::time::timeout(deadline, self.rx.recv()).await {
+                Ok(Ok(ev)) => {
+                    if let EventPayload::Realtime(RealtimeHint { topic, id, .. }) = &ev.payload {
+                        out.push((topic.clone(), id.clone()));
+                    }
+                }
+                // The channel closed (the bus was disarmed mid-wait) — no
+                // more hints are coming.
+                Ok(Err(_)) => break,
+                Err(_) => panic!(
+                    "HintCapture::drain_expecting({n}) timed out after {deadline:?} \
+                     waiting for hint #{}; collected so far: {out:?}",
+                    out.len() + 1,
+                ),
+            }
+        }
+        // A further coalescing window's stragglers: an over-publish must
+        // still surface rather than being silently capped at `n`.
+        tokio::time::sleep(Duration::from_millis(COALESCE_WINDOW_MS + 20)).await;
+        while let Ok(ev) = self.rx.try_recv() {
+            if let EventPayload::Realtime(RealtimeHint { topic, id, .. }) = &ev.payload {
+                out.push((topic.clone(), id.clone()));
+            }
+        }
+        out
+    }
+
+    /// [`Self::drain_expecting`], sorted — for sites whose several hints
+    /// have no contractual order.
+    pub async fn drain_sorted_expecting(&mut self, n: usize) -> Vec<(String, Option<String>)> {
+        let mut out = self.drain_expecting(n).await;
         out.sort();
         out
     }
@@ -160,7 +263,7 @@ mod tests {
         queue_service::enqueue_job(&db, "u1", "MEMORY_HOUSEKEEPING", json!({}), 3.0)
             .await
             .unwrap();
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
     }
 
     /// The collection POST's enqueue (v4 `POST /api/v1/system/jobs` →
@@ -185,7 +288,7 @@ mod tests {
             matches!(resp, crate::api::types::Response::System(_)),
             "the enqueue itself must succeed for this pin to mean anything"
         );
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
 
         // …and the refusal arms write nothing, so they announce nothing.
         let refused = crate::api::system_data::jobs_enqueue_now(
@@ -217,7 +320,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
     }
 
     /// A storm of enqueues is ONE hint — the whole reason the bus coalesces.
@@ -230,7 +333,11 @@ mod tests {
                 .await
                 .unwrap();
         }
-        assert_eq!(cap.drain().await, vec![jobs()], "twelve enqueues, one hint");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "twelve enqueues, one hint"
+        );
     }
 
     /// The memory-extraction BATCH goes straight to `create_batch`, bypassing
@@ -253,7 +360,11 @@ mod tests {
         queue_service::enqueue_memory_extraction_batch(&db, "u1", "c-1", "cp-1", &entries, 0.0)
             .await
             .unwrap();
-        assert_eq!(cap.drain().await, vec![jobs()], "two jobs, one hint");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "two jobs, one hint"
+        );
     }
 
     /// …and an EMPTY batch publishes nothing: v4 guards both the publish and
@@ -281,7 +392,7 @@ mod tests {
                 .await
                 .unwrap();
         assert!(is_new);
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
 
         // A second call for the same chat dedupes onto the pending row.
         let (_id2, is_new2) =
@@ -313,7 +424,7 @@ mod tests {
             queue_service::enqueue_conversation_render_blocking(w.connection(), "u1", "c-1", None)
                 .unwrap();
         assert!(is_new);
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
 
         // …and its dedupe arm is silent, as the async one's is.
         let (_id2, is_new2) =
@@ -333,10 +444,14 @@ mod tests {
             .await
             .unwrap();
         // Drain the enqueue's own hint first.
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
 
         assert!(queue_service::cancel_job(&db, &id).await.unwrap());
-        assert_eq!(cap.drain().await, vec![jobs()], "a cancel that took");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "a cancel that took"
+        );
 
         // A second cancel of the same (now DEAD) job does not take…
         assert!(!queue_service::cancel_job(&db, &id).await.unwrap());
@@ -360,9 +475,17 @@ mod tests {
         // Begin and end are separated by a full coalescing window so the two
         // edges cannot collapse into one another.
         let span = begin_activity(ActivityKind::Image);
-        assert_eq!(cap.drain().await, vec![jobs()], "the opening edge");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "the opening edge"
+        );
         span.end();
-        assert_eq!(cap.drain().await, vec![jobs()], "the closing edge");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "the closing edge"
+        );
     }
 
     /// A span shorter than the window is still ONE hint — the coalescing that
@@ -372,7 +495,7 @@ mod tests {
         let _a = ActivityTestGuard::new();
         let mut cap = HintCapture::start();
         track_activity(ActivityKind::Danger, async {}).await;
-        assert_eq!(cap.drain().await, vec![jobs()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()]);
     }
 
     // ── the job runner: claim, completion + entity hints, failure ────────────
@@ -448,7 +571,7 @@ mod tests {
             .await;
 
         assert_eq!(
-            cap.drain_sorted().await,
+            cap.drain_sorted_expecting(3).await,
             vec![
                 ("characters".to_string(), Some("ch-1".to_string())),
                 ("chats".to_string(), Some("c-1".to_string())),
@@ -471,7 +594,7 @@ mod tests {
             .pump_claim()
             .await;
 
-        assert_eq!(cap.drain_sorted().await, vec![jobs()]);
+        assert_eq!(cap.drain_sorted_expecting(1).await, vec![jobs()]);
     }
 
     /// A FAILED job publishes `jobs` and NO entity hints — v4 publishes the
@@ -490,7 +613,7 @@ mod tests {
             .await;
 
         assert_eq!(
-            cap.drain_sorted().await,
+            cap.drain_sorted_expecting(1).await,
             vec![jobs()],
             "a failure moves the queue but announces no entity"
         );
@@ -509,7 +632,22 @@ mod tests {
         ) -> crate::services::job_runner::JobFuture<'a> {
             let succeed = self.succeed;
             Box::pin(async move {
-                tokio::time::sleep(Duration::from_millis(COALESCE_WINDOW_MS + 60)).await;
+                // P4.100 disposition: this is a WINDOW-SEPARATION delay for
+                // the test's own premise (the claim and the completion must
+                // land in different coalescing windows so each flushes on
+                // its own), not a drain margin — it stays a fixed sleep on
+                // purpose; `drain_expecting`'s callers below just wait on the
+                // channel, so they are correct regardless of how long this
+                // handler runs. WIDENED from `+ 60` to `+ 150`: under the
+                // reproduction seam (`QT_TEST_INJECT_FLUSH_DELAY_MS`, see the
+                // module doc), the claim's own flush lands LATER than usual
+                // (delayed past `COALESCE_WINDOW_MS`), and a margin narrower
+                // than the injected delay lets the completion's publish land
+                // WHILE the claim's key is still `pending` — coalescing them
+                // into ONE hint instead of two, which starves the second
+                // `drain_expecting` call (measured: `+ 60` merges the two
+                // under a 100 ms injected delay; `+ 150` keeps them apart).
+                tokio::time::sleep(Duration::from_millis(COALESCE_WINDOW_MS + 150)).await;
                 if succeed {
                     crate::services::job_runner::JobOutcome::Completed(None)
                 } else {
@@ -537,10 +675,18 @@ mod tests {
 
         // Drained while the handler is still running: only the claim can have
         // published by now.
-        assert_eq!(cap.drain().await, vec![jobs()], "PENDING → PROCESSING");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "PENDING → PROCESSING"
+        );
 
         pump.await.unwrap();
-        assert_eq!(cap.drain().await, vec![jobs()], "…then the completion");
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![jobs()],
+            "…then the completion"
+        );
     }
 
     /// The same separation for the FAILURE arm, which otherwise hides behind
@@ -557,10 +703,10 @@ mod tests {
         let runner = crate::services::job_runner::JobRunner::new(db.clone(), reg);
         let pump = tokio::spawn(async move { runner.pump_claim().await });
 
-        assert_eq!(cap.drain().await, vec![jobs()], "the claim");
+        assert_eq!(cap.drain_expecting(1).await, vec![jobs()], "the claim");
         pump.await.unwrap();
         assert_eq!(
-            cap.drain_sorted().await,
+            cap.drain_sorted_expecting(1).await,
             vec![jobs()],
             "the failure moves the queue — and announces no entity"
         );
@@ -578,6 +724,43 @@ mod tests {
             .pump_claim()
             .await;
         assert_eq!(cap.drain().await, vec![]);
+    }
+
+    // ── the bounded drain's own contract (P4.100, mutation M2) ───────────────
+
+    /// `drain_expecting`'s straggler sweep must not silently cap the result
+    /// at `n`: an over-publish — one more hint than expected — has to still
+    /// surface, or a wiring bug that fires ONE extra hint would sail through
+    /// undetected (`e2e-tohavecount-resolves-on-first-matching-poll`:
+    /// `toHaveCount(N)` cannot prove "never became N + 1", and neither can a
+    /// drain that stops the instant N arrives). Two DIFFERENT keys,
+    /// staggered so the second flush lands only after the first has already
+    /// satisfied `n`, forces the straggler sweep — not the main wait loop —
+    /// to be what catches it.
+    #[tokio::test]
+    async fn an_over_publish_still_surfaces_past_the_expected_count() {
+        let mut cap = HintCapture::start();
+        crate::realtime::bus::publish_realtime(RealtimeTopic::Jobs, None);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        crate::realtime::bus::publish_realtime(RealtimeTopic::Chats, Some("c-1"));
+
+        // Only ONE hint is asked for; the second is the "over-publish" the
+        // straggler sweep must still catch rather than silently dropping.
+        let mut hints = cap.drain_expecting(1).await;
+        hints.sort();
+        let mut expected = vec![
+            jobs(),
+            (
+                RealtimeTopic::Chats.as_str().to_string(),
+                Some("c-1".to_string()),
+            ),
+        ];
+        expected.sort();
+        assert_eq!(
+            hints, expected,
+            "the straggler sweep must catch the second publish, not silently \
+             cap the drain at the expected count"
+        );
     }
 }
 
@@ -693,7 +876,7 @@ mod memory_gate_tests {
             deleted,
             "the delete must land for this pin to mean anything"
         );
-        assert_eq!(cap.drain().await, vec![memories()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![memories()]);
     }
 
     /// v4's `if (deleted)` guard: an already-gone memory is a no-op, and a
@@ -737,7 +920,7 @@ mod memory_gate_tests {
             .await
             .unwrap();
         assert_eq!(n, 3);
-        assert_eq!(cap.drain().await, vec![memories()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![memories()]);
     }
 
     /// v4's `if (deleted > 0)`, both ways in: an EMPTY id list returns before
@@ -818,7 +1001,7 @@ mod memory_gate_tests {
             panic!("the route must succeed for this pin to mean anything");
         };
         assert_eq!(body["deletedCount"], 2);
-        assert_eq!(cap.drain().await, vec![memories()]);
+        assert_eq!(cap.drain_expecting(1).await, vec![memories()]);
     }
 
     /// **Commit 2's exact edge** (v4 `ba89e0caa` removed the route's own publish
@@ -952,7 +1135,7 @@ mod transcript_publish_sites {
                 .add_message("chat-1", &msg("m-1", "hello"))
                 .unwrap();
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
         assert_eq!(version(&path, "chat-1"), 1, "the bump is the other half");
     }
 
@@ -969,7 +1152,7 @@ mod transcript_publish_sites {
         // ONE announce for the batch, not one per row — v4 commits once after
         // the loop. (The bus coalesces inside its window, so the COUNTER is the
         // discriminator that a per-row announce would move to 2.)
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
         assert_eq!(version(&path, "chat-1"), 1);
     }
 
@@ -986,7 +1169,7 @@ mod transcript_publish_sites {
                 .add_message("ghost", &msg("m-1", "hello"))
                 .unwrap();
         }
-        assert_eq!(cap.drain().await, vec![chats("ghost")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("ghost")]);
         // …and the bump found no row to move, exactly as v4's `updateOne`
         // returns `matchedCount: 0`.
         assert_eq!(version(&path, "ghost"), 0);
@@ -1002,12 +1185,12 @@ mod transcript_publish_sites {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
             repo.add_message("chat-1", &msg("m-1", "before")).unwrap();
-            let _ = cap.drain().await; // the add's own hint
+            let _ = cap.drain_expecting(1).await; // the add's own hint
             assert!(repo
                 .update_message("chat-1", "m-1", &json!({"content": "after"}))
                 .unwrap());
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
     }
 
     /// v4's test "says nothing when the message is not there" — the not-found
@@ -1021,7 +1204,7 @@ mod transcript_publish_sites {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
             repo.add_message("chat-1", &msg("m-1", "x")).unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
             assert!(!repo
                 .update_message("chat-1", "nope", &json!({"content": "y"}))
@@ -1042,14 +1225,14 @@ mod transcript_publish_sites {
             let repo = w.chat_messages();
             repo.add_messages("chat-1", &[msg("m-1", "a"), msg("m-2", "b")])
                 .unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             assert_eq!(
                 repo.delete_messages_by_ids("chat-1", &["m-1".to_string()])
                     .unwrap(),
                 1
             );
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
     }
 
     /// v4's test "says nothing when nothing was removed" — `if (removed > 0)`
@@ -1063,7 +1246,7 @@ mod transcript_publish_sites {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
             repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
             assert_eq!(
                 repo.delete_messages_by_ids("chat-1", &["ghost".to_string()])
@@ -1085,10 +1268,10 @@ mod transcript_publish_sites {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             let repo = w.chat_messages();
             repo.add_message("chat-1", &msg("m-1", "a")).unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             assert!(repo.clear_messages("chat-1").unwrap());
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
     }
 
     /// `5029075bb` lifted `clearMessages`'s commit out of its old `if (chat)`,
@@ -1102,7 +1285,7 @@ mod transcript_publish_sites {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             assert!(w.chat_messages().clear_messages("ghost").unwrap());
         }
-        assert_eq!(cap.drain().await, vec![chats("ghost")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("ghost")]);
     }
 
     // ── search-and-replace: the one path outside the funnel ─────────────────
@@ -1116,7 +1299,7 @@ mod transcript_publish_sites {
             w.chat_messages()
                 .add_message("chat-1", &msg("m-1", "hello world"))
                 .unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             assert_eq!(
                 ChatSearchRepository::new(w.connection())
                     .replace_in_messages("chat-1", "world", "there")
@@ -1124,7 +1307,7 @@ mod transcript_publish_sites {
                 1
             );
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
     }
 
     /// The MEASURED condition (see `chats_search.rs`): v4's hunk looks
@@ -1141,7 +1324,7 @@ mod transcript_publish_sites {
             w.chat_messages()
                 .add_message("chat-1", &msg("m-1", "hello world"))
                 .unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             before = version(&path, "chat-1");
             assert_eq!(
                 ChatSearchRepository::new(w.connection())
@@ -1217,11 +1400,16 @@ mod transcript_publish_sites {
             w.chat_messages()
                 .add_message("chat-1", &msg("m-1", "a"))
                 .unwrap();
-            let _ = cap.drain().await;
+            let _ = cap.drain_expecting(1).await;
             assert!(crate::db::chats::ChatsRepository::new(w.connection())
                 .delete("chat-1")
                 .unwrap());
         }
+        // Not a `drain_expecting` site (P4.100): the expected count here is
+        // "however many hints the delete's own chokepoint happens to send,
+        // MINUS the one this must not contain" — there is no fixed `n` to
+        // wait for, only an absence to prove, so this stays on the widened
+        // fixed-margin `drain`.
         let hints = cap.drain().await;
         assert!(
             !hints.contains(&chats("chat-1")),
@@ -1258,7 +1446,7 @@ mod transcript_publish_sites {
                 )
                 .unwrap();
         }
-        let _ = cap.drain().await;
+        let _ = cap.drain_expecting(1).await;
         let db = Db::open_main(&path, PEPPER).unwrap();
         let summary = crate::services::collapse_stale_chat_caches::collapse_stale_chat_caches(
             &db,
@@ -1298,7 +1486,7 @@ mod transcript_publish_sites {
                 .unwrap();
             w.chat_messages().announce_transcript_change("chat-1");
         }
-        assert_eq!(cap.drain().await, vec![chats("chat-1")]);
+        assert_eq!(cap.drain_expecting(1).await, vec![chats("chat-1")]);
         // …and the reader answers 0 rather than propagating the error.
         assert_eq!(version(&path, "chat-1"), 0);
     }

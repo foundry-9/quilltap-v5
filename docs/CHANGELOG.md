@@ -376,6 +376,35 @@ proves byte-identical. Sixteen families that pin these envelopes were
 regenerated fresh at the pin and re-run unchanged; the three that are red were
 proven red on unmodified `main` at the same pin (fixture vintage, not this
 change).
+#### 2026-09-18 — fix(realtime): a bounded wait for the expected hint count, replacing `HintCapture::drain`'s fixed margin (P4.100 Tier 1)
+
+_Versions: core 0.0.961._
+
+`realtime::publish_sites::HintCapture::drain`/`drain_sorted` slept a FIXED
+`COALESCE_WINDOW_MS + 20` ms then `try_recv`ed — correct on an idle
+machine, but under `cargo test --workspace` scheduling load the
+coalescer's spawned flush could land after that sleep already returned,
+so the read raced an empty channel (P4.98's characterization: 1 red in 2
+workspace runs). Reproduced two ways before landing the fix: under real
+`cargo test --workspace` load, and deterministically via a new
+`QT_TEST_INJECT_FLUSH_DELAY_MS` reproduction seam in `HintCapture::start`,
+which reddened 36 of 39 pre-fix positive-count tests across
+`publish_sites.rs`/`write_apply.rs`/`enclave/lifecycle.rs`.
+
+New `HintCapture::drain_expecting(n)`/`drain_sorted_expecting(n)` replace
+the fixed sleep with a bounded `tokio::time::timeout`-driven wait per hint
+(deadline `COALESCE_WINDOW_MS * 8`) followed by a straggler sweep, so an
+over-publish still surfaces instead of being silently capped at `n`. All
+40 positive-count call sites in `publish_sites.rs`, both in
+`write_apply.rs`, and `enclave/lifecycle.rs`'s two helper functions
+(now parametrized by expected count across their 10 call sites) migrated;
+16 silence legs stay on the widened `drain()`/`drain_sorted()`
+(`COALESCE_WINDOW_MS * 2`, up from `+ 20 ms`). Along the way, a
+`SlowHandler` test fixture's window-separation margin (`+ 60 ms`) proved
+too narrow under the reproduction seam's delay — a claim's flush landing
+later than usual let the completion's publish merge into the same
+coalescing window — widened to `+ 150 ms` with the interaction documented.
+New mutation-proof test `an_over_publish_still_surfaces_past_the_expected_count`.
 
 #### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
 
