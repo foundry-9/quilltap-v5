@@ -4063,7 +4063,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.156"
+version = "0.0.157"
 dependencies = [
  "axum",
  "base64 0.22.1",

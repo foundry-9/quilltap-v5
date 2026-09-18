@@ -26,13 +26,16 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * cache write stands on its own, and the badge moving is the whole of what this
  * lane shipped. Only the `defaultSystemPromptId` assertion waits.
  *
- * ⚠ STILL OWED before the first live run (flip {@link P4D201_SERVER_LANDED} to
- * `true`): nothing but the sibling lane. The walk seeds no fixture state — it
+ * **ACTIVATED at the `baa85e19b` round's unification (2026-09-18)** — P4.D201's
+ * lockstep landed on the same branch, the constant flipped, and the beat's
+ * first fully-live run is that unification's own gate step (recorded in
+ * `status-log.md`). The constant stays as the record of the gate, per the
+ * `P49K1_SERVER_LANDED` precedent. The walk seeds no fixture state — it
  * creates its own character and deletes it in the same beat's tail, so nothing
  * it writes outlives it (the instance is shared with every other spec, the
  * `e2e-playwright-traps` coupling note).
  */
-const P4D201_SERVER_LANDED = false;
+const P4D201_SERVER_LANDED = true;
 
 const THROWAWAY = 'Pentimento';
 const FIRST_PROMPT = 'The everyday voice';

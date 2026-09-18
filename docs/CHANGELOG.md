@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — chore(unify): the `baa85e19b` round's unification wires — the star beat flipped live, the `characterPromptSetDefault` dispatch wire test, the tenth reader of the widened characters pair regenerated
+
+_Versions: web 0.0.157, SPA 0.5.740._
+
+The cross-lane proof obligations no single lane could discharge. `P4D201_SERVER_LANDED`
+flips to `true` in `apps/web/e2e/character-system-prompts-flow.spec.ts` (the constant
+stays as the record of the gate), so the star beat's last assertion — the character's
+`defaultSystemPromptId` read back through `characterGet` equals the starred prompt's
+id — runs for the first time with both halves of bug 154 on one branch. P4.D201's
+Tier-2 item 9 lands as `crates/quilltap-web/tests/character_prompt_set_default_dispatch_wire.rs`:
+over the committed `characters-{main,mount}.db` pair and `POST /api/dispatch`, the verb
+moves the `isDefault` flag AND the column together, `characterUpdate { defaultSystemPromptId:
+null }` clears the column through the raw body map (no verb gained a null arm), a
+well-formed unknown id answers `System prompt not found on this character`, a non-uuid
+string answers 400 with the `name` beside it NOT persisted, and the verb's own miss keeps
+its `Prompt not found` 404 having written nothing. Its first run corrected its own
+precondition: the P4.D201 widen added columns to the pair and populated none, so Aria's
+column is ABSENT on the committed fixture (the pre-lockstep shape), not `Explorer`'s id;
+step 0 now asserts only that the column does not already name `Backup`. The
+`store-unavailable-routes` oracle — the tenth reader of the widened pair, with its own
+v4 oracle, which drives `characterUpdate` and SKIPs silently without its env var — was
+regenerated at the `baa85e19b` pin against the widened fixture and run.
+
 #### 2026-09-18 — fix(unify): the `baa85e19b` round's §3 review fixes — the uuid half of the character PUT's default-prompt gate, the miss warn's capture pin, the envelope helper's path-wins ordering, the census stripper, the drain's `Lagged` arm, the first-prompt default seed
 
 _Versions: core 0.0.966, harness 0.0.857, web 0.0.156, SPA 0.5.739._
