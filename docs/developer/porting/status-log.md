@@ -135659,8 +135659,12 @@ than on a route's wire.
    `pub(crate) mod`. `services::chat_create::CreateZodIssue` survives as a
    `pub use` alias for `ZodIssue` because `chat_create_capstone_
    equivalence` (P4.81's host-wire test) constructs one by that name from
-   OUTSIDE the crate; a public alias to a `pub(crate)` type is not
-   nameable there. Every sibling `api::*` module is `pub` already.
+   OUTSIDE the crate. ⚠ **The lane's reasoning here was WRONG (the
+   unification's §3 review):** a `pub use` of a `pub` TYPE compiles out of a
+   `pub(crate)` module — the facade idiom — and nothing outside
+   `quilltap-core` names `api::zod_issues`, so `pub(crate)` was available.
+   `pub mod` stands as a consistency choice (every sibling `api::*` is
+   `pub`), not a constraint; the order header says the same.
 2. The folds. `api/settings.rs` (the block moved out; its per-key checkers
    `zod_bool` / `zod_enum` / `zod_opt_uuid` / `zod_path` /
    `zod_object_or_issue` stay, over the imported type — `zod_path` now
@@ -135899,10 +135903,9 @@ they name a `/tmp` pin).
    `generators_wizard` 3, `generators_detail` 2, one each elsewhere) and
    **11 `parsedType` copies in 11 files** — the order's read-before list
    named the `parsedType` ones only as `settings.rs`'s callers.
-3. **`pub(crate) mod` is not possible.** `chat_create_capstone_
-   equivalence` names `CreateZodIssue` from outside the crate, so the
-   alias target must be publicly nameable. `pub mod` it is — every sibling
-   `api::*` module already is.
+3. **`pub(crate) mod` — the lane said "not possible"; it was.** (Corrected
+   at unification, see the deviation note above.) `pub mod` stands as a
+   consistency choice — every sibling `api::*` module already is.
 4. **`db/prompt_templates.rs` imports `zod_uuid_ok` through
    `api::settings`** and is NOT in this lane's ownership, so `settings.rs`
    keeps a one-line `pub(crate) use` re-export for it. Retiring that is a
@@ -136495,3 +136498,248 @@ Flagged here rather than silently claimed as met.
   reader (`query_params.rs`), per the order's Tier 3.
 - 💸 the dogfood queue is unaffected by this lane (no wire, no schema, no SPA
   change — §S.1 held: nothing observable moved for any consumer).
+
+---
+
+## Round record — the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round unification (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102), 2026-09-18
+
+**ALL FIVE ORDERS CLOSED WHOLE; the oracle baseline MOVES `89fcc3c0d` →
+`baa85e19b`; the drift ledger's §3 is EMPTY (v4 AT the baseline at both the
+opening and the closing probe — the first round since P4.59's no-drift
+maintenance round to close with nothing pending).** Unified on branch
+`unify/baa85e19b-round` from `main` `57fd1680`, twenty-two lane commits
+cherry-picked in the planned order (P4.D201 → P4.D202 → P4.101 → P4.100 →
+P4.102), plus the unifier's four (the §3 review fixes, the wires, the e2e
+fixture-heal guard the gate caught, this record).
+
+### §1 Survey
+
+- Five lane worktrees, all CLEAN, all closed by their own records; every
+  order's delivered scope re-read against its tier list (not its header).
+  Nothing banked; nothing refusal-armed; the only gated beat
+  (`P4D201_SERVER_LANDED`) was authored for the unifier to flip.
+- The ledger's §2 probe PASSED at the open (branch `main`, tree CLEAN, HEAD
+  `baa85e19b`, `1a2b2164c..bugfix` and `8fbf2afe0..release` both empty) and
+  again at the close. Regen rule as ordered: PIN REQUIRED — every regen of
+  this unification ran from `/tmp/qt-v4-pin-unify-baa85e19b` (the target and,
+  after the move, the baseline; `rev-parse` + `ls -ld` verified, three
+  symlink classes linked), with `/tmp/qt-v4-pin-unify-89fcc3c0d` built and
+  left unused (the lanes had already proven every neutrality leg at the
+  baseline; the unified gate regenerates at the NEW baseline, which the
+  ledger's §1 now records).
+- The version recount: base + per-lane bumps, not the merged files — core
+  0.0.960 + 5 (P4.100 1, P4.D201 2, P4.101 2) = **0.0.965**; harness 0.0.850
+  + 6 (1 + 4 + 1) = **0.0.856**; web 0.0.154 + 1 = **0.0.155**; SPA 0.5.731 +
+  7 = **0.5.738**. Six version-file conflicts (three lanes bumping core and
+  harness off one base) resolved to the running totals in both the toml and
+  the lock; NO lane added a dependency beside its bump (audited per lane
+  before any resolution). The two append-only docs picked through
+  `merge=union`, removed afterwards; each lane's CHANGELOG block landed
+  whole.
+
+### §2 What landed
+
+**P4.D201 (bug 154's server half).** `quilltap_core::default_system_prompt`
+— v4's `lib/characters/default-system-prompt.ts` with JS truthiness spelled
+on both tests, tier-1 exact over a committed 22-case corpus against v4's
+REAL module (`default_system_prompt_equivalence`, NEW), folded into the chat
+initializer (the `??`-on-content change the commit message never mentions —
+its RED-FIRST case cannot exist: v4 guards an empty-content prompt three
+times over, measured; pinned at tier 1 and by two unit tests instead) and
+the impersonation voice preview (which had reproduced v4's PRE-fix
+stale-column chain, comment and all). `project_system_prompts` — v4's
+`systemPromptsPatch` — so all four system-prompt writers move the `isDefault`
+flags AND the `defaultSystemPromptId` column in ONE `update_character` call
+(vault, then slim — measured), with the transient-id null rule (a just-minted
+id is re-keyed by the vault on the next read). `set_default_system_prompt`
+takes `Option<&str>`; `None` demotes every flag and clears the column. The
+`characterUpdate` chokepoint at v4's positions: the pull-out, the
+empty-payload rule (a READ, not a write), v4's partial write (the generic
+patch lands THEN the 400). The arrays family's six-table census is a
+FINAL-STATE diff — inserting three new ops left the dump at the exact byte
+size it had — so it gained a per-op `defaultColumnTrail`; the mutations
+family seven `default-prompt` arms with a GET readback each and two
+both-directions divergence pins (the cleared-null echo; the archived-500).
+The committed `characters-{main,mount}.db` pair WIDENED (out of ownership,
+recorded loudly — the family was RED on unported main at the baseline pin
+with a panic BEFORE the lane's block) and all nine families reading it
+re-run. `help/character-system-prompts.md` byte-copied; 124 stays 124.
+
+**P4.D202 (the SPA half).** The client-safe twin over v4's five jest vectors
+verbatim + the §S.2 extras; the two broken New-Chat seeds red-first (a
+column naming a gone prompt seeded `null` — the chat opened with NO system
+prompt); the announcement dialog's fold NEUTRAL (its copy was never one of
+the two, measured — §R.4(a)); the star's optimistic cache write with
+rollback-then-refetch (mutation M4 SURVIVED as spec (b) was first written —
+a rollback and a refetch settle to the same rows; the spec now holds the
+relist and asserts INSIDE the window); the Edit Prompt dialog 2xl → 4xl
+(`qt-modal` already carried `4xl`); the live star beat in a NEW file,
+gated by the NAMED constant, exercised live by the lane against release
+binaries (its first run caught `maybeUnlock` waiting on the Salon's "Chats"
+heading where this walk enters at `/characters`).
+
+**P4.100.** The `HintCapture::drain` intermittent reproduced two ways (36
+tests reddened under a 100 ms injected flush delay; the workspace venue) and
+replaced by `drain_expecting(n)` across 62 call sites with the fixed window
+kept for the silence legs; the whole `publish_sites` module is `#[cfg(test)]`
+so the seam is unreachable from production (verified at the wire, not
+assumed). The four opacity corpus rows landed 44 → 47 with a mutation each
+(the order's item (i) was re-read against the CODE — blob tools resolve
+through a separate function, so the row addresses the name loop M3 can
+redden; item (iii) has no v4 counterpart at all and is a capture-layer pin).
+
+**P4.101.** ONE Zod-4 issue home; the order's central worry (key-order
+disagreement between twins) did NOT fire — all eight copies already agreed on
+every code against the checkout's REAL zod 4.5.4, so the fold is byte-neutral
+by construction and the measurement is an executable render table; 17
+constructor definitions in 9 files → 7 in 3; the literal multiset 175/57 →
+121/54 with no new production literal; nineteen neutrality families re-run;
+`run_sql`'s three pre-existing divergences measured and deliberately KEPT
+verbatim (no corpus arm would hold a fix).
+
+**P4.102.** `request_envelope` (P4.98's `images_generate_request`
+generalized); both `tri()` helpers retired; decode-identity pins per edge ×
+key × state + a distinctness pin; the census guard over a mechanical
+tri-state-variant walk (26 variants; ONE named, presence-asserted exception —
+`characters_routes.rs`'s fixed-`None` existence probe); ten explicit-null
+arms.
+
+### §3 The review — what it found, what it fixed
+
+Four parallel read-only reviewers (one per lane pair) over the union, every
+hunk compared to v4's real code at `baa85e19b` / `89fcc3c0d`; the verdict
+owned here. **NO blocking finding in any lane** (the eighth such round).
+Seven should-fixes and the review's own catch landed on the unify branch as
+ONE commit (`fix(unify): …`), each with a pin:
+
+1. **The uuid half of v4's `z.uuid().nullable().optional()` gate — found
+   independently by the unifier's own read AND the D201 reviewer, the one
+   that shaped behaviour.** P4.D201 refused a non-string
+   `defaultSystemPromptId` at v4's parse position but let a STRING that is
+   not a uuid through to the chokepoint's miss — AFTER the generic patch had
+   landed — so `{name, defaultSystemPromptId: "not-a-uuid"}` persisted the
+   `name` on a request v4 writes nothing for. Gated on `zod_uuid_ok` at the
+   same position; RED-FIRST on `characters_mutations_equivalence`'s new
+   `update_name_and_nonuuid_default` arm (the readback MISMATCH:
+   `GOT "Aria Should Not Persist Either" / WANT "Aria"`), green after,
+   over an oracle regenerated at the pin.
+2. **The reachable `System prompt not found` warn had no capture pin and no
+   silence leg** (P4.D201's Tier-1 item 2 asked for one; the lane ported the
+   line and pinned only its unreachable sibling). Pinned with both fields in
+   the arrays family's `setDefaultSystemPromptMissing` op; silence on the
+   resolved-id and clear ops.
+3. **A TENTH reader of the widened `characters-{main,mount}.db` pair with its
+   OWN v4 oracle** — `crates/quilltap-web/tests/store_unavailable_envelope.rs`
+   + `store-unavailable-routes.test.ts`, which drives `characterUpdate` (the
+   very handler the lane changed) and SKIPs silently without its env var —
+   was outside the lane's nine-family re-run list. Regenerated at the pin
+   against the widened pair; both its tests ran green against the fresh oracle in the unified gate (2/2, no `SKIP:`).
+4. **`request_envelope`'s ordering** (P4.102 — found by the unifier's read
+   and the P4.100/P4.102 reviewer): path fields were inserted BEFORE the body
+   keys, so a body key spelling a path id would have overwritten the URL. No
+   current caller exposed (measured against all four edges); path fields now
+   go in LAST, pinned by `a_body_key_spelling_a_path_id_cannot_overwrite_the_url`.
+5. **The `zod_issues` census stripper over-stripped PRODUCTION code**
+   (P4.101): it entered on ANY `#[cfg(test)]` and brace-matched from the next
+   `{` anywhere in the file — a brace-less `#[cfg(test)] const`
+   (`db/files.rs:1023`) and a `//!` doc comment quoting the attribute
+   (`test_support.rs:15`) each stripped ~70 lines of production code from the
+   census's view; a ninth copy below either would have been invisible and
+   the guard's "anywhere" claim was false there. It now enters only for a
+   line-leading attribute that heads a `mod` (`heads_a_module`).
+6. **`drain_expecting`'s recv-error arm** (P4.100) treated a `Lagged`
+   receiver like a clean `Closed` — a silently-returned partial that reads
+   as "the channel ran dry". Panics naming the dropped count now.
+7. **The create form's first-prompt seed** (P4.D202's own recorded
+   out-of-mandate gap): v4's `openCreateModal` seeds `isDefault:
+   prompts.length === 0`; v5's `openCreate()` opened on
+   `INITIAL_PROMPT_FORM_DATA`. Landed through the same `initialForm` door
+   `onImport` already used (and `onImport` already carried the identical
+   rule), two specs.
+
+Plus the smalls: the transitional `zod_uuid_ok` re-export retired with its
+one importer repointed; `run_sql`'s membership gate folded onto its own
+`DATABASES` constant; three D201 doc-precision notes (the voice preview's
+front-arm `''` filter vs v4's `??` — same assembled prompt, a different
+LOGGED id; the `Id` form's non-string-id narrowing; `update_system_prompt`'s
+patch merge ahead of the projection); two spelling-survival notes on the
+`*_issue_details` pass-throughs; and **one false claim corrected in the
+P4.101 record** — "`pub(crate) mod` is impossible" (a `pub use` of a `pub`
+type compiles out of a `pub(crate)` module, and nothing outside the crate
+names `api::zod_issues`; `pub mod` stands as a consistency choice).
+
+**Recorded onward, not fixed here:** the uuid gate still has TWO copies
+outside the P4.101 home (`api/chat_outfits.rs::is_zod_uuid`,
+`services/file_storage.rs::is_zod_uuid`, ~8 importers — the "ONE uuid gate"
+claim covered the census's `invalid_type` needles, not this); the System
+Prompts tab's whole-tab missing success sentence (v4 shows `Default prompt
+updated` etc. on every mutation there); the prompt-RENAME column wart
+(`updateSystemPrompt` preserves the in-memory id while the vault re-keys the
+file — both sides, self-healing on read since `baa85e19b`; a v4 filing
+candidate); the archived-character PUT's 500 sentence (v5 leaks the archive
+guard's own where v4's middleware renders `Internal server error`,
+pre-existing, pinned both directions in the mutations family).
+
+### §4 The wires
+
+`chore(unify): …` — `P4D201_SERVER_LANDED` flipped `true` (the beat's first
+fully-live run is §5's own step; the header comment records the activation);
+P4.D201's Tier-2 item 9 landed as `character_prompt_set_default_dispatch_wire.rs`
+(the verb, the clear through `characterUpdate`'s raw body — §S.1's "no verb
+gains a null arm" held — both 400 arms and the verb's own 404 over `POST
+/api/dispatch` on the committed pair; **its first run corrected its own
+precondition** — the widen populated NO column, so Aria's is ABSENT on the
+committed fixture, the pre-lockstep shape, and step 0 now asserts only that
+it does not already name `Backup`); the §S.2 resolver diffed across sides by
+reading both transcriptions against v4's file (identical order, identical
+truthiness, both carry the five vectors + the three extras); §S.1 held —
+`core-contract.ts`, `api/types.rs`, `api/engine.rs` untouched by every lane.
+
+### §5 The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets; `cargo build --workspace
+  --release` clean.
+- **Oracles fresh from the `baa85e19b` pin through the sweep driver: 35
+  families, 31 ok + 4 pre-existing fixture-vintage reds** (sweep 1, before
+  the review fixes — `subprompts_prompt_tier2_equivalence`,
+  `chat_delete_equivalence`, `character_wizard_tier3_equivalence`,
+  `subprompts_routes_equivalence`, each PROVEN pre-existing by the lane that
+  surfaced it from the unmodified `main` checkout at the same pin; all four
+  on committed pairs no lane owned — the heal order below); then the two
+  families the review fixes moved re-run through the driver (sweep 2:
+  `characters_arrays_tier2_equivalence`, `characters_mutations_equivalence`,
+  both ok); the store-unavailable oracle regenerated by its own recipe.
+- SPA: `npm run lint` clean (952 qt-* classes, every guarded reference
+  resolves); **`npm test` 437 files / 7,408 tests / 0 failed**; `npm run
+  build` clean.
+- Full Playwright against the fresh release binary + build: **321 passed / 2 failed / 6 skipped (9.0 m)** — the six skips the standing parks; the two reds the documented P4.d17 quill intermittent and the P4.D188 avatar-rolls beat, each re-run by FILE afterwards, one invocation at a time: the quill green alone (1/1); the avatar-rolls beat RED alone too and root-caused to the spec's own unconditional `ALTER TABLE files ADD COLUMN generationKey` on its copy of the pair P4.D201 widened — the widen's Playwright readers, which the lane's harness re-run could never reach — guarded on `pragma_table_info` and green alone (1/1, `fix(e2e)`); the star beat green LIVE alone (1/1, 55 s); the search-documents spec 3/3 alone.
+- `cargo test --workspace` with the round's env block: **581 test binaries / 3,469 passed / 4 failed / 2 ignored** with the round's env block (the four reds EXACTLY the pre-existing fixture-vintage families — `subprompts_prompt_tier2`, `chat_delete`, `character_wizard_tier3`, `subprompts_routes` — their oracle vars deliberately IN the block so the true state shows rather than a false `SKIP:`; every round family confirmed RUN by name, incl. the star wire test and the tenth reader against its fresh oracle; the 424 `SKIP:` lines are families outside the block, none of them this round's).
+
+### §6 Versions
+
+core 0.0.966, harness 0.0.857, web 0.0.157, SPA 0.5.741; host / cli / tauri
+unchanged (no host source moved — the help re-vendor changes the embedded
+table only, the P4.D194 rule).
+
+### §7 Onward
+
+- **The fixture-vintage heal — now NINE families on FOUR more pairs than the
+  standing six** (`subprompts-*`: `subprompts_routes` + `subprompts_prompt_tier2`;
+  `chat-delete-*`: `chat_delete`; `character-generators-*`:
+  `character_wizard_tier3`), each root-caused by a lane this round (the
+  `subprompts-main.db` gap is P4.D171's `chats.cycleOrder` +
+  P4.D182's `transcriptVersion`; `chat_delete`'s v4 side 500s on
+  `reset_state`/`stop_impersonate` and its `chat_messages` census carries a
+  `routeTrail` key v4's lacks; the wizard's is `files.generationKey`). The
+  P4.D201 lane's `migrate-memories-fixture-columns.ts` one-command widen is
+  the shape.
+- The two uuid-gate copies outside the `zod_issues` home; the System Prompts
+  tab's success sentence; the archived-PUT 500 sentence; the rename wart
+  (v4 filing candidate).
+- 💸 the dogfood queue gains the lockstep on the Friday copy (star a prompt
+  on a real character and read the column back; a New-Chat seed on a
+  character whose column is stale — measure the population FIRST per ledger
+  §5.5; the `defaultSystemPromptId`-only PUT on an archived character; the
+  first-prompt default seed), plus the previous round's covenant items and
+  the standing 💸 queue.

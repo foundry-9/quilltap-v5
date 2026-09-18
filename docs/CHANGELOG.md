@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): unify the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — the baseline moves to `baa85e19b`; the ledger's §3 is EMPTY
+
+_Versions: core 0.0.966, harness 0.0.857, web 0.0.157, SPA 0.5.741 (final; this commit is docs-only)._
+
+Twenty-two lane commits unified in the planned order plus the two unifier commits
+(the §3 review fixes; the wires). Scope: bug 154 whole — server (P4.D201: the
+`default_system_prompt` resolver home, the four writers' lockstep patch with the
+transient-id rule, the clear arm, the `characterUpdate` chokepoint, the arrays
+`defaultColumnTrail`, seven mutations arms, the widened `characters-*` pair, the help
+page) and SPA (P4.D202: the twin, the two New-Chat seeds, the neutral dialog fold, the
+star's optimistic write, the 4xl dialog, the star beat) — plus the bounded
+`drain_expecting` and four opacity rows (P4.100), the `zod_issues` home (P4.101) and
+the shared tri-state decoder (P4.102). The §3 review found no blocking finding and
+landed seven should-fixes (the previous entry); the wires flipped the star beat live and
+landed the `characterPromptSetDefault` dispatch wire test. Gate: fmt + clippy (both
+feature sets) clean; release build; the 35-family sweep fresh from the `baa85e19b` pin
+31 ok + the four pre-existing fixture-vintage reds (on pairs no lane owned, all proven
+pre-existing from the unmodified checkout — the heal order's list grows to ten); the two
+review-moved families re-swept ok; ng 437 files / 7,408 / 0; full Playwright 321 / 2 /
+6 (the reds the documented quill intermittent and the avatar-rolls beat, each re-run by FILE afterwards, one invocation at a time: the quill green alone (1/1); the avatar-rolls beat RED alone too and root-caused to the spec's own unconditional `ALTER TABLE files ADD COLUMN generationKey` on its copy of the pair P4.D201 widened — the widen's Playwright readers, which the lane's harness re-run could never reach — guarded on `pragma_table_info` and green alone (1/1, `fix(e2e)`); the star beat green LIVE alone (1/1, 55 s); the search-documents spec 3/3 alone);
+`cargo test --workspace` 581 binaries / 3,469 / 4 / 2 ignored, the four reds the same
+fixture-vintage four. The drift ledger's §1 now records v4 AT the baseline with NO PIN
+REQUIRED; phase-4.md carries the next candidates (the ten-family fixture-vintage heal,
+the two uuid-gate copies outside the home, three smalls, the owed dogfood pass).
+
 #### 2026-09-18 — fix(e2e): the avatar-rolls beat's fixture heal is guarded — the widened characters pair already carries `files.generationKey`
 
 _Versions: SPA 0.5.741._

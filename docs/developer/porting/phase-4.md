@@ -6628,7 +6628,105 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
-## The `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — ORDERED 2026-09-18
+## The `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — UNIFIED 2026-09-18
+
+**ALL FIVE ORDERS CLOSED WHOLE; the oracle baseline MOVES `89fcc3c0d` →
+`baa85e19b`; the ledger's §3 is EMPTY (v4 AT the baseline at the opening AND
+the closing probe).** Bug 154 absorbed end to end — server: the resolver home
+(22-case tier-1 family over v4's REAL module) folded into the chat initializer
+(the `??`-on-content change; its red-first case cannot exist, measured three
+ways) and the voice preview (which had reproduced v4's PRE-fix stale-column
+chain verbatim), `systemPromptsPatch`'s twin under all four writers with the
+transient-id null rule, the clear arm, the `characterUpdate` chokepoint with
+v4's partial write, the arrays family's per-op `defaultColumnTrail` (the
+six-table census is a FINAL-STATE diff — three new ops left it byte-identical),
+seven mutations arms, the widened `characters-*` pair, the help page; SPA:
+the twin over v4's five vectors verbatim, the two broken New-Chat seeds
+red-first, the star's optimistic write with rollback-then-refetch (M4 SURVIVED
+until the spec held the relist), the 4xl dialog, the star beat FLIPPED LIVE
+at unification ∥ P4.100: the bounded `drain_expecting` across 62 sites,
+reproduced two ways first; the four opacity rows 44 → 47 ∥ P4.101: ONE Zod
+home — the key-order worry did NOT fire (all eight copies agreed against the
+real zod 4.5.4), 17 constructors in 9 files → 7 in 3, nineteen neutrality
+families ∥ P4.102: `request_envelope` + both `tri()` helpers retired + the
+census guard over 26 tri-state variants. **The §3 review (four parallel
+readers + the unifier's own reads): NO blocking finding; seven should-fixes
+landed on the unify branch — headline: the uuid HALF of v4's `z.uuid()` gate
+on the character PUT's `defaultSystemPromptId`** (a non-uuid STRING reached
+the chokepoint's miss AFTER the generic patch had landed, so the `name`
+beside it persisted where v4 writes nothing — red-first on a new mutations
+arm), the reachable miss warn's missing capture pin, a TENTH reader of the
+widened pair with its own oracle the lane's re-run list missed, the envelope
+helper's path-wins ordering, the census stripper over-stripping production
+code, the drain's `Lagged` arm, the first-prompt default seed; one false
+lane-record claim corrected. Wires: the flip, the `characterPromptSetDefault`
+dispatch wire test (item 9 — its first run corrected its own precondition:
+the widen populated NO column). Gate: fmt/clippy both feature sets clean;
+release build; the 35-family sweep from the pin 31 ok + the four pre-existing
+fixture-vintage reds; the two moved families re-swept ok; ng 437 files /
+7,408 / 0; Playwright **321 passed / 2 failed / 6 skipped (9.0 m)** — the six skips the standing parks; the two reds the documented P4.d17 quill intermittent and the P4.D188 avatar-rolls beat, each re-run by FILE afterwards, one invocation at a time: the quill green alone (1/1); the avatar-rolls beat RED alone too and root-caused to the spec's own unconditional `ALTER TABLE files ADD COLUMN generationKey` on its copy of the pair P4.D201 widened — the widen's Playwright readers, which the lane's harness re-run could never reach — guarded on `pragma_table_info` and green alone (1/1, `fix(e2e)`); the star beat green LIVE alone (1/1, 55 s); the search-documents spec 3/3 alone; `cargo test --workspace`
+**581 test binaries / 3,469 passed / 4 failed / 2 ignored** with the round's env block (the four reds EXACTLY the pre-existing fixture-vintage families — `subprompts_prompt_tier2`, `chat_delete`, `character_wizard_tier3`, `subprompts_routes` — their oracle vars deliberately IN the block so the true state shows rather than a false `SKIP:`; every round family confirmed RUN by name, incl. the star wire test and the tenth reader against its fresh oracle; the 424 `SKIP:` lines are families outside the block, none of them this round's). Versions: core 0.0.966, harness 0.0.857, web 0.0.157, SPA
+0.5.741. Round record: `status-log.md` → "Round record — the `baa85e19b`
+bug-154 default-system-prompt drift catch-up + maintenance round unification".
+
+**What is next, in order:**
+
+1. **The fixture-vintage heal — ONE order, now TEN families on TEN committed
+   pairs.** The standing six (`salon_mutations`, `chat_gallery`,
+   `images_routes`, `courier_images_routes`, `pascal_run_custom_handler`,
+   `pascal_custom_tools_route`) plus the four this round's lanes surfaced and
+   PROVED pre-existing from the unmodified checkout at the pin, on pairs no
+   lane owned: `subprompts_routes` + `subprompts_prompt_tier2` (the
+   `subprompts-*` pair — P4.D171's `chats.cycleOrder` and, per
+   `test_support::ensure_p4d182_columns`, `transcriptVersion`; `fanout.rs`'s
+   own `log_tests` got the ensure in `132302be`, the harness families never
+   did), `chat_delete` (the `chat-delete-*` trio — v5's `chat_messages` census
+   carries a `routeTrail` key v4's lacks and v4 500s on
+   `reset_state`/`stop_impersonate`), `character_wizard_tier3` (the
+   `character-generators-*` pair — `files.generationKey`). The shape is
+   P4.D201's this round: `migrate-memories-fixture-columns.ts` from the pin,
+   then EVERY family reading the pair regenerated and re-run (the D201
+   reviewer's grep found a tenth reader of the characters pair with its own
+   oracle — enumerate the readers by grep, never by the lane record).
+2. **The uuid gate's two remaining copies** (`api/chat_outfits.rs::is_zod_uuid`,
+   `services/file_storage.rs::is_zod_uuid`, ~8 importers — outside P4.101's
+   census, which counted `invalid_type` needles) folded onto
+   `zod_issues::zod_uuid_ok` with the three implementations first MEASURED to
+   agree (the home hand-matches Zod's pattern; the two copies hand-match too,
+   with a different literal-alternatives arm) — a P4.101-sized neutrality
+   refactor, with the census guard growing a uuid-gate needle.
+3. **Three smalls, one order:** the System Prompts tab's whole-tab success
+   sentence (v4's `setSuccess('Default prompt updated')` + its 3 s clear on
+   every mutation there — v5 has no `success` signal on the tab at all); the
+   archived-character PUT's 500 sentence (v5 leaks the archive guard's own
+   where v4's route middleware renders the fixed `Internal server error` —
+   pre-existing and general, pinned both directions in
+   `characters_mutations`); `run_sql`'s three measured divergences (grow
+   `state-sql-tools.test.ts` with the nine refusal shapes P4.101 measured off
+   v4, then fix `validate_input` red-first).
+4. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: star a prompt on a real character and read the column back; a
+   New-Chat seed on a character whose column is stale (measure the population
+   FIRST per ledger §5.5 — the Friday copy may HAVE such rows); the
+   `defaultSystemPromptId`-only PUT on an archived character; the first-prompt
+   default seed in the create form; plus the previous round's covenant items
+   and the standing 💸 queue (the Brahma deep query, dedup/summaries, #101).
+5. **Upstream filing candidate:** the prompt-RENAME column wart —
+   `updateInSubArray` preserves the in-memory id while the vault re-keys the
+   file, so after a rename the column names the pre-rename path-derived id
+   (both sides; self-healing on read since `baa85e19b`'s existence check and
+   on the next write; the same class the commit exists to fix).
+6. **Standing, unchanged:** the two items awaiting the human's RULING (the
+   census `ORDER BY`; the lock-conflict 503-vs-409); the REST
+   `PUT /api/v1/characters/{id}` + `/prompts/{promptId}` edges (no client
+   posts REST there); the human `npm install` item (the four SDK-bundling
+   plugin dirs on `openai` 7.10.0); P4.D198's tier-3 backstop blindness; the
+   `name`-field turn-path measurement; the `/tmp/qt-oracle-run` shared
+   staging; the "named, not order-sized" carry-overs.
+
+---
+
+_The ordering record, as planned:_
 
 **Baseline `89fcc3c0d`; v4 `main` HEAD `baa85e19b` (ONE past — the
 ledger's one §3 row, bug 154, now `ORDERED(P4.D201 ∥ P4.D202)`), v4

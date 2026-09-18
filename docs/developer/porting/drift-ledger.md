@@ -19,63 +19,48 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `89fcc3c0d`** — "fix(scriptorium): a hidden vault is not
-  listed either (bug 153)" (v4 main, 2026-09-17 22:37, `4.10.0-dev.47`),
-  adopted at the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups
-  round unification (P4.D200 ∥ P4.98 ∥ P4.99, 2026-09-18). CLAUDE.md's Status
-  bullet agrees.
-- **Checked:** 2026-09-18 (a standalone `/driftcheck` from the main checkout,
-  after the `89fcc3c0d` round's unification — **nothing moved**: both branch
-  tips, the checkout's branch and the tree state all re-verified identical to
-  the previous record, and the `bugfix` CONTENT probe was re-run rather than
-  assumed. No new §3 rows; the single UNPROCESSED row and the regen rule are
-  unchanged. Previously checked 2026-09-18 (at that round's `/unify` — its
-  opening, pre-gate and closing probes all agreed), 2026-09-18 (evening
-  `/driftcheck`, which recorded `baa85e19b` landing) and 2026-09-18 midday
-  (the measurement of the two opacity rows against v5).
-- **v4 `main` HEAD at check:** `baa85e19b` ("fix(aurora): the star that sets
-  a default prompt calls a route that exists (bug 154)", `4.10.0-dev.48`,
-  2026-09-18 07:04) — **ONE commit past the baseline. UNMOVED** since the
-  previous check (`git log baa85e19b..main` empty).
+- **Oracle baseline: `baa85e19b`** — "fix(aurora): the star that sets a
+  default prompt calls a route that exists (bug 154)" (v4 main, 2026-09-18
+  07:04, `4.10.0-dev.48`), adopted at the `baa85e19b` bug-154
+  default-system-prompt drift catch-up + maintenance round unification
+  (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102, 2026-09-18). CLAUDE.md's
+  Status bullet agrees.
+- **Checked:** 2026-09-18 (at that round's `/unify` — the opening probe
+  PASSED against the previous §1 and the closing probe, re-run after the
+  gate, agreed: both branch tips, the checkout's branch and the tree state
+  unmoved). Previously checked 2026-09-18 (the standalone post-`89fcc3c0d`
+  `/driftcheck`), 2026-09-18 (the `89fcc3c0d` round's `/unify`), 2026-09-18
+  (the evening `/driftcheck` that recorded `baa85e19b` landing).
+- **v4 `main` HEAD at check:** `baa85e19b` — **AT the baseline. ZERO commits
+  past it** (`git log baa85e19b..main` empty).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — UNMOVED. Content probe re-run and clean (`git log main..bugfix`
-  over `lib/ app/ packages/ components/ plugins/` lists only pre-absorbed
-  lineage — bugs 123/124/125, 64/65, 62, 61, 58–60, all ABSORBED in earlier
-  rounds; `git diff --stat main bugfix` over those paths is 296 files /
-  +4,340 / −33,805, i.e. main far ahead). No unabsorbed bugfix work.
+  branch") — UNMOVED (the content probe stood from the previous check: only
+  pre-absorbed lineage; main far ahead). No unabsorbed bugfix work.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-  Still no `release: 4.10.0` squash; `git log main..release` over the code
-  paths is empty (nothing unabsorbed there either).
+  Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN** (`git status
   --short` empty). No fetch was run — the oracle imports the local checkout,
   so local HEAD is what the regen rule is about.
-- **Verdict: DRIFT PENDING — 1 commit.** The one §3 row is `baa85e19b` (bug
-  154, the default system prompt) — **PORT** on ported surfaces, not a
-  convergence (a v4-side find from live use), UNPROCESSED and the next
-  catch-up's row. It landed DURING the `89fcc3c0d` round (07:04, before the
-  lanes opened); every lane STOPped on it as ordered and resumed under the
-  human's recorded waiver, every regen of the round ran from pinned
-  worktrees, and the round's target was `89fcc3c0d` by design — so the
-  baseline moves to `89fcc3c0d`, not past it, and bug 154 keeps its row. The
-  2026-09-18 measurement on the row stands: v5 reproduces the SERVER half
-  whole and two of the three client read copies, and never had the
-  dead-route half.
-- **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
-  oracle regeneration must run from a worktree pinned at `89fcc3c0d` per §5.1
-  until the bug-154 catch-up moves the baseline. Verify every pin by
-  `rev-parse` AND `ls -ld` (never a path built from an unsplit zsh variable —
-  `zsh-env-var-does-not-word-split`).
+- **Verdict: NO DRIFT — v4 is AT the baseline and §3 is EMPTY.** The one
+  row the previous state carried (`baa85e19b`, bug 154) was ABSORBED whole
+  by P4.D201 (the server half) ∥ P4.D202 (the SPA half) at this round's
+  unification — see §6.
+- **Regen rule: NO PIN REQUIRED.** v4's HEAD is the baseline and the tree is
+  clean, so a regen from the checkout itself imports exactly the baseline's
+  code. (A detached pin at `baa85e19b` remains the belt-and-braces path a
+  lane may still take — the unification's own regens all ran from
+  `/tmp/qt-v4-pin-unify-baa85e19b`, removed at its cleanup.) The moment the
+  §2 probe shows a commit past `baa85e19b` or a dirty `lib/`/`app/`/
+  `packages/`/`plugins/`, this flips back to PIN REQUIRED at `baa85e19b`.
 - **The workspace gate is unaffected** — `public/schemas/` did not move, so
   `qtap_schema_embed_guard` stays green at 93,384 bytes.
-- **Schema state: CLEAR.** `baa85e19b` touches no `generateDDL` or DDL source
-  (its `characters.repository.ts` hunks are the system-prompt write methods —
-  no column moves); no D23 re-dump is owed. **`help/**` is md5-identical to v4
-  at `89fcc3c0d`, all 124 files** (P4.D200's re-vendor of
-  `help/character-system-transparency.md`) **and LAGS by ONE file:**
-  `baa85e19b` moves `help/character-system-prompts.md` (+27); the re-vendor
-  rides the bug-154 catch-up. **The v4 checkout's four SDK-bundling plugin
-  dirs still have `openai` 7.10.0 installed** against a declared `^7.15.0` —
-  a human `npm install` item, recorded in phase-4.md.
+- **Schema state: CLEAR.** `baa85e19b` touched no `generateDDL` or DDL
+  source; no D23 re-dump was owed and none was made. **`help/**` is
+  md5-identical to v4 at `baa85e19b`, all 124 files** (P4.D201 re-vendored
+  `help/character-system-prompts.md`, +27, `cmp`-verified). **The v4
+  checkout's four SDK-bundling plugin dirs still have `openai` 7.10.0
+  installed** against a declared `^7.15.0` — a human `npm install` item,
+  recorded in phase-4.md.
 
 ## §2 The freshness probe
 
@@ -114,7 +99,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `baa85e19b` | 2026-09-18 | fix(aurora): the star that sets a default prompt calls a route that exists (bug 154) | **PORT** | **Landed 07:04, the fix the 2026-09-18 `/setupphase` saw uncommitted in §1's planning-close probe — now a row, and the reason the in-flight round's §R.2 STOPs (see §1).** Two stacked defects. (i) The star on the System Prompts tab PUT `?action=update-prompt`, an action nothing serves; it fell through to the generic character update, whose `z.object` strips undeclared keys, so the handler applied an EMPTY patch and answered 200 — a success path that changed nothing. (ii) The default is recorded TWICE — the prompt's `isDefault` flag and the character's `defaultSystemPromptId` column, which every consumer reads FIRST — and nothing kept them together. The fix (from the hunks): NEW `lib/characters/default-system-prompt.ts` (+47) — `resolveDefaultSystemPrompt` / `…Id`, one read order (the column *when it names a prompt that exists*, then the flag, then the first), structurally typed so client and server share it; `lib/database/repositories/characters.repository.ts` (+55) — a private `systemPromptsPatch(items, transientId?)` that every system-prompt write now applies (add / update / delete / setDefault), writing `defaultSystemPromptId = items.find(isDefault)?.id ?? null` — **with the transient-id rule: a just-added prompt's minted id is re-keyed from its file path by the vault on the next read, so recording it would leave the column naming nothing; it writes `null` instead and the next write heals it** — and `setDefaultSystemPrompt(characterId, promptId: string | null)` gaining the clear-the-default arm; `app/api/v1/characters/[id]/handlers/put.ts` (+26) — `defaultSystemPromptId` is pulled OUT of the generic payload and routed through `setDefaultSystemPrompt`, an empty remaining payload answers `findById` instead of an empty write (the archive guard reads one as an unsanctioned edit), and a bad id answers `badRequest('System prompt not found on this character')`; the five read sites folded onto the resolver (`lib/chat/initialize.ts`, `app/api/v1/chats/[id]/actions/impersonation-voice-preview.ts`, `InsertAnnouncementDialog.tsx`, `CharacterPickerPanel.tsx`, `useNewChat.ts`); `useSystemPrompts.ts` (+30) — the star PUTs `/api/v1/characters/{id}/prompts/{promptId}` with an optimistic cache write and a rollback-then-refetch on failure; `PromptModal.tsx` 2xl → 4xl (the markdown toolbar overran the dialog); `help/character-system-prompts.md` (+27); two NEW test files (54 + 193 lines) + 65 lines into the PUT route test — the corpus sources; stamps `4.10.0-dev.48`, README, CLAUDE.md, `docs/developer/bugs.md`, `bugs/fixed/bug-154-…md`. **v5 surfaces (all ported) + MEASURED 2026-09-18:** the write chokepoint `db/vault_character_arrays.rs` — `add_system_prompt` (`:~100`), `update_system_prompt` (`:138`), `delete_system_prompt` (`:181`), `set_default_system_prompt` (`:218`) — **v5 REPRODUCES the lockstep gap whole: all four project only `systemPrompts` and none writes `defaultSystemPromptId`**, and `set_default_system_prompt` takes a non-nullable `&str` (needs v4's null arm); ⚠ v5's writers go through `project_array` into the character VAULT, so v4's transient-id rule is directly load-bearing here. `api/characters.rs:2353-2365` (the prompts route calling it) and `:2145` (the PUT's field list — v5's generic update still writes the column raw). Read sites: `services/chat_initialize.rs:61` (`get_default_system_prompt` — already carries v4's validating order, so this one only needs folding), `api/chat_post_office.rs:853-890` (the impersonation voice preview — **reproduces v4's pre-fix unconditional `?? defaultSystemPromptId` chain, comment and all**). SPA: `screens/characters/edit/system-prompts-tab.ts:298` — **v5 never had the dead-route half** (its star posts the `characterPromptSetDefault` dispatch verb, so only the optimistic-write and 4xl halves port); `screens/new-chat/new-chat.logic.ts:49-51` and `screens/new-chat/new-chat.state.ts:399-401` — **both REPRODUCE the two broken copies** (the ternary with no fallback, so a column naming a missing prompt seeds `null` and the chat starts with NO system prompt); `chat/post-office/insert-announcement-dialog.ts:485-494` carries the correct copy. Differentials to grow: the characters-arrays tier-2 family (`characters_arrays_tier2_equivalence` already drives `set_default_system_prompt`), the characters PUT routes family, `build_context`/chat-create for the read order, and SPA parity specs for the resolver twin. Not a convergence (a v4-side find, 2026-09-18). **At the `89fcc3c0d` round's unification (2026-09-18) the baseline moved to `89fcc3c0d`; this row is now ONE commit past it and is the next catch-up's first row — its `help/character-system-prompts.md` re-vendor rides that lane.** **ORDERED 2026-09-18 as a stacked-by-ownership pair — P4.D201 (the server half: the resolver home `default_system_prompt.rs` folded into `chat_initialize.rs` + `chat_post_office.rs`, `systemPromptsPatch`'s twin across all four writers with the transient-id null rule, the `set_default_system_prompt` null arm, the `characterUpdate` chokepoint route + empty-payload rule + v4's 400, the help page; families: `characters_arrays_tier2`/`characters_mutations`/`chat_context_init`/`in_scene_voiced_tier3`/`chat_create_capstone`/NEW `default_system_prompt`/`help_tree` at the TARGET pin) ∥ P4.D202 (the SPA half: the client-safe twin, the two broken New-Chat seeds red-first, the announcement dialog's neutral fold, the star's optimistic cache write + rollback, the 4xl dialog, a gated live beat). Orders: `work-orders/p4.d201-default-system-prompt-lockstep-server.md`, `work-orders/p4.d202-default-system-prompt-resolver-spa.md`.** | ORDERED(P4.D201 ∥ P4.D202) |
+
+_(empty — v4 AT the baseline as of the 2026-09-18 `baa85e19b` round unification probe; the bug-154 row retired to §6.)_
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -267,6 +253,32 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `baa85e19b` bug-154 default-system-prompt drift catch-up +
+  maintenance round (2026-09-18, baseline `89fcc3c0d` → `baa85e19b`):**
+  `baa85e19b` (bug 154) ABSORBED(P4.D201 ∥ P4.D202 — server: the
+  `quilltap_core::default_system_prompt` resolver home (tier-1 exact over a
+  22-case committed corpus against v4's REAL module) folded into the chat
+  initializer (the `??`-on-content change) and the impersonation voice
+  preview (which had reproduced v4's PRE-fix stale-column chain verbatim);
+  `systemPromptsPatch`'s twin `project_system_prompts` so all four
+  system-prompt writers move the `isDefault` flags AND the
+  `defaultSystemPromptId` column in ONE patch, with v4's transient-id null
+  rule; `set_default_system_prompt(Option<&str>)`'s clear arm; the
+  `characterUpdate` chokepoint route (the pull-out, the empty-payload rule,
+  v4's 400 after the generic write — and, at unification, the uuid half of
+  v4's `z.uuid()` gate, red-first); the arrays family's per-op
+  `defaultColumnTrail`; seven `characters_mutations` arms; the widened
+  `characters-{main,mount}.db`; `help/character-system-prompts.md` at 124
+  files. SPA: the client-safe twin over v4's five vectors verbatim, the two
+  broken New-Chat seeds red-first, the announcement dialog's neutral fold,
+  the star's optimistic cache write with rollback-then-refetch, the 4xl
+  dialog, the live star beat (`P4D201_SERVER_LANDED` flipped at
+  unification). The non-lib files: the two new test files + the PUT route
+  test → the corpus; the help page re-vendored; README/CLAUDE/bugs/stamps
+  NO-PORT.) Round record: `status-log.md` → "Round record — the
+  `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance
+  round unification".
 
 - **The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round
   (2026-09-18, baseline `bcd7e4852` → `89fcc3c0d`):** `1065a1f53` (bug 152)
