@@ -341,6 +341,43 @@ are the two that cannot show the defect P4.98 fixes.
 Mutation-proven: driving the case with a valid prompt instead of the null
 reddens the family on exactly that row, v5 answering 201 with a generated
 image against v4's 400.
+#### 2026-09-18 — port(primary-stream): say that a recoverable request error is being recovered from (P4.99 Tier 1)
+
+_Versions: core 0.0.951._
+
+v4 opens the request-limit recovery branch with `logger.info('Recoverable
+request error detected, attempting recovery', { chatId, provider, model,
+attachmentCount, error })` (`primary-stream.service.ts:319`, the FIRST
+statement of the branch). The port had the branch and none of the line: a
+token-limit or PDF-page-cap turn went into recovery, and whether it came back
+with a real answer, a static fallback, or a rethrow, `combined.log` never said
+a recovery had been attempted at all — the #103/#110 class. P4.97 found it
+while porting the sibling branch's three lines and could not take it (outside
+that lane's ownership).
+
+Ported byte-exact at v4's level (info — the hunk's, not the previous round's
+candidate list, which said "warn"), with v4's three-line why-comment carried
+above the branch, and `attachment_count` read before `attached_files` moves
+into the recovery context.
+
+The tier-3 family cannot carry the line. Measured: its corpus DOES reach the
+branch (`token_limit_recovery` and `recovery_static_fallback` in
+`primary-stream-tier3.json`), but neither side of
+`primary_stream_tier3_equivalence` captures logger output — the family diffs
+sink events, DB rows and `llm_logs` — so the line is invisible to it in both
+directions. The proof is therefore a capture-layer pin in the P4.97 shape:
+the field bag with its level, a silence leg (a non-recoverable error takes
+neither the branch nor the line), and an ORDER leg. The order leg needed an
+instrument: the recovery service emits no tracing of its own, so a line moved
+to AFTER `attemptRequestLimitRecovery` would still be the only line captured
+and would still pass a presence-only assertion. Recovery's first act is its
+own `stream_message` call, so the rig's provider logs an ordered marker per
+call and both events land in one journal.
+
+Mutations, each reddening exactly its target: the line deleted → the field
+pin and the order leg (the silence leg stays green); the level changed to
+warn → the field pin alone; `attachment_count` dropped → the field pin alone;
+the line moved after the recovery call → the ORDER leg alone.
 
 #### 2026-09-18 — docs(porting): order the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99)
 

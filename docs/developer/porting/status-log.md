@@ -134469,3 +134469,133 @@ exercise six of the renderer's seven arms — `received null` ×2, `number` ×5,
   a `chatId: null` posted to `POST /api/dispatch` with `{"type":
   "imagesGenerate"}` must answer v4's `Validation error` and write nothing,
   where before the round it generated and saved an image.
+## P4.99 — the recovery INFO line, GOOGLE's cache-key ignorer rows, and the harness DRY (the `89fcc3c0d` round's second maintenance lane)
+
+Branch `claude/p4-99-recovery-google-cache-key-ca5058`, from `main`
+`5018df46`. Order:
+`work-orders/p4.99-recovery-info-line-google-cache-key-rows.md`.
+
+### §0 — the probe, the waiver, and the pin
+
+The §R.2 probe FAILED at lane open, twice over and in two different ways,
+and the lane STOPped both times rather than reasoning past it.
+
+1. **First open.** Branch `main` ✓, `log 89fcc3c0d..main` EMPTY ✓,
+   `log 1a2b2164c..bugfix` EMPTY ✓ — but the tree was dirty on EIGHTEEN
+   paths where the ledger's §1 recorded THIRTEEN. The five extra:
+   `CLAUDE.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md`,
+   **`help/character-system-prompts.md`** (+27) and the new
+   `docs/developer/bugs/fixed/bug-154-default-prompt-star-dead-action.md`.
+   `help/` is named explicitly in §R.2's STOP list. The in-flight fix the
+   ledger had recorded anonymously had become a NUMBERED v4 bug (154) and
+   grown a help page; v4's `bugs.md` now reads "Bugs 1–154".
+2. **`/driftcheck` ran from the main checkout** (not from this lane — a lane
+   never writes the ledger) and recorded `baa85e19b` as a third §3 row.
+3. **Second open.** The ledger's own §2 probe then PASSED (branch `main`,
+   HEAD `baa85e19b`, tree CLEAN, both logs empty) — but THIS ORDER's §R.2
+   still named `89fcc3c0d`, so `log 89fcc3c0d..main` returned exactly one
+   commit and the order's letter still said STOP. The ledger had
+   anticipated this and named the call as the human's
+   ("only the human or a `/setupphase` may [repoint §R.2]").
+   **The human WAIVED it**, on the ledger's measured grounds: every regen
+   is pinned, `baa85e19b`'s paths are disjoint from the round's, and the
+   round's TARGET stays `89fcc3c0d`.
+
+**The lane re-measured the disjointness itself rather than taking it from
+the ledger** (§R.4 applies to a ledger paragraph as much as to commit
+prose), and it holds across the WHOLE three-commit drift, not just the two
+the order measured:
+
+| measured | result |
+|---|---|
+| `git diff --stat bcd7e4852..89fcc3c0d -- lib/services/chat-message/ plugins/` | EMPTY (the order's Preamble claim, re-recorded) |
+| `git diff --stat 89fcc3c0d..baa85e19b -- lib/services/chat-message/ plugins/` | EMPTY (bug 154) |
+| `git diff --stat bcd7e4852..baa85e19b -- lib/services/chat-message/ plugins/` | EMPTY (the whole drift) |
+
+So the baseline pin is exactly right for this lane's two v4 surfaces.
+
+**The pin** (§R.3, lane-unique, all three symlink classes):
+
+```bash
+git -C ~/source/quilltap-server worktree add --detach \
+  /tmp/qt-v4-pin-p4-99-bcd7e4852 bcd7e4852
+ln -sfn ~/source/quilltap-server/node_modules /tmp/qt-v4-pin-p4-99-bcd7e4852/node_modules
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        /tmp/qt-v4-pin-p4-99-bcd7e4852/packages/quilltap/node_modules
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" \
+    "/tmp/qt-v4-pin-p4-99-bcd7e4852/plugins/dist/$(basename "$d")/node_modules"
+done
+```
+
+Verified by `rev-parse` (`bcd7e485266be2efa5bacd9644a9814e7dc32d89`) AND
+`ls -ld`, and `git worktree list` before the regen batch.
+
+### §1 — Tier 1 items 1 + 2 + 7 (M1–M4): the recovery INFO line
+
+**v4** (`git show bcd7e4852:lib/services/chat-message/primary-stream.service.ts`,
+`:315-325`), read from the hunk, not the prose:
+
+```js
+// Request-limit recovery: token-limit / PDF-page-cap / etc. attemptRequestLimitRecovery
+// produces a fully-finalized assistant message on success, so the
+// orchestrator must short-circuit via earlyReturn.
+else if (isRecoverableRequestError(streamingError)) {
+  logger.info('Recoverable request error detected, attempting recovery', {
+    chatId, provider: …, model: …, attachmentCount: attachedFiles.length, error: …,
+  })
+```
+
+**LEVEL is `info`.** §R.4 mattered here: the previous round's candidate list
+called this a "warn" and the hunk says `logger.info`. The hunk wins; the pin
+asserts the level so the disagreement can never be re-litigated silently.
+
+Ported at `services/primary_stream.rs:1386` as the first statement of the
+branch, in the crate's field idiom (the sibling branch's three P4.97 lines are
+the template), with v4's three-line why-comment carried above it and
+`attachment_count` taken BEFORE `attached_files` moves into `RecoveryContext`.
+
+**Item 2's measurement — the tier-3 family CANNOT carry the line; the
+deliverable is a unit pin.** Both halves measured, because the order made the
+decision conditional on both:
+
+- the corpus DOES reach the branch — `token_limit_recovery` and
+  `recovery_static_fallback` in `harness/oracle/fixtures/primary-stream-tier3.json`;
+- **neither side captures logger output.** `primary_stream_tier3_equivalence`
+  diffs sink events, DB rows and the `llm_logs` CHAT_MESSAGE rows (grep
+  `CaptureLayer|captured_with|tracing` in it: no hits); `primary-stream-tier3.test.ts`
+  mocks nothing of the logger. So the line is invisible to the family in BOTH
+  directions, and carrying it would mean building capture machinery on both
+  sides — well outside this lane.
+
+**The ORDER leg needed an instrument.** `services/recovery.rs` emits NO tracing
+at all (grep: zero `tracing::` hits), so a line moved to after
+`attempt_request_limit_recovery` would still be the only captured line and
+would still pass a presence-only assertion. Recovery's first act is its own
+`stream_message` call, so the rig's `MarkingQueuedProvider` logs an ordered
+marker per provider call and the INFO line is asserted to precede `call=2`.
+The silence leg asserts BOTH halves — no line AND no second provider call —
+so "a line without a branch" cannot pass either.
+
+The rig (`run_recovery_branch`) parameterizes `attached_files`, and the field
+pin drives it with TWO attachments: a mutation that hard-coded `0` would have
+survived the `Vec::new()` the sibling rig uses.
+
+**Mutations** (`cargo test -p quilltap-core --lib services::primary_stream::tests::`,
+revert by file backup, never `git checkout`). Baseline 3 passed / 0 failed.
+
+| # | mutation | field pin | order leg | silence leg |
+|---|---|---|---|---|
+| M1 | the INFO line DELETED | **FAILED** | **FAILED** | ok |
+| M2 | level `info` → `warn` | **FAILED** | ok | ok |
+| M4 | `attachment_count` field dropped | **FAILED** | ok | ok |
+| M3 | the line moved AFTER the recovery call | ok | **FAILED** | ok |
+
+M3 is the one that justifies the order leg: the field pin cannot see it.
+
+⚠ **The first mutation battery measured NOTHING and said so with `??`** —
+`cargo test … -- --exact <bare-name>` matches the FULL test path, so passing
+bare names ran ZERO tests and every result parsed as "not found". A battery
+whose parse fails looks exactly like a battery whose mutations all survived.
+The re-run prints a per-run `test result:` summary line precisely so a
+zero-tests-ran run is visible; both are worth a memory note.

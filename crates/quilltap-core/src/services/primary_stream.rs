@@ -1384,7 +1384,36 @@ where
     }
 
     // --- Request-limit recovery ---
+    // v4 `primary-stream.service.ts:315-317`, carried verbatim: "Request-limit
+    // recovery: token-limit / PDF-page-cap / etc. attemptRequestLimitRecovery
+    // produces a fully-finalized assistant message on success, so the
+    // orchestrator must short-circuit via earlyReturn."
     if is_recoverable_request_error(&err.message) {
+        // v4 `:319-325` — the FIRST statement of the branch, BEFORE the
+        // recovery call, so `combined.log` says a recovery was attempted even
+        // when the recovery itself then dies silently. The port had the branch
+        // and none of the line (the #103/#110 class; P4.97 found it while
+        // porting the sibling branch's three, and it was outside that lane's
+        // ownership). `attachmentCount` is `attachedFiles.length`, read HERE
+        // because the array moves into the recovery context below.
+        let attachment_count = attached_files.len();
+        tracing::info!(
+            target: "quilltap::primary_stream",
+            chat_id = %chat_id,
+            provider = %state
+                .effective_profile
+                .as_ref()
+                .map(|p| p.provider.as_str())
+                .unwrap_or(""),
+            model = %state
+                .effective_profile
+                .as_ref()
+                .map(|p| p.model_name.as_str())
+                .unwrap_or(""),
+            attachment_count,
+            error = %err.message,
+            "Recoverable request error detected, attempting recovery"
+        );
         let connection_profile = state.effective_profile.clone();
         let recovery = super::recovery::attempt_request_limit_recovery(
             db,
@@ -2061,5 +2090,294 @@ mod tests {
                 "{sentence:?} fired outside the retry branch: {lines:?}"
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // P4.99 Tier 1 — the request-limit recovery branch's INFO line.
+    //
+    // v4 opens the branch with `logger.info('Recoverable request error
+    // detected, attempting recovery', {...})` (`primary-stream.service.ts:319`)
+    // and the port opened it with nothing: a token-limit turn went into
+    // recovery, and whether it came back with a real answer, a static
+    // fallback, or a rethrow, `combined.log` never said a recovery had been
+    // attempted at all. P4.97 found the line while porting the SIBLING
+    // branch's three and could not take it (outside that lane's ownership).
+    //
+    // The tier-3 family CANNOT carry this line. Measured 2026-09-18: its
+    // corpus DOES reach the branch (`token_limit_recovery` and
+    // `recovery_static_fallback` in `primary-stream-tier3.json`), but neither
+    // side of `primary_stream_tier3_equivalence` captures logger output — the
+    // family diffs sink events, DB rows and `llm_logs` — so the line would be
+    // invisible to it in both directions. The capture-layer pin is the proof
+    // (the P4.61 / P4.93 / P4.D175 precedent), with a silence leg and an
+    // ORDER leg: v4 logs BEFORE recovering, and only an ordered journal
+    // carrying both the line and the recovery's own first act can say so.
+    // -----------------------------------------------------------------------
+
+    /// A message that satisfies `is_recoverable_request_error` through
+    /// `TOKEN_LIMIT_PATTERNS`' `maximum context length` arm (read from the
+    /// predicate, not guessed).
+    const RECOVERABLE: &str =
+        "This model's maximum context length is 8192 tokens, however you requested 9000";
+
+    /// As [`QueuedProvider`], but it logs an ordered marker at each call.
+    ///
+    /// The recovery service emits no tracing of its own, so nothing it does is
+    /// otherwise visible in the captured vector — and an INFO line moved to
+    /// AFTER `attempt_request_limit_recovery` would still be the only line
+    /// there, and still pass a presence-only assertion. Recovery's first act
+    /// IS its own `stream_message` call, so marking every provider call puts
+    /// both events in ONE ordered journal and makes "before" assertable.
+    struct MarkingQueuedProvider {
+        answers: std::sync::Mutex<std::collections::VecDeque<Vec<StreamChunkResult>>>,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl MarkingQueuedProvider {
+        const MARKER: &'static str = "TEST-PROVIDER-CALL";
+
+        fn new(answers: Vec<Vec<StreamChunkResult>>) -> Self {
+            Self {
+                answers: std::sync::Mutex::new(answers.into()),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl StreamingCompletionProvider for MarkingQueuedProvider {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+        {
+            let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            // Logged at CALL time (this body runs before the returned future is
+            // awaited), which is the ordering the pin needs.
+            tracing::info!(target: "quilltap::primary_stream::test", call = n, "{}", Self::MARKER);
+            let seq = self.answers.lock().unwrap().pop_front().unwrap_or_else(|| {
+                vec![Err(StreamError::new("no canned answer left".to_string()))]
+            });
+            async move {
+                let (tx, rx) = tokio::sync::mpsc::channel(seq.len().max(1));
+                for item in seq {
+                    let _ = tx.send(item).await;
+                }
+                rx
+            }
+        }
+    }
+
+    /// Drive the recovery branch: the primary stream fails with `first_error`,
+    /// the recovery stream then answers `recovery_answer`. Returns
+    /// `(the call succeeded, the captured log lines)`. `attached` sizes
+    /// `attachment_count` — non-empty in the field pin, so a mutation that
+    /// hard-codes `0` cannot survive.
+    async fn run_recovery_branch(
+        first_error: &str,
+        attached: Vec<super::super::recovery::AttachedFile>,
+        recovery_answer: Vec<StreamChunkResult>,
+    ) -> (bool, Vec<String>) {
+        use crate::test_support::CaptureLayer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(dir.path().join("main.db"), RETRY_LOG_PEPPER).unwrap();
+
+        let provider = MarkingQueuedProvider::new(vec![
+            vec![Err(StreamError::new(first_error.to_string()))],
+            recovery_answer,
+        ]);
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(EffectiveProfile {
+                id: "p1".into(),
+                name: "Primary".into(),
+                provider: "GOOGLE".into(),
+                model_name: "gemini-3-flash".into(),
+                base_url: None,
+            }),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let mut preserve = PreservePartialOnError::new(
+            "chat-1",
+            "char-1",
+            "Friday",
+            Vec::new(),
+            "part-1",
+            None,
+            "msg-1",
+        );
+        let params = StreamParams {
+            messages: vec![StreamMessage::user("a very long message")],
+            model: "gemini-3-flash".into(),
+            temperature: Some(1.0),
+            max_tokens: Some(64),
+            top_p: None,
+            // NO tools: the tool-unsupported branch is gated on `had_tools`, so
+            // this keeps the two branches' pins from sharing an arm.
+            tools: None,
+            web_search_enabled: false,
+            profile_parameters: None,
+            cache_key: None,
+            previous_response_id: None,
+            stop: Vec::new(),
+            request_timeout_ms: None,
+        };
+
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let ok = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+                &db,
+                &provider,
+                &sink,
+                &mut preserve,
+                None,
+                RunPrimaryStreamOptions {
+                    log_context: crate::services::llm_logging::LogContext::none(),
+                    chat_id: "chat-1".into(),
+                    user_id: String::new(),
+                    chat: PrimaryStreamChat { is_paused: false },
+                    character_id: "char-1".into(),
+                    character_name: "Friday".into(),
+                    character_aliases: Vec::new(),
+                    participant_id: "part-1".into(),
+                    participant_status: None,
+                    user_participant_id: None,
+                    is_multi_character: false,
+                    params,
+                    attached_files: attached,
+                    original_message: Some("a very long message".into()),
+                    pre_generated_assistant_message_id: "msg-1".into(),
+                    is_dangerous_routed: false,
+                    fallback_profile: None,
+                    state: &mut state,
+                },
+            )
+            .await
+            .is_ok()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (ok, lines)
+    }
+
+    fn two_attachments() -> Vec<super::super::recovery::AttachedFile> {
+        use super::super::recovery::AttachedFile;
+        vec![
+            AttachedFile {
+                filename: "a.pdf".into(),
+                mime_type: "application/pdf".into(),
+                size: 1024.0,
+            },
+            AttachedFile {
+                filename: "b.png".into(),
+                mime_type: "image/png".into(),
+                size: 2048.0,
+            },
+        ]
+    }
+
+    const RECOVERY_SENTENCE: &str = "Recoverable request error detected, attempting recovery";
+
+    #[tokio::test]
+    async fn recoverable_request_error_announces_v4s_five_field_bag() {
+        let (_ok, lines) = run_recovery_branch(
+            RECOVERABLE,
+            two_attachments(),
+            vec![
+                Ok(StreamChunk::content("a shorter answer")),
+                Ok(StreamChunk::done(None)),
+            ],
+        )
+        .await;
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains(RECOVERY_SENTENCE))
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one recovery line, got {lines:?}"
+        );
+        let line = hits[0];
+        // v4's LEVEL is `logger.info` (the hunk at `:319`; the previous round's
+        // candidate list said "warn" — the hunk wins, §R.4).
+        assert!(line.starts_with("INFO "), "{line}");
+        for field in [
+            "chat_id=chat-1",
+            "provider=GOOGLE",
+            "model=gemini-3-flash",
+            // Two attachments, so a hard-coded 0 (or a dropped field) reddens.
+            "attachment_count=2",
+            &format!("error={RECOVERABLE}"),
+        ] {
+            assert!(
+                line.contains(field),
+                "recovery line missing {field}: {line}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_recovery_line_precedes_the_recovery_call() {
+        // v4 logs BEFORE `attemptRequestLimitRecovery`. Recovery's own first
+        // act is provider call #2, so the marker is the ordering witness; a
+        // line moved after the recovery call fails here and nowhere else.
+        let (_ok, lines) = run_recovery_branch(
+            RECOVERABLE,
+            two_attachments(),
+            vec![
+                Ok(StreamChunk::content("a shorter answer")),
+                Ok(StreamChunk::done(None)),
+            ],
+        )
+        .await;
+        let announced = lines
+            .iter()
+            .position(|l| l.contains(RECOVERY_SENTENCE))
+            .unwrap_or_else(|| panic!("no recovery line at all: {lines:?}"));
+        let recovery_call = lines
+            .iter()
+            .position(|l| l.contains(MarkingQueuedProvider::MARKER) && l.contains("call=2"))
+            .unwrap_or_else(|| {
+                panic!("the recovery never called the provider — the pin is vacuous: {lines:?}")
+            });
+        assert!(
+            announced < recovery_call,
+            "v4 announces the recovery BEFORE attempting it; v5 logged at {announced} \
+             and called the provider at {recovery_call}: {lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_recoverable_error_leaves_the_recovery_line_unsaid() {
+        // The silence leg. "something else entirely" matches no token-limit and
+        // no content-limit pattern, so the branch is never taken — and the
+        // recovery provider call never happens either, which is the second half
+        // of the claim (a line without a branch would be the other bug).
+        let (ok, lines) = run_recovery_branch(
+            "something else entirely",
+            two_attachments(),
+            vec![
+                Ok(StreamChunk::content("never reached")),
+                Ok(StreamChunk::done(None)),
+            ],
+        )
+        .await;
+        assert!(!ok, "a plain stream error still fails the call: {lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains(RECOVERY_SENTENCE)),
+            "the recovery line fired outside the branch: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains(MarkingQueuedProvider::MARKER) && l.contains("call=2")),
+            "the recovery ran on a non-recoverable error: {lines:?}"
+        );
     }
 }
