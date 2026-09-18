@@ -295,7 +295,31 @@ export class CharacterSystemPromptsTab {
     }
   }
 
+  /**
+   * v4 `handleSetDefault` (`useSystemPrompts.ts:222-268` post-`baa85e19b`,
+   * bug 154). Move the badge in the query cache BEFORE the round trip, so the
+   * star reads as a switch rather than a request; the refresh confirms it, and
+   * a failure restores the snapshot and THEN refetches the server's word —
+   * both, in that order.
+   *
+   * ⚠ **NO-COUNTERPART on v5:** the other half of v4's hunk moved the star off
+   * `PUT ?action=update-prompt`, an action nothing served, onto the prompt's
+   * own route. v5's star never had the dead route — it has always posted the
+   * `characterPromptSetDefault` verb — so only the optimistic write and the
+   * rollback port.
+   *
+   * v5 has no `success` signal here and renders no success sentence, so v4's
+   * `setSuccess('Default prompt updated')` + its 3 s clear have nowhere to
+   * land. That is a PRE-EXISTING gap in this tab (v4 shows the sentence on
+   * every mutation, not just this one), recorded rather than invented here.
+   */
   protected async setDefault(promptId: string): Promise<void> {
+    const key = characterKeys.prompts(this.characterId());
+    const previous = this.queryClient.getQueryData<CharacterSystemPrompt[]>(key);
+    this.queryClient.setQueryData<CharacterSystemPrompt[]>(key, (current) =>
+      current?.map((p) => ({ ...p, isDefault: p.id === promptId })),
+    );
+
     this.saving.set(true);
     this.error.set(null);
     try {
@@ -306,6 +330,10 @@ export class CharacterSystemPromptsTab {
       });
       await this.refresh();
     } catch (err) {
+      if (previous) {
+        this.queryClient.setQueryData<CharacterSystemPrompt[]>(key, previous);
+      }
+      await this.refetch();
       this.error.set(err instanceof Error ? err.message : 'Failed to set default');
     } finally {
       this.saving.set(false);
@@ -331,6 +359,18 @@ export class CharacterSystemPromptsTab {
 
   private async refresh(): Promise<void> {
     await this.queryClient.invalidateQueries({
+      queryKey: characterKeys.prompts(this.characterId()),
+    });
+  }
+
+  /**
+   * v4's `fetchPrompts()` — the rollback's second half. An invalidate would be
+   * a no-op against a cache the rollback has just rewritten (the data is fresh
+   * and nothing is observing a stale key), so the server's word is fetched
+   * outright.
+   */
+  private async refetch(): Promise<void> {
+    await this.queryClient.refetchQueries({
       queryKey: characterKeys.prompts(this.characterId()),
     });
   }

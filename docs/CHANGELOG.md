@@ -113,6 +113,44 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — fix(characters): the star moves the default badge before the round trip, and puts it back if the write fails (P4.D202 unit 4)
+
+_Versions: SPA 0.5.735._
+
+v4's bug-154 hunk for `useSystemPrompts.handleSetDefault` has two halves,
+and only one of them ports. The half that does not: v4's star used to PUT
+`?action=update-prompt`, an action nothing served, so the request fell
+through to the generic character update whose Zod object stripped
+`isDefault` and answered 200 having changed nothing. v5's star never had
+that dead route — it has always posted the `characterPromptSetDefault`
+verb — so that half is recorded as a NO-COUNTERPART in the method's doc
+comment rather than ported.
+
+The half that does port is the cache choreography. `setDefault` now
+snapshots the prompts under `characterKeys.prompts(id)`, writes the moved
+badge into the cache BEFORE dispatching, and on a rejection restores the
+snapshot and THEN refetches the server's word — both, in that order, as v4
+does. The refresh on the success path is unchanged.
+
+Three specs, with the dispatch held on a deferred promise so the assertion
+lands between the click and the resolution: (a) the badge has moved while
+the dispatch is still in flight; (b) a rejection has the badge back BEFORE
+the refetch answers; (c) a success renders the server's list, proven by a
+name only the server could have supplied.
+
+(b) is the round's methodological catch. As first written it asserted only
+the settled state, and mutation M4 — the rollback deleted outright —
+SURVIVED, because the refetch alone restores the same rows. The rollback is
+observable only in the window between itself and the refetch's answer, so
+the spec now holds the relist too and asserts inside that window. M4 then
+reddens exactly (b). M3 (the optimistic write moved after the await)
+reddens (a) and (b).
+
+v5 has no success signal on this tab and renders no success sentence, so
+v4's `Default prompt updated` has nowhere to land. That is a pre-existing
+gap across the whole tab (v4 shows the sentence on every mutation here, not
+just this one) — recorded in the method's doc comment, not invented.
+
 #### 2026-09-18 — refactor(post-office): the announcement dialog's prompt resolution folds onto the shared resolver (P4.D202 unit 3)
 
 _Versions: SPA 0.5.734._

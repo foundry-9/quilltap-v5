@@ -276,6 +276,145 @@ describe('CharacterSystemPromptsTab', () => {
     expect(setDefaultCall!['promptId']).toBe('p1');
   });
 
+  /**
+   * v4 `handleSetDefault` post-`baa85e19b` (bug 154). The badge moves in the
+   * query cache BEFORE the round trip; a failure restores the snapshot and
+   * THEN refetches the server's word, in that order.
+   *
+   * The (a) arm holds the dispatch on a deferred promise and asserts BETWEEN
+   * the click and its resolution — the only place an optimistic write is
+   * distinguishable from the refresh that follows it
+   * (`e2e-assertion-can-read-the-pre-click-state`'s class).
+   */
+  describe('the star’s optimistic write (v4 baa85e19b)', () => {
+    /**
+     * A client whose `characterPromptSetDefault` resolves (or rejects) on
+     * demand, and — with `holdRelist` — whose SECOND `characterPromptList`
+     * hangs until released. Holding the relist is what makes the rollback
+     * measurable: after a rejection the cache is restored synchronously and
+     * the refetch is still in flight, and only in that window does a restored
+     * snapshot differ from "whatever the server says". (Without it, mutation
+     * M4 — the rollback deleted outright — SURVIVED: the refetch alone
+     * restores the same rows.)
+     */
+    function heldClient(
+      prompts: CharacterSystemPrompt[],
+      opts: { listsAfter?: CharacterSystemPrompt[]; holdRelist?: boolean } = {},
+    ): {
+      client: Partial<CoreClient>;
+      settle: (outcome: 'resolve' | 'reject') => void;
+      releaseRelist: () => void;
+      listCalls: () => number;
+    } {
+      let release!: (outcome: 'resolve' | 'reject') => void;
+      const held = new Promise<Record<string, unknown>>((res, rej) => {
+        release = (outcome) => (outcome === 'resolve' ? res({}) : rej(new Error('nope')));
+      });
+      let releaseRelist!: () => void;
+      const relistGate = new Promise<void>((res) => {
+        releaseRelist = res;
+      });
+      let lists = 0;
+      return {
+        listCalls: () => lists,
+        settle: (outcome) => release(outcome),
+        releaseRelist: () => releaseRelist(),
+        client: {
+          ...coreStreamStub(),
+          dispatchData: (async (req: { type: string }) => {
+            if (req.type === 'characterPromptList') {
+              lists += 1;
+              if (lists > 1 && opts.holdRelist) await relistGate;
+              return { prompts: lists > 1 ? (opts.listsAfter ?? prompts) : prompts };
+            }
+            if (req.type === 'characterSubpromptList') return { subprompts: [] };
+            if (req.type === 'characterPromptSetDefault') return held;
+            return {};
+          }) as CoreClient['dispatchData'],
+        },
+      };
+    }
+
+    const two = [
+      prompt({ id: 'p1', name: 'Romantic', isDefault: true }),
+      prompt({ id: 'p2', name: 'Brisk', isDefault: false }),
+    ];
+
+    it('(a) moves the badge BEFORE the dispatch resolves', async () => {
+      const held = heldClient(two);
+      const fixture = await render(held.client);
+
+      const star = fixture.nativeElement.querySelectorAll(
+        '[title="Set as default"]',
+      )[0] as HTMLButtonElement;
+      star.click();
+      await settle(fixture);
+
+      // The dispatch has NOT answered yet — this is the optimistic write alone.
+      const flags = fixture.componentInstance['prompts']().map((p) => [p.id, p.isDefault]);
+      expect(flags).toEqual([
+        ['p1', false],
+        ['p2', true],
+      ]);
+      expect(fixture.nativeElement.textContent).toContain('Default');
+
+      held.settle('resolve');
+      await settle(fixture);
+    });
+
+    it('(b) a rejection restores the snapshot BEFORE the refetch has answered', async () => {
+      // The relist hangs, so the only thing that can put the badge back in
+      // this window is the rollback itself.
+      const held = heldClient(two, { holdRelist: true });
+      const fixture = await render(held.client);
+      const listsBefore = held.listCalls();
+
+      (
+        fixture.nativeElement.querySelectorAll('[title="Set as default"]')[0] as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      expect(fixture.componentInstance['prompts']().map((p) => p.isDefault)).toEqual([false, true]);
+
+      held.settle('reject');
+      await settle(fixture);
+
+      // The refetch is still in flight — and the badge is already back.
+      expect(fixture.componentInstance['prompts']().map((p) => p.isDefault)).toEqual([true, false]);
+      expect(held.listCalls()).toBeGreaterThan(listsBefore);
+
+      held.releaseRelist();
+      await settle(fixture);
+      expect(fixture.componentInstance['prompts']().map((p) => p.isDefault)).toEqual([true, false]);
+      expect(fixture.nativeElement.textContent).toContain('nope');
+    });
+
+    it('(c) a success refreshes, so the server’s list is what finally renders', async () => {
+      // The server says p2 is default — and ALSO renames it, a byte the
+      // optimistic write could not have invented.
+      const held = heldClient(two, {
+        listsAfter: [
+          prompt({ id: 'p1', name: 'Romantic', isDefault: false }),
+          prompt({ id: 'p2', name: 'Brisk (server)', isDefault: true }),
+        ],
+      });
+      const fixture = await render(held.client);
+      const listsBefore = held.listCalls();
+
+      (
+        fixture.nativeElement.querySelectorAll('[title="Set as default"]')[0] as HTMLButtonElement
+      ).click();
+      await settle(fixture);
+      held.settle('resolve');
+      await settle(fixture);
+      await settle(fixture);
+
+      expect(held.listCalls()).toBeGreaterThan(listsBefore);
+      expect(fixture.nativeElement.textContent).toContain('Brisk (server)');
+      expect(fixture.componentInstance['prompts']().map((p) => p.isDefault)).toEqual([false, true]);
+      expect(fixture.componentInstance['error']()).toBeNull();
+    });
+  });
+
   it('the trash button dispatches characterPromptDelete', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient([prompt()], (req) => seen.push(req)));
