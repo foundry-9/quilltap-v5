@@ -218,6 +218,63 @@ New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 op
 diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
 (v5 had no way to express the option). Those two are the rows this commit turns
 green.
+#### 2026-09-18 — fix(images): an explicit `null` on the collection generate route stops arriving as an absent key
+
+_Versions: core 0.0.951, web 0.0.153._
+
+`Request::ImagesGenerate`'s five body keys — `prompt`, `profileId`, `chatId`,
+`tags`, `options` — were plain `#[serde(default)] Option<serde_json::Value>`.
+Serde collapses an explicit JSON `null` into `None` for a plain `Option<T>`,
+so `{"chatId": null}` reached the handler indistinguishable from an ABSENT
+`chatId` and passed a gate v4 400s: v4's `chatId: z.uuid().optional()` is
+`.optional()`, not `.nullable()`. On a body naming a real connection profile,
+v5 generated and SAVED an image v4 refuses. `tags` and `options` were broken
+the same way.
+
+Measured, not reasoned. The new `images_generate_dispatch_wire.rs` ran
+red-first against unported `main`: `chatId`, `tags` and `options` each
+answered `Connection profile not found` — proof the null had collapsed and
+v4's parse stage had been satisfied — where all five now answer `Validation
+error`. `prompt` and `profileId` are REQUIRED and were green either way,
+because this route drops v4's `details` array (the standing
+`drop_zod_details` deferral) and that array is the only place v4's `received
+null` and `received undefined` differ.
+
+No instrument in the tree could see it before. `images_generate_route_
+equivalence` calls the handler directly with `Some(&Value::Null)`, so its
+four null rows were green on both sides throughout; the REST edge hand-built
+the variant from `map.get(..).cloned()`, so `null` always survived there. The
+two transports had disagreed since P4.76.
+
+The five become `Option<Option<serde_json::Value>>` under `double_option`,
+matching `ImageProfileGenerate` and the `ChatCreate` trio field for field;
+the engine arm collapses the tri-state in one place (absent stays `None`, an
+explicit `null` becomes `Some(Value::Null)`); and the REST edge stops
+hand-mirroring the tri-state altogether — it lifts the five keys into a
+dispatch envelope and runs the SAME `serde_json::from_value::<Request>`
+decode, so there is now one implementation rather than two spellings that can
+drift apart.
+
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` does not move: 441 → 441, recorded
+before the test was run and confirmed by it. All five were already
+`Value`-typed, so `typed_request_fields` has always skipped them and the
+`*_id` rule never saw `profileId` or `chatId` to drop. They are adjudicated
+in a new `IMAGES_GENERATE_RAW_FIVE` list, held against the source by the
+walker generalized out of `IMAGE_PROFILE_GENERATE_RAW_FIVE`'s (every existing
+row byte-identical).
+
+Four mutations, each reddening exactly its target and none surviving: one
+field back to a plain `Option<Value>` reddens the wire arm, the list's shape
+pin and the new decode-distinctness test — but NOT the decode-raw test, which
+is why the distinctness test exists; dropping the engine collapse for one
+field reddens that field's wire arm alone; and an edge that skips a `null` as
+if absent reddens the edge/dispatch equality, the distinctness pin and the
+REST-edge null arm.
+
+The Tauri IPC leg needs no second venue: `quilltap-tauri`'s `dispatch`
+command calls `quilltap_web::dispatch::dispatch_body`, the same function and
+therefore the same decoder this test drives over HTTP.
+
 #### 2026-09-18 — test(images): the collection generate route's `prompt: null` row, measured against v4
 
 _Versions: harness 0.0.843._

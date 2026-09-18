@@ -5223,6 +5223,24 @@ impl CoreEngine {
                 options,
             } => match self.ready_images_generate() {
                 Ok((db, seams)) => {
+                    // The tri-state collapses HERE and only here, the
+                    // `ImageProfileGenerate` arm's idiom: absent stays `None`,
+                    // an explicit `null` becomes `Some(Value::Null)` so the
+                    // handler can refuse it the way v4's `.optional()` (not
+                    // `.nullable()`) does. P4.98 — before it the five were
+                    // plain `Option<Value>` and serde had already flattened
+                    // the two into `None` by the time the arm ran, so
+                    // `{"chatId": null}` generated an image v4 refuses.
+                    let collapse = |v: Option<Option<serde_json::Value>>| {
+                        v.map(|inner| inner.unwrap_or(serde_json::Value::Null))
+                    };
+                    let (prompt, profile_id, chat_id, tags, options) = (
+                        collapse(prompt),
+                        collapse(profile_id),
+                        collapse(chat_id),
+                        collapse(tags),
+                        collapse(options),
+                    );
                     super::images::images_generate(
                         &db,
                         &seams,

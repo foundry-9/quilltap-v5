@@ -2541,6 +2541,14 @@ fn is_route_identifier(field: &str) -> bool {
 // `chatId` row); it had been dropped by the `*_id` rule as a typed field, so the
 // excluded count falls by exactly one. It is a genuine BODY key on v4's route
 // (`z.uuid().optional()`), now adjudicated in the raw list rather than here.
+//
+// **P4.98 (±0): 441 → 441** — recorded BEFORE the test was run, and it agreed.
+// `Request::ImagesGenerate`'s five body keys became the `Option<Option<Value>>`
+// tri-state, but all five were ALREADY `Value`-typed (raw since P4.76; only the
+// carrier changed), so `typed_request_fields` has always skipped them and the
+// `*_id` rule never saw `profile_id` or `chat_id` to drop. Nothing entered or
+// left the typed set; the arithmetic is untouched in both directions. They are
+// adjudicated in `IMAGES_GENERATE_RAW_FIVE` at the foot of this file.
 const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 441;
 
 #[test]
@@ -2860,12 +2868,16 @@ const IMAGE_PROFILE_GENERATE_RAW_FIVE: &[Row] = &[
 /// `Option<String>` on the variant and this test reddens on that field — which
 /// is exactly the divergence P4.62 ruled out, since the web edge would then
 /// answer a serde decode sentence where v4 answers Zod's.
-/// Walk `Request::ImageProfileGenerate`'s own fields from the source and return
-/// the ones that carry a raw `Value` — the same mechanical discipline
+/// Walk ONE `Request` variant's own fields from the source and return the ones
+/// that carry a raw `Value` — the same mechanical discipline
 /// [`census_covers_every_typed_request_field`] applies to the typed half, and
-/// the reason a row cannot be quietly deleted from
-/// [`IMAGE_PROFILE_GENERATE_RAW_FIVE`].
-fn image_profile_generate_value_fields() -> Vec<(String, String)> {
+/// the reason a row cannot be quietly deleted from a raw list.
+///
+/// Generalized at P4.98 (it was hard-coded to `ImageProfileGenerate`) so the
+/// second raw list — [`IMAGES_GENERATE_RAW_FIVE`] — is held against the source
+/// by the SAME walk rather than by a copy of it. Every existing row is
+/// unchanged.
+fn raw_value_fields_of(variant_name: &str) -> Vec<(String, String)> {
     let src = strip_noise(&types_rs());
     let start = src.find("pub enum Request").expect("the Request enum");
     let open = src[start..].find('{').expect("enum body") + start;
@@ -2888,8 +2900,7 @@ fn image_profile_generate_value_fields() -> Vec<(String, String)> {
     for variant in split_top_level(&src[open + 1..end], VARIANT_OPEN, VARIANT_CLOSE) {
         let v = variant.trim();
         let head = v.split('{').next().unwrap_or("").trim();
-        if head.trim_end_matches(',').split_whitespace().next_back() != Some("ImageProfileGenerate")
-        {
+        if head.trim_end_matches(',').split_whitespace().next_back() != Some(variant_name) {
             continue;
         }
         let (Some(bo), Some(bc)) = (v.find('{'), v.rfind('}')) else {
@@ -2934,7 +2945,7 @@ fn the_raw_five_list_covers_every_raw_field_on_the_variant() {
     // `Option<Value>` here would silently re-open the explicit-`null` collapse.
     assert_eq!(
         have,
-        image_profile_generate_value_fields(),
+        raw_value_fields_of("ImageProfileGenerate"),
         "IMAGE_PROFILE_GENERATE_RAW_FIVE must name exactly the raw `Value` fields \
          `Request::ImageProfileGenerate` carries, WITH their declared shapes — \
          classify a new one, retire a stale row, or fix a drifted `rust_type`"
@@ -3006,6 +3017,209 @@ fn image_profile_generate_five_decode_raw_so_the_handler_can_refuse() {
             serde_json::from_value::<Request>(body).is_err(),
             "`{key}` stopped being serde-typed — its CENSUS row's classification \
              has changed and the row must move to the raw list"
+        );
+    }
+}
+
+// ===========================================================================
+// P4.98 — the images-COLLECTION generate route's five body keys, RAW-crossing
+// ===========================================================================
+
+/// v4's `generateImageSchema` on `Request::ImagesGenerate`
+/// (`app/api/v1/images/route.ts:45-73`) — the sibling of
+/// [`IMAGE_PROFILE_GENERATE_RAW_FIVE`], and for the same reasons: these are
+/// NOT [`CENSUS`] rows (a `Value`-carrying row reddens
+/// [`census_covers_every_typed_request_field`] as an `extra`, and
+/// [`body_sourced_rows_are_serde_type_rejected_today`] asserts the opposite of
+/// what these five must do), so they join the [`CHAT_CREATE_TRIO`] shape
+/// instead.
+///
+/// **`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` does not move for them: 441 →
+/// 441.** All five were ALREADY `Value`-typed before P4.98 (they crossed raw
+/// from P4.76; only their tri-state carrier changed), so `typed_request_fields`
+/// skipped them before the `*_id` rule could ever see `profile_id` / `chat_id`
+/// — they have never reached the walk at all. The arithmetic is unchanged in
+/// both directions, which is why this block adds a list and not a recount.
+/// (Contrast the `bcd7e4852` unification's −1: `ImageProfileGenerate.chat_id`
+/// moved OUT of the typed set that round, so the count really did fall.)
+///
+/// Note the `Option<Option<Value>>` on every row. P4.98 is the SECOND time the
+/// plain `Option<Value>` was measured insufficient, this time on the
+/// collection route: at the dispatch wire `{"chatId": null}`, `{"tags": null}`
+/// and `{"options": null}` each got PAST v4's parse stage, because serde
+/// collapses an explicit JSON `null` into `None` — and v4's `.optional()` is
+/// not `.nullable()`, so it 400s exactly the body v5 was generating an image
+/// for. `prompt` and `profileId` are REQUIRED and refused either way; they
+/// carry the tri-state so the variant has ONE shape and so the two words
+/// `received null` / `received undefined` are already right the day this
+/// route's `details` deferral is lifted.
+const IMAGES_GENERATE_RAW_FIVE: &[Row] = &[
+    Row {
+        variant: "ImagesGenerate",
+        field: "prompt",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.76, tri-state P4.98) — v4 `images/route.ts:46` `prompt: \
+               z.string().min(1).max(4000)`. REQUIRED, so an absent key and an \
+               explicit `null` both answer `Validation error`; the tri-state \
+               carries no behaviour change here today and exists so the variant \
+               has one shape (`images_generate_route_equivalence` \
+               `zod_prompt_missing` / `zod_prompt_empty` / `zod_prompt_too_long` \
+               / `zod_prompt_wrong_type` / `zod_prompt_null`; the dispatch wire \
+               test's `prompt` arms).",
+    },
+    Row {
+        variant: "ImagesGenerate",
+        field: "profile_id",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:47` `profileId: z.uuid()`. \
+               REQUIRED like `prompt`, and green in both directions for the same \
+               reason. NOT a route identifier: it is a genuine BODY key on this \
+               route, which is why it is adjudicated here rather than dropped by \
+               the `*_id` rule (`zod_profile_missing` / `zod_profile_not_uuid` / \
+               `zod_profile_null`).",
+    },
+    Row {
+        variant: "ImagesGenerate",
+        field: "chat_id",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:55` `chatId: z.uuid().optional()` \
+               (bug 130: folded into the new file's `linkedTo` so a chat-scoped \
+               read can see it). One of the THREE that were measurably broken: \
+               pre-P4.98 `{\"chatId\": null}` over dispatch collapsed to ABSENT, \
+               passed v4's gate, and generated and SAVED an image v4 refuses \
+               (`generate_chat_id_null`; the dispatch wire test's `chatId` arms).",
+    },
+    Row {
+        variant: "ImagesGenerate",
+        field: "tags",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:56-64` `tags: z.array(z.object({ \
+               tagType: z.enum([…]), tagId: z.string() })).optional()`. The second \
+               of the three measurably broken by the plain `Option<Value>` \
+               (`zod_tags_null` / `zod_tags_not_array` / `zod_tags_bad_tagtype` / \
+               `zod_tags_raw_tagid`).",
+    },
+    Row {
+        variant: "ImagesGenerate",
+        field: "options",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:65-73` the `{n, size, quality, \
+               style, aspectRatio}` bag, `.optional()`. The third. Note v4's \
+               handler destructures `options = {}`, and that default applies to an \
+               ABSENT key ONLY: a present `null` is a ZodError, which is precisely \
+               the distinction serde was erasing (`zod_options_null` / \
+               `zod_options_not_object` and the per-key `zod_count_*` / \
+               `zod_quality_*` / `zod_style_bad` / `zod_size_wrong_type` rows).",
+    },
+];
+
+/// The sibling of [`the_raw_five_list_covers_every_raw_field_on_the_variant`],
+/// over the same generalized walk: a row DELETED from
+/// [`IMAGES_GENERATE_RAW_FIVE`] — or a sixth raw key added to the variant
+/// without a row, or a `rust_type` that drifts back to a plain `Option<Value>`
+/// — is a red.
+#[test]
+fn the_images_generate_raw_list_covers_every_raw_field_on_the_variant() {
+    let mut have: Vec<(String, String)> = IMAGES_GENERATE_RAW_FIVE
+        .iter()
+        .map(|r| (r.field.to_string(), r.rust_type.replace(' ', "")))
+        .collect();
+    have.sort();
+    assert_eq!(
+        have,
+        raw_value_fields_of("ImagesGenerate"),
+        "IMAGES_GENERATE_RAW_FIVE must name exactly the raw `Value` fields \
+         `Request::ImagesGenerate` carries, WITH their declared shapes — a plain \
+         `Option<Value>` here silently re-opens the explicit-`null` collapse P4.98 \
+         measured and closed"
+    );
+    assert_eq!(
+        have.len(),
+        5,
+        "v4's `generateImageSchema` has exactly five keys on this route"
+    );
+}
+
+/// The mirror of [`image_profile_generate_five_decode_raw_so_the_handler_can_refuse`]:
+/// the dispatch decode must ACCEPT every wrong type so the HANDLER is the one
+/// that refuses, with v4's `Validation error`, on both transports.
+///
+/// The mutation this is written against (M1): retype any one of the five to a
+/// serde type on the variant and this reddens on that field.
+#[test]
+fn images_generate_five_decode_raw_so_the_handler_can_refuse() {
+    use quilltap_core::api::types::Request;
+
+    let base = json!({ "type": "imagesGenerate" });
+    for row in IMAGES_GENERATE_RAW_FIVE {
+        assert!(
+            row.note.starts_with("RAW(P4.76, tri-state P4.98)"),
+            "{}.{} must carry its owning lanes",
+            row.variant,
+            row.field
+        );
+        assert_eq!(
+            row.rust_type, "Option<Option<Value>>",
+            "{}.{} must be recorded as the TRI-STATE carrier it is — a plain \
+             `Option<Value>` collapses an explicit `null` into `None` at serde, \
+             which is the exact evidence v4's `.optional()` refusal needs",
+            row.variant, row.field
+        );
+        for wrong in [
+            json!(42),
+            json!(true),
+            json!(Value::Null),
+            json!({}),
+            json!([]),
+        ] {
+            let mut body = base.clone();
+            body.as_object_mut()
+                .unwrap()
+                .insert(camel(row.field), wrong.clone());
+            let decoded = serde_json::from_value::<Request>(body);
+            assert!(
+                decoded.is_ok(),
+                "`{}` REJECTED {wrong} at the dispatch decode — the raw crossing has \
+                 regressed and the web edge now answers a serde sentence where v4 \
+                 answers `Validation error`: {decoded:?}",
+                row.field
+            );
+        }
+    }
+}
+
+/// The property the raw crossing exists FOR, asserted on the decoded value
+/// rather than on its success: absent, explicit-`null` and a value must stay
+/// three distinguishable things all the way through serde.
+///
+/// [`images_generate_five_decode_raw_so_the_handler_can_refuse`] above would
+/// stay GREEN against the pre-P4.98 plain `Option<Value>` — `null` decoded
+/// fine, it just decoded to the WRONG thing — so without this test the list
+/// would pin the wrong half of the claim (M1's second leg).
+#[test]
+fn images_generate_keeps_absent_and_explicit_null_apart_at_the_decode() {
+    use quilltap_core::api::types::Request;
+
+    let decode = |body: Value| serde_json::from_value::<Request>(body).expect("decodes");
+    for row in IMAGES_GENERATE_RAW_FIVE {
+        let key = camel(row.field);
+        let absent = decode(json!({ "type": "imagesGenerate" }));
+        let mut with_null = json!({ "type": "imagesGenerate" });
+        with_null
+            .as_object_mut()
+            .unwrap()
+            .insert(key.clone(), Value::Null);
+        assert_ne!(
+            absent,
+            decode(with_null),
+            "`{key}` decodes an explicit `null` to the same `Request` as an ABSENT \
+             key — serde has collapsed the tri-state and v4's `.optional()` refusal \
+             has lost the evidence it is built from"
         );
     }
 }

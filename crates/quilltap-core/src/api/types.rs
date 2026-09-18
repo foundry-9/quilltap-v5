@@ -1060,7 +1060,9 @@ pub enum Request {
     ///
     /// The five ride as RAW values, NOT `Option<String>`: this is the
     /// `ChatCreate`-trio / [`Request::ImagesGenerate`] rule ruled by P4.62 and
-    /// P4.73. A serde-typed field turns v4's 400 `Validation error` into a dispatch
+    /// P4.73 — and since P4.98 the three carry the IDENTICAL shape (the
+    /// `double_option` tri-state below), so it is one rule rather than a
+    /// family resemblance. A serde-typed field turns v4's 400 `Validation error` into a dispatch
     /// DECODE error at the web edge and a different sentence over Tauri IPC; the raw
     /// crossing lets
     /// [`image_profile_generate`](crate::api::image_profiles::image_profile_generate)
@@ -1074,7 +1076,10 @@ pub enum Request {
     /// evidence the refusal is built from. P4.96's dispatch wire test caught it on
     /// its first run; the differential could NOT, because it drives the handler
     /// directly and never crosses serde. (The `ChatCreate` trio records
-    /// `Option<Option<Value>>` for exactly this reason.)
+    /// `Option<Option<Value>>` for exactly this reason, and
+    /// [`Request::ImagesGenerate`] joined them at P4.98 — the same defect,
+    /// measured the same way at its own dispatch wire, on the COLLECTION
+    /// route's five body keys.)
     ///
     /// `prompt` and `count` stay serde-TYPED: their `dispatch_wrong_type_census`
     /// rows are the recorded pre-existing narrowing (the edge refuses a non-string
@@ -3558,28 +3563,50 @@ pub enum Request {
     /// (`generateImageSchema`) and each refusal must answer v4's
     /// `Validation error` 400 rather than failing the dispatch decode with a
     /// different envelope — the `ChatCreate` trio's lesson, so BOTH transports
-    /// answer v4's bytes from ONE piece of code. Keeping them `Option<Value>`
-    /// also preserves the absent/null/value tri-state `.optional()` (which is
-    /// not `.nullable()`) turns on. → [`Response::Images`] with a 201.
+    /// answer v4's bytes from ONE piece of code. → [`Response::Images`] with a
+    /// 201.
+    ///
+    /// **All five are `Option<Option<Value>>` under `double_option`, and a
+    /// plain `Option<Value>` is NOT enough** — the same rule, and the same
+    /// evidence, as [`Request::ImageProfileGenerate`]'s. Serde collapses an
+    /// explicit JSON `null` into `None` for a plain `Option<T>`, so an absent
+    /// key and a present `null` arrive INDISTINGUISHABLE at the handler; v4's
+    /// `.optional()` is not `.nullable()`, so it accepts the first and 400s
+    /// the second, and that distinction is the whole evidence the refusal is
+    /// built from. This variant carried the plain shape until P4.98, and the
+    /// defect was measured, not reasoned: at the dispatch wire
+    /// (`crates/quilltap-web/tests/images_generate_dispatch_wire.rs`)
+    /// `{"chatId": null}`, `{"tags": null}` and `{"options": null}` each got
+    /// PAST the parse stage — on a body naming a real profile, v5 generated
+    /// and SAVED an image v4 refuses. `prompt` and `profileId` are REQUIRED,
+    /// so absent and present-null both refuse and they were green either way;
+    /// they carry the tri-state regardless, so the shape is uniform and the
+    /// day this route's `details` deferral is lifted they are already right.
+    /// The differential could NOT see any of it — it drives the handler
+    /// directly and never crosses serde
+    /// (`a-dispatch-wire-test-sees-what-the-differential-cannot`). The REST
+    /// edge preserved `null` all along because it hand-builds the variant, so
+    /// the two transports had disagreed since P4.76; they now share ONE
+    /// decoder.
     ///
     /// ⚠ 💸 LIVE MONEY: one image-provider call per request, plus one cheap-LLM
     /// classification whenever the Concierge is armed.
     #[serde(rename_all = "camelCase")]
     ImagesGenerate {
-        #[serde(default)]
-        prompt: Option<serde_json::Value>,
-        #[serde(default)]
-        profile_id: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "double_option")]
+        prompt: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        profile_id: Option<Option<serde_json::Value>>,
         /// v4 bug 130 (`86d59660c`): the chat that asked for the image, when
         /// one did — folded into the new file's `linkedTo` beside the tag ids
         /// so a chat-scoped read (`files.findByLinkedTo`) can see it. Crosses
         /// RAW like its four siblings; the handler Zod-parses it.
-        #[serde(default)]
-        chat_id: Option<serde_json::Value>,
-        #[serde(default)]
-        tags: Option<serde_json::Value>,
-        #[serde(default)]
-        options: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "double_option")]
+        chat_id: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        tags: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        options: Option<Option<serde_json::Value>>,
     },
     // === end P4.76 ===
     // === P4.80: the chat DELETE (dogfood finding #117) — append-only ===

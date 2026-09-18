@@ -240,40 +240,162 @@ pub async fn images_post(
 ///
 /// The five body keys cross RAW: v4 Zod-parses them in the handler, so the
 /// refusals answer identical bytes on this transport and on Tauri IPC.
+///
+/// **P4.98 — ONE decoder for every transport.** This edge used to hand-build
+/// the variant from `map.get(..).cloned()`, which is a SECOND spelling of the
+/// absent / explicit-`null` / value tri-state, and the two spellings had
+/// disagreed since P4.76: the hand-build preserved a `null` (so this edge was
+/// v4-faithful) while dispatch's plain `Option<Value>` collapsed it to ABSENT
+/// (so `{"chatId": null}` generated an image v4 refuses). Rather than
+/// re-mirror `double_option` by hand — which is how the class recurs — the
+/// five keys are lifted into a dispatch-shaped envelope and handed to the
+/// SAME `serde_json::from_value::<CoreRequest>` decode the dispatch route
+/// runs, so the tri-state has exactly one implementation and the two
+/// transports cannot drift apart again. Pinned by
+/// `images_edge_and_dispatch_decode_the_five_keys_identically` below.
+///
+/// Unknown keys are dropped on the way in, which is v4's own behaviour: its
+/// `generateImageSchema` is a `z.object`, and a `z.object` STRIPS undeclared
+/// keys rather than refusing them.
 async fn images_generate(state: SharedState, req: axum::extract::Request) -> AxumResponse {
     let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
         Ok(b) => b,
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
-    let (prompt, profile_id, chat_id, tags, options) = match serde_json::from_slice::<Value>(&body)
-    {
-        Ok(Value::Object(map)) => (
-            map.get("prompt").cloned(),
-            map.get("profileId").cloned(),
-            // v4 bug 130 — without this the field never arrives and the route
-            // leg of the differential is vacuously green.
-            map.get("chatId").cloned(),
-            map.get("tags").cloned(),
-            map.get("options").cloned(),
-        ),
-        // A body that PARSES but is not an object still reaches v4's Zod parse,
-        // which refuses it — the handler answers that, not the edge.
-        Ok(_) => (None, None, None, None, None),
+    let parsed = match serde_json::from_slice::<Value>(&body) {
+        Ok(v) => v,
         Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
-    match dispatch_core(
-        &state,
-        CoreRequest::ImagesGenerate {
-            prompt,
-            profile_id,
-            chat_id,
-            tags,
-            options,
-        },
-    )
-    .await
-    {
+    let request = match images_generate_request(&parsed) {
+        Some(r) => r,
+        // Unreachable while the five stay raw `Option<Option<Value>>`: every
+        // JSON shape decodes. A failure here means one has been re-typed, at
+        // which point the refusal belongs to the DECODE again and this edge
+        // would be answering serde's sentence where v4 answers Zod's — the
+        // divergence `dispatch_wrong_type_census`'s `IMAGES_GENERATE_RAW_FIVE`
+        // and `images_generate_dispatch_wire.rs` exist to keep impossible.
+        None => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+    };
+    match dispatch_core(&state, request).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
         Err(r) => r,
+    }
+}
+
+/// Lift v4's five `generateImageSchema` keys out of a parsed request body and
+/// decode them through the dispatch envelope — see `images_generate`.
+///
+/// A body that PARSES but is not an object still reaches v4's Zod parse, which
+/// refuses it, so it folds to all-absent here and the HANDLER answers.
+fn images_generate_request(parsed: &Value) -> Option<CoreRequest> {
+    const KEYS: [&str; 5] = ["prompt", "profileId", "chatId", "tags", "options"];
+    let mut envelope = serde_json::Map::new();
+    envelope.insert("type".into(), Value::String("imagesGenerate".into()));
+    if let Value::Object(map) = parsed {
+        for key in KEYS {
+            // PRESENT-ness is what carries: a key holding `null` must be
+            // inserted as `null`, not skipped. v4 bug 130's `chatId` included —
+            // without it the field never arrives and the route leg of the
+            // differential is vacuously green.
+            if let Some(v) = map.get(key) {
+                envelope.insert(key.to_string(), v.clone());
+            }
+        }
+    }
+    serde_json::from_value::<CoreRequest>(Value::Object(envelope)).ok()
+}
+
+#[cfg(test)]
+mod images_generate_decoder_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// P4.98 item 3 — the edge and dispatch must decode v4's five body keys to
+    /// the SAME `Request`, for all three states of the tri-state.
+    ///
+    /// This is the assertion the shared-decoder rewrite exists to make
+    /// trivial: `images_generate_request` builds a dispatch envelope and runs
+    /// the dispatch decode, so the two sides are the same code and the test
+    /// is a regression pin rather than a coincidence check. Re-introduce a
+    /// hand-build here — `map.get(k).cloned()`, or a `lift` that maps `null`
+    /// to `Some(Some(Null))` where `double_option` yields `Some(None)` — and
+    /// this reddens on the `null` rows (M3).
+    ///
+    /// `Request` already derives `PartialEq`, so the comparison is direct; no
+    /// derive was added for it.
+    #[test]
+    fn images_edge_and_dispatch_decode_the_five_keys_identically() {
+        for key in ["prompt", "profileId", "chatId", "tags", "options"] {
+            for state in [
+                None,                              // ABSENT
+                Some(Value::Null),                 // explicit null
+                Some(json!("x")),                  // a value
+                Some(json!({ "nested": [1, 2] })), // a structured value
+            ] {
+                let mut body = serde_json::Map::new();
+                if let Some(v) = state.clone() {
+                    body.insert(key.to_string(), v);
+                }
+                let edge = images_generate_request(&Value::Object(body.clone()))
+                    .unwrap_or_else(|| panic!("the edge failed to decode {key}={state:?}"));
+
+                // What dispatch would decode from the very same keys.
+                let mut envelope = body;
+                envelope.insert("type".into(), Value::String("imagesGenerate".into()));
+                let wire = serde_json::to_vec(&Value::Object(envelope)).unwrap();
+                let dispatched = serde_json::from_slice::<CoreRequest>(&wire)
+                    .unwrap_or_else(|e| panic!("dispatch failed to decode {key}={state:?}: {e}"));
+
+                assert_eq!(
+                    edge, dispatched,
+                    "the REST edge and the dispatch decode disagree about \
+                     `{key}` = {state:?} — the tri-state has two spellings again"
+                );
+            }
+        }
+    }
+
+    /// The three states must stay DISTINGUISHABLE after the decode: that is
+    /// the whole property, and a decoder that mapped two of them together
+    /// would satisfy the equality test above while losing the evidence v4's
+    /// `.optional()` refusal is built from.
+    #[test]
+    fn absent_null_and_value_stay_three_distinct_requests() {
+        let of = |body: Value| images_generate_request(&body).expect("decodes");
+        let absent = of(json!({ "prompt": "p" }));
+        let null = of(json!({ "prompt": "p", "chatId": null }));
+        let value = of(json!({ "prompt": "p", "chatId": "c" }));
+        assert_ne!(
+            absent, null,
+            "an absent `chatId` and an explicit `null` collapsed together — the \
+             P4.98 defect, back again"
+        );
+        assert_ne!(
+            absent, value,
+            "an absent `chatId` and a value collapsed together"
+        );
+        assert_ne!(
+            null, value,
+            "an explicit `null` and a value collapsed together"
+        );
+    }
+
+    /// v4's `generateImageSchema` is a `z.object`, which STRIPS undeclared
+    /// keys; and a body that parses to a non-object still reaches that parse,
+    /// so it folds to all-absent and the HANDLER refuses it (the arm
+    /// `images_edge_routes.rs` pins at the wire).
+    #[test]
+    fn unknown_keys_are_stripped_and_a_non_object_folds_to_absent() {
+        assert_eq!(
+            images_generate_request(&json!({ "prompt": "p", "notAKey": 1, "type": "bogus" })),
+            images_generate_request(&json!({ "prompt": "p" })),
+        );
+        for non_object in [json!([1, 2, 3]), json!("nope"), json!(7), Value::Null] {
+            assert_eq!(
+                images_generate_request(&non_object),
+                images_generate_request(&json!({})),
+                "a non-object body must fold to all-absent: {non_object}"
+            );
+        }
     }
 }

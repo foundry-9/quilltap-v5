@@ -203,4 +203,44 @@ async fn the_collection_post_edge_answers_v4s_own_arms() {
         (400, Some("Validation error")),
         "a malformed chatId must reach the handler's uuid gate: {body}"
     );
+
+    // P4.98: an explicit `null` on each of the three OPTIONAL keys. v4's
+    // `.optional()` is not `.nullable()`, so each is a `Validation error` —
+    // and this edge answered that correctly all along, because it hand-built
+    // the variant and a hand-build preserves `null`. That is exactly why the
+    // defect lived at DISPATCH and nowhere here
+    // (`images_generate_dispatch_wire.rs` is where it was measured).
+    //
+    // These arms are therefore GREEN before and after P4.98's rewrite, and
+    // that is their job: the rewrite replaced the hand-build with the shared
+    // dispatch decoder, and if it had mirrored `double_option` the wrong way
+    // round — `Some(Some(Null))` where the decoder yields `Some(None)`, or a
+    // `null` skipped as if absent — these three would redden while the
+    // dispatch wire test stayed green. They pin the transport that was
+    // already right.
+    for key in ["chatId", "tags", "options"] {
+        let (status, body) = post(
+            &client,
+            &format!("{url}?action=generate"),
+            "application/json",
+            json!({
+                // A well-formed uuid naming NO row, deliberately: the parse
+                // stage refuses before the profile is ever read, so a
+                // REGRESSION here answers `Connection profile not found`
+                // rather than constructing a real image provider. Naming the
+                // fixture's live `PROFILE_MAIN` would make a broken tri-state
+                // reach the provider from a unit test.
+                "prompt": "a brass observatory at dusk",
+                "profileId": "aaaa0000-0000-4000-8000-0000000000ff",
+                key: Value::Null,
+            })
+            .to_string(),
+        )
+        .await;
+        assert_eq!(
+            (status, body["error"].as_str()),
+            (400, Some("Validation error")),
+            "`{key}: null` must still refuse at this edge after the shared-decoder              rewrite: {body}"
+        );
+    }
 }
