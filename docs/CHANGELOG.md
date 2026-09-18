@@ -252,6 +252,23 @@ the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
 megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
 (2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
 drops the oldest and the over-large one, which is what v5 now does.
+#### 2026-09-17 — feat(spa): the imageProfileGenerate contract declares v4's five shaping keys (P4.96)
+
+_Versions: SPA 0.5.731._
+
+`ImageProfileGenerateRequest` stopped at the P4.6ab Shared-contract four while
+v4's `generateImageSchema` carries eight. The five optional shaping keys —
+`size`, `quality`, `style`, `aspectRatio`, `negativePrompt` — are declared with
+v4's camelCase names so the request type matches the verb the server now
+serves, and so the unifier's name-for-name contract diff stays clean.
+
+Additive and optional: no call site sends them, and no behaviour moves. v4's
+manual image-generation dialog (its bug 150) has no v5 twin, as P4.D197
+measured. The doc notes what the server does with them — an unknown `quality`
+or a non-string `size` is a 400 with v4's `{error, details}` envelope, not a
+silently dropped key — and that `size`/`aspectRatio` are free strings at the
+ROUTE while the image tool narrows them further.
+
 #### 2026-09-17 — fix(images): the generate verb's five keys need the tri-state, not a bare Option<Value> (P4.96)
 
 _Versions: core 0.0.944, web 0.0.151._

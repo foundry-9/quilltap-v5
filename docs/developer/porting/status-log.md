@@ -133333,3 +133333,18 @@ rows' `rust_type` was a bare transcription nothing checked, so collapsing the
 tri-state left the census green. The same guard now compares the declared SHAPE
 as well, and M6 reddens it. Both proofs re-run green-after-revert; every revert
 was by file backup, never `git checkout`.
+
+### §7 The SPA contract type (P4.96 commit 3, tier-1 item 6)
+
+`ImageProfileGenerateRequest` in `apps/web/src/app/core/core-contract.ts` gains
+the five optional keys with v4's camelCase names. Additive only — no call site
+sends them and no behaviour moves (§R.11). The stale doc paragraph claiming the
+variant "is still refusal-armed in a worktree" is replaced by a description of
+what the server now does with each key, including the ROUTE-versus-TOOL
+narrowing on `size` / `aspectRatio` that the differential's
+`generate_aspect_ratio_off_tool_enum` row pins.
+
+Gate for this commit, from the worktree's own `npm ci`'d `apps/web`:
+`npm run lint` clean (the qt-class guard 5/5 self-test, 952 classes, every
+guarded reference resolving), `npm test` **435 spec files / 7,382 tests / 0
+failed**, `npm run build` clean.

@@ -4987,12 +4987,23 @@ export interface ImageProviderListRequest {
   type: 'imageProviderList';
 }
 /**
- * Generate image(s) from a profile (v4 `?action=generate`). Lane A (P4.6ab)
- * un-refuses this variant; the Shared contract pins the params
- * `{imageProfileId, prompt, chatId?, count?}` and the response
- * `{success, data: [{id, filename, filepath, mimeType}], expandedPrompt}` (read
- * defensively). While the variant is still refusal-armed in a worktree the
- * dialog degrades loudly on the `not_available` envelope.
+ * Generate image(s) from a profile (v4 `?action=generate`). The response is
+ * `{success, data: [{id, filename, filepath, mimeType}], expandedPrompt,
+ * metadata}` (read defensively).
+ *
+ * P4.96 completed the request body: v4's `generateImageSchema` carries EIGHT
+ * keys, and this contract stopped at the P4.6ab Shared-contract four. The five
+ * shaping keys below are optional and additive — no caller sends them yet (v4's
+ * manual image-generation dialog, fixed in its bug 150, has no v5 twin; P4.D197
+ * measured that), and they are declared here so the request type matches the
+ * verb the server now serves.
+ *
+ * The server validates them as v4's Zod does and refuses with v4's envelope —
+ * `{error: 'Validation error', details: [...]}` at 400 — so an unknown
+ * `quality` or a non-string `size` is a refusal, NOT a silently dropped key.
+ * `size` and `aspectRatio` are free strings HERE (v4's route schema is
+ * `z.string()`); the image TOOL narrows them further and answers its own
+ * sentence, so a route-valid value can still be refused downstream.
  */
 export interface ImageProfileGenerateRequest {
   type: 'imageProfileGenerate';
@@ -5000,6 +5011,16 @@ export interface ImageProfileGenerateRequest {
   prompt: string;
   chatId?: string;
   count?: number;
+  /** v4 `size: z.string().optional()` — any string; the tool narrows it. */
+  size?: string;
+  /** v4 `quality: imageQualitySchema.optional()` — the shared eight tiers. */
+  quality?: string;
+  /** v4 `style: z.enum(['vivid','natural']).optional()`. */
+  style?: 'vivid' | 'natural';
+  /** v4 `aspectRatio: z.string().optional()` — any string; the tool narrows it. */
+  aspectRatio?: string;
+  /** v4 `negativePrompt: z.string().optional()`. */
+  negativePrompt?: string;
 }
 export interface ImageProfileValidateKeyRequest {
   type: 'imageProfileValidateKey';
