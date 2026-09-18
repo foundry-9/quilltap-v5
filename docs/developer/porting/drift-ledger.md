@@ -19,51 +19,46 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `5f0a57dc4`** — "fix(images): the manual image-generation
-  dialog posts to a route that exists (bug 150)" (v4 main, 2026-09-17 06:45,
-  `4.10.0-dev.44`), adopted at the `53294163f` GPT-Image-2.5 drift catch-up +
-  maintenance round unification (P4.94 ∥ P4.D196 ∥ P4.D197 ∥ P4.95,
+- **Oracle baseline: `bcd7e4852`** — "fix(images): send a model the picture,
+  not the archive of it (bug 151)" (v4 main, 2026-09-17 10:15,
+  `4.10.0-dev.45`), adopted at the `bcd7e4852` bug-151 drift catch-up +
+  follow-ups round unification (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97,
   2026-09-17). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-17 (midday), at the `53294163f` round's `/unify` — its
-  opening §2 probe FAILED (v4 had moved one commit past the recorded HEAD
-  during the round), so the drift was classified there and the round's gate
-  ran from ONE pin at the new baseline. Previously checked 2026-09-17 morning
-  (the standalone `/driftcheck` that re-pointed the round at `5f0a57dc4`).
-- **v4 `main` HEAD at check:** `bcd7e4852` ("fix(images): send a model the
-  picture, not the archive of it (bug 151)", `4.10.0-dev.45`, 2026-09-17
-  10:15) — **ONE commit past the baseline.**
+- **Checked:** 2026-09-17 (night), at the `bcd7e4852` round's `/unify` — its
+  opening §2 probe PASSED; its CLOSING probe FAILED (v4 landed TWO commits
+  while the unified gate ran, 22:23 and 22:37 — classified below from their
+  hunks, both UNPROCESSED). Every regen of the round ran from pinned
+  worktrees, so none is affected. Previously checked 2026-09-17 midday (the
+  `53294163f` round's unification).
+- **v4 `main` HEAD at check:** `89fcc3c0d` ("fix(scriptorium): a hidden vault
+  is not listed either (bug 153)", `4.10.0-dev.47`, 2026-09-17 22:37) —
+  **TWO commits past the baseline.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content probe clean:
   `git diff main bugfix -- lib app components` is main ahead of bugfix; no
   unabsorbed bugfix work).
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**. No fetch was run.
-- **Verdict: DRIFT PENDING — 1 commit.** §3 carries one row UNPROCESSED — a
-  PORT on ported surfaces (the image transport budget: both attachment
-  loaders, the Lantern unseen-image walk, a new pure module, one `help/`
-  page). **ORDERED(P4.D198, P4.D199)** at the 2026-09-17 `/setupphase` — the
-  `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥
-  P4.96 ∥ P4.97); the baseline MOVES to `bcd7e4852` at its unification.
+- **Verdict: DRIFT PENDING — 2 commits.** §3 carries two rows UNPROCESSED —
+  both PORT on ported surfaces (the doc-edit opacity covenant: bug 152 keeps
+  an opaque character's own group stores reachable and refuses an in-scope
+  hidden store as `ACCESS_DENIED`; bug 153 hides vaults from ENUMERATION too;
+  one `help/` page). They are the next catch-up's first rows.
 - **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
-  oracle regeneration must run from a worktree pinned at `5f0a57dc4` per §5.1
-  until a catch-up round moves the baseline. ⚠ Two pins created under `/tmp`
-  at this unification LOOKED vanished — they were never gone: zsh does not
-  word-split `set -- $pin`, so each directory was named
-  `qt-v4-pin-unify-<sha> <sha>` (with a space) and `git -C /tmp/qt-v4-pin-
-  unify-<sha>` found nothing. Removed by their real names; the round's pins
-  were re-created under the session scratchpad. Verify every pin by
-  `rev-parse` before its first regen, and never build a path from an
-  unsplit zsh variable (`zsh-env-var-does-not-word-split`).
+  oracle regeneration must run from a worktree pinned at `bcd7e4852` per §5.1
+  until a catch-up round moves the baseline. Verify every pin by `rev-parse`
+  AND `ls -ld` (never a path built from an unsplit zsh variable —
+  `zsh-env-var-does-not-word-split`).
 - **The workspace gate is unaffected** — `public/schemas/` did not move, so
   `qtap_schema_embed_guard` stays green at 93,384 bytes.
-- **Schema state: CLEAR.** `bcd7e4852` touches neither `lib/db/**` nor
-  `generateDDL`; no D23 re-dump is owed. **`help/**` has DRIFTED by one
-  file:** the vendored tree was md5-identical to v4 at `5f0a57dc4` after
-  P4.D197's re-vendor, and `bcd7e4852` moved `help/connection-profiles.md`
-  (+12, "A travelling portrait packs light") — the re-vendor rides the
-  catch-up. **The v4 checkout's four SDK-bundling plugin dirs still have
-  `openai` 7.10.0 installed** against a declared `^7.15.0` (P4.D196's
-  environment proof) — a human `npm install` item, recorded in phase-4.md.
+- **Schema state: CLEAR.** Neither commit touches `lib/db/**` or
+  `generateDDL`; no D23 re-dump is owed. **`help/**` was md5-identical to v4
+  at `bcd7e4852`, all 124 files (P4.D199's re-vendor) and now LAGS by one
+  file:** both commits move `help/character-system-transparency.md` (+4, then
+  +2 — the vault-covenant paragraph's "Vaults, and nothing besides" and "Nor
+  are they so much as named" additions); the re-vendor rides the catch-up. **The v4 checkout's four SDK-bundling plugin dirs
+  still have `openai` 7.10.0 installed** against a declared `^7.15.0` — a
+  human `npm install` item, recorded in phase-4.md.
 
 ## §2 The freshness probe
 
@@ -102,7 +97,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `bcd7e4852` | 2026-09-17 | fix(images): send a model the picture, not the archive of it (bug 151) | **PORT** | **Landed MID-ROUND (10:15, after the `53294163f` round's lanes had launched) — recorded by the round's `/unify` opening probe; UNPROCESSED, the next catch-up's first row.** Bug 151: two 2.2 MB base64 avatars, each under the provider's 4 MB per-image ceiling, summed to 4.52 MB and NanoGPT answered `413 Request Entity Too Large`; the token budget could not see it (image bytes are not tokens). The fix separates STORAGE from TRANSPORT: (a) NEW `lib/files/llm-image-budget.ts` (191) — `shrinkImageForLlmTransport({buffer, mimeType, provider, filename})`: long edge capped at `LLM_TRANSPORT_MAX_EDGE = 1024` (never enlarging), re-encoded WebP down a quality ladder `[78, 65, 55, 45]` until the base64 fits `min(LLM_TRANSPORT_TARGET_BASE64 = 500 KiB, getProviderMaxBase64Size(provider))`; a small-enough input is returned unchanged; a re-encode that GREW a ≤1024-edge input is discarded; never throws (an unresizable format / an encode failure returns the input with `wasShrunk: false` + a WARN `Could not shrink image for LLM transport; sending stored bytes`); a DEBUG `Image shrunk for LLM transport` bag on success; `LANTERN_IMAGE_BASE64_BUDGET = 2 MiB` per turn. (b) `lib/chat-files-v2.ts` `readFileAsBase64` (+27) and `loadMountFileAsAttachment` (+18): the shrink runs FIRST on every image bound for a model (gated on the caller's `provider`/`autoResize` switch — an `autoResize: false` caller still gets stored bytes verbatim), then the existing provider-ceiling resize as a BACKSTOP over the (possibly WebP) output. (c) `lib/services/chat-message/context-builder.service.ts` (+50/−?): the Lantern unseen-image walk under `ASSISTANT_IMAGE_LOOKBACK = 6` now spends `LANTERN_IMAGE_BASE64_BUDGET` NEWEST-FIRST over `fileAttachment.data.length` (the wire bytes, post-shrink), drops what does not fit (`droppedForBudget`), WARNs `Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent` `{droppedForBudget, kept, budget, budgetUsed, characterParticipantId}`, and restores CHRONOLOGICAL order for both the describe-fallback prefixes and the attachments (`reverse()` twice). (d) `help/connection-profiles.md` (+12 — "A travelling portrait packs light"); `CLAUDE.md` (v4's, one rule line); `docs/developer/bugs.md` + `bugs/fixed/bug-151-…md`; the 211-line `__tests__/unit/lib/files/llm-image-budget.test.ts`; version stamps `4.10.0-dev.45`. **v5 surfaces (all ported):** `services/chat_files.rs` `read_file_as_base64` (`:78`) + `load_mount_file_as_attachment` (`:134`) with `files/image_processing.rs` (`resize_image_for_provider`, `get_provider_max_base64_size`, `calculate_base64_size`) — the P4.D109/W4.4b attachment loaders; `services/message_context.rs`'s unseen-image walk (`ASSISTANT_IMAGE_LOOKBACK` twin — the P4.D106/P4.D109 anchor family); the host pixel codec seam P4.73 threaded into chat uploads (`NotConfiguredPixelCodec` / the host codec) is where a `sharp`-class resize+WebP re-encode must come from — core has no image codec, so the shrink is a HOST-side leg behind a core budget; the `help/` re-vendor (the vendored tree is md5-identical to v4 at `5f0a57dc4` after P4.D197 and lags again by this one file). Differentials to grow: `file_attachment_tier3` (the loaders), `build_context_tier3` / `orchestrator_tier3` (the walk's budget + order), a NEW tier-1 family over the budget module's pure arms (the ladder, the ceiling, the grow-discard rule) with the codec mocked below v4's real function. Not a convergence (v5 filed nothing here). **ORDERED 2026-09-17 (`/setupphase`): the loader half (the budget module + the `ImageTranscoder` shrink primitive + both loaders + the new tier-1 family + `file_attachment_tier3`) is P4.D198; the walk half (the Lantern per-turn budget in `message_context.rs` section K + `orchestrator_tier3` arms) + the `help/` re-vendor + the non-lib ratifications is P4.D199 — round `P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97`, all from `main`, drift lanes pinned at the target, the two maintenance lanes at the baseline.** | ORDERED(P4.D198, P4.D199) |
+| `1065a1f53` | 2026-09-17 | fix(scriptorium): an opaque character keeps her own group stores (bug 152) | **PORT** | **Landed 22:23, DURING the `bcd7e4852` round's unified gate — recorded by its closing probe; UNPROCESSED.** Bug 152 (reported live from Friday): the doc-tool opacity covenant (`systemTransparency !== true`, the DEFAULT) hid character vaults by returning a resolution context with `characterId` REMOVED, and `resolveTieredMountPool` derives the group tier from `characterId` and nothing else — so an opaque character silently lost every GROUP store she belonged to (by name and by id), and the refusal was a `NOT_FOUND` phrased as an addressing failure. The fix (from the hunks): `lib/tools/handlers/doc-edit/shared.ts` (+20) — `buildReadResolutionContext` / `buildWriteResolutionContext` KEEP `characterId` and set a new `hideCharacterVaults` flag, derived by a new `actingCharacterIsOpaqueToVaults` helper; `lib/doc-edit/path-resolver.ts` (+79) — the flag subtracts the two vault tiers (own + peers') from the accessible set, and a store that EXISTS but is out of scope is refused `ACCESS_DENIED` (saying so) instead of `NOT_FOUND`; `lib/mount-index/tiered-mount-pool.ts` (+18) — `flattenTierPool` honours the flag; the 269-line `lib/doc-edit/__tests__/path-resolver-opacity-group-stores.test.ts` (against the REAL tiered pool, repositories mocked — the corpus source); `help/character-system-transparency.md` (+4, the "Vaults, and nothing besides" paragraph); stamps `4.10.0-dev.46`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-152-…md`. **v5 surfaces (all ported):** `crates/quilltap-core/src/doc_edit/path_resolver.rs` (`resolve_doc_edit_path`), `tools/doc_edit/shared.rs` (the two resolution-context builders), the tiered mount pool twin (grep `flatten_tier_pool` / the module `tools/doc_edit/text.rs` + `tools/search.rs` import), and the `NOT_FOUND`→`ACCESS_DENIED` sentence at whatever v5 site answers it. Differentials to grow: `doc_edit_path_resolver_equivalence` (the tier-1/2 family over `resolve_doc_edit_path`), plus the doc-edit tool families that carry an opaque acting character (measure: v5 likely REPRODUCES the bug — the characterId-removal shape was ported as v4 had it). Not a convergence. | UNPROCESSED |
+| `89fcc3c0d` | 2026-09-17 | fix(scriptorium): a hidden vault is not listed either (bug 153) | **PORT** | **Landed 22:37, DURING the gate; UNPROCESSED — spun off bug 152.** The covenant was enforced when a tool RESOLVES a path but not when it ENUMERATES stores: `collectAccessibleMountPointIds` honoured `hideCharacterVaults`, `getAccessibleMountPoints` took no flag and its FOUR callers passed `characterId` unconditionally, so `doc_list_files` / `doc_grep` / the two blob mount resolvers LISTED the vault names the covenant hides and the follow-up open refused them. The fix (from the hunks): `lib/doc-edit/path-resolver.ts` (+31) — `getAccessibleMountPoints` gains the `hideCharacterVaults` option through the same collector; `lib/doc-edit/index.ts` (+2, the export); `lib/tools/handlers/doc-edit/text-handlers.ts` (+22 — `handleGrep`, `handleListFiles`) and `blob-handlers.ts` (+20 — `handleReadBlob`/`handleWriteBlob`/`handleListBlobs`'s mount resolvers) derive the flag from `actingCharacterIsOpaqueToVaults`; the 345-line `path-resolver-opacity-enumeration.test.ts` (the corpus source); `help/character-system-transparency.md` (+2, "Nor are they so much as named"); stamps `4.10.0-dev.47`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-153-…md` (+ a cross-link in bug 152's). **v5 surfaces (all ported):** `doc_edit/path_resolver.rs` (`get_accessible_mount_points` twin), `tools/doc_edit/text.rs` (grep + list_files), the blob handlers (`tools/doc_edit/blob*.rs` — measure), `tools/doc_edit/shared.rs`. Differentials to grow: the doc-edit listing/grep/blob tool families with an opaque acting character (measure which carry one; expect v5 to REPRODUCE the leak). Both rows share ONE `help/` re-vendor and ONE substrate (`actingCharacterIsOpaqueToVaults` + the flag) — order them as one lane or a stacked pair. Not a convergence. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -255,6 +251,21 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `bcd7e4852` bug-151 drift catch-up + follow-ups round (2026-09-17,
+  baseline `5f0a57dc4` → `bcd7e4852`):** `bcd7e4852` ABSORBED(P4.D198 — the
+  loader half: `files/llm_image_budget.rs`, the fallible `ImageTranscoder::
+  shrink_to_webp` + `HostImageCodec`'s impl, the shrink ahead of the backstop
+  at both loaders in `services/chat_files.rs`, the NEW `llm_image_budget_
+  equivalence` tier-1 family with `sharp` scripted below v4's real function,
+  `file_attachment_tier3` grown; P4.D199 — the walk half: the per-turn budget
+  in `services/message_context.rs` section K over the seam's `LanternLoad`,
+  five `orchestrator_tier3` arms, `help/connection-profiles.md` re-vendored,
+  the commit's non-lib files ratified on P4.D199's list — v4's CLAUDE.md rule
+  line NO-PORT, the README/package stamps NO-PORT with Tier R at the pin, the
+  three docs mirrored under `docs/v4/`, the unit test → P4.D198's corpus).
+  Round record: `status-log.md` → "Round record — the `bcd7e4852` bug-151
+  drift catch-up + follow-ups round unification".
 
 - **The `53294163f` GPT-Image-2.5 drift catch-up + maintenance round
   (2026-09-17, baseline `1fefadb9a` → `5f0a57dc4`):** `d8d2890ee`

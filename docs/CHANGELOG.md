@@ -12,6 +12,47 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — unify: the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — the baseline moves to `bcd7e4852`
+
+_Versions: core 0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152, SPA 0.5.731; cli/tauri unchanged._
+
+All four orders closed whole; the oracle baseline moves `5f0a57dc4` →
+`bcd7e4852`. v4 landed two commits during the unified gate (bugs 152 and 153,
+the doc-edit opacity covenant), recorded in the drift ledger as unprocessed;
+the regen rule stays pin-required until that catch-up runs. What landed: v4's bug 151 end to end — the per-image transport budget
+as one core module (`files/llm_image_budget.rs`) over a new fallible
+`shrink_to_webp` primitive on the existing `ImageTranscoder` seam with the
+host codec implementing it over `image` + `webp`, the shrink ahead of the
+provider backstop at both attachment loaders, a new tier-1 family with
+`sharp` scripted below v4's real function (the same script as a Rust
+`ScriptedTranscoder`, so encoded bytes are byte-comparable), `file_attachment_
+tier3` grown to see the shrink on both paths, and the Lantern walk's per-turn
+2 MiB byte budget spent newest-first with v4's warn and a chronological
+restore, proven by orchestrator arms that see attachment membership and order
+(junk bytes both sides, so the two halves were independent); the help page
+re-vendored (124 files byte-identical to v4); the generate verb's five
+shaping fields plus `chatId` as raw tri-states answering v4's Zod envelope on
+both transports (v5 had been silently dropping every one of them), the census
+and a dispatch wire pin; the tool-unsupported retry sending v4's whole option
+bag with the primary-stream family recording every call's option bag and
+v4's three retry log lines the port never had; the request-envelopes
+cache-key pin as a named coverage table over a corpus re-recorded with the
+anthropic/ollama rows it never had (347 → 367, every pre-existing row
+byte-identical).
+
+The §3 review (four parallel readers) found no blocking finding; six
+should-fix items landed on the unify branch — headline: P4.96's `chatId` was
+still serde-typed, so an explicit `null` over dispatch answered 201 where v4
+400s; also the mount loader's stage order pinned and mutation-proven, the
+host whole-budget tests, the primary-stream neutrality loop, the new family's
+jest filter anchored, and the `attach_mount_file_equivalence` red P4.D198 had
+withheld as v4-side reclassified as fixture vintage and closed by widening the
+committed pair — which found and fixed a regression in the fixture migrator
+(its index step ran before its ALTER). Wires: the §R.10(a) budget-constant
+import, the version recount, the three `docs/v4/` mirror paths.
+
+Gate: fmt clean; clippy clean in both feature sets; release build clean; the pinned sweeps 9/9 green after the `attach-file` widen (8 ok + the reclassed red closed); 575 test binaries / 3,422 passed / 1 failed / 2 ignored — the one red the recorded `/tmp/qt-imggen-*` staging collision, green by name on fresh staging; every round family confirmed RUN; SPA lint clean, 435 spec files / 7,382 tests / 0 failed, build clean; full Playwright 322 passed / 0 failed / 6 skipped (the standing parks).
+
 #### 2026-09-17 — fix(unify): the `bcd7e4852` round's §3 review fixes — `chatId` joins the generate verb's raw tri-state, the mount loader's stage order pinned, the host whole-budget tests, the primary-stream neutrality loop, the new family's jest filter anchored, and the `attach-file-*` pair widened through a migrator whose index step now runs AFTER its ALTER
 
 _Versions: core 0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152._

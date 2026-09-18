@@ -6628,6 +6628,87 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — UNIFIED 2026-09-17
+
+**ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `5f0a57dc4` →
+`bcd7e4852`; the ledger's one row is ABSORBED — and ⚠ v4 landed TWO commits
+DURING the unified gate (`1065a1f53` bug 152 + `89fcc3c0d` bug 153, the
+doc-edit opacity covenant: an opaque character keeps her own group stores,
+and hidden vaults are not LISTED either; one `help/` page), classified into
+the ledger's §3 UNPROCESSED; the regen rule is PIN REQUIRED at `bcd7e4852`
+until the catch-up runs.** Round record:
+`status-log.md` → "Round record — the `bcd7e4852` bug-151 drift catch-up +
+follow-ups round unification" (the §3 review's six should-fix findings, all
+fixed; the wires; the gate numbers). CHANGELOG: the three unification entries
+of 2026-09-17. Every order's status header names what the review fixed on it.
+
+**What is next, in order:**
+
+0. **The `89fcc3c0d` bugs-152/153 drift catch-up** (drift-ledger §3, TWO rows,
+   UNPROCESSED — landed at 22:23 and 22:37 on 2026-09-17 while this round's
+   gate ran). PORT on ported surfaces: the doc-edit opacity covenant's
+   `hideCharacterVaults` flag replacing the `characterId`-removal shape at the
+   two resolution-context builders (`tools/doc_edit/shared.rs`), the flag
+   through `doc_edit/path_resolver.rs` (`resolve_doc_edit_path` subtracting
+   the two vault tiers; `get_accessible_mount_points` gaining the same option
+   for the four enumeration callers — grep/list_files/the blob mount
+   resolvers) and the tiered-pool flatten, the `NOT_FOUND` → `ACCESS_DENIED`
+   sentence for an in-scope hidden store, `help/character-system-
+   transparency.md` re-vendored; v4's two new jest suites (269 + 345 lines,
+   against the REAL tiered pool) are the corpus sources — expect v5 to
+   REPRODUCE both bugs (the shape was ported as v4 had it) and prove it
+   red-first. One lane or a stacked pair (they share one substrate and one
+   help file). PIN REQUIRED at `bcd7e4852` for every regen until it lands.
+1. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: a turn carrying several fresh Lantern portraits on a vision seat
+   — the `Image shrunk for LLM transport` debug line in `combined.log`, the
+   wire bytes ~20× smaller, and on a contrived four-portrait turn the
+   `Unseen assistant images exceeded the per-turn byte budget` WARN with its
+   five fields; a `chatId: null` and an unknown `quality` posted to the
+   generate verb answering v4's `Validation error` envelope; a model refusing
+   function calling retried with `combined.log` naming the retry; plus the
+   previous round's items (a GPT Image 2.5 profile through the schema-built
+   editor with a real Salon `generate_image` turn, bug 148's symptom gone on a
+   profile storing `hd`, a real `prompt_cache_key` on an OPENAI primary) and
+   the standing 💸 queue (the Brahma deep query, dedup/summaries, #101).
+2. **`Request::ImagesGenerate`'s tri-state** (P4.96's §11 finding, confirmed by
+   the review): the sibling `/api/v1/images?action=generate` route's five
+   fields are plain `Option<Value>` and its doc's "preserves the tri-state"
+   claim is FALSE — `{"size": null}` collapses to absent there exactly as it
+   did on the profile route before this round. Same fix shape (the
+   `double_option` tri-state on the variant, the engine arm's collapse, a
+   census row, wire arms, route-family rows on both sides); it moves
+   `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` by the count the walk says.
+3. **Two one-line log ports, the #103/#110 class:** v4's `Recoverable request
+   error detected, attempting recovery` warn (`primary-stream.service.ts:
+   316-322`, `{chatId, provider, model, attachmentCount, error}`) in the
+   request-limit branch (P4.97's find, outside its ownership); and GOOGLE's
+   differential-tier cache-key row in `record-google-request.mjs` (an
+   ownership stop — `request_builder_google_equivalence`'s corpus).
+4. **Harness DRY smalls** (named, not order-sized): the Zod issue renderer's
+   fourth hand-copy (`api/image_profiles.rs`'s `generate_parsed_type` is
+   `settings::zod_parsed_type` byte for byte; `generators_wizard.rs` and
+   `settings.rs` carry the other twins — one `zod_issues` home); the
+   `CorpusScript`/`to_script()` duplicated across `llm_image_budget_
+   equivalence.rs` and `file_attachment_tier3_equivalence.rs`; the tier-1 log
+   check's substring asserts; P4.D198's tier-3 backstop blindness (would need
+   `resizeImageForProvider`'s whole pipeline scripted in the shared mock).
+5. **A human item** (carried): the four SDK-bundling plugin dirs in the v4
+   checkout declare `openai ^7.15.0` but still have 7.10.0 installed.
+6. **Two items awaiting the human's RULING before any lane** (carried): the
+   census `ORDER BY` (P4.91's escalation) and the lock-conflict 503-vs-409.
+7. **Named, not order-sized yet** (carried): the `SCENE_STATE_TRACKING` trigger
+   + handler; the shared-fixture title-checkpoint hazard (five P4.D187 beats
+   still parked); `combined.log` key case; the `name`-field turn-path
+   measurement; P4.87's two OPEN coverage items; the upstream filing
+   candidates (v4's client-vs-plugin `gpt-image-1`/`-1-mini` ordering; the
+   `salon-turn-controls.spec.ts` vitest `scrollTo` intermittent, recorded).
+
+PB1 stays parked by the standing rule.
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — ORDERED 2026-09-17
 
 **Baseline `5f0a57dc4`; v4 `main` HEAD `bcd7e4852` (ONE past — the

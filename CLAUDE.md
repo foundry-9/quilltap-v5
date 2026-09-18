@@ -3753,10 +3753,61 @@ records THERE. Update this summary only when a phase or round completes.
   profile storing `hd`, a real `prompt_cache_key` on an OPENAI primary.
   **Next: the `bcd7e4852` bug-151 catch-up, then the two follow-ups, then
   the owed dogfood pass** — see phase-4.md. Round record: `status-log.md`.
-- **Oracle baseline: `5f0a57dc4` (2026-09-17, v4 main — "fix(images): the
-  manual image-generation dialog posts to a route that exists (bug 150)",
-  `4.10.0-dev.44`), adopted at the `53294163f` GPT-Image-2.5 drift catch-up +
-  maintenance round unification (2026-09-17).**
+- **The `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥
+  P4.D199 ∥ P4.96 ∥ P4.97): UNIFIED on main (2026-09-17) — ALL FOUR CLOSED
+  WHOLE; the oracle baseline MOVES to `bcd7e4852`; ⚠ v4 landed TWO commits
+  DURING the unified gate (`1065a1f53` bug 152 + `89fcc3c0d` bug 153 — the
+  doc-edit opacity covenant; classified UNPROCESSED in the ledger's §3; PIN
+  REQUIRED at `bcd7e4852` until the catch-up runs — the top next candidate
+  ahead of the dogfood pass).** v4's bug 151 (the image
+  transport budget) absorbed whole along the seam its own hunks draw: the
+  per-image transport shrink as ONE core module over a NEW fallible
+  `ImageTranscoder::shrink_to_webp` (a `Result`, default `Err` — so "threw"
+  and "nothing to do" never collapse; `HostImageCodec` implements it over
+  `image` + `webp`), run FIRST at both attachment loaders with the provider
+  ceiling kept as the backstop, v4's nine arms in order incl. the
+  grow-discard's second conjunct and the `undefinedxundefined` log rendering;
+  a NEW tier-1 family with `sharp` SCRIPTED below v4's real function (the same
+  script as a Rust `ScriptedTranscoder`, so encoded bytes are byte-comparable
+  — D19 stands for the real encoders); `file_attachment_tier3` grown on both
+  paths incl. the `autoResize: false` verbatim arm; the Lantern walk's
+  per-turn 2 MiB budget spent NEWEST-first over the base64 string length in
+  `message_context.rs` section K over the seam's `LanternLoad` (the post-hoc
+  placement proven equivalent: the prefix is order-neutral under v4's double
+  reverse, only attachment membership moves), five `orchestrator_tier3` arms
+  with an `fsmBytesFill` spec key (junk bytes both sides — v4's real sharp
+  passes them through, so the two halves were independent); the help page
+  re-vendored (124 files md5-identical). P4.96 closed P4.D196's item 10 — the
+  generate verb's five shaping fields (v5 had been SILENTLY DROPPING every
+  one; an unknown `quality` answered 201) as raw `Option<Option<Value>>`
+  tri-states with v4's measured Zod envelope, the census, a dispatch wire
+  pin, 30 route-family rows; P4.97 closed the two wire-key follow-ups — the
+  tool-unsupported retry sends v4's WHOLE option bag with the primary-stream
+  family recording every call's option bag (the existing retry cases already
+  reached the leg; the blindness was the driver's empty fields) + v4's three
+  retry log lines the port never had, and the request-envelopes cache-key
+  pin as a NAMED coverage table over a corpus re-recorded 347 → 367 with the
+  anthropic/ollama rows it never had. **The §3 review (four parallel readers):
+  NO blocking finding; six should-fixes landed at unification — headline:
+  P4.96's `chatId` was still serde-typed, so an explicit `null` over dispatch
+  answered 201 where v4 400s (now the same tri-state, census 442 → 441, three
+  wire arms, two route rows 400/400)**; also the mount loader's stage order
+  pinned + mutation-proven, the host whole-budget tests, the primary-stream
+  neutrality loop, the new family's jest filter anchored (it had been running
+  v4's own real-sharp test), and P4.D198's withheld `attach_mount_file` red
+  RECLASSED from "v4-side" to fixture vintage (five missing columns) and
+  CLOSED by widening the committed pair — which found and fixed a regression
+  in the fixture migrator (its index step ran BEFORE its ALTER since the
+  `53294163f` index-gating fix). Gate: 575 test binaries / 3,422 / 1 (the recorded `/tmp/qt-imggen-*` staging collision, green by name) / 2 ignored, every round family confirmed RUN; the pinned sweeps 9/9 green; clippy both feature sets; release build; ng 435 files / 7,382; full Playwright 322 passed / 0 failed / 6 skipped (the standing parks). Versions: core
+  0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152, SPA 0.5.731. **💸 the
+  dogfood queue gains the shrink's debug line + the per-turn WARN on a real
+  multi-portrait turn, the generate verb's envelope, the named retry; the
+  owed dogfood pass is the top next candidate** — see phase-4.md. Round
+  record: `status-log.md`.
+- **Oracle baseline: `bcd7e4852` (2026-09-17, v4 main — "fix(images): send a
+  model the picture, not the archive of it (bug 151)", `4.10.0-dev.45`),
+  adopted at the `bcd7e4852` bug-151 drift catch-up + follow-ups round
+  unification (2026-09-17).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

@@ -133703,3 +133703,219 @@ leg, and it is now red too.
   order's, as its Tier 3 says. The side-channel is the instrument.
 - **`modelParams` on the retry:** nothing to do — v4 passes the same bag and so
   does v5. Recorded in `primary_stream.rs`'s own comment.
+
+## Round record — the `bcd7e4852` bug-151 drift catch-up + follow-ups round unification (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97), 2026-09-17
+
+**ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `5f0a57dc4` →
+`bcd7e4852`; the ledger's one §3 row retires `ABSORBED(P4.D198, P4.D199)`
+with its non-lib files ratified on P4.D199's list. ⚠ v4 landed TWO commits
+DURING the unified gate (`1065a1f53` bug 152 at 22:23, `89fcc3c0d` bug 153 at
+22:37 — the doc-edit opacity covenant, both PORT on ported surfaces + one
+`help/` page), caught by the CLOSING §2 probe and classified from their hunks
+into the ledger's §3 as UNPROCESSED; every regen of this round ran from
+pinned worktrees, so none is affected, and the regen rule is PIN REQUIRED at
+`bcd7e4852` until the catch-up runs.** Unify branch `unify/bcd7e4852`:
+the fourteen lane commits cherry-picked in the order P4.D198 → P4.D199 →
+P4.96 → P4.97 (three version-only `Cargo.toml`/`Cargo.lock` conflicts, each
+lane's manifest delta audited two-lines-and-version-only BEFORE resolution;
+the two append-only docs union-merged clean), then the wires commit, then the
+§3 review-fixes commit, then this record.
+
+### §1 — the survey
+
+Four lane worktrees, all CLEAN, all CLOSED by their own headers: P4.D198
+(`claude/llm-image-budget-loaders-ae97f9`, 4 commits), P4.D199
+(`claude/lantern-byte-budget-walk-306c9b`, 4), P4.96
+(`claude/image-profile-generate-fields-1341bb`, 4), P4.97
+(`claude/p4-97-retry-option-bag-cache-2b2887`, 2). The ledger's §2 probe
+PASSED at the open (v4 `main`, clean, HEAD `bcd7e4852`, both logs empty) —
+no drift arrived mid-round; the round's regens ran from two pins under the
+session scratchpad (target `bcd7e4852` for the drift lanes' families,
+baseline `5f0a57dc4` for the maintenance lanes'), each verified by
+`rev-parse` AND `ls -ld` (the previous unification's space-in-path pins).
+
+Scope verified against each order's tier list, not the header: every Tier-1
+and Tier-2 item of all four orders is on the branch; the Tier-3 deferrals are
+the ones the orders wrote. The lanes' own measured corrections of the orders
+(recorded in their headers, not silently varied): P4.D198's below-500-KiB
+provider ceiling unreachable through either real registry; item 7's wiring
+measurement POSITIVE (`ChatSpine.image_transcoder` is the concrete
+`Arc<HostImageCodec>`); P4.D199's item 4(b) needing no mock widening (the
+P4.D154 side channel already records the whole per-message attachment slate
+in order), `build_context_tier3` having no seams at all, no `help_*` content
+family reading `connection-profiles.md`; P4.96's five as
+`Option<Option<Value>>` under `double_option` (its own wire test caught the
+plain `Option<Value>` collapse on first run), the five landing as a sibling
+raw list rather than `CENSUS` rows, `aspectRatio: "3:2"` a 400 from the TOOL
+not the route; P4.97's `requireActual` unnecessary (the mock sits BELOW the
+funnel), `characterId` unconditional on every primary and `restreamInto` leg,
+the side channel per CALL not per key.
+
+### §2 — the wires (`9576c36c`)
+
+- **§R.10(a):** P4.D199's private `LANTERN_IMAGE_BASE64_BUDGET` (marker-lined)
+  replaced by `use crate::files::llm_image_budget::LANTERN_IMAGE_BASE64_BUDGET`
+  — same type, same value; rustfmt moved the import into the block.
+- **§R.8 recount:** core 0.0.942 + 3 + 1 + 2 + 1 = 0.0.949; harness 0.0.834 +
+  2 + 2 + 1 + 2 = 0.0.841; host 0.0.138, web 0.0.151, SPA 0.5.731 as the
+  lanes left them (then the review-fixes commit's own bumps, below).
+- **§R.9:** the three `docs/v4/` paths from the `bcd7e4852` pin —
+  `CHANGELOG.md` 80,642 B, `developer/bugs.md` 277,275 B, the NEW
+  `developer/bugs/fixed/bug-151-unbudgeted-image-bytes-on-the-wire.md`
+  10,378 B; md5s match P4.D199's pre-list exactly.
+- **§R.10(c):** the three non-P4.96 lanes' diffs on `api/types.rs`,
+  `api/engine.rs` and the census — EMPTY, asserted before picking.
+- **§R.10(d):** `image_generation_tier3` regenerated LAST in the baseline
+  sweep; the route family proven by name on its own snapshot and its oracle
+  var withheld from the workspace block.
+
+### §3 — the review (four parallel readers + the unifier's own reads of the core hunks; the verdict owned here)
+
+**No BLOCKING finding in any lane.** Six should-fix findings, all fixed on the
+unify branch (`8ee113e4`), one of which changes what a caller sees:
+
+1. **P4.96 — `chatId` was only half-closed.** The handler gate landed, but the
+   variant kept `chat_id: Option<String>`, so over dispatch `{"chatId": null}`
+   collapsed to ABSENT and answered 201 where v4 400s (`z.uuid().optional()`
+   → `invalid_type … received null`), and `{"chatId": 7}` answered serde's
+   sentence where v4 answers the Zod envelope; the lane record's "closed"
+   overclaimed, and nothing recorded the residual (the census excludes
+   `chat_id` by the `*_id` rule). Fixed: the same `Option<Option<Value>>`
+   tri-state as the five; the engine arm collapses it; the census raw list
+   gains the row (`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 442 → 441, the
+   arithmetic in the ledger comment, the mechanical walk confirming 6 raw
+   fields); three `chatId` arms on the dispatch wire test; two route-family
+   rows (`generate_chat_id_null`, `generate_chat_id_number`) on BOTH sides,
+   regenerated at the baseline pin — 400/400 against v4's real route.
+2. **P4.D198 — the mount loader's stage order was unpinned.** The wiring pin
+   drove only the legacy `files` path (`mount_index: None`); swapping the
+   mount loader's two blocks, or handing its backstop `blob.stored_mime_type`,
+   left `file_attachment_tier3` green (the backstop never acts in that
+   corpus). Fixed: `the_mount_path_shrinks_before_its_backstop_too` over a
+   scratch copy of the committed `images-{main,mount}.db` with the
+   `in-use.webp` blob (file id absent from `files`) re-stamped to 3.2 MB of
+   `image/png` pattern bytes; a byte store that PANICS if consulted. Mutation:
+   the mount loader's blocks swapped → exactly that test red (the other two
+   green); reverted by file backup.
+3. **P4.D198 — Tier-1 item 2's whole-budget host tests were half there** (the
+   seam method tested; `shrink_image_for_llm_transport` over the real codec
+   not). Fixed: `the_transport_budget_over_the_real_codec_takes_v4s_shape`
+   (1024×1536 noise → `was_shrunk`, 683×1024, ≤ 500 KiB; the landscape twin)
+   and `two_shrunk_avatars_fit_the_per_turn_budget_bug_151_blew`; 12/12 in
+   the host module.
+4. **P4.D198 — the new family's jest filter also ran v4's own real-sharp unit
+   test** (`-- llm-image-budget` matches `__tests__/unit/lib/files/llm-image-
+   budget.test.ts`); a future sharp/Node change failing THAT file would have
+   reported as this family's `run_failed`. Anchored to `cases/llm-image-budget`
+   in both headers.
+5. **P4.97 — item 4's neutrality assertion was missing**: the ordered compare
+   proves old cases AGREE, but a fixture edit giving a pre-existing case a
+   `previousResponseId`/`stop` would be carried on BOTH sides and pass. Fixed:
+   every non-retry-label call asserted to carry neither (true for all of them
+   today, the hard-failover and recovery legs included).
+6. **P4.D198's `attach_mount_file_equivalence` diagnosis was wrong in CLASS,
+   right in disposition.** The lane withheld the family as "pre-existing, red
+   at both pins, v4-side" — pre-existing and both-pins are true and the diff
+   never touches it; but the cause is the fixture-vintage class, not a v4
+   bug: v4's `chats-messages.ops.ts:277` (`31436bae4`) `$inc`s
+   `transcriptVersion` on every message write, the committed
+   `attach-file-main.db` lacked FIVE columns (measured with the migrator's
+   `--report-only`: `chat_settings.impersonationVoiceRewrite`,
+   `chats.cycleOrderParticipantIds`, `chat_messages.routeTrail`,
+   `chats.transcriptVersion`, `files.generationKey`), so the Librarian
+   announcement write threw and v4's route answered 500 while v5 answered
+   200. Widened in place through v4's own migration DDL from the `bcd7e4852`
+   pin (the P4.94 idiom; the mount and llm-logs partitions already current
+   — the llm-logs file the migrator touched without changing was restored
+   from `HEAD`). **The widen found a regression in the migrator itself:** the
+   `53294163f` unification's index-gating fix ran a migration's `extraSql`
+   (`CREATE INDEX … ("generationKey")`) BEFORE its ALTER and BEFORE the
+   column guard, which only works on a partition already carrying the column
+   — on this pair it died `no such column` with four of five columns applied.
+   The ALTER now runs first when the column is absent, the index statements
+   always after; the header gains the sixth pair. `attach_mount_file_
+   equivalence` GREEN on a pin-fresh oracle with ZERO core change, its oracle
+   var back in the gate block.
+
+Recorded, not changed (the reviewers' nits and the lanes' own loud
+deferrals): P4.D198's tier-3 corpus still cannot see the provider-ceiling
+BACKSTOP act (the two wiring pins carry the ordering meanwhile); the harness's
+`CorpusScript`/`to_script()` duplicated across two test files, and the tier-1
+log check's substring asserts (`ceiling=512000` also matches
+`ceiling=5120000`); `shrink-script.ts`'s rung-exhaustion "panics loudly on
+both sides" claim overstates the v4 side (its throw lands in v4's own
+`catch`); P4.96's dispatch wire test proves the five reach the handler via a
+dead-socket profile and the per-key `path` assertions rather than the
+order's recording stub runner (a design deviation the lane record did not
+name — named here); P4.96's fourth hand-copy of the Zod issue renderer
+(`generate_parsed_type` is `settings::zod_parsed_type` byte for byte) and the
+`count` unsafe-integer edge (`|count| > 2^53` → v5 `invalid_type`, Zod
+`too_big` + a second issue); P4.96's §11 finding that `Request::ImagesGenerate`'s
+plain `Option<Value>` fields do NOT preserve the tri-state its doc claims
+(the same collapse — a NAMED candidate, the sibling route's own order);
+P4.97's `tool_count` vs `had_tools` disagreement on a non-array slate
+(unreachable), `label_for`'s panic where v4's mock throws (the louder
+direction), and its find outside ownership — v4's `Recoverable request error
+detected, attempting recovery` warn (`primary-stream.service.ts:316-322`) is
+absent from v5's request-limit branch (the #103/#110 class, one line, a
+candidate); P4.D199's `:79` line-number nit lived in the doc block the wire
+deleted. P4.97's lane record carried no fmt/clippy/release/workspace numbers
+(the reviewer ran fmt + default clippy + the two families green); the unified
+gate is its proof.
+
+### §4 — the gate (the gate of record)
+
+Run from the main worktree on `unify/bcd7e4852`, `CARGO_INCREMENTAL=0`,
+`TZ=UTC`, ONE detached sentinel-guarded chain with every log captured whole
+(clippy ×2 → release build → workspace test → Playwright), the SPA gate and
+the pinned sweeps run before it:
+
+1. **§2 probe** — PASS at the open (v4 `main` CLEAN at `bcd7e4852`;
+   `bugfix` `1a2b2164c` / `release` `8fbf2afe0` unmoved); **FAILED at the
+   close** — v4 HEAD `89fcc3c0d`, two commits past the new baseline, landed
+   while the gate ran (recorded in the ledger, above).
+2. `cargo fmt --all --check` — clean (after the wires; after the fixes).
+3. **The pinned sweeps** (`recipe_sweep.py --run-all`, artifacts
+   `harness/tools/sweep-results/2026-09-17-bcd7e4852-unify-{target,base}-pin.
+   json`): target pin `bcd7e4852` — `llm_image_budget`, `file_attachment_
+   tier3`, `orchestrator_tier3`, `help_tree`, `build_context_tier3` ok +
+   `attach_mount_file` run_failed (finding 6, then GREEN by name after the
+   widen); baseline pin `5f0a57dc4` — `image_generate_route`, `primary_
+   stream_tier3`, `image_generation_tier3` (LAST) ok; after the fixes,
+   `image_generate_route` (30 rows, the two `chat_id` rows 400/400) and
+   `primary_stream_tier3` re-run by name at the baseline pin, green. Every
+   NDJSON non-empty; the target-pinned help-tree oracle carries the new
+   section (3.4 MB), the orchestrator oracle the five budget labels.
+4. **SPA:** `npm run lint` (qt-class guard 5/5) clean; `npm test` **435 spec
+   files / 7,382 passed / 0 failed** — the two vitest unhandled errors are
+   the recorded `auto-scroll.ts` `scrollTo` intermittent from
+   `salon-turn-controls.spec.ts`, touched by no lane; `npm run build` clean.
+5. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH feature sets (default; `--features quilltap-core/native-transport`).
+6. `cargo build --workspace --release` — clean.
+7. `cargo test --workspace --no-fail-fast -- --nocapture` with the round's
+   env block (the nine families' vars from their recipes, `QT_ORACLE_IMGGEN_
+   ROUTE` withheld per the collision rule, `QT_V4_ROOT`/`QT_V4_CHECKOUT` at
+   the `bcd7e4852` pin, `QT_NODE` the node binary): **575 test binaries / 3,422 passed / 1 failed / 2 ignored, exit 101** — the one red is `image_generation_tier3_equivalence`, a STAGING COLLISION and not a port red: it shares the `/tmp/qt-imggen-{main,mount}.db` pair with `image_generate_route_equivalence`, whose by-name re-run for finding 1's two `chat_id` rows rebuilt the pair AFTER the tier-3 oracle was recorded (the diff is one freshly minted vault `mountPointId`, `88104a55…` — the `53294163f` round's exact class); green through the driver on its own fresh staging (`OK: image-generation differential matched the oracle across all cases`). Every other round family confirmed RUN by non-zero duration with ZERO `SKIP:` lines in its binary (`llm_image_budget` 0.18 s, `file_attachment_tier3` 0.06 s, `orchestrator_tier3` 3.90 s, `help_tree` 1.24 s, `build_context_tier3` 0.29 s, `attach_mount_file` 0.08 s — 2 passed, `primary_stream_tier3` 0.15 s — 2 passed, `lantern_loader_transcoder_wiring` 4.50 s — 3 passed, `request_builder` 0.09 s, `dispatch_wrong_type_census` 6 passed, `image_profile_generate_dispatch_wire` 1.05 s); the withheld route family SKIP-passed by design, proven by name at the pin (30 rows). The 472 `SKIP:` lines in the whole log are the OTHER families' oracle vars the round's block does not set — cargo prints them under `--nocapture`.
+8. **Full Playwright against the release binary:** **322 passed / 0 failed / 6 skipped (8.5 m), exit 0** — the six skips are the standing parks (the five P4.D187 title-checkpoint beats + the `salon-chat-gallery-flow` store-probe park), the same set and count as the previous round; no lane added or flipped a beat.
+9. **Ownership:** every path of the combined diff in some lane's Owns column,
+   the recorded expansions (P4.96's `image_gen.rs` `pub mod style;`), the
+   wires, or the fixes; the drift ledger written only here.
+
+**Versions:** core 0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152, SPA
+0.5.731; cli 0.0.22 / tauri 0.0.7 unchanged.
+
+### §5 — deferred loud, carried forward
+
+- 💸 the dogfood queue gains: a turn carrying several fresh Lantern portraits
+  on a vision seat (the `Image shrunk for LLM transport` debug line, ~20×
+  smaller wire bytes, and on a contrived four-portrait turn the per-turn
+  WARN) in `combined.log`; a `chatId: null` / an unknown `quality` posted to
+  the generate verb answering v4's envelope; a model refusing function
+  calling retried with `combined.log` naming it.
+- Named candidates: `Request::ImagesGenerate`'s plain `Option<Value>` fields
+  (P4.96 §11 — the same tri-state collapse, its own order); the request-limit
+  branch's `Recoverable request error detected, attempting recovery` warn
+  (P4.97's find); GOOGLE's differential-tier cache-key row (an ownership
+  stop — `record-google-request.mjs` CAN carry it; the google corpus is
+  `request_builder_google_equivalence`'s); P4.D198's tier-3 backstop
+  blindness; the Zod issue-renderer DRY home; the harness `CorpusScript` DRY.
