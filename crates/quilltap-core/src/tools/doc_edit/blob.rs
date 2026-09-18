@@ -32,8 +32,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use super::shared::{
-    arg_bool, arg_str, arg_str_ref, assert_write_does_not_target_peer_vault, basename,
-    collect_peer_character_ids_for_reads, get_accessible_mount_points, resolve_actor_origin,
+    acting_character_is_opaque_to_vaults, arg_bool, arg_str, arg_str_ref,
+    assert_write_does_not_target_peer_vault, basename, collect_peer_character_ids_for_reads,
+    get_accessible_mount_points, resolve_actor_origin, AccessibleMountPointsQuery,
     DocEditToolContext,
 };
 use super::DocEditToolResult;
@@ -97,12 +98,19 @@ fn resolve_blob_mount_point_for_read(
     }
     let effective_ref = resolve_mount_point_ref(main, mount_point_ref, ctx.character_id.as_deref());
     let peers = collect_peer_character_ids_for_reads(main, ctx);
+    // The covenant applies to enumeration as well as resolution (v4 bug 153): an
+    // opaque character finds no vault here, her own included, so the self-token
+    // translated above stays unresolvable.
+    let hide_character_vaults = acting_character_is_opaque_to_vaults(main, ctx);
     let mounts = get_accessible_mount_points(
         main,
         mount,
-        ctx.project_id.as_deref(),
-        ctx.character_id.as_deref(),
-        &peers,
+        AccessibleMountPointsQuery {
+            project_id: ctx.project_id.as_deref(),
+            character_id: ctx.character_id.as_deref(),
+            extra_character_ids: &peers,
+            hide_character_vaults,
+        },
     );
     let needle = effective_ref.to_lowercase();
     mounts
@@ -132,12 +140,20 @@ fn resolve_blob_mount_point_for_write(
     // Writes must not land in a peer's vault — raise the read-only error before
     // enumerating accessible mounts (v4 passes the ORIGINAL ref, not the resolved).
     assert_write_does_not_target_peer_vault(main, mount, Some(mount_point_ref), &peers)?;
+    // See the read helper (v4 bug 153). ⚠ §R.4: bug 153's commit message says
+    // "all four callers" derive the flag the same way; the shipped hunk passes NO
+    // `extraCharacterIds` here — a write never admits a peer's vault — so this
+    // query deliberately carries the flag WITHOUT the peers.
+    let hide_character_vaults = acting_character_is_opaque_to_vaults(main, ctx);
     let mounts = get_accessible_mount_points(
         main,
         mount,
-        ctx.project_id.as_deref(),
-        ctx.character_id.as_deref(),
-        &[],
+        AccessibleMountPointsQuery {
+            project_id: ctx.project_id.as_deref(),
+            character_id: ctx.character_id.as_deref(),
+            hide_character_vaults,
+            ..Default::default()
+        },
     );
     let needle = effective_ref.to_lowercase();
     Ok(mounts

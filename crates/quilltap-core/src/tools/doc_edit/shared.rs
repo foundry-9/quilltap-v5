@@ -656,17 +656,46 @@ pub struct AccessibleMountPoint {
     pub mount_type: String,
 }
 
+/// v4 `AccessibleMountPointsQuery` — what an enumeration may reach. The same
+/// shape the resolution side speaks in, deliberately: enumeration and resolution
+/// must agree, or a listing advertises a store that a subsequent open refuses,
+/// which reads to a model as a broken tool rather than a boundary (v4 bug 153,
+/// `89fcc3c0d`).
+#[derive(Clone, Debug, Default)]
+pub struct AccessibleMountPointsQuery<'a> {
+    /// Current project ID (from chat context).
+    pub project_id: Option<&'a str>,
+    /// The acting character. Keys the character AND group tiers.
+    pub character_id: Option<&'a str>,
+    /// Peer participants whose vaults are admitted (cross-character reads).
+    pub extra_character_ids: &'a [String],
+    /// The doc-tool opacity covenant — subtract both vault tiers (the acting
+    /// character's own and every peer's) while group, project and global stay
+    /// reachable. See [`PathResolutionContext::hide_character_vaults`]; callers
+    /// derive it from [`acting_character_is_opaque_to_vaults`] so the two sides
+    /// cannot disagree.
+    pub hide_character_vaults: bool,
+}
+
 /// v4 `getAccessibleMountPoints` over `collectAccessibleMountPointIds`: every
 /// store the chat context can reach (responding + participant vaults +
 /// project-linked stores + Quilltap General), deduped and filtered to enabled
 /// mounts. Composed from the ported tiered-mount-pool resolver.
+///
+/// Shares the covenant rule with `resolve_document_store_path`, so whatever this
+/// lists is exactly what an open will accept.
 pub fn get_accessible_mount_points(
     main: &Connection,
     mount: &Connection,
-    project_id: Option<&str>,
-    character_id: Option<&str>,
-    extra_character_ids: &[String],
+    query: AccessibleMountPointsQuery<'_>,
 ) -> Vec<AccessibleMountPoint> {
+    let AccessibleMountPointsQuery {
+        project_id,
+        character_id,
+        extra_character_ids,
+        hide_character_vaults,
+    } = query;
+    let vaults_visible = !hide_character_vaults;
     let tier_ctx = TierContext {
         user_id: None,
         character_id: character_id.map(str::to_string),
@@ -680,13 +709,14 @@ pub fn get_accessible_mount_points(
     };
     let opts = TierResolveOptions {
         require_ownership: false,
-        include_participants: true,
+        include_participants: vaults_visible,
     };
     let pool = resolve_tiered_mount_pool(main, mount, &tier_ctx, &opts);
     let ids = flatten_tier_pool(
         &pool,
         FlattenOptions {
-            include_participants: true,
+            include_participants: vaults_visible,
+            include_character_tier: vaults_visible,
             ..Default::default()
         },
     );

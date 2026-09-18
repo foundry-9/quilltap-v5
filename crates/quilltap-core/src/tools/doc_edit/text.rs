@@ -12,13 +12,13 @@ use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use super::shared::{
-    apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
-    assert_character_may_write, basename, build_read_resolution_context,
+    acting_character_is_opaque_to_vaults, apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref,
+    assert_character_may_read, assert_character_may_write, basename, build_read_resolution_context,
     build_write_resolution_context, collect_peer_character_ids_for_reads,
     get_accessible_mount_points, get_character_blocked_read_paths, is_text_file,
     librarian_scope_from, read_file_with_mtime, resolve_actor_origin, resolve_error_message,
     resolve_official_project_mount, scope_from_str, write_file_with_mtime_check,
-    DocEditToolContext,
+    AccessibleMountPointsQuery, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::db::database_store::list_database_files;
@@ -776,12 +776,19 @@ pub fn handle_grep(
         .as_deref()
         .map(|mp| resolve_mount_point_ref(main, mp, ctx.character_id.as_deref()));
     let peer_ids = collect_peer_character_ids_for_reads(main, ctx);
+    // Enumeration honours the same covenant resolution does: an opaque character
+    // must not SEE the vault names she would then be refused (v4 bug 153,
+    // `89fcc3c0d`). Derived from the one helper the context builders use.
+    let hide_character_vaults = acting_character_is_opaque_to_vaults(main, ctx);
     let mount_points = get_accessible_mount_points(
         main,
         mount,
-        Some(&project_id),
-        ctx.character_id.as_deref(),
-        &peer_ids,
+        AccessibleMountPointsQuery {
+            project_id: Some(&project_id),
+            character_id: ctx.character_id.as_deref(),
+            extra_character_ids: &peer_ids,
+            hide_character_vaults,
+        },
     );
     let docs_repo = DocMountDocumentsRepository::new(mount);
 
@@ -1152,12 +1159,18 @@ pub fn handle_list_files(
             .as_deref()
             .map(|mp| resolve_mount_point_ref(main, mp, ctx.character_id.as_deref()));
         let peer_ids = collect_peer_character_ids_for_reads(main, ctx);
+        // See doc_grep: the listing must not advertise what resolution will refuse
+        // (v4 bug 153).
+        let hide_character_vaults = acting_character_is_opaque_to_vaults(main, ctx);
         let mount_points = get_accessible_mount_points(
             main,
             mount,
-            Some(&project_id),
-            ctx.character_id.as_deref(),
-            &peer_ids,
+            AccessibleMountPointsQuery {
+                project_id: Some(&project_id),
+                character_id: ctx.character_id.as_deref(),
+                extra_character_ids: &peer_ids,
+                hide_character_vaults,
+            },
         );
         for mp in &mount_points {
             if let Some(f) = &mount_point_filter {

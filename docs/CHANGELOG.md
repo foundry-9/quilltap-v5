@@ -40,6 +40,34 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — port(doc-edit): a hidden vault is not listed either (v4 bug 153, `89fcc3c0d`)
+
+_Versions: core 0.0.954, harness 0.0.845._
+
+`get_accessible_mount_points` takes one `AccessibleMountPointsQuery` instead of
+three positionals (v4's shape) and threads `hide_character_vaults` into the same
+collector rule resolution uses, so whatever a listing shows is exactly what an
+open will accept. All four call sites derive the flag from
+`acting_character_is_opaque_to_vaults` at v4's positions: doc_grep and
+doc_list_files after the peer collection, the blob READ resolver after the
+self-token translation and the peer collection, and the blob WRITE resolver after
+the peer-vault assert.
+
+⚠ Bug 153's commit message says "all four callers" derive it the same way; the
+shipped hunk passes NO `extraCharacterIds` on the WRITE resolver — a write never
+admits a peer's vault. The port follows the hunk and a code comment says so
+(§R.4).
+
+`mount_point: "self"` under the covenant stays an empty listing, an empty search
+and an unresolvable blob mount — v4 adds no refusal sentence there, because the
+self-token translation runs BEFORE the enumeration and simply resolves to a vault
+id that is absent from the accessible set.
+
+`doc_opacity_equivalence`: **44 of 44 ops match v4**, from 21 red at the start of
+the lane. The last 11 were this commit's — the two enumeration rows, the
+agreement property, three doc_list_files, two doc_grep, and the four blob
+refusals.
+
 #### 2026-09-18 — port(doc-edit): an opaque character keeps her own group stores (v4 bug 152, `1065a1f53`)
 
 _Versions: core 0.0.953._

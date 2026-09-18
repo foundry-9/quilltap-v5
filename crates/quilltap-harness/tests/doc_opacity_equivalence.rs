@@ -54,7 +54,7 @@ use quilltap_core::doc_edit::DocEditScope;
 use quilltap_core::tools::doc_edit::shared::{
     acting_character_is_opaque_to_vaults, build_read_resolution_context,
     build_write_resolution_context, collect_peer_character_ids_for_reads,
-    get_accessible_mount_points, AccessibleMountPoint, Addressing,
+    get_accessible_mount_points, AccessibleMountPoint, AccessibleMountPointsQuery, Addressing,
 };
 use quilltap_core::tools::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
@@ -507,29 +507,25 @@ fn doc_opacity_matches_oracle() {
     eprintln!("doc_opacity: {} ops matched the oracle.", spec.ops.len());
 }
 
-// ===========================================================================
-// ⚠ PRE-PORT SHIMS — replaced by the real API in the port commits. They exist
-// so the family can RUN against unported `main` and the red-first set can be
-// measured (the order's item 8). Each one is a faithful model of what v5 does
-// TODAY, not of what v4 does.
-// ===========================================================================
-
-/// PRE-PORT: `get_accessible_mount_points` takes no opacity flag — the bug-153
-/// reproduction. The `hide` argument is deliberately ignored here.
+/// The enumeration the `accessible` and `agreement` ops share — the same query
+/// the four production call sites build.
 fn accessible_for(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     project_id: &str,
     ctx: &DocEditToolContext,
     peers: &[String],
-    _hide: bool,
+    hide: bool,
 ) -> Vec<AccessibleMountPoint> {
     get_accessible_mount_points(
         main,
         mount,
-        Some(project_id),
-        ctx.character_id.as_deref(),
-        peers,
+        AccessibleMountPointsQuery {
+            project_id: Some(project_id),
+            character_id: ctx.character_id.as_deref(),
+            extra_character_ids: peers,
+            hide_character_vaults: hide,
+        },
     )
 }
 
