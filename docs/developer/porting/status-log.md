@@ -135602,3 +135602,373 @@ harness family and no source census** (§9: none moved, confirmed, not assumed).
 Versions: **SPA 0.5.738** (base 0.5.731 + 7 bumps — units 1–6 plus the beat's
 live-run repair). No crate version moved.
 
+## P4.101 — the `zod_issues` home (lane record, 2026-09-18)
+
+**Branch `claude/zod-issues-home-docs-4b302f`, from `main` `57fd1680`.
+Baseline `89fcc3c0d`, PIN REQUIRED throughout (`/tmp/qt-v4-pin-p4101-
+89fcc3c0d`, verified by `rev-parse` + `ls -ld` before every batch). No drift
+row absorbed — this lane is the `baa85e19b` round's widest maintenance
+refactor. CLOSED: every Tier-1 and Tier-2 deliverable landed; the Tier-3
+deferrals are recorded in the census guard itself.**
+
+### §2 freshness probe
+
+Run at lane start and again before the regen batch. **PASS both times:**
+branch `main`, `git status --short` EMPTY, `git log baa85e19b..main` EMPTY,
+`git log 1a2b2164c..bugfix` EMPTY. The ledger's §1 stood; nothing was
+re-derived and the ledger was not written.
+
+### The measurement that had to come first — and it REFUTED the order's worry
+
+The order told the lane to "measure key ORDER per issue code before folding
+… if two twins render the SAME code in DIFFERENT orders, run the real Zod
+4.5.4 on the checkout and record which twin was wrong — that is a FINDING."
+
+Measured against the v4 checkout's REAL `zod` **4.5.4** at the baseline pin
+(the command is transcribed verbatim in `api/zod_issues.rs`'s header, and
+its output is the module's `render_table_matches_real_zod_454` test):
+
+| code | real zod 4.5.4 key order |
+|---|---|
+| `invalid_type` | `expected, code, path, message` |
+| `invalid_type` (`z.int()`) | `expected, format, code, path, message` |
+| `invalid_value` (enum + literal) | `code, values, path, message` |
+| `invalid_format` (uuid) | `origin, code, format, pattern, path, message` |
+| `too_small` / `too_big` (string, number) | `origin, code, {minimum\|maximum}, inclusive, path, message` |
+| `too_small` / `too_big` (safeint bound) | `code, {minimum\|maximum}, note, origin, inclusive, path, message` |
+
+**All eight copies already agreed, on every code.** There was no finding and
+no silent convergence: the fold is byte-neutral by construction, and the
+table is now executable so a future Zod bump reddens in ONE place rather
+than on a route's wire.
+
+### What landed
+
+**Tier 1.**
+
+1. NEW `crates/quilltap-core/src/api/zod_issues.rs` — `ZodIssue` (eight
+   untagged variants), the constructors (`invalid_type`, `invalid_int_type`,
+   `invalid_value`, `invalid_literal`, `invalid_uuid`, and the `too_*`
+   family in string / number / safeint forms with and without a custom
+   message), `zod_parsed_type`, `zod_uuid_ok` + `ZOD_UUID_PATTERN`,
+   `zod_error_message`, `zod_issue_details`, `to_value()`,
+   `zod_issues_joined` / `zod_issue_lines` / `join_path`, `key`, and
+   `MAX_SAFE_INTEGER` / `MAX_SAFE_INTEGER_I64`. `path` is Zod's own
+   `(string | number)[]` as `Vec<Value>`.
+   **Recorded deviation from the order:** the module is `pub mod`, not
+   `pub(crate) mod`. `services::chat_create::CreateZodIssue` survives as a
+   `pub use` alias for `ZodIssue` because `chat_create_capstone_
+   equivalence` (P4.81's host-wire test) constructs one by that name from
+   OUTSIDE the crate; a public alias to a `pub(crate)` type is not
+   nameable there. Every sibling `api::*` module is `pub` already.
+2. The folds. `api/settings.rs` (the block moved out; its per-key checkers
+   `zod_bool` / `zod_enum` / `zod_opt_uuid` / `zod_path` /
+   `zod_object_or_issue` stay, over the imported type — `zod_path` now
+   returns `Vec<Value>`, measured safe because no settings path carries an
+   index); `api/chat_delete.rs` and `api/image_profiles.rs` (the two
+   closures and the eight `issue_*` helpers → home constructors +
+   `.to_value()`; P4.98's `generate_parsed_type` alias retired);
+   `api/generators_detail.rs` + `api/generators_wizard.rs` (the Value-form
+   twins, including the two hand-written `json!` bodies for the safeint and
+   number bounds); `api/prompt_templates.rs` + `api/subprompts.rs` (their
+   `invalid_type` and their `zod_received` copies deleted);
+   `services/chat_create.rs` (`invalid_enum` proven byte-identical to the
+   home's `invalid_value` and folded onto it as the order allowed;
+   `invalid_literal` likewise; `check_int_bounds`' three hand-written
+   variant literals → `invalid_int_type` / `too_big_int` /
+   `too_small_int`). Five `CreateZodIssue::{TooSmall,TooBig}` literals stay
+   as explicit variant constructions — they carry shapes the home has no
+   constructor for (an EXCLUSIVE `.positive()` bound, `origin: "array"`,
+   and v4's custom "At least one participant is required") and they are
+   already the home's own type; inventing three single-caller constructors
+   for them would have grown the home's surface without moving a byte.
+3. **The literal audit** (the P4.50 idiom, done as a string-literal
+   MULTISET over production code — comments and `#[cfg(test)]` modules
+   stripped, raw strings handled — not a raw grep):
+   **before 175 occurrences / 57 distinct → after 121 / 54.** Every delta
+   line is a retired copy: `Invalid input: expected {expected}, received {}`
+   8 → 1, `Invalid UUID` 6 → 1, `invalid_type` 12 → 1, `invalid_format`
+   6 → 1, `Invalid option: expected one of …` 4 → 1, and so on. **No new
+   production message literal appeared**; the only two renamings are
+   `Too {big,small}: expected int to be …{}` → `…{MAX_SAFE_INTEGER_I64}`,
+   whose rendered bytes the render table pins. Script + output:
+   `/tmp/p4101/litaudit2.py`, `/tmp/p4101/literal-multiset-audit.txt`.
+4. **The census guard** — NEW `crates/quilltap-harness/tests/zod_issues_
+   home_guard.rs`, the `db_error_key_guard` idiom, two tests:
+   - constructors: **7 definitions in 3 files** (the home's 5 + the two
+     Tier-3 remainders), measured down from **17 in 9** at `main`
+     `57fd1680`;
+   - `util.parsedType`: **6 in 6 files**, down from **11 in 11**.
+   `#[cfg(test)]` modules are stripped by brace matching (comment- and
+   string-aware), so a test's local helper is not counted.
+
+**Tier 2.**
+
+6. `tools/run_sql.rs` — the two-string `zod_issue(path, message)` and its
+   own `json_typeof` table are retired; the caller builds typed issues and
+   renders them through the home's `zod_issues_joined`, which IS v4's
+   `` `${i.path.join('.')} — ${i.message}` ``
+   (`lib/tools/handlers/run-sql-handler.ts:247`).
+7. `image_gen/lora_validation.rs` — `LoraZodIssue` is now a `pub use` alias
+   for the home's type (its three variants were byte-identical, as they had
+   to be: v4's LoRA envelope is `loraSchema.safeParse`'s own issues), and
+   `lora_issue_log_lines` is the home's `zod_issue_lines(issues, ": ")` —
+   the exhaustive `match` it used to need would not survive the eight-variant
+   type, which is exactly why the home grew `path()` / `message()`.
+
+### A measured finding the fold surfaced — recorded, deliberately NOT fixed
+
+Measuring `run_sql`'s arms against v4's REAL `runSqlToolInputSchema` at the
+pin (`node --import tsx`, the ten shapes) found the port's `database` enum
+sentence **appends `, received <type>` where real zod does not**:
+
+```
+v4 : Invalid run_sql input: database — Invalid option: expected one of "main"|"llm-logs"|"mount-index".
+v5 : Invalid run_sql input: database — Invalid option: expected one of "main"|"llm-logs"|"mount-index", received object.
+```
+
+Two more, behavioural: `database: null` defaults to `"main"` here where v4
+refuses it, and `max_rows` never reports Zod's `>=1` / `<=1000` bounds
+because the handler clamps instead (v4 answers
+`Too small: expected number to be >=1.`).
+
+**All three PREDATE P4.101 and are declared out of scope by the file's own
+doc comment** ("the corpus constrains invalid inputs to the non-object case
+… richer Zod-message fidelity is out of scope"). `state_sql_tools_
+equivalence` drives exactly ONE validation case (`sql_validation_nonobject`),
+so nothing pins them either way — a corpus blind spot. The fold therefore
+kept the divergent bytes **verbatim, at the call site, as an explicit
+`ZodIssue::InvalidValue` literal with the measurement in the comment**: a
+refactor lane moves no byte on a wire, and correcting a user-facing string
+with no corpus arm to hold it afterwards is the exact shape the standing
+"run the oracle BEFORE changing a user-facing string" rule warns about.
+**Ordered shape for whoever takes it:** grow `state-sql-tools.test.ts`'s
+corpus with the nine refusal shapes measured above (they are in this
+record), then fix `validate_input` red-first. Every other arm — the
+non-object root and all three `sql` arms — is byte-identical to v4 before
+and after.
+
+### The differential — the neutrality proof
+
+Every family below was regenerated FRESH from `/tmp/qt-v4-pin-p4101-
+89fcc3c0d` through the sweep driver (`recipe_sweep.py --run-all --families …
+--v4 "$PIN" --v5w <ABSOLUTE worktree> --force`), then re-run BY NAME after
+the folds against those same oracles. **No oracle case, no fixture and no
+corpus was edited.**
+
+| family | regen (at the pin) | after the folds |
+|---|---|---|
+| `settings_routes_equivalence` | ok | **ok** |
+| `chat_delete_equivalence` | red | red — **PRE-EXISTING** (below) |
+| `generators_leaf_equivalence` | ok | **ok** |
+| `generators_wizard_prompts_equivalence` | ok | **ok** |
+| `character_wizard_tier3_equivalence` | red | red — **PRE-EXISTING** (below) |
+| `character_optimizer_tier3_equivalence` | ok | **ok** |
+| `prompt_templates_routes_equivalence` | ok | **ok** |
+| `prompt_templates_tier2_equivalence` | ok | **ok** |
+| `subprompts_routes_equivalence` | red | red — **PRE-EXISTING** (below) |
+| `chat_create_capstone_equivalence` (108 cases, 69 Zod `details` arms — the widest pin) | ok | **ok** |
+| `image_profiles_routes_equivalence` | ok | **ok** |
+| `images_generate_route_equivalence` | ok | **ok** |
+| `image_generate_route_equivalence` | ok | **ok** |
+| `huggingface_lora_lookup_equivalence` | ok | **ok** |
+| `pascal_custom_tool_definition_equivalence` | ok | **ok** |
+| `brahma_console_routes_equivalence` | ok | **ok** |
+| `state_sql_tools_equivalence` (the run_sql pin) | ok | **ok** |
+| `pascal_custom_tools_execution_equivalence` | ok | **ok** |
+| `lora_log_anchor_guard`, `nanogpt_lora_wire_log`, `image_gen::lora_validation` unit tests | — | **ok** |
+
+`nanogpt_lora_wire_log` reports `nothing_to_run` through the driver (a
+compile-time pin with no oracle stage — the recorded `nothing_to_run` class);
+it was run by name instead, 5/5.
+
+⚠ **The first neutrality pass SILENTLY SKIPPED two families** —
+`state_sql_tools_equivalence` (`QT_ORACLE_STATE_SQL`, `QT_FIXTURE_TMP_*`) and
+`pascal_custom_tools_execution_equivalence` (`QT_ORACLE_PASCAL_EXECUTION`) —
+because the lane's env block was harvested from the FIRST sweep's log and
+those two were not in that sweep's family list. Both printed `SKIP:` and
+`test result: ok … finished in 0.00s`, which is the
+`a-family-env-var-is-not-its-regen-var` trap exactly. They were then
+regenerated at the pin in their own batch and run for real; both green. **The
+`run_sql` fold's neutrality claim rests on that second run, not the first.**
+
+### The three reds are PRE-EXISTING — proven, not assumed
+
+§R.5 says P4.101 expects no red and that a red is a finding. Each was
+classified by running the SAME family, against the SAME pin-fresh oracle,
+from the **unmodified `main` checkout** (`~/source/quilltap-v5`, HEAD
+`57fd1680`). All three reproduce identically there:
+
+| family | symptom | class |
+|---|---|---|
+| `chat_delete_equivalence` | v5's `chat_messages` census row carries a `routeTrail` key v4's lacks, on EVERY case incl. the ones that delete nothing; v4 answers **500** on `reset_state` / `stop_impersonate` | fixture vintage — v4 threw; nothing this lane touched can move a DB census or v4's status |
+| `character_wizard_tier3_equivalence` | 10 cases: `"error": "sqlite error: no such column: generationKey"` | the P4.D182 `files.generationKey` fixture-vintage gap, the class P4.94 healed for five other pairs |
+| `subprompts_routes_equivalence` | 7 cases: v5's `"compile": []` where v4 has entries; `"characters"` vs `"chats"` | fixture vintage / oracle-side, same shape |
+
+None is attributable to the fold, and none is in this lane's ownership to
+repair. **They join the standing fixture-vintage list** (the six named at the
+`1fefadb9a` round's gate: `salon_mutations`, `chat_gallery`, `images_routes`,
+`courier_images_routes`, `pascal_run_custom_handler`,
+`pascal_custom_tools_route`) — these three are NOT on it, so the next
+fixture-vintage heal has three more pairs than it thinks. Recorded for the
+unifier and for whoever takes that order.
+
+### Mutation proofs
+
+| # | mutation | expected | result |
+|---|---|---|---|
+| **M1** | a ninth `fn invalid_type` added to `api/memories.rs` | `zod_issues_home_guard` red by name | **RED** — `zod_issue_constructors_live_in_one_home` failed naming the file and count; the `parsedType` test stayed green (the mutation is scoped) |
+| **M1b** | the same copy placed INSIDE `memories.rs`'s `#[cfg(test)] mod tests` | GREEN — a test's local helper is not a production copy | **GREEN**, which is what proves `strip_test_modules` is doing its job in the right direction (the home's own 5 still count, so it is not over-stripping) |
+| **M2** | the home's `"Invalid input: expected {expected}, received {}"` changed by one byte (`expectedX`) | the families that PIN those bytes go red — that red list IS the coverage claim | see below |
+
+**M2's red list (6):** `settings_routes_equivalence`,
+`chat_create_capstone_equivalence`, `prompt_templates_routes_equivalence`,
+`image_profiles_routes_equivalence`, `image_generate_route_equivalence`,
+`character_optimizer_tier3_equivalence`.
+
+**M2 GREEN (so these do NOT discriminate on that literal, recorded):**
+`generators_leaf_equivalence`, `generators_wizard_prompts_equivalence`,
+`prompt_templates_tier2_equivalence`, `images_generate_route_equivalence`,
+`brahma_console_routes_equivalence`, `huggingface_lora_lookup_equivalence`,
+`pascal_custom_tool_definition_equivalence`. That the two GENERATORS families
+are green while `character_optimizer_tier3` is red is the honest picture: the
+generators' Zod refusal bytes are pinned by the tier-3 family, not by the
+leaf/prompt corpora.
+
+Every mutation was reverted by file backup (`cp` from
+`/tmp/p4101/M*-backup-*.rs`), never `git checkout <file>`.
+
+### Regen recipes, AS RUN
+
+All from the lane worktree, with the pin verified by `rev-parse` + `ls -ld`
+first and the §2 probe re-run immediately before each batch.
+
+```bash
+# the pin (three symlink classes per ledger §5.1)
+git -C ~/source/quilltap-server worktree add --detach \
+  /tmp/qt-v4-pin-p4101-89fcc3c0d 89fcc3c0d
+PIN=/tmp/qt-v4-pin-p4101-89fcc3c0d
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  n=$(basename "$d")
+  [ -d "$d/node_modules" ] && [ -d "$PIN/plugins/dist/$n" ] && \
+    ln -sfn "$d/node_modules" "$PIN/plugins/dist/$n/node_modules"
+done
+
+# batch 1 — the order's family list
+python3 harness/tools/recipe_sweep.py --run-all \
+  --families settings_routes_equivalence,chat_delete_equivalence,\
+generators_leaf_equivalence,generators_wizard_prompts_equivalence,\
+character_wizard_tier3_equivalence,character_optimizer_tier3_equivalence,\
+prompt_templates_routes_equivalence,prompt_templates_tier2_equivalence,\
+subprompts_routes_equivalence,chat_create_capstone_equivalence,\
+image_profiles_routes_equivalence,images_generate_route_equivalence,\
+image_generate_route_equivalence,huggingface_lora_lookup_equivalence,\
+nanogpt_lora_wire_log,pascal_custom_tool_definition_equivalence,\
+brahma_console_routes_equivalence \
+  --v4 "/tmp/qt-v4-pin-p4101-89fcc3c0d" \
+  --v5w "/Users/csebold/source/quilltap-v5/.claude/worktrees/zod-issues-home-docs-4b302f" \
+  --results /tmp/p4101/sweep-results.json --force
+
+# batch 2 — the Tier-2 legs the first batch did not cover
+python3 harness/tools/recipe_sweep.py --run-all \
+  --families state_sql_tools_equivalence,pascal_custom_tools_execution_equivalence \
+  --v4 "/tmp/qt-v4-pin-p4101-89fcc3c0d" \
+  --v5w "/Users/csebold/source/quilltap-v5/.claude/worktrees/zod-issues-home-docs-4b302f" \
+  --results /tmp/p4101/sweep2-results.json --force
+```
+
+The real-zod measurement (the render table's provenance) is transcribed
+verbatim in `api/zod_issues.rs`'s module header, and re-runs from the pin
+with `node --input-type=module`.
+
+**This lane authored no oracle case and changed no fixture**, so it
+invalidates nothing. The two sweeps' artifacts are `/tmp/p4101/
+sweep-results.json` and `/tmp/p4101/sweep2-results.json` (not committed —
+they name a `/tmp` pin).
+
+### Things the order got wrong, or did not know
+
+1. **The order's central worry did not fire.** It told the lane to treat a
+   key-order disagreement between twins as a FINDING. Measured: all eight
+   agreed on every code. The fold is byte-neutral by construction.
+2. **"the EIGHT `invalid_type` copies" undercounts.** There were 8 FILES
+   but **17 constructor definitions** (`settings` 3, `chat_create` 4,
+   `generators_wizard` 3, `generators_detail` 2, one each elsewhere) and
+   **11 `parsedType` copies in 11 files** — the order's read-before list
+   named the `parsedType` ones only as `settings.rs`'s callers.
+3. **`pub(crate) mod` is not possible.** `chat_create_capstone_
+   equivalence` names `CreateZodIssue` from outside the crate, so the
+   alias target must be publicly nameable. `pub mod` it is — every sibling
+   `api::*` module already is.
+4. **`db/prompt_templates.rs` imports `zod_uuid_ok` through
+   `api::settings`** and is NOT in this lane's ownership, so `settings.rs`
+   keeps a one-line `pub(crate) use` re-export for it. Retiring that is a
+   one-line follow-up for whoever owns that file next.
+5. **Tier 2 item 6's "pinned … unchanged" presumed byte-neutrality that
+   does not hold for two of `run_sql`'s arms** — see the finding above.
+   The fold was landed byte-neutral instead, with the divergence named.
+
+### Deferred, loudly
+
+- **Tier 3, as the order ordered:** `pascal/custom_tool_types.rs` and
+  `progressions/schema.rs` are NOT converged. Both render STRING sentences
+  for different v4 surfaces, and the progressions shim's shape is mirrored
+  1:1 by the SPA's `pascal/zod-shim.ts` (P4.D170), so converging it would
+  desynchronize the twin. Both are in the census guard's remainder with
+  that reasoning, so the deferral is executable rather than a comment.
+- **`run_sql`'s three measured divergences** (above) — recorded at the call
+  site, in this record, and in the CHANGELOG; NOT fixed, because no corpus
+  arm would hold the fix.
+- **The three pre-existing fixture-vintage reds** — recorded, not repaired
+  (not this lane's files).
+
+### Commits
+
+| sha | subject |
+|---|---|
+| `a2785917` | refactor(api): ONE Zod-4 issue home — the typed issue, its constructors, the `parsedType` word, the uuid gate and both renderers (P4.101) |
+| `d8ba7961` | refactor(tools): `run_sql` and the LoRA write guard render through the Zod home (P4.101 Tier 2) |
+| `e3ffdc05` | test(harness): the `zod_issues` home guard — the ninth `invalid_type` has to be argued for (P4.101) |
+
+**Recorded deviation from "one commit per fold":** the eight callers could
+not be split into separate green commits, because moving the type out of
+`settings.rs` breaks every importer in the same breath — whole-file staging
+gives either one atomic commit or a chain of non-compiling ones. The fold is
+therefore ONE commit, the Tier-2 pair a second, the guard a third; each
+commit's tree compiles on its own.
+
+### Verification gate (run from the lane worktree, `CARGO_INCREMENTAL=0`, `TZ=UTC`)
+
+1. **§2 probe** — PASS at lane start and again before each of the two regen
+   batches.
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean; and with
+   `--features quilltap-core/native-transport` — clean.
+4. The lane's differentials by name, each over an oracle regenerated fresh
+   from the `89fcc3c0d` pin — 16 of 19 green, the 3 reds proven pre-existing
+   on unmodified `main` (table above). ZERO unexplained `SKIP:` after the
+   two families that skipped silently were caught and re-run for real.
+5. Neutrality: no oracle, fixture or corpus was edited; the literal multiset
+   audit is the mechanical leg.
+6. Mutation proofs: M1 / M1b / M2 / M2b, all reverted by file backup.
+7. `cargo build --workspace --release` — clean (5 m 52 s).
+8. `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's
+   env block: **578 test binaries / 3,454 passed / 3 failed / 2 ignored.**
+   The three failures are EXACTLY the three pre-existing fixture-vintage
+   reds (`chat_delete_equivalence`, `character_wizard_tier3_equivalence`,
+   `subprompts_routes_equivalence`), none attributable to this lane. The
+   443 `SKIP:` lines are families outside the lane's env block; the
+   intersection with the lane's list is EMPTY — every one of the lane's
+   families was confirmed RUN by name and duration (`zod_issues_home_guard`
+   3.81 s, `chat_create_capstone` 4.65 s, `state_sql_tools` 16.51 s,
+   `settings_routes` 0.44 s, …).
+9. Source censuses the change moves: the NEW `zod_issues_home_guard` (both
+   tests, green, M1-proven) and `db_error_key_guard` (green — no `DbError`
+   construction moved).
+10. SPA: not touched, no gate owed.
+
+**Versions:** core 0.0.962, harness 0.0.851; web / host / cli / tauri / SPA
+unchanged.
