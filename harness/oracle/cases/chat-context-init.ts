@@ -27,6 +27,8 @@ interface Spec {
   samId: string;
   bobId: string;
   ariaSp2: string;
+  /** [P4.D201 / v4 `baa85e19b`] the stale-column arm. */
+  nellId: string;
 }
 
 async function main(): Promise<void> {
@@ -112,6 +114,19 @@ async function main(): Promise<void> {
     { id: 'prog_forced_with_scenario', characterId: spec.samId, scenario: 'A misty harbor at dawn.' },
     // Aria carries none: byte-identical to a pre-feature greeting.
     { id: 'prog_absent_on_aria', characterId: spec.ariaId },
+    // [P4.D201 / v4 `baa85e19b`] the stale-column arm reaching
+    // `getDefaultSystemPrompt`, which is module-private and so has no tier-1
+    // path — this is its DRIVING proof.
+    //
+    // `stale_default_column`: Nell's column names a prompt she does not have.
+    // Both the pre-fix and post-fix readers check existence here, so this row is
+    // a NEUTRALITY pin — green before and after.
+    //
+    // There is NO empty-content arm: v4 guards that shape three times over
+    // (schema `.min(1)` on create, `parsePromptFile` skipping an empty body,
+    // and `findById` re-validating the hydrated character) — all three measured
+    // at the pin. The `?? ''` is pinned at tier 1 and by unit test instead.
+    { id: 'stale_default_column', characterId: spec.nellId },
   ];
 
   const { resolveSelectedSubprompts } = await import('@/lib/subprompts/subprompts');

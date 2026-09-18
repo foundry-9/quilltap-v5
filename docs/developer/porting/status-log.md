@@ -135029,3 +135029,136 @@ cli 0.0.22 / tauri 0.0.7 / SPA 0.5.731 unchanged.
   class across the other hand-building REST edges; the four corpus rows
   above; P4.D198's tier-3 backstop blindness; the `name`-field turn-path
   measurement; the `/tmp/qt-oracle-run` shared staging.
+
+---
+
+## P4.D201 unit 1 — one resolver home, folded into the chat initializer and the voice preview (v4 `baa85e19b`, bug 154)
+
+**Lane branch `claude/p4-d201-system-prompt-lockstep-53d462`, from `main`
+`57fd1680`.** The drift ledger's §2 probe PASSED at lane start and before every
+regen batch (branch `main`, HEAD `baa85e19b`, both logs empty, tree clean).
+Every regen came from a LANE-UNIQUE pinned worktree —
+`/tmp/qt-v4-pin-p4d201-baa85e19b` (the TARGET) or
+`/tmp/qt-v4-pin-p4d201-89fcc3c0d` (the BASELINE) — each verified by `rev-parse`
+and `ls -ld`.
+
+**Pin verification, both directions.** The target-pinned `help_tree_equivalence`
+NDJSON carries `Keeping Several Prompts, and Choosing Among Them` exactly ONCE;
+the baseline-pinned one carries it ZERO times. Independently, the new tier-1
+oracle case fails to RESOLVE ITS IMPORT at the baseline
+(`ERR_MODULE_NOT_FOUND` — `lib/characters/default-system-prompt.ts` does not
+exist at `89fcc3c0d`), which is the structural half of the same check.
+
+### The port
+
+`quilltap_core::default_system_prompt` is v4's `lib/characters/
+default-system-prompt.ts`: the column **when it is JS-truthy AND names a prompt
+that exists**, then the first prompt whose `isDefault` is JS-truthy, then
+`prompts[0]`, then `None`. JS truthiness is spelled out on BOTH tests rather
+than narrowed to `Value::Bool(true)` / "is a string", because that is what v4's
+`if (x)` and `find(p => p.isDefault)` actually do; the corpus asks both.
+
+Two server read sites fold onto it:
+
+- `services::chat_initialize::get_default_system_prompt` becomes the CONTENT
+  form, `resolve(...)?.content ?? ''`. ⚠ **That `??` is a behaviour change the
+  commit message never mentions** (§R.4's trap, found by reading the hunk): the
+  old flag arm was `defaultPrompt?.content || systemPrompts[0]?.content || ''`,
+  so an EMPTY-content default fell through to the first prompt's content. v5 had
+  carried the old `||` verbatim as `.filter(|c| !c.is_empty()).or_else(first)`.
+- `api::chat_post_office`'s voice-preview chain drops its three-arm tail for
+  `resolve_default_system_prompt_id`. v5 had reproduced v4's PRE-fix chain,
+  comment and all, and took a stale column verbatim.
+
+### The empty-content arm is UNREACHABLE — three guards, all RUN
+
+The order predicted a RED-FIRST `empty_content_default` case in
+`chat_context_init_equivalence`. **That prediction is REFUTED by measurement.**
+v4 guards the shape three times over at `baa85e19b`, and each was run against
+the pinned worktree rather than reasoned about:
+
+1. `CharacterSystemPromptSchema.content` is `.min(1)`, so
+   `repos.characters.create` refuses it (`Too small: expected string to have >=1
+   characters`);
+2. `parsePromptFile` SKIPS a `Prompts/*.md` whose body is empty
+   (`Prompts/*.md body is empty; skipping`), so planting the FILE — the order's
+   own contingency — drops the prompt rather than carrying it;
+3. `findById` re-VALIDATES the hydrated character, so planting it into a
+   VAULT-LESS character's slim `systemPrompts` column makes the whole character
+   unreadable and `buildChatContext` answers `Character not found`.
+
+So the `??` is pinned at tier 1 (the corpus row
+`resolved-prompt-with-empty-content`, over v4's REAL resolver) and by two unit
+tests in `default_system_prompt.rs` — the P4.D112 idiom, with the measurement
+recorded in the builder, the family header and the unit test's own doc comment.
+`getDefaultSystemPrompt` is also not exported from `lib/chat/initialize.ts`, so
+it has no tier-1 path of its own
+(`a-v4-service-that-exports-only-its-runner-has-no-tier-1-path`).
+
+### Differentials
+
+- **NEW `default_system_prompt_equivalence`** (tier 1, exact on three
+  comparands — the resolved prompt OBJECT, its id, and the CONTENT form) over
+  the committed `harness/oracle/fixtures/default-system-prompt.json`: **22
+  cases**, v4's own five test vectors verbatim (the fifth asks three shapes,
+  carried as three rows) plus the shapes that suite does not — a `''` column, a
+  truthy NON-STRING column against the strict `===`, `false`/`0` columns,
+  duplicate flags, a truthy non-bool `isDefault`, `0`/`null` flags, a resolved
+  prompt with empty content, one with no `content` key, and one with no `id`
+  (where the two forms disagree by design). Five shape guards keep a future
+  trimmed regen from going green having stopped asking. ⚠ The `content` field is
+  v4 `initialize.ts:146` TRANSCRIBED, not driven — stated in both headers.
+- **`chat_context_init_equivalence`** gains `stale_default_column` (a fourth
+  character, Nell, whose column names a uuid none of her prompts has, with the
+  flag on her SECOND prompt so honouring the column and falling to `prompts[0]`
+  are both visibly wrong). Expected and measured GREEN before and after — a
+  NEUTRALITY pin, since both readers already check existence. Count guard 12 →
+  13; the case is in BOTH lists (the family is list-driven).
+- **`in_scene_voiced_tier3_equivalence`** gains `route_stale_default_column`
+  with a per-case plant of the stale column on the fresh copy, on BOTH sides.
+
+### The voice-preview fold is PROMPT-NEUTRAL — and that is a measurement
+
+Mutation M6 (restore the pre-fix arm) **SURVIVED as first written**, which is a
+finding, not a line to delete. The cause: with a stale column the pre-fix chain
+resolves an id nothing has, and the service's own
+`get_selected_or_default_system_prompt` then falls back to the default — the
+very prompt the fix picks directly. The assembled system prompt is therefore
+byte-identical either way and NO tier-3 diff can see the fold; the corpus row is
+a neutrality pin, correctly labelled.
+
+What DOES differ is the resolved id, and v4 logs it. So the fold gets a WIRING
+pin — `the_stale_column_resolves_to_the_flagged_prompt` — asserting v4's
+`prompt resolved` debug line carries the FLAGGED prompt's id and NOT the stale
+one. ⚠ Writing it caught a second thing: the expected id is **not** the
+builder's `SP_DEFAULT` literal, because the read overlay RE-KEYS every prompt id
+from its file path — the same fact unit 2's transient-id rule exists for. The
+pin resolves the flagged id at runtime and asserts its NAME too, so a fixture
+that stopped flagging that prompt cannot make the row vacuous.
+
+### Mutations
+
+| # | mutation | target | result |
+|---|---|---|---|
+| M7 | the `\|\|` restored in the content fold | the two unit pins in `default_system_prompt.rs` | RED |
+| M8 | the resolver's existence check removed | `default_system_prompt_equivalence` / `v4-3-stale-column-falls-to-the-flag` | RED |
+| M6 | the voice preview's pre-fix arm restored | `the_stale_column_resolves_to_the_flagged_prompt` | RED (after the retarget above) |
+
+M7 is RETARGETED from the order's `empty_content_default` — which cannot exist.
+
+### Regen recipes AS RUN
+
+```
+PIN=/tmp/qt-v4-pin-p4d201-baa85e19b ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+# default_system_prompt (pure tsx, no fixture)
+cd "$PIN" && $N/npx tsx $V5W/harness/oracle/cases/default-system-prompt.ts \
+  > /tmp/oracle-default-system-prompt.ndjson
+# chat_context_init (TZ=UTC on BOTH stages)
+cd "$PIN"
+TZ=UTC QT_FIXTURE_CCTX_MAIN=/tmp/qt-cctx-main.db QT_FIXTURE_CCTX_MOUNT=/tmp/qt-cctx-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-chat-context-init-fixture.ts
+TZ=UTC QT_FIXTURE_CCTX_MAIN=/tmp/qt-cctx-main.db QT_FIXTURE_CCTX_MOUNT=/tmp/qt-cctx-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/chat-context-init.ts > /tmp/oracle-cctx.ndjson
+# in_scene_voiced_tier3 — the committed recipe, unchanged, at the pin
+```

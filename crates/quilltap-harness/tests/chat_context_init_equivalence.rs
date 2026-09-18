@@ -30,6 +30,25 @@
 //! installs a `FakeDate` at `FIXED_NOW_MS` and the Rust side passes the same
 //! constant, or no span could agree.
 //!
+//! **P4.D201 (v4 `baa85e19b`) — the one default-system-prompt resolver.**
+//! `stale_default_column` (Nell: the column names a prompt she does not have)
+//! reaches `getDefaultSystemPrompt`, which v4 does not export, so this family is
+//! its only DRIVING proof. It is a NEUTRALITY pin — green before and after,
+//! since both the pre-fix and post-fix readers check existence.
+//!
+//! ⚠ There is deliberately NO empty-content arm. The fix's other half replaces
+//! `defaultPrompt?.content || systemPrompts[0]?.content || ''` with `?? ''`, so
+//! a default prompt with EMPTY content stops falling through — but v4 guards
+//! that shape THREE times over at `baa85e19b`, all three MEASURED by running
+//! them: `CharacterSystemPromptSchema.content` is `.min(1)` (create refuses it),
+//! `parsePromptFile` skips a `Prompts/*.md` with an empty body (planting the
+//! file drops the prompt), and `findById` re-validates the hydrated character
+//! (planting it into a vault-less slim row makes the character unreadable —
+//! `buildChatContext` answers `Character not found`). The arm is UNREACHABLE in
+//! v4 production; it is pinned at tier 1 (`default_system_prompt_equivalence`'s
+//! `resolved-prompt-with-empty-content` row, over v4's REAL resolver) and by
+//! unit test in `quilltap_core::default_system_prompt`, the P4.D112 idiom.
+//!
 //! ⚠ A case added to `chat-context-init.ts` alone is NEVER RUN — this family is
 //! LIST-DRIVEN (the Rust `cases` array below drives it, and the oracle is a
 //! lookup table). The count guard passes either way; add every new case to
@@ -71,6 +90,9 @@ struct Spec {
     bob_id: String,
     #[serde(rename = "ariaSp2")]
     aria_sp2: String,
+    /// [P4.D201 / v4 `baa85e19b`] the stale-column arm.
+    #[serde(rename = "nellId")]
+    nell_id: String,
 }
 
 fn spec_path() -> PathBuf {
@@ -237,6 +259,19 @@ fn chat_context_init_matches_oracle() {
             None,
             None,
         ),
+        // P4.D201 / v4 `baa85e19b`: the stale-column arm reaching
+        // `getDefaultSystemPrompt` — module-private in v4, so no tier-1 path;
+        // this family is its DRIVING proof. It is a NEUTRALITY pin: Nell's
+        // column names a prompt she does not have, and BOTH the pre-fix and
+        // post-fix readers check existence, so it is green before and after.
+        (
+            "stale_default_column",
+            spec.nell_id.clone(),
+            None,
+            None,
+            None,
+            None,
+        ),
     ];
 
     let mut subprompt_hits = 0usize;
@@ -280,8 +315,8 @@ fn chat_context_init_matches_oracle() {
     }
     // 9 before P4.D168; +3 for the greeting's FORCED progressions report
     // (`prog_forced_greeting`, `prog_forced_with_scenario`,
-    // `prog_absent_on_aria`).
-    assert_eq!(oracle.len(), 12, "oracle case count drifted");
+    // `prog_absent_on_aria`); +1 for P4.D201's `stale_default_column` = 13.
+    assert_eq!(oracle.len(), 13, "oracle case count drifted");
     assert_eq!(subprompt_hits, 5, "the five P4.D164 `sp_*` cases must run");
     // P4.D168: the forced section must actually appear. These read the ORACLE,
     // so they guard the FIXTURE (a builder that stopped seeding Sam's
@@ -313,6 +348,23 @@ fn chat_context_init_matches_oracle() {
     assert!(
         !forced.contains("Broken"),
         "the schema-refused entry is dropped while its siblings survive"
+    );
+    // P4.D201: the stale-column arm must actually ask its question. Like the
+    // P4.D168 guards this reads the ORACLE, so it guards the FIXTURE — a builder
+    // that stopped baking Nell, or one whose column stopped being stale, would
+    // otherwise pass in silence. What catches a v5 regression is the row-by-row
+    // compare above.
+    let stale = oracle
+        .get("stale_default_column")
+        .expect("stale_default_column in the oracle")
+        .clone();
+    assert!(
+        stale["systemPrompt"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("speak plainly"),
+        "the stale column must fall through to the FLAGGED prompt, not `prompts[0]`: {}",
+        stale["systemPrompt"]
     );
     let absent = oracle
         .get("prog_absent_on_aria")

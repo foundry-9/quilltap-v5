@@ -56,45 +56,17 @@ fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-/// v4 `getDefaultSystemPrompt`: `defaultSystemPromptId` → `isDefault` → first →
-/// `''`.
+/// v4 `getDefaultSystemPrompt` (`lib/chat/initialize.ts:145-147`), folded onto
+/// the one resolver home at v4 `baa85e19b` (bug 154):
+/// `resolveDefaultSystemPrompt(character)?.content ?? ''`.
+///
+/// ⚠ That fold is a BEHAVIOUR change the commit message never mentions. The old
+/// flag arm was `defaultPrompt?.content || systemPrompts[0]?.content || ''`, so a
+/// default prompt whose content was EMPTY fell through to the first prompt's
+/// content; the `??` form answers `''` instead. v5 carried the old `||` verbatim
+/// (a `.filter(|c| !c.is_empty()).or_else(first)`) until this port.
 fn get_default_system_prompt(character: &Value) -> String {
-    let prompts = character.get("systemPrompts").and_then(Value::as_array);
-    let Some(prompts) = prompts else {
-        return String::new();
-    };
-    if prompts.is_empty() {
-        return String::new();
-    }
-    if let Some(default_id) = character
-        .get("defaultSystemPromptId")
-        .and_then(Value::as_str)
-    {
-        if let Some(by_id) = prompts
-            .iter()
-            .find(|p| p.get("id").and_then(Value::as_str) == Some(default_id))
-        {
-            return by_id
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-        }
-    }
-    // isDefault flag, then first prompt, then ''.
-    let by_default = prompts
-        .iter()
-        .find(|p| p.get("isDefault").and_then(Value::as_bool).unwrap_or(false));
-    let content = by_default
-        .and_then(|p| p.get("content").and_then(Value::as_str))
-        .filter(|c| !c.is_empty())
-        .or_else(|| {
-            prompts
-                .first()
-                .and_then(|p| p.get("content").and_then(Value::as_str))
-        })
-        .unwrap_or_default();
-    content.to_string()
+    crate::default_system_prompt::resolve_default_system_prompt_content(character)
 }
 
 /// v4 `getSelectedOrDefaultSystemPrompt`: a matching `selectedSystemPromptId`'s

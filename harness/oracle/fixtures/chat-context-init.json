@@ -165,5 +165,64 @@
     "canCreateOutfits": null,
     "systemTransparency": null,
     "coreWhisperEnabled": null
+  },
+  "nellId": "c8000000-0000-4000-8000-0000000000a4",
+  "nell": {
+    "id": "c8000000-0000-4000-8000-0000000000a4",
+    "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "name": "Nell",
+    "identity": "",
+    "description": "The harbour's bookkeeper.",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "Nell looks up from the ledger.",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "their"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [
+      {
+        "id": "5b000000-0000-4000-8000-000000000004",
+        "name": "Ledger Voice",
+        "content": "You are {{char}}, and you keep the ledger.",
+        "isDefault": false,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      },
+      {
+        "id": "5b000000-0000-4000-8000-000000000005",
+        "name": "Standing Voice",
+        "content": "You are {{char}}, and you speak plainly to {{user}}.",
+        "isDefault": true,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    ],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": "5b000000-0000-4000-8000-0000000000ff",
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null
   }
 }

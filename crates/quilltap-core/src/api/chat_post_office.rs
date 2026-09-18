@@ -850,19 +850,13 @@ pub async fn chat_impersonation_voice_preview(
         }
     }
 
-    // System prompt: operator override → the seat's own → the character's
-    // default → their `isDefault` prompt → their first.
-    let character_prompts = character
-        .get("systemPrompts")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let prompt_id = |v: Option<&Value>| -> Option<String> {
-        v.and_then(|p| p.get("id"))
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
+    // System prompt: operator override → the seat's own → the character's default.
+    //
+    // v4 `baa85e19b` (bug 154) collapsed the three-arm tail onto the one resolver
+    // home: the pre-fix chain took `character.defaultSystemPromptId` VERBATIM, so
+    // a column naming a prompt the character no longer had won over the prompt
+    // actually flagged default. v5 reproduced that chain, comment and all, until
+    // this port; `resolve_default_system_prompt_id` checks existence first.
     let resolved_system_prompt_id: Option<String> = system_prompt_id
         .filter(|s| !s.is_empty())
         .map(str::to_string)
@@ -873,21 +867,7 @@ pub async fn chat_impersonation_voice_preview(
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
         })
-        .or_else(|| {
-            character
-                .get("defaultSystemPromptId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        })
-        .or_else(|| {
-            prompt_id(
-                character_prompts
-                    .iter()
-                    .find(|p| p.get("isDefault") == Some(&Value::Bool(true))),
-            )
-        })
-        .or_else(|| prompt_id(character_prompts.first()));
+        .or_else(|| crate::default_system_prompt::resolve_default_system_prompt_id(&character));
 
     let selected_subprompt_ids: Vec<String> = participant
         .get("selectedSubpromptIds")

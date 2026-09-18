@@ -1,0 +1,221 @@
+{
+  "$comment": "Corpus for the tier-1 `default_system_prompt_equivalence` family (v4 `baa85e19b`, bug 154 — `lib/characters/default-system-prompt.ts`). Rows 1-7 are v4's own five test vectors from `__tests__/unit/lib/characters/default-system-prompt.test.ts`, verbatim (the fifth asks three shapes, carried as three rows). The rest ask the shapes that suite does not: JS truthiness on both the column and the flag, the strict-equality column match against a non-string column, duplicate flags, and the content form's empty-string arm. Each row is a whole `character` object passed to the resolver; the oracle emits the resolved prompt OBJECT, its id, and the CONTENT form (v4 `lib/chat/initialize.ts:146` transcribed — `getDefaultSystemPrompt` is not exported, so its driving proof is `chat_context_init_equivalence`'s `empty_content_default` case).",
+  "cases": [
+    {
+      "id": "v4-1-column-names-a-prompt-the-character-has",
+      "note": "v4 test 1 — prefers the column when it names a prompt the character has.",
+      "character": {
+        "systemPrompts": [
+          { "id": "main", "isDefault": true, "content": "the everyday voice" },
+          { "id": "front-line", "isDefault": false, "content": "the fighting has started" }
+        ],
+        "defaultSystemPromptId": "front-line"
+      }
+    },
+    {
+      "id": "v4-2-column-null-falls-to-the-flag",
+      "note": "v4 test 2 — falls through to the isDefault flag when the column is null.",
+      "character": {
+        "systemPrompts": [
+          { "id": "front-line", "isDefault": false, "content": "the fighting has started" },
+          { "id": "main", "isDefault": true, "content": "the everyday voice" }
+        ],
+        "defaultSystemPromptId": null
+      }
+    },
+    {
+      "id": "v4-3-stale-column-falls-to-the-flag",
+      "note": "v4 test 3 — THE FIX: a column naming a prompt that is gone falls through to the flag.",
+      "character": {
+        "systemPrompts": [
+          { "id": "main", "isDefault": true, "content": "the everyday voice" },
+          { "id": "front-line", "isDefault": false, "content": "the fighting has started" }
+        ],
+        "defaultSystemPromptId": "deleted-long-ago"
+      }
+    },
+    {
+      "id": "v4-4-no-flag-no-column-falls-to-the-first",
+      "note": "v4 test 4 — falls through to the first prompt when nothing is marked default.",
+      "character": {
+        "systemPrompts": [
+          { "id": "front-line", "isDefault": false, "content": "the fighting has started" },
+          { "id": "main", "isDefault": false, "content": "the everyday voice" }
+        ]
+      }
+    },
+    {
+      "id": "v4-5a-empty-prompt-list",
+      "note": "v4 test 5 — a character with no prompts at all.",
+      "character": { "systemPrompts": [] }
+    },
+    {
+      "id": "v4-5b-bare-character",
+      "note": "v4 test 5 — the bare `{}`: no systemPrompts key at all.",
+      "character": {}
+    },
+    {
+      "id": "v4-5c-null-prompts-with-a-column",
+      "note": "v4 test 5 — `systemPrompts: null` with a column: the `?? []` wins and the column is never consulted.",
+      "character": { "systemPrompts": null, "defaultSystemPromptId": "main" }
+    },
+    {
+      "id": "column-empty-string-falls-to-the-flag",
+      "note": "§S.2 extra — `''` is JS-falsy, so the column is not consulted at all.",
+      "character": {
+        "systemPrompts": [
+          { "id": "front-line", "isDefault": false, "content": "the fighting has started" },
+          { "id": "main", "isDefault": true, "content": "the everyday voice" }
+        ],
+        "defaultSystemPromptId": ""
+      }
+    },
+    {
+      "id": "two-prompts-flagged-default-takes-the-first",
+      "note": "§S.2 extra — `find` stops at the FIRST truthy flag.",
+      "character": {
+        "systemPrompts": [
+          { "id": "first-flagged", "isDefault": true, "content": "one" },
+          { "id": "second-flagged", "isDefault": true, "content": "two" }
+        ],
+        "defaultSystemPromptId": null
+      }
+    },
+    {
+      "id": "flags-absent-and-a-stale-column-takes-the-first",
+      "note": "§S.2 extra — no `isDefault` key anywhere plus a stale column: `prompts[0]`.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "content": "one" },
+          { "id": "beta", "content": "two" }
+        ],
+        "defaultSystemPromptId": "long-gone"
+      }
+    },
+    {
+      "id": "column-absent-with-prompts-takes-the-flag",
+      "note": "The column key omitted entirely (not null) — `undefined` is falsy.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": false, "content": "one" },
+          { "id": "beta", "isDefault": true, "content": "two" }
+        ]
+      }
+    },
+    {
+      "id": "column-false-is-falsy",
+      "note": "JS truthiness on the column: `false` never reaches the find.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": false, "content": "one" },
+          { "id": "beta", "isDefault": true, "content": "two" }
+        ],
+        "defaultSystemPromptId": false
+      }
+    },
+    {
+      "id": "column-number-is-truthy-but-never-strict-equals-a-string-id",
+      "note": "A truthy NON-STRING column: the `===` match cannot succeed against a string id, so it falls through exactly as a falsy column would.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": false, "content": "one" },
+          { "id": "beta", "isDefault": true, "content": "two" }
+        ],
+        "defaultSystemPromptId": 7
+      }
+    },
+    {
+      "id": "column-zero-is-falsy",
+      "note": "JS truthiness on the column: `0` is falsy.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": true, "content": "one" }
+        ],
+        "defaultSystemPromptId": 0
+      }
+    },
+    {
+      "id": "flag-truthy-non-bool-string-counts",
+      "note": "JS truthiness on the FLAG: `find(p => p.isDefault)` takes a non-empty string.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": false, "content": "one" },
+          { "id": "beta", "isDefault": "yes", "content": "two" }
+        ],
+        "defaultSystemPromptId": null
+      }
+    },
+    {
+      "id": "flag-zero-is-falsy",
+      "note": "JS truthiness on the FLAG: `0` does not count, so this falls to `prompts[0]`.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": 0, "content": "one" },
+          { "id": "beta", "isDefault": 0, "content": "two" }
+        ],
+        "defaultSystemPromptId": null
+      }
+    },
+    {
+      "id": "flag-null-is-falsy",
+      "note": "JS truthiness on the FLAG: an explicit `null` does not count.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": null, "content": "one" },
+          { "id": "beta", "isDefault": null, "content": "two" }
+        ]
+      }
+    },
+    {
+      "id": "column-wins-over-a-differently-flagged-prompt",
+      "note": "The column outranks the flag when it names an existing prompt — the whole point of recording it.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": true, "content": "one" },
+          { "id": "beta", "isDefault": false, "content": "two" }
+        ],
+        "defaultSystemPromptId": "beta"
+      }
+    },
+    {
+      "id": "resolved-prompt-with-empty-content",
+      "note": "The CONTENT form's `??`: a resolved prompt whose content is `''` answers `''` and does NOT fall through to the first prompt's content. This is the arm the pre-fix `||` chain got wrong; its DRIVING proof is `chat_context_init_equivalence`'s `empty_content_default` case.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": false, "content": "the first prompt's content" },
+          { "id": "beta", "isDefault": true, "content": "" }
+        ]
+      }
+    },
+    {
+      "id": "resolved-prompt-with-no-content-key",
+      "note": "The CONTENT form's `?.content ?? ''` when the key is absent entirely.",
+      "character": {
+        "systemPrompts": [
+          { "id": "alpha", "isDefault": true }
+        ]
+      }
+    },
+    {
+      "id": "single-prompt-not-flagged-no-column",
+      "note": "The commonest real shape after a delete-the-last-default: one prompt, no flag, no column.",
+      "character": {
+        "systemPrompts": [
+          { "id": "only", "isDefault": false, "content": "the only voice" }
+        ],
+        "defaultSystemPromptId": null
+      }
+    },
+    {
+      "id": "resolved-prompt-carries-no-id-key",
+      "note": "The prompt resolves (the object comes back) but has no `id`: the Id form's `?.id ?? null` answers null while the prompt itself is non-null — the two forms disagree by design.",
+      "character": {
+        "systemPrompts": [
+          { "isDefault": false, "content": "one" },
+          { "id": "beta", "isDefault": false, "content": "two" }
+        ],
+        "defaultSystemPromptId": "gone"
+      }
+    }
+  ]
+}

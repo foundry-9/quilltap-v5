@@ -80,6 +80,8 @@ const P_GHOST = 'e1000000-0000-4000-8000-000000000007';
 const P_MISSING = 'e1000000-0000-4000-8000-0000000000de';
 
 const SP_DEFAULT = '52000000-0000-4000-8000-000000000002';
+/** [P4.D201] A well-formed uuid no prompt of VESPER's has — the stale column. */
+const STALE_PROMPT_ID = '52000000-0000-4000-8000-0000000000ff';
 
 /** The canned rewrite. The failure case returns an empty string instead. */
 const REWRITE =
@@ -253,6 +255,12 @@ interface CaseSpec {
   seedMarkdown: unknown;
   connectionProfileId?: unknown;
   systemPromptId?: unknown;
+  /** [P4.D201 / v4 `baa85e19b`] Plant a STALE `defaultSystemPromptId` on
+   *  VESPER before the run — a well-formed uuid no prompt of hers has. The
+   *  column is a slim main-DB cell, so it is SQL-plantable on the per-case copy.
+   *  v4's pre-fix chain took the column VERBATIM; the resolver checks existence
+   *  first and falls through to the flagged prompt. */
+  plantStaleDefaultColumn?: boolean;
   /** SERVICE rows only: what the caller resolved (the route does this itself). */
   serviceProfileId?: string;
   serviceSystemPromptId?: string | null;
@@ -307,11 +315,19 @@ async function runCase(
     await initializeProviderRegistry(plugins);
   }
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+
+  // [P4.D201 / v4 `baa85e19b`] The stale-column plant, on the per-case COPY.
+  if (c.plantStaleDefaultColumn) {
+    await rawQuery('UPDATE characters SET defaultSystemPromptId = ? WHERE id = ?', [
+      STALE_PROMPT_ID,
+      VESPER,
+    ]);
+  }
 
   const RealDate = Date;
   const iso = new RealDate(NOW_MS).toISOString();
@@ -521,6 +537,14 @@ const CASES: CaseSpec[] = [
   { name: 'route_uncensored_reroutes', viaRoute: true, chatId: CHAT_UNC, participantId: P_VESPER, seedMarkdown: 'Say the part you were not going to say.' },
   { name: 'route_uncensored_compatible_does_not_reroute', viaRoute: true, chatId: CHAT_UNC_OK, participantId: P_VESPER, seedMarkdown: 'Say the part you were not going to say.' },
   { name: 'route_failure_default_sentence', viaRoute: true, empty: true, chatId: CHAT_STACK, participantId: P_VESPER, seedMarkdown: 'The lamps are out.' },
+  // [P4.D201 / v4 `baa85e19b`, bug 154] The STALE COLUMN. `CHAT_NOPROF` seats
+  // VESPER with NO `selectedSystemPromptId` (only `fullCast` sets one), and the
+  // request carries no operator override, so the character's default is what
+  // resolves — the one arm the fix moves. v4's pre-fix chain took the column
+  // verbatim (a prompt that does not exist); the resolver checks existence and
+  // answers the FLAGGED prompt instead. The assembled system prompt rides the
+  // canned key, so it IS the diffed evidence.
+  { name: 'route_stale_default_column', viaRoute: true, chatId: CHAT_NOPROF, participantId: P_VESPER, seedMarkdown: 'The lamps are out.', plantStaleDefaultColumn: true },
 ];
 
 async function main(): Promise<void> {

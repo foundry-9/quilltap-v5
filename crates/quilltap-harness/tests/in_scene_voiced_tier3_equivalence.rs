@@ -119,6 +119,10 @@ const P_GHOST: &str = "e1000000-0000-4000-8000-000000000007";
 const P_MISSING: &str = "e1000000-0000-4000-8000-0000000000de";
 
 const SP_DEFAULT: &str = "52000000-0000-4000-8000-000000000002";
+/// [P4.D201] A well-formed uuid no prompt of VESPER's has — the stale column.
+const STALE_PROMPT_ID: &str = "52000000-0000-4000-8000-0000000000ff";
+/// [P4.D201] VESPER's character id (the seat's character on every chat here).
+const VESPER: &str = "a1000000-0000-4000-8000-000000000001";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -304,6 +308,12 @@ struct Case {
     seed_markdown: Option<&'static str>,
     connection_profile_id: Option<&'static str>,
     system_prompt_id: Option<&'static str>,
+    /// [P4.D201 / v4 `baa85e19b`] Plant a STALE `defaultSystemPromptId` on
+    /// VESPER before the run — a well-formed uuid no prompt of hers has. The
+    /// column is a slim main-DB cell, so it is SQL-plantable on the per-case
+    /// copy (the `dogfood-findings.md` overlay caveat is about store-overlay
+    /// PROPERTIES; this is a plain column).
+    plant_stale_default_column: bool,
     /// SERVICE rows only — what the caller resolved.
     service_profile_id: &'static str,
     service_system_prompt_id: Option<&'static str>,
@@ -319,6 +329,7 @@ const BASE: Case = Case {
     seed_markdown: Some(""),
     connection_profile_id: None,
     system_prompt_id: None,
+    plant_stale_default_column: false,
     service_profile_id: CONN_SEAT,
     service_system_prompt_id: Some(SP_DEFAULT),
     service_subprompt_ids: &[],
@@ -523,6 +534,21 @@ const CASES: &[Case] = &[
         seed_markdown: Some("Say the part you were not going to say."),
         ..BASE
     },
+    // [P4.D201 / v4 `baa85e19b`, bug 154] The STALE COLUMN. `CHAT_NOPROF` seats
+    // VESPER with NO `selectedSystemPromptId` (only `fullCast` sets one) and the
+    // request carries no operator override, so the character's default is what
+    // resolves — the one arm the fix moves. v5 reproduced v4's pre-fix chain,
+    // which took the column VERBATIM; the resolver checks existence first and
+    // answers the FLAGGED prompt. RED-FIRST: the assembled system prompt rides
+    // the canned key, so it IS the diffed evidence.
+    Case {
+        name: "route_stale_default_column",
+        via_route: true,
+        chat_id: CHAT_NOPROF,
+        seed_markdown: Some("The lamps are out."),
+        plant_stale_default_column: true,
+        ..BASE
+    },
     Case {
         name: "route_failure_default_sentence",
         via_route: true,
@@ -609,6 +635,17 @@ fn in_scene_voiced_tier3_matches_oracle() {
         let executor = CheapLlmTaskExecutor::new();
 
         let db = fresh_db(&spec, case.name);
+        // [P4.D201 / v4 `baa85e19b`] The stale-column plant, on the per-case COPY.
+        if case.plant_stale_default_column {
+            db.write_blocking(|writers| {
+                writers.main().connection().execute(
+                    "UPDATE characters SET defaultSystemPromptId = ?1 WHERE id = ?2",
+                    rusqlite::params![STALE_PROMPT_ID, VESPER],
+                )?;
+                Ok(())
+            })
+            .expect("plant the stale defaultSystemPromptId");
+        }
         let provider = Arc::new(RecordingProvider {
             inner: canned,
             calls: Mutex::new(Vec::new()),
@@ -998,6 +1035,102 @@ fn the_info_line_carries_v4s_bag() {
             .unwrap_or_else(|| panic!("`{sentence}` missing from {lines:#?}"));
         assert!(l.starts_with("DEBUG"), "v4 logs this at debug: {l}");
     }
+}
+
+/// **P4.D201 / v4 `baa85e19b`, bug 154 — the voice preview calls the RESOLVER.**
+///
+/// The `route_stale_default_column` corpus row is a NEUTRALITY pin, and that is
+/// a MEASUREMENT, not a choice: with a stale column the pre-fix chain resolves a
+/// prompt id nothing has, and the service's own
+/// `get_selected_or_default_system_prompt` then falls back to the default —
+/// which is the prompt the fix picks directly. So the assembled system prompt is
+/// byte-identical either way and the tier-3 diff cannot see the fold. (Measured:
+/// restoring the pre-fix arm leaves all 28 corpus rows GREEN.)
+///
+/// What DOES differ is the resolved id itself, and v4 logs it. This is therefore
+/// a WIRING pin in the idiom the `979652a9` round established for bug 77's
+/// turn-end publish: the corpus proves the bytes did not move, and this proves
+/// the call site changed. The resolver's own behaviour is proven against v4's
+/// REAL function by `default_system_prompt_equivalence`'s
+/// `v4-3-stale-column-falls-to-the-flag`.
+#[test]
+fn the_stale_column_resolves_to_the_flagged_prompt() {
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec")).expect("spec");
+    let db = fresh_db(&spec, "stalecol");
+    db.write_blocking(|writers| {
+        writers.main().connection().execute(
+            "UPDATE characters SET defaultSystemPromptId = ?1 WHERE id = ?2",
+            rusqlite::params![STALE_PROMPT_ID, VESPER],
+        )?;
+        Ok(())
+    })
+    .expect("plant the stale defaultSystemPromptId");
+
+    let driver: Arc<dyn InSceneVoiceDriver> = Arc::new(StubDriver("ok."));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let lines = quilltap_core::test_support::captured(|| {
+        // CHAT_NOPROF seats VESPER with NO `selectedSystemPromptId`, and no
+        // operator override is passed, so the character's default is the arm
+        // under test.
+        let resp = rt.block_on(chat_impersonation_voice_preview(
+            &db,
+            Some(&driver),
+            &spec.user_id,
+            CHAT_NOPROF,
+            P_VESPER,
+            "The lamps are out.",
+            None,
+            None,
+        ));
+        assert_eq!(status_body(&resp).0, 200);
+    });
+
+    // ⚠ NOT the builder's `SP_DEFAULT` literal: the prompts live in the VAULT and
+    // the read overlay RE-KEYS each one from its file path, which is the very
+    // fact this lane's transient-id rule exists for. The expected id is resolved
+    // from the hydrated character, and its NAME is asserted too so a fixture that
+    // stopped flagging that prompt cannot make the row vacuous.
+    let character = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                quilltap_core::db::vault_character_arrays::find_by_id(main, mount, VESPER)
+            })
+        })
+        .expect("read Vesper")
+        .expect("Vesper present");
+    let flagged = character["systemPrompts"]
+        .as_array()
+        .expect("prompts")
+        .iter()
+        .find(|p| p["isDefault"] == serde_json::json!(true))
+        .expect("a flagged default prompt");
+    assert_eq!(
+        flagged["name"].as_str(),
+        Some("The Signal-Keeper"),
+        "the fixture's flagged prompt moved; this row would be vacuous"
+    );
+    let flagged_id = flagged["id"].as_str().expect("prompt id");
+    assert_ne!(
+        flagged_id, STALE_PROMPT_ID,
+        "the plant must name a prompt the character does NOT have"
+    );
+
+    let resolved = lines
+        .iter()
+        .find(|l| l.contains("Impersonation voice preview: prompt resolved"))
+        .unwrap_or_else(|| panic!("no `prompt resolved` line in {lines:#?}"));
+    assert!(
+        resolved.contains(&format!("systemPromptId={flagged_id}")),
+        "the stale column must fall through to the FLAGGED prompt ({flagged_id}): {resolved}"
+    );
+    assert!(
+        !resolved.contains(STALE_PROMPT_ID),
+        "the stale column must NOT be taken verbatim (v4's pre-fix chain did): {resolved}"
+    );
 }
 
 /// **The `%error` vs `?error` rendering check** (Tier 2 item 11,

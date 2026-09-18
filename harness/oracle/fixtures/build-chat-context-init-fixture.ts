@@ -30,9 +30,12 @@ interface Spec {
   ariaId: string;
   samId: string;
   bobId: string;
+  /** [P4.D201 / v4 `baa85e19b`] the stale-column arm. */
+  nellId: string;
   aria: Record<string, unknown>;
   sam: Record<string, unknown>;
   bob: Record<string, unknown>;
+  nell: Record<string, unknown>;
 }
 
 const TS = '2026-02-01T00:00:00.000Z';
@@ -128,6 +131,25 @@ async function main(): Promise<void> {
   await bake(spec.ariaId, spec.aria);
   await bake(spec.samId, spec.sam);
   await bake(spec.bobId, spec.bob);
+  // [P4.D201 / v4 `baa85e19b`] the stale-column arm.
+  //
+  // Nell's `defaultSystemPromptId` names a uuid none of her prompts has — and
+  // could not, since the vault re-keys every prompt id from its file path — with
+  // the `isDefault` flag on her SECOND prompt, so honouring a stale column and
+  // falling to `prompts[0]` are both visibly wrong answers.
+  //
+  // ⚠ There is NO empty-content-default arm here, and the reason is measured,
+  // not assumed. v4 guards that shape THREE times over at `baa85e19b`:
+  // `CharacterSystemPromptSchema.content` is `.min(1)`, so `create` refuses it;
+  // `parsePromptFile` SKIPS a `Prompts/*.md` whose body is empty, so planting the
+  // file drops the prompt instead of carrying it; and `findById` re-VALIDATES the
+  // hydrated character, so planting it into a vault-less character's slim
+  // `systemPrompts` column makes the whole character unreadable
+  // (`buildChatContext` then answers `Character not found`). All three were run.
+  // So the `?? ''` the fix puts in place of `defaultPrompt?.content ||
+  // systemPrompts[0]?.content || ''` is UNREACHABLE in v4 production; it is
+  // pinned at tier 1 and by unit test instead (the P4.D112 idiom).
+  await bake(spec.nellId, spec.nell);
 
   // [P4.D164 / v4 `2f4254b42`] Aria's `Subprompts/` for the greeting arms:
   // one file uses `{{scenario}}` so the greeting's RAW-parameter context (no

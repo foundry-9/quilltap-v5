@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — port(characters): one read order for the default system prompt (v4 `baa85e19b`, bug 154)
+
+_Versions: core 0.0.961, harness 0.0.851._
+
+v4 records a character's default system prompt twice — the `isDefault` flag on
+the prompt and the `defaultSystemPromptId` column on the character — and it was
+resolved by hand at five call sites, three of which disagreed about a column
+naming a prompt the character no longer had. `baa85e19b` states the order once
+in `lib/characters/default-system-prompt.ts`; this ports it as
+`quilltap_core::default_system_prompt`: the column **when it names a prompt that
+exists**, then the flag, then the first prompt.
+
+Both server read sites fold onto it. `chat_initialize`'s
+`get_default_system_prompt` becomes `resolve(...)?.content ?? ''` — a behaviour
+change the commit message never mentions, since the old `||` chain let an
+empty-content default fall through to the first prompt's content. The
+impersonation voice preview's three-arm tail collapses onto
+`resolve_default_system_prompt_id`, which checks existence first; v5 had
+reproduced v4's pre-fix chain, comment and all, and took a stale column
+verbatim.
+
+New tier-1 family `default_system_prompt_equivalence` over v4's REAL resolver:
+22 corpus rows, v4's own five test vectors plus the shapes that suite does not
+ask (JS truthiness on both the column and the flag, a truthy non-string column
+against the strict `===`, duplicate flags, a resolved prompt with no `id`).
+`chat_context_init_equivalence` gains `stale_default_column` as a neutrality pin
+and `in_scene_voiced_tier3_equivalence` gains `route_stale_default_column`,
+whose per-case plant of a stale column makes the assembled system prompt the
+diffed evidence.
+
+An empty-content default is UNREACHABLE in v4 and the three guards were run, not
+assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
+empty body on read, and `findById` re-validates so a planted vault-less row makes
+the whole character unreadable. The `??` is pinned by unit test instead.
+
 #### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
 
 _Docs-only change._
