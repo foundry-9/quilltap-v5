@@ -133263,3 +133263,73 @@ lane-private staging is the collision rule, not a recipe change. **No
 committed fixture changed** — `harness/oracle/fixtures/image-generation.json`
 and `build-image-generation-fixture.ts` are untouched, so no sibling family is
 invalidated and `image_generation_tier3` needs nothing from this lane.
+
+### §5 The census and the dispatch wire pin (P4.96 commit 2)
+
+**The order's "five new `CENSUS` rows" is refuted by the file's own tests, and
+the five landed as a sibling list instead.** `CENSUS` is a census of the serde
+boundary's TYPED fields: `typed_request_fields` skips any type containing
+`Value`, and `census_covers_every_typed_request_field` asserts the two sets are
+EQUAL, so a `Value`-carrying row is an `extra` and reddens it;
+`body_sourced_rows_are_serde_type_rejected_today` would redden for the opposite
+reason, since it asserts every body row's decode REJECTS a wrong type and the
+whole point of these five is that it must ACCEPT one. They join the
+`CHAT_CREATE_TRIO` shape — `IMAGE_PROFILE_GENERATE_RAW_FIVE` — with a test
+mirroring `chat_create_trio_fixed_by_p4_73_decodes_raw_so_the_handler_can_refuse`.
+
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`: **442 → 442**, the expectation
+recorded before the test was run (none of the five is a route identifier, and
+none is typed, so none reaches the walk). The test agreed. The stale header
+figure is re-measured: **442 of 686** typed fields excluded, 244 classified —
+it had said "403 of 643". Neither number was ever asserted, only the exclusion
+count, which is why the prose could drift while the constant stayed current.
+
+**The wire test caught the round's real bug on its first run.** The order
+prescribed `#[serde(default)] Option<serde_json::Value>` for the five. Serde
+collapses an explicit JSON `null` into `None` for a plain `Option<T>`, so
+`{"size": null}` reached the handler as an ABSENT key and passed a gate v4
+400s — the exact evidence-destroying collapse the raw crossing exists to
+prevent. The differential could not see it: it calls `image_profile_generate`
+directly and never crosses serde. All five are now
+`Option<Option<serde_json::Value>>` under `double_option` (the shape
+`CHAT_CREATE_TRIO` already records), collapsed in the engine arm — absent stays
+absent, explicit `null` becomes `Value::Null`.
+
+**Tier-3 deferral, measured and recorded so the next reader need not
+re-derive it:** v5 has NO `/api/v1/image-profiles` REST edge.
+`quilltap-web::lib` registers `embedding-profiles`, `images`, `images/{id}` and
+`user/profile`; every hit for `image-profiles` in the crate is census prose.
+The verb's only HTTP path is `POST /api/dispatch`, which is what the wire test
+drives. Adding an edge is a new route, not this order's.
+
+The wire test's venue registers `ProductionSpineFactory`
+(`web-test-venue-has-no-spine-factory`) — without it `ready_generate_image()`
+answers the not-assembled refusal and the parse stage is never reached. It
+seeds its own `image_profiles` row (the committed chat-send fixture is a LAZY
+repo fixture and has no such table) using the CREATE statement read from
+`provisioning/fresh_schema.json` at test time rather than transcribed, so a D23
+re-dump moves the test with the schema. The profile points at `127.0.0.1:1`, so
+the one body that passes validation fails downstream at the provider with no
+spend — and that failure IS the discriminator between "the gate let it through"
+and "the gate refused it".
+
+### §6 Mutation proofs
+
+| # | Mutation | Reddens |
+|---|---|---|
+| M1 | the `style` gate becomes a free string | `generate_style_unknown`, `generate_two_bad_fields` |
+| M2 | `quality` threaded, `size` left `None` | `generate_size`, `generate_all_five` |
+| M3 | the parse stage moved AHEAD of the 404 gate | `generate_404_beats_400` |
+| M4 | `quality` retyped `Option<String>` on the variant (engine arm adapted so it COMPILES — a build red proves nothing) | the wire test's quality arm + `census_covers_every_typed_request_field` |
+| M5 | a row deleted from `IMAGE_PROFILE_GENERATE_RAW_FIVE` | `the_raw_five_list_covers_every_raw_field_on_the_variant` |
+| M6 | the tri-state collapsed back to a plain `Option<Value>` | the wire test's `size: null` arm + the same list guard |
+
+**M5 SURVIVED as first written** (§R.6: a surviving proof is a finding, not a
+line to delete) — the list was only ever iterated, never held against anything,
+so deleting a row changed nothing. Fixed by walking
+`Request::ImageProfileGenerate`'s own fields from the source and asserting the
+list names exactly the raw ones. **M6 then exposed a second, narrower gap**: the
+rows' `rust_type` was a bare transcription nothing checked, so collapsing the
+tri-state left the census green. The same guard now compares the declared SHAPE
+as well, and M6 reddens it. Both proofs re-run green-after-revert; every revert
+was by file backup, never `git checkout`.

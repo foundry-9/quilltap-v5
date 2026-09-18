@@ -118,8 +118,12 @@ struct Row {
 
 /// **The census.** One row per (`Request` variant, non-`Value` field) that the
 /// route-identifier rule does not exclude — NOT one per typed field: the rule
-/// drops 403 of 643 today, a large part of them real v4 body keys (see
-/// [`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`]). Held against a mechanical walk of
+/// drops **442 of 686** today, leaving 244 classified here, and a large part of
+/// what it drops are real v4 body keys (see
+/// [`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`]). (The figure said "403 of 643"
+/// until P4.96 re-measured it; the constant below had been kept current while
+/// this sentence had not. Neither number was ever asserted — only the
+/// exclusion count is, which is why the prose could drift.) Held against a mechanical walk of
 /// `api/types.rs` by [`census_covers_every_typed_request_field`], so a new
 /// typed field outside the exclusion fails this test until it is classified.
 /// The v4 half of every row (`v4`, `note`) is a TRANSCRIPTION read at the
@@ -2740,4 +2744,246 @@ fn the_census_reads_the_file_it_claims_to() {
         types_rs().contains("pub enum Request"),
         "types.rs no longer declares `pub enum Request`"
     );
+}
+
+// ===========================================================================
+// P4.96 — the profile-id generate route's five shaping keys, RAW-crossing
+// ===========================================================================
+
+/// v4's `generateImageSchema` shaping keys on `Request::ImageProfileGenerate`
+/// (`app/api/v1/image-profiles/[id]/route.ts:25-29`), added by P4.96.
+///
+/// **They are NOT [`CENSUS`] rows, and the order's prediction that they would
+/// be is refuted by this file's own tests.** `CENSUS` is a census of the serde
+/// boundary's TYPED fields: `typed_request_fields` skips anything whose type
+/// contains `Value`, and [`census_covers_every_typed_request_field`] asserts the
+/// two sets are EQUAL, so a `Value`-carrying row in `CENSUS` is an `extra` and
+/// reddens it. [`body_sourced_rows_are_serde_type_rejected_today`] would redden
+/// too, for the opposite reason: it asserts every body row's decode REJECTS a
+/// wrong type, and the whole point of these five is that it must ACCEPT one.
+///
+/// So they join the [`CHAT_CREATE_TRIO`] shape instead — the list of fields
+/// whose refusal was deliberately moved OFF the decode and INTO the handler, so
+/// that Tauri IPC and HTTP answer v4's bytes rather than a serde sentence at one
+/// edge and a Zod envelope at the other. `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`
+/// does not move for them (442 → 442): none is a route identifier, and none is
+/// typed, so none reaches the walk at all.
+///
+/// Note the `Option<Option<Value>>`, matching the trio exactly. P4.96's order
+/// prescribed a plain `Option<serde_json::Value>`, and the dispatch wire test's
+/// FIRST run refuted it: serde collapses an explicit JSON `null` into `None` for
+/// a plain `Option<T>`, so `{"size": null}` reached the handler as an absent key
+/// and passed a gate v4 400s. The differential could not see it — it drives the
+/// handler directly and never crosses serde. That expectation was recorded before
+/// the test was run, and the test agreed.
+const IMAGE_PROFILE_GENERATE_RAW_FIVE: &[Row] = &[
+    Row {
+        variant: "ImageProfileGenerate",
+        field: "size",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96) — v4 `image-profiles/[id]/route.ts:25` `size: \
+               z.string().optional()` under an uncaught `.parse` → \
+               `{\"error\":\"Validation error\",\"details\":[…]}`. Until P4.96 the key \
+               was not on the variant at all and was SILENTLY DROPPED; it now \
+               crosses raw and `api::image_profiles::parse_generate_body` answers \
+               v4's envelope (`image_generate_route_equivalence` \
+               `generate_size_number` / `generate_size_null`).",
+    },
+    Row {
+        variant: "ImageProfileGenerate",
+        field: "quality",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96) — v4 `:26` `quality: imageQualitySchema.optional()` (the \
+               shared eight-tier list since `d8d2890ee`); an unknown member is an \
+               `invalid_value` issue naming all eight \
+               (`generate_quality_unknown`).",
+    },
+    Row {
+        variant: "ImageProfileGenerate",
+        field: "style",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96) — v4 `:27` `style: z.enum(['vivid','natural']).optional()` \
+               (`generate_style_unknown`).",
+    },
+    Row {
+        variant: "ImageProfileGenerate",
+        field: "aspect_ratio",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96) — v4 `:28` `aspectRatio: z.string().optional()`. The ROUTE \
+               takes any string; the TOOL's own schema takes five \
+               (`lib/tools/image-generation-tool.ts:57-60`), so a valid-per-route \
+               `3:2` is refused downstream with v4's blanket sentence \
+               (`generate_aspect_ratio_off_tool_enum`) — a route that pre-gated it \
+               here would diverge.",
+    },
+    Row {
+        variant: "ImageProfileGenerate",
+        field: "negative_prompt",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96) — v4 `:29` `negativePrompt: z.string().optional()` \
+               (`generate_negative_prompt_object`).",
+    },
+];
+
+/// The mirror of [`chat_create_trio_fixed_by_p4_73_decodes_raw_so_the_handler_can_refuse`]
+/// for P4.96's five: the dispatch decode must ACCEPT a wrong type so the handler
+/// is the one that refuses, with v4's `Validation error` envelope, on BOTH
+/// transports.
+///
+/// The mutation this is written against: retype any one of the five to
+/// `Option<String>` on the variant and this test reddens on that field — which
+/// is exactly the divergence P4.62 ruled out, since the web edge would then
+/// answer a serde decode sentence where v4 answers Zod's.
+/// Walk `Request::ImageProfileGenerate`'s own fields from the source and return
+/// the ones that carry a raw `Value` — the same mechanical discipline
+/// [`census_covers_every_typed_request_field`] applies to the typed half, and
+/// the reason a row cannot be quietly deleted from
+/// [`IMAGE_PROFILE_GENERATE_RAW_FIVE`].
+fn image_profile_generate_value_fields() -> Vec<(String, String)> {
+    let src = strip_noise(&types_rs());
+    let start = src.find("pub enum Request").expect("the Request enum");
+    let open = src[start..].find('{').expect("enum body") + start;
+    let mut depth = 0i32;
+    let mut end = open;
+    for (i, ch) in src[open..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = open + i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for variant in split_top_level(&src[open + 1..end], VARIANT_OPEN, VARIANT_CLOSE) {
+        let v = variant.trim();
+        let head = v.split('{').next().unwrap_or("").trim();
+        if head.trim_end_matches(',').split_whitespace().next_back() != Some("ImageProfileGenerate")
+        {
+            continue;
+        }
+        let (Some(bo), Some(bc)) = (v.find('{'), v.rfind('}')) else {
+            continue;
+        };
+        for field in split_top_level(&v[bo + 1..bc], FIELD_OPEN, FIELD_CLOSE) {
+            let f = field.split_whitespace().collect::<Vec<_>>().join(" ");
+            let Some((fname, ftype)) = f.split_once(':') else {
+                continue;
+            };
+            let fname = fname.replace("pub", "");
+            let fname = fname.trim();
+            if !fname.is_empty() && ftype.contains("Value") {
+                // Normalized the way the rows spell it: the path prefix is
+                // noise, the shape is the claim.
+                let ty = ftype
+                    .trim()
+                    .trim_end_matches(',')
+                    .replace("serde_json::", "")
+                    .replace(' ', "");
+                out.push((fname.to_string(), ty));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The list is held against the source, so a row DELETED from
+/// [`IMAGE_PROFILE_GENERATE_RAW_FIVE`] — or a sixth raw key added to the variant
+/// without a row — is a red. (Written because the first mutation battery's
+/// "delete a row" proof SURVIVED: the list was only ever iterated.)
+#[test]
+fn the_raw_five_list_covers_every_raw_field_on_the_variant() {
+    let mut have: Vec<(String, String)> = IMAGE_PROFILE_GENERATE_RAW_FIVE
+        .iter()
+        .map(|r| (r.field.to_string(), r.rust_type.replace(' ', "")))
+        .collect();
+    have.sort();
+    // Name AND declared shape: each row's `rust_type` is otherwise a bare
+    // transcription nothing holds, and the shape is the whole point — a plain
+    // `Option<Value>` here would silently re-open the explicit-`null` collapse.
+    assert_eq!(
+        have,
+        image_profile_generate_value_fields(),
+        "IMAGE_PROFILE_GENERATE_RAW_FIVE must name exactly the raw `Value` fields \
+         `Request::ImageProfileGenerate` carries, WITH their declared shapes — \
+         classify a new one, retire a stale row, or fix a drifted `rust_type`"
+    );
+    assert_eq!(
+        have.len(),
+        5,
+        "v4's `generateImageSchema` has five shaping keys"
+    );
+}
+
+#[test]
+fn image_profile_generate_five_decode_raw_so_the_handler_can_refuse() {
+    use quilltap_core::api::types::Request;
+
+    // The minimum an `ImageProfileGenerate` needs, so what the probe measures is
+    // the wrong TYPE and not a missing sibling.
+    let base = json!({
+        "type": "imageProfileGenerate",
+        "imageProfileId": "p-1",
+        "prompt": "a kite",
+    });
+    for row in IMAGE_PROFILE_GENERATE_RAW_FIVE {
+        assert!(
+            row.note.starts_with("RAW(P4.96)"),
+            "{}.{} must carry its owning lane",
+            row.variant,
+            row.field
+        );
+        assert_eq!(
+            row.rust_type, "Option<Option<Value>>",
+            "{}.{} must be recorded as the TRI-STATE carrier it is — a plain \
+             `Option<Value>` collapses an explicit `null` into `None` at serde, \
+             which is the exact evidence v4's `.optional()` refusal needs",
+            row.variant, row.field
+        );
+        // Every JSON type v4's Zod can be handed, including the `null` that
+        // `.optional()` (not `.nullable()`) refuses.
+        for wrong in [
+            json!(42),
+            json!(true),
+            json!(Value::Null),
+            json!({}),
+            json!([]),
+        ] {
+            let mut body = base.clone();
+            body.as_object_mut()
+                .unwrap()
+                .insert(camel(row.field), wrong.clone());
+            let decoded = serde_json::from_value::<Request>(body);
+            assert!(
+                decoded.is_ok(),
+                "`{}` REJECTED {wrong} at the dispatch decode — the raw crossing has \
+                 regressed and the web edge now answers a serde sentence where v4 \
+                 answers `Validation error`: {decoded:?}",
+                row.field
+            );
+        }
+    }
+
+    // …and the two that stay TYPED are the recorded pre-existing narrowing this
+    // order does not reopen: their `CENSUS` rows say `serde-type-rejected today`,
+    // and this is where that claim is held for THIS verb.
+    for (key, wrong) in [("prompt", json!(5)), ("count", json!("2"))] {
+        let mut body = base.clone();
+        body.as_object_mut().unwrap().insert(key.into(), wrong);
+        assert!(
+            serde_json::from_value::<Request>(body).is_err(),
+            "`{key}` stopped being serde-typed — its CENSUS row's classification \
+             has changed and the row must move to the raw list"
+        );
+    }
 }

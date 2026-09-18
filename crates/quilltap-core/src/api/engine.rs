@@ -2953,11 +2953,16 @@ impl CoreEngine {
                         // `.optional().prefault(1)` is what supplies the 1, and
                         // the handler reproduces it.
                         count: count.map(serde_json::Value::from),
-                        size,
-                        quality,
-                        style,
-                        aspect_ratio,
-                        negative_prompt,
+                        // The tri-state collapses HERE and only here: absent
+                        // stays `None`, an explicit `null` becomes
+                        // `Some(Value::Null)` so the handler can refuse it the
+                        // way v4's `.optional()` (not `.nullable()`) does.
+                        size: size.map(|v| v.unwrap_or(serde_json::Value::Null)),
+                        quality: quality.map(|v| v.unwrap_or(serde_json::Value::Null)),
+                        style: style.map(|v| v.unwrap_or(serde_json::Value::Null)),
+                        aspect_ratio: aspect_ratio.map(|v| v.unwrap_or(serde_json::Value::Null)),
+                        negative_prompt: negative_prompt
+                            .map(|v| v.unwrap_or(serde_json::Value::Null)),
                     };
                     super::image_profiles::image_profile_generate(
                         &db,

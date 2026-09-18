@@ -1058,15 +1058,23 @@ pub enum Request {
     /// caller could not — and an unknown `quality` was silently DROPPED where v4
     /// answers 400.
     ///
-    /// The five ride as RAW [`serde_json::Value`]s, NOT `Option<String>`: this is
-    /// the `ChatCreate`-trio / [`Request::ImagesGenerate`] rule ruled by P4.62 and
+    /// The five ride as RAW values, NOT `Option<String>`: this is the
+    /// `ChatCreate`-trio / [`Request::ImagesGenerate`] rule ruled by P4.62 and
     /// P4.73. A serde-typed field turns v4's 400 `Validation error` into a dispatch
     /// DECODE error at the web edge and a different sentence over Tauri IPC; the raw
     /// crossing lets
     /// [`image_profile_generate`](crate::api::image_profiles::image_profile_generate)
-    /// refuse with v4's own Zod envelope on both transports. `.optional()` is not
-    /// `.nullable()`, so an explicit `null` must stay distinguishable from an absent
-    /// key — a typed decode destroys exactly that evidence.
+    /// refuse with v4's own Zod envelope on both transports.
+    ///
+    /// **They are `Option<Option<Value>>` under `double_option`, and a plain
+    /// `Option<Value>` is NOT enough** — measured, not reasoned: serde collapses an
+    /// explicit JSON `null` into `None` for a plain `Option<T>`, so `{"size": null}`
+    /// arrived indistinguishable from an absent `size` and sailed through a gate v4
+    /// 400s. `.optional()` is not `.nullable()`, and that distinction is the whole
+    /// evidence the refusal is built from. P4.96's dispatch wire test caught it on
+    /// its first run; the differential could NOT, because it drives the handler
+    /// directly and never crosses serde. (The `ChatCreate` trio records
+    /// `Option<Option<Value>>` for exactly this reason.)
     ///
     /// `prompt` and `count` stay serde-TYPED: their `dispatch_wrong_type_census`
     /// rows are the recorded pre-existing narrowing (the edge refuses a non-string
@@ -1079,16 +1087,16 @@ pub enum Request {
         chat_id: Option<String>,
         #[serde(default)]
         count: Option<i64>,
-        #[serde(default)]
-        size: Option<serde_json::Value>,
-        #[serde(default)]
-        quality: Option<serde_json::Value>,
-        #[serde(default)]
-        style: Option<serde_json::Value>,
-        #[serde(default)]
-        aspect_ratio: Option<serde_json::Value>,
-        #[serde(default)]
-        negative_prompt: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "double_option")]
+        size: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        quality: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        style: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        aspect_ratio: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        negative_prompt: Option<Option<serde_json::Value>>,
     },
     /// v4 `POST /api/v1/image-profiles?action=validate-key` — live IO (loud refusal
     /// arm this round).

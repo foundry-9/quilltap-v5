@@ -252,6 +252,40 @@ the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
 megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
 (2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
 drops the oldest and the over-large one, which is what v5 now does.
+#### 2026-09-17 — fix(images): the generate verb's five keys need the tri-state, not a bare Option<Value> (P4.96)
+
+_Versions: core 0.0.944, web 0.0.151._
+
+The dispatch wire test for P4.96's five shaping keys caught a real bug on its
+first run, and the differential could not have: it drives the handler directly
+and never crosses serde. `#[serde(default)] Option<serde_json::Value>` does NOT
+preserve an explicit JSON `null` — serde collapses it into `None`, so
+`{"size": null}` arrived indistinguishable from an absent `size` and sailed
+through a gate v4 400s. `.optional()` is not `.nullable()`, and that
+distinction is the entire evidence the refusal is built from.
+
+All five are now `Option<Option<serde_json::Value>>` under `double_option` —
+the shape the `ChatCreate` trio already records for the same reason — and the
+engine arm collapses the tri-state at the one place that can: absent stays
+absent, an explicit `null` becomes `Value::Null` for the handler to refuse.
+
+The wire test itself is new: `POST /api/dispatch` is the verb's only HTTP path
+(v5 has no `/api/v1/image-profiles` REST edge; that measurement is recorded as
+the order's Tier-3 deferral), and it pins that a wrong-typed `quality` answers
+v4's `{error, details}` envelope rather than serde's `invalid type` sentence,
+that a well-formed five-key body gets past the gate, that the 404 beats the
+400, and that `prompt`/`count` are still serde-typed — the recorded
+pre-existing narrowing this order does not reopen.
+
+The five join `dispatch_wrong_type_census` as a `IMAGE_PROFILE_GENERATE_RAW_FIVE`
+list beside `CHAT_CREATE_TRIO`, not as `CENSUS` rows: `CENSUS` is a census of
+TYPED fields and asserts set equality against a mechanical walk, so a
+`Value`-carrying row reddens it, and its body-row test asserts the decode
+REJECTS a wrong type — the opposite of what these five must do. The list is
+held against the source by name AND declared shape, after the "delete a row"
+mutation proof survived as first written. The header's stale "403 of 643" is
+re-measured to 442 of 686.
+
 #### 2026-09-17 — feat(images): the profile-id generate route carries v4's five shaping fields (P4.96)
 
 _Versions: core 0.0.943, harness 0.0.835._
