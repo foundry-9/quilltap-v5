@@ -344,8 +344,18 @@ pub fn acting_character_is_opaque_to_vaults(main: &Connection, ctx: &DocEditTool
         Ok(Some(character)) => {
             character.get("systemTransparency").and_then(Value::as_bool) != Some(true)
         }
-        // Lookup failed or missing → opaque (fail closed).
-        _ => true,
+        // A MISSING character is opaque silently: v4's `character?.systemTransparency
+        // !== true` is simply true for `undefined`, with no log line.
+        Ok(None) => true,
+        // A THROWN lookup is what v4 warns about, in its `catch` — fail closed.
+        Err(e) => {
+            tracing::warn!(
+                character_id = %cid,
+                error = %e,
+                "systemTransparency lookup failed; defaulting to opaque"
+            );
+            true
+        }
     }
 }
 
@@ -956,5 +966,84 @@ mod tests {
             scope_from_str(None, DocEditScope::Project),
             DocEditScope::Project
         );
+    }
+
+    // ---- the opacity helper's lookup-failure warn (P4.D200 Tier 2 item 12) ----
+
+    fn opacity_ctx(character_id: Option<&str>) -> DocEditToolContext {
+        DocEditToolContext {
+            chat_id: String::new(),
+            user_id: "u-1".to_string(),
+            project_id: None,
+            character_id: character_id.map(String::from),
+            operator_override: false,
+            files_dir: None,
+        }
+    }
+
+    #[test]
+    fn a_thrown_transparency_lookup_warns_and_fails_closed() {
+        // No `characters` table at all → the read ERRORS, which is v4's `catch`.
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        let (opaque, lines) = crate::test_support::captured_with(|| {
+            acting_character_is_opaque_to_vaults(&main, &opacity_ctx(Some("c-1")))
+        });
+        assert!(opaque, "a failed lookup must fail CLOSED");
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("systemTransparency lookup failed; defaulting to opaque"))
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(warn.starts_with("WARN "), "{warn}");
+        assert!(warn.contains("character_id=c-1"), "{warn}");
+        assert!(warn.contains("error="), "v4 carries the error too: {warn}");
+    }
+
+    #[test]
+    fn a_missing_character_is_opaque_silently() {
+        // v4's `character?.systemTransparency !== true` is simply true for a
+        // missing row, with NO log line — only the thrown case warns.
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        // The slim column list `characters_read::select_columns` names — a narrower
+        // table makes the read ERROR, which is the OTHER arm (and is exactly how
+        // the first draft of this test passed for the wrong reason).
+        main.execute_batch(
+            r#"CREATE TABLE "characters" (
+                 "id" TEXT PRIMARY KEY, "userId" TEXT, "name" TEXT, "defaultImageId" TEXT,
+                 "defaultConnectionProfileId" TEXT, "defaultPartnerId" TEXT,
+                 "defaultRoleplayTemplateId" TEXT, "defaultImageProfileId" TEXT,
+                 "sillyTavernData" TEXT, "isFavorite" INTEGER, "npc" INTEGER,
+                 "controlledBy" TEXT, "defaultAgentModeEnabled" INTEGER,
+                 "defaultHelpToolsEnabled" INTEGER, "defaultTimestampConfig" TEXT,
+                 "defaultScenarioId" TEXT, "defaultSystemPromptId" TEXT,
+                 "characterDocumentMountPointId" TEXT, "canDressThemselves" INTEGER,
+                 "canCreateOutfits" INTEGER, "systemTransparency" INTEGER,
+                 "coreWhisperEnabled" INTEGER, "canBeCarina" INTEGER, "partnerLinks" TEXT,
+                 "tags" TEXT, "avatarOverrides" TEXT, "createdAt" TEXT, "updatedAt" TEXT
+               );"#,
+        )
+        .unwrap();
+        let (opaque, lines) = crate::test_support::captured_with(|| {
+            acting_character_is_opaque_to_vaults(&main, &opacity_ctx(Some("nobody")))
+        });
+        assert!(opaque);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("systemTransparency lookup failed")),
+            "a missing character must NOT warn: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn no_acting_character_is_not_opaque_and_is_silent() {
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        let (opaque, lines) = crate::test_support::captured_with(|| {
+            acting_character_is_opaque_to_vaults(&main, &opacity_ctx(None))
+        });
+        assert!(
+            !opaque,
+            "no character at all is NOT opaque (v4's early return)"
+        );
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

@@ -499,6 +499,7 @@ fn resolve_document_store_path(
     files_dir: Option<&Path>,
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(mount_point_ref) = &context.mount_point else {
+        tracing::warn!("document_store scope requires mountPoint in context");
         return Err(ResolveError::path(
             PathErrorCode::MissingContext,
             "Mount point is required for document_store scope",
@@ -507,6 +508,7 @@ fn resolve_document_store_path(
 
     let has_character_context = context.character_id.is_some() || !context.character_ids.is_empty();
     if !context.operator_override && context.project_id.is_none() && !has_character_context {
+        tracing::warn!("document_store scope requires projectId or characterId in context");
         return Err(ResolveError::path(
             PathErrorCode::MissingContext,
             "Project ID or character ID is required for document_store scope",
@@ -545,6 +547,10 @@ fn resolve_document_store_path(
                 }
             }
             if matched.is_none() {
+                tracing::warn!(
+                    character_id = %cid,
+                    "Self-token resolution failed: no accessible vault for character"
+                );
                 return Err(ResolveError::path(
                     PathErrorCode::NotFound,
                     format!("No personal vault is available to address as \"{SELF_VAULT_TOKEN}\""),
@@ -618,6 +624,11 @@ fn resolve_document_store_path(
     };
 
     if !mp.enabled {
+        tracing::warn!(
+            mount_point_id = %mp.id,
+            "Attempt to access disabled mount point: {}",
+            mp.id
+        );
         return Err(ResolveError::path(
             PathErrorCode::AccessDenied,
             "Mount point is disabled",
@@ -982,6 +993,153 @@ mod tests {
                 .any(|l| l.contains("Mount point exists but is out of scope")
                     || l.contains("Mount point not found or not accessible:")),
             "no refusal warn on a resolved store: {lines:?}"
+        );
+    }
+
+    // ---- the pre-existing absent v4 log lines (P4.D200 Tier 2 item 12) ----
+    // These sit BESIDE bug 152's hunks rather than inside them: v4 has had them all
+    // along and the port dropped them, the #103/#110 class. Each is pinned with its
+    // rendered sentence, its level, and a leg proving it does NOT fire otherwise.
+
+    #[test]
+    fn missing_mount_point_warns() {
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            ..Default::default()
+        };
+        let (_out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN ")
+                && l.contains("document_store scope requires mountPoint in context")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn missing_project_and_character_warns() {
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            mount_point: Some("Project Papers".to_string()),
+            ..Default::default()
+        };
+        let (_out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN ")
+                && l.contains("document_store scope requires projectId or characterId in context")),
+            "{lines:?}"
+        );
+        // …and the OTHER context warn does not fire: a mountPoint WAS supplied.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("requires mountPoint in context")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn self_token_failure_warns_with_the_character_id() {
+        // `c-1` has no vault row at all, so the self-token arm cannot resolve.
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-1".to_string()),
+            mount_point: Some("self".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert!(matches!(
+            out,
+            Err(ResolveError::Path {
+                code: PathErrorCode::NotFound,
+                ..
+            })
+        ));
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Self-token resolution failed: no accessible vault for character"))
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(warn.starts_with("WARN "), "{warn}");
+        assert!(warn.contains("character_id=c-1"), "{warn}");
+    }
+
+    #[test]
+    fn a_disabled_mount_warns_with_its_id() {
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        let mount = rusqlite::Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                r#"CREATE TABLE "doc_mount_points" (
+                     "id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "basePath" TEXT NOT NULL,
+                     "mountType" TEXT NOT NULL, "storeType" TEXT, "enabled" INTEGER NOT NULL
+                   );
+                   CREATE TABLE "project_doc_mount_links" (
+                     "id" TEXT PRIMARY KEY, "projectId" TEXT NOT NULL,
+                     "mountPointId" TEXT NOT NULL, "createdAt" TEXT, "updatedAt" TEXT
+                   );
+                   INSERT INTO "doc_mount_points" VALUES
+                     ('d-1','Disabled Store','','database','documents',0);
+                   INSERT INTO "project_doc_mount_links" VALUES ('l-1','p-1','d-1','','');"#,
+            )
+            .unwrap();
+        // NOT the operator override: its accessible set is `findEnabled`, which
+        // cannot contain a disabled store, so that path can never reach this arm
+        // (v4's is the same shape). The tiered pool does NOT filter on `enabled`,
+        // so a project-linked disabled store is how the refusal is reachable.
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            mount_point: Some("Disabled Store".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        match out {
+            Err(ResolveError::Path { code, message }) => {
+                assert_eq!(code, PathErrorCode::AccessDenied);
+                assert_eq!(message, "Mount point is disabled");
+            }
+            other => panic!("expected the disabled refusal, got {other:?}"),
+        }
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN ")
+                && l.contains("Attempt to access disabled mount point: d-1")),
+            "{lines:?}"
         );
     }
 }

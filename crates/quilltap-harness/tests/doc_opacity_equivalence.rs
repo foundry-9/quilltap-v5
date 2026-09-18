@@ -20,30 +20,30 @@
 //! the ids the blob WRITE ops mint. A store NAME, an error CODE and a refusal
 //! MESSAGE all survive normalization untouched.
 //!
-//! Regen recipe (the fixture is MINTED per run — rebuild, regenerate, THEN test,
-//! in that order; the family is pinned at the TARGET `89fcc3c0d` because the port
-//! MOVES it):
+//! Regen (Node 24). The fixture pair is MINTED per run — rebuild, regenerate,
+//! THEN `cargo test` against that SAME build, in that order. The sweep driver is
+//! the sanctioned path (`recipe_sweep.py --run doc_opacity_equivalence --v4
+//! <pin>`); it supplies the checkout, so this header never names one.
 //!
-//!     V5W=${V5W:-$(git rev-parse --show-toplevel)}
-//!     N=~/.nvm/versions/node/v24.13.1/bin
-//!     PIN=/tmp/qt-v4-pin-p4d200-89fcc3c0d      # per drift-ledger §5.1
-//!     STAGE=/tmp/p4d200/stage-doc-opacity
-//!     rm -rf "$STAGE" && mkdir -p "$STAGE/harness/oracle/cases" "$STAGE/harness/oracle/fixtures"
-//!     cp "$V5W/harness/oracle/cases/doc-opacity.test.ts" "$STAGE/harness/oracle/cases/"
-//!     cp "$V5W/harness/oracle/fixtures/doc-opacity.json" "$STAGE/harness/oracle/fixtures/"
-//!     rm -f /tmp/p4d200/dopa-main.db /tmp/p4d200/dopa-mount.db
-//!     cd "$PIN" && QT_FIXTURE_DOPA_MAIN=/tmp/p4d200/dopa-main.db \
-//!       QT_FIXTURE_DOPA_MOUNT=/tmp/p4d200/dopa-mount.db \
-//!       $N/npx tsx "$V5W/harness/oracle/fixtures/build-doc-opacity-fixture.ts"
-//!     cd "$PIN" && QT_FIXTURE_DOPA_MAIN=/tmp/p4d200/dopa-main.db \
-//!       QT_FIXTURE_DOPA_MOUNT=/tmp/p4d200/dopa-mount.db \
-//!       QT_ORACLE_OUT=/tmp/p4d200/oracle-doc-opacity.ndjson \
-//!       $N/npx jest --silent --watchman=false --testTimeout=240000 \
-//!         --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-opacity\.test\.ts$"
-//!     cd "$V5W" && QT_ORACLE_DOPA=/tmp/p4d200/oracle-doc-opacity.ndjson \
-//!       QT_FIXTURE_DOPA_MAIN=/tmp/p4d200/dopa-main.db \
-//!       QT_FIXTURE_DOPA_MOUNT=/tmp/p4d200/dopa-mount.db \
-//!       cargo test -p quilltap-harness --test doc_opacity_equivalence -- --nocapture
+//!     N=~/.nvm/versions/node/v24.13.1/bin ; W=${V5W:-$(git rev-parse --show-toplevel)}
+//!     STAGE=/tmp/qt-oracle-stage-doc-opacity
+//!     rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
+//!     cp $W/harness/oracle/cases/doc-opacity.test.ts $STAGE/harness/oracle/cases/
+//!     cp $W/harness/oracle/fixtures/doc-opacity.json $STAGE/harness/oracle/fixtures/
+//!     cd ~/source/quilltap-server        # or a worktree pinned at the baseline
+//!     rm -f /tmp/qt-dopa-main.db /tmp/qt-dopa-mount.db
+//!     QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
+//!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+//!     QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
+//!     QT_ORACLE_OUT=/tmp/oracle-doc-opacity.ndjson \
+//!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
+//!     --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-opacity\.test\.ts$"
+//!
+//! Then:
+//!
+//!     QT_ORACLE_DOPA=/tmp/oracle-doc-opacity.ndjson \
+//!     QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
+//!     cargo test -p quilltap-harness --test doc_opacity_equivalence -- --nocapture
 
 use quilltap_core::db::tiered_mount_pool::{flatten_tier_pool, FlattenOptions, TieredMountPool};
 use quilltap_core::db::Writer;

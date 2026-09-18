@@ -40,6 +40,40 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — port(doc-edit): the path resolver's five absent v4 log lines
+
+_Versions: core 0.0.955, harness 0.0.846._
+
+The #103/#110 class, sitting beside bug 152's hunks rather than inside them: v4
+has had these all along and the port dropped them, so `combined.log` said nothing
+while a doc tool refused. Restored with v4's sentences and levels —
+`document_store scope requires mountPoint in context`, `document_store scope
+requires projectId or characterId in context`, `Self-token resolution failed: no
+accessible vault for character` (with `characterId`), `Attempt to access disabled
+mount point: <id>`, and the opacity helper's `systemTransparency lookup failed;
+defaulting to opaque` (with `characterId` and the error).
+
+The opacity helper's arm needed splitting to stay faithful: v4 warns only in its
+`catch`, while a MISSING character is opaque silently, because
+`character?.systemTransparency !== true` is simply true for `undefined`. v5 had
+folded both into one `_ => true`. Now `Ok(None)` is silent and only `Err` warns —
+pinned in both directions.
+
+Each line is capture-pinned with its rendered sentence, its level and a silence
+leg. Two of the pins had to be re-posed after their first run measured the wrong
+thing: the disabled-mount arm is unreachable through the operator override (its
+accessible set is `find_enabled`, which cannot contain a disabled store — v4's is
+the same shape), so the test reaches it through a project-linked disabled store;
+and the missing-character test's stub `characters` table was narrower than the
+reader's slim column list, so the read ERRORED and the test passed on the wrong
+arm.
+
+`doc_opacity_equivalence` still 44/44 — logging only, no behaviour moved.
+
+The new family's recipe header is also made canonical: it named a `/tmp` pin,
+which the sweep driver flags (`stale_v4_pin_path`) because a committed recipe
+must never name one — `--v4` is the pin. Driver now reports it `ok` (435).
+
 #### 2026-09-18 — port(doc-edit): a hidden vault is not listed either (v4 bug 153, `89fcc3c0d`)
 
 _Versions: core 0.0.954, harness 0.0.845._
