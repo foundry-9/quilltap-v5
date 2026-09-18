@@ -135581,3 +135581,24 @@ it.
 The constant was reverted to `false` and the beat re-run: **1 skipped, exit 0**,
 parked as designed. Commit `c5b26da5`.
 
+
+### §8 — the gate of record (P4.D202, 2026-09-18)
+
+Run from the lane worktree after the last unit. The round's gate rows that
+name "(Rust lanes)" do not apply — **this lane touches no Rust, no fixture, no
+harness family and no source census** (§9: none moved, confirmed, not assumed).
+
+| row | result |
+|---|---|
+| §R.2 probe (open and close) | **PASS** both times — branch `main`, tree CLEAN, `baa85e19b..main` EMPTY, `1a2b2164c..bugfix` EMPTY, HEAD `baa85e19b` |
+| `npm run lint` | clean — `check-qt-classes --self-test: 5/5`; **952 qt-\* classes defined, every guarded reference resolves** |
+| `npm test` (whole) | **437 test files / 7,406 tests / 0 failed**, exit 0 |
+| the lane's new + changed specs by name | each run individually and green (the twin 9/9; both new-chat specs 64/64; the announcement dialog 29/29 — and 4/4 on the fold's own arms BEFORE the fold; the prompts tab 14/14, its new describe 3/3; the width pin 1/1; the defaults tab 13/13) |
+| mutation proofs M1–M5 | the table in §3 — M4 SURVIVED as first written, the spec was repaired, and it then reddens exactly (b) |
+| `npm run build` | clean, exit 0 |
+| the gated beat | exercised LIVE against release binaries — §7. Parked (`1 skipped`, exit 0) with the constant `false`; every ungated assertion proven to pass by the flipped-gate discriminator |
+| differential regens | **NONE** (§R.3 — this lane regenerates nothing; its oracle is v4's own jest suite at `baa85e19b`, transcribed) |
+
+Versions: **SPA 0.5.738** (base 0.5.731 + 7 bumps — units 1–6 plus the beat's
+live-run repair). No crate version moved.
+
