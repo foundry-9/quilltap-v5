@@ -15,9 +15,12 @@
  *      her own minted vault. She is the control: every covenant row must be green
  *      for her both before AND after the fix.
  *   4. A GROUP ("Severed") with an official database store ("Group Files: Severed")
- *      that is linked to NO project — the store bug 152 made unreachable. BOTH
- *      characters are members (Abigail's membership is what lets the transparent
- *      control reach the same store).
+ *      that is linked to NO project — the store bug 152 made unreachable — PLUS one
+ *      store LINKED (not official) to the group ("Group Files: Severed (Linked)",
+ *      P4.100 item ii: the fix is at the flatten, which never distinguishes official
+ *      from linked, so a linked store must be reachable by an OPAQUE member exactly
+ *      like the official one). BOTH characters are members (Abigail's membership is
+ *      what lets the transparent control reach the same stores).
  *   5. A PROJECT ("Papers") via REAL repos.projects.create (its official store) PLUS
  *      one linked database store ("Project Papers") — the control that kept working
  *      throughout, which is why the bug looked intermittent.
@@ -65,6 +68,8 @@ interface Spec {
   groupName: string;
   groupOfficialMountPointId: string;
   groupStoreName: string;
+  groupLinkedMountPointId: string;
+  groupLinkedStoreName: string;
   projectId: string;
   projectName: string;
   projectLinkedMountPointId: string;
@@ -227,6 +232,7 @@ async function main(): Promise<void> {
     );
   };
   await provisionStore(spec.groupOfficialMountPointId, spec.groupStoreName);
+  await provisionStore(spec.groupLinkedMountPointId, spec.groupLinkedStoreName);
   await provisionStore(spec.projectLinkedMountPointId, spec.projectStoreName);
   await provisionStore(spec.strangerMountPointId, spec.strangerStoreName);
   await provisionStore(spec.generalMountPointId, spec.generalStoreName);
@@ -240,12 +246,17 @@ async function main(): Promise<void> {
     spec.generalMountPointId,
   ]);
 
-  // 5. The group, its official store, and BOTH members. The store is deliberately
-  //    NOT project-linked: that is the store bug 152 erased.
+  // 5. The group, its official store, ONE LINKED store (P4.100 item ii — bug
+  //    152's fix is at the flatten, which never distinguishes official from
+  //    linked; this store proves the group tier carries BOTH kinds for an
+  //    OPAQUE member, not just the official pointer), and BOTH members. The
+  //    official store is deliberately NOT project-linked: that is the store
+  //    bug 152 erased.
   await rawQuery(
     'INSERT INTO "groups" ("id", "name", "officialMountPointId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?)',
     [spec.groupId, spec.groupName, spec.groupOfficialMountPointId, TS, TS],
   );
+  await repos.groupDocMountLinks.link(spec.groupId, spec.groupLinkedMountPointId);
   await repos.groupCharacterMembers.addMember(spec.groupId, spec.leilaniId);
   await repos.groupCharacterMembers.addMember(spec.groupId, spec.abigailId);
 
@@ -316,6 +327,7 @@ async function main(): Promise<void> {
   await seedNotes(leilaniVault, 'Leilani');
   await seedNotes(abigailVault, 'Abigail');
   await seedNotes(spec.groupOfficialMountPointId, 'the Severed group');
+  await seedNotes(spec.groupLinkedMountPointId, 'the Severed group (linked store)');
   await seedNotes(spec.projectLinkedMountPointId, 'the Papers project');
   await seedNotes(projectOfficial, 'the Papers official store');
   await seedNotes(spec.strangerMountPointId, 'someone else entirely');

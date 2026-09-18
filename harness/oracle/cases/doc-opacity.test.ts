@@ -21,7 +21,12 @@
  * Ops run in a SINGLE module graph on ONE fixture copy, IN ORDER. The read-only
  * ops come first; the blob ops MUTATE (Abigail seeds a blob she then reads back,
  * which is what keeps Leilani's four blob refusals non-vacuous — they fail at
- * MOUNT resolution, not for want of a blob); the `flatten` ops are pure.
+ * MOUNT resolution, not for want of a blob); three P4.100 rows follow (Abigail's
+ * own-vault-by-name blob read, an opaque read of the group's LINKED [not
+ * official] store, and Abigail's write refusal into Leilani's peer vault — the
+ * last is why `resolve_write`/`context_write` below are WRAPPED, not unwrapped:
+ * before this row nothing made `buildWriteResolutionContext` throw); the
+ * `flatten` ops are pure.
  *
  * Emits ONE NDJSON line: { case, ops: [{ name, kind, actor, result }, ...] }.
  *
@@ -273,11 +278,22 @@ async function main(): Promise<void> {
           break;
         }
         case 'resolve_write': {
-          const rc = await buildWriteResolutionContext(
-            { mount_point: mountPoint } as never,
-            context as never,
-          );
-          result = await resolveRow(rc as never, op.path!);
+          // P4.100 item iv: WRAPPED — `buildWriteResolutionContext` throws for
+          // a write that targets a peer's vault (the read-only refusal), and
+          // until this row exercised that arm nothing did, so the throw was
+          // left UNWRAPPED and would have ABORTED the whole oracle case
+          // instead of recording the refusal. Shaped exactly like the Rust
+          // port's `build_write_resolution_context` `Err` arm.
+          try {
+            const rc = await buildWriteResolutionContext(
+              { mount_point: mountPoint } as never,
+              context as never,
+            );
+            result = await resolveRow(rc as never, op.path!);
+          } catch (e) {
+            const err = e as { message?: string; code?: string };
+            result = { ok: false, code: err.code ?? 'ACCESS_DENIED', message: err.message ?? String(e) };
+          }
           break;
         }
         case 'context_read': {
@@ -289,11 +305,18 @@ async function main(): Promise<void> {
           break;
         }
         case 'context_write': {
-          const rc = await buildWriteResolutionContext(
-            { mount_point: mountPoint } as never,
-            context as never,
-          );
-          result = shapeOf(rc as never);
+          // See 'resolve_write' above — the same wrap, shaped like the Rust
+          // port's `context_write` `Err` arm.
+          try {
+            const rc = await buildWriteResolutionContext(
+              { mount_point: mountPoint } as never,
+              context as never,
+            );
+            result = shapeOf(rc as never);
+          } catch (e) {
+            const err = e as { message?: string };
+            result = { error: err.message ?? String(e) };
+          }
           break;
         }
         case 'accessible': {

@@ -20,6 +20,18 @@
 //! the ids the blob WRITE ops mint. A store NAME, an error CODE and a refusal
 //! MESSAGE all survive normalization untouched.
 //!
+//! **P4.100 closed the four gaps the `89fcc3c0d` §3 review left "structurally
+//! covered but unexercised":** the fixture's `groupLinkedMountPointId` (a store
+//! LINKED, not official, to the group), and three ops —
+//! `blob_read_own_vault_by_name`, `group_linked_store_opaque_read`,
+//! `write_peer_vault_transparent` — plus a fourth check with no oracle
+//! counterpart (the ACCESS_DENIED warn's two-character `characters:` field,
+//! pinned via the capture layer right after the main loop). Landing
+//! `write_peer_vault_transparent` required WRAPPING the oracle's
+//! `buildWriteResolutionContext` calls (`resolve_write`/`context_write`) — until
+//! this row, nothing made that builder throw, so the throw was left unwrapped
+//! and would have ABORTED the whole oracle case.
+//!
 //! Regen (Node 24). The fixture pair is MINTED per run — rebuild, regenerate,
 //! THEN `cargo test` against that SAME build, in that order. The sweep driver is
 //! the sanctioned path (`recipe_sweep.py --run doc_opacity_equivalence --v4
@@ -495,6 +507,49 @@ fn doc_opacity_matches_oracle() {
                 op.name
             ));
         }
+    }
+
+    // P4.100 item iii: the ACCESS_DENIED warn's `characters:` field for a
+    // TWO-CHARACTER context — proven end to end through the REAL resolver.
+    // The prior mutation (M7) only reddened `describe_characters`'s own
+    // six-case unit table; nothing drove the join through the capture layer.
+    // Abigail (transparent) admits Leilani as a peer under the chat's
+    // cross-character reads, so a refused read against the out-of-scope
+    // stranger store carries BOTH ids — no v4 oracle counterpart (this is a
+    // v5 tracing convenience, not part of the compared Result), so it is
+    // pinned here rather than as an `ops` row.
+    {
+        let abigail_ctx = ctx_for("abigail");
+        let peers = collect_peer_character_ids_for_reads(main, &abigail_ctx);
+        assert_eq!(
+            peers,
+            vec![spec.leilani_id.clone()],
+            "the premise: Abigail's peer collection admits Leilani"
+        );
+        let addressing = Addressing {
+            scope: Some("document_store".to_string()),
+            mount_point: Some("Someone Elses Papers".to_string()),
+            path: Some("notes.md".to_string()),
+            ..Default::default()
+        };
+        let rc = build_read_resolution_context(main, &addressing, &abigail_ctx);
+        let (result, logs) = quilltap_core::test_support::captured_with(|| {
+            resolve_row(main, mount, &rc, "notes.md")
+        });
+        assert_eq!(
+            result.get("ok"),
+            Some(&Value::Bool(false)),
+            "the premise: the stranger store is out of scope for Abigail too"
+        );
+        let warn = logs
+            .iter()
+            .find(|l| l.contains("Mount point exists but is out of scope"))
+            .unwrap_or_else(|| panic!("no ACCESS_DENIED warn captured; logs: {logs:?}"));
+        let expected_field = format!("characters={},{}", spec.abigail_id, spec.leilani_id);
+        assert!(
+            warn.contains(&expected_field),
+            "the warn's `characters:` field must join BOTH acting ids: {warn}"
+        );
     }
 
     assert!(

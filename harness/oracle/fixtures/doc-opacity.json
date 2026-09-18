@@ -11,6 +11,8 @@
   "groupName": "Severed",
   "groupOfficialMountPointId": "e2000000-0000-4000-8000-0000000000f1",
   "groupStoreName": "Group Files: Severed",
+  "groupLinkedMountPointId": "e2000000-0000-4000-8000-0000000000f4",
+  "groupLinkedStoreName": "Group Files: Severed (Linked)",
   "projectId": "d2000000-0000-4000-8000-000000000002",
   "projectName": "Papers",
   "projectLinkedMountPointId": "e2000000-0000-4000-8000-0000000000f2",
@@ -354,6 +356,27 @@
         "original_filename": "quarry.bin",
         "mime_type": "application/octet-stream"
       }
+    },
+    {
+      "name": "blob_read_own_vault_by_name",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "{{abigailVaultName}}",
+      "path": "seed.bin"
+    },
+    {
+      "name": "group_linked_store_opaque_read",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Group Files: Severed (Linked)",
+      "path": "notes.md"
+    },
+    {
+      "name": "write_peer_vault_transparent",
+      "kind": "resolve_write",
+      "actor": "abigail",
+      "mountPoint": "{{leilaniVaultName}}",
+      "path": "notes.md"
     },
     {
       "name": "flatten_default",

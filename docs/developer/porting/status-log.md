@@ -136107,3 +136107,165 @@ already covered.
 
 Versions: core 0.0.961. harness/host/web/cli/tauri/SPA unchanged by this
 unit (unit 2 bumps harness).
+
+## P4.100 unit 2 — the four opacity corpus rows the `89fcc3c0d` §3 review left "structurally covered but unexercised" (lane record, 2026-09-18)
+
+Same lane/branch/order as unit 1. Phase-4 candidate 5 of the `89fcc3c0d`
+unification's list. Regen rule: **PIN REQUIRED** (§R.3) — pinned
+`/tmp/qt-v4-pin-p4100-89fcc3c0d`, verified `git -C "$PIN" rev-parse HEAD` =
+`89fcc3c0da5eaec10ee49907cbf8733cd5749405`, `ls -ld` clean, all three
+node_modules symlink classes linked (this baseline sha was already pinned
+by three sibling round lanes at the same path prefix — mine is
+lane-private at `p4100`).
+
+### §1 What the review's four blind spots actually are (fresh survey, not the order's paraphrase)
+
+The order's wording for item (i) ("Abigail addressing her own vault by its
+store NAME … a blob read") is ambiguous against the CODE: blob tools
+(`doc_read_blob`/`doc_write_blob`) resolve their mount point through a
+SEPARATE function, `resolve_blob_mount_point_for_{read,write}` in
+`tools/doc_edit/blob.rs`, not through `path_resolver.rs`'s document-store
+"name loop" (the loop the order's own Tier 1 mutation M3 — "the name loop
+skipping own-vault names" — names explicitly). The pre-existing corpus
+already has `abigail_write_blob_own_vault`/`abigail_read_blob_own_vault`
+(tool-kind, exercising the BLOB resolver as scaffolding for Leilani's four
+blob refusals to be non-vacuous), so a literal re-read of item (i) would
+have been a near-duplicate exercising the WRONG code path for M3 to land
+on. Landed `blob_read_own_vault_by_name` as a `resolve_read`-kind op
+instead (same mechanism as the pre-existing `abigail_own_vault_resolves`,
+but addressing `seed.bin` — the blob path op 33 already wrote — rather than
+`notes.md`), which DOES go through the name loop and is what M3 can
+legitimately redden.
+
+Item (iii) ("the two-character `characters:` piece … through the capture
+layer") has NO v4 oracle counterpart at all: the `characters:` field is a
+v5-only `tracing::warn!` diagnostic field (`describe_characters`'s join),
+never part of the `resolveDocEditPath`/`resolve_doc_edit_path` Result
+either side compares. Landed as a Rust-only block inside the SAME test
+function, right after the main ops loop, using `quilltap_core::test_
+support::captured_with` — reusing the fixture's existing stranger-store
+scenario with Abigail (transparent) as actor so her peer collection admits
+Leilani, giving a genuine two-id context.
+
+### §2 What landed
+
+- **Fixture** (`build-doc-opacity-fixture.ts` + `doc-opacity.json`): a new
+  pinned mount point `groupLinkedMountPointId` (`…f4`, name "Group Files:
+  Severed (Linked)"), provisioned and LINKED to the group via `repos.
+  groupDocMountLinks.link` (not its `officialMountPointId`), with its own
+  `notes.md` seeded (containing "quarry" like every other store).
+- **Three new ops**, inserted after the blob ops and before the `flatten`
+  ops (order preserved for the blob-mutation-then-flatten contract the
+  file's header documents): `blob_read_own_vault_by_name` (resolve_read,
+  abigail, `{{abigailVaultName}}`, `seed.bin`), `group_linked_store_
+  opaque_read` (resolve_read, leilani, "Group Files: Severed (Linked)",
+  `notes.md`), `write_peer_vault_transparent` (resolve_write, abigail,
+  `{{leilaniVaultName}}`, `notes.md`).
+- **The oracle wrap** (`doc-opacity.test.ts`): `resolve_write`/`context_
+  write` now `try`/`catch` `buildWriteResolutionContext`, shaping the
+  refusal exactly like the Rust port's own `Err` arm (`{ok:false,
+  code:'ACCESS_DENIED', message}` / `{error: message}`) — `err.code` reads
+  v4's real `PathResolutionError.code` property.
+- **The capture-layer pin** (`doc_opacity_equivalence.rs`, inside `doc_
+  opacity_matches_oracle`, after the main loop): asserts `collect_peer_
+  character_ids_for_reads` returns exactly `[leilani_id]` for Abigail (the
+  premise), then asserts the captured ACCESS_DENIED warn's `characters=`
+  field equals `"<abigail_id>,<leilani_id>"`.
+
+### §3 Measured, both sides
+
+Regen (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`, from the pin):
+
+```
+rm -f /tmp/qt-dopa-main.db /tmp/qt-dopa-mount.db
+cd /tmp/qt-v4-pin-p4100-89fcc3c0d
+QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
+  ~/.nvm/versions/node/v24.13.1/bin/node --import tsx \
+  <W>/harness/oracle/fixtures/build-doc-opacity-fixture.ts
+# → leilaniVault=c212ad68…, abigailVault=09698ac0…, projectOfficial=0d436796…
+
+STAGE=/tmp/qt-oracle-stage-doc-opacity
+rm -rf "$STAGE" && mkdir -p "$STAGE/harness/oracle/cases" "$STAGE/harness/oracle/fixtures"
+cp <W>/harness/oracle/cases/doc-opacity.test.ts "$STAGE/harness/oracle/cases/"
+cp <W>/harness/oracle/fixtures/doc-opacity.json "$STAGE/harness/oracle/fixtures/"
+QT_FIXTURE_DOPA_MAIN=/tmp/qt-dopa-main.db QT_FIXTURE_DOPA_MOUNT=/tmp/qt-dopa-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-doc-opacity.ndjson \
+  ~/.nvm/versions/node/v24.13.1/bin/npx jest --silent --watchman=false --testTimeout=240000 \
+  --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "doc-opacity\.test\.ts$"
+# → doc-opacity oracle wrote /tmp/oracle-doc-opacity.ndjson (47 ops); 1 passed
+```
+
+Then `QT_ORACLE_DOPA=/tmp/oracle-doc-opacity.ndjson QT_FIXTURE_DOPA_MAIN=…
+QT_FIXTURE_DOPA_MOUNT=… cargo test -p quilltap-harness --test doc_opacity_
+equivalence -- --nocapture`: **47 of 47 ops matched the oracle**, and the
+capture-layer block did not panic. Row-by-row: (i) `{"ok":true,
+"mountPointName":"Abigail Character Vault","relativePath":"seed.bin"}`;
+(ii) `{"ok":true,"mountPointName":"Group Files: Severed (Linked)"}`; (iv)
+`{"ok":false,"code":"ACCESS_DENIED","message":"Leilani's vault is
+read-only in this chat. Cross-character vault sharing permits reads
+only."}`.
+
+**Neutrality of the pre-existing 44 rows (§R.5's "cmp against the previous
+artifact"):** regenerated the PRE-CHANGE fixture+oracle (the committed
+`HEAD` versions of the three corpus files, `44` ops) in a second scratch
+directory and compared by NAME (not index — the new rows shift the
+trailing `flatten_*` ops' positions) after normalizing BOTH UUIDs and raw
+epoch-ms timestamps (the naive UUID-only normalizer first reported 9 false
+mismatches on `list_files_*`/`grep_*`'s embedded `modified` fields — an
+artifact of comparing two independently-timestamped fixture builds, not a
+real divergence; widening the normalizer to fold large integers dropped
+that to the expected shape). Result: **8 of 44 pre-existing ops now differ
+from their pre-change output** — `accessible_leilani`, `accessible_
+abigail`, `agreement_leilani`, `agreement_abigail`, `list_files_leilani`,
+`list_files_abigail`, `grep_leilani`, `grep_abigail` — every one an
+ENUMERATION op that now additionally lists the new linked store, which is
+the correct, intended consequence of adding it to the world (v4's real
+enumerator lists it too — the full differential run above already proved
+v5 agrees on all 47 rows including these 8). `list_files_leilani_group`
+(scoped BY NAME to the official store) stayed byte-identical, as expected.
+No row's agreement with v4 changed; the only rows to change are the ones
+that MUST, by construction, once a real store is added.
+
+### §4 Mutation proofs (each via the pinned regen's oracle, unchanged; only the RUST side mutated)
+
+| # | Mutation | Result |
+|---|---|---|
+| M3 | `path_resolver.rs`'s name loop skips a match equal to the acting character's own vault id | **3 of 47** diverged: `blob_read_own_vault_by_name` (the target), plus the pre-existing `abigail_own_vault_resolves` and `agreement_abigail` (same code path, honest collateral) |
+| M4 | `resolve_group_mount_point_ids_for_character` drops the `GroupDocMountLinksRepository` loop entirely | **9 of 47** diverged: `group_linked_store_opaque_read` (the target) plus the 8 enumeration ops named in §3 (same shape as the neutrality finding, now proven load-bearing) |
+| M5 | `describe_characters` collapses to `character_id` alone (drops the `character_ids` loop) | the ops comparison never ran — panicked INSIDE the new capture-layer block: `characters=<abigail_id>` only, missing Leilani's — proving the pin catches what the prior M7 unit test alone could not |
+| M6 | the harness's hardcoded `"ACCESS_DENIED"` in the `resolve_write` `Err` arm changed to a nonsense string | exactly **1 of 47**: `write_peer_vault_transparent` — `stranger_store_access_denied_write`/other ACCESS_DENIED rows are unaffected because they never reach this `Err` arm (Leilani's write for those returns `Ok` from the opaque early-return; the refusal there is `resolveDocEditPath`'s OWN error, a different source) |
+
+Each reverted by file backup; final state re-confirmed identical to the
+pre-mutation tree via `diff`/`git status --short` (clean) after every
+revert; a clean re-run confirmed 47/47 green after all six mutations
+(M1–M2 in unit 1) were reverted.
+
+### §5 Gate
+
+Ran together with unit 1's gate (one workspace-wide pass covers both
+commits' final state): `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean in both feature sets;
+`cargo build --workspace --release` clean; `cargo test --workspace
+--no-fail-fast` **twice**, 577/3450/0 both times with `doc_opacity_
+matches_oracle` confirmed green by name in both; no source census moves (no
+`DbError`, dispatch, or `api/types.rs` surface touched); no `apps/web/**`
+file touched.
+
+### §6 Deferred / findings for the unifier
+
+- **None deferred** — Tier 1 items 1–4 and Tier 2 items 5–6 all landed
+  whole; Tier 3's sole named deferral (drain sites outside `quilltap-core`)
+  confirmed empty by grep.
+- **For whoever next regenerates `doc_opacity_equivalence`:** the fixture
+  now mints FIVE named stores plus two vaults; the `{{...}}` placeholder
+  set is unchanged (only `abigailVaultId`/`leilaniVaultId`/their names/
+  `groupStoreId` are minted-and-substituted — the new linked store's id and
+  name are PINNED literals in the spec, matching the group official
+  store's own convention, not minted).
+- 💸 dogfood queue: the fixture's structural pattern (a group-linked store
+  reachable by an opaque member) has no direct real-instance echo to
+  measure — recorded, not carried forward as an owed proof (this is
+  fixture-only test infrastructure, not a production behavior change).
+
+Versions: harness 0.0.851. core/host/web/cli/tauri/SPA unchanged by this
+unit.

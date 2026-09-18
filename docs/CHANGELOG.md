@@ -376,6 +376,30 @@ proves byte-identical. Sixteen families that pin these envelopes were
 regenerated fresh at the pin and re-run unchanged; the three that are red were
 proven red on unmodified `main` at the same pin (fixture vintage, not this
 change).
+#### 2026-09-18 — test(doc-opacity): land the four `89fcc3c0d` §3 review corpus gaps — own-vault-by-name blob read, a group-linked store, the two-character warn field, and a peer-vault write refusal (P4.100 Tier 1)
+
+_Versions: harness 0.0.851._
+
+The `89fcc3c0d` opacity-covenant round's §3 review left four gaps
+"structurally covered but unexercised." Closed all four in
+`doc_opacity_equivalence`: the fixture gains a store LINKED (not official)
+to the group (`groupLinkedMountPointId`); three new ops —
+`blob_read_own_vault_by_name` (Abigail, transparent, resolves), `group_
+linked_store_opaque_read` (Leilani, opaque, resolves — proving bug 152's
+fix at the flatten never distinguishes official from linked), and `write_
+peer_vault_transparent` (Abigail writing into Leilani's vault, refused
+ACCESS_DENIED) — and a fourth check with no oracle counterpart, the
+ACCESS_DENIED warn's two-character `characters:` field, pinned via the
+capture layer (the prior mutation only reddened `describe_characters`'s own
+unit table). Landing the write-refusal row required WRAPPING the oracle's
+`buildWriteResolutionContext` calls (`resolve_write`/`context_write`) —
+until this row nothing made that builder throw, so the throw was left
+unwrapped and would have aborted the whole oracle case. `doc-opacity.json`
+grew 44 → 47 ops; the pre-existing 44 stayed neutral (the only differences
+after id/timestamp normalization are the expected new-store entries in the
+nine enumeration ops — `accessible_*`/`agreement_*`/`list_files_*`/
+`grep_*` — each confirmed to still match v4 exactly).
+
 #### 2026-09-18 — fix(realtime): a bounded wait for the expected hint count, replacing `HintCapture::drain`'s fixed margin (P4.100 Tier 1)
 
 _Versions: core 0.0.961._
