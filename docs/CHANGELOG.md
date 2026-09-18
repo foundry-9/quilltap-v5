@@ -40,6 +40,31 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — port(doc-edit): an opaque character keeps her own group stores (v4 bug 152, `1065a1f53`)
+
+_Versions: core 0.0.953._
+
+Both resolution-context builders now KEEP `character_id` on the opaque branch and
+set `hide_character_vaults: true`, instead of hiding vaults by withholding the
+identity everything else is derived from. `character_ids` stays empty — peers are
+never admitted for an opaque character, which is v4's shape.
+
+This is the defect itself. The group tier in `resolve_tiered_mount_pool` is keyed
+on `character_id` and on nothing else, and the covenant was written before group
+stores were a tier of their own, so dropping the character to hide her vault also
+erased every store her groups keep. Project-linked stores and Quilltap General
+kept working, which is why it looked intermittent.
+
+`doc_opacity_equivalence`: 16 -> 11 red — exactly the three group-store
+resolutions (by name, by id, on the read path) and both context-shape rows. The
+five covenant rows stayed GREEN throughout: an opaque character still cannot
+reach her own vault by name or by id, a peer's vault, the `self` token, or write
+to her own vault. The fix is a subtraction, not a loosening, and the family
+proves that rather than asserting it.
+
+The remaining 11 red rows are bug 153's — enumeration does not yet honour the
+covenant.
+
 #### 2026-09-18 — port(doc-edit): the opacity flag, the collector, and the out-of-scope refusal (v4 bug 152, `1065a1f53`)
 
 _Versions: core 0.0.952, harness 0.0.844._

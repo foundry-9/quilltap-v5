@@ -329,8 +329,13 @@ fn is_participant_present(status: &str) -> bool {
 
 /// v4 `actingCharacterIsOpaqueToVaults`: a character with `systemTransparency !==
 /// true` accepts the covenant of trust — every character vault (own + peers') is
-/// hidden from doc_* tools. Defaults to **opaque** when there is no character or
-/// the lookup fails, so a transient error never grants access.
+/// hidden from doc_* tools. Defaults to **opaque** when the lookup fails, so a
+/// transient error never grants access. No character at all is NOT opaque.
+///
+/// Only the two VAULT tiers are hidden. The group, project and global tiers remain
+/// accessible regardless — including the stores of the character's own groups,
+/// which the callers express via `hide_character_vaults` rather than by
+/// withholding `character_id`, since the group tier is keyed on it (v4 bug 152).
 pub fn acting_character_is_opaque_to_vaults(main: &Connection, ctx: &DocEditToolContext) -> bool {
     let Some(cid) = ctx.character_id.as_deref() else {
         return false;
@@ -539,11 +544,17 @@ pub fn build_read_resolution_context(
     ctx: &DocEditToolContext,
 ) -> PathResolutionContext {
     if acting_character_is_opaque_to_vaults(main, ctx) {
+        // `hide_character_vaults` subtracts the two vault tiers and leaves group,
+        // project and global reachable. The character is still passed: group
+        // membership is derived from `character_id` and from nothing else, so the
+        // old shape — withholding it — also hid every group store she belongs to
+        // (v4 bug 152, `1065a1f53`). `character_ids` stays EMPTY: peers are never
+        // admitted for an opaque character.
         return PathResolutionContext {
             project_id: ctx.project_id.clone(),
-            character_id: None,
+            character_id: ctx.character_id.clone(),
             character_ids: Vec::new(),
-            hide_character_vaults: false,
+            hide_character_vaults: true,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
         };
@@ -568,11 +579,13 @@ pub fn build_write_resolution_context(
     ctx: &DocEditToolContext,
 ) -> Result<PathResolutionContext, String> {
     if acting_character_is_opaque_to_vaults(main, ctx) {
+        // See the read builder: hide the vault tiers by naming them, not by
+        // withholding the character the group tier is keyed on (v4 bug 152).
         return Ok(PathResolutionContext {
             project_id: ctx.project_id.clone(),
-            character_id: None,
+            character_id: ctx.character_id.clone(),
             character_ids: Vec::new(),
-            hide_character_vaults: false,
+            hide_character_vaults: true,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
         });
