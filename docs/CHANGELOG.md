@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — fix(e2e): the avatar-rolls beat's fixture heal is guarded — the widened characters pair already carries `files.generationKey`
+
+_Versions: SPA 0.5.741._
+
+`character-avatar-rolls-flow.spec.ts` copies the committed `characters-{main,mount}.db`
+pair into its own instance and, before booting, healed the copy with an unconditional
+`ALTER TABLE files ADD COLUMN generationKey TEXT` — the column the pair used to lack.
+P4.D201 widened the pair through v4's own migration statements this round, so the
+ALTER answered `duplicate column name` on the beat's first run at the unified gate
+(red in the full suite AND alone — the one Playwright red this round that was not the
+documented quill intermittent). The heal now runs only when `pragma_table_info` says
+the column is absent. Spec-only; no product code moved. The class is the standing
+"when a lane widens a shared fixture, ask what the widening hid" — here it hid on the
+fixture's Playwright readers, which the lane's nine-family harness re-run could never
+reach.
+
 #### 2026-09-18 — chore(unify): the `baa85e19b` round's unification wires — the star beat flipped live, the `characterPromptSetDefault` dispatch wire test, the tenth reader of the widened characters pair regenerated
 
 _Versions: web 0.0.157, SPA 0.5.740._

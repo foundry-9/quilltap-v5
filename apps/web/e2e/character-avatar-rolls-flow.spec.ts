@@ -145,10 +145,21 @@ test.describe('P4.D188 — Avatar Rolls in the Photo Gallery tab', () => {
     }
     const now = '2026-09-12T10:00:00.000Z';
 
-    // The committed pair predates `files.generationKey`; boot heals a live
-    // instance, but this plant runs BEFORE the server boots, so heal the copy
-    // the same way first (idempotent — the boot ensure then finds it present).
-    runCliWrite(cli, `ALTER TABLE files ADD COLUMN generationKey TEXT;`);
+    // The committed pair USED to predate `files.generationKey`; boot heals a
+    // live instance, but this plant runs BEFORE the server boots, so the copy
+    // is healed the same way first — GUARDED, because an `ALTER TABLE … ADD
+    // COLUMN` is not idempotent. The `baa85e19b` round's P4.D201 widened the
+    // pair through v4's own migration statements (the column is now
+    // committed), and the unconditional ALTER answered `duplicate column
+    // name` on the beat's first run after it — the "a widened fixture's other
+    // readers" class, found at that round's unified gate.
+    const hasGenerationKey = readOne(
+      cli,
+      `SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = 'generationKey';`,
+    );
+    if (hasGenerationKey === '0') {
+      runCliWrite(cli, `ALTER TABLE files ADD COLUMN generationKey TEXT;`);
+    }
 
     const plantRoll = (r: {
       fileId: string;
