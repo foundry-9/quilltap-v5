@@ -113,6 +113,30 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — fix(e2e): the star beat's unlock waits for the roster, not the Salon's heading (P4.D202)
+
+_Versions: SPA 0.5.738._
+
+The gated star beat was exercised against release binaries rather than left
+for the unifier, and its first live run caught a gesture defect in the first
+ten lines: `maybeUnlock` had been transcribed from
+`character-subprompts-flow.spec.ts`, which enters at `/salon` and so waits for
+the "Chats" heading after unlocking. This walk enters at `/characters`, where
+no such heading exists, so the beat timed out at the unlock without reaching a
+single assertion of its own. It now waits for the **Characters** heading, and
+the redundant second `goto` is gone.
+
+The repaired beat then runs all the way to its gate. That the UNGATED half
+really passes was proven by discriminator rather than assumed: with
+`P4D201_SERVER_LANDED` temporarily flipped to `true`, the run reaches the last
+line and fails on that line ALONE — `defaultSystemPromptId` is `undefined`
+where the starred prompt's id belongs — which is exactly the server-side gap
+the drift ledger measured (none of the four system-prompt writers writes the
+column). Everything before it — unlock, create, the editor link, the tab, both
+prompt creations, the star, the badge moving off the first prompt and onto the
+second, and the `characterPromptList` flag assertion — passed. The constant is
+back to `false`; the beat parks.
+
 #### 2026-09-18 — test(characters): a gated live walk of the System Prompts star, and a render pin on the defaults tab's refusal (P4.D202 unit 6 + Tier 2)
 
 _Versions: SPA 0.5.737._

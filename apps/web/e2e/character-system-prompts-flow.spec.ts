@@ -38,15 +38,25 @@ const THROWAWAY = 'Pentimento';
 const FIRST_PROMPT = 'The everyday voice';
 const SECOND_PROMPT = 'The fighting has started';
 
+/**
+ * Unlock if the shared instance is still locked, then wait for the roster.
+ *
+ * ⚠ The post-unlock landmark is the **Characters** heading, not the Salon's
+ * "Chats" one: this walk enters at `/characters`, where no "Chats" heading
+ * exists. (The version of this helper transcribed from
+ * `character-subprompts-flow.spec.ts` waits on "Chats" because that walk enters
+ * at `/salon` — copying it here made the beat's first live run time out at the
+ * unlock, before it reached a single assertion of its own.)
+ */
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
-  const chats = page.getByRole('heading', { name: 'Chats', exact: true });
-  await expect(passphrase.or(chats).first()).toBeVisible({ timeout: 15_000 });
+  const roster = page.getByRole('heading', { name: 'Characters', exact: true });
+  await expect(passphrase.or(roster).first()).toBeVisible({ timeout: 15_000 });
   if (await passphrase.count()) {
     await passphrase.fill(E2E_PASSPHRASE);
     await page.getByRole('button', { name: 'Unlock' }).click();
-    await expect(chats).toBeVisible({ timeout: 15_000 });
   }
+  await expect(roster).toBeVisible({ timeout: 15_000 });
 }
 
 async function dispatch(ctx: APIRequestContext, req: unknown): Promise<Record<string, unknown>> {
@@ -95,7 +105,6 @@ test.describe('P4.D202 — the System Prompts tab’s star (v4 baa85e19b, bug 15
       // A throwaway character, so the shared fixture's cast is left intact.
       await page.goto(`${BASE_URL}/characters`);
       await maybeUnlock(page);
-      await page.goto(`${BASE_URL}/characters`);
       await page.getByRole('link', { name: 'Create Character' }).click();
       await page.locator('#name').fill(THROWAWAY);
       await page.getByRole('button', { name: /Create Character/i }).click();
