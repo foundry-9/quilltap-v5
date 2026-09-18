@@ -1,0 +1,387 @@
+{
+  "$comment": "Fixture spec for the doc-edit OPACITY-COVENANT differential (P4.D200, v4 bugs 152 + 153). The world mirrors v4's two regression suites (lib/doc-edit/__tests__/path-resolver-opacity-{group-stores,enumeration}.test.ts) but in a REAL two-partition fixture over REAL repositories, which those suites cannot give: an OPAQUE acting character (Leilani — systemTransparency ABSENT, v4's default) who belongs to a group whose official store is NOT project-linked, sharing a chat with a TRANSPARENT peer (Abigail — systemTransparency true) under allowCrossCharacterVaultReads. Every non-minted id is pinned; the two vault mounts and the project's official store are MINTED by the real creators and read back identically on both sides through the {{...}} placeholders (the doc-edit-path-resolver idiom). notes.md carries a distinct sentence in EVERY store so a grep for 'quarry' discriminates by store rather than by luck.",
+  "testPepperBase64": "3q2+796tvu3erb7t3q2+796tvu3erb7t3q2+796tvu0=",
+  "seedTimestamp": "2026-09-18T00:00:00.000Z",
+  "userId": "a2000000-0000-4000-8000-0000000000d2",
+  "leilaniId": "c2000000-0000-4000-8000-0000000000a1",
+  "abigailId": "c2000000-0000-4000-8000-0000000000a2",
+  "leilaniName": "Leilani",
+  "abigailName": "Abigail",
+  "groupId": "d2000000-0000-4000-8000-000000000001",
+  "groupName": "Severed",
+  "groupOfficialMountPointId": "e2000000-0000-4000-8000-0000000000f1",
+  "groupStoreName": "Group Files: Severed",
+  "projectId": "d2000000-0000-4000-8000-000000000002",
+  "projectName": "Papers",
+  "projectLinkedMountPointId": "e2000000-0000-4000-8000-0000000000f2",
+  "projectStoreName": "Project Papers",
+  "strangerMountPointId": "e2000000-0000-4000-8000-0000000000f3",
+  "strangerStoreName": "Someone Elses Papers",
+  "generalMountPointId": "e2000000-0000-4000-8000-0000000000a1",
+  "generalStoreName": "Quilltap General",
+  "chatId": "d2000000-0000-4000-8000-000000000003",
+  "leilaniParticipantId": "b2000000-0000-4000-8000-000000000001",
+  "abigailParticipantId": "b2000000-0000-4000-8000-000000000002",
+  "flattenPool": {
+    "characterMountPointId": "f2000000-0000-4000-8000-00000000c001",
+    "participantMountPointIds": [
+      "f2000000-0000-4000-8000-00000000c002"
+    ],
+    "groupMountPointIds": [
+      "f2000000-0000-4000-8000-00000000c003"
+    ],
+    "projectMountPointIds": [
+      "f2000000-0000-4000-8000-00000000c004"
+    ],
+    "globalMountPointId": "f2000000-0000-4000-8000-00000000c005"
+  },
+  "ops": [
+    {
+      "name": "group_store_by_name_write",
+      "kind": "resolve_write",
+      "actor": "leilani",
+      "mountPoint": "Group Files: Severed",
+      "path": "notes.md"
+    },
+    {
+      "name": "group_store_by_id_write",
+      "kind": "resolve_write",
+      "actor": "leilani",
+      "mountPoint": "{{groupStoreId}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "group_store_by_name_read",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Group Files: Severed",
+      "path": "notes.md"
+    },
+    {
+      "name": "project_store_still_reachable",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Project Papers",
+      "path": "notes.md"
+    },
+    {
+      "name": "general_store_still_reachable",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Quilltap General",
+      "path": "notes.md"
+    },
+    {
+      "name": "context_shape_read",
+      "kind": "context_read",
+      "actor": "leilani",
+      "mountPoint": "Group Files: Severed"
+    },
+    {
+      "name": "context_shape_write",
+      "kind": "context_write",
+      "actor": "leilani",
+      "mountPoint": "Group Files: Severed"
+    },
+    {
+      "name": "own_vault_by_name_hidden",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "{{leilaniVaultName}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "own_vault_by_id_hidden",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "{{leilaniVaultId}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "peer_vault_by_name_hidden",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "{{abigailVaultName}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "self_token_refused",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "self",
+      "path": "notes.md"
+    },
+    {
+      "name": "own_vault_write_refused",
+      "kind": "resolve_write",
+      "actor": "leilani",
+      "mountPoint": "{{leilaniVaultName}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "abigail_own_vault_resolves",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "{{abigailVaultName}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "abigail_self_token_resolves",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "self",
+      "path": "notes.md"
+    },
+    {
+      "name": "abigail_group_store_resolves",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "Group Files: Severed",
+      "path": "notes.md"
+    },
+    {
+      "name": "abigail_peer_vault_resolves",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "{{leilaniVaultName}}",
+      "path": "notes.md"
+    },
+    {
+      "name": "abigail_context_shape",
+      "kind": "context_read",
+      "actor": "abigail",
+      "mountPoint": "Group Files: Severed"
+    },
+    {
+      "name": "stranger_store_access_denied",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Someone Elses Papers",
+      "path": "notes.md"
+    },
+    {
+      "name": "stranger_store_access_denied_write",
+      "kind": "resolve_write",
+      "actor": "leilani",
+      "mountPoint": "Someone Elses Papers",
+      "path": "notes.md"
+    },
+    {
+      "name": "nonexistent_name_not_found",
+      "kind": "resolve_read",
+      "actor": "leilani",
+      "mountPoint": "Group",
+      "path": "notes.md"
+    },
+    {
+      "name": "stranger_store_denied_for_abigail",
+      "kind": "resolve_read",
+      "actor": "abigail",
+      "mountPoint": "Someone Elses Papers",
+      "path": "notes.md"
+    },
+    {
+      "name": "accessible_leilani",
+      "kind": "accessible",
+      "actor": "leilani"
+    },
+    {
+      "name": "accessible_abigail",
+      "kind": "accessible",
+      "actor": "abigail"
+    },
+    {
+      "name": "agreement_leilani",
+      "kind": "agreement",
+      "actor": "leilani"
+    },
+    {
+      "name": "agreement_abigail",
+      "kind": "agreement",
+      "actor": "abigail"
+    },
+    {
+      "name": "list_files_leilani",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "document_store"
+      }
+    },
+    {
+      "name": "list_files_leilani_self",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "document_store",
+        "mount_point": "self"
+      }
+    },
+    {
+      "name": "list_files_leilani_own_vault",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "document_store",
+        "mount_point": "{{leilaniVaultName}}"
+      }
+    },
+    {
+      "name": "list_files_leilani_group",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "document_store",
+        "mount_point": "Group Files: Severed"
+      }
+    },
+    {
+      "name": "list_files_abigail",
+      "kind": "tool",
+      "actor": "abigail",
+      "tool": "doc_list_files",
+      "args": {
+        "scope": "document_store"
+      }
+    },
+    {
+      "name": "grep_leilani",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_grep",
+      "args": {
+        "query": "quarry"
+      }
+    },
+    {
+      "name": "grep_leilani_self",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_grep",
+      "args": {
+        "query": "quarry",
+        "mount_point": "self"
+      }
+    },
+    {
+      "name": "grep_abigail",
+      "kind": "tool",
+      "actor": "abigail",
+      "tool": "doc_grep",
+      "args": {
+        "query": "quarry"
+      }
+    },
+    {
+      "name": "abigail_write_blob_own_vault",
+      "kind": "tool",
+      "actor": "abigail",
+      "tool": "doc_write_blob",
+      "args": {
+        "mount_point": "{{abigailVaultName}}",
+        "path": "seed.bin",
+        "data_base64": "UXVhcnJ5",
+        "original_filename": "seed.bin",
+        "mime_type": "application/octet-stream"
+      }
+    },
+    {
+      "name": "abigail_read_blob_own_vault",
+      "kind": "tool",
+      "actor": "abigail",
+      "tool": "doc_read_blob",
+      "args": {
+        "mount_point": "{{abigailVaultName}}",
+        "path": "seed.bin",
+        "include_bytes": true
+      }
+    },
+    {
+      "name": "leilani_read_blob_peer_vault",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_read_blob",
+      "args": {
+        "mount_point": "{{abigailVaultName}}",
+        "path": "seed.bin"
+      }
+    },
+    {
+      "name": "leilani_read_blob_self",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_read_blob",
+      "args": {
+        "mount_point": "self",
+        "path": "seed.bin"
+      }
+    },
+    {
+      "name": "leilani_list_blobs_peer_vault",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_list_blobs",
+      "args": {
+        "mount_point": "{{abigailVaultName}}"
+      }
+    },
+    {
+      "name": "leilani_write_blob_own_vault",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_write_blob",
+      "args": {
+        "mount_point": "{{leilaniVaultName}}",
+        "path": "denied.bin",
+        "data_base64": "UXVhcnJ5",
+        "original_filename": "denied.bin",
+        "mime_type": "application/octet-stream"
+      }
+    },
+    {
+      "name": "leilani_write_blob_group_store",
+      "kind": "tool",
+      "actor": "leilani",
+      "tool": "doc_write_blob",
+      "args": {
+        "mount_point": "Group Files: Severed",
+        "path": "quarry.bin",
+        "data_base64": "UXVhcnJ5",
+        "original_filename": "quarry.bin",
+        "mime_type": "application/octet-stream"
+      }
+    },
+    {
+      "name": "flatten_default",
+      "kind": "flatten",
+      "opts": {}
+    },
+    {
+      "name": "flatten_participants",
+      "kind": "flatten",
+      "opts": {
+        "includeParticipants": true
+      }
+    },
+    {
+      "name": "flatten_no_character_tier",
+      "kind": "flatten",
+      "opts": {
+        "includeCharacterTier": false,
+        "includeParticipants": false
+      }
+    },
+    {
+      "name": "flatten_no_character_tier_but_participants",
+      "kind": "flatten",
+      "opts": {
+        "includeCharacterTier": false,
+        "includeParticipants": true
+      }
+    }
+  ]
+}

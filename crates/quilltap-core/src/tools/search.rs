@@ -27,8 +27,8 @@ use serde_json::{json, Map, Value};
 use crate::db::conversation_search::{search_conversation_chunks, ConversationSearchOptions};
 use crate::db::runtime::Db;
 use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenScope, TierContext, TierResolveOptions,
-    TieredMountPool,
+    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, FlattenScope, TierContext,
+    TierResolveOptions, TieredMountPool,
 };
 use crate::db::{characters_read, doc_mount_points, js_number_to_json, DbError};
 use crate::doc_edit::uri_producers::DocStoreUriResolver;
@@ -437,7 +437,13 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         let documents_pool = if operator_wide {
             operator_store_ids.clone()
         } else {
-            flatten_tier_pool(&pool, flatten_scope(scope), false)
+            flatten_tier_pool(
+                &pool,
+                FlattenOptions {
+                    scope: flatten_scope(scope),
+                    ..Default::default()
+                },
+            )
         };
         if !documents_pool.is_empty() {
             if let Ok(emb) = embed(provider, query, context).await {

@@ -28,7 +28,7 @@ use serde::Serialize;
 use super::DocEditScope;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenScope, TierContext, TierResolveOptions,
+    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
 };
 
 /// Reserved `mount_point` token meaning "the acting character's own vault"
@@ -418,7 +418,13 @@ fn collect_accessible_mount_point_ids(
             include_participants: true,
         },
     );
-    Ok(flatten_tier_pool(&pool, FlattenScope::All, true))
+    Ok(flatten_tier_pool(
+        &pool,
+        FlattenOptions {
+            include_participants: true,
+            ..Default::default()
+        },
+    ))
 }
 
 fn resolve_document_store_path(

@@ -40,6 +40,31 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — port(doc-edit): flattenTierPool gains includeCharacterTier (v4 bug 152, `1065a1f53`)
+
+_Versions: core 0.0.951, harness 0.0.843._
+
+`flatten_tier_pool` now takes a `FlattenOptions` bag (v4's shape) instead of two
+positionals, and honours v4's new `include_character_tier` option. When it is
+false the character tier is skipped WHOLE — the acting character's own vault and
+the participant vaults together, because v4's early return sits at the top of
+`addCharacterTier` and the participant ids live inside it. `Default` is v4's
+default set: every tier, no participants, the character tier IN.
+
+The option is the vocabulary bug 152 needed. Opacity used to hide a character's
+vault by withholding `characterId` from the pool, but the group tier is derived
+from `characterId` and from nothing else, so withholding it also erased every
+group store she belonged to. "Everything except a character vault" is now
+expressible in the pool helper rather than re-derived at the call site.
+
+The four call sites (the path resolver's collector, the doc-edit enumerator, the
+scriptorium search, and the pool's own unit tests) are adapted; only the option's
+default is exercised so far, so no behaviour moves in this commit.
+
+New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 ops
+diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
+(v5 had no way to express the option). Those two are the rows this commit turns
+green.
 
 #### 2026-09-18 — docs(porting): order the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99)
 

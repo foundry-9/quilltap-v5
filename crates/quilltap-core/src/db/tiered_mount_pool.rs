@@ -362,16 +362,52 @@ pub enum FlattenScope {
     Project,
 }
 
-/// Flatten a pool into a deduped id list (v4 `flattenTierPool`). `scope` narrows
-/// the selection; `include_participants` folds the participant tier into the
-/// character selection (the document path resolver wants it; search does not).
-pub fn flatten_tier_pool(
-    pool: &TieredMountPool,
-    scope: FlattenScope,
-    include_participants: bool,
-) -> Vec<String> {
+/// The options a [`flatten_tier_pool`] call takes (v4 `flattenTierPool`'s options
+/// bag). [`Default`] is v4's default set — every tier, participants folded out,
+/// the character tier IN.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlattenOptions {
+    /// Which subset to select (v4 `scope`).
+    pub scope: FlattenScope,
+    /// Fold the participant tier into the character selection (the document path
+    /// resolver wants it; search does not). v4 `includeParticipants`.
+    pub include_participants: bool,
+    /// v4 `includeCharacterTier` (default `true`) drops the acting character's OWN
+    /// vault, the sibling of `include_participants`. Set BOTH false to express
+    /// "every store this character can reach EXCEPT a character vault" — what the
+    /// doc-tool opacity covenant means (see `acting_character_is_opaque_to_vaults`).
+    ///
+    /// It must be spelled that way rather than by withholding `character_id` from
+    /// the pool, because the group tier is derived from `character_id` and from
+    /// nothing else: dropping the character to hide her vault would silently take
+    /// every group store she belongs to with it (v4 bug 152, `1065a1f53`).
+    pub include_character_tier: bool,
+}
+
+impl Default for FlattenOptions {
+    fn default() -> Self {
+        Self {
+            scope: FlattenScope::All,
+            include_participants: false,
+            include_character_tier: true,
+        }
+    }
+}
+
+/// Flatten a pool into a deduped id list (v4 `flattenTierPool`).
+pub fn flatten_tier_pool(pool: &TieredMountPool, opts: FlattenOptions) -> Vec<String> {
+    let FlattenOptions {
+        scope,
+        include_participants,
+        include_character_tier,
+    } = opts;
     let mut ids: Vec<String> = Vec::new();
     let add_character_tier = |ids: &mut Vec<String>| {
+        // v4's early return: BOTH the own-vault id and the participant ids live
+        // inside `addCharacterTier`, so clearing the flag drops them together.
+        if !include_character_tier {
+            return;
+        }
         if let Some(c) = &pool.character_mount_point_id {
             push_unique(ids, c.clone());
         }
@@ -487,15 +523,28 @@ mod tests {
             global_mount_point_id: Some("glob".into()),
         };
         assert_eq!(
-            flatten_tier_pool(&pool, FlattenScope::All, false),
+            flatten_tier_pool(&pool, FlattenOptions::default()),
             s(&["c", "g1", "pr1", "glob"])
         );
         assert_eq!(
-            flatten_tier_pool(&pool, FlattenScope::All, true),
+            flatten_tier_pool(
+                &pool,
+                FlattenOptions {
+                    include_participants: true,
+                    ..Default::default()
+                }
+            ),
             s(&["c", "p1", "p2", "g1", "pr1", "glob"])
         );
         assert_eq!(
-            flatten_tier_pool(&pool, FlattenScope::Character, true),
+            flatten_tier_pool(
+                &pool,
+                FlattenOptions {
+                    scope: FlattenScope::Character,
+                    include_participants: true,
+                    ..Default::default()
+                }
+            ),
             s(&["c", "p1", "p2"])
         );
         assert_eq!(classify_mount_tier("c", &pool), Some(MountTier::Character));

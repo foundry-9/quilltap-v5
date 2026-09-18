@@ -54,7 +54,7 @@ use crate::db::database_store::{self, DbStoreErrorCode, ReadDoc, StoreError};
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenScope, TierContext, TierResolveOptions,
+    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
 };
 use crate::db::{characters_read, chats_read, projects};
 use crate::doc_edit::path_resolver::{PathResolutionContext, ResolveError, ResolvedPath};
@@ -666,7 +666,13 @@ pub fn get_accessible_mount_points(
         include_participants: true,
     };
     let pool = resolve_tiered_mount_pool(main, mount, &tier_ctx, &opts);
-    let ids = flatten_tier_pool(&pool, FlattenScope::All, true);
+    let ids = flatten_tier_pool(
+        &pool,
+        FlattenOptions {
+            include_participants: true,
+            ..Default::default()
+        },
+    );
     let repo = DocMountPointsRepository::new(mount);
     let mut out = Vec::new();
     for id in ids {
