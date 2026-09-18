@@ -34,6 +34,7 @@ use crate::announcement_attribution::{
     CustomAnnouncer,
 };
 use crate::db::runtime::Db;
+use crate::files::llm_image_budget::LANTERN_IMAGE_BASE64_BUDGET;
 use crate::message_formatter::{self, FormattedMessage, MultiCharacterMessage, WireRole};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
@@ -50,19 +51,6 @@ pub const TOOL_RESULT_VERBATIM_TURNS: i64 = 3;
 /// How many ASSISTANT messages the Lantern walk scans before giving up (v4
 /// `ASSISTANT_IMAGE_LOOKBACK`).
 pub const ASSISTANT_IMAGE_LOOKBACK: usize = 6;
-
-/// Ceiling on the *total* base64 an unseen-image walk may add to one turn (v4
-/// `LANTERN_IMAGE_BASE64_BUDGET`, `lib/files/llm-image-budget.ts:79`, bug 151
-/// `bcd7e4852`).
-///
-/// ~2 MB is four images at the per-image ceiling, which is more pictures than a
-/// turn has ever usefully carried, and leaves a wide margin under the narrowest
-/// provider body limit we have met (NanoGPT's, which bug 151 found somewhere
-/// under 4.5 MB). Spent newest-first: see [`spend_lantern_image_budget`].
-// P4.D199 → P4.D198 handoff: the public home is
-// `files::llm_image_budget::LANTERN_IMAGE_BASE64_BUDGET`; the unifier repoints
-// this to an import (§R.10(a)).
-const LANTERN_IMAGE_BASE64_BUDGET: usize = 2 * 1024 * 1024;
 
 // ===========================================================================
 // The whisper-pipeline message shape.
