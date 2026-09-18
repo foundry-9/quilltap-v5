@@ -6628,6 +6628,131 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — ORDERED 2026-09-18
+
+**Baseline `bcd7e4852`; v4 `main` HEAD `89fcc3c0d` (TWO past — the
+ledger's two §3 rows, bugs 152 and 153, now `ORDERED(P4.D200)`), v4
+`bugfix` tip `1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the
+checkout on `main`, CLEAN at the planning-START probe (2026-09-18 — the §2
+probe PASSED, so the ledger stood and nothing was re-derived) — **and DIRTY
+on thirteen paths at the planning-CLOSE probe** (a v4 characters default-
+system-prompt fix in flight, HEAD unmoved; the exact paths recorded in the
+ledger's §1, none on this round's regen surfaces; every order's §R.2 passes
+on exactly that dirt and STOPs on anything more — the round-plan-takeaways
+trap, caught by its own rule); regen rule PIN
+REQUIRED (the drift lane's moving families from a lane-unique detached
+worktree at `89fcc3c0d`, its neutrality legs and both maintenance lanes at
+`bcd7e4852`).** The standing rule holds: drift debt clears before new
+scope — and this round's drift is ONE lane, not two, because the two v4
+commits share two source files (`path-resolver.ts`, `doc-edit/shared.ts`),
+one substrate (`actingCharacterIsOpaqueToVaults` + the `hideCharacterVaults`
+flag + the flatten option) and one `help/` page, so no disjoint split
+exists and a stack would serialize without parallelism. The round's other
+two lanes are the previous round's "What is next" items 2 and 3 (+ the
+harness half of item 4), each with disjoint ownership. ALL THREE from
+`main`, no stacking. The round-wide §R meeting points, the §S contract
+(which records that NOTHING on the wire moves for any consumer), the
+Ownership table and the verification gate are spliced byte-identically into
+every order (one md5 over the block, verified at planning:
+`9c5206b8ff37141747ea9a2997ec0c5e`). Fresh surveys (2026-09-18, at
+`89fcc3c0d` / `bcd7e4852` and on `main` `2d720c04`, the planner's own hunk
+and source reads) are folded into the orders' survey sections.
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d200-opacity-covenant-group-stores-and-enumeration.md` —
+   P4.D200, bugs 152 + 153 whole.** The covenant expressed as a
+   SUBTRACTION: `hide_character_vaults` on `PathResolutionContext`, set by
+   both resolution-context builders which now KEEP `character_id` (v5
+   measurably drops it today — the group tier keyed on a `None`); the
+   flag honoured by the collector through the tiered pool's new
+   `include_character_tier` flatten option (own vault AND participants
+   dropped together; group / project / global kept); the self-token
+   gate's new conjunct (a CONDITION, not a new refusal arm — the commit
+   message misdescribes it); the `NOT_FOUND` → `ACCESS_DENIED` split for
+   a store that exists but is out of scope (`find_enabled_mount_point_by_
+   ref` excluding character vaults so the refusal leaks nothing; v4's
+   three-sentence message; the two warn lines with `vaultsHidden` +
+   `describe_characters` — the path resolver has ZERO tracing today);
+   the same flag on `get_accessible_mount_points` as a query struct,
+   derived from the opacity helper at all FOUR enumeration call sites
+   (grep, list_files, the blob read resolver WITH peers, the blob write
+   resolver WITHOUT — the hunks, not the prose); the help page byte-
+   copied at the target; the non-lib files ratified. A NEW real-DB family
+   `doc_opacity_equivalence` over a purpose-built fixture (an opaque
+   character absent-transparency, a transparent peer, a group whose
+   official store is NOT project-linked, a stranger store, both vaults
+   seeded, a shared chat with cross-character reads on) drives v4's REAL
+   builders / resolver / enumerator / tool handlers / flatten, mirroring
+   v4's 13 + 15 regression cases row for row — RED-FIRST on unported
+   main (the ledger's measurement predicts ≥ 15 of 28 red), the covenant-
+   unchanged and transparent-control rows GREEN before and after (the
+   "subtraction, not a loosening" proof); `tiered_mount_pool_equivalence`
+   grows the flatten-option rows; seven mutation proofs incl. one run per
+   enumeration site with disjoint red sets. Tier 2: the four PRE-EXISTING
+   absent warn lines the drift sits beside (the #103/#110 class — port or
+   record by name). Bumps core + harness.
+2. **`p4.98-images-generate-tri-state.md` — P4.98, `Request::
+   ImagesGenerate`'s five body keys as the `Option<Option<Value>>`
+   tri-state** (P4.96's §11 finding, the one known live instance of the
+   `a-plain-option-value-eats-an-explicit-null` class): the variant field
+   for field the `ImageProfileGenerate` shape, the engine arm's collapse,
+   the REST edge mirroring `double_option`'s output (or routed through
+   one shared decoder — the lane says which), a NEW dispatch WIRE test
+   with five null arms asserting v4's envelope BYTES (red-first on
+   `chatId`/`tags`/`options` — v5 proceeds to the provider where v4
+   400s; the `prompt`/`profileId` arms red only if the envelope's
+   `details` distinguish `received null` from `received undefined`,
+   measured), the route family grown by the one null row it lacks
+   (`zod_prompt_null`) so every asserted envelope is measured, the census's
+   sibling raw list + coverage test (`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_
+   RULE` 441 → 441, predicted and recorded before running — the five are
+   already `Value`-typed), the REST-edge null arm as a neutrality pin.
+   Tier 2: `image_profiles.rs`'s `generate_parsed_type` retired onto
+   `settings::zod_parsed_type` (byte-identical twins). No SPA change (the
+   SPA never posts to this verb — measured). Bumps core + web + harness.
+3. **`p4.99-recovery-info-line-google-cache-key-rows.md` — P4.99, two
+   one-line log ports of the #103/#110 class + the harness DRY smalls.**
+   v4's `Recoverable request error detected, attempting recovery` line at
+   the top of the request-limit branch — LEVEL **info** (the hunk says
+   `logger.info`; the previous round's candidate list said "warn" — the
+   hunk wins), five fields, capture-pinned with a silence leg, a level
+   assertion and an ORDER leg (before the recovery call); GOOGLE's
+   cache-key IGNORER rows (`cache-key` + `cache-key-absent`) recorded into
+   BOTH google corpora against v4's REAL plugin at the baseline pin with
+   every pre-existing row byte-identical, both google families asserting
+   the key changes nothing on either side + a presence assert, a unit pin
+   that v5's google builder is key-blind by shape, the `CACHE_KEY_IGNORED`
+   comment repointed. Tier 2: `CorpusScript`/`to_script()` in ONE home in
+   `quilltap-harness/src/lib.rs`, the tier-1 log check's substring asserts
+   anchored. Bumps core + harness.
+
+**Execution:** all three lanes in parallel, one worktree each, each on the
+most capable model (the drift lane is the deep one — a new real-DB family
+mirroring two v4 suites plus a signature change rippling through three
+call sites; the two maintenance lanes are narrow but each has a
+measurement the order could not settle: which `double_option` shape the
+REST edge must mirror, and whether a primary-stream corpus case reaches the
+recovery branch). Pick order at `/unify`: P4.D200 → P4.98 → P4.99; the
+baseline MOVES to `89fcc3c0d` at unification and both rows retire
+`ABSORBED(P4.D200)`.
+
+**Deliberately left out of this round:** the owed dogfood pass (a
+`/dogfood`, not an order — it runs after this round unifies and gains the
+covenant's live surfaces: an opaque character on the Friday copy reaching
+a group store by name, `doc_list_files` naming no vault, and the
+`ACCESS_DENIED` sentence on a stranger store); the issue-renderer DRY
+(`zod_issue` / `zod_error_message` / the wizard twin — a different layer
+from the type renderer, cross-module, its own order); P4.D198's tier-3
+backstop blindness (needs the whole resize pipeline scripted); the two
+items awaiting the human's RULING (the census `ORDER BY`, the lock-conflict
+503-vs-409); the human `npm install` item (the four SDK-bundling plugin
+dirs still on `openai` 7.10.0); and the "named, not order-sized" carry-overs
+(the `SCENE_STATE_TRACKING` trigger + handler, the shared-fixture title-
+checkpoint hazard, `combined.log` key case, the `name`-field turn-path
+measurement, P4.87's two OPEN coverage items, the upstream filing
+candidates).
+
 ## The `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — UNIFIED 2026-09-17
 
 **ALL FOUR ORDERS CLOSED WHOLE; the oracle baseline MOVES `5f0a57dc4` →

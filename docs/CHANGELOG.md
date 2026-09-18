@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): order the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99)
+
+_Docs-only change._
+
+Three work orders for the next round, all from `main`, no stacking. The
+ledger's two drift rows (v4 `1065a1f53` bug 152 + `89fcc3c0d` bug 153 — the
+doc-tool opacity covenant) go to ONE lane, P4.D200, because the two commits
+share two source files, one substrate and one help page: the
+`hide_character_vaults` flag replacing the drop-the-character shape at both
+resolution-context builders, the flag through the path resolver's collector
+and the tiered pool's new `include_character_tier` flatten option, the
+self-token gate's new condition, the `NOT_FOUND` → `ACCESS_DENIED` split for
+a store that exists but is out of scope with its two warn lines, the same
+flag on the enumerator derived at all four call sites, the help page
+re-vendored, the non-lib files ratified, and a NEW real-DB family mirroring
+v4's two regression suites row for row, red-first (v5 measurably reproduces
+both bugs). P4.98 closes P4.96's §11 finding — `Request::ImagesGenerate`'s
+five body keys become the `Option<Option<Value>>` tri-state so an explicit
+`null` stops collapsing to absent on dispatch and Tauri IPC, proven at a new
+dispatch wire test with the route family grown by the null row it lacked.
+P4.99 ports v4's `Recoverable request error detected, attempting recovery`
+INFO line (P4.97's find; the hunk's level, not the candidate list's),
+records GOOGLE's cache-key ignorer rows into both google corpora against
+v4's real plugin, and lands the round's two harness DRY smalls.
+
+The drift ledger's two rows are marked ORDERED(P4.D200); phase-4.md carries
+the ORDERED block; the shared §R/§S/Ownership/gate block is byte-identical
+across the three orders (md5 `9c5206b8…`). The §2 probe passed at
+planning start; at planning close HEAD was unmoved at `89fcc3c0d` but the
+checkout had gone dirty on thirteen paths of a v4 fix in flight (a characters
+default-system-prompt lockstep) — recorded in the ledger's §1, none on this
+round's regen surfaces, and every order's probe is worded to pass on exactly
+that dirt and stop on anything more.
+
 #### 2026-09-18 — docs(porting): re-confirm the drift check at `bcd7e4852` and measure both bug-152/153 rows against v5
 
 _Docs-only change._
