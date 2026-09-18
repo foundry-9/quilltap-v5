@@ -132237,3 +132237,402 @@ that never existed. Found at cleanup, when `worktree list` kept showing them
 after `prune` and `ls -ld` printed the space. The third zsh no-word-split bite
 of this unification (the conflict resolver's `for f in $conf` was the second);
 the standing note `zsh-env-var-does-not-word-split` now names all three.
+
+---
+
+## P4.D198 — v4 `bcd7e4852` (bug 151), the LOADER half: the per-image transport budget, the fallible shrink seam, and both attachment loaders (lane record, 2026-09-17)
+
+Branch `claude/llm-image-budget-loaders-ae97f9`, from `main` `e215760f`. Three
+port commits plus this record. The order's Tier-1 items 1–9 and Tier-2 items
+10–12 all CLOSED; the Tier-3 deferrals stayed deferred (the per-turn Lantern
+budget and the `help/` re-vendor are P4.D199's, and no real-bytes differential
+was attempted — D19).
+
+### The freshness probe
+
+Run at lane start and again before the regen batch (§R.2). **PASS both times:**
+branch `main`, HEAD `bcd7e4852`, `log bcd7e4852..main` and
+`log 1a2b2164c..bugfix` both EMPTY, tree CLEAN, `release` tip `8fbf2afe0`
+unmoved. The ledger stood; nothing was re-derived and the ledger was not
+written.
+
+### The pins (§R.3, PIN REQUIRED)
+
+Two lane-private detached worktrees, both verified by `rev-parse` AND `ls -ld`
+(the trailing-space trap — every path was built from a quoted literal, never an
+unsplit variable):
+
+    /tmp/qt-v4-pin-p4d198-bcd7e4852   the TARGET (v4 HEAD)  — every family this port moves
+    /tmp/qt-v4-pin-p4d198-5f0a57dc4   the BASELINE          — the neutrality leg
+
+All three symlink classes linked in each (root `node_modules`,
+`packages/quilltap/node_modules`, every `plugins/dist/*/node_modules`). Every
+regen staged its outputs under `/tmp/p4.d198/`, and the committed recipe
+headers name `cd ~/source/quilltap-server` only — the pin is the driver's
+`--v4`.
+
+**Pin verification, as the order specified:** the target-pinned
+`file_attachment_tier3` NDJSON carries the shrink rows' `image/webp` output and
+the baseline-pinned one does not — measured as the 4-of-51 label diff below.
+
+### What landed, unit by unit
+
+**1+2 (commit `d3c6acab`) — the seam primitive and the host codec.**
+`ImageTranscoder::shrink_to_webp(&self, buffer, max_edge, quality) ->
+Result<Vec<u8>, String>` with a DEFAULT body returning
+`Err("image transcoder not configured")`, so `NotConfiguredTranscoder`, the
+core's `HalvingFake` and every harness fake compiled unchanged. The `Result` is
+the whole point and the trait doc says so: v4 wraps its ladder in ONE
+`try`/`catch`, so "sharp threw" and "the encode did not help" are different
+facts there and stay different facts here. `file_fallback`'s `try_downsize`
+collapsing exactly those two into an `Option`, and `resize_step`'s infallible
+shape handing back the INPUT on failure, are the two recorded anti-patterns
+this spelling forbids.
+
+`HostImageCodec::shrink_to_webp` over `image` + `webp`:
+`DynamicImage::resize` IS `fit: 'inside'`, guarded by the already-inside check
+that is `withoutEnlargement: true`, then libwebp at the asked quality.
+**Lanczos3**, because sharp's own default kernel is `lanczos3` and every other
+resize in that codec already uses it. D19 stands, so the tests assert POLICY —
+and they landed green on their first run with v4's own numbers: a 1024x1536
+portrait comes out **683x1024** and a 1536x1024 background **1024x683**,
+exactly what v4's `llm-image-budget.test.ts` asserts from sharp.
+
+**MEASURED byte sizes** (recorded in the test's comment, since v4's commit
+prose quotes its own): a deterministic-noise q90 1024x1536 avatar is
+**1,287,400 B = 1,716,534 B of base64** — over the 500 KiB transport ceiling
+and under the 4 MB per-image provider cap, which is precisely bug 151's
+precondition — down to **342,376 B (456,502 base64)** at quality 78 and
+**242,366 B (323,155)** at 45. v4's sharp reached ~98 KB of base64 on its
+gaussian-noise fixture, so an LCG is the less compressible of the two; the
+ceiling is cleared at the FIRST rung either way.
+
+**3+5 (commit `8fe93455`) — the core module and its tier-1 differential.**
+`crates/quilltap-core/src/files/llm_image_budget.rs`: four constants with v4's
+why-comments, `LlmImageShrinkResult`, and the nine arms in v4's order. The
+subtleties carried deliberately: the early return's `longest_edge > 0`
+conjunct (an unmeasurable image is not small, it is unknown, and v4 sends it
+down the ladder); `best` is the LAST rung TRIED, not the smallest, so an image
+that never fits goes out at rung 45; the grow-discard's SECOND conjunct, so an
+over-1024-edge input is taken even when the encode grew; and the `!best` arm
+carried rather than optimised away, because it is what v4 does with an empty
+ladder.
+
+`LANTERN_IMAGE_BASE64_BUDGET` is defined here (v4's home) and nothing else
+about it was touched — §R.10(a)'s handoff.
+
+**The tier-1 family `llm_image_budget_equivalence`, 15 cases, green on its
+first run.** Jest, because `sharp` must be replaced BELOW v4's real function.
+Both sides run the SAME per-case SCRIPT below a deterministic encoder
+(`harness/oracle/lib/shrink-script.ts` and the new
+`quilltap_harness::scripted_transcoder::ScriptedTranscoder`), which is the
+right instrument and not a shortcut: comparing real sharp against real libwebp
+would compare nothing but the encoders (D19), while one script on both sides
+makes the DECISION the comparand *and* makes the result BYTES comparable, so
+`buffer` is a real field rather than a length check.
+
+The oracle also mocks and RECORDS `@/lib/logger`, which is the only way
+`ceiling` becomes a comparand at all — it appears nowhere in the returned
+result — and the same for v4's `${w}x${h}` strings, including the literal
+`undefinedxundefined` a metadata bag without dimensions renders.
+
+**4+6+7 (commit `84959ee8`) — both loaders, the grown tier-3 family, and the
+two v5-only pins.** The shrink runs FIRST at `read_file_as_base64` and
+`load_mount_file_as_attachment`, then the provider-ceiling resize as the
+backstop — re-gated on, and handed, the possibly-WebP `output_mime_type`
+(v4's `:521` hunk). v4's gate asymmetry kept: the shrink's gate has no
+`can_resize_image`, the backstop's does. The legacy descriptor keeps the
+STORED `files.size` even when `data` shrank.
+
+### Measurements that refuted or corrected something
+
+- **No provider anywhere declares a `maxBase64Size` under 500 KiB.** v5's
+  eleven manifests and v4's own plugin registry agree value for value
+  (OPENAI/GROK/GOOGLE 20 MiB, ANTHROPIC/Z_AI 5 MiB, the rest absent → the
+  4 MiB default). So arm (2)'s `min` resolves to the transport target for every
+  provider that exists and the lower-ceiling arm is **unreachable through
+  either real registry** — v4 reaches it only by mocking `getAttachmentSupport`.
+  The function takes no injectable registry and one was NOT added for a test;
+  `ceiling_is_the_lower_of_the_two` pins both the arithmetic and the
+  measurement, so a future manifest under 500 KiB engages the arm instead of
+  surprising it. The corpus covers both registry BRANCHES (a declared
+  ANTHROPIC ceiling, an absent OPENROUTER one) and the `provider: None` path.
+- **A latent JS-truthiness narrowing on the loaders' provider gate, recorded
+  NOT closed (pre-existing class, out of mandate to widen).** v4's gates are
+  `if (provider && …)` — a TRUTHINESS test, so a provider of `''` skips both
+  stages. v5 spells them `if let Some(provider)`, which runs them with `""`.
+  Two reasons it stayed as written: v5's PRE-EXISTING backstop gate in the same
+  two functions has had exactly this shape since it was ported, so the new
+  shrink gate adds nothing to the class; and it is unreachable from any
+  production caller — all three `LoadChatFilesOptions` construction sites take
+  the provider from a stored connection profile's `provider` field
+  (`load_and_process_files:475`, `load_lantern_images:555`,
+  `load_user_attachments:616`), never an empty string. Closing it would mean
+  changing the pre-existing backstop gate's behaviour too, which is an
+  unmeasured change this order does not sanction. The P4.D115 class
+  (`scenario_selection`'s empty pointers) is the precedent for how it would be
+  closed if a caller ever could produce one. Note that the ceiling arithmetic
+  is NOT affected either way: v4's falsy `provider` and v5's `Some("")` both
+  resolve the ceiling to `LLM_TRANSPORT_TARGET_BASE64` (an unknown provider
+  falls back to the 4 MiB default, which loses the `min`).
+- **Tier-2 item 10, re-measured at the target:** nothing in v4's `lib/` reads
+  the `wasResized` that `readFileAsBase64` returns. Every `wasResized` reader
+  is `resizeImageForProvider`'s OWN result, and the one caller destructures
+  `{data, mimeType}`. v5's drop of the flag stands.
+- **Tier-2 item 11:** `calculate_base64_size` proven equal to
+  `Math.ceil(len * 4 / 3)` for `len` in `0..=10_000` and at bug 151's own
+  three sizes, plus the measurement table's own claim (each avatar under the
+  4 MB cap, their sum over it).
+- **Tier-2 item 12, traced through `log_file.rs` rather than guessed.** The
+  DEBUG line does NOT reach `combined.log` under the default filter
+  (`tracing_filter_directive` falls back to `info`, and the file layer sits
+  under that same `EnvFilter`) — which is v4's own posture, whose
+  `CURRENT_LEVEL` defaults to INFO and drops `logger.debug`. `module` lands as
+  v4's value in v4's position (the layer seeds `context.module` from the
+  TARGET, then overlays the event's fields, and `preserve_order` keeps a
+  re-inserted key in its original slot). P4.91's `…Json` convention applies to
+  no field here — checked: five strings and four integers, no array.
+  **Two PRE-EXISTING repo-wide shape divergences apply and were followed
+  rather than deviated from:** field names are snake_case
+  (`provider_failover.rs` already logs `chat_id` against v4's `chatId`), and a
+  field named `error` is HOISTED by the layer out of `context` into the
+  record's own `error` envelope, where v4's `logger.warn` leaves it an
+  ordinary context key — **188 sites in `quilltap-core` already spell it
+  `error = %e`**, so a one-off here would have been the invention.
+
+### Neutrality (item 8)
+
+`file_attachment_tier3` regenerated at BOTH pins and diffed by label (the
+minted mount-link ids normalized, since `linkBlobContent` mints them):
+**47 of the 51 shared labels byte-identical, and all 18 canned vision rows
+byte-identical** — so no canned row moved, which the order asked to be
+asserted. The four that move are exactly the shrinking rows
+(`lcffl_shrink_legacy`, `lcffl_shrink_mount`, `lcffl_shrink_never_fits`, and
+the ladder record). Three of the six NEW rows — `lcffl_shrink_fails` and both
+`no_autoresize` arms — are byte-identical at both pins, which is its own small
+result: those are the arms v4 behaved this way on before the fix too.
+
+`cargo test -p quilltap-core --lib files::` 58/0; the host's `image_codec`
+module 10/0.
+
+**⚠ `attach_mount_file_equivalence` is RED, at BOTH pins, and it is NOT this
+lane's** — the order's item 8 asked that it "stay green with ZERO source change
+on its side", and that premise is refuted by measurement. All eight cases fail
+identically at `bcd7e4852` and at `5f0a57dc4`: **the ORACLE answers 500
+`"Failed to post Librarian attachment announcement"`** where v5 answers 200
+with the announcement, while every `tables` comparand is OK — and v4 has
+already WRITTEN the Librarian message in the dump it returns, so the write
+succeeds and something after it 500s on v4's side. Proof it cannot be this
+lane's: the attach route never reaches this lane's code (the only mentions of
+`load_mount_file_as_attachment` in `api/chat_media.rs` are two COMMENTS), and
+`git diff main...HEAD` touches none of that family's files, oracle, corpus or
+fixtures. Its `QT_ORACLE_ATTACH_MOUNT_FILE` was therefore WITHHELD from the
+workspace gate's env block and the family proven by name at both pins instead.
+**For the unifier: a pre-existing v4-side oracle failure, needing its own
+order** — the `9ecf7374` history ("the attach-mount-file corpus went dark at
+bug 91") suggests the family has gone dark before.
+
+### Mutation proofs
+
+Each reverted by FILE BACKUP, never `git checkout <file>`.
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | drop the grow-discard's second conjunct | family `[grow_but_oversize_edge] wasShrunk`; unit `a_grown_encode_is_discarded_only_when_the_edge_was_already_small` |
+| M2 | `break` on the first rung regardless of fit | family `[small_over_ceiling_fits_at_65]`; three units (ladder-stops, never-fits, throw-mid-ladder) |
+| M5a | the DEBUG success line becomes a WARN | family `[mime_mixed_case_subtype] level: want DEBUG`; unit `the_success_line_fires_…` |
+| M5b | a debug line on the silent grow-discard arm | family `[grow_discard_small_edge] v4 logged nothing`; unit (after the fix below) |
+| M6 | the host's `shrink_to_webp` returns the INPUT on `Err` | host `shrink_to_webp_errs_rather_than_handing_back_the_input` |
+| M4 | shrink even when `auto_resize` is false (mount loader) | tier-3, via the scripted encoder's rung-exhaustion panic — the loud form, an extra ladder call on a one-rung script; it fires before the row assert |
+| M4b | shrink even when `provider` is None (legacy loader) | tier-3, same shape |
+| M3 | run the shrink AFTER the backstop | **SURVIVED as first written** → closed, see below |
+| M4c | hand the backstop the STORED mime | **SURVIVED as first written** → closed, see below |
+
+**M5b was a finding, not a line to delete.** As first written it reddened only
+the tier-1 family; the unit test for the grow-discard arm asserted the result
+but not the SILENCE. A capture leg was added and M5b re-run: it now reddens
+both.
+
+**M3 and M4c survived, with ONE root cause, and both are now closed.** Neither
+the stage ORDER nor the mime the backstop is handed had any witness, because
+every image in the tier-3 corpus is under the 4 MB per-image provider cap — so
+the backstop never acts at all. That is v4's own observation about its new code
+("this fires only for a format it had to pass through"), which is exactly why
+the mutations were invisible rather than harmless.
+
+The new `crates/quilltap-harness/tests/lantern_loader_transcoder_wiring.rs`
+gives the backstop work to do — an image whose ladder BOTTOM is still over the
+cap — and records the ordered seam log through the public
+`load_chat_files_for_llm`. The recorded FORMAT is what separates the two
+mutations, since `determine_output_format` answers `Webp` for the shrink's
+`image/webp` output and `Jpeg` for the stored `image/png`. Both now redden it:
+
+    correct  [Shrink 78, Shrink 65, Shrink 55, Shrink 45, Resize{819, Webp, 85}]
+    M3       [Resize{3200, Jpeg, 85}]            ← and the shrink never runs AT ALL
+    M4c      [… Resize{819, Jpeg, 85}]
+
+M3's shape is worth reading twice: with the stages swapped the transport budget
+does **nothing**, because the backstop's small output then satisfies the
+budget's own early return. The mutation that looked invisible was in fact
+total.
+
+A fake-side defect was caught on the way: the recording transcoder's first form
+keyed dimensions on buffer LENGTH, and every ladder rung deliberately returns a
+buffer the same length as the stored image, so it reported the stored
+4000x3000 for the shrunk copy and the backstop's first ×0.8 step came out 3200
+instead of 819. Keyed on CONTENT now, with the reason in the fake's comment.
+
+### The production wiring pin (item 7)
+
+**The measurement came back positive, so nothing was escalated:** the loaders'
+transcoder DOES reach `HostImageCodec` in production.
+`quilltap_host::spine::ChatSpine::image_transcoder` is typed as the CONCRETE
+`Arc<HostImageCodec>` (`spine.rs:1050`), built from `Arc::new(HostImageCodec)`
+(`:3531`), and handed to both `OrchestratorDeps` constructions as
+`&*self.image_transcoder` (`:1459`, `:1932`). The two
+`NotConfiguredTranscoder` sites in the core (`orchestrator.rs:4987`,
+`enclave/step.rs:1858`) are both inside `#[cfg(test)]` modules — measured, not
+assumed. `services/orchestrator.rs` was never opened.
+
+The pin proves it in two halves, because the wire is a TYPE and not a value a
+test can read back: the codec really shrinks (run against real bytes through
+the whole budget, on a **codec-free binary PPM** so the harness gains no image
+dependency for a test), and the wire really names it (a source census in the
+`db_error_key_guard` idiom over the three spine facts and the two
+test-only-ness facts). Without it a loader handed the wrong transcoder would
+send stored bytes forever, warn once per image, and look exactly like a
+provider that cannot resize — the P4.73 class.
+
+### Fixtures changed, and what that invalidates
+
+- `harness/oracle/fixtures/file-attachment.json` — three new `files` rows, one
+  `extraMounts` blob, a `shrinkScript` per bug-151 file, and the two new
+  generator keys (`fsmBytesPattern` / `dataPattern`, `(i * 7 + 13) & 0xff`,
+  because the never-fits row needs 384 KB rungs and a JSON array has no
+  business carrying them). `files.size` follows the generated length, since the
+  mount path's post-processing `size` is a comparand and would otherwise lie.
+- `harness/oracle/fixtures/build-file-attachment-fixture.ts` — the pattern
+  generator, the `extraMounts` step, and `extraMountLinkIds` in the
+  `.meta.json` sidecar.
+- **Invalidates: `file_attachment_tier3` only.** The `/tmp/qt-fa-*.db` pair is
+  rebuilt by the recipe and never committed, and no other family reads either
+  corpus — `file-attachment.json` is read by that family's own `.rs` and
+  `.test.ts` and its builder, nothing else; `llm-image-budget.json` likewise.
+  **Correcting a claim this record first made:** `--collisions` is NOT clean
+  for the family. It flags `/tmp/qt-oracle-run/{cases,fixtures}` as shared by
+  `file_attachment_tier3_equivalence` and `image_ingest_tier2_equivalence` —
+  **pre-existing**, from the committed header's `TMPO=/tmp/qt-oracle-run`, and
+  on the STAGING directory only (the NDJSON and fixture-DB paths do not
+  collide). The sweep driver suffixes its scratch dirs per family, so it bites
+  only a hand-run regen of the two families at once; this lane's regens all
+  staged under `/tmp/p4.d198/…`. The NEW family's header uses its own
+  `TMPO=/tmp/qt-oracle-run-llmib`, so it adds no collision.
+- Nothing COMMITTED under `crates/*/tests/fixtures/` was written. The order
+  pin reads the committed `images-main.db` and re-stamps one `mimeType` in its
+  SCRATCH copy only (labelled in the test — a plant in a scratch copy, and this
+  pin has no oracle).
+
+### Regen recipes, exactly as run
+
+`llm_image_budget_equivalence` (NEW):
+
+    N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<the worktree> ; TMPO=/tmp/p4.d198/qt-oracle-run-llmib
+    cd /tmp/qt-v4-pin-p4d198-bcd7e4852
+    rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+    cp "$V5W/harness/oracle/cases/llm-image-budget.test.ts" "$TMPO/cases/"
+    cp "$V5W/harness/oracle/fixtures/llm-image-budget.json" "$TMPO/fixtures/"
+    cp "$V5W/harness/oracle/lib/shrink-script.ts" "$TMPO/lib/"
+    QT_ORACLE_OUT=/tmp/p4.d198/oracle-llm-image-budget.ndjson \
+      $N/npx jest --silent --watchman=false --testTimeout=120000 \
+        --roots "$PWD" --roots "$TMPO/cases" -- llm-image-budget
+    # run:
+    QT_ORACLE_LLM_IMAGE_BUDGET=/tmp/p4.d198/oracle-llm-image-budget.ndjson \
+      cargo test -p quilltap-harness --test llm_image_budget_equivalence -- --nocapture
+
+`file_attachment_tier3_equivalence` — the committed header, plus the new
+`"$TMPO/lib"` staging of `shrink-script.ts`. Both were driven through the
+sanctioned path as well: `harness/tools/recipe_sweep.py --run-all --families
+llm_image_budget_equivalence,file_attachment_tier3_equivalence,attach_mount_file_equivalence
+--v4 /tmp/qt-v4-pin-p4d198-bcd7e4852 --v5w <the worktree>` → **2 ok, 1
+run_failed** (the pre-existing `attach_mount_file` red classified above).
+`--show llm_image_budget_equivalence` was read back before believing the new
+recipe: `V5W` self-referential (no clobber), both stages naming the SAME
+NDJSON path (P4.55's rule), `--test` scoped, and no `/tmp` pin in the header.
+
+### Two traps worth a memory note
+
+1. **A `/tmp`-staged jest oracle cannot `jest.doMock` a bare `sharp`.** The
+   staged case sits outside the v4 checkout, so Node's upward resolution finds
+   no `node_modules` — and `better-sqlite3` is not the counter-example it looks
+   like, because v4's jest config MAPS that specifier to a
+   `<rootDir>/__mocks__` file. Mock the RESOLVED path
+   (`join(process.cwd(), 'node_modules', 'sharp')`); a bare import from inside
+   `lib/` reaches the same module id, so the explicit mock intercepts it.
+2. **A `@/lib/logger` doMock must provide `child()`, and make it SILENT.**
+   Importing `llm-image-budget` pulls `image-processing` →
+   `provider-registry` → `host-rewrite`, which builds a child logger at MODULE
+   SCOPE — so a mock without `child` dies on import, and one whose `child`
+   returns the recorder pollutes the recorded bag with unrelated lines.
+
+### The gate
+
+Run from the lane's worktree with `CARGO_INCREMENTAL=0 TZ=UTC`, one logged
+sentinel-guarded chain, full log captured (never `| tail`).
+
+1. §R.2 probe — **PASS** (opening, and again before the regen batch).
+2. `cargo fmt --all --check` — **clean**.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — **clean in BOTH
+   feature sets** (default, and `--features quilltap-core/native-transport`).
+4. The lane's differentials by NAME, each regenerated fresh from the pin §R.3
+   assigns it, through the sweep driver: `llm_image_budget_equivalence` 15/15
+   and `file_attachment_tier3_equivalence` green — **2 ok** of the three
+   families run, the third being the pre-existing red classified above. The
+   fresh NDJSONs were grepped for the changed bytes: the target-pinned
+   file-attachment oracle carries the shrink rows' `image/webp` output and the
+   baseline-pinned one does not.
+5. Neutrality — the 51-shared-label by-name diff above.
+6. Mutation proofs — the table above, every proof reverted by file backup.
+7. `cargo build --workspace --release` — exit 0, **zero warnings**.
+8. `cargo test --workspace --no-fail-fast` with the lane's env block —
+   **574 test binaries / 3,407 passed / 0 failed / 2 ignored, exit 0.** The
+   lane's three binaries confirmed RUN by non-zero duration:
+   `llm_image_budget_equivalence` 1/0 in 0.24 s,
+   `file_attachment_tier3_equivalence` 1/0 in 0.06 s,
+   `lantern_loader_transcoder_wiring` 2/0 in 8.19 s (the real libwebp encode).
+
+   **⚠ The gate's own `SKIP lines: 0` is NOT a claim and must not be read as
+   one.** The workspace run does not pass `--nocapture`, so cargo CAPTURES a
+   passing test's `SKIP:` line — the recorded trap
+   (`a-family-env-var-is-not-its-regen-var`). The honest statement is the
+   opposite: `attach_mount_file_equivalence` DID skip-pass here, by design,
+   because its oracle var was withheld — and its **0.01 s** duration is the
+   tell, against 0.17 s when it really runs. Every other family whose oracle
+   var this lane did not set skipped too, deliberately: setting one without
+   regenerating its oracle is the silent-stale-pass trap.
+9. SPA gate — N/A (P4.96's; this lane touches no `apps/web` file).
+10. Ownership — `git diff --stat main...HEAD` is 20 files, every one in this
+    lane's Owns column; the three `Cargo.toml` diffs are **version lines
+    only** (no feature flag was needed, so none was added); and
+    `git diff main...HEAD -- api/types.rs api/engine.rs
+    dispatch_wrong_type_census.rs` is **EMPTY** (§R.10(c)).
+
+**Versions:** core 0.0.945, harness 0.0.836, host 0.0.138 — exactly §R.8's
+expectation for this lane (core and harness by all four lanes; host by P4.D198
+ONLY). cli / tauri / web / SPA untouched.
+
+
+### Deferred, loudly
+
+- The per-turn `LANTERN_IMAGE_BASE64_BUDGET` spend is P4.D199's; this lane
+  defined the constant and added no budget to `load_lantern_images`.
+- The `help/connection-profiles.md` re-vendor is P4.D199's.
+- **A real-bytes differential is NOT attempted** (D19). 💸 The live proof — a
+  real Lantern avatar reaching a real vision seat at a fraction of the bytes,
+  visible in `combined.log`'s debug line under a raised `RUST_LOG` — joins the
+  dogfood queue.
+- **The tier-3 corpus still cannot see the provider-ceiling BACKSTOP act.**
+  Closing it would mean scripting `resizeImageForProvider`'s whole pipeline in
+  the shared mock (the ×0.8 walk, the 10-iteration bound, the quality-fallback
+  branch) on both sides plus a corpus file whose ladder bottom stays over the
+  provider cap. Named here rather than half-done; the ordering and mime
+  arguments it would cover are pinned by the wiring file meanwhile.

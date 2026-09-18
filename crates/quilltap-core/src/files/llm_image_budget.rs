@@ -52,6 +52,36 @@
 //! v4's final `sharp(best).metadata()` is inside the same `catch`; v5's is
 //! infallible, so that one arm cannot fail here. It has no observable
 //! consequence — a metadata probe of bytes this seam just produced.
+//!
+//! ## What reaches `combined.log` (P4.D198 Tier-2 item 12)
+//!
+//! Traced from `quilltap-web`'s `log_file.rs` rather than guessed:
+//!
+//! * **The DEBUG line does not reach the file at all** under the default
+//!   filter. `tracing_filter_directive` falls back to `info` when `RUST_LOG` is
+//!   unset, and the file layer sits under that same `EnvFilter` — which is
+//!   exactly v4's posture, whose `CURRENT_LEVEL` defaults to INFO and drops
+//!   `logger.debug`. So the success line is a `RUST_LOG`-raised diagnostic on
+//!   both sides, and the WARN is the one an operator sees unasked.
+//! * **`module` lands as v4's value, in v4's position.** The layer seeds
+//!   `context.module` from the event TARGET and then overlays the event's own
+//!   fields, so this module's `module` field overwrites it with
+//!   `files:llm-image-budget` — and `serde_json`'s `preserve_order` keeps a
+//!   re-inserted key in its original slot, so it stays FIRST, which is also
+//!   where v4's object literal puts it.
+//! * **Two PRE-EXISTING, repo-wide shape divergences apply here**, neither
+//!   introduced by this module and neither worth a one-off deviation:
+//!   (a) field names are snake_case (`original_size` against v4's
+//!   `originalSize`), the convention every ported bag follows — e.g.
+//!   `provider_failover.rs`'s `chat_id`/`response_length`; and (b) a field
+//!   named `error` is HOISTED by the layer out of `context` into the record's
+//!   own `error` envelope as `{"name": "Error", "message": …}`, whereas v4's
+//!   `logger.warn` has no third argument and leaves `error` as an ordinary
+//!   CONTEXT key. 188 sites in this crate already spell it `error = %e`, so
+//!   this module follows them.
+//! * **P4.91's `…Json` convention applies to no field here** — checked: every
+//!   field is a scalar (five strings and four integers), and that convention
+//!   exists only for a v4 bag value that is an ARRAY or object.
 
 use crate::files::image_processing::{
     calculate_base64_size, can_resize_image, get_provider_max_base64_size, ImageTranscoder,

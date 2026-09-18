@@ -12,6 +12,34 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — docs(porting): close the P4.D198 lane — what `combined.log` shows, and the lane record
+
+_Versions: core 0.0.945, harness 0.0.836, host 0.0.138 (unchanged by this commit)._
+
+Tier-2 item 12 traced through `quilltap-web`'s `log_file.rs` rather than
+guessed, and recorded in the budget module's own docs where a future reader of
+those two log lines will find it. The DEBUG line does not reach `combined.log`
+under the default filter at all, because `tracing_filter_directive` falls back
+to `info` and the file layer sits under that same `EnvFilter` — which is v4's
+own posture, whose `CURRENT_LEVEL` defaults to INFO and drops `logger.debug`.
+`module` lands as v4's value in v4's position, since the layer seeds
+`context.module` from the event target and then overlays the event's fields,
+and `preserve_order` keeps a re-inserted key in its original slot. P4.91's
+`…Json` convention applies to no field here — checked: five strings and four
+integers, no array.
+
+Two pre-existing repo-wide shape divergences apply and were followed rather
+than deviated from with a one-off: field names are snake_case (188 sites in
+`quilltap-core` already log `error = %e`, and `provider_failover.rs` logs
+`chat_id` against v4's `chatId`), and a field named `error` is hoisted by the
+layer out of `context` into the record's own `error` envelope, where v4's
+`logger.warn` leaves it an ordinary context key.
+
+The lane record in `status-log.md` carries the regen commands as run, the
+mutation table (including the two proofs that survived as first written and how
+they were closed), the measurements that refuted three premises, the gate
+numbers, and the one pre-existing red this lane classified but does not own.
+
 #### 2026-09-17 — fix(images): the transport shrink runs first at both attachment loaders (P4.D198)
 
 _Versions: core 0.0.945, harness 0.0.836._
