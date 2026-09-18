@@ -24,8 +24,9 @@
 
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
+use crate::api::zod_issues::{key, zod_issues_joined, zod_parsed_type, ZodIssue};
 use crate::db::runtime::Db;
 use crate::db::{js_number_to_json, DbError};
 use crate::tools::llm_number::llm_number;
@@ -128,47 +129,58 @@ struct RunSqlInput {
 
 /// Validate + normalize the input against the Zod schema, or return the exact
 /// `Invalid run_sql input: <path> — <message>.` string v4 builds from
-/// `issues[0]`. The corpus constrains invalid inputs to the non-object case (a
-/// single, stable Zod message); richer Zod-message fidelity is out of scope
-/// (documented — the pre-scan / SQLite-prepare failures cover the real refusals).
+/// `issues[0]` (`lib/tools/handlers/run-sql-handler.ts:247`).
+///
+/// The issues are built from the ONE Zod home ([`crate::api::zod_issues`],
+/// P4.101) and joined by [`zod_issues_joined`], which is v4's own
+/// `` `${i.path.join('.')} — ${i.message}` `` — a renderer over issues, not a
+/// second copy of the type.
+///
+/// ⚠ **Two DOCUMENTED, pre-existing scope limits survive the fold, and P4.101
+/// moved no byte on either** (measured 2026-09-18 against v4's REAL
+/// `runSqlToolInputSchema` at the `89fcc3c0d` pin, `node --import tsx`):
+///
+/// 1. The `database` enum's sentence. Real zod 4.5.4 answers
+///    `Invalid option: expected one of "main"|"llm-logs"|"mount-index"` with NO
+///    `, received <type>` suffix; this port appends one. The
+///    `state_sql_tools_equivalence` corpus drives exactly ONE validation case
+///    (`sql_validation_nonobject`), so nothing pins it either way. The
+///    divergent bytes are kept HERE, at the call site, as a literal variant —
+///    correcting them is a wire change that wants its own order with a corpus
+///    arm, not a refactor's drive-by (the standing "run the oracle BEFORE
+///    changing a user-facing string" rule).
+/// 2. `database: null` defaults to `"main"` here where v4 refuses it, and
+///    `max_rows` never reports Zod's `>=1` / `<=1000` bounds because the
+///    handler clamps instead. Both are behavioural, both predate P4.101, and
+///    both are named in the same unwritten order.
+///
+/// Every OTHER arm — the non-object root and all three `sql` arms — was
+/// measured byte-identical to v4 before and after the fold.
 fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
+    /// v4 renders `issues[0]` only.
+    fn refuse(issue: ZodIssue) -> String {
+        format!("Invalid run_sql input: {}.", zod_issues_joined(&[issue]))
+    }
+
     let Some(obj) = args.as_object() else {
         // z.object on a non-object: path=[], invalid_type expected object.
-        let received = json_typeof(args);
-        return Err(format!(
-            "Invalid run_sql input: {}.",
-            zod_issue(
-                "",
-                &format!("Invalid input: expected object, received {received}")
-            )
-        ));
+        return Err(refuse(ZodIssue::invalid_type("object", vec![], Some(args))));
     };
     // sql: string, min 1.
     let sql = match obj.get("sql") {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
         Some(Value::String(_)) => {
-            return Err(format!(
-                "Invalid run_sql input: {}.",
-                zod_issue("sql", "Too small: expected string to have >=1 characters")
-            ))
+            return Err(refuse(ZodIssue::too_small_string(
+                json!(1),
+                vec![key("sql")],
+            )))
         }
-        Some(other) => {
-            return Err(format!(
-                "Invalid run_sql input: {}.",
-                zod_issue(
-                    "sql",
-                    &format!(
-                        "Invalid input: expected string, received {}",
-                        json_typeof(other)
-                    )
-                )
-            ))
-        }
-        None => {
-            return Err(format!(
-                "Invalid run_sql input: {}.",
-                zod_issue("sql", "Invalid input: expected string, received undefined")
-            ))
+        other => {
+            return Err(refuse(ZodIssue::invalid_type(
+                "string",
+                vec![key("sql")],
+                other,
+            )))
         }
     };
     // database: enum, optional (default main).
@@ -176,14 +188,17 @@ fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
         None | Some(Value::Null) => "main".to_string(),
         Some(Value::String(s)) if s == "main" || s == "llm-logs" || s == "mount-index" => s.clone(),
         Some(other) => {
-            let received = json_typeof(other);
-            return Err(format!(
-                "Invalid run_sql input: {}.",
-                zod_issue(
-                    "database",
-                    &format!("Invalid option: expected one of \"main\"|\"llm-logs\"|\"mount-index\", received {received}")
-                )
-            ));
+            // Scope limit 1 above: the `, received <type>` suffix is this
+            // port's, not zod's. Kept verbatim so P4.101 moves no byte.
+            let received = zod_parsed_type(Some(other));
+            return Err(refuse(ZodIssue::InvalidValue {
+                code: "invalid_value",
+                values: DATABASES.iter().map(|v| json!(v)).collect(),
+                path: vec![key("database")],
+                message: format!(
+                    "Invalid option: expected one of \"main\"|\"llm-logs\"|\"mount-index\", received {received}"
+                ),
+            }));
         }
     };
     // max_rows: llmNumber(int 1..=1000), optional (default 200). The lenient
@@ -196,16 +211,11 @@ fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
             coerced.as_i64().unwrap_or(DEFAULT_MAX_ROWS)
         }
         Some((other, _)) => {
-            return Err(format!(
-                "Invalid run_sql input: {}.",
-                zod_issue(
-                    "max_rows",
-                    &format!(
-                        "Invalid input: expected number, received {}",
-                        json_typeof(other)
-                    )
-                )
-            ))
+            return Err(refuse(ZodIssue::invalid_type(
+                "number",
+                vec![key("max_rows")],
+                Some(other),
+            )))
         }
     };
     Ok(RunSqlInput {
@@ -215,22 +225,8 @@ fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
     })
 }
 
-/// `${path.join('.')} — ${message}` (path may be empty).
-fn zod_issue(path: &str, message: &str) -> String {
-    format!("{path} — {message}")
-}
-
-/// The JS `typeof`-ish label Zod uses in a `received <x>` message.
-fn json_typeof(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
+/// The `database` enum's members, in schema order.
+const DATABASES: &[&str] = &["main", "llm-logs", "mount-index"];
 
 /// Execute the `run_sql` tool (v4 `executeRunSqlTool`). Read-only: runs on a pooled
 /// read connection. `user_id` is carried for parity (logging/attribution only).

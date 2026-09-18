@@ -295,6 +295,31 @@ and falls through to the flag, two flagged prompts resolve to the first,
 and no flag anywhere plus a stale column falls all the way to `prompts[0]`.
 Mutation M1 (drop the column's existence check) reddens v4's third vector
 and the stale-column extra, and nothing else.
+#### 2026-09-18 — refactor(tools): `run_sql` and the LoRA write guard render through the Zod home (P4.101 Tier 2)
+
+_Versions: core 0.0.962._
+
+`tools/run_sql.rs` built its refusal sentence from a two-string
+`zod_issue(path, message)` helper and carried its own `json_typeof` table; it
+now builds typed issues and renders them through the home's
+`zod_issues_joined`, which is v4's own
+`` `${i.path.join('.')} — ${i.message}` `` (`run-sql-handler.ts:247`).
+`image_gen/lora_validation.rs`'s three-variant `LoraZodIssue` is now an alias
+for the home's type — its variants were byte-identical, as they had to be,
+since v4's LoRA envelope is `loraSchema.safeParse`'s own issues — and its
+warn-line projection is the home's `zod_issue_lines(issues, ": ")`.
+
+Measured against v4's REAL `runSqlToolInputSchema` at the baseline pin: the
+non-object root and all three `sql` arms are byte-identical before and after,
+and `state_sql_tools_equivalence` reddens on a one-byte mutation of the home,
+so the fold is covered rather than merely green. Two DOCUMENTED, pre-existing
+scope limits survive untouched and are now named at the call site: this port
+appends a `, received <type>` suffix to the `database` enum's sentence where
+real zod does not, and `database: null` plus the `max_rows` bounds diverge
+behaviourally. The corpus drives exactly one validation case, so nothing pins
+them either way; correcting them is a wire change that wants its own order
+with a corpus arm.
+
 #### 2026-09-18 — refactor(api): ONE Zod-4 issue home — the typed issue, its constructors, the `parsedType` word, the uuid gate and both renderers (P4.101)
 
 _Versions: core 0.0.961._

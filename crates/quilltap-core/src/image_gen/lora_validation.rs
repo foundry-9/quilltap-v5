@@ -26,61 +26,18 @@ use serde_json::{json, Map, Value};
 /// (v4 `IMAGE_PROFILE_LORAS_KEY`).
 pub const IMAGE_PROFILE_LORAS_KEY: &str = "loras";
 
-/// v4 zod 4's issue objects, in the key order `JSON.stringify` emits. Untagged
-/// variants rather than one struct with optional keys: `Option` skipping cannot
-/// reorder, and `invalid_type` puts `expected` first while the size issues put
-/// `origin` first.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(untagged)]
-pub enum LoraZodIssue {
-    InvalidType {
-        expected: &'static str,
-        code: &'static str,
-        path: Vec<Value>,
-        message: String,
-    },
-    TooSmall {
-        origin: &'static str,
-        code: &'static str,
-        minimum: Value,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: &'static str,
-    },
-    TooBig {
-        origin: &'static str,
-        code: &'static str,
-        maximum: Value,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: &'static str,
-    },
-}
+/// v4 zod 4's issue objects — the ONE home ([`crate::api::zod_issues::ZodIssue`],
+/// P4.101).
+///
+/// This module rendered its own three variants until P4.101 measured them
+/// against the home's (and against the checkout's real `zod` 4.5.4): the key
+/// order is IDENTICAL, which it must be — v4's LoRA envelope is
+/// `loraSchema.safeParse`'s own issues, the same Zod as every other route's, so
+/// a difference would have been a finding. The alias keeps the local spelling
+/// `validate_profile_loras`' callers already name.
+pub use crate::api::zod_issues::ZodIssue as LoraZodIssue;
 
-/// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
-fn parsed_type(v: Option<&Value>) -> &'static str {
-    match v {
-        None => "undefined",
-        Some(Value::Null) => "null",
-        Some(Value::Bool(_)) => "boolean",
-        Some(Value::Number(_)) => "number",
-        Some(Value::String(_)) => "string",
-        Some(Value::Array(_)) => "array",
-        Some(Value::Object(_)) => "object",
-    }
-}
-
-fn invalid_type(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> LoraZodIssue {
-    LoraZodIssue::InvalidType {
-        expected,
-        code: "invalid_type",
-        path,
-        message: format!(
-            "Invalid input: expected {expected}, received {}",
-            parsed_type(got)
-        ),
-    }
-}
+use crate::api::zod_issues::{key, zod_issue_lines, ZodIssue};
 
 /// `z.array(ImageLoraSpecSchema)` over the raw `loras` value. Zod collects
 /// every element's issues rather than stopping at the first, and each element's
@@ -88,13 +45,13 @@ fn invalid_type(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -
 /// issues, in element order.
 fn parse_lora_list(raw: &Value) -> Vec<LoraZodIssue> {
     let Some(list) = raw.as_array() else {
-        return vec![invalid_type("array", Vec::new(), Some(raw))];
+        return vec![ZodIssue::invalid_type("array", Vec::new(), Some(raw))];
     };
     let mut issues = Vec::new();
     for (i, entry) in list.iter().enumerate() {
         let idx = json!(i);
         let Some(obj) = entry.as_object() else {
-            issues.push(invalid_type("object", vec![idx], Some(entry)));
+            issues.push(ZodIssue::invalid_type("object", vec![idx], Some(entry)));
             continue;
         };
         parse_lora_spec(obj, &idx, &mut issues);
@@ -106,7 +63,7 @@ fn parse_lora_list(raw: &Value) -> Vec<LoraZodIssue> {
 /// order — `source`, `scale`, `triggerPhrase`, `label` — which is also the
 /// order Zod reports issues in.
 fn parse_lora_spec(obj: &Map<String, Value>, idx: &Value, issues: &mut Vec<LoraZodIssue>) {
-    let at = |key: &str| vec![idx.clone(), Value::String(key.to_string())];
+    let at = |k: &str| vec![idx.clone(), key(k)];
 
     // source: z.string().trim().min(1, 'LoRA source is required')
     match obj.get("source") {
@@ -114,17 +71,14 @@ fn parse_lora_spec(obj: &Map<String, Value>, idx: &Value, issues: &mut Vec<LoraZ
             // `.trim()` is a transform that runs BEFORE `.min(1)`, so a
             // whitespace-only source is a length failure, not a type one.
             if crate::jsstr::js_trim(s).is_empty() {
-                issues.push(LoraZodIssue::TooSmall {
-                    origin: "string",
-                    code: "too_small",
-                    minimum: json!(1),
-                    inclusive: true,
-                    path: at("source"),
-                    message: "LoRA source is required",
-                });
+                issues.push(ZodIssue::too_small_string_message(
+                    json!(1),
+                    at("source"),
+                    "LoRA source is required",
+                ));
             }
         }
-        other => issues.push(invalid_type("string", at("source"), other)),
+        other => issues.push(ZodIssue::invalid_type("string", at("source"), other)),
     }
 
     // scale: z.number().finite(...).min(0, …).max(10, …).optional()
@@ -137,34 +91,28 @@ fn parse_lora_spec(obj: &Map<String, Value>, idx: &Value, issues: &mut Vec<LoraZ
         Some(Value::Number(n)) => {
             let v = n.as_f64().unwrap_or(f64::NAN);
             if v < 0.0 {
-                issues.push(LoraZodIssue::TooSmall {
-                    origin: "number",
-                    code: "too_small",
-                    minimum: json!(0),
-                    inclusive: true,
-                    path: at("scale"),
-                    message: "LoRA scale cannot be negative",
-                });
+                issues.push(ZodIssue::too_small_number_message(
+                    json!(0),
+                    at("scale"),
+                    "LoRA scale cannot be negative",
+                ));
             } else if v > 10.0 {
-                issues.push(LoraZodIssue::TooBig {
-                    origin: "number",
-                    code: "too_big",
-                    maximum: json!(10),
-                    inclusive: true,
-                    path: at("scale"),
-                    message: "LoRA scale cannot exceed 10",
-                });
+                issues.push(ZodIssue::too_big_number_message(
+                    json!(10),
+                    at("scale"),
+                    "LoRA scale cannot exceed 10",
+                ));
             }
         }
         // An explicit `undefined` cannot reach here through JSON; an explicit
         // null is a type failure, not an omission.
-        Some(other) => issues.push(invalid_type("number", at("scale"), Some(other))),
+        Some(other) => issues.push(ZodIssue::invalid_type("number", at("scale"), Some(other))),
     }
 
-    for key in ["triggerPhrase", "label"] {
-        match obj.get(key) {
+    for k in ["triggerPhrase", "label"] {
+        match obj.get(k) {
             None | Some(Value::String(_)) => {}
-            Some(other) => issues.push(invalid_type("string", at(key), Some(other))),
+            Some(other) => issues.push(ZodIssue::invalid_type("string", at(k), Some(other))),
         }
     }
 }
@@ -192,34 +140,14 @@ pub fn validate_profile_loras(parameters: &Value) -> Option<Vec<LoraZodIssue>> {
 /// The `details` array of v4's `validationError(err)` body, ready for the
 /// [`crate::api::types::Response`] carry.
 pub fn lora_issue_details(issues: &[LoraZodIssue]) -> Value {
-    serde_json::to_value(issues).unwrap_or(Value::Null)
+    crate::api::zod_issues::zod_issue_details(issues)
 }
 
 /// The joined `path: message` strings v4 puts in the warn line's `issues`
 /// field (`loraError.issues.map(i => \`${i.path.join('.')}: ${i.message}\`)`).
 /// A log-only projection; the response never carries it.
 pub fn lora_issue_log_lines(issues: &[LoraZodIssue]) -> Vec<String> {
-    issues
-        .iter()
-        .map(|i| {
-            let (path, message) = match i {
-                LoraZodIssue::InvalidType { path, message, .. } => (path, message.as_str()),
-                LoraZodIssue::TooSmall { path, message, .. } => (path, *message),
-                LoraZodIssue::TooBig { path, message, .. } => (path, *message),
-            };
-            // `Array.prototype.join` stringifies each element; the numeric
-            // indices render bare.
-            let joined = path
-                .iter()
-                .map(|p| match p {
-                    Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .collect::<Vec<_>>()
-                .join(".");
-            format!("{joined}: {message}")
-        })
-        .collect()
+    zod_issue_lines(issues, ": ")
 }
 
 #[cfg(test)]
