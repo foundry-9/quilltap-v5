@@ -543,6 +543,7 @@ pub fn build_read_resolution_context(
             project_id: ctx.project_id.clone(),
             character_id: None,
             character_ids: Vec::new(),
+            hide_character_vaults: false,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
         };
@@ -552,6 +553,7 @@ pub fn build_read_resolution_context(
         project_id: ctx.project_id.clone(),
         character_id: ctx.character_id.clone(),
         character_ids: peers,
+        hide_character_vaults: false,
         mount_point: addressing.mount_point.clone(),
         operator_override: ctx.operator_override,
     }
@@ -570,6 +572,7 @@ pub fn build_write_resolution_context(
             project_id: ctx.project_id.clone(),
             character_id: None,
             character_ids: Vec::new(),
+            hide_character_vaults: false,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
         });
@@ -585,6 +588,7 @@ pub fn build_write_resolution_context(
         project_id: ctx.project_id.clone(),
         character_id: ctx.character_id.clone(),
         character_ids: Vec::new(),
+        hide_character_vaults: false,
         mount_point: addressing.mount_point.clone(),
         operator_override: ctx.operator_override,
     })

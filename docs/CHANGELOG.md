@@ -40,6 +40,46 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — port(doc-edit): the opacity flag, the collector, and the out-of-scope refusal (v4 bug 152, `1065a1f53`)
+
+_Versions: core 0.0.952, harness 0.0.844._
+
+`PathResolutionContext` gains `hide_character_vaults`, and the collector honours
+it: the pool is resolved with `include_participants: vaults_visible` and
+flattened with both `include_participants` and `include_character_tier` set to
+it, so the two vault tiers are subtracted and the group, project and global tiers
+stay. The character still goes INTO the pool — that is the point of expressing
+the covenant as a subtraction. The operator-override arm is untouched.
+
+The `self` token's gate gains `!hide_character_vaults` as a CONDITION (v4's
+hunk), not a new refusal arm: with the flag set the token falls through to the
+ordinary name and id loops and ends in the not-found answer. Bug 152's commit
+message says the token "is now refused explicitly"; the shipped hunk is narrower,
+and a code comment says so.
+
+`resolve_document_store_path` now splits the two meanings it had collapsed. A
+store that EXISTS but is out of scope answers `ACCESS_DENIED` with v4's
+three-sentence message — the old `NOT_FOUND` read to a model as a misspelling,
+and the reported turn spent eight minutes guessing at a name it had right the
+first time. `find_enabled_mount_point_by_ref` decides which wall it is, name
+first then id, and deliberately excludes character vaults: naming one would leak
+through the refusal exactly what the covenant withholds, so a vault keeps the
+indistinguishable `NOT_FOUND`. It fails soft, as v4's `catch` does — and v4's
+`findEnabled` is itself a `safeQuery` with an empty-array fallback.
+
+It reuses the existing `find_enabled_for_search` read rather than widening
+`DmpRow`, which is the precedent that read's own doc comment set (P4.D122,
+Hazard 1): `DmpRow` has no `storeType`, and widening it reaches the URI
+resolver, the path resolver and the `doc_mount_points_tier2` family.
+
+Both warn lines are ported with v4's sentence rendered byte-for-byte as the
+message AND the pieces carried as snake_case fields, and pinned by capture-layer
+tests with a silence leg. `describe_characters` is ported with v4's `Set`
+semantics (insertion order, duplicates dropped, `none` when empty) and its own
+six-case unit test.
+
+`doc_opacity_equivalence`: 19 -> 16 red, exactly the three stranger-store rows.
+
 #### 2026-09-18 — port(doc-edit): flattenTierPool gains includeCharacterTier (v4 bug 152, `1065a1f53`)
 
 _Versions: core 0.0.951, harness 0.0.843._

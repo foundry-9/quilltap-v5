@@ -200,6 +200,7 @@ fn doc_edit_path_resolver_matches_oracle() {
         project_id: project_id.map(String::from),
         character_id: character_id.map(String::from),
         character_ids: Vec::new(),
+        hide_character_vaults: false,
         mount_point: mount_point.map(String::from),
         operator_override: operator,
     };

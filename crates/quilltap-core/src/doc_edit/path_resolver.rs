@@ -41,6 +41,18 @@ pub struct PathResolutionContext {
     pub project_id: Option<String>,
     pub character_id: Option<String>,
     pub character_ids: Vec<String>,
+    /// The doc-tool opacity covenant: hide every CHARACTER VAULT (the acting
+    /// character's own and every peer's) while leaving the group, project and
+    /// global tiers reachable. Set by the doc-edit context builders for a
+    /// character with `systemTransparency !== true`.
+    ///
+    /// `character_id` must still be supplied alongside it — group membership is
+    /// derived from `character_id` and from nothing else, so hiding vaults by
+    /// withholding the character instead of setting this flag also erases every
+    /// group store she belongs to (v4 bug 152, `1065a1f53`). The reserved `self`
+    /// token is refused while this is set, since her own vault is among what's
+    /// hidden.
+    pub hide_character_vaults: bool,
     /// Mount point name or ID (required for `document_store` scope).
     pub mount_point: Option<String>,
     /// Operator "look everywhere" override — reaches ANY enabled mount.
@@ -400,6 +412,10 @@ fn collect_accessible_mount_point_ids(
         return Ok(ids);
     }
 
+    // The opacity covenant subtracts the two vault tiers and nothing else. The
+    // character still goes INTO the pool so her group stores resolve — that is
+    // the whole point of expressing this as a subtraction (v4 bug 152).
+    let vaults_visible = !context.hide_character_vaults;
     let pool = resolve_tiered_mount_pool(
         main,
         mount,
@@ -415,16 +431,64 @@ fn collect_accessible_mount_point_ids(
         },
         &TierResolveOptions {
             require_ownership: false,
-            include_participants: true,
+            include_participants: vaults_visible,
         },
     );
     Ok(flatten_tier_pool(
         &pool,
         FlattenOptions {
-            include_participants: true,
+            include_participants: vaults_visible,
+            include_character_tier: vaults_visible,
             ..Default::default()
         },
     ))
+}
+
+/// v4 `describeCharacters`: the context's character ids as one comma-joined
+/// string for the refusal warns, or `none` when empty. v4 builds a `Set` seeded
+/// with `characterId` and then every `characterIds` entry, so INSERTION order is
+/// preserved and duplicates drop.
+fn describe_characters(context: &PathResolutionContext) -> String {
+    let mut ids: Vec<&str> = Vec::new();
+    if let Some(cid) = &context.character_id {
+        ids.push(cid);
+    }
+    for id in &context.character_ids {
+        if !ids.contains(&id.as_str()) {
+            ids.push(id);
+        }
+    }
+    if ids.is_empty() {
+        "none".to_string()
+    } else {
+        ids.join(",")
+    }
+}
+
+/// v4 `findEnabledMountPointByRef`: find an enabled store matching `ref` (name,
+/// case-insensitively, then id) ANYWHERE, ignoring scope — used only to tell "no
+/// such store" apart from "exists, out of scope" in the refusal.
+///
+/// **Character vaults are deliberately excluded.** A vault is exactly what the
+/// opacity covenant and the cross-character boundary hide, so admitting one
+/// exists would leak through the refusal what the access rule withholds — the
+/// same reason `assert_character_may_read` mirrors the "missing file" shape. A
+/// vault therefore keeps the indistinguishable NOT_FOUND. Fails soft: on any
+/// lookup error the caller falls back to NOT_FOUND (v4's `catch`, and its
+/// `findEnabled` is itself a `safeQuery` with an empty-array fallback).
+fn find_enabled_mount_point_by_ref(mount: &Connection, r#ref: &str) -> Option<(String, String)> {
+    let rows = DocMountPointsRepository::new(mount)
+        .find_enabled_for_search()
+        .ok()?;
+    let needle = r#ref.to_lowercase();
+    let matched = rows
+        .iter()
+        .find(|mp| mp.name.to_lowercase() == needle)
+        .or_else(|| rows.iter().find(|mp| mp.id == r#ref))?;
+    if matched.store_type.as_deref() == Some("character") {
+        return None;
+    }
+    Some((matched.id.clone(), matched.name.clone()))
 }
 
 fn resolve_document_store_path(
@@ -464,8 +528,16 @@ fn resolve_document_store_path(
     let mut matched: Option<crate::db::doc_mount_points::DmpRow> = None;
 
     // Reserved self-token: address the acting character's OWN vault via the DB link.
+    // `hide_character_vaults` covers her OWN vault too, so the token is refused
+    // explicitly here. It used to be refused as a side effect of the opacity gate
+    // withholding `character_id` — the same withholding that hid her group stores
+    // (v4 bug 152). Stating it keeps the refusal once the character stays. NOTE
+    // (§R.4): bug 152's commit message says the token "is now refused explicitly";
+    // the shipped hunk adds a CONDITION to this existing gate rather than a new
+    // refusal arm, so a hidden-vault `self` falls through to the loops below and
+    // ends in the ordinary not-found answer.
     if let Some(cid) = &context.character_id {
-        if needle == SELF_VAULT_TOKEN {
+        if !context.hide_character_vaults && needle == SELF_VAULT_TOKEN {
             let own = resolve_self_vault_mount_point_id(main, Some(cid));
             if let Some(own_id) = &own {
                 if accessible_ids.iter().any(|id| id == own_id) {
@@ -504,6 +576,41 @@ fn resolve_document_store_path(
     }
 
     let Some(mp) = matched else {
+        // "No such store" and "exists, but out of scope here" are different
+        // answers, and collapsing them into one NOT_FOUND is what turned bug 152
+        // into eight minutes of guesswork: a model reads NOT_FOUND as a typo and
+        // rationally tries another spelling. Say which wall it is, so an
+        // unreachable store ends the loop instead of feeding it.
+        let project_display = context.project_id.as_deref().unwrap_or("none");
+        let characters = describe_characters(context);
+        let vaults_hidden = context.hide_character_vaults;
+        if let Some((existing_id, existing_name)) =
+            find_enabled_mount_point_by_ref(mount, mount_point_ref)
+        {
+            tracing::warn!(
+                mount_point = %existing_name,
+                mount_point_id = %existing_id,
+                project_id = %project_display,
+                characters = %characters,
+                vaults_hidden,
+                "Mount point exists but is out of scope: {existing_name} ({existing_id}) (project: {project_display}, characters: {characters}, vaultsHidden: {vaults_hidden})"
+            );
+            return Err(ResolveError::path(
+                PathErrorCode::AccessDenied,
+                format!(
+                    "The document store \"{existing_name}\" exists but is not reachable from this conversation. \
+                     It is not linked to this project, and it is not one of your own group's stores. \
+                     Retrying with a different spelling will not help — use doc_list_files with no path to see the stores you can reach."
+                ),
+            ));
+        }
+        tracing::warn!(
+            mount_point = %mount_point_ref,
+            project_id = %project_display,
+            characters = %characters,
+            vaults_hidden,
+            "Mount point not found or not accessible: {mount_point_ref} (project: {project_display}, characters: {characters}, vaultsHidden: {vaults_hidden})"
+        );
         return Err(ResolveError::path(
             PathErrorCode::NotFound,
             "Mount point not found or not accessible in this context",
@@ -696,5 +803,185 @@ mod tests {
         let missing = dir.join("nope.md");
         assert_eq!(safe_realpath(&missing), real_dir.join("nope.md"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- v4 bug 152's refusal split: `describe_characters` + the two warns ----
+
+    #[test]
+    fn describe_characters_preserves_insertion_order_and_dedups() {
+        // v4 builds a `Set` seeded with `characterId`, then every `characterIds`
+        // entry: insertion order, duplicates dropped, `none` when empty.
+        let ctx = |cid: Option<&str>, ids: &[&str]| PathResolutionContext {
+            character_id: cid.map(String::from),
+            character_ids: ids.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        assert_eq!(describe_characters(&ctx(None, &[])), "none");
+        assert_eq!(describe_characters(&ctx(Some("a"), &[])), "a");
+        assert_eq!(describe_characters(&ctx(Some("a"), &["b", "c"])), "a,b,c");
+        // the acting character repeated among the peers collapses
+        assert_eq!(describe_characters(&ctx(Some("a"), &["b", "a"])), "a,b");
+        // duplicates WITHIN the peers collapse too
+        assert_eq!(describe_characters(&ctx(Some("a"), &["b", "b"])), "a,b");
+        // no acting character: the peers alone, in order
+        assert_eq!(describe_characters(&ctx(None, &["c", "b"])), "c,b");
+    }
+
+    /// The fixture both warn pins share: one enabled `documents` store (the
+    /// out-of-scope subject) and one enabled `character` vault (which must keep
+    /// the indistinguishable NOT_FOUND), with NOTHING accessible to the context.
+    fn warn_fixture() -> (rusqlite::Connection, rusqlite::Connection) {
+        let main = rusqlite::Connection::open_in_memory().unwrap();
+        let mount = rusqlite::Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                r#"CREATE TABLE "doc_mount_points" (
+                     "id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "basePath" TEXT NOT NULL,
+                     "mountType" TEXT NOT NULL, "storeType" TEXT, "enabled" INTEGER NOT NULL
+                   );
+                   CREATE TABLE "project_doc_mount_links" (
+                     "id" TEXT PRIMARY KEY, "projectId" TEXT NOT NULL,
+                     "mountPointId" TEXT NOT NULL, "createdAt" TEXT, "updatedAt" TEXT
+                   );
+                   INSERT INTO "doc_mount_points" VALUES
+                     ('s-1','Someone Elses Papers','','database','documents',1),
+                     ('v-1','Leilani Character Vault','','database','character',1),
+                     ('r-1','Project Papers','','database','documents',1);
+                   INSERT INTO "project_doc_mount_links" VALUES ('l-1','p-1','r-1','','');"#,
+            )
+            .unwrap();
+        (main, mount)
+    }
+
+    #[test]
+    fn out_of_scope_store_warns_and_denies_with_v4s_sentence() {
+        let (main, mount) = warn_fixture();
+        // No override: the pool reaches only the project-linked `r-1`, so the
+        // stranger store is enabled-but-out-of-scope — the split's subject.
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-1".to_string()),
+            mount_point: Some("Someone Elses Papers".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        match out {
+            Err(ResolveError::Path { code, message }) => {
+                assert_eq!(code, PathErrorCode::AccessDenied);
+                assert_eq!(
+                    message,
+                    "The document store \"Someone Elses Papers\" exists but is not reachable \
+                     from this conversation. It is not linked to this project, and it is not one \
+                     of your own group's stores. Retrying with a different spelling will not \
+                     help — use doc_list_files with no path to see the stores you can reach."
+                );
+            }
+            other => panic!("expected ACCESS_DENIED, got {other:?}"),
+        }
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Mount point exists but is out of scope"))
+            .unwrap_or_else(|| panic!("no out-of-scope warn in {lines:?}"));
+        assert!(warn.starts_with("WARN "), "level must be WARN: {warn}");
+        assert!(
+            warn.contains(
+                "Mount point exists but is out of scope: Someone Elses Papers (s-1) \
+                 (project: p-1, characters: c-1, vaultsHidden: false)"
+            ),
+            "v4's sentence must render byte-for-byte: {warn}"
+        );
+        assert!(
+            warn.contains("vaults_hidden=false"),
+            "fields carried: {warn}"
+        );
+    }
+
+    #[test]
+    fn a_character_vault_keeps_the_indistinguishable_not_found() {
+        // The covenant must not leak through the refusal: naming the vault would
+        // disclose exactly what the access rule withholds.
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            character_id: Some("c-1".to_string()),
+            hide_character_vaults: true,
+            mount_point: Some("Leilani Character Vault".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        match out {
+            Err(ResolveError::Path { code, message }) => {
+                assert_eq!(code, PathErrorCode::NotFound);
+                assert_eq!(
+                    message,
+                    "Mount point not found or not accessible in this context"
+                );
+            }
+            other => panic!("expected NOT_FOUND, got {other:?}"),
+        }
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Mount point not found or not accessible:"))
+            .unwrap_or_else(|| panic!("no not-found warn in {lines:?}"));
+        assert!(
+            warn.contains(
+                "Mount point not found or not accessible: Leilani Character Vault \
+                 (project: p-1, characters: c-1, vaultsHidden: true)"
+            ),
+            "v4's sentence with the appended vaultsHidden: {warn}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Mount point exists but is out of scope")),
+            "a vault must NOT be disclosed as existing: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_resolved_store_logs_neither_warn() {
+        // The silence leg: both lines belong to the refusal, not the happy path.
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            mount_point: Some("Someone Elses Papers".to_string()),
+            operator_override: true,
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert!(out.is_ok(), "the override must resolve it: {out:?}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Mount point exists but is out of scope")
+                    || l.contains("Mount point not found or not accessible:")),
+            "no refusal warn on a resolved store: {lines:?}"
+        );
     }
 }

@@ -177,6 +177,9 @@ pub fn resolve_operator_doc_path(
         project_id: ctx.project_id.clone(),
         character_id: character_id.map(str::to_string),
         character_ids: ctx.character_ids.clone(),
+        // The operator override carries its own accessible set (every enabled
+        // store) and bypasses the collector, so the covenant never applies here.
+        hide_character_vaults: false,
         mount_point: mount_point.map(str::to_string),
         operator_override: true,
     };

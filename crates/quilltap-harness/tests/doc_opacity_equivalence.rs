@@ -246,7 +246,7 @@ fn shape_of(c: &PathResolutionContext) -> Value {
         "projectId": c.project_id,
         "characterId": c.character_id,
         "characterIds": c.character_ids,
-        "hideCharacterVaults": hide_flag(c),
+        "hideCharacterVaults": c.hide_character_vaults,
         "mountPoint": c.mount_point,
         "operatorOverride": c.operator_override,
     })
@@ -513,11 +513,6 @@ fn doc_opacity_matches_oracle() {
 // measured (the order's item 8). Each one is a faithful model of what v5 does
 // TODAY, not of what v4 does.
 // ===========================================================================
-
-/// PRE-PORT: `PathResolutionContext` has no `hide_character_vaults` field yet.
-fn hide_flag(_c: &PathResolutionContext) -> bool {
-    false
-}
 
 /// PRE-PORT: `get_accessible_mount_points` takes no opacity flag — the bug-153
 /// reproduction. The `hide` argument is deliberately ignored here.
