@@ -136743,3 +136743,131 @@ table only, the P4.D194 rule).
   §5.5; the `defaultSystemPromptId`-only PUT on an archived character; the
   first-prompt default seed), plus the previous round's covenant items and
   the standing 💸 queue.
+
+---
+
+## Dogfood pass — the six-round backlog: image options, the opacity covenant, the prompt lockstep (2026-09-18)
+
+**Walk doc:** `dogfood-walks/2026-09-18-six-round-image-opacity-pass.md`.
+**39 rows run: 37 PASS, 0 FAIL, 1 NOT RUN, 4 DEFERRED-TO-HUMAN. ZERO v5
+defects.** One finding recorded (**#120**, v4-faithful, a candidate v4 filing)
+and two v4-behaviour notes. Five boots on the real 800 MB instance, **zero
+panics**.
+
+The six un-dogfooded rounds: `2075242f9` (bugs 145/146), `1fefadb9a` (bug 147),
+`53294163f` (GPT Image 2.5), `bcd7e4852` (bug 151), `89fcc3c0d` (the opacity
+covenant), `baa85e19b` (bug 154). The ledger's §2 probe **passed** at walk start
+— v4 AT the baseline, §3 EMPTY — so no step had drift to blame.
+
+### The pre-walk measurement (ledger §5.5) bought the pass its best proofs
+
+v4 landed bug 154 on the live instance at 07:04 that morning, which is exactly
+the case §5.5 warns about. The population had **not** been healed away, and both
+arms of the resolution order were sitting on real data in genuinely disagreeing
+states: **Friday's `defaultSystemPromptId` names a prompt she no longer has**,
+and **Sunny's names one she does have while her `isDefault` flag sits on a
+different one**. So a new chat with Sunny opened carrying `# DeepSeekV3
+Companion Prompt` — the **column's** prompt, not the flag's — and a new chat with
+Friday fell through the dead column to the **flagged** `# Friday — Intimate
+Partner`. Pre-fix the latter opened with no system prompt at all. Neither arm
+needed planting.
+
+Also measured up front: the bug-152 row still intact (group `Severed`, store
+`eeef911d…`, Leilani opaque / Abigail transparent, chat `00bb0f9c…`, and the
+store **not** project-linked so the precondition holds); **`GPT Image 2.5 Flare`
+already v4's default image profile** carrying all four new extras; 10 duplicate
+`generationKey` groups, all pre-dating v4's own 2026-09-11 collapse, so bug
+145's proof still needs a plant; and `migrations_state` at 187 rows since
+2026-09-11.
+
+### Proven live
+
+**Bug 154** — the star moves both faces in one write; creating a first prompt
+with `isDefault:true` writes the column too; a clear empties it while the read
+overlay re-promotes `prompts[0]` and `characterGet` **omits** the key; a
+non-uuid `defaultSystemPromptId` beside a `name` answers 400 **and the name does
+not persist** (the §3 review fix, live); the two guards answer differently by
+design (400 on `characterUpdate`, 404 `Prompt not found` on the verb); the
+archived-character divergence reproduced exactly as pinned.
+
+**The opacity covenant (P4.D200)** — on bug 152's own row. `doc_list_files` from
+the opaque seat returns 178 files across her group store, the project store and
+General, with **no character vault and not even the word "Vault"** against 52 on
+the instance; writes land in the Severed store **by name and by id**; a store
+linked to another project answers the three-sentence ACCESS_DENIED with
+`Mount point exists but is out of scope: … characters: e14cb17a-… ,
+vaultsHidden: true` — the log line is the fix's own signature, since opacity
+used to be implemented by *deleting* the character from the context, which is
+what killed the group tier; the peer vault, `self`, and **her own vault** all
+answer the identical indistinguishable refusal; and the **same chat's**
+transparent seat sees her 200-file vault. The operator's `mountPointList` still
+shows all 53 vaults, so the subtraction is scoped. Two restored path-resolver
+lines fired; the other three are unreachable on this data (**zero** disabled
+stores) and the zeroes are recorded.
+
+**The image rounds** — the `GPT Image 2.5 Flare` editor renders all six
+server-declared controls from v4's own stored values; switching to `gpt-image-1`
+collapses sizes 14 → 5 and quality 7 → 5, **losing exactly `xhigh` and `max`**
+(a sharper discriminator than the planned `dall-e-3`, which this instance's
+live-fetched list does not contain); ⭐ **the four new body keys reached the wire
+for the first time at zero spend** — `background=transparent outputFormat=webp
+outputCompression=80 moderation=low quality=max` — because the body is assembled
+and logged *before* the HTTP call, so a deliberately invalid key made the proof
+free; `Dropping output_compression: it applies only to jpeg and webp` fires on
+png and the next line reads `outputCompression=(model default)`; **bug 148**
+(the profile's `quality` reaches the wire with none in the request) and **bug
+149** (an explicitly named `1536x1024` survives) both proven; all five
+`imagesGenerate` keys refuse an explicit `null` on **both** transports with
+`files` unmoved at 2,183; `imageProfileGenerate` answers v4's Zod envelope with
+its `details` array and **404 beats 400**, and its `quality` enum already prints
+`xhigh`/`max`; `aspectRatio: "3:2"` passes the route and is refused at the tool
+exactly as pinned. ⭐ **The bug-151 shrink beat its own estimate:**
+`original_size=1946202 final_size=70872 original_dimensions="5712x4284"
+final_dimensions="1024x768" ceiling=512000` — **27.5×**, aspect preserved.
+
+**Bugs 145/146/147 + maintenance** — the chat GET carries both rotation columns
+as **raw JSON strings** in v4's exact slot; ⭐ **`spoken` rendered in the
+participant rail for the first time in v5**, two badges matching the two stored
+ids while the banner independently named the `next` seat; ⭐ **the fourth banner
+sentence** named the **floor** seat while the composer sat on another, and Skip
+posted the floor seat's id on both the client dispatch and the persisted
+`turn-pass`; ⭐ **bug 144's corrected `--lock-clean` pair** read back on a
+genuinely dead PID (`Lock heartbeat is still fresh (25s ago). Cannot clean.` /
+`A lock counts as held until its heartbeat is 5 minutes stale, even if its
+process has gone…`) with the pre-fix wording absent, then a clean success once
+stale — v4 having adopted this port's own filing #119, proven from the other
+side; a restart left `migrations_state` **md5-identical** at 187 rows; two
+`[CharacterAvatar]` lines fired at zero spend with `moderation_rejection=false`
+correctly declining to call a 401 a moderation rejection.
+
+Riding along: the host pixel codec transcoded a 4.2 MB JPEG to a 1.95 MB WebP
+**at full 5712×4284** on the images-import path (P4.73/P4.D152, live).
+
+### #120 — recorded, not fixed
+
+The five largest help documents (40 K–55 K chars) have **no embeddings at all**,
+document or section, because both implementations cap `EMBEDDING_MAX_CHARS` at
+128 KiB — so a 45 K page is never skipped, both call the provider, both take the
+same 8192-token refusal, and in both the chunk pass sits after the document
+embedding inside the same `try`. Text search still reaches them. **v4-faithful;
+a candidate upstream filing, not a v5 change.**
+
+### Three instrument errors, all caught before they became findings
+
+The pane's **`F5` does not reload** (the server's `activeTypingParticipantId`
+disagreeing with the screen was the tell); a **`<select>` set to a value absent
+from its options** goes to `selectedIndex: -1` and looks like a panel that never
+updated; and **a file attached by id but linked to a different chat is correctly
+refused by the loader, after which the model hallucinates** — the first C8 turn
+produced a confident, detailed and entirely wrong description, and *downloading
+and looking at the image* was what settled it. The standing lesson gains a
+corollary: **when a model describes an image, check the image.**
+
+### Owed onward
+
+C9 (the per-turn Lantern budget — needs three *generated* portraits, i.e. image
+spend), D8 (a real token-limit turn), D9 (a provider that refuses function
+calling), D7 (NOT RUN rather than half-done), the four planted proofs in Part E
+(bug 145's collapse, the greeting ladder on a dangling key, a cross-provider
+failover with a tool call, a chained OPENAI re-stream), and the standing F-list
+(dedup/summaries, the Brahma deep query, #101, the re-measured compression row).

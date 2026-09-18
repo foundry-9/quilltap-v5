@@ -3898,6 +3898,58 @@ records THERE. Update this summary only when a phase or round completes.
   host/cli/tauri unchanged. **Next: the fixture-vintage heal (ten families),
   the two uuid-gate copies outside the home, then the owed dogfood pass** —
   see phase-4.md. Round record: `status-log.md`.
+- **The six-round backlog dogfood pass RAN (2026-09-18, agent-driven, on the
+  Friday copy) — 39 rows, 37 PASS, ZERO v5 defects, and the six rounds' 💸
+  queue discharged bar the spend-bound items.** Walk doc:
+  `dogfood-walks/2026-09-18-six-round-image-opacity-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe passed at walk start (v4 AT the
+  baseline, §3 EMPTY), so no step could blame drift. **The pre-walk
+  measurement bought the pass its best proofs:** v4 landed bug 154 on the live
+  instance at 07:04 that morning and the §5.5 population survived — **both**
+  arms of the resolution order sat on real data in genuinely disagreeing
+  states (Friday's column names a prompt she no longer has; Sunny's names one
+  she does while her flag sits elsewhere), so a new Sunny chat opened on the
+  **column's** prompt and a new Friday chat fell through to the **flagged**
+  one, where pre-fix it opened with **no system prompt at all**. ⭐ **The
+  opacity covenant ran on bug 152's own row** (Leilani / `Severed` /
+  `00bb0f9c…`): she reaches her group store by name AND by id, her listing
+  shows three tiers and **not one of the instance's 52 character vaults**, a
+  stranger store answers the three-sentence ACCESS_DENIED with `characters:
+  e14cb17a-… vaultsHidden: true` — the log line being the fix's own signature
+  — peer/`self`/her-own-vault all answer one indistinguishable refusal, and
+  the **same chat's** transparent seat sees her 200-file vault. ⭐ **The four
+  GPT Image 2.5 body keys reached the wire for the first time at ZERO spend**
+  (the body is assembled and logged before the HTTP call, so a deliberately
+  invalid key made the proof free); `gpt-image-1` collapses sizes 14 → 5 and
+  quality 7 → 5 losing exactly `xhigh`/`max`; bugs 148 and 149 both proven;
+  all five `imagesGenerate` nulls refuse on both transports with `files`
+  unmoved; `imageProfileGenerate` answers v4's Zod `details` envelope with 404
+  beating 400. ⭐ **`spoken` rendered in the participant rail for the first
+  time in v5**; ⭐ **bug 146's fourth banner sentence** named the FLOOR seat
+  while the composer sat elsewhere, with Skip posting the floor id on both the
+  client dispatch and the persisted `turn-pass`; ⭐ **bug 144's corrected
+  `--lock-clean` pair** read back on a genuinely dead PID — v4 having adopted
+  this port's own filing #119 — then cleaned once stale; a restart left
+  `migrations_state` **md5-identical** at 187 rows. ⭐ **The bug-151 shrink
+  beat its own estimate: 1,946,202 → 70,872 bytes (27.5×), 5712×4284 →
+  1024×768.** **RECORDED: #120** — the five largest help documents have **no
+  embeddings at all**, document or section, because both implementations cap
+  `EMBEDDING_MAX_CHARS` at 128 KiB and the chunk pass sits inside the failing
+  `try`; text search still reaches them; **v4-faithful, a candidate upstream
+  filing, no v5 change**. **Three instrument errors caught before they became
+  findings:** the pane's `F5` does not reload; a `<select>` set to an absent
+  option value goes to `selectedIndex: -1` and looks like a dead panel; and a
+  file attached by id but linked to a DIFFERENT chat is correctly refused,
+  after which **the model hallucinates a confident, detailed, wrong
+  description** — downloading and *looking at* the image settled it, so the
+  standing lesson gains a corollary: **when a model describes an image, check
+  the image**. Zero panics across five boots. **Still owed:** the per-turn
+  Lantern budget (needs generated portraits = image spend), a real token-limit
+  turn, a function-calling refusal, the four planted proofs (bug 145's
+  collapse, the greeting ladder on a dangling key, a cross-provider failover
+  with a tool call, a chained OPENAI re-stream), and the standing queue
+  (dedup/summaries, the Brahma deep query, #101, the re-measured compression
+  row).
 - **Oracle baseline: `baa85e19b` (2026-09-18, v4 main — "fix(aurora): the
   star that sets a default prompt calls a route that exists (bug 154)",
   `4.10.0-dev.48`), adopted at the `baa85e19b` bug-154 default-system-prompt
