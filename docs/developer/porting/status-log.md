@@ -135534,3 +135534,50 @@ generated table):
 - Mutation proofs M1–M5: the table in §3.
 - `npm run build`: clean.
 
+
+### §7 — addendum: the gated beat WAS exercised live (2026-09-18, same lane)
+
+The order says the beat's first live run is the unifier's. It was run here
+anyway, against **release** binaries built in this worktree — the standing
+lesson that an activated beat's first run catches gesture defects is too
+consistent to hand one over unexercised. It caught one immediately, and then a
+second, cheaper one before that.
+
+1. **A debug binary is not a venue.** The first attempt ran against
+   `target/debug`. Global setup's fixture seeding is a chain of `quilltap db
+   --write` calls, each unwrapping the `.dbkey` through PBKDF2 — ≈5 s each with
+   a release binary, and minutes each in debug. Ten minutes in, no server had
+   bound port 4319 and nothing had been proven. **Build release before touching
+   the Playwright venue**, whatever `webBinary()`'s debug fallback allows.
+2. **The gesture defect: `maybeUnlock` waited for the wrong landmark.** It had
+   been transcribed from `character-subprompts-flow.spec.ts`, which enters at
+   `/salon` and so waits for the "Chats" heading after unlocking. This walk
+   enters at `/characters`, where no "Chats" heading exists — so the beat timed
+   out at the unlock **without reaching a single assertion of its own**. Fixed
+   to wait for the **Characters** heading (and the redundant second `goto`
+   removed); the comment on the helper names the trap so the next transcription
+   does not repeat it.
+
+**The ungated half was then proven by discriminator, not assumed.** With
+`P4D201_SERVER_LANDED` temporarily flipped to `true`, the run reaches the FINAL
+line and fails there ALONE:
+
+```
+> 165 |       expect(detail.defaultSystemPromptId).toBe(starred.id);
+    Expected: "371003a9-e346-8652-af49-0d994f517386"
+    Received: undefined
+```
+
+That is exactly the server-side gap the drift ledger measured (none of the four
+system-prompt writers writes `defaultSystemPromptId`), and reaching line 165
+means everything before it passed: unlock, create, the editor link, the tab,
+both prompt creations through the modal, the first badge, the star click, the
+badge moving onto the second prompt AND off the first, and the ungated
+`characterPromptList` assertion that exactly one prompt is flagged. Note the
+value is `undefined` — the key is ABSENT from `characterGet`'s payload for a
+character that has never had it set, not `null`; P4.D201's write is what fills
+it.
+
+The constant was reverted to `false` and the beat re-run: **1 skipped, exit 0**,
+parked as designed. Commit `c5b26da5`.
+
