@@ -134068,7 +134068,31 @@ fresh instance of "prove the instrument before trusting a negative."
 
 ### §5 — the gate
 
-See the round record for the numbers. The nine neutrality legs
+Run from the lane worktree with `CARGO_INCREMENTAL=0 TZ=UTC`, one logged,
+sentinel-guarded chain, full capture (no `| tail`):
+
+1. **§R.2 probe** — see §0. PASS at the opening (post-waiver) and again before
+   the regen batch (HEAD `baa85e19b`, tree CLEAN, both pins present in
+   `git worktree list`).
+2. `cargo fmt --all --check` — **exit 0**.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — **exit 0**; and
+   again with `--features quilltap-core/native-transport` — **exit 0**.
+4. `cargo build --workspace --release` — **exit 0**.
+5. `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's three
+   env vars (`QT_ORACLE_DOPA`, `QT_FIXTURE_DOPA_MAIN`, `QT_FIXTURE_DOPA_MOUNT`;
+   every other family's var deliberately WITHHELD so it SKIPs honestly):
+   **576 test binaries / 3,435 passed / 0 failed / 2 ignored — exit 0.** Zero
+   `FAILED` lines anywhere in the log. The lane's family is confirmed RUN by its
+   own positive output — `doc_opacity: 44 ops matched the oracle.` — not by
+   absence of a red; its var appears in no `SKIP:` line. The 487 `SKIP:` lines
+   are the other families' withheld oracle vars, which cargo prints under
+   `--nocapture`.
+6. **Censuses:** `help_tree_embed_guard` ran and is green at
+   `VENDORED_FILE_COUNT = 124` (both commits MODIFY one page and add none);
+   `qtap_schema_embed_guard` ran and is green (untouched — no
+   `public/schemas/` movement). No census constant moved.
+
+The nine neutrality legs
 (`doc_enum`, `doc_blob`, `doc_text`, `doc_fm`, `doc_fs`, `doc_ui`,
 `scriptorium_tools`, `tiered_mount_pool`, `doc_edit_path_resolver`) were
 regenerated from the BASELINE pin through the sweep driver and are **9/9 ok**,
