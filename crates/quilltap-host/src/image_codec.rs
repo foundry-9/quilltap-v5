@@ -8,7 +8,10 @@
 //!   (`convert_to_webp` / `transcode_to_webp`) drive;
 //! * [`quilltap_core::files::image_processing::ImageTranscoder`] — the
 //!   metadata probe + one resize-and-encode step the ported
-//!   `resizeImageForProvider` decision loop drives (sharp inventory row 4);
+//!   `resizeImageForProvider` decision loop drives (sharp inventory row 4),
+//!   PLUS the fit-inside WebP shrink the ported `shrinkImageForLlmTransport`
+//!   ladder drives (P4.D198, v4 `bcd7e4852`, bug 151 — and the ONE seam method
+//!   here that is fallible, deliberately: see its doc);
 //! * [`quilltap_core::model::image::ImageTranscoder`] — the whole
 //!   `convertToWebP` (sharp inventory row 3), composed from the core policy
 //!   over this codec's own pixel seam;
@@ -32,6 +35,9 @@
 //!   returns the ORIGINAL bytes (no resize), where v4's sharp would throw and
 //!   the caller would skip the file — a documented divergence reachable only
 //!   when a decodable-claimed image fails to decode.
+//!   `shrink_to_webp` is the exception and returns `Err` — the budget module
+//!   reads that `Result` to tell v4's `catch` arm apart from a no-op encode,
+//!   so handing back the input there would collapse two different facts.
 
 use std::io::Cursor;
 
@@ -135,6 +141,53 @@ impl ResizeTranscoder for HostImageCodec {
             img
         };
         encode_output(&resized, format, quality).unwrap_or_else(|_| buffer.to_vec())
+    }
+
+    /// v4's LLM-transport shrink step (bug 151, `bcd7e4852`):
+    /// `sharp(buffer).resize({ width: max_edge, height: max_edge, fit:
+    /// 'inside', withoutEnlargement: true }).webp({ quality }).toBuffer()`.
+    ///
+    /// `fit: 'inside'` scales the image down until BOTH edges fit the box
+    /// (unlike [`Self::resize_step`]'s width-only `resize({width})`, which is
+    /// what v4's `resizeImageForProvider` asks for), and `withoutEnlargement`
+    /// means an image already inside the box is re-encoded at its own size.
+    /// `image::DynamicImage::resize` is exactly that contract — it fits the
+    /// aspect ratio inside `(nw, nh)` — so the whole op is one call plus the
+    /// already-small guard.
+    ///
+    /// **Lanczos3** is the filter: sharp's own default kernel is `lanczos3`
+    /// (`sharp.kernel.lanczos3`), and every other resize in this codec already
+    /// uses it. D19 stands — the ported OPERATION is fit-inside downscale +
+    /// lossy WebP, and encoded byte parity with sharp is not required (nor
+    /// achievable: libwebp's rate control and sharp's premultiply differ). What
+    /// the tests below assert is the POLICY: output dimensions, format, the
+    /// never-enlarge rule and the byte budget the ladder is walking toward.
+    ///
+    /// Unlike [`Self::resize_step`], a decode or encode failure is an `Err`,
+    /// NEVER the input bytes: the budget module reads this `Result` to tell
+    /// v4's `catch` arm (warn, send stored bytes) apart from a successful
+    /// encode that did not help (silence, send stored bytes). Handing back the
+    /// input here would collapse the two into one and re-create the
+    /// `try_downsize` anti-pattern the trait's doc names.
+    fn shrink_to_webp(
+        &self,
+        buffer: &[u8],
+        max_edge: i64,
+        quality: i64,
+    ) -> Result<Vec<u8>, String> {
+        let img = decode(buffer)?;
+        let (w, h) = img.dimensions();
+        let edge = max_edge.max(0) as u32;
+        // `withoutEnlargement: true` + `fit: 'inside'`: an image already inside
+        // the box keeps its size (and is still re-encoded — v4 re-encodes it
+        // too; the budget module's early return is what skips the pointless
+        // work, not this seam).
+        let fitted = if edge > 0 && (w > edge || h > edge) {
+            img.resize(edge, edge, FilterType::Lanczos3)
+        } else {
+            img
+        };
+        encode_webp_image(&fitted, quality)
     }
 }
 
@@ -264,6 +317,23 @@ mod tests {
 
     fn dims_of(bytes: &[u8]) -> (u32, u32) {
         image::load_from_memory(bytes).unwrap().dimensions()
+    }
+
+    /// A `w`x`h` deterministic-NOISE WebP at quality 90 — v4's own bug-151
+    /// fixture shape (`sharp({create: {…, noise: {type: 'gaussian', mean: 128,
+    /// sigma: 70}}}).webp({quality: 90})`). Noise matters: flat colour
+    /// compresses to nothing and cannot reproduce a defect that was entirely
+    /// about measured byte sizes. An LCG stands in for sharp's gaussian — D19,
+    /// and the only property either fixture needs is incompressibility.
+    fn noise_webp(w: u32, h: u32) -> Vec<u8> {
+        let mut state: u32 = 0x1234_5678;
+        let mut img = image::RgbImage::new(w, h);
+        for px in img.pixels_mut() {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            let b = state.to_le_bytes();
+            *px = image::Rgb([b[0], b[1], b[2]]);
+        }
+        encode_webp_image(&DynamicImage::ImageRgb8(img), 90).unwrap()
     }
 
     fn format_of(bytes: &[u8]) -> ImageFormat {
@@ -441,6 +511,97 @@ mod tests {
         let thumb = codec.thumbnail_webp(&jpeg, 30).unwrap();
         assert_eq!(format_of(&thumb), ImageFormat::WebP);
         assert_eq!(dims_of(&thumb), (30, 30)); // cover crop, not letterboxed
+    }
+
+    /// P4.D198 (v4 `bcd7e4852`, bug 151) — the transport shrink seam's POLICY:
+    /// fit INSIDE the box on both edges, never enlarge, WebP out, and an `Err`
+    /// (never the input bytes) on failure.
+    #[test]
+    fn shrink_to_webp_fits_inside_the_box() {
+        let codec = HostImageCodec;
+
+        // A 1024x1536 portrait avatar — the exact shape bug 151 reported.
+        // `fit: 'inside'` scales until BOTH edges fit: 1536 -> 1024, so
+        // 1024 -> 683 (v4's own test asserts 683x1024 from sharp).
+        let portrait = noise_webp(1024, 1536);
+        let out = ResizeTranscoder::shrink_to_webp(&codec, &portrait, 1024, 78).unwrap();
+        assert_eq!(format_of(&out), ImageFormat::WebP);
+        assert_eq!(dims_of(&out), (683, 1024), "portrait fit-inside dimensions");
+
+        // The landscape twin — a 1536x1024 story background -> 1024x683.
+        let landscape = noise_webp(1536, 1024);
+        let out2 = ResizeTranscoder::shrink_to_webp(&codec, &landscape, 1024, 78).unwrap();
+        assert_eq!(
+            dims_of(&out2),
+            (1024, 683),
+            "landscape fit-inside dimensions"
+        );
+
+        // `withoutEnlargement: true`: an image already inside the box keeps its
+        // own size and is still re-encoded as WebP.
+        let small = jpeg_bytes(320, 240);
+        let out3 = ResizeTranscoder::shrink_to_webp(&codec, &small, 1024, 78).unwrap();
+        assert_eq!(dims_of(&out3), (320, 240), "never enlarged");
+        assert_eq!(format_of(&out3), ImageFormat::WebP);
+
+        // The ladder's premise: a lower quality really is fewer bytes.
+        let q78 = ResizeTranscoder::shrink_to_webp(&codec, &portrait, 1024, 78).unwrap();
+        let q45 = ResizeTranscoder::shrink_to_webp(&codec, &portrait, 1024, 45).unwrap();
+        assert!(
+            q45.len() < q78.len(),
+            "quality 45 ({}) must undercut quality 78 ({})",
+            q45.len(),
+            q78.len()
+        );
+
+        // And the byte target the whole feature exists for. MEASURED here
+        // (2026-09-17, `image` 0.25 + `webp` 0.3): the stored q90 1024x1536
+        // noise avatar is 1,287,400 B = 1,716,534 B of base64, and one turn of
+        // this seam takes it to 342,376 B (456,502 B base64) at quality 78 and
+        // 242,366 B (323,155 B base64) at 45. v4's sharp reached ~98 KB of
+        // base64 on its own gaussian-noise fixture, so an LCG is the less
+        // compressible of the two — D19, and the POLICY is what is asserted:
+        // the stored avatar starts OVER the 500 KiB transport ceiling and UNDER
+        // the 4 MB per-image provider cap (bug 151's exact precondition — which
+        // is why nothing resized it), and the ladder clears the ceiling.
+        let base64_size = |len: usize| ((len as i64) * 4 + 2) / 3;
+        assert!(
+            base64_size(portrait.len()) > 500 * 1024,
+            "the fixture must start over the transport ceiling: {}",
+            base64_size(portrait.len())
+        );
+        assert!(
+            base64_size(portrait.len()) < 4 * 1024 * 1024,
+            "…and under the per-image provider cap that left it untouched: {}",
+            base64_size(portrait.len())
+        );
+        assert!(
+            base64_size(q45.len()) <= 500 * 1024,
+            "the ladder's bottom rung must clear the 500 KiB ceiling: {}",
+            base64_size(q45.len())
+        );
+    }
+
+    /// A decode failure is an `Err`, and specifically NOT the input bytes —
+    /// the collapse `resize_step`'s infallible shape forces and this seam
+    /// forbids (M6 targets exactly this assertion).
+    #[test]
+    fn shrink_to_webp_errs_rather_than_handing_back_the_input() {
+        let codec = HostImageCodec;
+        let junk = b"not an image at all";
+        let r = ResizeTranscoder::shrink_to_webp(&codec, junk, 1024, 78);
+        assert!(
+            r.is_err(),
+            "undecodable bytes must Err, got {} bytes",
+            r.map(|b| b.len()).unwrap_or(0)
+        );
+        // The default trait body is the not-configured answer; the real codec's
+        // failure must name the decode, not that.
+        let msg = ResizeTranscoder::shrink_to_webp(&codec, junk, 1024, 78).unwrap_err();
+        assert!(
+            msg.contains("decode") || msg.contains("probe"),
+            "unexpected: {msg}"
+        );
     }
 
     #[test]

@@ -83,6 +83,45 @@ pub trait ImageTranscoder: Send + Sync {
         format: OutputFormat,
         quality: i64,
     ) -> Vec<u8>;
+
+    /// v4's LLM-transport shrink step (`lib/files/llm-image-budget.ts`,
+    /// `bcd7e4852`): `sharp(buffer).resize({ width: max_edge, height: max_edge,
+    /// fit: 'inside', withoutEnlargement: true }).webp({ quality }).toBuffer()`
+    /// — fit INSIDE a `max_edge`x`max_edge` box preserving the aspect ratio,
+    /// never enlarging, re-encoded as lossy WebP at `quality`.
+    ///
+    /// **`Result`, deliberately, unlike [`Self::resize_step`].** v4 wraps the
+    /// whole ladder in ONE `try`/`catch`, so "sharp threw" and "there was
+    /// nothing to do" are different facts on that side and must stay different
+    /// facts here: the budget module's caller distinguishes an `Err` (v4's
+    /// `catch` → the WARN + stored bytes) from a successful encode that simply
+    /// did not help (v4's grow-discard → silence + stored bytes). The `Option`
+    /// collapse of exactly those two outcomes at
+    /// [`crate::services::file_fallback`]'s `try_downsize` is the recorded
+    /// anti-pattern (`handler-logging-inventory.md`); returning the INPUT bytes
+    /// on failure — what [`Self::resize_step`]'s infallible shape forces the
+    /// host codec into — is the other one, and is forbidden here.
+    ///
+    /// The default body is the not-configured answer, so every existing
+    /// implementor (including [`NotConfiguredTranscoder`] and the harness fakes)
+    /// compiles unchanged and reads as "this host has no image codec".
+    ///
+    /// **One mechanism difference from v4, agreeing in outcome.** v4's
+    /// `sharp(buffer).metadata()` REJECTS on undecodable bytes and lands in the
+    /// `catch`; v5's [`Self::metadata`] is infallible and answers
+    /// `ImageMetadata { width: None, height: None, .. }` instead. So an
+    /// undecodable input takes a different route to the same place: `longest_edge`
+    /// is 0, the early return's `longest_edge > 0` conjunct fails, the ladder
+    /// runs, and this method's FIRST `Err` is what reaches the warn arm. Both
+    /// sides return the stored bytes with `was_shrunk: false` and warn once.
+    fn shrink_to_webp(
+        &self,
+        _buffer: &[u8],
+        _max_edge: i64,
+        _quality: i64,
+    ) -> Result<Vec<u8>, String> {
+        Err("image transcoder not configured".to_string())
+    }
 }
 
 /// A default [`ImageTranscoder`] for an instance with no host image codec wired

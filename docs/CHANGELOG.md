@@ -12,6 +12,47 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — feat(images): the transport shrink seam — a FALLIBLE `ImageTranscoder::shrink_to_webp` and the host codec behind it (P4.D198)
+
+_Versions: core 0.0.943, host 0.0.138._
+
+v4 bug 151 (`bcd7e4852`) separates what an image costs in STORAGE from what it
+costs on the WIRE, and the pixel primitive its budget module needs is a
+fit-inside downscale plus a lossy WebP re-encode at a chosen quality. This adds
+that primitive to the existing `ImageTranscoder` seam, with a default body
+returning `Err("image transcoder not configured")` so every existing
+implementor — `NotConfiguredTranscoder`, the core's `HalvingFake`, the harness
+fakes — compiles unchanged.
+
+The `Result` is the point. v4 wraps its whole quality ladder in ONE
+`try`/`catch`, so on that side "sharp threw" and "the encode did not help" are
+different facts, and they must stay different facts here: the budget module's
+warn arm belongs to the first and its silent grow-discard to the second. The
+`Option` collapse of exactly those two outcomes in `file_fallback`'s
+`try_downsize`, and `resize_step`'s infallible shape returning the INPUT bytes
+on failure, are both recorded anti-patterns; this seam is spelled so neither can
+recur, and the trait doc says so.
+
+`HostImageCodec::shrink_to_webp` implements it over `image` + `webp`:
+`DynamicImage::resize` IS `fit: 'inside'` (it fits the aspect ratio inside the
+box), guarded by the already-inside check that is `withoutEnlargement: true`,
+then libwebp at the requested quality. Lanczos3 is the filter because sharp's
+own default kernel is `lanczos3` and every other resize in this codec already
+uses it. D19 stands: the operation is ported, encoded byte parity with sharp is
+not required, and the tests assert the policy instead — a 1024x1536 portrait
+comes out 683x1024 and a 1536x1024 background 1024x683, which is what v4's own
+bug-151 test asserts from sharp; an image already inside the box keeps its size;
+quality 45 really undercuts quality 78; and an undecodable buffer is an `Err`
+whose message names the decode, never the input bytes.
+
+Measured on a deterministic-noise q90 avatar of bug 151's exact shape: 1,287,400
+stored bytes = 1,716,534 bytes of base64 — over the 500 KiB transport ceiling
+and under the 4 MB per-image provider cap, which is precisely why nothing
+resized it — down to 342,376 bytes (456,502 base64) at quality 78 and 242,366
+(323,155) at 45. v4's sharp reached ~98 KB of base64 on its own gaussian-noise
+fixture, so an LCG is the less compressible of the two fixtures; the ceiling is
+cleared either way.
+
 #### 2026-09-17 — docs(porting): order the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97)
 
 _Docs-only change._
