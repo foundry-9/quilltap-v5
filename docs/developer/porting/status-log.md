@@ -133919,3 +133919,209 @@ the pinned sweeps run before it:
   stop — `record-google-request.mjs` CAN carry it; the google corpus is
   `request_builder_google_equivalence`'s); P4.D198's tier-3 backstop
   blindness; the Zod issue-renderer DRY home; the harness `CorpusScript` DRY.
+
+---
+
+## P4.D200 — v4 bugs 152 + 153, the doc-tool opacity covenant (lane record)
+
+**Branch `claude/p4-d200-opacity-covenant-d2a795`, from `main` `5018df46`.
+CLOSED — every Tier-1 item landed, Tier-2 items 12 and 14 landed, item 13
+ruled unnecessary with evidence. Five commits.**
+
+### §0 — the lane's opening probe, and a waiver
+
+The §R.2 probe **FAILED at lane start**, twice over, and the lane STOPped both
+times as the order requires:
+
+1. **First stop (dirty set grew).** Branch `main` ✓, HEAD `89fcc3c0d` ✓, both
+   logs empty ✓ — but the tree was dirty on **seventeen** paths, four beyond the
+   thirteen the ledger recorded: `docs/CHANGELOG.md`, `docs/developer/bugs.md`,
+   `help/character-system-prompts.md` and a new
+   `docs/developer/bugs/fixed/bug-154-default-prompt-star-dead-action.md`. The
+   same in-flight fix, maturing toward its commit. Reported; no file touched.
+2. **Second stop (HEAD moved).** The human ran `/driftcheck`, which found v4 had
+   **moved**: the in-flight fix landed 07:04 as **`baa85e19b`** (bug 154,
+   `4.10.0-dev.48`), so HEAD is now THREE commits past the baseline and the tree
+   is clean. The ledger recorded it as a third §3 row and stated plainly that
+   this round's §R.2 now STOPs by its own wording, reserving the waiver to the
+   human.
+3. **Waiver granted** (human, 2026-09-18): treat `89fcc3c0d..main` = exactly
+   `baa85e19b` as a pass and run the lane unchanged. The order was NOT amended,
+   so this record is where the waiver lives. It is safe on the ledger's own
+   measurement: every regen here ran from a PINNED worktree, which cannot see
+   `baa85e19b`; the round's target stays `89fcc3c0d`; and bug 154's paths (the
+   characters repository, the chat initializer, the characters PUT handler, the
+   impersonation voice preview, three React surfaces) are disjoint from every
+   surface this lane touches. **For the unifier: the baseline still moves to
+   `89fcc3c0d`, and `baa85e19b` is the next catch-up's row.**
+
+A mid-lane re-probe before the regen batch passed (HEAD `baa85e19b`, tree CLEAN,
+both pins intact in `git worktree list`).
+
+### §1 — pins
+
+- **TARGET `/tmp/qt-v4-pin-p4d200-89fcc3c0d`** (`rev-parse` → `89fcc3c0d…`) —
+  the new `doc_opacity_equivalence` and the help re-vendor.
+- **BASELINE `/tmp/qt-v4-pin-p4d200-bcd7e4852`** (`rev-parse` → `bcd7e4852…`) —
+  the nine neutrality legs.
+- Pin verification: the help page's md5 at the target is
+  `a70d5054165040970eabfcb61249370f` and at the baseline
+  `4744366850f5c1f69d2af16e32b72655` — v5's file was byte-identical to the
+  BASELINE before this lane and is byte-identical to the TARGET after it. Both
+  added passages (`Nor are they so much as named`, `Vaults, and nothing
+  besides`) are present only in the target copy. The tree stays **124** files;
+  `help_tree_embed_guard`'s `VENDORED_FILE_COUNT` is unchanged.
+
+### §2 — what landed
+
+| # | Item | Commit |
+|---|---|---|
+| 1 | `flatten_tier_pool` → `FlattenOptions` with `include_character_tier` | `3d5660cc` |
+| 2–4 | the context flag, the collector, the self-token gate, the out-of-scope split + `describe_characters` + both warns | `aa309ce6` |
+| 5 | the two resolution-context builders | `574e6ca6` |
+| 6 | `AccessibleMountPointsQuery` + the four enumeration call sites | `b8a3c7cd` |
+| 7 | the help page re-vendored at the target pin | `3d5660cc` (with the family) |
+| 8 | the NEW `doc_opacity_equivalence` family | `3d5660cc`, carried forward |
+| 9 | the mutation proofs | run, tabulated in §4 |
+| 10 | the nine neutrality legs | run, §5 |
+| 11 | the ratifications | §6 |
+| 12 (T2) | the five absent v4 log lines | `f19dc76c` |
+| 14 (T2) | the `docs/v4/` mirror pre-list | §6 |
+
+**Item 13 (T2) did NOT land, and does not need to:** the order offered a
+`hide-vaults` row pair on `doc_edit_path_resolver_equivalence` "only if the
+fixture needs no rebuild… otherwise the new family covers it — say which." The
+new family covers it and more: it drives the flag through the REAL builders over
+a REAL two-partition fixture, where the DPR family would only have set it by
+hand. The DPR family is still exercised as a neutrality leg (green at the
+baseline pin) and its one `PathResolutionContext` literal gained the field.
+
+### §3 — the shape decisions the order left open
+
+- **`flatten_tier_pool` takes an options STRUCT, not a fourth positional bool.**
+  `FlattenOptions { scope, include_participants, include_character_tier }` with
+  a `Default` that IS v4's default set. The file's own `TierResolveOptions` is
+  the precedent, v4's shape is an options bag, and
+  `flatten_tier_pool(&pool, FlattenScope::All, true, false)` — two adjacent
+  bools — is the readability trap the struct avoids.
+- **`DmpRow` was NOT widened.** The order asked for a measurement; the answer was
+  already written down. `find_enabled_for_search` (P4.D122) returns exactly
+  `{id, name, store_type: Option<String>}` over `WHERE enabled = 1` in rowid
+  order — precisely `findEnabledMountPointByRef`'s three needs — and its own doc
+  comment records why a second scoped read beats widening `DmpRow` (widening
+  reaches `DocStoreUriResolver::build`, the path resolver and the
+  `doc_mount_points_tier2` family). `db/doc_mount_points.rs` was not touched at
+  all.
+- **The flatten unit rows live in the NEW family, not the pool family.**
+
+### §4 — measurements, and three order premises corrected
+
+**RED-FIRST: 21 of 44 ops diverged from v4 on unported `main`** — above the
+order's predicted ≥ 15, and matching its predicted shape row for row. The
+23 GREEN rows are the proof the order asked for: the five covenant rows (own
+vault by name AND by id, a peer's vault, the `self` token, an own-vault write)
+and every Abigail row were green BEFORE and stayed green AFTER. **The fix is a
+subtraction, not a loosening, and the family measures that rather than asserting
+it.**
+
+Progression: 21 → 19 (unit 1, both `flatten` rows) → 16 (unit 2, the three
+stranger-store rows) → 11 (unit 3, the three group-store resolutions + both
+context shapes) → **0** (unit 4, the eleven enumeration/tool/blob rows).
+
+**Mutation proofs — all seven, each reddening exactly its target:**
+
+| Proof | Mutation | Red rows |
+|---|---|---|
+| M1 | both builders back to `character_id: None` | 6 — the three group-store resolutions, both context shapes, and `agreement_leilani` (a correct consequence: the agreement op re-resolves each listed store). Covenant rows stayed green. |
+| M2 | the flatten's early return removed | 14 — the own-vault rows, both flatten units, and every enumeration/tool row that leaks a vault. `peer_vault_by_name_hidden` correctly did NOT redden: an opaque context carries no `character_ids`, so there is no participant tier to leak. |
+| M3 | the self-token gate's new conjunct dropped | **1** — `self_token_refused`. Surgical. |
+| M4 | the `store_type == "character"` exclusion dropped | 4 — all four vault rows, now answering ACCESS_DENIED and NAMING the vault. That is the leak the exclusion exists to prevent. |
+| M5a–d | ONE enumeration call site forced to `false`, one at a time | grep 2 / list_files 3 / blob-read 3 / blob-write 1 — **four DISJOINT sets**, as the order required. |
+| M6a/b | `vaultsHidden` dropped from each warn's sentence | 1 each, its own capture pin. |
+| M7a/b | `describe_characters` dedup dropped / order inverted | 1 each, the six-case unit test. |
+
+⚠ **M6a first appeared to SURVIVE — it was my instrument, not the code.** The
+mutation runner grepped `^test [a-z_:]+ \.\.\. FAILED`, and the target test is
+named `out_of_scope_store_warns_and_denies_with_v4s_sentence` — the `4` in `v4s`
+is not in `[a-z_:]`, so the runner could never see that test fail. Re-run with
+`[A-Za-z0-9_:]+` plus an unmutated CONTROL run (empty, as it must be): M6a
+reddens exactly its pin. **A mutation-runner regex that cannot match its own
+target's name reports every mutation as surviving** — worth a memory note, and a
+fresh instance of "prove the instrument before trusting a negative."
+
+**Three order premises corrected by measurement:**
+
+1. **`tiered_mount_pool_equivalence` does NOT drive `flatten_tier_pool`.** The
+   order's Preamble says "the Rust side drives `flatten_tier_pool` at `:144-192`"
+   and §R.3 lists the family among those the port MOVES. It drives only
+   `resolve_tiered_mount_pool`, and its oracle emits `TieredMountPool` rows and
+   never calls `flattenTierPool`. So the family MOVES NOTHING: it is a pure
+   neutrality leg, run at the BASELINE pin, and the flatten rows went into the
+   new family instead.
+2. **§R.4's own warning needed applying to itself, twice.** Bug 152's message
+   says the `self` token "is now refused explicitly" — the hunk adds a CONDITION
+   to the existing gate; a hidden-vault `self` falls through to the loops.
+   Bug 153's says "all four callers" derive the flag alike — the hunk passes NO
+   `extraCharacterIds` on the WRITE resolver. Both are carried as v5-side
+   comments naming the sha.
+3. **The order's `DmpRow` question was already answered in the tree** (§3).
+
+### §5 — the gate
+
+See the round record for the numbers. The nine neutrality legs
+(`doc_enum`, `doc_blob`, `doc_text`, `doc_fm`, `doc_fs`, `doc_ui`,
+`scriptorium_tools`, `tiered_mount_pool`, `doc_edit_path_resolver`) were
+regenerated from the BASELINE pin through the sweep driver and are **9/9 ok**,
+so nothing outside this lane's own family moved.
+
+**The sweep driver caught a real defect in this lane's own recipe header:** it
+named a `/tmp` pin, which the driver flags `stale_v4_pin_path` because a
+committed recipe must never name one — `--v4` IS the pin. Made canonical; the
+driver's totals went 434 → **435 ok**. The two remaining `non_extractable`
+rows (`avatar_rolls_routes`, `generator_sse_wire`) are pre-existing and not
+this lane's.
+
+### §6 — ratifications and the mirror pre-list
+
+**Non-lib files on both commits, ratified (the file lists were re-derived from
+`git show --stat` and match the order's Preamble exactly):** `README.md` (badge),
+`docs/CHANGELOG.md`, `docs/developer/bugs.md`, the two new `bugs/fixed/` docs,
+`package.json` / `package-lock.json` / `packages/quilltap/package.json`
+(`4.10.0-dev.46` → `.47`), `lib/doc-edit/index.ts` (two type re-exports — no v5
+analogue; v5's items are `pub` in their modules), and the two `__tests__` files
+(corpus sources, not ported as files). No `app/`, `components/`,
+`packages/quilltap/bin`, `lib/db/`, `generateDDL` or `public/schemas/` change —
+**no D23 re-dump, no Tier R, no SPA, no export-schema guard movement.**
+
+**§R.9 `docs/v4/` mirror pre-list (the UNIFIER copies; byte counts at the
+`89fcc3c0d` pin):**
+
+| bytes | path |
+|---|---|
+| 83,228 | `docs/v4/CHANGELOG.md` |
+| 285,739 | `docs/v4/developer/bugs.md` |
+| 10,644 | `docs/v4/developer/bugs/fixed/bug-152-opacity-hides-group-stores.md` |
+| 6,888 | `docs/v4/developer/bugs/fixed/bug-153-opacity-enumeration-leak.md` |
+
+### §7 — Tier 3 deferrals, measured not assumed
+
+- **No verb, no route, no SPA surface** — v4's two commits touch no `app/` or
+  `components/` file, and the covenant is reached only through the `doc_*` tool
+  handlers and the path resolver. Measured: Document Mode's picker has its own
+  verbs and does not go through `get_accessible_mount_points`.
+- **The operator override bypasses the collector entirely** — `run_sql`/Brahma
+  pass `operator_override`, which returns every enabled store before the pool is
+  ever built. No change; the arm is untouched and a unit test pins that a
+  resolved store logs neither warn.
+- **`describe_characters` has no other v5 caller** — v4 uses it only in these two
+  warns. No wider port.
+
+### §8 — deferred loud, for the unifier
+
+- 💸 **The dogfood queue gains:** an opaque character reaching a group store by
+  name and by id on the Friday copy (the bug her report started from); the
+  ACCESS_DENIED sentence on a real out-of-scope store, with `combined.log`
+  carrying `Mount point exists but is out of scope: … vaultsHidden: true`;
+  `doc_list_files` and `doc_grep` from an opaque seat showing no vault names;
+  and the five restored log lines in a real `combined.log`.
+- **Nothing was banked or stubbed.** No `TODO`, no typed refusal was needed.

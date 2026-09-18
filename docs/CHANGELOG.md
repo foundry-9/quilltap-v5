@@ -40,6 +40,20 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — docs(porting): the P4.D200 lane record and the order's close-out header
+
+_Docs-only change._
+
+The lane record for bugs 152 and 153: the two probe STOPs and the human's waiver
+after v4 moved to `baa85e19b` (bug 154) mid-lane; the two pins and their
+verification; the red-first measurement (21 of 44, with the 23 green rows that
+prove the fix is a subtraction and not a loosening) and the 21 -> 19 -> 16 -> 11
+-> 0 progression; all seven mutation proofs with their exact red sets, including
+the M6a survival that turned out to be a mutation-runner regex that could not
+match its own target's name; the nine neutrality legs; the ratifications and the
+`docs/v4/` mirror pre-list; and the three order premises corrected by
+measurement.
+
 #### 2026-09-18 — port(doc-edit): the path resolver's five absent v4 log lines
 
 _Versions: core 0.0.955, harness 0.0.846._
