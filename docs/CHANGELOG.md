@@ -40,6 +40,18 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+#### 2026-09-18 — docs(porting): the P4.D200 context-literal census and its one recorded ownership expansion
+
+_Docs-only change._
+
+The order asked for the `PathResolutionContext` literal count and list: seven
+construction sites, six production and one harness, of which `document_ui.rs`
+needed nothing because it builds through `..Default::default()`. One of them,
+`documents/mod.rs`, sits outside P4.D200's Owns column — a forced,
+behaviour-neutral three-line change on the operator-override path, named here
+rather than left for the unifier to find in the diff. No other lane owns that
+file, and the diff touches none of P4.98's or P4.99's fenced paths.
+
 #### 2026-09-18 — docs(porting): the P4.D200 lane record and the order's close-out header
 
 _Docs-only change._

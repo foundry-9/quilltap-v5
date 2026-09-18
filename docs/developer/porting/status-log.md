@@ -133996,6 +133996,38 @@ a REAL two-partition fixture, where the DPR family would only have set it by
 hand. The DPR family is still exercised as a neutrality leg (green at the
 baseline pin) and its one `PathResolutionContext` literal gained the field.
 
+### §2b — the `PathResolutionContext` literal census, and ONE recorded ownership expansion
+
+The order asked for the count and the list. `grep 'PathResolutionContext {'`
+finds the struct definition, one `-> PathResolutionContext` return type, and
+**seven construction sites** — six production, one harness:
+
+| site | what it needed |
+|---|---|
+| `tools/doc_edit/shared.rs` ×4 (both builders' opaque + transparent arms) | the opaque two set `true` (the fix); the transparent two `false` |
+| `documents/mod.rs:176` | `false` — **see the expansion note below** |
+| `tools/doc_edit/document_ui.rs:210` | **nothing** — it uses `..Default::default()` |
+| `crates/quilltap-harness/tests/doc_edit_path_resolver_equivalence.rs:199` | `false` |
+
+**⚠ Recorded ownership expansion, for the unifier:**
+`crates/quilltap-core/src/documents/mod.rs` is NOT in P4.D200's Owns column, and
+this lane changed **three lines** of it: `hide_character_vaults: false` plus a
+two-line comment. It is forced and behaviour-neutral — adding a field to
+`PathResolutionContext` makes every exhaustive literal in the tree fail to
+compile, and the order anticipated exactly this ("every literal in the tree that
+builds one … needs the new field … count them and list them in the lane
+record"), though its own enumeration did not name this file. The site is the
+`operator_override: true` path, which returns every enabled store before the
+pool is built, so the covenant can never apply there. **No other lane owns this
+file** (§R.10 names only the five `api/**` + web-census paths as P4.98's and
+`services/primary_stream.rs` + `model/request_builder/google.rs` +
+`crates/quilltap-harness/src/lib.rs` as P4.99's), so there is no fence to
+breach — but it is named here rather than left for the unifier to discover in
+the diff.
+
+**Fence check:** `git diff main...HEAD` touches none of P4.98's five paths and
+none of P4.99's three.
+
 ### §3 — the shape decisions the order left open
 
 - **`flatten_tier_pool` takes an options STRUCT, not a fourth positional bool.**
