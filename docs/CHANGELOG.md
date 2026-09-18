@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
+
+_Docs-only change._
+
+Five work orders under `docs/developer/porting/work-orders/`, all from
+`main`, with one binding block (§R meeting points, §S contract, the
+Ownership table, the verification gate) spliced byte-identically into
+every order (md5 `fceaca9f0dffa4a6424ec338d1bd2a8d`). The drift ledger's
+one §3 row (bug 154) is marked `ORDERED(P4.D201 ∥ P4.D202)`; the regen
+rule stays PIN REQUIRED at `89fcc3c0d` for every neutrality leg and every
+maintenance lane, with the drift pair's moving families pinned at
+`baa85e19b`.
+
+- **P4.D201** — bug 154's server half: the `default_system_prompt.rs`
+  resolver home (tier-1 exact against v4's real file) folded into the
+  chat initializer and the impersonation voice preview; `systemPromptsPatch`'s
+  twin across all four system-prompt writers with the transient-id null
+  rule; the `set_default_system_prompt` clear arm; the `characterUpdate`
+  verb's chokepoint route, empty-payload rule and v4's 400; five families
+  regenerated at the target pin, red-first where predicted; the help page
+  re-vendored.
+- **P4.D202** — bug 154's SPA half: the client-safe twin, the two broken
+  New-Chat seed copies fixed red-first, the announcement dialog's neutral
+  fold, the star's optimistic cache write with rollback-then-refetch, the
+  4xl dialog, a gated live beat.
+- **P4.100** — the `HintCapture::drain` load-sensitive intermittent
+  reproduced two ways then replaced by a bounded wait across all 62 call
+  sites; the four unexercised `doc_opacity_equivalence` corpus rows.
+- **P4.101** — the `zod_issues` home folding the eight `invalid_type`
+  copies the planning census measured (the candidate said three), proven
+  byte-neutral by every envelope-pinning family at the pin, a literal
+  multiset audit, a key-order table measured against the real zod, and a
+  census guard.
+- **P4.102** — P4.98's envelope decoder generalized into one `quilltap-web`
+  helper, the two hand-rolled `tri()` helpers retired onto it, decode-
+  identity pins per edge, explicit-null arms, and a census guard holding
+  the tri-state hand-built set to empty.
+
+The phase plan gains the round's ORDERED record (the execution
+arrangement and what was deliberately left out — the owed dogfood pass,
+the REST character/prompt PUT edges v5 never had, and the standing
+carry-overs). Planning found and recorded two facts: v5 has no REST
+`PUT /api/v1/characters/{id}` and no `/prompts/{promptId}` route, and the
+Zod issue-renderer census is eight copies in four shapes, not three.
+
 #### 2026-09-18 — docs(porting): record the post-unification drift check — v4 UNMOVED at `baa85e19b`, one row still pending
 
 _Docs-only change._

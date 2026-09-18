@@ -6628,6 +6628,169 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — ORDERED 2026-09-18
+
+**Baseline `89fcc3c0d`; v4 `main` HEAD `baa85e19b` (ONE past — the
+ledger's one §3 row, bug 154, now `ORDERED(P4.D201 ∥ P4.D202)`), v4
+`bugfix` tip `1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the
+checkout on `main`, CLEAN at the planning probe (2026-09-18 — the §2 probe
+PASSED, so the ledger stood and nothing was re-derived); regen rule PIN
+REQUIRED (the drift pair's moving families from a lane-unique detached
+worktree at `baa85e19b`; every neutrality leg and all three maintenance
+lanes at `89fcc3c0d`).** The standing rule holds: drift debt clears before
+new scope — and this round's drift is TWO lanes, not one, because bug
+154's hunks split cleanly at the wire: five server files + the help page
+on one side, five client files on the other, meeting only at the resolver
+whose semantics both lanes transcribe from the same 47-line v4 file
+(§S.2). The other three lanes are the `89fcc3c0d` unification's candidates
+2, 3 (+ 4) and 5, each with disjoint ownership — and the planning census
+widened candidate 3 from three Zod issue renderers to EIGHT `invalid_type`
+copies across four shapes. ALL FIVE from `main`, no stacking. The
+round-wide §R meeting points, the §S contract (which records that NOTHING
+on the wire moves for any consumer, and the one server behaviour that
+becomes observable over the existing wire — a foreign `defaultSystemPromptId`
+answering v4's 400), the Ownership table and the verification gate are
+spliced byte-identically into every order (one md5 over the block,
+verified at planning: `fceaca9f0dffa4a6424ec338d1bd2a8d`). Fresh surveys
+(2026-09-18, at `baa85e19b` / `89fcc3c0d` and on `main` `639de1a1`, the
+planner's own hunk and source reads) are folded into the orders' survey
+sections.
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d201-default-system-prompt-lockstep-server.md` — P4.D201, bug
+   154's server half.** ONE resolver home in Rust (`quilltap_core::
+   default_system_prompt`, tier-1 exact against v4's REAL
+   `lib/characters/default-system-prompt.ts` over a committed corpus of
+   v4's five vectors + the §S.2 extras) folded into the chat initializer
+   (the `??`-on-content change the commit message never mentions — §R.4
+   (c)) and the impersonation voice preview (which reproduces v4's PRE-fix
+   stale-column arm verbatim today); `systemPromptsPatch`'s twin so all
+   four system-prompt writers in `vault_character_arrays.rs` move the
+   `isDefault` flags AND the `defaultSystemPromptId` column in ONE patch —
+   with v4's transient-id null rule (a just-minted id is re-keyed by the
+   vault on the next read; measured, and the ORACLE decides); the
+   `set_default_system_prompt` clear arm (`Option<&str>`); the
+   `characterUpdate` verb pulling `defaultSystemPromptId` out of the generic
+   patch, the empty-payload rule (no write), the chokepoint route, v4's
+   `System prompt not found on this character` 400 (and v4's own partial-
+   write quirk: the generic patch lands THEN the 400 — reproduced, with a
+   `postRead` comparand); `characters_arrays_tier2` regenerated at the
+   target on unported main FIRST (predicted red on the slim row's column
+   from the second prompt op on), then grown with the promotion-through-
+   update, null-arm and missing-id ops; `characters_mutations` grown with
+   six rows incl. the ARCHIVED-character arm (the oracle's sentence, not a
+   guess); `in_scene_voiced_tier3`'s stale-column row (a per-case SQL plant
+   on the fresh copy, both sides — red-first); `chat_context_init`'s
+   stale-column NEUTRALITY row + its empty-content red-first row (both
+   lists — it is list-driven); the capstone `cmp`-ed at both pins; the help
+   page byte-copied (124 stays 124). No `api/types.rs` change — the verb
+   gains no null arm; v4's clear rides the character PUT's raw body, which
+   v5 already carries. Recorded, not this lane's: v5 has NO REST `PUT
+   /api/v1/characters/{id}` and no `/prompts/{promptId}` route (a
+   pre-existing absence found at planning). Bumps core + harness.
+2. **`p4.d202-default-system-prompt-resolver-spa.md` — P4.D202, bug
+   154's SPA half.** The client-safe twin at `shared/default-system-prompt.
+   ts` with v4's five vectors transcribed 1:1 (the sha named); the two
+   broken New-Chat seed copies (`new-chat.logic.ts:49-51`, `new-chat.state.
+   ts:401-403` — a column naming a gone prompt seeds `null` today, so the
+   chat starts with NO system prompt) fixed red-first on a stale-column
+   spec; the announcement dialog's copy — ALREADY correct, §R.4(a) —
+   folded neutrally with its three arms pinned; the System Prompts tab's
+   star writing the moved badge into the query cache BEFORE the dispatch
+   with v4's rollback-then-refetch (v5 never had the dead route — §R.4
+   (b); only the optimistic half ports; a deferred-promise spec pins the
+   BETWEEN state); the Edit Prompt dialog 2xl → 4xl; a live star beat
+   asserting the server's column through `characterGet`, gated behind
+   `P4D201_SERVER_LANDED` for the unifier to flip. No wire move; the
+   Details-tab picker needs nothing. Bumps the SPA.
+3. **`p4.100-bounded-hint-drain-opacity-corpus-rows.md` — P4.100, two
+   maintenance smalls.** The `HintCapture::drain` intermittent P4.98
+   characterized (a FIXED `COALESCE_WINDOW_MS + 20` sleep then `try_recv`;
+   under `--workspace` load the SPAWNED flush can land after the sleep)
+   reproduced TWO ways before the fix — under load, and deterministically
+   by a test-only delay on the flush spawner that reds the WHOLE class —
+   then replaced by `drain_expecting(n)`: a bounded wait for the expected
+   count with a loud timeout and a straggler sweep, migrated across all 62
+   call sites (57 + 3 + 2, recounted), the fixed window kept ONLY for the
+   silence legs; nothing in production moves. Plus the four
+   `doc_opacity_equivalence` corpus rows the `89fcc3c0d` §3 review named
+   as structurally covered but unexercised (own-vault-by-NAME blob read; a
+   group-LINKED store, which the fixture builder must first learn to seed;
+   the two-character `characters:` warn piece through the capture layer;
+   the oracle's UNWRAPPED `buildWriteResolutionContext` wrapped so a
+   peer-vault write refusal RECORDS instead of aborting, with the row that
+   exercises it) — expected green, each with a mutation that reddens
+   exactly it. Bumps core + harness.
+4. **`p4.101-zod-issues-home.md` — P4.101, the `zod_issues` home.** ONE
+   typed Zod-4 issue type, ONE constructor set, ONE parsed-type word, ONE
+   uuid gate, ONE `ZodError.message` renderer at `api/zod_issues.rs`,
+   folding the eight `invalid_type` copies the planning census measured
+   (`settings.rs` typed; `generators_detail.rs` + `generators_wizard.rs`
+   Value-form; `prompt_templates.rs` + `subprompts.rs` + `chat_create.rs`
+   `CreateZodIssue`-form; `lora_validation.rs` Tier 2; `pascal/custom_
+   tool_types.rs` + `progressions/schema.rs` Tier 3 — recorded, not
+   converged, the progressions shim has a 1:1 SPA twin). Byte-neutral by
+   construction and by proof: every family that pins a Zod envelope
+   (seventeen Rust + eight web tests, listed) re-run unchanged at the
+   baseline pin; the string-literal MULTISET audit (P4.50's idiom); a key-
+   ORDER render table per issue code measured against the REAL zod 4.5.4
+   on the checkout (two twins rendering one code in different orders is a
+   FINDING, fixed red-first); a census guard holding the remaining
+   `invalid_type` definitions to the recorded remainder. Bumps core +
+   harness.
+5. **`p4.102-shared-decoder-tri-state-edges.md` — P4.102, the shared-
+   decoder class closed for the tri-state edges.** P4.98's `images_
+   generate_request` generalized into ONE `quilltap-web` `request_envelope`
+   helper (path ids + present body keys, `null` included, into a dispatch-
+   shaped envelope → the SAME `from_value::<Request>` decode `POST
+   /api/dispatch` runs); the two hand-rolled `tri()` helpers
+   (`subprompts_routes.rs`, `prompt_templates_routes.rs` — the ONLY
+   hand-built edges whose variants carry `Option<Option<…>>`, measured by
+   crossing the 74 tri-state fields against every `*_routes.rs`) retired
+   onto it; decode-identity pins per edge × key × {absent, null, value};
+   explicit-null arms in the two edge tests; a census guard deriving the
+   tri-state variant set from `api/types.rs` mechanically and holding the
+   set of hand-built constructions of them to EMPTY, with the remaining
+   typed-field hand-built edges enumerated (not converted — the P4.60
+   census holds their verdicts). No core file moves. Bumps web.
+
+**Execution:** all five lanes in parallel, one worktree each. P4.D201 and
+P4.101 on the most capable model (the drift lane is the deep one — a
+new tier-1 family, four grown families incl. a red-first plant on a
+committed tier-3 pair, and a measurement the order could not settle:
+whether a mixed managed+slim patch lands in one `update_character` call;
+the Zod lane is a wide cross-module refactor whose whole value is a
+neutrality proof and whose key-order measurement against the real zod may
+surface a finding). P4.D202 mid-tier (a transcription + two red-first
+specs + one deferred-promise spec + a gated beat). P4.100 and P4.102
+narrow (each has one reproduction/measurement the order could not settle
+— the flush-delay seam's home; whether `PromptTemplateGet` carries a
+tri-state). Pick order at `/unify`: P4.D201 → P4.D202 → P4.101 → P4.100 →
+P4.102; the baseline MOVES to `baa85e19b` at unification and the row
+retires `ABSORBED(P4.D201 ∥ P4.D202)`; the unifier flips
+`P4D201_SERVER_LANDED` and runs the star beat's first live run as its own
+gate step.
+
+**Deliberately left out of this round:** the owed dogfood pass (a
+`/dogfood`, not an order — it runs after this round unifies and gains the
+lockstep's live surfaces: star a prompt on a Friday character and read the
+column back; a New-Chat seed on a character whose column is stale — the
+Friday copy may HAVE such rows, measure the population first per ledger
+§5.5; the `defaultSystemPromptId`-only PUT on an archived character; plus
+the previous round's covenant items and the standing 💸 queue); the REST
+`PUT /api/v1/characters/{id}` + `/prompts/{promptId}` edges (a pre-existing
+absence found at planning — no client posts REST there; needs its own
+family, its own order); P4.D198's tier-3 backstop blindness (needs the
+whole resize pipeline scripted); the `name`-field turn-path measurement;
+the `/tmp/qt-oracle-run` shared staging; the two items awaiting the
+human's RULING (the census `ORDER BY`, the lock-conflict 503-vs-409); the
+human `npm install` item (the four SDK-bundling plugin dirs still on
+`openai` 7.10.0); and the "named, not order-sized" carry-overs (the
+`SCENE_STATE_TRACKING` trigger + handler, the shared-fixture title-
+checkpoint hazard, `combined.log` key case, P4.87's two OPEN coverage
+items, the upstream filing candidates).
+
 ## The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — UNIFIED 2026-09-18
 
 **ALL THREE ORDERS CLOSED WHOLE; the oracle baseline MOVES `bcd7e4852` →
