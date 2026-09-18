@@ -1,0 +1,363 @@
+{
+  "$comment": "P4.D198 / v4 bcd7e4852 (bug 151) \u2014 the tier-1 corpus for `shrinkImageForLlmTransport`. BOTH sides run the SAME per-case SCRIPT below a deterministic encoder: v4 through a `jest.doMock('sharp')` and v5 through `quilltap_harness::ScriptedTranscoder`, so the encoded BYTES are comparable (D19 forbids comparing real sharp against real libwebp). `originalLen` synthesizes the input as `(i * 7 + 13) & 0xff`; a step's encode is `(quality + i) & 0xff` for `len` bytes. `script.metadata` is either {width, height} (either may be null, which is sharp resolving a bag without them) or the string \"throws\"; `script.final` is what a metadata probe of a NON-original buffer answers. A ladder that asks for a rung the script does not carry is a CORPUS bug and panics loudly on both sides.",
+  "cases": [
+    {
+      "label": "non_image_mime",
+      "note": "Arm (1), the `startsWith('image/')` half. Silent, and the codec is never consulted.",
+      "mimeType": "text/plain",
+      "provider": "NANOGPT",
+      "filename": "notes.txt",
+      "originalLen": 64,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": []
+      }
+    },
+    {
+      "label": "image_mime_unresizable",
+      "note": "Arm (1), the `canResizeImage` half \u2014 an image mime OUTSIDE RESIZABLE_MIME_TYPES.",
+      "mimeType": "image/svg+xml",
+      "provider": "NANOGPT",
+      "filename": "glyph.svg",
+      "originalLen": 96,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": []
+      }
+    },
+    {
+      "label": "mime_uppercase_prefix",
+      "note": "v4's `startsWith('image/')` is case-SENSITIVE while `canResizeImage` lowercases: an uppercase PREFIX fails arm (1) and passes through.",
+      "mimeType": "IMAGE/PNG",
+      "provider": "NANOGPT",
+      "filename": "shouty.png",
+      "originalLen": 96,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": []
+      }
+    },
+    {
+      "label": "mime_mixed_case_subtype",
+      "note": "The other half of that asymmetry: a mixed-case SUBTYPE passes `startsWith` and is lowercased by `canResizeImage`, so it shrinks \u2014 and comes out `image/webp`.",
+      "mimeType": "image/PNG",
+      "provider": "NANOGPT",
+      "filename": "shouty2.png",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500
+          }
+        ]
+      }
+    },
+    {
+      "label": "small_under_ceiling",
+      "note": "Arm (4), both conjuncts satisfied: the buffer comes back BY IDENTITY and no encode is attempted.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "thumb.webp",
+      "originalLen": 1024,
+      "script": {
+        "metadata": {
+          "width": 800,
+          "height": 600
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": []
+      }
+    },
+    {
+      "label": "small_over_ceiling_fits_at_65",
+      "note": "Edge already inside the box but base64 (533,334) over the ceiling, so arm (4) does NOT fire and the ladder runs. Rung 78's encode still misses; rung 65 clears it.",
+      "mimeType": "image/png",
+      "provider": "NANOGPT",
+      "filename": "wide-flat.png",
+      "originalLen": 400000,
+      "script": {
+        "metadata": {
+          "width": 1000,
+          "height": 900
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 400000
+          },
+          {
+            "len": 300000
+          }
+        ]
+      }
+    },
+    {
+      "label": "oversize_edge_fits_at_first_rung",
+      "note": "The common production shape: an over-1024 edge means arm (4) cannot fire whatever the byte size, and one rung clears the ceiling.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "portrait.webp",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500
+          }
+        ]
+      }
+    },
+    {
+      "label": "oversize_edge_never_fits",
+      "note": "Never refuses: all four rungs miss the ceiling and the image goes out at rung 45 \u2014 `best` is the LAST rung TRIED, not the smallest possible.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "huge-noise.webp",
+      "originalLen": 2000000,
+      "script": {
+        "metadata": {
+          "width": 4000,
+          "height": 3000
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 900000
+          },
+          {
+            "len": 800000
+          },
+          {
+            "len": 700000
+          },
+          {
+            "len": 600000
+          }
+        ]
+      }
+    },
+    {
+      "label": "grow_discard_small_edge",
+      "note": "Arm (7), BOTH conjuncts: every rung GREW the payload and the edge was already inside the box, so the re-encode is discarded and the stored mime is kept.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "flat-colour.webp",
+      "originalLen": 400000,
+      "script": {
+        "metadata": {
+          "width": 1000,
+          "height": 900
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500000
+          },
+          {
+            "len": 500000
+          },
+          {
+            "len": 500000
+          },
+          {
+            "len": 500000
+          }
+        ]
+      }
+    },
+    {
+      "label": "grow_but_oversize_edge",
+      "note": "Arm (7)'s SECOND conjunct, which is the easy one to drop: the encode grew 1,000 bytes to 5,000, and it is STILL taken, because capping a 2048px edge is worth paying bytes for. Mutation M1 targets exactly this row.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "tiny-but-huge.webp",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 5000
+          }
+        ]
+      }
+    },
+    {
+      "label": "undecodable_metadata_throws",
+      "note": "v4's `sharp(buffer).metadata()` REJECTS and the whole `try` lands in the `catch`. v5's `metadata` is infallible, so it answers no dimensions, `longest_edge` is 0, arm (4)'s first conjunct fails and the FIRST `shrink_to_webp` Err produces the warn. Same outcome by a different route \u2014 the declared `v5Calls` below IS that difference, and the script makes both sides carry the same `error` bytes.",
+      "mimeType": "image/png",
+      "provider": "NANOGPT",
+      "filename": "junk.png",
+      "originalLen": 19,
+      "script": {
+        "metadata": "throws",
+        "metadataThrowMessage": "scripted probe failure",
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "throw": "scripted probe failure"
+          }
+        ]
+      },
+      "v5Calls": [
+        {
+          "maxEdge": 1024,
+          "quality": 78
+        }
+      ],
+      "v5CallsWhy": "v4 throws at the metadata probe and never reaches the ladder; v5's probe cannot throw, so the ladder is asked once and refuses. The trait doc (`shrink_to_webp`) records the mapping."
+    },
+    {
+      "label": "encode_throws_at_rung_2",
+      "note": "The `catch` wraps the WHOLE ladder, so rung 1's perfectly good 600,000-byte encode is discarded along with everything else: stored bytes out, one warn. A partial ladder must never leak its `best`.",
+      "mimeType": "image/webp",
+      "provider": "NANOGPT",
+      "filename": "half-encoded.webp",
+      "originalLen": 1000000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 600000
+          },
+          {
+            "throw": "scripted encode failure at rung 2"
+          }
+        ]
+      }
+    },
+    {
+      "label": "provider_declares_a_ceiling",
+      "note": "ANTHROPIC declares `maxBase64Size` 5 MiB, so arm (2)'s `min` reads the registry and the TRANSPORT target wins. The `ceiling` in the log bag is the comparand.",
+      "mimeType": "image/webp",
+      "provider": "ANTHROPIC",
+      "filename": "anthropic.webp",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500
+          }
+        ]
+      }
+    },
+    {
+      "label": "provider_without_declared_ceiling",
+      "note": "OPENROUTER declares `maxBase64Size: null`, so the registry falls back to the 4 MiB DEFAULT \u2014 the other registry branch \u2014 and the transport target still wins.",
+      "mimeType": "image/webp",
+      "provider": "OPENROUTER",
+      "filename": "openrouter.webp",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500
+          }
+        ]
+      }
+    },
+    {
+      "label": "provider_absent",
+      "note": "Arm (2)'s `None` branch: this module's budget alone, no registry read. v4's bag carries `provider: undefined`, which `JSON.stringify` DROPS; v5's tracing field renders EMPTY. That is the recorded log narrowing, asserted by name.",
+      "mimeType": "image/webp",
+      "provider": null,
+      "filename": "no-provider.webp",
+      "originalLen": 1000,
+      "script": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 500
+          }
+        ]
+      }
+    }
+  ]
+}

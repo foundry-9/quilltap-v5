@@ -260,6 +260,319 @@ impl quilltap_core::services::file_storage::PixelCodec for PrefixingPixelCodec {
     }
 }
 
+/// ============================================================================
+/// A harness-only SCRIPTED [`quilltap_core::files::image_processing::ImageTranscoder`]
+/// (P4.D198 — v4 `bcd7e4852`, bug 151).
+/// ============================================================================
+///
+/// The bug-151 transport shrink is a DECISION over a pixel op, and the two
+/// implementations' pixel ops cannot be byte-compared: v4 encodes through sharp,
+/// v5 through libwebp, and D19 says the operation is ported while encoded byte
+/// parity is neither required nor reachable. Comparing real encoders would
+/// compare nothing but the encoders.
+///
+/// So both sides run the SAME per-case SCRIPT below a deterministic encoder —
+/// v4 via a `jest.doMock('sharp')` built by `harness/oracle/lib/shrink-script.ts`,
+/// v5 via this type — and the differential proves the decision: the arm order,
+/// the ceiling, which rungs are asked for and in what order, which encode
+/// becomes `best`, when a grown encode is discarded, and what a throw does to a
+/// partial ladder. Because the scripts agree, the RESULT BYTES agree too, so
+/// `buffer` is a real comparand rather than a length check.
+///
+/// Keep the byte patterns in step with the TS half: an input is
+/// `(i * 7 + 13) & 0xff` and a scripted encode is `(quality + i) & 0xff`. Both
+/// sides assert their own generators against fixed probes, so a drift in either
+/// is loud rather than silently voiding every byte comparand.
+pub mod scripted_transcoder {
+    use std::sync::Mutex;
+
+    use quilltap_core::files::image_processing::{ImageMetadata, ImageTranscoder, OutputFormat};
+
+    /// What a metadata probe of the ORIGINAL buffer answers.
+    #[derive(Clone, Debug)]
+    pub enum ScriptMetadata {
+        /// sharp resolved a bag; either dimension may be absent.
+        Dims(Option<i64>, Option<i64>),
+        /// sharp REJECTED. v5's `metadata` cannot, so this answers no
+        /// dimensions and the script's first step carries the same message as
+        /// an `Err` — the recorded mechanism difference (see
+        /// `ImageTranscoder::shrink_to_webp`'s doc).
+        Throws(String),
+    }
+
+    /// One case's (or one file's) scripted encoder behaviour.
+    #[derive(Clone, Debug)]
+    pub struct ShrinkScript {
+        pub metadata: ScriptMetadata,
+        /// What a probe of a NON-original buffer answers.
+        pub final_dims: (Option<i64>, Option<i64>),
+        /// One entry per ladder rung, in order: `Ok(len)` or `Err(message)`.
+        pub steps: Vec<Result<usize, String>>,
+    }
+
+    /// One resize+encode the ladder asked for.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct RecordedCall {
+        pub max_edge: i64,
+        pub quality: i64,
+    }
+
+    /// The scripted encoder. Scripts are keyed by the ORIGINAL bytes they
+    /// describe, so ONE instance can serve several files in a single load (the
+    /// `file_attachment_tier3` shape) as well as one case at a time.
+    pub struct ScriptedTranscoder {
+        scripts: Vec<(Vec<u8>, ShrinkScript)>,
+        calls: Mutex<Vec<(usize, RecordedCall)>>,
+        /// The script whose original was probed most recently. A probe of a
+        /// NON-original buffer is v4's `sharp(best).metadata()`, which can only
+        /// belong to the shrink currently in flight — the JS mock knows it from
+        /// its closure, and this is the same fact tracked explicitly.
+        current: Mutex<Option<usize>>,
+    }
+
+    impl ScriptedTranscoder {
+        pub fn new() -> Self {
+            ScriptedTranscoder {
+                scripts: Vec::new(),
+                calls: Mutex::new(Vec::new()),
+                current: Mutex::new(None),
+            }
+        }
+
+        /// Register a script for one original buffer.
+        pub fn with_script(mut self, original: Vec<u8>, script: ShrinkScript) -> Self {
+            self.scripts.push((original, script));
+            self
+        }
+
+        /// Every `(max_edge, quality)` asked for, in order, across all scripts.
+        pub fn calls(&self) -> Vec<RecordedCall> {
+            self.calls.lock().unwrap().iter().map(|(_, c)| *c).collect()
+        }
+
+        /// The calls asked for on ONE script's behalf, in order.
+        pub fn calls_for(&self, original: &[u8]) -> Vec<RecordedCall> {
+            let Some(idx) = self.index_of(original) else {
+                return Vec::new();
+            };
+            self.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(i, _)| *i == idx)
+                .map(|(_, c)| *c)
+                .collect()
+        }
+
+        /// Forget every recorded call (between cases sharing one instance).
+        pub fn reset_calls(&self) {
+            self.calls.lock().unwrap().clear();
+            *self.current.lock().unwrap() = None;
+        }
+
+        fn index_of(&self, buffer: &[u8]) -> Option<usize> {
+            self.scripts.iter().position(|(orig, _)| orig == buffer)
+        }
+    }
+
+    impl Default for ScriptedTranscoder {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl ImageTranscoder for ScriptedTranscoder {
+        fn metadata(&self, buffer: &[u8]) -> ImageMetadata {
+            if let Some(idx) = self.index_of(buffer) {
+                *self.current.lock().unwrap() = Some(idx);
+                return match &self.scripts[idx].1.metadata {
+                    // v5's probe is infallible: a rejection maps to "no
+                    // dimensions", which is what takes the ladder rather than
+                    // the early return.
+                    ScriptMetadata::Throws(_) => ImageMetadata::default(),
+                    ScriptMetadata::Dims(w, h) => ImageMetadata {
+                        width: *w,
+                        height: *h,
+                        has_alpha: false,
+                    },
+                };
+            }
+            // Not an original: this is the post-shrink probe of the shrink in
+            // flight.
+            let idx = self
+                .current
+                .lock()
+                .unwrap()
+                .expect("a metadata probe of non-original bytes with no shrink in flight");
+            let (w, h) = self.scripts[idx].1.final_dims;
+            ImageMetadata {
+                width: w,
+                height: h,
+                has_alpha: false,
+            }
+        }
+
+        fn resize_step(
+            &self,
+            buffer: &[u8],
+            _target_width: i64,
+            _format: OutputFormat,
+            _quality: i64,
+        ) -> Vec<u8> {
+            // The provider-ceiling BACKSTOP's seam. Unused by the bug-151
+            // families (every corpus image is under the 4 MB per-image cap, so
+            // `resize_image_for_provider` early-returns), and required by the
+            // trait — so it returns the input rather than pretending to encode.
+            // If a corpus row ever reaches it, the recorded calls will show no
+            // shrink rung for bytes that changed, which is the loud version.
+            buffer.to_vec()
+        }
+
+        fn shrink_to_webp(
+            &self,
+            buffer: &[u8],
+            max_edge: i64,
+            quality: i64,
+        ) -> Result<Vec<u8>, String> {
+            let idx = self
+                .index_of(buffer)
+                .unwrap_or_else(|| panic!("no script for a {}-byte shrink input", buffer.len()));
+            let mut calls = self.calls.lock().unwrap();
+            let rung = calls.iter().filter(|(i, _)| *i == idx).count();
+            calls.push((idx, RecordedCall { max_edge, quality }));
+            drop(calls);
+            match self.scripts[idx].1.steps.get(rung) {
+                Some(Ok(len)) => Ok(encoded_bytes(quality, *len)),
+                Some(Err(m)) => Err(m.clone()),
+                None => panic!(
+                    "the ladder asked for rung {} (quality {quality}); the script carries {} \
+                     — a CORPUS bug, not a port one",
+                    rung + 1,
+                    self.scripts[idx].1.steps.len()
+                ),
+            }
+        }
+    }
+
+    /// The input buffer a corpus `originalLen` denotes: `(i * 7 + 13) & 0xff`.
+    /// Mirrors `originalBuffer` in `harness/oracle/lib/shrink-script.ts`.
+    pub fn original_bytes(len: usize) -> Vec<u8> {
+        (0..len).map(|i| ((i * 7 + 13) & 0xff) as u8).collect()
+    }
+
+    /// A scripted encode's bytes: `(quality + i) & 0xff`. Mirrors
+    /// `encodedBuffer` in `harness/oracle/lib/shrink-script.ts`. Distinct from
+    /// `original_bytes` at i=0 for every ladder quality (78/65/55/45 vs 13),
+    /// which is what lets a metadata probe tell an encode from the input.
+    pub fn encoded_bytes(quality: i64, len: usize) -> Vec<u8> {
+        (0..len)
+            .map(|i| ((quality as usize + i) & 0xff) as u8)
+            .collect()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// The two generators, against the same fixed probes the TS half
+        /// asserts. If either side drifts, every `buffer` comparand in both
+        /// bug-151 families silently stops meaning anything — so both sides
+        /// pin them.
+        #[test]
+        fn the_byte_patterns_match_the_typescript_half() {
+            assert_eq!(original_bytes(5), vec![13u8, 20, 27, 34, 41]);
+            assert_eq!(encoded_bytes(78, 4), vec![78u8, 79, 80, 81]);
+            // The wrap at 256 (`& 0xff`) on both.
+            assert_eq!(original_bytes(40)[36], ((36 * 7 + 13) & 0xff) as u8);
+            assert_eq!(encoded_bytes(250, 10)[9], 3);
+        }
+
+        #[test]
+        fn a_script_answers_its_own_rungs_and_records_them() {
+            let orig = original_bytes(32);
+            let t = ScriptedTranscoder::new().with_script(
+                orig.clone(),
+                ShrinkScript {
+                    metadata: ScriptMetadata::Dims(Some(2048), Some(1536)),
+                    final_dims: (Some(683), Some(1024)),
+                    steps: vec![Ok(10), Err("boom".to_string())],
+                },
+            );
+            let m = t.metadata(&orig);
+            assert_eq!((m.width, m.height), (Some(2048), Some(1536)));
+            assert_eq!(
+                t.shrink_to_webp(&orig, 1024, 78).unwrap(),
+                encoded_bytes(78, 10)
+            );
+            // The post-shrink probe answers the FINAL dims.
+            let fm = t.metadata(&encoded_bytes(78, 10));
+            assert_eq!((fm.width, fm.height), (Some(683), Some(1024)));
+            assert_eq!(t.shrink_to_webp(&orig, 1024, 65), Err("boom".to_string()));
+            assert_eq!(
+                t.calls(),
+                vec![
+                    RecordedCall {
+                        max_edge: 1024,
+                        quality: 78
+                    },
+                    RecordedCall {
+                        max_edge: 1024,
+                        quality: 65
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn a_throwing_probe_answers_no_dimensions() {
+            let orig = original_bytes(8);
+            let t = ScriptedTranscoder::new().with_script(
+                orig.clone(),
+                ShrinkScript {
+                    metadata: ScriptMetadata::Throws("nope".to_string()),
+                    final_dims: (None, None),
+                    steps: vec![Err("nope".to_string())],
+                },
+            );
+            assert_eq!(t.metadata(&orig), ImageMetadata::default());
+        }
+
+        #[test]
+        fn two_scripts_keep_their_own_rung_counters() {
+            let a = original_bytes(16);
+            let b = original_bytes(24);
+            let t = ScriptedTranscoder::new()
+                .with_script(
+                    a.clone(),
+                    ShrinkScript {
+                        metadata: ScriptMetadata::Dims(Some(2048), Some(2048)),
+                        final_dims: (Some(1024), Some(1024)),
+                        steps: vec![Ok(1), Ok(2)],
+                    },
+                )
+                .with_script(
+                    b.clone(),
+                    ShrinkScript {
+                        metadata: ScriptMetadata::Dims(Some(4096), Some(4096)),
+                        final_dims: (Some(1024), Some(1024)),
+                        steps: vec![Ok(3)],
+                    },
+                );
+            assert_eq!(t.shrink_to_webp(&a, 1024, 78).unwrap().len(), 1);
+            assert_eq!(t.shrink_to_webp(&b, 1024, 78).unwrap().len(), 3);
+            assert_eq!(t.shrink_to_webp(&a, 1024, 65).unwrap().len(), 2);
+            assert_eq!(
+                t.calls_for(&b),
+                vec![RecordedCall {
+                    max_edge: 1024,
+                    quality: 78
+                }]
+            );
+            assert_eq!(t.calls_for(&a).len(), 2);
+        }
+    }
+}
+
 #[cfg(test)]
 mod self_tests {
     use super::*;

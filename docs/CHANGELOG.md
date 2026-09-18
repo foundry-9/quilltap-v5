@@ -12,6 +12,60 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — feat(images): the per-image transport budget as one core module, with a scripted-encoder tier-1 differential (P4.D198)
+
+_Versions: core 0.0.944, harness 0.0.835._
+
+v4 `lib/files/llm-image-budget.ts` (NEW at `bcd7e4852`, bug 151) ported whole as
+`crates/quilltap-core/src/files/llm_image_budget.rs`: the four constants, the
+`LlmImageShrinkResult` shape, and `shrink_image_for_llm_transport`'s nine arms
+in v4's order — the unresizable-format pass-through, the
+`min(500 KiB, provider)` ceiling, the metadata probe, the
+already-small-and-under-ceiling early return with its load-bearing
+`longest_edge > 0` conjunct, the `[78, 65, 55, 45]` ladder whose `best` is the
+LAST rung TRIED rather than the smallest, the grow-discard with BOTH conjuncts,
+and the never-throw contract. `LANTERN_IMAGE_BASE64_BUDGET` is defined here
+because v4 defines it here; the per-turn spend is the Lantern walk's.
+
+The tier-1 differential drives v4's REAL function over a SCRIPTED encoder on
+both sides — a `jest.doMock('sharp')` built by
+`harness/oracle/lib/shrink-script.ts` and the new
+`quilltap_harness::scripted_transcoder::ScriptedTranscoder`, reading the same
+15-case corpus. That is the right instrument here rather than a shortcut:
+comparing real sharp against real libwebp would compare nothing but the
+encoders (D19), while the same script on both sides makes the DECISION the
+comparand — and makes the result BYTES comparable too, so `buffer` is a real
+field and not a length check. The real encoders keep their own proofs, v4's by
+its unit test and v5's by `HostImageCodec`'s, which assert the same 683x1024.
+
+The oracle also mocks and RECORDS `@/lib/logger`, which is the only way
+`ceiling` becomes a comparand — it appears nowhere in the returned result — and
+the same for v4's `${w}x${h}` dimension strings, including the literal
+`undefinedxundefined` a metadata bag without dimensions renders. Two narrowings
+are recorded and asserted by name rather than left to drift: v5's log fields
+are snake_case, which is this repo's standing convention for every ported bag
+(`provider_failover.rs` logs `chat_id` against v4's `chatId`) and reaches
+`combined.log` verbatim; and a bag value `JSON.stringify` drops for being
+`undefined` renders EMPTY on the v5 side, unreachable from production because
+both loaders gate on a provider and always carry a filename.
+
+Measured while porting, and recorded in the module: no provider — in v5's
+eleven manifests OR v4's own plugin registry, which agree value for value —
+declares a `maxBase64Size` under 500 KiB, so the `min` resolves to the
+transport target for every provider that exists and the lower-ceiling arm is
+unreachable through either real registry. v4 reaches it by mocking
+`getAttachmentSupport`; this function takes no injectable registry and one was
+not added for a test. `ceiling_is_the_lower_of_the_two` pins both the
+arithmetic and the measurement, so a future manifest under 500 KiB engages the
+arm rather than surprising it.
+
+Mutation-proven: dropping the grow-discard's second conjunct reddens the
+`grow_but_oversize_edge` row and its unit; breaking on the first rung
+regardless of fit reddens `small_over_ceiling_fits_at_65` and three units;
+turning the success line into a WARN reddens the level assertion; and adding a
+debug line to the silent grow-discard arm reddens both the family and (after a
+silence leg was added for it) the unit.
+
 #### 2026-09-17 — feat(images): the transport shrink seam — a FALLIBLE `ImageTranscoder::shrink_to_webp` and the host codec behind it (P4.D198)
 
 _Versions: core 0.0.943, host 0.0.138._
