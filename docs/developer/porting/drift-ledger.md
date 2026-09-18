@@ -24,26 +24,41 @@ probe verifies against._
   `4.10.0-dev.45`), adopted at the `bcd7e4852` bug-151 drift catch-up +
   follow-ups round unification (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97,
   2026-09-17). CLAUDE.md's Status bullet agrees.
-- **Checked:** 2026-09-17 (night), at the `bcd7e4852` round's `/unify` — its
-  opening §2 probe PASSED; its CLOSING probe FAILED (v4 landed TWO commits
-  while the unified gate ran, 22:23 and 22:37 — classified below from their
-  hunks, both UNPROCESSED). Every regen of the round ran from pinned
-  worktrees, so none is affected. Previously checked 2026-09-17 midday (the
-  `53294163f` round's unification).
+- **Checked:** 2026-09-18 (`/driftcheck`, standalone from the main checkout) —
+  a re-confirmation, not a new finding: nothing has moved since the
+  `bcd7e4852` round's closing probe recorded these two commits. Previously
+  checked 2026-09-17 (night), at that round's `/unify` — its opening §2 probe
+  PASSED and its CLOSING probe FAILED (v4 landed the two commits below while
+  the unified gate ran, 22:23 and 22:37); every regen of the round had run
+  from pinned worktrees, so none was affected. Before that, 2026-09-17 midday
+  (the `53294163f` round's unification).
 - **v4 `main` HEAD at check:** `89fcc3c0d` ("fix(scriptorium): a hidden vault
   is not listed either (bug 153)", `4.10.0-dev.47`, 2026-09-17 22:37) —
-  **TWO commits past the baseline.**
-- **v4 `bugfix` tip at check:** `1a2b2164c` — UNMOVED (content probe clean:
-  `git diff main bugfix -- lib app components` is main ahead of bugfix; no
-  unabsorbed bugfix work).
+  **TWO commits past the baseline, unchanged since the last check.**
+- **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
+  branch") — UNMOVED. Content probe clean: `git log main..bugfix` over
+  `lib/ app/ packages/ components/ plugins/` lists only pre-absorbed lineage,
+  and `git diff --stat main bugfix` over those paths is main far ahead
+  (4,298 insertions vs 33,653 deletions going main → bugfix). No unabsorbed
+  bugfix work; no fix has landed on the 4.9.2 branch since it forked.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN**. No fetch was run.
-- **Verdict: DRIFT PENDING — 2 commits.** §3 carries two rows UNPROCESSED —
-  both PORT on ported surfaces (the doc-edit opacity covenant: bug 152 keeps
-  an opaque character's own group stores reachable and refuses an in-scope
-  hidden store as `ACCESS_DENIED`; bug 153 hides vaults from ENUMERATION too;
-  one `help/` page). They are the next catch-up's first rows.
+- **Verdict: DRIFT PENDING — 2 commits** (unchanged from the last check). §3
+  carries two rows UNPROCESSED — both PORT on ported surfaces (the doc-edit
+  opacity covenant: bug 152 keeps an opaque character's own group stores
+  reachable and refuses an in-scope hidden store as `ACCESS_DENIED`; bug 153
+  hides vaults from ENUMERATION too; one `help/` page). Neither is a
+  convergence — v4's `docs/developer/bugs.md` rows 152/153 are v4-side finds
+  from live Friday use, not this port's filings coming back. **This check
+  MEASURED both rows' "expect v5 to reproduce" predictions and both hold**
+  (details appended to the rows): v5's two resolution-context builders return
+  `character_id: None` on the opaque branch, and
+  `get_accessible_mount_points` takes no opacity flag and passes
+  `character_id` straight into the tier context. They are the next catch-up's
+  first rows — one lane or a stacked pair, sharing the
+  `acting_character_is_opaque_to_vaults` substrate and the one `help/`
+  re-vendor.
 - **Regen rule: PIN REQUIRED.** v4's HEAD is past the baseline, so every
   oracle regeneration must run from a worktree pinned at `bcd7e4852` per §5.1
   until a catch-up round moves the baseline. Verify every pin by `rev-parse`
@@ -97,8 +112,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `1065a1f53` | 2026-09-17 | fix(scriptorium): an opaque character keeps her own group stores (bug 152) | **PORT** | **Landed 22:23, DURING the `bcd7e4852` round's unified gate — recorded by its closing probe; UNPROCESSED.** Bug 152 (reported live from Friday): the doc-tool opacity covenant (`systemTransparency !== true`, the DEFAULT) hid character vaults by returning a resolution context with `characterId` REMOVED, and `resolveTieredMountPool` derives the group tier from `characterId` and nothing else — so an opaque character silently lost every GROUP store she belonged to (by name and by id), and the refusal was a `NOT_FOUND` phrased as an addressing failure. The fix (from the hunks): `lib/tools/handlers/doc-edit/shared.ts` (+20) — `buildReadResolutionContext` / `buildWriteResolutionContext` KEEP `characterId` and set a new `hideCharacterVaults` flag, derived by a new `actingCharacterIsOpaqueToVaults` helper; `lib/doc-edit/path-resolver.ts` (+79) — the flag subtracts the two vault tiers (own + peers') from the accessible set, and a store that EXISTS but is out of scope is refused `ACCESS_DENIED` (saying so) instead of `NOT_FOUND`; `lib/mount-index/tiered-mount-pool.ts` (+18) — `flattenTierPool` honours the flag; the 269-line `lib/doc-edit/__tests__/path-resolver-opacity-group-stores.test.ts` (against the REAL tiered pool, repositories mocked — the corpus source); `help/character-system-transparency.md` (+4, the "Vaults, and nothing besides" paragraph); stamps `4.10.0-dev.46`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-152-…md`. **v5 surfaces (all ported):** `crates/quilltap-core/src/doc_edit/path_resolver.rs` (`resolve_doc_edit_path`), `tools/doc_edit/shared.rs` (the two resolution-context builders), the tiered mount pool twin (grep `flatten_tier_pool` / the module `tools/doc_edit/text.rs` + `tools/search.rs` import), and the `NOT_FOUND`→`ACCESS_DENIED` sentence at whatever v5 site answers it. Differentials to grow: `doc_edit_path_resolver_equivalence` (the tier-1/2 family over `resolve_doc_edit_path`), plus the doc-edit tool families that carry an opaque acting character (measure: v5 likely REPRODUCES the bug — the characterId-removal shape was ported as v4 had it). Not a convergence. | UNPROCESSED |
-| `89fcc3c0d` | 2026-09-17 | fix(scriptorium): a hidden vault is not listed either (bug 153) | **PORT** | **Landed 22:37, DURING the gate; UNPROCESSED — spun off bug 152.** The covenant was enforced when a tool RESOLVES a path but not when it ENUMERATES stores: `collectAccessibleMountPointIds` honoured `hideCharacterVaults`, `getAccessibleMountPoints` took no flag and its FOUR callers passed `characterId` unconditionally, so `doc_list_files` / `doc_grep` / the two blob mount resolvers LISTED the vault names the covenant hides and the follow-up open refused them. The fix (from the hunks): `lib/doc-edit/path-resolver.ts` (+31) — `getAccessibleMountPoints` gains the `hideCharacterVaults` option through the same collector; `lib/doc-edit/index.ts` (+2, the export); `lib/tools/handlers/doc-edit/text-handlers.ts` (+22 — `handleGrep`, `handleListFiles`) and `blob-handlers.ts` (+20 — `handleReadBlob`/`handleWriteBlob`/`handleListBlobs`'s mount resolvers) derive the flag from `actingCharacterIsOpaqueToVaults`; the 345-line `path-resolver-opacity-enumeration.test.ts` (the corpus source); `help/character-system-transparency.md` (+2, "Nor are they so much as named"); stamps `4.10.0-dev.47`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-153-…md` (+ a cross-link in bug 152's). **v5 surfaces (all ported):** `doc_edit/path_resolver.rs` (`get_accessible_mount_points` twin), `tools/doc_edit/text.rs` (grep + list_files), the blob handlers (`tools/doc_edit/blob*.rs` — measure), `tools/doc_edit/shared.rs`. Differentials to grow: the doc-edit listing/grep/blob tool families with an opaque acting character (measure which carry one; expect v5 to REPRODUCE the leak). Both rows share ONE `help/` re-vendor and ONE substrate (`actingCharacterIsOpaqueToVaults` + the flag) — order them as one lane or a stacked pair. Not a convergence. | UNPROCESSED |
+| `1065a1f53` | 2026-09-17 | fix(scriptorium): an opaque character keeps her own group stores (bug 152) | **PORT** | **Landed 22:23, DURING the `bcd7e4852` round's unified gate — recorded by its closing probe; UNPROCESSED.** Bug 152 (reported live from Friday): the doc-tool opacity covenant (`systemTransparency !== true`, the DEFAULT) hid character vaults by returning a resolution context with `characterId` REMOVED, and `resolveTieredMountPool` derives the group tier from `characterId` and nothing else — so an opaque character silently lost every GROUP store she belonged to (by name and by id), and the refusal was a `NOT_FOUND` phrased as an addressing failure. The fix (from the hunks): `lib/tools/handlers/doc-edit/shared.ts` (+20) — `buildReadResolutionContext` / `buildWriteResolutionContext` KEEP `characterId` and set a new `hideCharacterVaults` flag, derived by a new `actingCharacterIsOpaqueToVaults` helper; `lib/doc-edit/path-resolver.ts` (+79) — the flag subtracts the two vault tiers (own + peers') from the accessible set, and a store that EXISTS but is out of scope is refused `ACCESS_DENIED` (saying so) instead of `NOT_FOUND`; `lib/mount-index/tiered-mount-pool.ts` (+18) — `flattenTierPool` honours the flag; the 269-line `lib/doc-edit/__tests__/path-resolver-opacity-group-stores.test.ts` (against the REAL tiered pool, repositories mocked — the corpus source); `help/character-system-transparency.md` (+4, the "Vaults, and nothing besides" paragraph); stamps `4.10.0-dev.46`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-152-…md`. **v5 surfaces (all ported):** `crates/quilltap-core/src/doc_edit/path_resolver.rs` (`resolve_doc_edit_path`), `tools/doc_edit/shared.rs` (the two resolution-context builders), the tiered mount pool twin (grep `flatten_tier_pool` / the module `tools/doc_edit/text.rs` + `tools/search.rs` import), and the `NOT_FOUND`→`ACCESS_DENIED` sentence at whatever v5 site answers it. Differentials to grow: `doc_edit_path_resolver_equivalence` (the tier-1/2 family over `resolve_doc_edit_path`), plus the doc-edit tool families that carry an opaque acting character. Not a convergence (bugs.md 152 is a v4-side find from live Friday use, not this port's filing). **MEASURED 2026-09-18 (`/driftcheck`): v5 REPRODUCES the bug, exactly as predicted** — `tools/doc_edit/shared.rs:541` (`build_read_resolution_context`) and `:568` (`build_write_resolution_context`) both return `PathResolutionContext { character_id: None, character_ids: Vec::new(), .. }` on the `acting_character_is_opaque_to_vaults` branch (the helper is `shared.rs:334`), so v5 drops the identity the group tier is keyed on, exactly as v4 did pre-fix. `db/tiered_mount_pool.rs` holds the `flatten_tier_pool` twin that needs v4's new option. | UNPROCESSED |
+| `89fcc3c0d` | 2026-09-17 | fix(scriptorium): a hidden vault is not listed either (bug 153) | **PORT** | **Landed 22:37, DURING the gate; UNPROCESSED — spun off bug 152.** The covenant was enforced when a tool RESOLVES a path but not when it ENUMERATES stores: `collectAccessibleMountPointIds` honoured `hideCharacterVaults`, `getAccessibleMountPoints` took no flag and its FOUR callers passed `characterId` unconditionally, so `doc_list_files` / `doc_grep` / the two blob mount resolvers LISTED the vault names the covenant hides and the follow-up open refused them. The fix (from the hunks): `lib/doc-edit/path-resolver.ts` (+31) — `getAccessibleMountPoints` gains the `hideCharacterVaults` option through the same collector; `lib/doc-edit/index.ts` (+2, the export); `lib/tools/handlers/doc-edit/text-handlers.ts` (+22 — `handleGrep`, `handleListFiles`) and `blob-handlers.ts` (+20 — `handleReadBlob`/`handleWriteBlob`/`handleListBlobs`'s mount resolvers) derive the flag from `actingCharacterIsOpaqueToVaults`; the 345-line `path-resolver-opacity-enumeration.test.ts` (the corpus source); `help/character-system-transparency.md` (+2, "Nor are they so much as named"); stamps `4.10.0-dev.47`, README, `docs/developer/bugs.md`, `bugs/fixed/bug-153-…md` (+ a cross-link in bug 152's). **v5 surfaces (all ported):** `doc_edit/path_resolver.rs` (`get_accessible_mount_points` twin), `tools/doc_edit/text.rs` (grep + list_files), the blob handlers (`tools/doc_edit/blob*.rs` — measure), `tools/doc_edit/shared.rs`. Differentials to grow: the doc-edit listing/grep/blob tool families with an opaque acting character (measure which carry one). **MEASURED 2026-09-18 (`/driftcheck`): v5 REPRODUCES the leak** — `get_accessible_mount_points` (`tools/doc_edit/shared.rs:646`) takes `(main, mount, project_id, character_id, extra_character_ids)` and nothing else, building a `TierContext` from `character_id` with `FlattenScope::All`; its FOUR v5 call sites are the same four v4 fixed — `tools/doc_edit/text.rs:779` and `:1155` (grep + list_files) and `tools/doc_edit/blob.rs:100` and `:135` (the read/write mount resolvers) — none of which builds a resolution context. Both rows share ONE `help/` re-vendor and ONE substrate (`actingCharacterIsOpaqueToVaults` + the flag) — order them as one lane or a stacked pair. Not a convergence (a v4-side find, spun off 152). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

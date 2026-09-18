@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): re-confirm the drift check at `bcd7e4852` and measure both bug-152/153 rows against v5
+
+_Docs-only change._
+
+A standalone `/driftcheck` from the main checkout. Nothing has moved since
+the `bcd7e4852` round's closing probe: v4 `main` is still `89fcc3c0d`, two
+commits past the baseline (bugs 152 and 153, the doc-edit opacity covenant);
+the checkout is on `main` and clean; `bugfix` is still `1a2b2164c` with no
+fix landed since it forked, confirmed by content diff rather than the commit
+list; `release` is still `8fbf2afe0` with no 4.10.0 squash. The verdict and
+the PIN REQUIRED regen rule are unchanged.
+
+Both rows carried an unmeasured prediction that v5 reproduces the bug. This
+check measured them and both hold, so the facts are appended to the rows:
+`build_read_resolution_context` and `build_write_resolution_context` return
+`character_id: None` on the opaque branch — the identity the group tier is
+keyed on — and `get_accessible_mount_points` takes no opacity flag, passing
+`character_id` straight into the tier context for all four of its call sites
+(grep, list_files, and the two blob mount resolvers), the same four v4 fixed.
+Also recorded: neither commit is a convergence — v4's `bugs.md` rows 152 and
+153 are v4-side finds from live use, not this port's filings coming back.
+
 #### 2026-09-17 — unify: the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97) — the baseline moves to `bcd7e4852`
 
 _Versions: core 0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152, SPA 0.5.731; cli/tauri unchanged._
