@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — chore(unify): the `89fcc3c0d` round's unification wires — the `docs/v4/` mirror at the pin, the CHANGELOG separators the union merge dropped, the lock re-sync, the two sweep artifacts
+
+_Docs-only change (plus `Cargo.lock` re-synced to the recounted crate versions)._
+
+The four `docs/v4/` paths the two opacity commits move, copied from the
+`89fcc3c0d` pin and matching P4.D200's pre-list byte for byte (83,228 /
+285,739 / 10,644 / 6,888 bytes); the blank lines the union merge dropped
+between three lanes' CHANGELOG entries restored; `Cargo.lock` re-synced to
+core 0.0.959 / harness 0.0.849 / web 0.0.153 after the accumulated
+cherry-picks; the two pinned sweep artifacts (target `89fcc3c0d`: 2/2 ok;
+baseline `bcd7e4852`: 17/17 ok, zero SKIP).
+
 #### 2026-09-18 — docs(porting): record `baa85e19b` (bug 154) as a third drift row — and that it STOPs the in-flight round's probe
 
 _Docs-only change._
@@ -40,6 +52,7 @@ three SPA read copies reproduce the fallback-less ternary that seeds a chat
 with no system prompt when the column goes stale. v5 never had the dead-route
 half — its star posts a dispatch verb, not v4's unserved action — so only the
 optimistic-write and dialog-width halves port there.
+
 #### 2026-09-18 — docs(porting): the P4.D200 context-literal census and its one recorded ownership expansion
 
 _Docs-only change._
@@ -218,6 +231,7 @@ New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 op
 diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
 (v5 had no way to express the option). Those two are the rows this commit turns
 green.
+
 #### 2026-09-18 — docs(porting): the P4.98 lane record — the tri-state's red-first measurement, the gate, and a load-sensitive intermittent characterized
 
 _No crate versions bumped._
@@ -341,6 +355,7 @@ are the two that cannot show the defect P4.98 fixes.
 Mutation-proven: driving the case with a valid prompt instead of the null
 reddens the family on exactly that row, v5 answering 201 with a generated
 image against v4's 400.
+
 #### 2026-09-18 — chore(harness): one home for `CorpusScript`, and log asserts that cannot match a longer number (P4.99 Tier 2)
 
 _Versions: harness 0.0.844._
@@ -767,6 +782,7 @@ resized it — down to 342,376 bytes (456,502 base64) at quality 78 and 242,366
 (323,155) at 45. v4's sharp reached ~98 KB of base64 on its own gaussian-noise
 fixture, so an LCG is the less compressible of the two fixtures; the ceiling is
 cleared either way.
+
 #### 2026-09-17 — docs(porting): ratify `bcd7e4852`'s non-lib files and close the P4.D199 lane
 
 _Docs-only change._
@@ -835,6 +851,7 @@ the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
 megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
 (2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
 drops the oldest and the over-large one, which is what v5 now does.
+
 #### 2026-09-17 — docs(porting): the P4.96 lane record — gate, neutrality, deferrals, and one finding for the unifier
 
 _No crate versions bumped._
@@ -952,6 +969,7 @@ the pre-P4.96 handler.
 
 Also: the `['vivid','natural']` style pair, spelled out at three v5 sites, now
 has one home in `image_gen::style` on the `image_gen::quality` precedent.
+
 #### 2026-09-17 — test(request-envelopes): name the prompt-cache-key pin, per provider and per mode
 
 _Versions: harness 0.0.836._
@@ -1214,6 +1232,7 @@ each regenerated fresh from the pin and run by name: `salon_mutations`,
 this lane's pre/post sibling measurement found (all ten of its generate cases
 answered 500 where v4 answers 201). Seven more readers were green before and
 after.
+
 #### 2026-09-17 — test(images): the OpenAI dialect's local pins, and the profile-generate narrowing measured
 
 _Versions: core 0.0.939._
@@ -1346,6 +1365,7 @@ dispatcher and the tool schema follow in this lane's later commits. Unit tests
 pin the resolution overlaps v4's header names by id (`gpt-image-2.5-sunburst`
 beats `gpt-image-2`, `gpt-image-1-mini` beats `gpt-image-1`), the four failing
 size shapes v4's `it.each` names, and the schema's group/field shape per family.
+
 #### 2026-09-17 — docs(porting): the P4.D197 lane record and the two NO-PORT ratifications
 
 _No crate versions bumped._
@@ -1451,6 +1471,7 @@ That order is v4's CLIENT file's, which spells `gpt-image-1` before
 `gpt-image-1`. The disagreement is v4's own and is carried faithfully rather
 than quietly resolved: a spec pins the ordering so a future copy from the
 server's list would have to say so. (A candidate upstream nit.)
+
 #### 2026-09-17 — docs(porting): record P4.95's lane gate
 
 _Docs-only change._
@@ -1838,6 +1859,7 @@ than deleted: `db::chats_read` coerces a NULL column before the verb sees it,
 so that fallback is unreachable and kept only for v4 fidelity. The reason is
 now executable instead of a comment, as the null arm asserts the reader's
 guarantee directly.
+
 #### 2026-09-16 — fix(logging): the collapse census logs `fileIds` as the array v4 logs, through a named JSON-field convention (P4.91)
 
 _Versions: core 0.0.930, web 0.0.148._
@@ -1923,6 +1945,7 @@ Two things the predicate cannot see are pinned directly by a new
 control, and the rooted `//photos` → `//` arm the copy this was moved from answered
 `/` for. The corpus floor is now an exact `== 30`, and the family collects every
 mismatch instead of asserting per row, so a red names the whole set.
+
 #### 2026-09-16 — fix(orchestrator): the tool loops stop inheriting the primary's chaining token and stop sequences (P4.92)
 
 _Versions: core 0.0.928, harness 0.0.821._
@@ -1974,6 +1997,7 @@ matches `<tool_call>`, fails to parse a simple-json body, and strips the markers
 without executing anything — so `<tool_call>` never reaches the simple-json pass
 on OPENAI at all. v5 reproduces that faithfully; it is a candidate v4 filing,
 not a change here.
+
 #### 2026-09-16 — fix(test): arm the memories capture rig through `global_capture`, not a second global default
 
 _Versions: core 0.0.930._
@@ -2307,6 +2331,7 @@ one puts the album link in the roll's OWN mount (v4's `vault-1` cases are saved
 by the mount conjunct alone, so nothing there made `!isPhotosRelativePath`
 load-bearing); and one makes a non-zero `protectedKept` reach the summary bag.
 A fourth boot arm is the wiring proof, red-first against the pre-fix delete.
+
 #### 2026-09-16 — docs(porting): close P4.D193 — the lane record and gate for bug 146
 
 _Docs-only change._
@@ -2452,6 +2477,7 @@ the presence conjunct (`v4-6-departed-floor`), dropping the user-driven
 conjunct (`v4-2-llm-floor-keeps-composer`), validating the fallback against
 the room (`fallback-not-in-room`), and treating an empty-string floor id as
 a name (`empty-string-floor-matching-seat`).
+
 #### 2026-09-16 — docs(porting): record the P4.D194 gate, and two harness findings it turned up
 
 _Docs-only change._
@@ -2579,6 +2605,7 @@ wins). Three mutations: restoring the old first line reds the unit test and
 the same four Tier R cases; restoring the old second line alone reds them too,
 which is the proof Tier R compares both lines; dropping the `minutes === 1`
 arm reds the 60 s pin.
+
 #### 2026-09-16 — test(harness): widen the committed brahma fixture pair to v4's current schema vintage (P4.89)
 
 _Versions: harness 0.0.815, web 0.0.147._
@@ -2610,6 +2637,7 @@ recipe; the three harness headers gained vintage notes. The P4.50-class
 `sqlite error: ` prefix is RE-MEASURED and has no live site left in these
 families (zero occurrences across the three fresh oracles and the v5 run);
 `DbError::Sqlite`'s Display arm is untouched.
+
 #### 2026-09-16 — docs(porting): close P4.90 — the lane record for the failover model refresh and the six greeting lines
 
 _No crate versions bumped._
@@ -3130,6 +3158,7 @@ of production files reaching the seam (the twelfth row is the trait's own
 `Arc<T>` delegation). A second test pins every Salon-side wrap to
 `StallBudgets::default()` and `StallWatchdogContext::streaming_service(`, which
 the counts alone cannot see. Unwrapping one site reddens both by file name.
+
 #### 2026-09-15 — fix(salon): the greeting ladder ends on the participant's own silence (bug 141)
 
 _Versions: core 0.0.916, harness 0.0.807._
@@ -3249,6 +3278,7 @@ the source) and the warn's field bag pinned through a thread-scoped capture
 layer. Five mutations each reddened exactly their named tests: a cumulative
 budget, a reasoning-only chunk that stops counting, answering the stall on
 every `recv`, dropping the warn, and rendering `chunk(s)` as `chunks`.
+
 #### 2026-09-15 — docs(p4.d191): ratify `85813ddd2` + `364b04ac4` NO-PORT, and the lane's gate record
 
 _Versions: no crate versions bumped._
@@ -3545,6 +3575,7 @@ our oracle regens chain through `jest-zone-globalsetup.cjs`, and under PIN
 REQUIRED a pinned worktree still chains the pinned tree's broken copy, so a
 Node upgrade before this row is ratified would produce a rebuild that claims
 success and does nothing.
+
 #### 2026-09-14 — fix(harness): the chat-scenario oracle could not write, and the transcript recipe could not run
 
 _Versions: harness 0.0.793._
@@ -3789,6 +3820,7 @@ therefore PASSES) when `QT_ORACLE_SALON_READS` is unset, and cargo captures a
 passing test's output — so the SKIP line never reached the log that was read
 for "zero SKIP lines". The heal is `test_support::ensure_p4d182_columns`,
 which P4.D182 provisioned and named for this use.
+
 #### 2026-09-14 — test(files): the generation-key tripwire becomes the one-deriver, one-writer claim
 
 _Versions: harness 0.0.792._
@@ -3940,6 +3972,7 @@ on v5's own digests. Three mutations, each reddening exactly its row — filteri
 nulls collapses the null case onto the undefined case's digest (two
 configurations, one key), sorting arrays reddens the LoRA pair, byte-order key
 sorting reddens the astral-vs-BMP row.
+
 #### 2026-09-14 — feat(characters): the avatar-rolls verbs and their two REST sub-routes
 
 _Versions: core 0.0.902, harness 0.0.789, web 0.0.143._
@@ -4182,6 +4215,7 @@ instance; v4 unlocks the v5 `.dbkey`) pass.
 
 `qtap_export/schema-key-order.json` was regenerated at the same pin and came
 back byte-identical — `files` is not one of its eleven entities.
+
 #### 2026-09-14 — docs(p4.d186): the lane record for the paused-chat hold server half
 
 _No crate versions bumped (carries `Cargo.lock` into step with the previous
@@ -4327,6 +4361,7 @@ paused-hold.ts`, which drives v4's REAL export across the exhaustive 2 x 2 x 3
 grid (12 rows, exact booleans). v4's own four unit shapes fall out of the grid
 and are asserted by name; the test also pins that exactly two coordinates hold,
 so an all-`false` port cannot pass.
+
 #### 2026-09-14 — test(e2e): the round's Salon beats — held-turn notice, the pause a summons leaves standing, the subscribed read (P4.D187 Tier 1 item 6)
 
 _Versions: SPA 0.5.713._
@@ -4522,6 +4557,7 @@ a plain one on the same millisecond.
 
 Nothing consumes the module yet; `chat-view-model.ts::splitSwipeGroups` still
 feeds the Salon until unit 2 moves it.
+
 #### 2026-09-14 — test(e2e): the Show shared walk, and the gated Avatar Rolls walk
 
 _Versions: SPA 0.5.712._
@@ -4956,6 +4992,7 @@ against the reference app's real handlers and repository: seven new route cases
 polarities through a create and an update. A new source census makes the
 "adopting one column takes the same six edits" rule executable, and caught a
 dropped insert entry when that edit was deliberately removed.
+
 #### 2026-09-11 — test(harness): follow the memory-subject census onto the extracted core
 
 _Versions: harness 0.0.779._
@@ -5146,6 +5183,7 @@ copies the same committed pair without the heal and is red too — MEASURED,
 not guessed: its oracle regenerated at the tip and re-run gives `no such
 column: routeTrail`, the OTHER P4.D171 column (the `chat_messages` half).
 Same class, same one-line fix. That file belongs to no lane this round.
+
 #### 2026-09-11 — docs(p4.d181): the lane record — the gate, the measured deviations, and a pre-existing clippy break on main
 
 _No crate versions bumped._
@@ -5533,6 +5571,7 @@ _Versions: core 0.0.875._
 v4's `sanitizeAppearancesIfNeeded` renames its fourth parameter from `hasUncensoredImageProvider` to `routesDangerousToUncensored` and carries a new doc block explaining why existence is the wrong question: whether an uncensored profile is configured in settings and whether *this* scene will actually be generated by it are different questions, and only some callers route on the appearance classification. `sanitize_appearances_if_needed` follows, with v4's rule list and the rule 2/4/5 comments carried verbatim.
 
 Zero behaviour change inside the function — a rename plus comments. Both call sites still pass exactly the value they passed before; the derivations move in the next commit. Every family this touches stays green.
+
 #### 2026-09-10 — docs(status-log): the P4.87 lane record — the turn-manager + route-trail harness remainders
 
 _No crate versions bumped._
@@ -5705,6 +5744,7 @@ cases that reach the room-character load — measured by withholding the two roo
 and re-running, which left the counter at its new value; it is the character, not
 the rooms, and both sides move together. No prompt byte, no DB row and no event
 of any pre-existing enclave case changed.
+
 #### 2026-09-10 — fix(gallery): degrade a failed repository read the way v4's `safeQuery` does, and plant the two P4.D171 columns through export/import
 
 _Versions: core 0.0.877, harness 0.0.768._
