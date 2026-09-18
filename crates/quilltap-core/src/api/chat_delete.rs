@@ -25,8 +25,8 @@ use serde_json::{json, Value};
 use crate::db::runtime::Db;
 use crate::services::conversation_summary_vault_bridge::delete_conversation_with_vault_sweep;
 
-use super::settings::{zod_parsed_type, zod_uuid_ok, ZOD_UUID_PATTERN};
 use super::types::{ErrorKind, Response};
+use super::zod_issues::{key, zod_uuid_ok, ZodIssue};
 
 /// v4 `handleDelete` with no `?action=` (`delete.ts:48-63`).
 pub async fn chat_delete(db: &Db, chat_id: &str) -> Response {
@@ -114,29 +114,12 @@ pub fn unknown_delete_action_message(action: &str) -> String {
 fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Value> {
     // Zod's issue objects put their keys in a per-code order — `invalid_type`
     // leads with `expected`, `invalid_format` with `origin` — and the bytes are
-    // contractual (they ride `details` to the client). `preserve_order` keeps
-    // the literals below exactly as written.
+    // contractual (they ride `details` to the client). Both shapes come from
+    // the ONE home (P4.101), rendered as values for the bag this route carries.
     let invalid_type = |field: &str, got: Option<&Value>| {
-        json!({
-            "expected": "string",
-            "code": "invalid_type",
-            "path": [field],
-            "message": format!(
-                "Invalid input: expected string, received {}",
-                zod_parsed_type(got)
-            ),
-        })
+        ZodIssue::invalid_type("string", vec![key(field)], got).to_value()
     };
-    let invalid_uuid = |field: &str| {
-        json!({
-            "origin": "string",
-            "code": "invalid_format",
-            "format": "uuid",
-            "pattern": ZOD_UUID_PATTERN,
-            "path": [field],
-            "message": "Invalid UUID",
-        })
-    };
+    let invalid_uuid = |field: &str| ZodIssue::invalid_uuid(vec![key(field)]).to_value();
 
     // Zod 4.5.4's `z.object` refuses a NON-object body BEFORE any field check,
     // with ONE issue at the root path (`{expected:"object", code:"invalid_type",
@@ -145,15 +128,12 @@ fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Valu
     // `participantId … received undefined` issue (the §3 unification review's
     // catch; `stop_impersonate_null_body` / `_array_body` pin it).
     if !body.is_object() {
-        return Err(json!([{
-            "expected": "object",
-            "code": "invalid_type",
-            "path": [],
-            "message": format!(
-                "Invalid input: expected object, received {}",
-                zod_parsed_type(Some(body))
-            ),
-        }]));
+        return Err(json!([ZodIssue::invalid_type(
+            "object",
+            vec![],
+            Some(body)
+        )
+        .to_value()]));
     }
 
     let mut issues: Vec<Value> = Vec::new();

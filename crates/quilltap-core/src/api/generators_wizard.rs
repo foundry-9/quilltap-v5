@@ -40,8 +40,8 @@ use crate::generators::ai_import::AiImportRequest;
 use crate::generators::wizard::{OnProgress, WizardRequest, WizardResult};
 use crate::services::generator_progress::GeneratorProgressEmitter;
 
-use super::settings::{zod_parsed_type, zod_uuid_ok, ZOD_UUID_PATTERN};
 use super::types::{ErrorKind, Response};
+use super::zod_issues::{zod_uuid_ok, ZodIssue};
 
 // ===========================================================================
 // The driver seam
@@ -90,39 +90,16 @@ pub trait GeneratorsWizardDriver: Send + Sync {
 }
 
 // ===========================================================================
-// Zod 4 issue rendering (the `generators_detail` idiom, as values)
+// Zod 4 issue rendering — the ONE home ([`crate::api::zod_issues`]), as values
 // ===========================================================================
+//
+// The bag stays `Vec<Value>` (that is what `Response::validation_error`
+// carries); only the construction moved (P4.101 — this file held one of the
+// eight `invalid_type` copies).
 
-fn invalid_type(expected: &str, path: &[Value], got: Option<&Value>) -> Value {
-    json!({
-        "expected": expected,
-        "code": "invalid_type",
-        "path": path,
-        "message": format!("Invalid input: expected {expected}, received {}", zod_parsed_type(got)),
-    })
-}
-
-fn invalid_uuid(path: &[Value]) -> Value {
-    json!({
-        "origin": "string",
-        "code": "invalid_format",
-        "format": "uuid",
-        "pattern": ZOD_UUID_PATTERN,
-        "path": path,
-        "message": "Invalid UUID",
-    })
-}
-
-fn invalid_value(values: &[&str], path: &[Value]) -> Value {
-    json!({
-        "code": "invalid_value",
-        "values": values,
-        "path": path,
-        "message": format!(
-            "Invalid option: expected one of {}",
-            values.iter().map(|v| format!("\"{v}\"")).collect::<Vec<_>>().join("|")
-        ),
-    })
+/// One issue as a value at a borrowed path.
+fn issue(i: ZodIssue) -> Value {
+    i.to_value()
 }
 
 fn push_path(path: &[Value], key: impl Into<Value>) -> Vec<Value> {
@@ -136,11 +113,15 @@ fn check_uuid(v: Option<&Value>, path: &[Value], issues: &mut Vec<Value>) -> Opt
     match v {
         Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
         Some(Value::String(_)) => {
-            issues.push(invalid_uuid(path));
+            issues.push(issue(ZodIssue::invalid_uuid(path.to_vec())));
             None
         }
         other => {
-            issues.push(invalid_type("string", path, other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "string",
+                path.to_vec(),
+                other,
+            )));
             None
         }
     }
@@ -163,7 +144,11 @@ fn check_string(v: Option<&Value>, path: &[Value], issues: &mut Vec<Value>) -> O
     match v {
         Some(Value::String(s)) => Some(s.clone()),
         other => {
-            issues.push(invalid_type("string", path, other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "string",
+                path.to_vec(),
+                other,
+            )));
             None
         }
     }
@@ -204,7 +189,7 @@ fn check_enum(
     match v {
         Some(Value::String(s)) if values.contains(&s.as_str()) => Some(s.clone()),
         _ => {
-            issues.push(invalid_value(values, path));
+            issues.push(issue(ZodIssue::invalid_value(values, path.to_vec())));
             None
         }
     }
@@ -222,7 +207,11 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
         return Some(None);
     };
     let Some(obj) = v.as_object() else {
-        issues.push(invalid_type("object", &base, Some(v)));
+        issues.push(issue(ZodIssue::invalid_type(
+            "object",
+            base.clone(),
+            Some(v),
+        )));
         return None;
     };
     let before = issues.len();
@@ -247,11 +236,19 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
                                 check_string(o.get(key), &push_path(&ipath, key), issues);
                             }
                         }
-                        None => issues.push(invalid_type("object", &ipath, Some(item))),
+                        None => issues.push(issue(ZodIssue::invalid_type(
+                            "object",
+                            ipath.clone(),
+                            Some(item),
+                        ))),
                     }
                 }
             }
-            None => issues.push(invalid_type("array", &spath, Some(scenarios))),
+            None => issues.push(issue(ZodIssue::invalid_type(
+                "array",
+                spath.clone(),
+                Some(scenarios),
+            ))),
         }
     }
     for key in ["exampleDialogues", "systemPrompt", "firstMessage"] {
@@ -266,7 +263,11 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
                     check_string(o.get(key), &push_path(&ppath, key), issues);
                 }
             }
-            other => issues.push(invalid_type("object", &ppath, Some(other))),
+            other => issues.push(issue(ZodIssue::invalid_type(
+                "object",
+                ppath.clone(),
+                Some(other),
+            ))),
         }
     }
     if let Some(aliases) = obj.get("aliases") {
@@ -277,7 +278,11 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
                     check_string(Some(item), &push_path(&apath, i), issues);
                 }
             }
-            None => issues.push(invalid_type("array", &apath, Some(aliases))),
+            None => issues.push(issue(ZodIssue::invalid_type(
+                "array",
+                apath.clone(),
+                Some(aliases),
+            ))),
         }
     }
     if issues.len() > before {
@@ -292,10 +297,8 @@ fn check_existing_data(v: Option<&Value>, issues: &mut Vec<Value>) -> Option<Opt
 /// that is not an object answers the root-level `invalid_type`.
 pub fn parse_wizard_body(body: &Value) -> Result<WizardRequest, WizardBodyError> {
     let Some(obj) = body.as_object() else {
-        return Err(WizardBodyError::Invalid(vec![invalid_type(
-            "object",
-            &[],
-            Some(body),
+        return Err(WizardBodyError::Invalid(vec![issue(
+            ZodIssue::invalid_type("object", vec![], Some(body)),
         )]));
     };
     let mut issues: Vec<Value> = Vec::new();
@@ -344,7 +347,11 @@ pub fn parse_wizard_body(body: &Value) -> Result<WizardRequest, WizardBodyError>
             ok.then_some(out)
         }
         other => {
-            issues.push(invalid_type("array", &path("fieldsToGenerate"), other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "array",
+                path("fieldsToGenerate"),
+                other,
+            )));
             None
         }
     };

@@ -333,176 +333,24 @@ impl<'de> Deserialize<'de> for ChatCreateRequest {
 // The whole-body validation stage (v4 `createChatSchema.parse`)
 // ============================================================================
 
-/// v4 zod 4's issue objects for `createChatSchema`, in the key order
-/// `JSON.stringify` emits — the `image_gen::lora_validation::LoraZodIssue`
-/// idiom (P4.D138), widened for this schema's extra codes. Untagged variants
-/// rather than one struct of optional keys: `Option` skipping cannot reorder,
-/// and each code puts a different key first (`invalid_type` leads with
-/// `expected`, the size issues with `origin`, `invalid_value` with `code`, and
-/// the safe-integer bound with `code` before `origin`).
+/// v4 zod 4's issue objects for `createChatSchema` — the ONE home
+/// ([`crate::api::zod_issues::ZodIssue`], P4.101), which carries every code
+/// this schema can report in the key order `JSON.stringify` emits.
 ///
-/// Every shape here was MEASURED against v4's real route at the `f699da6f6`
-/// pin, not inferred from Zod's source — see the corpus arms named in each
-/// constructor.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(untagged)]
-pub enum CreateZodIssue {
-    /// `z.string()` / `z.boolean()` / `z.number()` / `z.array()` / `z.object()`.
-    InvalidType {
-        expected: &'static str,
-        code: &'static str,
-        path: Vec<Value>,
-        message: String,
-    },
-    /// `z.number().int()`'s own type failure — Zod 4 reports the `safeint`
-    /// format alongside `expected: "int"` (`vb_freshness_window_fractional`).
-    InvalidIntType {
-        expected: &'static str,
-        format: &'static str,
-        code: &'static str,
-        path: Vec<Value>,
-        message: String,
-    },
-    /// `z.enum([...])` and `z.literal(...)` — both report `invalid_value`, and
-    /// both do so for a wrong TYPE as well as an out-of-domain value
-    /// (`cs_wrong_type_400`, `vb_participant_type_persona`).
-    InvalidValue {
-        code: &'static str,
-        values: Vec<Value>,
-        path: Vec<Value>,
-        message: String,
-    },
-    /// `z.uuid()` — the pattern is echoed verbatim in the issue
-    /// (`vb_participant_character_id_not_uuid`).
-    InvalidFormat {
-        origin: &'static str,
-        code: &'static str,
-        format: &'static str,
-        pattern: &'static str,
-        path: Vec<Value>,
-        message: &'static str,
-    },
-    TooSmall {
-        origin: &'static str,
-        code: &'static str,
-        minimum: Value,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: String,
-    },
-    TooBig {
-        origin: &'static str,
-        code: &'static str,
-        maximum: Value,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: String,
-    },
-    /// The safe-integer ceiling of `z.number().int()`, which carries Zod's
-    /// `note` and puts `code` before `origin` (`vb_budget_max_turns_unsafe_int`).
-    TooBigInt {
-        code: &'static str,
-        maximum: Value,
-        note: &'static str,
-        origin: &'static str,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: String,
-    },
-    /// The safe-integer floor — the mirror of [`Self::TooBigInt`]. Measured at
-    /// `vb_budget_max_turns_unsafe_negative`, which also proves the bound does
-    /// NOT abort the following `positive()` check: that body answers TWO issues.
-    TooSmallInt {
-        code: &'static str,
-        minimum: Value,
-        note: &'static str,
-        origin: &'static str,
-        inclusive: bool,
-        path: Vec<Value>,
-        message: String,
-    },
-}
+/// This module named the type `CreateZodIssue` while it owned its own copy
+/// (P4.81's host-wire test still constructs one by that name), so the spelling
+/// survives as an alias. Every shape it renders was MEASURED against v4's real
+/// route at the `f699da6f6` pin, not inferred from Zod's source — see the
+/// corpus arms named on the home's constructors and on its render table.
+pub use crate::api::zod_issues::ZodIssue as CreateZodIssue;
 
-/// Zod 4's `z.uuid()` pattern, echoed verbatim in every `invalid_format` issue —
-/// ONE home, shared with the settings routes' Zod envelope (`api/settings.rs`),
-/// so a future Zod pattern change moves both at once.
-use crate::api::settings::ZOD_UUID_PATTERN;
+use crate::api::zod_issues::{zod_issue_details, ZodIssue, MAX_SAFE_INTEGER};
 use crate::weighted_random::{pick_weighted_random, DrawSource};
-
-/// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
-/// `format: "safeint"`.
-const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 /// The `details` array of v4's `validationError(err)` body, ready for
 /// [`CoreError::details`](crate::api::types::CoreError::details).
 pub fn create_issue_details(issues: &[CreateZodIssue]) -> Value {
-    serde_json::to_value(issues).unwrap_or(Value::Null)
-}
-
-/// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
-/// The same table [`crate::api::chat_outfits::received`] carries; kept local
-/// because this module renders whole issue objects rather than sentences.
-fn parsed_type(v: Option<&Value>) -> &'static str {
-    match v {
-        None => "undefined",
-        Some(Value::Null) => "null",
-        Some(Value::Bool(_)) => "boolean",
-        Some(Value::Number(_)) => "number",
-        Some(Value::String(_)) => "string",
-        Some(Value::Array(_)) => "array",
-        Some(Value::Object(_)) => "object",
-    }
-}
-
-fn invalid_type(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> CreateZodIssue {
-    CreateZodIssue::InvalidType {
-        expected,
-        code: "invalid_type",
-        path,
-        message: format!(
-            "Invalid input: expected {expected}, received {}",
-            parsed_type(got)
-        ),
-    }
-}
-
-fn invalid_uuid(path: Vec<Value>) -> CreateZodIssue {
-    CreateZodIssue::InvalidFormat {
-        origin: "string",
-        code: "invalid_format",
-        format: "uuid",
-        pattern: ZOD_UUID_PATTERN,
-        path,
-        message: "Invalid UUID",
-    }
-}
-
-/// `z.enum([...])` — the message quotes every member and joins with `|`.
-fn invalid_enum(values: &[&str], path: Vec<Value>) -> CreateZodIssue {
-    CreateZodIssue::InvalidValue {
-        code: "invalid_value",
-        values: values.iter().map(|v| json!(v)).collect(),
-        path,
-        message: format!(
-            "Invalid option: expected one of {}",
-            values
-                .iter()
-                .map(|v| format!("\"{v}\""))
-                .collect::<Vec<_>>()
-                .join("|")
-        ),
-    }
-}
-
-/// `z.literal(v)` — the same `invalid_value` code as an enum, a different
-/// message (`Invalid input: expected "CHARACTER"`).
-fn invalid_literal(value: &'static str, path: Vec<Value>) -> CreateZodIssue {
-    CreateZodIssue::InvalidValue {
-        code: "invalid_value",
-        values: vec![json!(value)],
-        path,
-        message: format!("Invalid input: expected \"{value}\""),
-    }
+    zod_issue_details(issues)
 }
 
 /// A path built from a schema key and (optionally) an array index / sub-key.
@@ -531,7 +379,7 @@ fn check_opt_string(
 ) {
     let Some(v) = v else { return };
     let Some(s) = v.as_str() else {
-        issues.push(invalid_type("string", at, Some(v)));
+        issues.push(ZodIssue::invalid_type("string", at, Some(v)));
         return;
     };
     if let Some(max) = max {
@@ -567,8 +415,8 @@ fn check_opt_uuid(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodI
 fn check_required_uuid(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
     match v.and_then(|v| v.as_str()) {
         Some(s) if crate::api::chat_outfits::is_zod_uuid(s) => {}
-        Some(_) => issues.push(invalid_uuid(at)),
-        None => issues.push(invalid_type("string", at, v)),
+        Some(_) => issues.push(ZodIssue::invalid_uuid(at)),
+        None => issues.push(ZodIssue::invalid_type("string", at, v)),
     }
 }
 
@@ -576,7 +424,7 @@ fn check_required_uuid(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<Creat
 fn check_opt_bool(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
     let Some(v) = v else { return };
     if !v.is_boolean() {
-        issues.push(invalid_type("boolean", at, Some(v)));
+        issues.push(ZodIssue::invalid_type("boolean", at, Some(v)));
     }
 }
 
@@ -591,7 +439,7 @@ fn check_opt_enum(
     let Some(v) = v else { return };
     match v.as_str() {
         Some(s) if values.contains(&s) => {}
-        _ => issues.push(invalid_enum(values, at)),
+        _ => issues.push(ZodIssue::invalid_value(values, at)),
     }
 }
 
@@ -605,7 +453,7 @@ fn check_required_enum(
 ) {
     match v.and_then(|v| v.as_str()) {
         Some(s) if values.contains(&s) => {}
-        _ => issues.push(invalid_enum(values, at)),
+        _ => issues.push(ZodIssue::invalid_value(values, at)),
     }
 }
 
@@ -616,42 +464,18 @@ fn check_required_enum(
 /// the caller can run its own `positive()` / `min(1)` bound after.
 fn check_int_bounds(v: &Value, at: &[Value], issues: &mut Vec<CreateZodIssue>) -> Option<f64> {
     let Some(n) = v.as_f64() else {
-        issues.push(invalid_type("number", path(at), Some(v)));
+        issues.push(ZodIssue::invalid_type("number", path(at), Some(v)));
         return None;
     };
     if !n.is_finite() || n.fract() != 0.0 {
-        issues.push(CreateZodIssue::InvalidIntType {
-            expected: "int",
-            format: "safeint",
-            code: "invalid_type",
-            path: path(at),
-            message: "Invalid input: expected int, received number".to_string(),
-        });
+        // `as_f64` succeeded, so the received word is always `number`.
+        issues.push(ZodIssue::invalid_int_type(path(at), Some(v)));
         return None;
     }
     if n > MAX_SAFE_INTEGER {
-        issues.push(CreateZodIssue::TooBigInt {
-            code: "too_big",
-            maximum: json!(MAX_SAFE_INTEGER as i64),
-            note: "Integers must be within the safe integer range.",
-            origin: "int",
-            inclusive: true,
-            path: path(at),
-            message: format!("Too big: expected int to be <={}", MAX_SAFE_INTEGER as i64),
-        });
+        issues.push(ZodIssue::too_big_int(path(at)));
     } else if n < -MAX_SAFE_INTEGER {
-        issues.push(CreateZodIssue::TooSmallInt {
-            code: "too_small",
-            minimum: json!(-(MAX_SAFE_INTEGER as i64)),
-            note: "Integers must be within the safe integer range.",
-            origin: "int",
-            inclusive: true,
-            path: path(at),
-            message: format!(
-                "Too small: expected int to be >=-{}",
-                MAX_SAFE_INTEGER as i64
-            ),
-        });
+        issues.push(ZodIssue::too_small_int(path(at)));
     }
     Some(n)
 }
@@ -704,7 +528,7 @@ fn check_opt_int_min(
 fn check_opt_number_positive(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
     let Some(v) = v else { return };
     let Some(n) = v.as_f64() else {
-        issues.push(invalid_type("number", at, Some(v)));
+        issues.push(ZodIssue::invalid_type("number", at, Some(v)));
         return;
     };
     if n <= 0.0 {
@@ -729,7 +553,7 @@ fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) 
     let idx = json!(index);
     let base = |k: &str| path(&[key("participants"), idx.clone(), key(k)]);
     let Some(obj) = v.as_object() else {
-        issues.push(invalid_type(
+        issues.push(ZodIssue::invalid_type(
             "object",
             path(&[key("participants"), idx]),
             Some(v),
@@ -738,7 +562,7 @@ fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) 
     };
     match obj.get("type").and_then(|t| t.as_str()) {
         Some("CHARACTER") => {}
-        _ => issues.push(invalid_literal("CHARACTER", base("type"))),
+        _ => issues.push(ZodIssue::invalid_literal("CHARACTER", base("type"))),
     }
     check_required_uuid(obj.get("characterId"), base("characterId"), issues);
     check_opt_uuid(
@@ -784,14 +608,14 @@ fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) 
 fn check_opt_subprompt_ids(v: Option<&Value>, at: &[Value], issues: &mut Vec<CreateZodIssue>) {
     let Some(v) = v else { return };
     let Some(list) = v.as_array() else {
-        issues.push(invalid_type("array", at.to_vec(), Some(v)));
+        issues.push(ZodIssue::invalid_type("array", at.to_vec(), Some(v)));
         return;
     };
     for (i, item) in list.iter().enumerate() {
         let mut at_i = at.to_vec();
         at_i.push(json!(i));
         let Some(s) = item.as_str() else {
-            issues.push(invalid_type("string", at_i, Some(item)));
+            issues.push(ZodIssue::invalid_type("string", at_i, Some(item)));
             continue;
         };
         if !crate::jsstr::zod_len_min_ok(s, 1) {
@@ -880,7 +704,7 @@ fn check_outfit_selection(v: &Value, index: usize, issues: &mut Vec<CreateZodIss
     let idx = json!(index);
     let base = |k: &str| path(&[key("outfitSelections"), idx.clone(), key(k)]);
     let Some(obj) = v.as_object() else {
-        issues.push(invalid_type(
+        issues.push(ZodIssue::invalid_type(
             "object",
             path(&[key("outfitSelections"), idx]),
             Some(v),
@@ -898,7 +722,11 @@ fn check_outfit_selection(v: &Value, index: usize, issues: &mut Vec<CreateZodIss
         return;
     };
     let Some(slots) = slots.as_object() else {
-        issues.push(invalid_type("object", base("slots"), obj.get("slots")));
+        issues.push(ZodIssue::invalid_type(
+            "object",
+            base("slots"),
+            obj.get("slots"),
+        ));
         return;
     };
     for slot in WARDROBE_SLOT_KEYS {
@@ -910,7 +738,7 @@ fn check_outfit_selection(v: &Value, index: usize, issues: &mut Vec<CreateZodIss
             key(slot),
         ]);
         let Some(items) = v.as_array() else {
-            issues.push(invalid_type("array", at_slot, Some(v)));
+            issues.push(ZodIssue::invalid_type("array", at_slot, Some(v)));
             continue;
         };
         for (i, item) in items.iter().enumerate() {
@@ -967,7 +795,7 @@ pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZ
                 });
             }
         }
-        other => issues.push(invalid_type("array", at("participants"), other)),
+        other => issues.push(ZodIssue::invalid_type("array", at("participants"), other)),
     }
 
     check_opt_string(body.get("title"), at("title"), None, &mut issues);
@@ -1002,7 +830,11 @@ pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZ
     match body.get("timestampConfig") {
         None => {}
         Some(Value::Object(obj)) => check_timestamp_config(obj, &mut issues),
-        other => issues.push(invalid_type("object", at("timestampConfig"), other)),
+        other => issues.push(ZodIssue::invalid_type(
+            "object",
+            at("timestampConfig"),
+            other,
+        )),
     }
     check_opt_uuid(body.get("projectId"), at("projectId"), &mut issues);
     check_opt_uuid(
@@ -1028,7 +860,11 @@ pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZ
                 check_outfit_selection(sel, i, &mut issues);
             }
         }
-        other => issues.push(invalid_type("array", at("outfitSelections"), other)),
+        other => issues.push(ZodIssue::invalid_type(
+            "array",
+            at("outfitSelections"),
+            other,
+        )),
     }
     check_opt_bool(
         body.get("avatarGenerationEnabled"),

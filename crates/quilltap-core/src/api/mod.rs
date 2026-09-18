@@ -114,6 +114,10 @@ pub mod generators_detail;
 pub mod generators_wizard;
 // === end P4.9K2 ===
 pub mod types;
+// === P4.101: the ONE Zod-4 issue home (the type, its constructors, the
+// parsedType word, the uuid gate, and both renderers) ===
+pub mod zod_issues;
+// === end P4.101 ===
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};
 pub use chat_send::{ChatSendDriver, ChatSendFuture, ChatSendRequest};

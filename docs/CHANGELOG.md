@@ -295,6 +295,40 @@ and falls through to the flag, two flagged prompts resolve to the first,
 and no flag anywhere plus a stale column falls all the way to `prompts[0]`.
 Mutation M1 (drop the column's existence check) reddens v4's third vector
 and the stale-column extra, and nothing else.
+#### 2026-09-18 — refactor(api): ONE Zod-4 issue home — the typed issue, its constructors, the `parsedType` word, the uuid gate and both renderers (P4.101)
+
+_Versions: core 0.0.961._
+
+Eight route families had each grown their own `invalid_type` as they were
+ported: `api/settings.rs`, `api/generators_detail.rs`,
+`api/generators_wizard.rs`, `api/prompt_templates.rs`, `api/subprompts.rs`,
+`services/chat_create.rs`, `image_gen/lora_validation.rs` and
+`api/image_profiles.rs` — 17 constructor definitions across 9 files, in three
+carrier shapes (a typed enum, a bare `serde_json::Value`, and two
+differently-named typed enums) and three `path` representations (`Vec<String>`,
+`Vec<Value>`, `&[Value]`). Zod's issue objects ride v4's wire verbatim, so
+their per-code key order is contractual; nothing held the eight copies
+together.
+
+New `crates/quilltap-core/src/api/zod_issues.rs` owns the type (`ZodIssue`,
+eight untagged variants), its constructors, `zod_parsed_type`, `zod_uuid_ok` +
+`ZOD_UUID_PATTERN`, `zod_error_message` (`JSON.stringify(issues, null, 2)`),
+`zod_issue_details`, `to_value()` and the `path.join('.')` projections. `path`
+is Zod's own `(string | number)[]` as `Vec<Value>`. `CreateZodIssue` survives
+as a `pub use` alias for it, because `chat_create_capstone_equivalence`
+constructs one by that name from outside the crate.
+
+**Nothing observable moved.** Every code's key order was measured against the
+v4 checkout's real `zod` 4.5.4 at the `89fcc3c0d` baseline pin before the fold
+— all eight copies already agreed, so the order's "if two twins disagree that
+is a FINDING" did not fire — and the measurement is now an executable render
+table in the home. The production string-literal multiset went from 175
+occurrences (57 distinct) to 121 (54), the after-set being the before-set
+minus exactly the retired copies, with two pure renamings the render table
+proves byte-identical. Sixteen families that pin these envelopes were
+regenerated fresh at the pin and re-run unchanged; the three that are red were
+proven red on unmodified `main` at the same pin (fixture vintage, not this
+change).
 
 #### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
 

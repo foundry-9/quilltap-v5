@@ -61,8 +61,8 @@ use crate::generators::refresh_archive::refresh_archive;
 use crate::generators::rename::{run_character_rename, RenameRequest, ReplacementPair};
 use crate::services::generator_progress::GeneratorProgressEmitter;
 
-use super::settings::{zod_parsed_type, zod_uuid_ok, ZOD_UUID_PATTERN};
 use super::types::{db_error_response, ErrorKind, Response};
+use super::zod_issues::{zod_uuid_ok, ZodIssue};
 
 // ===========================================================================
 // The driver seam (the `HelpChatSendDriver` / `ImageDescribeDriver` precedent)
@@ -201,43 +201,17 @@ fn resolved<T>(v: Option<T>, field: &'static str) -> Result<T, GeneratorBodyRefu
 }
 
 // ===========================================================================
-// Zod 4 issue rendering (the `chat_create::CreateZodIssue` idiom, as values)
+// Zod 4 issue rendering — the ONE home ([`crate::api::zod_issues`]), as values
 // ===========================================================================
+//
+// This module's bags stay `Vec<Value>` because that is what
+// `Response::validation_error` carries; only the construction moved (P4.101 —
+// this file held one of the eight `invalid_type` copies, with `path` as a
+// borrowed `&[Value]` slice, hence the `.to_vec()` at each site).
 
-/// `invalid_type` — Zod 4's key order `expected, code, path, message`.
-fn invalid_type(expected: &str, path: &[Value], got: Option<&Value>) -> Value {
-    json!({
-        "expected": expected,
-        "code": "invalid_type",
-        "path": path,
-        "message": format!("Invalid input: expected {expected}, received {}", zod_parsed_type(got)),
-    })
-}
-
-/// `z.string().min(n, message)` — `origin, code, minimum, inclusive, path, message`.
-fn too_small_string(minimum: usize, path: &[Value], message: &str) -> Value {
-    json!({
-        "origin": "string",
-        "code": "too_small",
-        "minimum": minimum,
-        "inclusive": true,
-        "path": path,
-        "message": message,
-    })
-}
-
-/// `z.string().uuid()` / `z.uuid()` — `origin, code, format, pattern, path,
-/// message`, the pattern echoed verbatim (Zod 4's `$ZodUUID` check, the same
-/// issue for both spellings — measured on the `zod_bad_uuids_*` arms).
-fn invalid_uuid(path: &[Value]) -> Value {
-    json!({
-        "origin": "string",
-        "code": "invalid_format",
-        "format": "uuid",
-        "pattern": ZOD_UUID_PATTERN,
-        "path": path,
-        "message": "Invalid UUID",
-    })
+/// One issue as a value at a borrowed path.
+fn issue(i: ZodIssue) -> Value {
+    i.to_value()
 }
 
 /// `z.string().uuid()` over a raw value at `path`: a non-string is
@@ -248,12 +222,16 @@ fn check_uuid(v: Option<&Value>, path: &[Value], issues: &mut Vec<Value>) -> Opt
             if zod_uuid_ok(s) {
                 Some(s.clone())
             } else {
-                issues.push(invalid_uuid(path));
+                issues.push(issue(ZodIssue::invalid_uuid(path.to_vec())));
                 None
             }
         }
         other => {
-            issues.push(invalid_type("string", path, other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "string",
+                path.to_vec(),
+                other,
+            )));
             None
         }
     }
@@ -270,40 +248,20 @@ fn check_int_range(
     issues: &mut Vec<Value>,
 ) -> Option<i64> {
     let Some(n) = v.and_then(Value::as_f64) else {
-        issues.push(invalid_type("number", path, v));
+        issues.push(issue(ZodIssue::invalid_type("number", path.to_vec(), v)));
         return None;
     };
     if !n.is_finite() || n.fract() != 0.0 {
-        issues.push(json!({
-            "expected": "int",
-            "format": "safeint",
-            "code": "invalid_type",
-            "path": path,
-            "message": "Invalid input: expected int, received number",
-        }));
+        issues.push(issue(ZodIssue::invalid_int_type(path.to_vec(), v)));
         return None;
     }
     let mut ok = true;
     if n < lo as f64 {
-        issues.push(json!({
-            "origin": "number",
-            "code": "too_small",
-            "minimum": lo,
-            "inclusive": true,
-            "path": path,
-            "message": format!("Too small: expected number to be >={lo}"),
-        }));
+        issues.push(issue(ZodIssue::too_small_number(json!(lo), path.to_vec())));
         ok = false;
     }
     if n > hi as f64 {
-        issues.push(json!({
-            "origin": "number",
-            "code": "too_big",
-            "maximum": hi,
-            "inclusive": true,
-            "path": path,
-            "message": format!("Too big: expected number to be <={hi}"),
-        }));
+        issues.push(issue(ZodIssue::too_big_number(json!(hi), path.to_vec())));
         ok = false;
     }
     if ok {
@@ -326,7 +284,11 @@ fn push_path(path: &[Value], key: Value) -> Vec<Value> {
 /// non-object answers ONE `invalid_type` and does not descend.
 fn parse_pair(v: &Value, path: &[Value], issues: &mut Vec<Value>) -> Option<ReplacementPair> {
     let Some(obj) = v.as_object() else {
-        issues.push(invalid_type("object", path, Some(v)));
+        issues.push(issue(ZodIssue::invalid_type(
+            "object",
+            path.to_vec(),
+            Some(v),
+        )));
         return None;
     };
     let mut ok = true;
@@ -340,14 +302,18 @@ fn parse_pair(v: &Value, path: &[Value], issues: &mut Vec<Value>) -> Option<Repl
         match obj.get(key) {
             Some(Value::String(s)) => {
                 if !crate::jsstr::zod_len_min_ok(s, 1) {
-                    issues.push(too_small_string(1, &p, message));
+                    issues.push(issue(ZodIssue::too_small_string_message(
+                        json!(1),
+                        p.clone(),
+                        message,
+                    )));
                     ok = false;
                 } else {
                     *slot = s.clone();
                 }
             }
             other => {
-                issues.push(invalid_type("string", &p, other));
+                issues.push(issue(ZodIssue::invalid_type("string", p.clone(), other)));
                 ok = false;
             }
         }
@@ -356,11 +322,11 @@ fn parse_pair(v: &Value, path: &[Value], issues: &mut Vec<Value>) -> Option<Repl
         None => false,
         Some(Value::Bool(b)) => *b,
         other => {
-            issues.push(invalid_type(
+            issues.push(issue(ZodIssue::invalid_type(
                 "boolean",
-                &push_path(path, Value::String("caseSensitive".into())),
+                push_path(path, Value::String("caseSensitive".into())),
                 other,
-            ));
+            )));
             ok = false;
             false
         }
@@ -408,11 +374,11 @@ pub fn parse_rename_body(
                 }
             }
         }
-        other => issues.push(invalid_type(
+        other => issues.push(issue(ZodIssue::invalid_type(
             "array",
-            &[Value::String("additionalReplacements".into())],
+            vec![Value::String("additionalReplacements".into())],
             other,
-        )),
+        ))),
     }
 
     // `dryRun: z.boolean().default(true)`.
@@ -420,11 +386,11 @@ pub fn parse_rename_body(
         None => true,
         Some(Value::Bool(b)) => *b,
         other => {
-            issues.push(invalid_type(
+            issues.push(issue(ZodIssue::invalid_type(
                 "boolean",
-                &[Value::String("dryRun".into())],
+                vec![Value::String("dryRun".into())],
                 other,
-            ));
+            )));
             true
         }
     };
@@ -729,7 +695,11 @@ pub fn parse_optimize_body(
             }
         }
         other => {
-            issues.push(invalid_type("string", &path("searchQuery"), other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "string",
+                path("searchQuery"),
+                other,
+            )));
             None
         }
     };
@@ -739,7 +709,11 @@ pub fn parse_optimize_body(
         None => Some(true),
         Some(Value::Bool(b)) => Some(*b),
         other => {
-            issues.push(invalid_type("boolean", &path("useSemanticSearch"), other));
+            issues.push(issue(ZodIssue::invalid_type(
+                "boolean",
+                path("useSemanticSearch"),
+                other,
+            )));
             None
         }
     };
@@ -750,7 +724,7 @@ pub fn parse_optimize_body(
             None | Some(Value::Null) => Some(None),
             Some(Value::String(s)) => Some(Some(s.clone())),
             other => {
-                issues.push(invalid_type("string", &path(key), other));
+                issues.push(issue(ZodIssue::invalid_type("string", path(key), other)));
                 None
             }
         }

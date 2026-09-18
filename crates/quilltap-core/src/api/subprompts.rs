@@ -55,6 +55,9 @@ use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{characters_read, DbError};
+// P4.101: the Zod-4 issue type and its constructors live in ONE home; this
+// file used to carry its own `invalid_type` and its own `parsedType` word.
+use crate::api::zod_issues::ZodIssue;
 use crate::services::chat_create::{create_issue_details, CreateZodIssue};
 use crate::subprompts::{
     create_character_subprompt, delete_character_subprompt, fan_out_subprompt_change,
@@ -105,30 +108,6 @@ where
 
 // ── The Zod ladder ──────────────────────────────────────────────────────────
 
-fn zod_received(v: Option<&Value>) -> &'static str {
-    match v {
-        None => "undefined",
-        Some(Value::Null) => "null",
-        Some(Value::Bool(_)) => "boolean",
-        Some(Value::Number(_)) => "number",
-        Some(Value::String(_)) => "string",
-        Some(Value::Array(_)) => "array",
-        Some(Value::Object(_)) => "object",
-    }
-}
-
-fn invalid_type(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> CreateZodIssue {
-    CreateZodIssue::InvalidType {
-        expected,
-        code: "invalid_type",
-        path,
-        message: format!(
-            "Invalid input: expected {expected}, received {}",
-            zod_received(got)
-        ),
-    }
-}
-
 /// `z.string().min(1)` (+ `.max(100)` for the title), `optional` when the
 /// schema says so. Zod 4.5 counts CODE POINTS.
 fn check_string(
@@ -141,12 +120,12 @@ fn check_string(
     let path = vec![Value::String(key.to_string())];
     let Some(v) = v else {
         if !optional {
-            issues.push(invalid_type("string", path, None));
+            issues.push(ZodIssue::invalid_type("string", path, None));
         }
         return;
     };
     let Some(s) = v.as_str() else {
-        issues.push(invalid_type("string", path, Some(v)));
+        issues.push(ZodIssue::invalid_type("string", path, Some(v)));
         return;
     };
     if !crate::jsstr::zod_len_min_ok(s, 1) {
@@ -177,7 +156,7 @@ fn check_string(
 /// The `details` array for `schema.parse(<non-object>)` — ONE issue,
 /// `invalid_type expected object received <type>` at path `[]`.
 pub fn body_not_object_details(body: &Value) -> Value {
-    create_issue_details(&[invalid_type("object", vec![], Some(body))])
+    create_issue_details(&[ZodIssue::invalid_type("object", vec![], Some(body))])
 }
 
 /// The flat dispatch variant's `title` / `content` tri-states, folded back

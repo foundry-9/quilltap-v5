@@ -499,195 +499,34 @@ fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, Stri
 // `2d31810f`, `settings/chat/route.ts` L273).
 // ---------------------------------------------------------------------------
 
-/// One Zod issue, serialized in Zod's own key order — this is what
-/// `JSON.stringify(err.issues, null, 2)` emits, and `ZodError.message` IS that
-/// string. v4's route lets the throw escape to `getErrorMessage`, and the
-/// `.includes('Invalid')` status test then turns it into a 400 whose body
-/// carries the whole issue array verbatim. So the bytes here are contractual,
-/// not an implementation detail.
+/// Re-exported for `db/prompt_templates.rs`, which imports the uuid gate by
+/// this path; every other consumer now names [`crate::api::zod_issues`]
+/// directly.
+pub(crate) use super::zod_issues::zod_uuid_ok;
+/// The Zod-4 issue type, its constructors, the `parsedType` word, the uuid
+/// gate and the `ZodError.message` renderer all live in ONE home now
+/// ([`crate::api::zod_issues`], P4.101) — this file grew the first copy and
+/// seven more followed it around the tree. Nothing observable moved in the
+/// fold: the key order per code was measured against the checkout's real
+/// `zod` 4.5.4 and every family that pins these envelopes was re-run unchanged
+/// at the `89fcc3c0d` baseline pin.
 ///
-/// Each code carries a DIFFERENT key set in a DIFFERENT order (measured against
-/// v4's zod 4.4.3 and pinned by the `settings_zod` corpus family), so the
-/// variants are untagged structs rather than one struct with optional keys —
-/// `Option` skipping cannot reorder, and `invalid_value` puts `code` first
-/// while `invalid_type` puts `expected` first.
-#[derive(serde::Serialize)]
-#[serde(untagged)]
-enum ZodIssue {
-    InvalidType {
-        expected: &'static str,
-        code: &'static str,
-        path: Vec<String>,
-        message: String,
-    },
-    InvalidValue {
-        code: &'static str,
-        values: &'static [&'static str],
-        path: Vec<String>,
-        message: String,
-    },
-    TooBig {
-        origin: &'static str,
-        code: &'static str,
-        maximum: Value,
-        inclusive: bool,
-        path: Vec<String>,
-        message: String,
-    },
-    TooSmall {
-        origin: &'static str,
-        code: &'static str,
-        minimum: Value,
-        inclusive: bool,
-        path: Vec<String>,
-        message: String,
-    },
-    InvalidFormat {
-        origin: &'static str,
-        code: &'static str,
-        format: &'static str,
-        pattern: &'static str,
-        path: Vec<String>,
-        message: String,
-    },
-}
-
-/// v4 zod's own `uuid()` source pattern, verbatim — it is a VALUE in the issue
-/// body (stringified with the surrounding slashes), so it is transcribed, not
-/// re-derived. Note the RFC nibbles: version `1-8`, variant `89abAB`, with the
-/// nil and max UUIDs allowed as literal alternatives.
-pub(crate) const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
-
-/// `true` when `s` satisfies [`ZOD_UUID_PATTERN`]. Hand-matched rather than
-/// regex-compiled: the shape is fixed and the crate has no regex dependency.
-pub(crate) fn zod_uuid_ok(s: &str) -> bool {
-    if s.eq_ignore_ascii_case("00000000-0000-0000-0000-000000000000")
-        || s.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff")
-    {
-        // The literal alternatives are case-SENSITIVE in the pattern; the nil
-        // form has no letters, and the max form is spelled lowercase.
-        return s == "00000000-0000-0000-0000-000000000000"
-            || s == "ffffffff-ffff-ffff-ffff-ffffffffffff";
-    }
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    let hex = |i: usize| b[i].is_ascii_hexdigit();
-    for (i, &c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if c != b'-' {
-                    return false;
-                }
-            }
-            _ => {
-                if !hex(i) {
-                    return false;
-                }
-            }
-        }
-    }
-    matches!(b[14], b'1'..=b'8') && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
-}
-
-impl ZodIssue {
-    fn invalid_type(expected: &'static str, path: Vec<String>, got: Option<&Value>) -> Self {
-        Self::InvalidType {
-            expected,
-            code: "invalid_type",
-            path,
-            message: format!(
-                "Invalid input: expected {expected}, received {}",
-                zod_parsed_type(got)
-            ),
-        }
-    }
-
-    /// A `z.enum([...])` miss. Zod 4 reports it as `invalid_value` and prints
-    /// the options double-quoted and pipe-joined.
-    fn invalid_value(values: &'static [&'static str], path: Vec<String>) -> Self {
-        let rendered = values
-            .iter()
-            .map(|v| format!("\"{v}\""))
-            .collect::<Vec<_>>()
-            .join("|");
-        Self::InvalidValue {
-            code: "invalid_value",
-            values,
-            path,
-            message: format!("Invalid option: expected one of {rendered}"),
-        }
-    }
-
-    /// `.max(n)` on a number. `maximum` rides as the JSON number v4 declares
-    /// (an integral bound prints as `1`, never `1.0`).
-    fn too_big(maximum: Value, path: Vec<String>) -> Self {
-        let message = format!("Too big: expected number to be <={maximum}");
-        Self::TooBig {
-            origin: "number",
-            code: "too_big",
-            maximum,
-            inclusive: true,
-            path,
-            message,
-        }
-    }
-
-    /// `.min(n)` on a number.
-    fn too_small(minimum: Value, path: Vec<String>) -> Self {
-        let message = format!("Too small: expected number to be >={minimum}");
-        Self::TooSmall {
-            origin: "number",
-            code: "too_small",
-            minimum,
-            inclusive: true,
-            path,
-            message,
-        }
-    }
-
-    /// A `z.string().uuid()` miss (the string type check has already passed).
-    fn invalid_uuid(path: Vec<String>) -> Self {
-        Self::InvalidFormat {
-            origin: "string",
-            code: "invalid_format",
-            format: "uuid",
-            pattern: ZOD_UUID_PATTERN,
-            path,
-            message: "Invalid UUID".to_string(),
-        }
-    }
-}
-
-/// v4 `util.parsedType` (the same table the Pascal Zod port pins). `None` is
-/// JS `undefined` — a missing key.
-pub(crate) fn zod_parsed_type(v: Option<&Value>) -> &'static str {
-    match v {
-        None => "undefined",
-        Some(Value::Null) => "null",
-        Some(Value::Bool(_)) => "boolean",
-        Some(Value::Number(_)) => "number",
-        Some(Value::String(_)) => "string",
-        Some(Value::Array(_)) => "array",
-        Some(Value::Object(_)) => "object",
-    }
-}
-
-/// `ZodError.message` for a set of issues: `JSON.stringify(issues, null, 2)`.
-/// `serde_json::to_string_pretty` uses the same two-space indent and the same
-/// empty-array / nested-array shapes, so this is byte-identical.
-fn zod_error_message(issues: &[ZodIssue]) -> String {
-    serde_json::to_string_pretty(issues).unwrap_or_else(|_| "Invalid input".to_string())
-}
+/// The one shape change is `path`: the home carries Zod's own
+/// `(string | number)[]` as `Vec<Value>`, where this file used `Vec<String>`.
+/// No settings path carries an index — every one is built by [`zod_path`] or
+/// is a single literal key — so the JSON is identical.
+use super::zod_issues::{zod_error_message, ZodIssue};
 
 /// The path for a key inside a bag reached under `prefix` — `[]` for a
 /// route-level `Schema.parse` (the bag IS the parse root), `["cheapLLMSettings"]`
 /// for the one bag whose Zod check happens inside the repo's whole-ChatSettings
 /// validate.
-fn zod_path(prefix: &[&str], key: &str) -> Vec<String> {
-    let mut p: Vec<String> = prefix.iter().map(|s| (*s).to_string()).collect();
-    p.push(key.to_string());
+fn zod_path(prefix: &[&str], key: &str) -> Vec<Value> {
+    let mut p: Vec<Value> = prefix
+        .iter()
+        .map(|s| Value::String((*s).to_string()))
+        .collect();
+    p.push(Value::String(key.to_string()));
     p
 }
 
@@ -700,7 +539,10 @@ fn zod_object_or_issue<'a>(
     v.as_object().ok_or_else(|| {
         zod_error_message(&[ZodIssue::invalid_type(
             "object",
-            prefix.iter().map(|s| (*s).to_string()).collect(),
+            prefix
+                .iter()
+                .map(|s| Value::String((*s).to_string()))
+                .collect(),
             Some(v),
         )])
     })
@@ -857,9 +699,12 @@ fn zod_dangerous_content_settings(v: &Value) -> Result<chat_settings::SettingsCo
             // `as_f64` is infallible for any JSON number serde parsed.
             let f = num.as_f64().unwrap_or_default();
             if f < 0.0 {
-                issues.push(ZodIssue::too_small(json!(0), vec!["threshold".into()]));
+                issues.push(ZodIssue::too_small_number(
+                    json!(0),
+                    vec!["threshold".into()],
+                ));
             } else if f > 1.0 {
-                issues.push(ZodIssue::too_big(json!(1), vec!["threshold".into()]));
+                issues.push(ZodIssue::too_big_number(json!(1), vec!["threshold".into()]));
             }
             n.clone()
         }

@@ -31,11 +31,9 @@ use crate::tools::generate_image::{
 
 // P4.56: the three profile-update handlers share ONE reader for the JS
 // semantics of `apiKeyId` / `baseUrl`; only the consequences differ per site.
-use super::settings::{
-    classify_api_key_id, classify_base_url, zod_uuid_ok, ApiKeyIdPatch, BaseUrlPatch,
-    ZOD_UUID_PATTERN,
-};
+use super::settings::{classify_api_key_id, classify_base_url, ApiKeyIdPatch, BaseUrlPatch};
 use super::types::{ErrorKind, Response};
+use super::zod_issues::zod_uuid_ok;
 
 // ===========================================================================
 // Response helpers
@@ -668,24 +666,8 @@ struct ParsedGenerate {
     negative_prompt: Option<String>,
 }
 
-/// JS `Number.MAX_SAFE_INTEGER` — the bound Zod 4's `z.int()` reports as
-/// `format: "safeint"`.
-const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
-
-/// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
-///
-/// P4.98 (the `bcd7e4852` review's §3 note on P4.96): this was a fourth
-/// hand-copy of [`crate::api::settings::zod_parsed_type`], byte-identical to
-/// it, and now IS it. The retirement is behaviour-neutral by construction —
-/// the two bodies were `diff`-proven identical before the edit — and
-/// `image_generate_route_equivalence` re-ran at the baseline pin with zero row
-/// change. The `zod_issue` / `zod_error_message` ISSUE renderers beside it are
-/// a different layer and stay separate (recorded as the remaining DRY
-/// candidate).
-use crate::api::settings::zod_parsed_type as generate_parsed_type;
-
-/// One Zod 4.5 issue of `generateImageSchema`, rendered as v4's
-/// `validationError(err)` body carries it (`details: zodError.issues`).
+/// The Zod-4 issue objects `generateImageSchema` answers with — v4's
+/// `validationError(err)` body carries them as `details` verbatim.
 ///
 /// The five shapes and their EXACT key sets were MEASURED through the oracle at
 /// `5f0a57dc4` (`image_generate_route_equivalence`'s refusal rows), never
@@ -693,95 +675,52 @@ use crate::api::settings::zod_parsed_type as generate_parsed_type;
 /// `too_small` / `invalid_format` do, that the `z.int()` miss adds
 /// `format: "safeint"` to an `invalid_type`, and that the string and number
 /// bounds print DIFFERENT sentences for the same `code`.
-fn issue_invalid_type(expected: &str, key: &str, got: Option<&Value>) -> Value {
-    json!({
-        "expected": expected,
-        "code": "invalid_type",
-        "path": [key],
-        "message": format!("Invalid input: expected {expected}, received {}", generate_parsed_type(got)),
-    })
+///
+/// P4.101 folded all five onto the ONE home ([`crate::api::zod_issues`]), which
+/// carries exactly those shapes, measured the same way — this file's copies
+/// were the eighth. The bag stays `Vec<Value>` because that is what the
+/// route's `details` carry is; only the construction moved.
+use super::zod_issues::{key, ZodIssue, MAX_SAFE_INTEGER};
+
+/// This route's `path` is always a single top-level key.
+fn at(k: &str) -> Vec<Value> {
+    vec![key(k)]
+}
+
+fn issue_invalid_type(expected: &'static str, k: &str, got: Option<&Value>) -> Value {
+    ZodIssue::invalid_type(expected, at(k), got).to_value()
 }
 
 /// `z.int()` over a number that is not a safe integer — an `invalid_type` with
 /// Zod's `format` rider (`Invalid input: expected int, received number`).
-fn issue_not_int(key: &str, got: Option<&Value>) -> Value {
-    json!({
-        "expected": "int",
-        "format": "safeint",
-        "code": "invalid_type",
-        "path": [key],
-        "message": format!("Invalid input: expected int, received {}", generate_parsed_type(got)),
-    })
+fn issue_not_int(k: &str, got: Option<&Value>) -> Value {
+    ZodIssue::invalid_int_type(at(k), got).to_value()
 }
 
 /// A `z.enum([...])` / `imageQualitySchema` miss. Zod 4 reports `invalid_value`
 /// and prints the options double-quoted and pipe-joined.
-fn issue_invalid_value(values: &[&str], key: &str) -> Value {
-    let rendered = values
-        .iter()
-        .map(|v| format!("\"{v}\""))
-        .collect::<Vec<_>>()
-        .join("|");
-    json!({
-        "code": "invalid_value",
-        "values": values,
-        "path": [key],
-        "message": format!("Invalid option: expected one of {rendered}"),
-    })
+fn issue_invalid_value(values: &[&str], k: &str) -> Value {
+    ZodIssue::invalid_value(values, at(k)).to_value()
 }
 
 /// `z.uuid()` — the pattern rides as a VALUE, so it is the one Zod source
-/// pattern the tree already transcribes ([`ZOD_UUID_PATTERN`]).
-fn issue_invalid_uuid(key: &str) -> Value {
-    json!({
-        "origin": "string",
-        "code": "invalid_format",
-        "format": "uuid",
-        "pattern": ZOD_UUID_PATTERN,
-        "path": [key],
-        "message": "Invalid UUID",
-    })
+/// pattern the tree already transcribes
+/// ([`crate::api::zod_issues::ZOD_UUID_PATTERN`]).
+fn issue_invalid_uuid(k: &str) -> Value {
+    ZodIssue::invalid_uuid(at(k)).to_value()
 }
 
-fn issue_string_too_small(minimum: i64, key: &str) -> Value {
-    json!({
-        "origin": "string",
-        "code": "too_small",
-        "minimum": minimum,
-        "inclusive": true,
-        "path": [key],
-        "message": format!("Too small: expected string to have >={minimum} characters"),
-    })
+fn issue_string_too_small(minimum: i64, k: &str) -> Value {
+    ZodIssue::too_small_string(json!(minimum), at(k)).to_value()
 }
-fn issue_string_too_big(maximum: i64, key: &str) -> Value {
-    json!({
-        "origin": "string",
-        "code": "too_big",
-        "maximum": maximum,
-        "inclusive": true,
-        "path": [key],
-        "message": format!("Too big: expected string to have <={maximum} characters"),
-    })
+fn issue_string_too_big(maximum: i64, k: &str) -> Value {
+    ZodIssue::too_big_string(json!(maximum), at(k)).to_value()
 }
-fn issue_number_too_small(minimum: i64, key: &str) -> Value {
-    json!({
-        "origin": "number",
-        "code": "too_small",
-        "minimum": minimum,
-        "inclusive": true,
-        "path": [key],
-        "message": format!("Too small: expected number to be >={minimum}"),
-    })
+fn issue_number_too_small(minimum: i64, k: &str) -> Value {
+    ZodIssue::too_small_number(json!(minimum), at(k)).to_value()
 }
-fn issue_number_too_big(maximum: i64, key: &str) -> Value {
-    json!({
-        "origin": "number",
-        "code": "too_big",
-        "maximum": maximum,
-        "inclusive": true,
-        "path": [key],
-        "message": format!("Too big: expected number to be <={maximum}"),
-    })
+fn issue_number_too_big(maximum: i64, k: &str) -> Value {
+    ZodIssue::too_big_number(json!(maximum), at(k)).to_value()
 }
 
 /// `z.string().optional()` — any string passes; an ABSENT key stays absent; a
