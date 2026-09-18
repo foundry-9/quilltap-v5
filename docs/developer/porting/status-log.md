@@ -133348,3 +133348,127 @@ Gate for this commit, from the worktree's own `npm ci`'d `apps/web`:
 `npm run lint` clean (the qt-class guard 5/5 self-test, 952 classes, every
 guarded reference resolving), `npm test` **435 spec files / 7,382 tests / 0
 failed**, `npm run build` clean.
+
+### §8 Tier 2 — the style list's one home, and its neutrality
+
+NEW `crates/quilltap-core/src/image_gen/style.rs`: `IMAGE_STYLE_VALUES` +
+`is_image_style`, on the `image_gen::quality` precedent (the value is never
+interpreted — only membership-checked and forwarded — so one list serves every
+gate). v4 has NO such module: it spells `z.enum(['vivid','natural'])` out at
+each of its three validating sites, so this is a v5-side DRY consolidation, not
+a port, and it is recorded as one.
+
+Repointed: `tools/generate_image.rs`'s `SCHEMA_STYLES` and `api/images.rs`'s
+inline `Some(s @ ("vivid" | "natural"))` arm. **NOT repointed:**
+`model/openai_image_options.rs` — it is a UI label list with per-row `helpText`,
+a surface that renders choices rather than validating them.
+
+**Ownership expansion, named as the order requires:** one line in
+`crates/quilltap-core/src/image_gen.rs` (`pub mod style;`), which the order's
+Owns column lists only implicitly ("NEW … style.rs"). No other lane this round
+touches `image_gen/`.
+
+**Neutrality**, re-run by name from the `5f0a57dc4` pin through the sweep
+driver:
+
+| family | result |
+|---|---|
+| `image_dialects_equivalence` | ok (committed corpus; `image_dialects_match_v4` passed) |
+| `tool_definitions_equivalence` | ok — "tool-definitions byte-exact for **58** tools" + the canonicalize spot-check |
+| `images_generate_route_equivalence` | ok (oracle regenerated fresh at the pin) |
+
+The `tool_definitions` line is the one that matters: the style enum reaches the
+`generate_image` definition's JSON Schema, and it is byte-identical after the
+repoint.
+
+### §9 Deferrals (loud, typed, named)
+
+- **A `quilltap-web` REST edge for `/api/v1/image-profiles/{id}?action=generate`.**
+  v5 has none, measured: `quilltap-web::lib` registers `embedding-profiles`,
+  `images`, `images/{id}` and `user/profile`, and every hit for `image-profiles`
+  in the crate is census prose. The verb's only HTTP path is `POST /api/dispatch`,
+  which `image_profile_generate_dispatch_wire.rs` drives. Adding an edge is a new
+  route, not this order's. Recorded here so the next reader does not re-derive it.
+- **`orientation`.** v4's route passes none, so the tool's own square default
+  applies; the tool input's `orientation` stays `None`, and the differential's
+  `tool_input_comparand` renders the key WHEN PRESENT precisely so that a v5 that
+  started setting it would diverge rather than drift silently.
+- **No SPA behaviour** (§R.11): the contract type is additive and optional, and
+  no call site sends the five. v4's manual image-generation dialog (its bug 150)
+  has no v5 twin.
+
+### §10 The verification gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`.
+
+| step | result |
+|---|---|
+| §R.2 probe (lane start, and again before the regen batch) | PASS both times — branch `main`, HEAD `bcd7e4852`, tree CLEAN, both logs empty |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| …`--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` | **573 binaries / 3,387 passed / 0 failed / 2 ignored, exit 0, ZERO `SKIP:` lines** |
+| `image_generate_route_equivalence` by name, oracle fresh at the pin | 30/30, `--nocapture`, zero SKIP |
+| the three neutrality legs at the pin | ok (§8) |
+| SPA `npm run lint` / `npm test` / `npm run build` | clean / **435 files, 7,382 tests, 0 failed** / clean |
+| ownership (`git diff --stat main...HEAD`) | every path in the Owns column or the one named expansion; no MUST-NOT-TOUCH path present |
+
+The lane's families are confirmed RUN by non-zero duration inside the
+workspace block: `image_generate_route_equivalence` 0.15 s,
+`dispatch_wrong_type_census` 0.01 s (6 tests),
+`image_profile_generate_dispatch_wire` 0.95 s.
+`image_generation_tier3_equivalence` shows **0.00 s** — that is the §R.10(d)
+protocol working as designed: P4.96 withholds `QT_ORACLE_IMGGEN` from its block
+so the tier-3 family SKIP-passes and stays the unifier's to prove, and 0.00 s is
+the tell (cargo captures a passing test's `SKIP:` line, which is why the
+zero-SKIP grep does not see it).
+
+**One intermittent, classified, not this lane's.** The FIRST workspace run
+failed one test —
+`enclave::lifecycle::tests::reconcile_after_a_failed_turn_publishes`
+(`left: []`, `right: [("autonomousRooms", None)]`). Classified before anything
+was touched:
+
+- The lane's whole diff contains no file under `enclave/`, `realtime/` or
+  `db/`; nothing it changed can reach that assertion.
+- Green in isolation, and the `quilltap-core --lib` binary re-run whole THREE
+  times: 2,416 passed / 0 failed each time.
+- The mechanism is a load-sensitive timing window, not a logic race:
+  `realtime::publish_sites::HintCapture::drain` sleeps a fixed
+  `COALESCE_WINDOW_MS + 20 ms` and then drains, waiting on a coalescing flush
+  that runs as a SPAWNED task. Under a full-workspace run's parallel load that
+  flush can miss the window, and the drain comes back empty — which is exactly
+  the shape observed. `TEST_LOCK` serializes the captures, so it is the sleep,
+  not interleaved arming.
+- The re-run of the workspace step went green at 573/3,387/0.
+
+That re-run is the gate of record. The intermittent is recorded here as a
+candidate for the standing deflake list (the fix shape: drain on a signal
+rather than a fixed sleep), and it belongs to whoever owns `realtime/`.
+
+### §11 A finding outside this lane's ownership, for the unifier
+
+**The sibling `Request::ImagesGenerate` has the same explicit-`null` collapse
+this lane just fixed, and its two transports therefore disagree.** Measured,
+not inferred:
+
+- Its five fields are `#[serde(default)] Option<serde_json::Value>`
+  (`api/types.rs:3562-3577`). A probe decoding
+  `{"type":"imagesGenerate","prompt":"x","profileId":"p","tags":null}` through
+  `Request` yields `tags: None` — the explicit `null` is gone.
+- `api/images.rs:1435-1440` states the contract the collapse defeats: "`tags`
+  is `.optional()` … so an explicit `null` REFUSES exactly as `options` does".
+  That refusal is unreachable from the dispatch transport.
+- The REST edge is NOT affected: `quilltap-web/src/images_routes.rs:250-258`
+  hand-builds the variant with `map.get("tags").cloned()`, so `Some(Value::Null)`
+  survives there and the handler refuses as designed.
+
+So `POST /api/v1/images?action=generate` with `"tags": null` refuses, and the
+same body over `POST /api/dispatch` (and over Tauri IPC) is accepted — the
+precise two-transport divergence P4.62/P4.73 ruled out. The fix is the one this
+lane applied: `Option<Option<Value>>` under `double_option`, collapsed in the
+engine arm. **Not touched here** — the order restricts this lane to the
+`ImageProfileGenerate` variant, and `api/images.rs` is a sibling to MIRROR, not
+edit. It wants a small order of its own; the whole raw-crossing family is worth
+sweeping for the same shape at the same time.

@@ -252,6 +252,31 @@ the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
 megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
 (2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
 drops the oldest and the over-large one, which is what v5 now does.
+#### 2026-09-17 — docs(porting): the P4.96 lane record — gate, neutrality, deferrals, and one finding for the unifier
+
+_No crate versions bumped._
+
+The lane record for P4.96 in `status-log.md`, the work order's status header,
+and the gate of record: 573 binaries / 3,387 passed / 0 failed with zero SKIP
+lines, clippy clean in both feature sets, the release build clean, the SPA at
+435 spec files / 7,382 tests, and the three style-repoint neutrality legs green
+at the `5f0a57dc4` pin (`tool_definitions` byte-exact for 58 tools).
+
+One intermittent is classified rather than chased: the first workspace run
+failed `enclave::lifecycle::tests::reconcile_after_a_failed_turn_publishes`,
+which this lane cannot reach — its diff touches no file under `enclave/`,
+`realtime/` or `db/`. Green in isolation and across three whole re-runs of the
+core lib binary; the mechanism is `HintCapture::drain`'s fixed sleep waiting on
+a spawned coalescing flush that a loaded run can outpace.
+
+One finding is recorded for the unifier and deliberately NOT fixed here: the
+sibling `Request::ImagesGenerate` carries the same explicit-`null` collapse,
+so `{"tags": null}` refuses over its REST edge (which hand-builds the variant)
+and is accepted over dispatch and Tauri IPC. That is the two-transport
+divergence P4.62/P4.73 ruled out, on the route this order named as the shape to
+mirror. It wants a small order of its own, and the whole raw-crossing family is
+worth sweeping for the same shape.
+
 #### 2026-09-17 — feat(spa): the imageProfileGenerate contract declares v4's five shaping keys (P4.96)
 
 _Versions: SPA 0.5.731._
