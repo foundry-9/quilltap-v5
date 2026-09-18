@@ -134814,3 +134814,218 @@ Nothing else touched: no `web`, `host`, `cli`, `tauri`, no `apps/web/**`.
 **💸 the dogfood queue gains:** a real token-limit or PDF-page-cap turn whose
 `combined.log` now carries `Recoverable request error detected, attempting
 recovery` with its five fields, ahead of whatever the recovery then does.
+
+## Round record — the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round unification (P4.D200 ∥ P4.98 ∥ P4.99), 2026-09-18
+
+**ALL THREE ORDERS CLOSED WHOLE; the oracle baseline MOVES `bcd7e4852` →
+`89fcc3c0d`; the ledger's two opacity rows retire `ABSORBED(P4.D200)` with
+their non-lib files ratified on P4.D200's list. ⚠ v4 landed `baa85e19b` (bug
+154) at 07:04 on the round's first morning — the default-system-prompt fix
+the `/setupphase` had recorded as uncommitted dirt — so every lane's §R.2
+probe FAILED at open (first on the dirt grown past the recorded set, then on
+the moved HEAD) and every lane STOPped as ordered; `/driftcheck` recorded the
+commit as a third §3 row (`db1fdfe4`), the human WAIVED the one-commit gap on
+the ledger's measurement (pinned regens cannot see it; its paths are disjoint
+from all three lanes'; the round's target stays `89fcc3c0d`), and each lane
+recorded the waiver in its own record. The baseline therefore moves to
+`89fcc3c0d`, not past it; `baa85e19b` keeps its row as the next catch-up's
+first, PIN REQUIRED at `89fcc3c0d`.** Unify branch `unify/89fcc3c0d`: the
+seventeen lane commits cherry-picked in the order P4.D200 → P4.98 → P4.99
+(seven version-only `Cargo.toml`/`Cargo.lock` conflicts, each resolved by
+ACCUMULATION with the picked commit's manifest delta checked version-only
+before resolution; the two append-only docs union-merged, which dropped the
+blank line between three lanes' CHANGELOG entries — restored at the wires),
+then the wires commit, then the §3 review-fixes commit, then this record.
+
+### §1 — the survey
+
+Three lane worktrees, all CLEAN, all CLOSED by their own headers: P4.D200
+(`claude/p4-d200-opacity-covenant-d2a795`, 8 commits), P4.98
+(`claude/p4-98-images-tri-state-8f131b`, 4), P4.99
+(`claude/p4-99-recovery-google-cache-key-ca5058`, 5), every one branched from
+the ordering commit `5018df46`. The ledger's §2 probe PASSED at the open
+against the post-`/driftcheck` §1 (v4 `main`, CLEAN, HEAD `baa85e19b`, both
+logs empty) and again before the gate and at the close — nothing moved during
+the unification. The round's regens ran from two pins under `/tmp` (target
+`89fcc3c0d` for P4.D200's moving families, baseline `bcd7e4852` for the
+neutrality legs and both maintenance lanes), each verified by `rev-parse` and
+`ls -ld`.
+
+Scope verified against each order's tier list, not the header: every Tier-1
+and Tier-2 item of all three orders is on the branch (P4.D200's Tier-2 item
+13 conditional and not owed; the Tier-3 deferrals are the ones the orders
+wrote). Two ownership expansions, both recorded by their lanes and ratified
+here: P4.D200's `documents/mod.rs` (a `PathResolutionContext` literal the new
+field forces, `operator_override: true` so the covenant never applies) and
+P4.99's `record-request-envelopes.mjs` (the order's premise that the google
+request recorder writes BOTH corpora was wrong; the wire corpus comes from the
+envelope recorder's google branch). The lanes' own measured corrections of
+the orders are in their records and headers.
+
+### §2 — the wires (`a013ae09`)
+
+- **§R.9:** the four `docs/v4/` paths from the `89fcc3c0d` pin — `CHANGELOG.
+  md` 83,228 B, `developer/bugs.md` 285,739 B, the NEW `developer/bugs/fixed/
+  bug-152-opacity-hides-group-stores.md` 10,644 B and `bug-153-opacity-
+  enumeration-leak.md` 6,888 B — byte for byte P4.D200's pre-list.
+- **§R.8 recount:** core 0.0.950 + 5 + 2 + 2 = 0.0.959; harness 0.0.842 + 4 +
+  1 + 2 = 0.0.849; web 0.0.152 + 1 = 0.0.153; host/cli/tauri/SPA unchanged —
+  the accumulated manifests match, the lock re-synced.
+- **§R.10 fences:** `git diff main...<lane>` over `api/types.rs`, `api/engine.
+  rs`, `api/images.rs`, `api/image_profiles.rs`, the census (P4.98's), over
+  `services/primary_stream.rs`, `model/request_builder/google.rs`,
+  `crates/quilltap-harness/src/lib.rs` (P4.99's) — EMPTY for every other
+  lane, asserted before picking.
+- **§S:** nothing on the wire moved for any consumer (no verb, no route, no
+  `core-contract.ts` change) — nothing to diff name-for-name.
+- The CHANGELOG separators; the two sweep artifacts committed.
+
+### §3 — the review (three parallel readers, one per lane; the unifier's own reads of every production hunk; the verdict owned here)
+
+**No BLOCKING finding in any lane** — the seventh such round. What was
+fixed on the unify branch (`7dbdaf2d`), in order of consequence:
+
+1. **P4.98's own §5 finding, closed:** `IMAGE_PROFILE_GENERATE_RAW_FIVE`
+   (P4.96's list) had no distinctness pin — its shape test and decode-raw
+   test stay GREEN against a plain `Option<Value>`, because `null` decodes
+   fine either way, it just decodes to the WRONG thing (P4.98's M1 proved it
+   on its own list). The twin of `images_generate_keeps_absent_and_explicit_
+   null_apart_at_the_decode` now asks the DECODER for the profile route too;
+   the census binary runs 10/10.
+2. **P4.99's request-logic google family overclaimed** (the reviewer's one
+   should-fix): its `cache-key`/`cache-key-absent` pair cannot see `cacheKey`
+   by construction — the recorder calls `formatMessagesForGoogle(messages,
+   model, hasTools)`, a signature the key never reaches — so "the four
+   request-logic outputs are identical, which pins v4's IGNORING" was a
+   tautology of the recorder. The v4 proof is the WIRE family's pair (the
+   whole `params` reaches the real `streamMessage`/`sendMessage`; bodies
+   byte-identical in both modes, no cache-key spelling as a key) plus the
+   `google.rs` unit pin. Doc-only: the module doc, the inline comment, the
+   assert message and `CACHE_KEY_IGNORED`'s bullet now say so; the pair
+   stays as a presence + v5-compare arm.
+3. **P4.D200's `describe_characters` transcribed a JS truthiness test as
+   `is_some()`** — v4's `if (context.characterId)` skips an EMPTY string
+   (the `8f910137`-round audit shape); unreachable through the builders
+   today, fixed with a `.filter(|s| !s.is_empty())` and two rows.
+4. **Two of P4.D200's restored warn lines lacked the silence leg the order
+   asked for**, and the NOT_FOUND warn pin did not assert its level. Added:
+   an enabled store resolving on the NON-operator pool path asserts no line
+   at WARN (covering the disabled-mount and both refusal warns); the
+   self-token warn's silence leg lives in `doc_edit_path_resolver_
+   equivalence`'s two resolving `self` rows over the real fixture — a unit
+   fixture cannot carry it, because the pool's character-tier read applies
+   the vault document-store overlay (a first attempt over an in-memory
+   fixture died on `No document stores accessible`); the level assert added.
+5. **`help_tree_equivalence` had never been run at the target pin** (the
+   lane's gate block carried only its new family's vars) — run at the
+   unified gate from the `89fcc3c0d` pin, green, with the pin marker (`Nor
+   are they so much as named`) present in the fresh oracle once and absent
+   from the baseline tree; `help_tree_embed_guard`'s history comment gained
+   the P4.D200 line the order asked for.
+6. **P4.99's recovery field pin used the prefix-match shape its own Tier-2
+   item 9 retired** (`attachment_count=2` matched `=20`) — terminator-
+   anchored now.
+7. **P4.98 nits:** two off-by-one v4 citations (`chatId` `:56`, `tags`
+   `:57-64`), a lost line-continuation's space run in the edge test's
+   message, the route family's stale-oracle floor 37 → 45; the collector's
+   doc in `path_resolver.rs` no longer says "participants included".
+
+Recorded, not changed: the D200 reviewer's three structurally-covered corpus
+blind spots (own-vault-by-NAME blob read; a group-LINKED store — the fix is
+at the flatten so it cannot differ; the two-character `characters:` piece
+never seen through the capture layer — M7 reddened the unit table instead)
+and the oracle's unwrapped `buildWriteResolutionContext` on a transparent
+peer-vault write (no row hits it; a future Abigail-writes-peer row would
+abort the oracle instead of recording a refusal) — phase-4.md candidate 5;
+P4.98's M2 line "the wire test's `tags` arm and no other" understates (the
+REST-edge null arms share the engine arm, so that binary's `tags: null` arm
+reddens too — a stronger red); P4.99's `has_field` is space-terminated (a
+string bag value with a space would fail LOUDLY, never green — acceptable);
+the `HintCapture::drain` load-sensitive intermittent P4.98 characterized
+(phase-4.md candidate 2). Fidelity re-checked by the unifier against v4's
+real code at the pin: the flatten early return inside `addCharacterTier`;
+the collector's two `vaultsVisible` uses; `findEnabledMountPointByRef`'s
+name-then-id order, the `storeType === 'character'` exclusion and the
+fail-soft; the self-token gate as a CONDITION (bug 152's message
+misdescribes it); both warn sentences and the three-sentence ACCESS_DENIED
+byte-exact; the builders keeping `characterId` with no `characterIds`; the
+blob WRITE resolver passing no peers (bug 153's message misdescribes it);
+v4's `:393` warn at the missing-`mountPoint` arm (the lane's fifth restored
+line is real); the INFO line at v4's level with the file's `target:`
+convention; the engine collapse and the shared-decoder edge; zod 4.5.4's
+`z.object` stripping unknown keys, run on the checkout by the reviewer.
+
+### §4 — the gate (the gate of record)
+
+Run from the main worktree on `unify/89fcc3c0d`, `CARGO_INCREMENTAL=0`,
+`TZ=UTC`, ONE detached sentinel-guarded chain with every log captured whole
+(release build → workspace test → Playwright), the SPA gate, the clippy pair
+and the two pinned sweeps run before it:
+
+1. **§2 probe** — PASS at the open, before the gate and at the close (v4
+   `main` CLEAN at `baa85e19b`, `bugfix` `1a2b2164c` / `release` `8fbf2afe0`
+   unmoved; both logs empty against the post-`/driftcheck` §1).
+2. `cargo fmt --all --check` — clean (after the picks; after the wires; after
+   the fixes).
+3. **The pinned sweeps** (`recipe_sweep.py --run-all`, artifacts `harness/
+   tools/sweep-results/2026-09-18-89fcc3c0d-unify-{target,base}-pin.json`):
+   target pin `89fcc3c0d` — `doc_opacity_equivalence`, `help_tree_
+   equivalence` 2/2 ok (the fresh help-tree oracle carries `Nor are they so
+   much as named` exactly once — the pin verification); baseline pin
+   `bcd7e4852` — `doc_enum`, `doc_blob`, `doc_text`, `doc_fm`, `doc_fs`,
+   `doc_ui`, `scriptorium_tools`, `tiered_mount_pool`, `doc_edit_path_
+   resolver`, `images_generate_route`, `images_routes`, `image_generate_
+   route`, `llm_image_budget`, `file_attachment_tier3`, `primary_stream_
+   tier3`, `request_builder_google`, `request_builder_google_wire` — 17/17
+   ok, zero `SKIP:` lines in the sweep log; after the review fixes,
+   `doc_edit_path_resolver_equivalence` (the new self-token silence leg),
+   `request_builder_google_equivalence` and `request_builder_google_wire_
+   equivalence` re-run by name from the baseline pin, green.
+4. **SPA:** `npm run lint` clean; `npm test` **435 spec files / 7,382 passed
+   / 0 failed**; `npm run build` clean (no lane touched `apps/web/**`).
+5. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+6. `cargo build --workspace --release` — clean, rebuilt after the review
+   fixes (the `describe_characters` arm is core source).
+7. `cargo test --workspace --no-fail-fast -- --nocapture` with the round's
+   44-variable env block (the nineteen families' oracle/fixture vars as the
+   sweeps wrote them, `QT_V4_ROOT`/`QT_V4_CHECKOUT` at the baseline pin,
+   `QT_NODE` the Node 24 binary; every OTHER family's var withheld so it
+   SKIPs honestly rather than failing on a deleted `/tmp` path — 447 `SKIP:`
+   lines, all theirs): **577 test binaries / 3,449 passed / 0 failed /
+   2 ignored, exit 0.** The round's families confirmed RUN by name and
+   duration: `doc_opacity_equivalence` 0.07 s, `help_tree_equivalence`
+   1.23 s, `tiered_mount_pool_equivalence` 0.01 s, `doc_edit_path_resolver_
+   equivalence` 0.02 s, `images_generate_route_equivalence` 2.84 s,
+   `images_routes_equivalence` 2.18 s, `request_builder_google_equivalence`
+   0.00 s (committed corpus), `request_builder_google_wire_equivalence`
+   0.01 s, `llm_image_budget_equivalence` 0.17 s, `file_attachment_tier3_
+   equivalence` 0.05 s, `primary_stream_tier3_equivalence` 0.15 s (2 tests),
+   `images_generate_dispatch_wire` 1.11 s, `dispatch_wrong_type_census`
+   0.01 s (10 tests incl. the new twin), `help_tree_embed_guard` 0.01 s.
+8. **Full Playwright against the release binary:** **322 passed / 0 failed /
+   6 skipped (8.4 m), exit 0** — the six skips the standing parks (the five
+   P4.D187 title-checkpoint beats + the `salon-chat-gallery-flow` store-probe
+   park), the same set and count as the previous round; no lane added or
+   flipped a beat.
+9. **Ownership:** every path of the combined diff in some lane's Owns column,
+   the two recorded expansions, the wires, or the fixes; the drift ledger
+   written only here.
+
+**Versions:** core 0.0.960, harness 0.0.850, web 0.0.154; host 0.0.139 /
+cli 0.0.22 / tauri 0.0.7 / SPA 0.5.731 unchanged.
+
+### §5 — deferred loud, carried forward
+
+- 💸 the dogfood queue gains: the opacity covenant end to end on the Friday
+  copy (a group store by name and id from an opaque seat; the ACCESS_DENIED
+  sentence + its `combined.log` line on a stranger store; `doc_list_files`/
+  `doc_grep` naming no vault; the five restored path-resolver lines); a
+  `chatId: null` `imagesGenerate` over dispatch answering `Validation error`
+  and writing nothing; a real token-limit turn's `Recoverable request error
+  detected, attempting recovery` line with its five fields.
+- Named candidates: the bug-154 catch-up (first); the `HintCapture::drain`
+  intermittent; the issue-renderer `zod_issues` home; the shared-decoder
+  class across the other hand-building REST edges; the four corpus rows
+  above; P4.D198's tier-3 backstop blindness; the `name`-field turn-path
+  measurement; the `/tmp/qt-oracle-run` shared staging.

@@ -6628,6 +6628,85 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — UNIFIED 2026-09-18
+
+**ALL THREE ORDERS CLOSED WHOLE; the oracle baseline MOVES `bcd7e4852` →
+`89fcc3c0d`; the ledger's two opacity rows retire ABSORBED(P4.D200). ⚠ v4
+landed `baa85e19b` (bug 154, the default system prompt) at 07:04 on the
+round's first morning — the fix the `/setupphase` had seen uncommitted — so
+every lane STOPped on its §R.2 probe as ordered and resumed under the human's
+recorded waiver; every regen ran from pinned worktrees, the round's target
+stayed `89fcc3c0d`, and bug 154 keeps its §3 row as the next catch-up's first
+(PIN REQUIRED at `89fcc3c0d` until it lands).** Round record:
+`status-log.md` → "Round record — the `89fcc3c0d` opacity-covenant drift
+catch-up + follow-ups round unification" (the §3 review's findings — none
+blocking, all fixed; the wires; the gate numbers). CHANGELOG: the three
+unification entries of 2026-09-18. Every order's status header names what
+the review fixed on it.
+
+**What is next, in order:**
+
+0. **The `baa85e19b` bug-154 drift catch-up** (drift-ledger §3, ONE row,
+   UNPROCESSED): the default-system-prompt lockstep — `lib/characters/
+   default-system-prompt.ts` (NEW; ONE resolution order: the
+   `defaultSystemPromptId` column when it names an existing prompt, then the
+   `isDefault` flag, then the first prompt), `CharactersRepository.
+   systemPromptsPatch` (both faces of the fact move together on every
+   system-prompt write), the chat initializer + the characters PUT handler +
+   the impersonation voice preview reading through it, and three client
+   surfaces (the New-Chat picker, the announcement dialog, the system-prompts
+   editor's star that used to call a route that does not exist);
+   `help/character-system-prompts.md` (+27) re-vendored. The ledger's row
+   carries the 2026-09-18 measurement: v5 reproduces the SERVER half whole and
+   two of the three client read copies, and never had the dead-route half.
+   One lane (server + SPA share one resolver twin) or a stacked pair.
+1. **The owed dogfood pass** on the Friday copy, carrying this round's live
+   surfaces: an opaque character reaching a group store by name and by id
+   through a real `doc_*` turn (the bug her report started from), the
+   `ACCESS_DENIED` sentence on a real out-of-scope store with `combined.log`
+   carrying `Mount point exists but is out of scope: … vaultsHidden: true`,
+   `doc_list_files` and `doc_grep` from an opaque seat naming no vault, the
+   five restored path-resolver lines; a `chatId: null` posted to
+   `POST /api/dispatch` as `imagesGenerate` answering v4's `Validation error`
+   and writing nothing; a real token-limit turn whose `combined.log` carries
+   `Recoverable request error detected, attempting recovery` with its five
+   fields; plus the previous round's items and the standing 💸 queue (the
+   Brahma deep query, dedup/summaries, #101).
+2. **The `HintCapture::drain` load-sensitive intermittent** (P4.98's §5
+   characterization): `realtime::publish_sites::memory_gate_tests::the_by_
+   chat_delete_route_announces_once_from_the_gate` and every sibling that
+   calls `drain`/`drain_sorted` can read an empty queue under `--workspace`
+   load (a FIXED `COALESCE_WINDOW_MS + 20` ms sleep then `try_recv`); fix
+   shape: a bounded WAIT for the expected count. Measured 1 red in 2
+   workspace runs, green in isolation.
+3. **The remaining Zod DRY** — the ISSUE renderers (`run_sql.rs zod_issue`,
+   `settings.rs zod_error_message`, the `generators_wizard.rs` twin) want one
+   `zod_issues` home (the parsed-TYPE word is now one home, P4.98).
+4. **The shared-decoder class** (P4.98's Tier-3 record): other
+   `quilltap-web` `*_routes.rs` edges still hand-build `CoreRequest::…`
+   variants from a parsed body; the `images_generate_request` envelope shape
+   removes the tri-state class for good where adopted.
+5. **Three corpus rows the D200 review named as structurally covered but
+   unexercised** (an own-vault-by-NAME blob read, a group-LINKED store under
+   the covenant, the two-character `characters:` piece through the capture
+   layer) and the oracle's unwrapped transparent peer-vault write — one row
+   each, batchable into the bug-154 lane's doc-edit neighbourhood or the
+   next maintenance pass.
+6. **Carried, unchanged:** P4.D198's tier-3 backstop blindness; the
+   `name`-field turn-path measurement; the `/tmp/qt-oracle-run` shared
+   staging between `file_attachment_tier3` and `image_ingest_tier2` (a
+   lane-private staging var if both ever run in one round); the human
+   `npm install` item (four plugin dirs on `openai` 7.10.0); the two items
+   awaiting the human's RULING (the census `ORDER BY`, the lock-conflict
+   503-vs-409); the named-not-order-sized set (`SCENE_STATE_TRACKING`, the
+   shared-fixture title-checkpoint hazard, `combined.log` key case, P4.87's
+   two OPEN coverage items, the upstream filing candidates).
+
+PB1 stays parked by the standing rule.
+
+_The ordering record below is kept as written at planning; the status headers
+carry what changed._
+
 ## The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — ORDERED 2026-09-18
 
 **Baseline `bcd7e4852`; v4 `main` HEAD `89fcc3c0d` (TWO past — the

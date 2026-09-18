@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): unify the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — the baseline moves to `89fcc3c0d`; bug 154 stays the next catch-up's row
+
+_Docs-only change (the code landed in the seventeen lane commits, the wires and the review-fixes commit)._
+
+All three orders CLOSED WHOLE: the doc-tool opacity covenant end to end
+(bugs 152 + 153 — the `hide_character_vaults` flag replacing the
+drop-the-character shape, the flatten option, the NOT_FOUND → ACCESS_DENIED
+split with its warn lines, the enumerator's query struct at all four call
+sites, the help page re-vendored, a new real-DB family mirroring v4's 28
+regression cases red-first 21/44); `Request::ImagesGenerate`'s five body keys
+as the `Option<Option<Value>>` tri-state with one shared decoder for every
+transport, proven at a new dispatch wire test; the recovery INFO line with
+its capture pin, GOOGLE's cache-key ignorer rows in both google corpora, and
+the harness DRY. The §3 review found nothing blocking in any lane; its
+should-fixes (the `ImageProfileGenerate` distinctness twin, a JS-truthiness
+arm, two silence legs, a level assert, the google request-logic family's
+overclaim reworded, an anchored field pin, four nits) landed on the unify
+branch. Every lane STOPped on the bug-154 drift as ordered and resumed under
+the human's recorded waiver; the round's target stayed `89fcc3c0d`. Gate:
+577 test binaries / 3,449 / 0 with the round's env block; 19 families fresh
+from the two pins zero SKIP; clippy both feature sets; release build; ng 435
+files / 7,382; full Playwright 322 / 0 / 6 (the standing parks). Versions:
+core 0.0.960, harness 0.0.850, web 0.0.154.
+
 #### 2026-09-18 — fix(unify): the `89fcc3c0d` round's §3 review fixes — the `ImageProfileGenerate` distinctness twin, `describe_characters`' JS-truthiness arm, the resolver warns' missing silence legs and level assert, the embed guard's history line, the google request-logic family's overclaim reworded, the recovery pin's fields anchored, and three P4.98 nits
 
 _Versions: core 0.0.960, harness 0.0.850, web 0.0.154._

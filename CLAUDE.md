@@ -3804,10 +3804,58 @@ records THERE. Update this summary only when a phase or round completes.
   multi-portrait turn, the generate verb's envelope, the named retry; the
   owed dogfood pass is the top next candidate** — see phase-4.md. Round
   record: `status-log.md`.
-- **Oracle baseline: `bcd7e4852` (2026-09-17, v4 main — "fix(images): send a
-  model the picture, not the archive of it (bug 151)", `4.10.0-dev.45`),
-  adopted at the `bcd7e4852` bug-151 drift catch-up + follow-ups round
-  unification (2026-09-17).**
+- **The `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round
+  (P4.D200 ∥ P4.98 ∥ P4.99): UNIFIED on main (2026-09-18) — ALL THREE
+  CLOSED WHOLE; the oracle baseline MOVES to `89fcc3c0d`; ⚠ v4 landed
+  `baa85e19b` (bug 154, the default-system-prompt lockstep) on the round's
+  first morning — every lane STOPped as ordered and resumed under the human's
+  recorded waiver, every regen pinned; bug 154 keeps its ledger row as the
+  next catch-up's first, PIN REQUIRED at `89fcc3c0d`.** Bugs 152 + 153
+  absorbed whole (P4.D200): the covenant as a SUBTRACTION —
+  `hide_character_vaults` on `PathResolutionContext` set by both builders
+  which now KEEP `character_id` (v5 measurably dropped it — the group tier
+  keyed on a `None`), the tiered pool's `FlattenOptions { include_character_
+  tier }`, the self-token gate's new conjunct (a CONDITION, not a new arm —
+  the commit message misdescribes it), `find_enabled_mount_point_by_ref` +
+  the NOT_FOUND → ACCESS_DENIED split with v4's three-sentence message and
+  the two `vaultsHidden` warns (the path resolver had ZERO tracing before —
+  five pre-existing absent v4 lines restored with capture pins), the
+  `AccessibleMountPointsQuery` derived at all four enumeration call sites
+  (the blob WRITE resolver without peers — the hunks, not the prose), the
+  help page re-vendored, a NEW real-DB `doc_opacity_equivalence` over a
+  purpose-built fixture mirroring v4's 13 + 15 regression cases RED-FIRST
+  21/44 ∥ P4.98: `Request::ImagesGenerate`'s five body keys as the
+  `Option<Option<Value>>` tri-state with ONE shared decoder for REST,
+  dispatch and Tauri (the collection route had generated and SAVED an image
+  on a `chatId: null` v4 refuses), a new dispatch wire test red-first on
+  three arms, the census's sibling raw list (441 → 441), the Zod
+  type-renderer's fourth hand-copy retired ∥ P4.99: v4's `Recoverable
+  request error detected, attempting recovery` INFO line (the hunk's level,
+  not the candidate list's "warn") with a capture pin + silence + ORDER legs,
+  GOOGLE's cache-key ignorer pair in BOTH google corpora against v4's real
+  plugin + a unit pin that v5's builder is key-blind (the order's M5
+  prediction FALSE — the wire reframer drops a stray `config` key),
+  `CorpusScript` in one home, the tier-1 log asserts anchored. **The §3
+  review: NO blocking findings (the seventh such round); fixed on the unify
+  branch:** the `ImageProfileGenerate` distinctness twin (P4.98's own
+  finding — a decode-raw test stays green against a plain `Option<Value>`),
+  the google request-logic family's ignorer overclaim (its recorder's call
+  cannot receive the key — the v4 proof is the wire family's), a JS-truthiness
+  arm in `describe_characters`, two missing silence legs (the self-token one
+  over the REAL fixture — the pool's character-tier read applies the vault
+  overlay), a level assert, `help_tree_equivalence` run at the target pin
+  for the first time, an anchored field pin, four nits. Gate: 19/19 families
+  fresh from the two pins zero SKIP; 577 test binaries / 3,449 / 0; clippy
+  both feature sets; release build; ng 435 / 7,382; full Playwright
+  **322 / 0 / 6** (the standing parks). Versions: core 0.0.960, harness
+  0.0.850, web 0.0.154. 💸 the dogfood queue gains the covenant on the
+  Friday copy, the `chatId: null` refusal over dispatch, the recovery line on
+  a real token-limit turn. **Next: the bug-154 catch-up, then the owed
+  dogfood pass** — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `89fcc3c0d` (2026-09-17, v4 main — "fix(scriptorium): a
+  hidden vault is not listed either (bug 153)", `4.10.0-dev.47`), adopted at
+  the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round
+  unification (2026-09-18).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
