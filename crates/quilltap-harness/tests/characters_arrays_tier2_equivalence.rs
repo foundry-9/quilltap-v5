@@ -65,8 +65,14 @@ struct Op {
     is_default: Option<bool>,
     #[serde(default)]
     title: Option<String>,
+    /// [P4.D201 / v4 `baa85e19b`] `setDefaultSystemPrompt` accepts `null` — the
+    /// clear-the-default arm — so an ABSENT or explicitly-`null` `targetName`
+    /// deserializes to `None` and is passed through rather than resolved.
     #[serde(default)]
     target_name: Option<String>,
+    /// [P4.D201] a LITERAL prompt id the character does not have (the refusal arm).
+    #[serde(default)]
+    prompt_id: Option<String>,
     #[serde(default)]
     target_title: Option<String>,
     /// [P4.D120 / v4 `d25dacc1`] `addScenario`'s optional `archived` flag.
@@ -248,15 +254,26 @@ fn run_op(main: &Writer, mount: &Writer, character_id: &str, op: &Op) {
                 .expect("update_system_prompt");
         }
         "setDefaultSystemPrompt" => {
-            let id = resolve_item_id(
-                main,
-                mount,
-                cid,
-                "systemPrompts",
-                "name",
-                op.target_name.as_deref().expect("targetName"),
+            // [P4.D201 / v4 `baa85e19b`] a `null` / absent `targetName` is the
+            // CLEAR arm — passed through as `None`, not resolved to an id.
+            let id = op
+                .target_name
+                .as_deref()
+                .map(|name| resolve_item_id(main, mount, cid, "systemPrompts", "name", name));
+            arr::set_default_system_prompt(m, mo, cid, id.as_deref())
+                .expect("set_default_system_prompt");
+        }
+        // [P4.D201 / v4 `baa85e19b`] the refusal arm: a NON-null id the character
+        // does not have. v4 warns and returns null having written nothing; v5
+        // answers `Ok(false)`. The six-table census proves the nothing.
+        "setDefaultSystemPromptMissing" => {
+            let pid = op.prompt_id.as_deref().expect("promptId");
+            let accepted = arr::set_default_system_prompt(m, mo, cid, Some(pid))
+                .expect("set_default_system_prompt (missing)");
+            assert!(
+                !accepted,
+                "setDefaultSystemPromptMissing: v5 accepted a foreign prompt id"
             );
-            arr::set_default_system_prompt(m, mo, cid, &id).expect("set_default_system_prompt");
         }
         "deleteSystemPrompt" => {
             let id = resolve_item_id(
@@ -406,9 +423,85 @@ fn characters_arrays_tier2_matches_oracle() {
         })
         .expect("read baked character id");
 
+    // [P4.D201 / v4 `baa85e19b`] The per-op default-prompt trail.
+    //
+    // The six-table census below is a FINAL-STATE diff, so an op whose effect a
+    // later op overwrites is INVISIBLE to it — MEASURED: inserting this round's
+    // three new system-prompt arms left the dump the exact size it already was,
+    // because the sequence still ends with a delete that re-heals the column.
+    // The lockstep is a claim about what EACH write leaves behind, so it needs a
+    // per-op comparand. The prompt ids are path-derived from the SHARED fixture,
+    // so both sides mint the same ones and the trail compares EXACTLY.
+    let snapshot = |op_name: &str| -> Value {
+        let column: Option<String> = main
+            .connection()
+            .query_row(
+                "SELECT defaultSystemPromptId FROM characters WHERE id = ?1",
+                [&character_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .expect("read defaultSystemPromptId");
+        let character = arr::find_by_id(main.connection(), mount.connection(), &character_id)
+            .expect("find_by_id during snapshot")
+            .expect("character vanished during snapshot");
+        let prompts: Vec<Value> = character
+            .get("systemPrompts")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .map(|p| {
+                        serde_json::json!([
+                            p.get("name").and_then(Value::as_str).unwrap_or_default(),
+                            p.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
+                        ])
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        serde_json::json!({ "op": op_name, "column": column, "prompts": prompts })
+    };
+
+    let mut trail: Vec<Value> = vec![snapshot("<initial>")];
     for op in &spec.ops {
         run_op(&main, &mount, &character_id, op);
+        trail.push(snapshot(&op.op));
     }
+
+    let want_trail = oracle
+        .get("defaultColumnTrail")
+        .unwrap_or_else(|| panic!("oracle carries no defaultColumnTrail — stale NDJSON?"));
+    assert_eq!(
+        &Value::Array(trail.clone()),
+        want_trail,
+        "the per-op default-prompt trail diverged"
+    );
+    // The shapes the corpus must actually contain, so a future trimmed spec
+    // cannot go green having stopped asking the lockstep's questions.
+    assert!(
+        trail
+            .iter()
+            .any(|e| e["op"] == "setDefaultSystemPromptMissing"),
+        "the trail asks no refusal arm"
+    );
+    assert!(
+        trail
+            .iter()
+            .any(|e| e["op"] == "setDefaultSystemPrompt" && e["column"].is_null()),
+        "the trail asks no CLEAR arm (a setDefaultSystemPrompt leaving the column null)"
+    );
+    assert!(
+        trail
+            .iter()
+            .any(|e| e["op"] == "addSystemPrompt" && e["column"].is_null()),
+        "the trail asks no transient-id arm (an addSystemPrompt leaving the column null)"
+    );
+    assert!(
+        trail
+            .iter()
+            .any(|e| e["op"] == "updateSystemPrompt" && !e["column"].is_null()),
+        "the trail asks no promotion-through-UPDATE arm"
+    );
 
     let mut got: Vec<Value> = TABLES
         .iter()
@@ -449,7 +542,8 @@ fn characters_arrays_tier2_matches_oracle() {
     }
 
     eprintln!(
-        "OK: characters arrays tier-2 matched oracle (6 tables, 2 DBs, {} ops).",
-        spec.ops.len()
+        "OK: characters arrays tier-2 matched oracle (6 tables, 2 DBs, {} ops, {} trail entries).",
+        spec.ops.len(),
+        trail.len()
     );
 }

@@ -89,6 +89,60 @@ fn demote_all(items: &mut [Value]) {
     }
 }
 
+/// The patch **every** system-prompt write applies (v4 `systemPromptsPatch`,
+/// `characters.repository.ts:712-737`, added by `baa85e19b` for bug 154).
+///
+/// The default prompt is recorded TWICE — as the `isDefault` flag inside the
+/// prompt and as the character's `defaultSystemPromptId` column, which every
+/// consumer reads FIRST (see [`crate::default_system_prompt`]). A write that
+/// moved the flag alone looked right in the editor and changed nothing about
+/// which prompt a new chat actually used. **v5 reproduced that gap whole**: all
+/// four writers below used to call [`project_array`] with `systemPrompts` alone.
+/// Both faces move together here, so no caller has to remember the second one.
+///
+/// `transient_id` is v4's rule for `addSystemPrompt`: the id minted for a
+/// brand-new prompt never reaches disk — the vault re-keys the prompt from its
+/// file path on the very next read (`stableUuidFromString`) — so recording it
+/// would leave the column naming nothing. The column is left `null` instead,
+/// which sends every reader to the `isDefault` flag (correct), and the next write
+/// to this character's prompts heals it.
+///
+/// The `isDefault` test is `as_bool() == Some(true)` rather than the resolver's
+/// general JS truthiness: these items come from the read overlay, whose
+/// `normalize_prompt_defaults` types the flag as a `bool` (and guarantees exactly
+/// one default among a non-empty list) before any writer touches it.
+fn project_system_prompts(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    items: Vec<Value>,
+    transient_id: Option<&str>,
+) -> Result<(), DbError> {
+    // v4: `items.find((p) => p.isDefault)?.id ?? null`.
+    let default_id = items
+        .iter()
+        .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true))
+        .and_then(|p| p.get("id").and_then(Value::as_str));
+    // v4: `defaultId === transientId ? null : defaultId`. A `null` defaultId is
+    // never `===` an `undefined`/string transientId, so both arms answer null —
+    // which is what the `Some(_)` guard below spells.
+    let column = match default_id {
+        Some(d) if Some(d) != transient_id => Value::String(d.to_string()),
+        _ => Value::Null,
+    };
+
+    let mut patch = Map::new();
+    patch.insert("systemPrompts".to_string(), Value::Array(items));
+    patch.insert("defaultSystemPromptId".to_string(), column);
+    // ONE `update_character` call: the write overlay reprojects the `Prompts/`
+    // folder and strips `systemPrompts` from the DB-bound patch, then the slim
+    // `_update` (or the explicit-null clear) writes the column. Measured
+    // 2026-09-18 — `defaultSystemPromptId` is in `NULLABLE_SLIM_COLUMNS`, so the
+    // null arm reaches the column rather than collapsing into "skip".
+    update_character(main, mount, character_id, &patch).map_err(overlay_to_db)?;
+    Ok(())
+}
+
 // ============================================================================
 // SYSTEM PROMPT OPERATIONS
 // ============================================================================
@@ -125,9 +179,13 @@ pub fn add_system_prompt(
         demote_all(&mut items);
         new_item["isDefault"] = Value::Bool(true);
     }
+    let transient_id = new_item
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     items.push(new_item.clone());
 
-    project_array(main, mount, character_id, "systemPrompts", items)?;
+    project_system_prompts(main, mount, character_id, items, transient_id.as_deref())?;
     Ok(Some(new_item))
 }
 
@@ -173,7 +231,7 @@ pub fn update_system_prompt(
     }
     items[index] = updated.clone();
 
-    project_array(main, mount, character_id, "systemPrompts", items)?;
+    project_system_prompts(main, mount, character_id, items, None)?;
     Ok(Some(updated))
 }
 
@@ -207,38 +265,72 @@ pub fn delete_system_prompt(
         filtered[0]["isDefault"] = Value::Bool(true);
     }
 
-    project_array(main, mount, character_id, "systemPrompts", filtered)?;
+    project_system_prompts(main, mount, character_id, filtered, None)?;
     Ok(true)
 }
 
-/// Make a system prompt the sole default (v4 `setDefaultSystemPrompt`). Every
-/// prompt's `isDefault` is set to `i == target` and `updatedAt` minted (the latter
-/// discarded by the projection). Returns `false` when the character or prompt is
-/// absent.
+/// Make a system prompt the sole default, **or clear the default entirely with
+/// `None`** (v4 `setDefaultSystemPrompt(characterId, promptId: string | null)`,
+/// widened by `baa85e19b` for bug 154).
+///
+/// The one chokepoint for "which prompt does this character start with": it moves
+/// the `isDefault` flags and the `defaultSystemPromptId` column together (see
+/// [`project_system_prompts`]). Anything that changes the default — the star in
+/// the prompts editor, the picker on the character's Profiles tab, the character
+/// PUT's `defaultSystemPromptId` — goes through here rather than writing one of
+/// the two by hand.
+///
+/// Every prompt's `isDefault` becomes `i == target` (v4's `forEach`, so `None`'s
+/// `targetIndex = -1` demotes them ALL) and `updatedAt` is minted (the latter
+/// discarded by the projection). Returns `false` when the character is absent, or
+/// when a NON-null `prompt_id` names a prompt the character does not have — and
+/// in that case NOTHING is written, which is the whole point of the arm.
 pub fn set_default_system_prompt(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
-    prompt_id: &str,
+    prompt_id: Option<&str>,
 ) -> Result<bool, DbError> {
     let Some(character) = find_by_id(main, mount, character_id)? else {
+        // v4 `logger.warn('Character not found for setting default prompt', …)`.
+        // Unreachable from the two v5 callers (both gate on the character first —
+        // `require_character_owned` / `find_by_id_raw`), so this is the P4.D112
+        // idiom: ported for fidelity, recorded as unreachable, no capture pin.
+        tracing::warn!(
+            characterId = %character_id,
+            "Character not found for setting default prompt"
+        );
         return Ok(false);
     };
     let mut prompts = array_of(&character, "systemPrompts");
-    let Some(target) = prompts
-        .iter()
-        .position(|p| p.get("id").and_then(Value::as_str) == Some(prompt_id))
-    else {
-        return Ok(false);
+    // v4: `targetIndex = promptId === null ? -1 : prompts.findIndex(...)`.
+    let target = match prompt_id {
+        None => None,
+        Some(pid) => {
+            match prompts
+                .iter()
+                .position(|p| p.get("id").and_then(Value::as_str) == Some(pid))
+            {
+                Some(i) => Some(i),
+                None => {
+                    tracing::warn!(
+                        characterId = %character_id,
+                        promptId = %pid,
+                        "System prompt not found"
+                    );
+                    return Ok(false);
+                }
+            }
+        }
     };
 
     let now = crate::clock::now_iso();
     for (i, p) in prompts.iter_mut().enumerate() {
-        p["isDefault"] = Value::Bool(i == target);
+        p["isDefault"] = Value::Bool(Some(i) == target);
         p["updatedAt"] = Value::String(now.clone());
     }
 
-    project_array(main, mount, character_id, "systemPrompts", prompts)?;
+    project_system_prompts(main, mount, character_id, prompts, None)?;
     Ok(true)
 }
 

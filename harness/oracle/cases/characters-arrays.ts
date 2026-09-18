@@ -41,9 +41,16 @@ interface Op {
   content?: string;
   isDefault?: boolean;
   title?: string;
-  targetName?: string;
+  /**
+   * [P4.D201 / v4 `baa85e19b`] `setDefaultSystemPrompt` accepts `null` — the
+   * clear-the-default arm — so the spec spells it as an explicit `targetName:
+   * null` and this driver passes it straight through rather than resolving.
+   */
+  targetName?: string | null;
   targetTitle?: string;
   data?: Record<string, unknown>;
+  /** [P4.D201] a LITERAL id the character does not have (the refusal arm). */
+  promptId?: string;
   partnerId?: string;
   value?: unknown;
 }
@@ -107,6 +114,38 @@ async function main(): Promise<void> {
     return s.id;
   };
 
+  /**
+   * [P4.D201 / v4 `baa85e19b`] The per-op default-prompt trail.
+   *
+   * The six-table census is a FINAL-STATE diff, so an op whose effect a later op
+   * overwrites is INVISIBLE to it — measured: inserting the three new
+   * system-prompt arms left the dump byte-for-byte the size it already was,
+   * because the sequence still ends with a delete that re-heals the column. The
+   * lockstep is precisely a claim about what EACH write leaves behind, so it
+   * needs a per-op comparand. After every op this records the slim
+   * `defaultSystemPromptId` cell and the read-back prompt flags; the prompt ids
+   * are path-derived from the shared fixture, so both sides mint the same ones
+   * and the trail compares EXACTLY.
+   */
+  const trail: Array<{
+    op: string;
+    column: string | null;
+    prompts: Array<[string, boolean]>;
+  }> = [];
+  const snapshot = async (opName: string): Promise<void> => {
+    const rows = (await rawQuery(
+      'SELECT defaultSystemPromptId FROM characters WHERE id = ?',
+      [characterId]
+    )) as Array<{ defaultSystemPromptId: string | null }>;
+    const c = await repos.characters.findById(characterId);
+    trail.push({
+      op: opName,
+      column: rows[0]?.defaultSystemPromptId ?? null,
+      prompts: (c?.systemPrompts ?? []).map((p) => [p.name, Boolean(p.isDefault)] as [string, boolean]),
+    });
+  };
+  await snapshot('<initial>');
+
   for (const op of spec.ops) {
     switch (op.op) {
       case 'addSystemPrompt':
@@ -122,8 +161,25 @@ async function main(): Promise<void> {
         break;
       }
       case 'setDefaultSystemPrompt': {
-        const id = await resolvePromptId(op.targetName as string);
+        // [P4.D201 / v4 `baa85e19b`] `targetName: null` is the CLEAR arm — it is
+        // passed through as a literal `null`, not resolved to an id.
+        const id =
+          op.targetName === null || op.targetName === undefined
+            ? null
+            : await resolvePromptId(op.targetName);
         await repos.characters.setDefaultSystemPrompt(characterId, id);
+        break;
+      }
+      // [P4.D201 / v4 `baa85e19b`] the refusal arm: a NON-null id the character
+      // does not have. v4 warns and returns null having written nothing.
+      case 'setDefaultSystemPromptMissing': {
+        const refused = await repos.characters.setDefaultSystemPrompt(
+          characterId,
+          op.promptId as string
+        );
+        if (refused !== null) {
+          throw new Error('setDefaultSystemPromptMissing: v4 accepted a foreign prompt id');
+        }
         break;
       }
       case 'deleteSystemPrompt': {
@@ -171,6 +227,7 @@ async function main(): Promise<void> {
       default:
         throw new Error(`unknown op: ${op.op}`);
     }
+    await snapshot(op.op);
   }
 
   // MAIN db: the slim characters row.
@@ -212,6 +269,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     JSON.stringify({
       case: 'characters-arrays-tier2',
+      defaultColumnTrail: trail,
       characters,
       points,
       folders,

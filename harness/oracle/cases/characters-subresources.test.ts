@@ -51,6 +51,11 @@ interface CaseSpec {
    *  the only way to reach "update an ALREADY-archived scenario" when every
    *  case starts from a fresh fixture. */
   preBody?: unknown;
+  /** [P4.D201 / v4 `baa85e19b`] also GET the character afterwards and record it.
+   *  The lockstep is invisible in this family's ECHO — the prompt PUT answers
+   *  `{prompt}`, which carries no `defaultSystemPromptId` — so the route-level
+   *  proof that promoting a prompt moves the COLUMN too needs the readback. */
+  postRead?: boolean;
 }
 
 function mockRequest(url: string, method: string, body: unknown): unknown {
@@ -141,6 +146,15 @@ async function runCase(
     })) as { status: number; json: () => Promise<unknown> };
     const status = response.status;
     const body = await response.json();
+    if (c.postRead) {
+      const { GET } = (await import('@/app/api/v1/characters/[id]/route')) as {
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const rb = (await GET(mockRequest(`http://localhost/api/v1/characters/${ARIA}`, 'GET', undefined), {
+        params: Promise.resolve({ id: ARIA }),
+      })) as { status: number; json: () => Promise<unknown> };
+      return { name: c.name, status, body, readback: { status: rb.status, body: await rb.json() } };
+    }
     return { name: c.name, status, body };
   } finally {
     await closeDatabase();
@@ -179,6 +193,11 @@ async function main(): Promise<void> {
     { name: 'prompt_create', module: PROMPTS, method: 'POST', body: { name: 'Extra', content: 'A third prompt.', isDefault: false } },
     { name: 'prompt_update', module: PROMPT_ITEM, method: 'PUT', target: { kind: 'prompt', byName: 'Backup' }, params: (id) => ({ id: ARIA, promptId: id }), body: { content: 'Revised backup prompt.' } },
     { name: 'prompt_delete', module: PROMPT_ITEM, method: 'DELETE', target: { kind: 'prompt', byName: 'Backup' }, params: (id) => ({ id: ARIA, promptId: id }), body: {} },
+    // [P4.D201 / v4 `baa85e19b`, bug 154] The lockstep THROUGH THE PROMPT ROUTE:
+    // a PUT with `{isDefault: true}` on the non-default baked prompt. The ECHO is
+    // just the updated prompt (unchanged by the fix), so the proof is the
+    // `readback` — `defaultSystemPromptId` follows the flag onto `Backup`.
+    { name: 'prompt_update_promotes', module: PROMPT_ITEM, method: 'PUT', target: { kind: 'prompt', byName: 'Backup' }, params: (id) => ({ id: ARIA, promptId: id }), body: { isDefault: true }, postRead: true },
     { name: 'scenario_create', module: SCENARIOS, method: 'POST', body: { title: 'Epilogue', content: 'The voyage ends.' } },
     { name: 'scenario_update', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { content: 'A revised prologue.' } },
     { name: 'scenario_delete', module: SCENARIOS, method: 'DELETE', target: { kind: 'scenario', byName: 'Interlude' }, query: (id) => `scenarioId=${id}`, body: {} },

@@ -135162,3 +135162,197 @@ TZ=UTC QT_FIXTURE_CCTX_MAIN=/tmp/qt-cctx-main.db QT_FIXTURE_CCTX_MOUNT=/tmp/qt-c
   $N/node --import tsx $V5W/harness/oracle/cases/chat-context-init.ts > /tmp/oracle-cctx.ndjson
 # in_scene_voiced_tier3 — the committed recipe, unchanged, at the pin
 ```
+
+## P4.D201 unit 2 — every system-prompt write moves both faces, and the character PUT routes through the chokepoint (v4 `baa85e19b`, bug 154)
+
+### The port
+
+A private `project_system_prompts(main, mount, cid, items, transient_id)` in
+`db/vault_character_arrays.rs` is v4's `systemPromptsPatch`: ONE patch carrying
+`systemPrompts` AND `defaultSystemPromptId` (`items.find(isDefault)?.id ?? null`,
+nulled when it equals the transient). All four writers apply it —
+`add_system_prompt` passes its minted id as the transient, the other three pass
+`None`. `set_default_system_prompt` takes `Option<&str>`: `None` demotes every
+flag and clears the column (v4's `targetIndex = -1` reaching the `forEach`), a
+non-null miss warns (`System prompt not found`) and writes NOTHING. v4's
+`Character not found for setting default prompt` warn is ported for fidelity and
+RECORDED UNREACHABLE — both v5 callers gate on the character first (the P4.D112
+idiom, no capture pin).
+
+**The preamble's measurement, run:** a mixed managed+slim patch lands in ONE
+`update_character` call. `apply_document_store_write_overlay` reprojects the
+`Prompts/` folder and STRIPS `systemPrompts`; the remaining
+`defaultSystemPromptId` reaches `slim_update_from_patch`, or
+`clear_null_slim_columns` when null — the column is in `NULLABLE_SLIM_COLUMNS`,
+so the clear arm reaches the column rather than collapsing into "skip". Order:
+vault, then slim.
+
+`api::characters::character_update` pulls the key out of the patch and routes it
+through the chokepoint at v4's positions (`put.ts:139-194`): an empty remaining
+payload is `find_by_id`, not an empty write; a present key including an explicit
+`null` reaches the chokepoint; a bad id answers 400 `System prompt not found on
+this character` AFTER the generic patch has landed — v4's partial write,
+reproduced. The key stays in `UPDATE_SCHEMA_KEYS` (v4's Zod still declares it;
+the pull-out is after the parse).
+
+**The tri-state's third leg, measured.** v4 declares the field
+`z.uuid().nullable().optional()` (`put.ts:61`), so a non-string never reaches its
+handler — Zod answers 400 at the PARSE, before any write. v5's
+`build_update_patch` is a STRIP, not a validator (the standing
+Zod-format-validator deferral), so the value arrives; it is refused at v4's
+POSITION so nothing is written, with v5's own sentence. ⚠ A bare `as_str()`
+would have read `42` as the CLEAR and silently dropped the default on a request
+v4 refuses outright.
+
+### The census is a FINAL-STATE diff — the trail exists because of it
+
+`characters_arrays_tier2_equivalence` grew `updateSystemPrompt {isDefault:true}`
+(promotion through UPDATE), `setDefaultSystemPrompt targetName: null` (the clear)
+and a NEW `setDefaultSystemPromptMissing` op carrying a literal foreign id.
+**Inserting all three left the six-table dump at the exact byte size it already
+had (22,925)** — the sequence still ends with a delete that re-heals the column,
+and the census only ever sees the end state. So the family gained a
+`defaultColumnTrail`: after EVERY op, the slim `defaultSystemPromptId` cell and
+the read-back `(name, isDefault)` pairs, on both sides. The prompt ids are
+path-derived from the shared fixture, so the trail compares EXACTLY. Four shape
+guards keep a trimmed spec from going green having stopped asking.
+
+The trail also records two facts worth keeping: a RENAME leaves the column
+naming the pre-rename path-derived id (a wart the transient rule does not cover,
+identical on both sides), and after the CLEAR the read overlay re-promotes
+`prompts[0]` in memory while the column stays null.
+
+**Red-first:** regenerated at the TARGET on UNPORTED main, the slim
+`characters` row's `defaultSystemPromptId` was `null` where v4 wrote
+`33c4c114-72ad-802f-be09-720d5675b2c9` — one differing cell, the first table
+diffed.
+
+### `characters_mutations_equivalence` — seven new arms
+
+`update_default_prompt` (the column and flags move), `update_default_prompt_clear`,
+`update_default_prompt_missing` (400, nothing moved),
+`update_name_and_bad_default` (**v4's partial write: the readback carries
+`Aria Half-Written` alongside an unmoved column**),
+`update_default_prompt_on_archived`, `update_default_prompt_on_archived_missing`
+and `update_default_prompt_non_string`. Every arm records the PUT's
+`{status, body}` AND a GET readback, because the arms that matter answer 400 and
+a 400 says nothing about what was written on the way to it.
+
+Two carry RECORDED divergences, each pinned in BOTH directions so a convergence
+trips rather than passing in silence:
+
+- **the cleared-null echo** — v4's echo is the merged+validated object and
+  carries the just-cleared key as present-`null`; v5's echo is a pure overlay
+  re-read that omits null columns. Both GETs omit it, so the readback is the
+  comparand. This family already documents the same divergence for
+  `update_clear_wardrobe_permission`.
+- **the archived 500** — both sides 500; v4's route middleware renders the fixed
+  `Internal server error`, v5's dispatch envelope renders the archive guard's own
+  sentence. PRE-EXISTING and general (this is simply the first route-level
+  archived WRITE in this family), NOT part of bug 154. **Named for the unifier as
+  a follow-up.**
+- **the non-string sentence** — v4 answers its Zod envelope
+  (`Validation error` + `details`), v5 its fixed sentence; both 400, both write
+  nothing, which the readback proves.
+
+Tier 2 item 8: `characters_subresources_equivalence` gains
+`prompt_update_promotes` — the prompt route's `{prompt}` echo carries no column,
+so the proof is a readback PROJECTED to the claim (the column and the
+`(name, isDefault)` pairs); a whole-character GET carries enrichment this
+family's normalizer was never built for, and restating the sibling's coverage
+here would add nothing. Count guard 16 → 17.
+
+### ⚠ The fixture-vintage repair — OUT OF THE ORDER'S STATED OWNERSHIP
+
+`characters_mutations_equivalence` was measured **RED on UNPORTED main at the
+BASELINE `89fcc3c0d` pin** (all tracked changes reverted, the oracle regenerated
+from the baseline pin): `update_clear_wardrobe_permission readback` MISMATCH,
+`wardrobe_delete` (v5: `no such column: cycleOrderParticipantIds`), `tag_delete`
++ its tables (v4 500s — at BOTH pins), `st_import_card`, and a panic at
+`photo_save_link`. None of them rows this lane added, and the panic sits BEFORE
+this lane's new block, so Tier-1 item 3's differential could not run at all.
+
+Repaired with `harness/oracle/fixtures/migrate-memories-fixture-columns.ts` (v4's
+own migration SQL behind v4's own only-if-missing guard — the P4.94 / P4.D155
+precedent), run from the target pin:
+
+```
+characters-main.db:  +chats.cycleOrderParticipantIds +chat_messages.routeTrail
+                     +chats.transcriptVersion +files.generationKey
+characters-mount.db: already current
+```
+
+All NINE families reading the pair were regenerated and re-run:
+`characters_mutations`, `characters_subresources`, `characters_reads`,
+`character_avatar_write_tier2`, `character_photo_upload_tier2`,
+`character_rename`, `characters_actions`, `external_prompt_tier3`,
+`system_restore_guards` — all green.
+
+### A SECOND pre-existing fixture-vintage red — RECORDED, NOT repaired
+
+`subprompts_prompt_tier2_equivalence` (a neutrality leg this order names) panics
+at its FIRST chat read with `no such column: cycleOrderParticipantIds` on the
+committed `subprompts-{main,mount}.db` pair — before any code this lane touched,
+on a fixture this lane never modifies (`git status` confirms
+`characters-main.db` is the only fixture in the diff). Unambiguously
+pre-existing and NOT this lane's (§R.5). The same one-command repair would close
+it; deliberately not done, because nothing here needs it and it would drag a
+second shared fixture and its other readers into this lane's scope. **NAMED FOR
+THE UNIFIER.**
+
+### `chat_create_capstone` at both pins — the order's `cmp` is the wrong instrument
+
+Regenerated WHOLE (fixture + oracle) at `baa85e19b` and at `89fcc3c0d` into
+lane-private paths. A raw `cmp` reports DIFFERS on 129/129 rows — but the family
+MINTS ids per regen and several dumps (`messageOrder`, the `tables` row arrays)
+are ordered BY those ids. Normalizing uuids and timestamps and sorting every
+array: **0 of 129 cases differ.** The order's prediction ("byte-identical at both
+pins") is CONFIRMED; its instrument is not
+(`regenerate-at-both-pins-and-cmp-is-not-universal`). The family then ran GREEN
+against the target-pinned oracle.
+
+### Mutations
+
+| # | mutation | target | result |
+|---|---|---|---|
+| M1 | the column write dropped from `set_default_system_prompt` | `characters_arrays_tier2` (the set-default trail entries) | RED |
+| M2 | the transient-id rule dropped (write the minted id) | `characters_arrays_tier2` (the add-default trail entry) | RED |
+| M3 | the `None` arm writes nothing | `characters_arrays_tier2` (the clear trail entry) | RED |
+| M4 | `character_update` writes the column raw again | `characters_mutations` / `update_default_prompt` | RED |
+| M5 | the empty-payload rule dropped | `characters_mutations` / `update_default_prompt_on_archived_missing` | RED (after the retarget below) |
+
+**M5 SURVIVED as first written, and the cause is not the one the order
+anticipated.** The order said to check whether v5's archive guard fires on an
+empty patch. It DOES (`validate_character_archive_patch` treats an empty patch
+as an unsanctioned edit — only a single-key `archivedAt: null` is sanctioned).
+The blindness is that on an archived character BOTH the empty generic write and
+the chokepoint's own two-key write trip the SAME guard with the SAME sentence,
+so `update_default_prompt_on_archived` cannot tell them apart. The rule's one
+observable consequence is an archived character plus a BOGUS id — 400 with the
+rule, 500 without — which is now its own arm, confirmed v4-side at 400 with Fenn
+unchanged.
+
+### Neutrality legs
+
+At the BASELINE pin: `characters_reads_equivalence`,
+`characters_update_tier2_equivalence` green;
+`subprompts_prompt_tier2_equivalence` red for the pre-existing reason above.
+
+### Regen recipes AS RUN
+
+```
+PIN=/tmp/qt-v4-pin-p4d201-baa85e19b ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+# the fixture widen (from the pin, so the DDL is v4's at the target)
+cd "$PIN" && $N/node --import tsx \
+  $V5W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+  $V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
+  $V5W/crates/quilltap-web/tests/fixtures/characters-mount.db
+# then, through the sanctioned driver, at the pin:
+python3 harness/tools/recipe_sweep.py --run-all --v4 "$PIN" --v5w "$V5W" \
+  --families characters_arrays_tier2_equivalence,characters_mutations_equivalence,\
+characters_subresources_equivalence,chat_context_init_equivalence,\
+in_scene_voiced_tier3_equivalence,default_system_prompt_equivalence,help_tree_equivalence
+# and the baseline batch at /tmp/qt-v4-pin-p4d201-89fcc3c0d for the neutrality
+# legs + the eight neighbours that read the widened pair.
+```

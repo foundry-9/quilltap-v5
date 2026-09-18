@@ -143,6 +143,40 @@ fn first_diff(got: &str, want: &str) -> String {
     }
     "(identical line-by-line)".to_string()
 }
+/// [P4.D201] The HTTP status an `ErrorKind` answers with (v4's route mapping),
+/// so the `default-prompt` rows can diff v4's 400 as well as its body.
+fn status_of(kind: &quilltap_core::api::types::ErrorKind) -> i64 {
+    use quilltap_core::api::types::ErrorKind as K;
+    match kind {
+        K::BadRequest => 400,
+        K::Unauthorized => 401,
+        K::Forbidden => 403,
+        K::NotFound => 404,
+        K::Conflict => 409,
+        K::Unprocessable => 422,
+        K::Locked | K::Unavailable => 503,
+        K::Internal => 500,
+    }
+}
+
+/// [P4.D201] `(status, body)` in v4's route shape for any `Response`.
+fn to_status_body(r: &Response) -> (i64, Value) {
+    match r {
+        Response::Error(e) => {
+            let status = status_of(&e.kind);
+            if let Some(body) = e.unavailable_wire_body() {
+                return (status, body);
+            }
+            let mut body = json!({ "error": e.message });
+            if let Some(d) = &e.details {
+                body["details"] = (**d).clone();
+            }
+            (status, body)
+        }
+        other => (200, response_data(other)),
+    }
+}
+
 fn response_data(r: &Response) -> Value {
     let v = serde_json::to_value(r).unwrap();
     v.get("data").cloned().unwrap_or(Value::Null)
@@ -1236,6 +1270,217 @@ fn characters_mutations_match_oracle() {
             extra.push("archive_guard_wardrobe_write".to_string());
         } else {
             eprintln!("[archive_guard_wardrobe_write] OK.");
+        }
+    }
+
+    {
+        // [P4.D201 / v4 `baa85e19b`, bug 154] The character PUT's
+        // `defaultSystemPromptId` chokepoint, five arms. INPUTS identical to
+        // `characters-mutations.test.ts`'s `default-prompt` cases.
+        //
+        // Each arm records BOTH the PUT's `{status, body}` and a GET readback —
+        // the arms that matter most answer 400, and a 400 says nothing about what
+        // the handler wrote on the way to it.
+        //
+        // The prompt NAME is resolved to its id on each side; the baked ids are
+        // path-derived from the shared fixture, so both sides resolve the same
+        // one (the `characters_subresources_equivalence` idiom).
+        let resolve_prompt = |db: &Db, character_id: &str, name: &str| -> String {
+            let data = response_data(&characters::character_get(db, &uid, character_id));
+            data.get("character")
+                .and_then(|c| c.get("systemPrompts"))
+                .and_then(Value::as_array)
+                .and_then(|ps| {
+                    ps.iter()
+                        .find(|p| p.get("name").and_then(Value::as_str) == Some(name))
+                })
+                .and_then(|p| p.get("id").and_then(Value::as_str))
+                .map(str::to_string)
+                .unwrap_or_else(|| panic!("no prompt named {name} on {character_id}"))
+        };
+
+        const BOGUS_PROMPT: &str = "9f9f9f9f-0000-4000-8000-00000000dead";
+        enum Sends {
+            Named(&'static str),
+            Literal(&'static str),
+            Null,
+            /// A NON-STRING, non-null value — the tri-state's third leg.
+            NonString(Value),
+        }
+        /// Which comparands an arm carries. Two arms hit RECORDED divergences
+        /// that are not this port's — both are pinned in BOTH directions below,
+        /// so the day v5 converges the pin trips rather than passing in silence.
+        enum Compare {
+            /// status + PUT echo + readback.
+            Full,
+            /// status + readback only. v4's echo is the merged+validated object,
+            /// which carries a just-nulled key as present-`null`; v5's echo is a
+            /// pure overlay re-read that OMITS null columns. Identical persisted
+            /// state, a divergence this family already documents for
+            /// `update_clear_wardrobe_permission`. Both sides' GET omits it, so
+            /// the readback is the comparand.
+            EchoOmitsClearedNull,
+            /// status + readback only. v4's route middleware renders every
+            /// uncaught throw as the fixed `Internal server error`; v5's dispatch
+            /// envelope renders the `DbError`'s own message — here the archive
+            /// guard's sentence. PRE-EXISTING and general (this row is simply the
+            /// first route-level archived WRITE in this family), not part of bug
+            /// 154; named for the unifier as a follow-up.
+            ArchivedGuard500,
+            /// status + readback only. v4 refuses a non-string at the ZOD PARSE
+            /// and answers its validation envelope; v5 has no validator on this
+            /// field (the standing Zod-format-validator deferral) and refuses at
+            /// the same POSITION with its own sentence. Both write NOTHING,
+            /// which the readback proves.
+            NonStringSentence,
+        }
+        let arms: Vec<(&str, &str, Sends, Value, Compare)> = vec![
+            (
+                "update_default_prompt",
+                ARIA,
+                Sends::Named("Backup"),
+                json!({}),
+                Compare::Full,
+            ),
+            (
+                "update_default_prompt_clear",
+                ARIA,
+                Sends::Null,
+                json!({}),
+                Compare::EchoOmitsClearedNull,
+            ),
+            (
+                "update_default_prompt_missing",
+                ARIA,
+                Sends::Literal(BOGUS_PROMPT),
+                json!({}),
+                Compare::Full,
+            ),
+            (
+                "update_name_and_bad_default",
+                ARIA,
+                Sends::Literal(BOGUS_PROMPT),
+                json!({ "name": "Aria Half-Written" }),
+                Compare::Full,
+            ),
+            (
+                "update_default_prompt_on_archived",
+                FENN,
+                Sends::Named("Cartographer"),
+                json!({}),
+                Compare::ArchivedGuard500,
+            ),
+            // The EMPTY-PAYLOAD rule's ONLY observable consequence, MEASURED:
+            // on an archived character both the empty generic write and the
+            // chokepoint's own write trip the archive guard with the SAME
+            // sentence, so the arm above cannot tell them apart (mutation M5
+            // survived against it). With a BOGUS id the rule shows — the generic
+            // write is skipped, the chokepoint refuses, and the answer is 400
+            // where writing the empty patch first would have thrown 500.
+            (
+                "update_default_prompt_on_archived_missing",
+                FENN,
+                Sends::Literal(BOGUS_PROMPT),
+                json!({}),
+                Compare::Full,
+            ),
+            (
+                "update_default_prompt_non_string",
+                ARIA,
+                Sends::NonString(json!(42)),
+                json!({ "name": "Aria Should Not Persist" }),
+                Compare::NonStringSentence,
+            ),
+        ];
+
+        for (name, target, sends, extra_body, compare) in arms {
+            let db = fresh_db(&spec, name);
+            let value = match sends {
+                Sends::Named(pn) => Value::String(resolve_prompt(&db, target, pn)),
+                Sends::Literal(id) => Value::String(id.to_string()),
+                Sends::Null => Value::Null,
+                Sends::NonString(v) => v,
+            };
+            let mut body = extra_body.as_object().cloned().unwrap_or_default();
+            body.insert("defaultSystemPromptId".to_string(), value);
+            let r = rt.block_on(characters::character_update(
+                &db,
+                &uid,
+                target,
+                Value::Object(body),
+            ));
+            let (status, put_body) = to_status_body(&r);
+            let rb = characters::character_get(&db, &uid, target);
+            let (rb_status, rb_body) = to_status_body(&rb);
+
+            let mut got = json!({
+                "status": status,
+                "readback": { "status": rb_status, "body": rb_body },
+            });
+            let mut want = json!({
+                "status": oracle[name]["status"],
+                "readback": oracle[name]["readback"],
+            });
+            match compare {
+                Compare::Full => {
+                    got["body"] = put_body.clone();
+                    want["body"] = oracle[name]["body"].clone();
+                }
+                Compare::EchoOmitsClearedNull => {
+                    // BOTH directions, so a convergence on either side trips.
+                    let v4_echo = &oracle[name]["body"]["character"];
+                    assert_eq!(
+                        v4_echo.get("defaultSystemPromptId"),
+                        Some(&Value::Null),
+                        "{name}: v4's echo is expected to carry the cleared key as \
+                         present-null — if it stopped, this divergence has converged"
+                    );
+                    assert!(
+                        put_body["character"].get("defaultSystemPromptId").is_none(),
+                        "{name}: v5's echo is expected to OMIT the cleared column — \
+                         if it started carrying it, this divergence has converged"
+                    );
+                }
+                Compare::NonStringSentence => {
+                    // BOTH directions.
+                    let v4_msg = oracle[name]["body"]["error"].as_str().unwrap_or_default();
+                    assert!(
+                        v4_msg.contains("Validation") || v4_msg.contains("Invalid"),
+                        "{name}: v4 is expected to answer its ZOD envelope — if it \
+                         stopped, this divergence has converged; got {v4_msg:?}"
+                    );
+                    assert_eq!(
+                        put_body["error"].as_str(),
+                        Some("System prompt not found on this character"),
+                        "{name}: v5 refuses with its own sentence (the standing \
+                         Zod-format-validator deferral)"
+                    );
+                }
+                Compare::ArchivedGuard500 => {
+                    // BOTH directions again.
+                    assert_eq!(
+                        oracle[name]["body"]["error"].as_str(),
+                        Some("Internal server error"),
+                        "{name}: v4's route middleware is expected to render the \
+                         fixed sentence — if it stopped, this divergence has converged"
+                    );
+                    let v5_msg = put_body["error"].as_str().unwrap_or_default();
+                    assert!(
+                        v5_msg.contains("is archived"),
+                        "{name}: v5 is expected to leak the archive guard's own \
+                         sentence (the pre-existing dispatch-envelope class); got {v5_msg:?}"
+                    );
+                }
+            }
+            if norm(&got) != norm(&want) {
+                eprintln!(
+                    "[{name}] MISMATCH:\n{}",
+                    first_diff(&norm(&got), &norm(&want))
+                );
+                extra.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK.");
+            }
         }
     }
 

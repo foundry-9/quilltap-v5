@@ -241,6 +241,66 @@ fn characters_subresources_match_oracle() {
         check("prompt_delete", r, &mut failed);
     }
     {
+        // [P4.D201 / v4 `baa85e19b`, bug 154] The lockstep THROUGH THE PROMPT
+        // ROUTE. The echo is just the updated prompt — it carries no
+        // `defaultSystemPromptId`, so the fix is invisible in it — and the proof
+        // is the readback: promoting `Backup` via `{isDefault: true}` moves the
+        // COLUMN onto it as well as the flags. INPUTS identical to
+        // `characters-subresources.test.ts`'s `prompt_update_promotes`.
+        let db = fresh_db(&spec, "pup");
+        let id = resolve_sub_id(&db, "systemPrompts", "name", "Backup");
+        let r = rt.block_on(characters::character_prompt_update(
+            &db,
+            &uid,
+            ARIA,
+            &id,
+            None,
+            None,
+            Some(true),
+        ));
+        check("prompt_update_promotes", r, &mut failed);
+        // The readback is PROJECTED to the claim this row makes — the column and
+        // the flags. A whole-character GET carries enrichment this family's
+        // normalizer was never built for (`_count`, minted ids and timestamps);
+        // the sibling `characters_mutations_equivalence` diffs those in full,
+        // and duplicating its `blank_minted` here would only restate its
+        // coverage. What is NEW here is that the PROMPT route moves the column,
+        // which the `{prompt}` echo above cannot show.
+        let project = |character: &Value| -> Value {
+            json!({
+                "defaultSystemPromptId": character.get("defaultSystemPromptId").cloned(),
+                "prompts": character
+                    .get("systemPrompts")
+                    .and_then(Value::as_array)
+                    .map(|ps| {
+                        ps.iter()
+                            .map(|p| json!([p.get("name"), p.get("isDefault")]))
+                            .collect::<Vec<_>>()
+                    }),
+            })
+        };
+        let rb = response_data(&characters::character_get(&db, &uid, ARIA));
+        let got = project(&rb["character"]);
+        let want = project(&oracle["prompt_update_promotes"]["readback"]["body"]["character"]);
+        // The row is only worth running if the flag actually moved onto `Backup`
+        // — a fixture whose baked default changed would otherwise pass vacuously.
+        assert_eq!(
+            want["defaultSystemPromptId"].as_str().is_some(),
+            true,
+            "the oracle's readback must carry a non-null column"
+        );
+        if norm(&got) != norm(&want) {
+            eprintln!(
+                "[prompt_update_promotes readback] MISMATCH:\n  GOT : {}\n  WANT: {}",
+                norm(&got),
+                norm(&want)
+            );
+            failed.push("prompt_update_promotes_readback".to_string());
+        } else {
+            eprintln!("[prompt_update_promotes readback] OK.");
+        }
+    }
+    {
         let db = fresh_db(&spec, "sc");
         let r = rt.block_on(characters::character_scenario_create(
             &db,
@@ -415,9 +475,10 @@ fn characters_subresources_match_oracle() {
 
     // Every oracle row must have been DRIVEN — a case added to the corpus and
     // not to this list would otherwise pass in silence.
+    // 16 before P4.D201; +1 for `prompt_update_promotes` (v4 `baa85e19b`).
     assert_eq!(
         oracle.len(),
-        16,
+        17,
         "the shared corpus grew; add the new case(s) to this list"
     );
     assert!(

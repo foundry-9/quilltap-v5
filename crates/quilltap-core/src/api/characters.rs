@@ -2170,6 +2170,26 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
 /// `{ character }` = the reloaded overlay (v4 `applyDocumentStoreOverlayOne` of the
 /// merged slim; after the write a re-read is byte-equal once minted ids /
 /// timestamps normalize).
+///
+/// **v4 `baa85e19b` (bug 154):** `defaultSystemPromptId` is pulled OUT of the
+/// generic payload (v4 `put.ts:139-147` destructures it beside `scenarios` and
+/// `physicalDescription`) and routed through the repository chokepoint, because
+/// the default prompt is recorded twice — this column and the prompt's own
+/// `isDefault` flag — and writing the column raw left the flag behind. Three
+/// rules ride with it, all v4's (`put.ts:177-194`):
+///
+///   - an **empty remaining payload is not written**: `findById` answers instead,
+///     because "an empty patch is not a write anyone asked for — the archive
+///     guard reads one as an unsanctioned edit";
+///   - a **present** key (including an explicit `null`, the clear) reaches
+///     `set_default_system_prompt`;
+///   - a **bad id** answers 400 `System prompt not found on this character` —
+///     and note the ORDER: v4 writes the generic patch FIRST and only then
+///     refuses, so the rest of the PUT is persisted alongside the 400. That
+///     partial write is reproduced deliberately.
+///
+/// The key stays in [`UPDATE_SCHEMA_KEYS`]: v4's Zod schema still declares it
+/// (`z.uuid().nullable().optional()`), and the pull-out happens AFTER the parse.
 pub async fn character_update(
     db: &Db,
     _user_id: &str,
@@ -2182,9 +2202,46 @@ pub async fn character_update(
         if characters_read::find_by_id_raw(main, &cid)?.is_none() {
             return Ok(Err(not_found("Character")));
         }
-        let patch = build_update_patch(&body);
-        vault_character_update::update_character(main, mount, &cid, &patch)
-            .map_err(overlay_to_db)?;
+        let mut patch = build_update_patch(&body);
+        // v4 `put.ts:145` — destructured OUT of the generic payload. Absent stays
+        // absent; `Value::Null` is the clear; a string names a prompt.
+        let raw_default_prompt = patch.remove("defaultSystemPromptId");
+        // v4 declares the field `z.uuid().nullable().optional()` (`put.ts:61`),
+        // so a non-string, non-null value never reaches its handler: Zod answers
+        // 400 at the PARSE, before any write. v5's `build_update_patch` is a
+        // strip, not a validator (the standing Zod-format-validator deferral), so
+        // the value arrives here — refused at v4's POSITION, so nothing is
+        // written, with v5's own sentence (the deferral's recorded cost). ⚠ Not
+        // collapsed onto `None`: a bare `as_str()` would read `42` as the CLEAR
+        // and silently drop the default on a request v4 refuses outright.
+        let bad_type = matches!(
+            raw_default_prompt,
+            Some(ref v) if !v.is_null() && !v.is_string()
+        );
+        if bad_type {
+            return Ok(Err(bad_request(
+                "System prompt not found on this character",
+            )));
+        }
+
+        // v4 `put.ts:179-182` — an empty remaining payload is a READ, not a write.
+        if !patch.is_empty() {
+            vault_character_update::update_character(main, mount, &cid, &patch)
+                .map_err(overlay_to_db)?;
+        }
+
+        // v4 `put.ts:184-191` — the chokepoint, AFTER the generic write.
+        if let Some(value) = raw_default_prompt {
+            // Only an explicit `null` is the CLEAR (the non-string arm refused
+            // above, at v4's parse position).
+            let prompt_id = value.as_str();
+            if !vault_character_arrays::set_default_system_prompt(main, mount, &cid, prompt_id)? {
+                return Ok(Err(bad_request(
+                    "System prompt not found on this character",
+                )));
+            }
+        }
+
         // Reload through the overlay (managed fields read back from the vault).
         Ok(Ok(
             characters_read::find_by_id(main, mount, &cid)?.unwrap_or(Value::Null)
@@ -2362,7 +2419,7 @@ pub async fn character_prompt_set_default(
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
-        if vault_character_arrays::set_default_system_prompt(main, mount, &cid, &pid)? {
+        if vault_character_arrays::set_default_system_prompt(main, mount, &cid, Some(&pid))? {
             Ok(Ok(()))
         } else {
             Ok(Err(not_found("Prompt")))

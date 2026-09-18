@@ -81,7 +81,12 @@ interface CaseSpec {
     | 'photo-save-body'
     | 'character-delete'
     | 'archive-guard-repo'
-    | 'archive-guard-wardrobe';
+    | 'archive-guard-wardrobe'
+    /** [P4.D201 / v4 `baa85e19b`] the character PUT's `defaultSystemPromptId`
+     *  chokepoint route: the key is pulled out of the generic payload, an empty
+     *  remaining payload is not written, and a bad id answers 400 AFTER the
+     *  generic write has already landed. */
+    | 'default-prompt';
   id?: string;
   /** For wardrobe item ops: discover the baked item id by this title. */
   itemTitle?: string;
@@ -97,6 +102,20 @@ interface CaseSpec {
    *  FINAL PUT response (an overlay re-read) is the echo. Used to prove the
    *  explicit-null tri-state clear (set non-null, then null). */
   bodies?: unknown[];
+  /** [P4.D201] `default-prompt`: resolve this prompt NAME to its id on the
+   *  character and send it as `defaultSystemPromptId`. The baked prompt ids are
+   *  path-derived, so both sides resolve the same one. */
+  promptName?: string;
+  /** [P4.D201] `default-prompt`: send this LITERAL id (the refusal arm). */
+  literalPromptId?: string;
+  /** [P4.D201] `default-prompt`: send this NON-STRING value verbatim — v4's Zod
+   *  refuses it at the parse, before any write. */
+  nonStringPrompt?: unknown;
+  /** [P4.D201] `default-prompt`: send an explicit `null` (the clear arm). */
+  nullPrompt?: boolean;
+  /** [P4.D201] `default-prompt`: extra keys merged into the PUT body ahead of
+   *  `defaultSystemPromptId` — the partial-write arm sends a `name` too. */
+  extraBody?: Record<string, unknown>;
 }
 
 /** Dump the mount-index photo GC tables + the character's defaultImageId — the
@@ -635,6 +654,50 @@ async function runCase(
         status = response.status;
         body = await response.json();
       }
+    } else if (c.kind === 'default-prompt') {
+      // [P4.D201 / v4 `baa85e19b`] The character PUT's `defaultSystemPromptId`.
+      //
+      // Always emits a `readback` (a GET after the PUT) as well as the echo,
+      // because the arms that matter most answer 400 — and a 400 says nothing
+      // about what the handler wrote on the way to it. v4 writes the generic
+      // payload FIRST and only then refuses a bad id, so `update_name_and_bad_
+      // default`'s readback is the proof of that partial write.
+      const target = c.id as string;
+      const { getRepositories: getRepos } = await import('@/lib/repositories/factory');
+      const repos = getRepos();
+      let promptId: unknown;
+      if (c.nonStringPrompt !== undefined) {
+        promptId = c.nonStringPrompt;
+      } else if (c.nullPrompt) {
+        promptId = null;
+      } else if (c.literalPromptId) {
+        promptId = c.literalPromptId;
+      } else if (c.promptName) {
+        const ch = await repos.characters.findById(target);
+        const found = (ch?.systemPrompts ?? []).find((x) => x.name === c.promptName);
+        if (!found) throw new Error(`${c.name}: no prompt named ${c.promptName} on ${target}`);
+        promptId = found.id;
+      }
+      const putBody = { ...(c.extraBody ?? {}), defaultSystemPromptId: promptId };
+      const url = `http://localhost/api/v1/characters/${target}`;
+      const { PUT, GET } = (await import('@/app/api/v1/characters/[id]/route')) as {
+        PUT: (...a: unknown[]) => Promise<unknown>;
+        GET: (...a: unknown[]) => Promise<unknown>;
+      };
+      const response = (await PUT(mockRequest(url, putBody), {
+        params: Promise.resolve({ id: target }),
+      })) as { status: number; json: () => Promise<unknown> };
+      status = response.status;
+      body = await response.json();
+      const rb = (await GET(mockRequest(url, undefined), {
+        params: Promise.resolve({ id: target }),
+      })) as { status: number; json: () => Promise<unknown> };
+      return {
+        name: c.name,
+        status,
+        body,
+        readback: { status: rb.status, body: await rb.json() },
+      };
     } else if (c.kind === 'update' || c.kind === 'update-seq') {
       const url = `http://localhost/api/v1/characters/${c.id}`;
       const { PUT } = (await import('@/app/api/v1/characters/[id]/route')) as {
@@ -827,6 +890,78 @@ async function main(): Promise<void> {
       kind: 'update',
       id: ARIA,
       body: { canChooseOutfit: true },
+    },
+    // [P4.D201 / v4 `baa85e19b`, bug 154] The character PUT's
+    // `defaultSystemPromptId` chokepoint. Aria's baked prompts are `Backup`
+    // (path-first) and `Explorer` (the standing default), so a move to `Backup`
+    // shows in BOTH faces: the column and the `isDefault` flags.
+    {
+      name: 'update_default_prompt',
+      kind: 'default-prompt',
+      id: ARIA,
+      promptName: 'Backup',
+    },
+    // The CLEAR arm. Note the echo/readback still show a flagged prompt: the
+    // read overlay re-promotes `prompts[0]` when the folder declares no default.
+    // What the clear leaves behind is the NULL COLUMN.
+    {
+      name: 'update_default_prompt_clear',
+      kind: 'default-prompt',
+      id: ARIA,
+      nullPrompt: true,
+    },
+    // The refusal arm: a well-formed uuid naming no prompt of Aria's. 400, and
+    // the readback proves nothing moved.
+    {
+      name: 'update_default_prompt_missing',
+      kind: 'default-prompt',
+      id: ARIA,
+      literalPromptId: '9f9f9f9f-0000-4000-8000-00000000dead',
+    },
+    // v4's PARTIAL WRITE, reproduced deliberately: the generic payload is
+    // written FIRST and the bad id refuses afterwards, so the readback carries
+    // the new name alongside an unmoved default.
+    {
+      name: 'update_name_and_bad_default',
+      kind: 'default-prompt',
+      id: ARIA,
+      literalPromptId: '9f9f9f9f-0000-4000-8000-00000000dead',
+      extraBody: { name: 'Aria Half-Written' },
+    },
+    // The EMPTY-PAYLOAD rule, on the one character that can see it. Fenn is
+    // ARCHIVED, so a generic write would be refused by the archive guard — but
+    // the body carries nothing else, so no generic write is attempted. What
+    // `setDefaultSystemPrompt` does next is the oracle's to say: it calls
+    // `update` with a two-key patch of its own.
+    {
+      name: 'update_default_prompt_on_archived',
+      kind: 'default-prompt',
+      id: FENN,
+      promptName: 'Cartographer',
+    },
+    // The EMPTY-PAYLOAD rule's ONLY observable consequence, measured. On an
+    // archived character BOTH the empty generic write and the chokepoint's own
+    // write trip the archive guard with the same sentence, so the arm above
+    // cannot tell them apart. With a BOGUS id the rule shows: the generic write
+    // is skipped, `setDefaultSystemPrompt` refuses, and the answer is 400 —
+    // where writing the empty patch first would have thrown the archive error.
+    {
+      name: 'update_default_prompt_on_archived_missing',
+      kind: 'default-prompt',
+      id: FENN,
+      literalPromptId: '9f9f9f9f-0000-4000-8000-00000000dead',
+    },
+    // The tri-state's THIRD leg. v4 declares the field
+    // `z.uuid().nullable().optional()`, so a non-string never reaches the
+    // handler — Zod answers 400 at the parse, before any write. v5 has no
+    // validator there and refuses at the same POSITION with its own sentence;
+    // the `name` alongside proves neither engine wrote anything.
+    {
+      name: 'update_default_prompt_non_string',
+      kind: 'default-prompt',
+      id: ARIA,
+      nonStringPrompt: 42,
+      extraBody: { name: 'Aria Should Not Persist' },
     },
     // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist through
     // PUT (previously stripped before update()). Echo reflects both DB columns.

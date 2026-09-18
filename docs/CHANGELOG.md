@@ -12,6 +12,55 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — port(characters): the default prompt's flag and column move together, everywhere (v4 `baa85e19b`, bug 154)
+
+_Versions: core 0.0.962, harness 0.0.852._
+
+v5 reproduced v4's lockstep gap whole: all four system-prompt writers in
+`vault_character_arrays` projected `systemPrompts` alone and none wrote
+`defaultSystemPromptId`, so a write that moved the flag looked right in the
+editor and changed nothing about which prompt a new chat used. A private
+`project_system_prompts` is now the one patch every writer applies — v4's
+`systemPromptsPatch`, including its transient-id rule: the id minted for a
+brand-new prompt never reaches disk (the vault re-keys it from the file path),
+so recording it would leave the column naming nothing; it writes `null` and the
+next write heals it. `set_default_system_prompt` takes `Option<&str>` and gains
+v4's clear-the-default arm.
+
+`character_update` pulls the key out of the generic payload and routes it
+through that chokepoint, with all three of v4's rules: an empty remaining
+payload is a READ, not an empty write; a present key including an explicit
+`null` reaches the chokepoint; a bad id answers 400 `System prompt not found on
+this character` — after the generic patch has already landed, which is v4's own
+partial write, reproduced deliberately. A non-string value is refused at v4's
+parse POSITION, so nothing is written; v5 has no Zod validator on that field
+(the standing deferral) and answers its own sentence, which is now pinned by a
+corpus row rather than left as prose. Collapsing it with a bare `as_str()`
+would have read `42` as the CLEAR and silently dropped the default.
+
+Measured, not assumed: a mixed `{systemPrompts, defaultSystemPromptId}` patch
+lands in ONE `update_character` call — the write overlay reprojects the
+`Prompts/` folder and strips the managed key, then the slim update (or the
+explicit-null clear) writes the column.
+
+`characters_arrays_tier2` grew three ops and a `defaultColumnTrail`: the
+six-table census is a FINAL-STATE diff, and inserting the ops left the dump the
+exact size it already was, because the sequence still ends with a delete that
+re-heals the column. `characters_mutations` gained seven arms, two carrying
+recorded divergences pinned both ways; `characters_subresources` gained
+`prompt_update_promotes`, whose `{prompt}` echo cannot show the column, so the
+readback is the proof.
+
+⚠ Out of the work order's stated ownership and recorded loudly: the committed
+`characters-{main,mount}.db` pair was widened through v4's own migration
+statements (`+chats.cycleOrderParticipantIds`, `+chat_messages.routeTrail`,
+`+chats.transcriptVersion`, `+files.generationKey`).
+`characters_mutations_equivalence` was measured RED on UNPORTED main at the
+BASELINE pin — five failures and a panic, none of them this lane's rows — and
+the panic sits before the new block, so the unit's differential could not run at
+all until the vintage was repaired. All nine families reading the pair were
+regenerated and re-run.
+
 #### 2026-09-18 — port(characters): one read order for the default system prompt (v4 `baa85e19b`, bug 154)
 
 _Versions: core 0.0.961, harness 0.0.851._

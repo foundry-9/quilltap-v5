@@ -153,6 +153,29 @@
       }
     },
     {
+      "$comment": "[P4.D201 / v4 `baa85e19b`] promotion through UPDATE — v4's lockstep test 1: `isDefault: true` on a non-default prompt drags `defaultSystemPromptId` along.",
+      "op": "updateSystemPrompt",
+      "targetName": "Sleuth",
+      "data": {
+        "isDefault": true
+      }
+    },
+    {
+      "$comment": "[P4.D201] the column follows a set-default back onto the renamed prompt.",
+      "op": "setDefaultSystemPrompt",
+      "targetName": "Tactician"
+    },
+    {
+      "$comment": "[P4.D201 / v4 `baa85e19b`] THE NULL ARM: `setDefaultSystemPrompt(id, null)` demotes every flag (so every `Prompts/*.md` loses its `isDefault: true` frontmatter line) and clears the column. `targetName: null` is how both drivers spell it.",
+      "op": "setDefaultSystemPrompt",
+      "targetName": null
+    },
+    {
+      "$comment": "[P4.D201 / v4 `baa85e19b`] the refusal arm: a NON-null id the character does not have answers null / `Ok(false)` and writes NOTHING. The whole-table census is what proves the nothing.",
+      "op": "setDefaultSystemPromptMissing",
+      "promptId": "deadbeef-0000-4000-8000-00000000dead"
+    },
+    {
       "op": "setDefaultSystemPrompt",
       "targetName": "Sleuth"
     },
