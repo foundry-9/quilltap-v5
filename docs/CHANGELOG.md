@@ -113,6 +113,33 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — feat(characters): one client-safe home for "which prompt does this character start with" (P4.D202 unit 1)
+
+_Versions: SPA 0.5.732._
+
+The client twin of v4's new `lib/characters/default-system-prompt.ts`
+(`baa85e19b`, bug 154): `resolveDefaultSystemPrompt` /
+`resolveDefaultSystemPromptId`, structurally typed and free of imports, at
+`apps/web/src/app/shared/default-system-prompt.ts`. One read order stated
+once — the `defaultSystemPromptId` column *when it names a prompt that
+exists*, then the `isDefault` flag, then the first prompt — replacing the
+hand-rolled copies the SPA had scattered across the New-Chat seeds and the
+announcement dialog (folded in the units that follow).
+
+v4's module is structurally typed precisely so its client picker and its
+server chat initializer can import the same file; v5 cannot cross the Rust
+boundary that way, so the order lives twice — here and in `quilltap-core`
+(P4.D201) — each transcribed independently from v4's file at the same sha.
+
+The parity spec carries v4's own five test vectors from
+`__tests__/unit/lib/characters/default-system-prompt.test.ts` verbatim
+(names, fixtures and expectations — the SPA has no jest venue to run v4's
+suite against, the `carina-parser.ts` precedent), plus the round's §S.2
+additions the two twins carry identically: an empty-string column is falsy
+and falls through to the flag, two flagged prompts resolve to the first,
+and no flag anywhere plus a stale column falls all the way to `prompts[0]`.
+Mutation M1 (drop the column's existence check) reddens v4's third vector
+and the stale-column extra, and nothing else.
 
 #### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
 
