@@ -295,6 +295,28 @@ and falls through to the flag, two flagged prompts resolve to the first,
 and no flag anywhere plus a stale column falls all the way to `prompts[0]`.
 Mutation M1 (drop the column's existence check) reddens v4's third vector
 and the stale-column extra, and nothing else.
+#### 2026-09-18 — test(harness): the `zod_issues` home guard — the ninth `invalid_type` has to be argued for (P4.101)
+
+_Versions: harness 0.0.851._
+
+New `crates/quilltap-harness/tests/zod_issues_home_guard.rs`, in the
+`db_error_key_guard` idiom: a per-file exact count of every
+`fn invalid_type` / `invalid_uuid` / `invalid_value` / `invalid_enum` /
+`invalid_literal` / `invalid_int_type` definition under
+`crates/quilltap-core/src`, and of every `util.parsedType` copy, each held
+against a census whose arithmetic is in the comment.
+
+Constructors: 7 definitions in 3 files — the home's 5, plus the two Tier-3
+remainders `pascal/custom_tool_types.rs` and `progressions/schema.rs`, which
+render STRING sentences for different v4 surfaces and whose shapes are
+mirrored by client-side twins — measured down from 17 in 9.
+`util.parsedType`: 6 in 6 files, down from 11 in 11.
+
+`#[cfg(test)]` modules are stripped by comment- and string-aware brace
+matching, so a test's local helper is not counted; a copy planted in a test
+module leaves the guard green while the same copy at file scope reddens it by
+name.
+
 #### 2026-09-18 — refactor(tools): `run_sql` and the LoRA write guard render through the Zod home (P4.101 Tier 2)
 
 _Versions: core 0.0.962._
