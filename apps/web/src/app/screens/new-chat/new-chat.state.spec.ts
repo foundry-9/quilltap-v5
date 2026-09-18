@@ -497,3 +497,72 @@ describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
     expect(of('groupScenariosUnion')[0]).toMatchObject({ includeArchived: true });
   });
 });
+
+/**
+ * v4 `baa85e19b` (bug 154). `seedFromCharacter` carried the same broken
+ * ternary as `seedSelectedCharacter`: a `defaultSystemPromptId` naming a
+ * prompt the character no longer has seeded `null`, so the `?characterId=`
+ * entrance opened a chat with NO system prompt at all. The three arms below
+ * are the resolver's, driven through the seed the state actually runs.
+ */
+describe('NewChatState system-prompt seed (v4 baa85e19b, bug 154)', () => {
+  function withPrompts(
+    prompts: CharacterListItem['systemPrompts'],
+    defaultSystemPromptId: string | null,
+  ): CharacterListItem {
+    return char('c1', 'Aria', { systemPrompts: prompts, defaultSystemPromptId });
+  }
+
+  async function seededPromptId(c: CharacterListItem): Promise<string | null> {
+    const { core } = recordingCore({ character: c });
+    const state = new NewChatState(core, { initialCharacterId: 'c1' });
+    await state.load();
+    return state.selectedCharacters()[0].selectedSystemPromptId;
+  }
+
+  it('prefers the column when it names a prompt the character has', async () => {
+    expect(
+      await seededPromptId(
+        withPrompts(
+          [
+            { id: 'sp-1', name: 'One', isDefault: true },
+            { id: 'sp-2', name: 'Two', isDefault: false },
+          ],
+          'sp-2',
+        ),
+      ),
+    ).toBe('sp-2');
+  });
+
+  it('keeps the flagged prompt when the column names a prompt the character no longer has', async () => {
+    expect(
+      await seededPromptId(
+        withPrompts(
+          [
+            { id: 'sp-1', name: 'One', isDefault: false },
+            { id: 'sp-2', name: 'Two', isDefault: true },
+          ],
+          'gone',
+        ),
+      ),
+    ).toBe('sp-2');
+  });
+
+  it('falls all the way to the first prompt when the column is stale and nothing is flagged', async () => {
+    expect(
+      await seededPromptId(
+        withPrompts(
+          [
+            { id: 'sp-1', name: 'One', isDefault: false },
+            { id: 'sp-2', name: 'Two', isDefault: false },
+          ],
+          'gone',
+        ),
+      ),
+    ).toBe('sp-1');
+  });
+
+  it('seeds null for a character with no prompts at all', async () => {
+    expect(await seededPromptId(withPrompts([], 'gone'))).toBeNull();
+  });
+});

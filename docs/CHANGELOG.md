@@ -113,6 +113,28 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — fix(new-chat): a stale default-prompt column no longer opens a chat with no system prompt (P4.D202 unit 2)
+
+_Versions: SPA 0.5.733._
+
+v5 reproduced both of the two copies v4's bug-154 commit message singles
+out — "two of which seeded a chat with no system prompt at all". The
+ternary in `seedSelectedCharacter` (`new-chat.logic.ts`) and its twin in
+`seedFromCharacter` (`new-chat.state.ts`) read `defaultSystemPromptId` and,
+when the column named a prompt the character no longer had, resolved to
+`undefined` with no fall-through: the picker seeded `null` and the chat
+started with no system prompt. Both now call `resolveDefaultSystemPrompt` /
+`resolveDefaultSystemPromptId`.
+
+Red-first. The two existing seed specs could not see the bug — one passes a
+valid column, the other passes none — so the missing vector went in first
+and failed on the pre-fix code: a character with `defaultSystemPromptId:
+'gone'` and a flagged `sp-2` read `null`. Four new specs across the two
+files (stale column → the flag; stale column with nothing flagged →
+`prompts[0]`; plus the valid-column and no-prompts arms on the state path,
+which the state spec had never pinned at all). Mutation M2 — the ternary
+restored in either file — reddens exactly that file's two.
+
 #### 2026-09-18 — feat(characters): one client-safe home for "which prompt does this character start with" (P4.D202 unit 1)
 
 _Versions: SPA 0.5.732._

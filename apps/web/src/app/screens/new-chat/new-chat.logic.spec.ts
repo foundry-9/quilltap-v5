@@ -460,6 +460,35 @@ describe('sortRoster + seedSelectedCharacter', () => {
     expect(seeded.controlledBy).toBe('llm');
   });
 
+  /**
+   * v4 `baa85e19b` (bug 154): the broken ternary read the column and, when it
+   * named a prompt the character no longer had, seeded NOTHING — the chat
+   * opened with no system prompt at all. Neither existing seed spec above can
+   * see it: one passes a VALID column, the other passes none.
+   */
+  it('keeps the flagged prompt when the column names a prompt the character no longer has', () => {
+    const c = char('a', 'Alice', {
+      defaultSystemPromptId: 'gone',
+      systemPrompts: [
+        { id: 'sp-1', name: 'One', isDefault: false },
+        { id: 'sp-2', name: 'Two', isDefault: true },
+      ],
+    });
+    const seeded = seedSelectedCharacter(c, [{ id: 'p-first' }]);
+    expect(seeded.selectedSystemPromptId).toBe('sp-2');
+  });
+
+  it('falls all the way to the first prompt when the column is stale and nothing is flagged', () => {
+    const c = char('a', 'Alice', {
+      defaultSystemPromptId: 'gone',
+      systemPrompts: [
+        { id: 'sp-1', name: 'One', isDefault: false },
+        { id: 'sp-2', name: 'Two', isDefault: false },
+      ],
+    });
+    expect(seedSelectedCharacter(c, [{ id: 'p-first' }]).selectedSystemPromptId).toBe('sp-1');
+  });
+
   it('falls back to the first profile + the isDefault prompt', () => {
     const c = char('a', 'Alice', {
       systemPrompts: [

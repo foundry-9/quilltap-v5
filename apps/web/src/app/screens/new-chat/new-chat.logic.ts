@@ -9,6 +9,7 @@
 
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
+import { resolveDefaultSystemPrompt } from '../../shared/default-system-prompt';
 import {
   scenarioValueToSelection,
   type ScenarioSelection,
@@ -38,17 +39,20 @@ export function generateTitle(selected: NewChatSelectedCharacter[]): string {
  * The initial connection-profile + system-prompt seed for a freshly-selected
  * character (v4 `CharacterPickerPanel.handleSelect` / the seed branches): the
  * character's default profile → the first available; the default prompt
- * (`defaultSystemPromptId` → `isDefault` → first).
+ * through the one shared resolver.
+ *
+ * ⚠ The prompt half used to be a hand-rolled ternary that read the column and,
+ * when it named a prompt the character no longer had, seeded NOTHING — the
+ * chat opened with no system prompt at all. v4 fixed the same bug in the same
+ * place at `baa85e19b` (bug 154) by folding all five of its copies onto
+ * `resolveDefaultSystemPrompt`; this is v5's half of that fold.
  */
 export function seedSelectedCharacter(
   character: CharacterListItem,
   profiles: { id: string }[],
 ): NewChatSelectedCharacter {
   const connectionProfileId = character.defaultConnectionProfileId || profiles[0]?.id || '';
-  const prompts = character.systemPrompts ?? [];
-  const defaultPrompt = character.defaultSystemPromptId
-    ? prompts.find((p) => p.id === character.defaultSystemPromptId)
-    : (prompts.find((p) => p.isDefault) ?? prompts[0]);
+  const defaultPrompt = resolveDefaultSystemPrompt(character);
   return {
     character,
     connectionProfileId,

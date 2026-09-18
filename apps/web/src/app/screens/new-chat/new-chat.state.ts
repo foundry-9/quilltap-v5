@@ -35,6 +35,7 @@ import type {
   ScenarioListDto,
 } from '../../core/core-contract';
 import { toScenarioOption } from '../../scenario/scenario.api';
+import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
 import { buildCreateRequest } from './new-chat.logic';
@@ -395,15 +396,15 @@ export class NewChatState {
     seededGeneralPath: string | null,
   ): void {
     const connectionProfileId = char.defaultConnectionProfileId || this.profiles()[0]?.id || '';
-    const prompts = char.systemPrompts ?? [];
-    const defaultPromptId = char.defaultSystemPromptId
-      ? prompts.find((p) => p.id === char.defaultSystemPromptId)?.id
-      : (prompts.find((p) => p.isDefault)?.id ?? prompts[0]?.id);
+    // v4 `baa85e19b` (bug 154): the hand-rolled ternary that used to stand here
+    // seeded NOTHING when the column named a prompt the character no longer had
+    // — the `?characterId=` entrance opened a chat with no system prompt at all.
+    const defaultPromptId = resolveDefaultSystemPromptId(char);
     const seeded: NewChatSelectedCharacter[] = [
       {
         character: char,
         connectionProfileId,
-        selectedSystemPromptId: defaultPromptId ?? null,
+        selectedSystemPromptId: defaultPromptId,
         controlledBy: 'llm',
       },
     ];
