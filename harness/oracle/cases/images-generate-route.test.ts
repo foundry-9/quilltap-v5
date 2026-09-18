@@ -477,6 +477,12 @@ function buildCases(): CaseSpec[] {
     { name: 'zod_prompt_empty', body: { prompt: '', profileId: PROFILE_MAIN } },
     { name: 'zod_prompt_too_long', body: { prompt: 'x'.repeat(4001), profileId: PROFILE_MAIN } },
     { name: 'zod_prompt_wrong_type', body: { prompt: 42, profileId: PROFILE_MAIN } },
+    // `.optional()` is not `.nullable()` — and `prompt` is not even optional,
+    // so an explicit `null` refuses exactly as an absent key does. Added by
+    // P4.98 so the dispatch wire test's `prompt: null` arm asserts a MEASURED
+    // byte string rather than a paraphrase (the other four keys already had
+    // their null rows).
+    { name: 'zod_prompt_null', body: { prompt: null, profileId: PROFILE_MAIN } },
     { name: 'zod_profile_missing', body: { prompt } },
     { name: 'zod_profile_not_uuid', body: { prompt, profileId: 'not-a-uuid' } },
     { name: 'zod_profile_null', body: { prompt, profileId: null } },

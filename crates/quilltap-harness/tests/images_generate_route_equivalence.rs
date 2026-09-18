@@ -642,6 +642,15 @@ fn cases() -> Vec<Case> {
             Some(json!(42)),
             Some(json!(PROFILE_MAIN)),
         ),
+        // P4.98 — the null row `prompt` lacked. `prompt` is REQUIRED, so this
+        // answers the same bytes as `zod_prompt_missing`; recording it is what
+        // makes `images_generate_dispatch_wire.rs`'s `prompt: null` arm a
+        // measured comparison against v4's real route.
+        Case::new(
+            "zod_prompt_null",
+            Some(Value::Null),
+            Some(json!(PROFILE_MAIN)),
+        ),
         Case::new("zod_profile_missing", Some(json!(PROMPT)), None),
         Case::new(
             "zod_profile_not_uuid",

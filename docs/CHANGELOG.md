@@ -218,6 +218,29 @@ New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 op
 diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
 (v5 had no way to express the option). Those two are the rows this commit turns
 green.
+#### 2026-09-18 — test(images): the collection generate route's `prompt: null` row, measured against v4
+
+_Versions: harness 0.0.843._
+
+`images_generate_route_equivalence` carried a null row for four of v4's five
+`generateImageSchema` keys — `zod_profile_null`, `zod_options_null`,
+`zod_tags_null`, `generate_chat_id_null` — and none for `prompt`. This adds
+`zod_prompt_null` on both sides, so every envelope P4.98's dispatch wire test
+asserts is a byte string measured against v4's real `handleGenerateImage`
+rather than a paraphrase.
+
+The row is green in both directions (`prompt` is REQUIRED, so an absent key
+and an explicit `null` both answer `Validation error`), but the oracle
+regenerated at the `bcd7e4852` pin records what v5 cannot yet say: v4's
+`details` array distinguishes the two — `Invalid input: expected string,
+received undefined` for the missing key against `received null` for the
+present one. v5 answers the sentence alone on this route, the standing
+`drop_zod_details` deferral, which is why the two required keys' null arms
+are the two that cannot show the defect P4.98 fixes.
+
+Mutation-proven: driving the case with a valid prompt instead of the null
+reddens the family on exactly that row, v5 answering 201 with a generated
+image against v4's 400.
 
 #### 2026-09-18 — docs(porting): order the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99)
 
