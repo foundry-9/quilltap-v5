@@ -51,8 +51,8 @@ use crate::db::DbError;
 use crate::finish_reason::extract_finish_reason;
 use crate::message_formatter::{normalize_content_block_format, strip_character_name_prefix};
 use crate::model::stream::{
-    canned_stream_key, StreamCacheUsage, StreamChunk, StreamError, StreamMessage, StreamParams,
-    StreamUsage, StreamingCompletionProvider,
+    StreamCacheUsage, StreamChunk, StreamError, StreamMessage, StreamParams, StreamUsage,
+    StreamingCompletionProvider,
 };
 use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 
@@ -1250,6 +1250,34 @@ where
 
     // --- Tool-unsupported retry ---
     if is_tool_unsupported_error(&err.message) && had_tools {
+        // v4 `primary-stream.service.ts:243-249` — the warn comes BEFORE the
+        // status event. The port had the branch but none of its three log
+        // lines, so a model that refuses function calling retried in total
+        // silence and the operator's `combined.log` said nothing at all (the
+        // #103/#110 class). `toolCount` is `actualTools.length`; v5 carries the
+        // slate as opaque JSON, so it is the array's length.
+        tracing::warn!(
+            target: "quilltap::primary_stream",
+            chat_id = %chat_id,
+            provider = %state
+                .effective_profile
+                .as_ref()
+                .map(|p| p.provider.as_str())
+                .unwrap_or(""),
+            model = %state
+                .effective_profile
+                .as_ref()
+                .map(|p| p.model_name.as_str())
+                .unwrap_or(""),
+            tool_count = params
+                .tools
+                .as_ref()
+                .and_then(|t| t.as_array().map(Vec::len))
+                .unwrap_or(0),
+            error = %err.message,
+            "Model does not support function calling, retrying without tools"
+        );
+
         sink.emit(ChatEvent::status(StatusPayload {
             stage: "sending".into(),
             message: format!("Retrying without tools for {character_name}..."),
@@ -1259,21 +1287,30 @@ where
         }));
 
         let mut retry_params = params.clone();
+        // v4's retry `streamMessage` call (`primary-stream.service.ts:261-270`,
+        // read at `5f0a57dc4`) names SEVEN keys — `messages`,
+        // `connectionProfile`, `apiKey`, `modelParams`, `tools: []`,
+        // `useNativeWebSearch`, `userId`, `messageId`, `chatId` — and THREE the
+        // primary call (`:196-210`) names that it does not: `characterId`,
+        // `previousResponseId` and `stop`. v5 clones the primary's whole
+        // `StreamParams`, so each of the three has to be cleared by hand:
+        //
+        //   - `tools` — the whole point of the retry.
+        //   - `cache_key` — v4 has no `cacheKey` option at all; the funnel
+        //     derives it per call from `characterId`
+        //     (`streaming.service.ts:392`), so "no characterId" IS "no key on
+        //     the wire". (Landed at the `53294163f` unification.)
+        //   - `previous_response_id` and `stop` — the P4.92 class on a leg
+        //     P4.92 did not reach. Pinned since P4.97: the primary-stream
+        //     family records each provider call's option bag in order, and the
+        //     two retry cases carry all three on the primary, so an inherited
+        //     one reddens the retry leg. `modelParams` (temperature /
+        //     max_tokens / top_p / profile_parameters) is deliberately NOT
+        //     cleared — v4 passes the same bag.
         retry_params.tools = None;
-        // P4.95 made the primary carry the prompt-cache key, and v4's retry call
-        // (`primary-stream.service.ts:261-270`) passes NO `characterId` — so the
-        // funnel derives no key for it and the wire carries none. Clear the
-        // inherited one here (landed at the `53294163f` unification, the §3
-        // review's call). ⚠ The retry still inherits `previous_response_id` and
-        // `stop`, which v4's retry omits too — the P4.92 class on a leg P4.92
-        // did not reach; no corpus case reaches this retry, so all three are
-        // pinned by nothing yet. The follow-up is "make this retry agree with
-        // v4's option bag, with a case that reaches it" (phase-4.md).
         retry_params.cache_key = None;
-        // The retry re-issues the SAME messages (the tool schemas were never in
-        // the message body), so it must key to the same canned stream slot as the
-        // primary call keyed on (provider, model, temperature, messages).
-        let _ = canned_stream_key::<crate::model::stream::StreamMessage>; // documented: same key discipline as the seam.
+        retry_params.previous_response_id = None;
+        retry_params.stop = Vec::new();
 
         // v4's retry `streamMessage` call (primary-stream.service.ts:246–256) passes
         // NO `characterId` (unlike the primary attempt at :192), so the retry's
@@ -1300,8 +1337,46 @@ where
         .await;
 
         return match retry_err {
-            None => Ok(PrimaryStreamResult::default()),
+            None => {
+                // v4 `:300-305`. `responseLength` is a JS `String.length` —
+                // UTF-16 code units, not bytes and not scalars.
+                tracing::info!(
+                    target: "quilltap::primary_stream",
+                    chat_id = %chat_id,
+                    provider = %state
+                        .effective_profile
+                        .as_ref()
+                        .map(|p| p.provider.as_str())
+                        .unwrap_or(""),
+                    model = %state
+                        .effective_profile
+                        .as_ref()
+                        .map(|p| p.model_name.as_str())
+                        .unwrap_or(""),
+                    response_length = state.full_response.encode_utf16().count(),
+                    "Tool-unsupported retry succeeded. Consider configuring text-block tools for this model."
+                );
+                Ok(PrimaryStreamResult::default())
+            }
             Some(retry_error) => {
+                // v4 `:307-313` — the error line fires BEFORE
+                // `preservePartialOnError`, and the throw follows.
+                tracing::error!(
+                    target: "quilltap::primary_stream",
+                    chat_id = %chat_id,
+                    provider = %state
+                        .effective_profile
+                        .as_ref()
+                        .map(|p| p.provider.as_str())
+                        .unwrap_or(""),
+                    model = %state
+                        .effective_profile
+                        .as_ref()
+                        .map(|p| p.model_name.as_str())
+                        .unwrap_or(""),
+                    error = %retry_error.message,
+                    "Tool-unsupported retry also failed"
+                );
                 preserve.preserve(db, state, &retry_error.message).await;
                 Err(retry_error)
             }
@@ -1747,5 +1822,244 @@ mod tests {
             "rawResponse": { "id": "chatcmpl_x" }
         })];
         assert_eq!(find_previous_response_id("OPENAI", &none), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // P4.97 Tier 2 — the tool-unsupported retry's three log lines.
+    //
+    // v4 emits all three (`primary-stream.service.ts:243`, `:300`, `:307`) and
+    // the port emitted NONE: the branch retried, succeeded or died, and said
+    // nothing. Each test drives the REAL `run_primary_stream` through the
+    // branch under a thread-scoped capture and asserts the sentence, its whole
+    // field bag, AND the silence of the sibling lines — a line that fires on
+    // the wrong arm is the failure mode a presence-only assertion misses.
+    // -----------------------------------------------------------------------
+
+    const RETRY_LOG_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A stateful canned provider: one queued answer per call, in order. The
+    /// retry re-issues the SAME messages/model/temperature, so the shared
+    /// `CannedStreamingProvider` (one answer per key) cannot express
+    /// "fail, then succeed".
+    struct QueuedProvider {
+        answers: std::sync::Mutex<std::collections::VecDeque<Vec<StreamChunkResult>>>,
+    }
+
+    impl StreamingCompletionProvider for QueuedProvider {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+        {
+            let seq = self.answers.lock().unwrap().pop_front().unwrap_or_else(|| {
+                vec![Err(StreamError::new("no canned answer left".to_string()))]
+            });
+            async move {
+                let (tx, rx) = tokio::sync::mpsc::channel(seq.len().max(1));
+                for item in seq {
+                    let _ = tx.send(item).await;
+                }
+                rx
+            }
+        }
+    }
+
+    /// Drive the retry branch with the queued answers and return
+    /// `(the call succeeded, the captured log lines)`. `user_id` is EMPTY on
+    /// purpose: that is v4's own `if (userId)` gate, so no `llm_logs` row is
+    /// attempted and the temp DB needs no llm-logs partition.
+    async fn run_retry_branch(answers: Vec<Vec<StreamChunkResult>>) -> (bool, Vec<String>) {
+        use crate::test_support::CaptureLayer;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(dir.path().join("main.db"), RETRY_LOG_PEPPER).unwrap();
+
+        let provider = QueuedProvider {
+            answers: std::sync::Mutex::new(answers.into()),
+        };
+        let sink = RecordingSink::new();
+        let mut state = StreamingState {
+            effective_profile: Some(EffectiveProfile {
+                id: "p1".into(),
+                name: "Primary".into(),
+                provider: "GOOGLE".into(),
+                model_name: "gemini-3-flash".into(),
+                base_url: None,
+            }),
+            effective_api_key: "k".into(),
+            ..Default::default()
+        };
+        let mut preserve = PreservePartialOnError::new(
+            "chat-1",
+            "char-1",
+            "Friday",
+            Vec::new(),
+            "part-1",
+            None,
+            "msg-1",
+        );
+        let params = StreamParams {
+            messages: vec![StreamMessage::user("please invoke a helper")],
+            model: "gemini-3-flash".into(),
+            temperature: Some(1.0),
+            max_tokens: Some(64),
+            top_p: None,
+            tools: Some(serde_json::json!([{ "function": { "name": "noop" } }])),
+            web_search_enabled: false,
+            profile_parameters: None,
+            cache_key: Some("quilltap:char:char-1:v4".into()),
+            previous_response_id: Some("resp_1".into()),
+            stop: vec!["END".into()],
+            request_timeout_ms: None,
+        };
+
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let ok = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            run_primary_stream::<_, _, crate::services::fallback_repos::DbFallbackRepos>(
+                &db,
+                &provider,
+                &sink,
+                &mut preserve,
+                None,
+                RunPrimaryStreamOptions {
+                    log_context: crate::services::llm_logging::LogContext::none(),
+                    chat_id: "chat-1".into(),
+                    user_id: String::new(),
+                    chat: PrimaryStreamChat { is_paused: false },
+                    character_id: "char-1".into(),
+                    character_name: "Friday".into(),
+                    character_aliases: Vec::new(),
+                    participant_id: "part-1".into(),
+                    participant_status: None,
+                    user_participant_id: None,
+                    is_multi_character: false,
+                    params,
+                    attached_files: Vec::new(),
+                    original_message: Some("please invoke a helper".into()),
+                    pre_generated_assistant_message_id: "msg-1".into(),
+                    is_dangerous_routed: false,
+                    fallback_profile: None,
+                    state: &mut state,
+                },
+            )
+            .await
+            .is_ok()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (ok, lines)
+    }
+
+    const UNSUPPORTED: &str = "Tool use with function calling is unsupported for this model";
+
+    #[tokio::test]
+    async fn tool_unsupported_retry_warns_with_v4s_field_bag() {
+        let (ok, lines) = run_retry_branch(vec![
+            vec![Err(StreamError::new(UNSUPPORTED.to_string()))],
+            vec![
+                Ok(StreamChunk::content("no tools needed")),
+                Ok(StreamChunk::done(None)),
+            ],
+        ])
+        .await;
+        assert!(ok, "the retry should have succeeded: {lines:?}");
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Model does not support function calling, retrying without tools"))
+            .unwrap_or_else(|| panic!("no retry warn line: {lines:?}"));
+        assert!(warn.starts_with("WARN"), "{warn}");
+        for field in [
+            "chat_id=chat-1",
+            "provider=GOOGLE",
+            "model=gemini-3-flash",
+            "tool_count=1",
+            &format!("error={UNSUPPORTED}"),
+        ] {
+            assert!(warn.contains(field), "warn missing {field}: {warn}");
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_unsupported_retry_success_logs_the_utf16_response_length() {
+        // A 4-scalar / 8-UTF-16-unit string: v4's `String.length` counts the
+        // surrogate pairs, so a scalar or byte count would read 4 or 16.
+        let (ok, lines) = run_retry_branch(vec![
+            vec![Err(StreamError::new(UNSUPPORTED.to_string()))],
+            vec![
+                Ok(StreamChunk::content("𝄞𝄞𝄞𝄞")),
+                Ok(StreamChunk::done(None)),
+            ],
+        ])
+        .await;
+        assert!(ok, "the retry should have succeeded: {lines:?}");
+        let info = lines
+            .iter()
+            .find(|l| l.contains("Tool-unsupported retry succeeded."))
+            .unwrap_or_else(|| panic!("no retry-succeeded line: {lines:?}"));
+        assert!(info.starts_with("INFO"), "{info}");
+        assert!(
+            info.contains("Consider configuring text-block tools for this model."),
+            "{info}"
+        );
+        assert!(info.contains("response_length=8"), "{info}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Tool-unsupported retry also failed")),
+            "the failure line fired on the SUCCESS arm: {lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_unsupported_retry_failure_logs_the_error_and_stays_quiet_about_success() {
+        let (ok, lines) = run_retry_branch(vec![
+            vec![Err(StreamError::new(UNSUPPORTED.to_string()))],
+            vec![Err(StreamError::new("retry also died".to_string()))],
+        ])
+        .await;
+        assert!(!ok, "the retry should have failed: {lines:?}");
+        let err = lines
+            .iter()
+            .find(|l| l.contains("Tool-unsupported retry also failed"))
+            .unwrap_or_else(|| panic!("no retry-failed line: {lines:?}"));
+        assert!(err.starts_with("ERROR"), "{err}");
+        assert!(err.contains("error=retry also died"), "{err}");
+        assert!(err.contains("provider=GOOGLE"), "{err}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Tool-unsupported retry succeeded.")),
+            "the success line fired on the FAILURE arm: {lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_tool_error_takes_neither_the_branch_nor_its_lines() {
+        // The silence leg: a stream error that is NOT tool-unsupported must
+        // leave all three lines unsaid (and must not re-stream at all — the
+        // second queued answer is never popped).
+        let (ok, lines) = run_retry_branch(vec![
+            vec![Err(StreamError::new("something else entirely".to_string()))],
+            vec![
+                Ok(StreamChunk::content("never reached")),
+                Ok(StreamChunk::done(None)),
+            ],
+        ])
+        .await;
+        assert!(!ok, "a plain stream error still fails the call: {lines:?}");
+        for sentence in [
+            "Model does not support function calling, retrying without tools",
+            "Tool-unsupported retry succeeded.",
+            "Tool-unsupported retry also failed",
+        ] {
+            assert!(
+                !lines.iter().any(|l| l.contains(sentence)),
+                "{sentence:?} fired outside the retry branch: {lines:?}"
+            );
+        }
     }
 }

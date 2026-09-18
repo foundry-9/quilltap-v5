@@ -369,6 +369,38 @@ the pre-P4.96 handler.
 
 Also: the `['vivid','natural']` style pair, spelled out at three v5 sites, now
 has one home in `image_gen::style` on the `image_gen::quality` precedent.
+#### 2026-09-17 — fix(primary-stream): the tool-unsupported retry sends v4's whole option bag, and says so
+
+_Versions: core 0.0.943, harness 0.0.835._
+
+v4's tool-unsupported retry (`primary-stream.service.ts:261-270`) re-issues the
+request naming THREE fewer options than the primary call: `characterId` (from
+which the funnel derives the prompt-cache key), `previousResponseId` and `stop`.
+v5 clones the primary's whole `StreamParams` for the retry, so each has to be
+cleared by hand. `tools` and `cache_key` already were; `previous_response_id`
+and `stop` rode along — a chaining token and a pseudo-tool profile's stop
+sequences going out on a retry v4 sends bare.
+
+The corpus could not see any of it: the canned key is
+`provider|model|temperature|messages`, and the retry re-issues the SAME
+messages, so it shares the primary's key. `primary_stream_tier3` now records
+each provider call's option bag in ORDER — per call, not per key — on both
+sides. v4's half rides its REAL funnel (this family's mock sits below
+`createLLMProvider`, so `streaming.service.ts:392` derives the key for real and
+the mock re-derives nothing), and both sides record BEFORE resolving the canned
+answer, so a call that dies on an exhausted cursor still counts as a call. The
+two retry cases now carry all three options on the primary and a new
+`tool_unsupported_retry_success_bare` twin carries none, so the clears are
+proven against both a set and an unset primary. Red-first: exactly two legs
+diverged before the fix.
+
+Also landed, from the same block: v4's three retry log lines, which the port had
+never carried — the `Model does not support function calling, retrying without
+tools` warn with its `{chatId, provider, model, toolCount, error}` bag, the
+`Tool-unsupported retry succeeded.` info (whose `responseLength` is a JS
+`String.length`, so UTF-16 units), and the `Tool-unsupported retry also failed`
+error. A model that refuses function calling used to retry in total silence.
+Each is capture-pinned with its silence leg.
 
 #### 2026-09-17 — docs(porting): order the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97)
 

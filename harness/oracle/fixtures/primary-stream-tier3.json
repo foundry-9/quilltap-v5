@@ -122,6 +122,18 @@
       ]
     },
     {
+      "id": "dd000010-0000-4000-8000-000000000010",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "tool-unsupported retry (bare primary)",
+      "participants": [
+        {
+          "id": "ee000010-0000-4000-8000-000000000010",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
       "id": "dd000005-0000-4000-8000-000000000005",
       "userId": "bb000001-0000-4000-8000-000000000001",
       "title": "token-limit recovery",
@@ -238,6 +250,26 @@
             "promptTokens": 30,
             "completionTokens": 4,
             "totalTokens": 34
+          }
+        }
+      ]
+    ],
+    "tool_unsupported_then_ok_bare": [
+      [
+        {
+          "error": "Tool use with function calling is unsupported for this model"
+        }
+      ],
+      [
+        {
+          "content": "No tools needed: bare hello."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 31,
+            "completionTokens": 5,
+            "totalTokens": 36
           }
         }
       ]
@@ -658,7 +690,9 @@
       "hasTools": true,
       "streamLabel": "tool_unsupported_then_ok",
       "attachedFiles": [],
-      "originalMessage": "please invoke a helper"
+      "originalMessage": "please invoke a helper",
+      "previousResponseId": "resp_p497_success",
+      "stop": ["</tool_call>", "STOP"]
     },
     {
       "name": "tool_unsupported_retry_failure",
@@ -670,6 +704,8 @@
       "streamLabel": "tool_unsupported_then_fail",
       "attachedFiles": [],
       "originalMessage": "run a gadget and expire",
+      "previousResponseId": "resp_p497_failure",
+      "stop": ["</tool_call>", "END"],
       "expectThrow": true
     },
     {
@@ -1009,6 +1045,18 @@
       "dangerMode": "AUTO_ROUTE",
       "contentWasFlaggedDangerous": true,
       "comment": "P4.D189: the Concierge reroute STALLS. Flagged content skips the same-profile retry, so the opener carries the inferred moderation verdict; the reroute is recorded against route.connection_profile with `network`, and the chain then answers."
+    },
+    {
+      "name": "tool_unsupported_retry_success_bare",
+      "kind": "primary",
+      "chatId": "dd000010-0000-4000-8000-000000000010",
+      "participantId": "ee000010-0000-4000-8000-000000000010",
+      "preGeneratedMessageId": "ff000030-0000-4000-8000-000000000030",
+      "hasTools": true,
+      "streamLabel": "tool_unsupported_then_ok_bare",
+      "attachedFiles": [],
+      "originalMessage": "kindly summon a bare helper",
+      "comment": "P4.97: the retry's clears proven against a BARE primary too — no previousResponseId, no stop. The cache key is still set (runPrimaryStream passes `characterId` unconditionally, so the funnel always derives one), which is what makes this the one-key twin of tool_unsupported_retry_success rather than a no-key case. Appended LAST: the option-bag side-channel is an ORDERED per-call list, so a case inserted mid-array would shift every following index. Its marker deliberately shares no substring with any other: the mock resolves a label by FIRST containing marker, so `please invoke a helper, bare` would have resolved to tool_unsupported_then_ok and died on an exhausted cursor (measured)."
     }
   ],
   "authPrimaryProfile": {

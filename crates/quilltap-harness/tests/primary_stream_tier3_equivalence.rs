@@ -36,6 +36,36 @@
 //!      clean_stream + tool_unsupported_retry_success (characterId set), the four
 //!      failover legs (characterId SET — v4 `65f5021c8`); NONE for recovery (v4 passes no userId).
 //!
+//! ## The per-call OPTION BAG side-channel (P4.97)
+//!
+//! The canned key is `provider|model|temperature|messages` and nothing else, so
+//! three of v4's `streamMessage` options were invisible to every comparand this
+//! family had: `characterId` (through the `cacheKey` the funnel derives from it),
+//! `previousResponseId`, and `stop`. Each call now records them in ORDER — per
+//! CALL, not per key, because the tool-unsupported retry re-issues the SAME
+//! messages and therefore shares the primary's canned key, which is exactly the
+//! leg under test.
+//!
+//! Two properties make the recording honest. First, this family's mock sits
+//! BELOW the funnel (W4.11b relocated it to `createLLMProvider`), so v4's REAL
+//! `streaming.service.ts:392` derivation runs and the recorded `cacheKey` is the
+//! byte a provider would have received — the mock re-derives nothing. Second,
+//! both sides record BEFORE they resolve the canned answer, so a call that dies
+//! on an exhausted cursor / a canned miss is still a call that happened.
+//!
+//! ### The `StreamParams` clone policy, per leg (the whole per-leg rule in one place)
+//!
+//! | v5 site | clears | keeps | v4 site it mirrors |
+//! |---|---|---|---|
+//! | `primary_stream.rs` tool-unsupported retry | `tools`, `cache_key`, `previous_response_id`, `stop` | `modelParams` (temperature / max_tokens / top_p / profile_parameters) | `primary-stream.service.ts:261-270` — names none of the three |
+//! | `provider_failover.rs` `restream_into` | `previous_response_id`; `stop` replaced by the explicit argument | `cache_key` | `provider-failover.service.ts:482-493` — passes `characterId` and `opts.stop` |
+//! | `orchestrator.rs` `loop_base_params` | `previous_response_id`, `stop` | `cache_key` | `native-tool-loop.service.ts:350` — the first re-stream passes `characterId` |
+//! | `native_tool_loop.rs` force-final (`:587`) | `cache_key` (on top of the loop clone's two) | — | `native-tool-loop.service.ts:421-431` — no `characterId` |
+//! | `text_tool_loop.rs` continuation (`:680-687`) | `cache_key`; `stop` set to the strategy's sequences | — | `text-tool-loop.service.ts:390-400` — no `characterId`, its own `stop` |
+//! | `recovery.rs` (`:301-303`) | builds fresh: none of the three set | — | `recovery.service.ts:303-313` — names none |
+//!
+//! The retry is the ONE clone that clears all three.
+//!
 //! ## The credential-gate chain arm (P4.68's blind spot, CLOSED by P4.74)
 //!
 //! A chain candidate refused by `resolveConnectionProfileApiKey` records `auth`
@@ -228,6 +258,19 @@ struct CallW {
     /// credential-gate case names `authPrimaryProfile` instead.
     #[serde(default)]
     profile_key: Option<String>,
+    /// P4.97 — the two option-bag keys v4's PRIMARY `streamMessage` call
+    /// forwards and its tool-unsupported RETRY omits (v4
+    /// `primary-stream.service.ts:207-209` vs `:261-270`). Absent on every
+    /// pre-existing case; the two retry cases set them, and
+    /// `tool_unsupported_retry_success_bare` deliberately does not.
+    #[serde(default)]
+    previous_response_id: Option<String>,
+    #[serde(default)]
+    stop: Vec<String>,
+    /// P4.97 — read ONLY to name a recorded stream call, exactly as the jest
+    /// mock does (a call with no label is skipped there, so it is skipped here).
+    #[serde(default)]
+    stream_label: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -317,9 +360,35 @@ fn spec_path() -> PathBuf {
 struct QueuedStreamingProvider {
     // key -> queue of chunk sequences (popped front on each call).
     queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    /// P4.97 — (marker, label) in spec order, mirroring the jest mock's own
+    /// first-match label resolution so both sides name a call the same way.
+    markers: Vec<(String, String)>,
+    /// P4.97 — the ORDERED per-call option bag (see `StreamCallW`).
+    calls: Mutex<Vec<Value>>,
 }
 
 impl QueuedStreamingProvider {
+    /// P4.97 — the jest mock's label resolution, character for character: the
+    /// FIRST spec call whose `originalMessage` marker appears inside any
+    /// message's content.
+    fn label_for(&self, params: &StreamParams) -> String {
+        use quilltap_core::model::completion::CannedKeyMessage;
+        for (marker, label) in &self.markers {
+            if params
+                .messages
+                .iter()
+                .any(|m| m.key_content().contains(marker.as_str()))
+            {
+                return label.clone();
+            }
+        }
+        panic!(
+            "no marker matched for a streamed call ({} msgs) — the oracle's mock \
+             would have thrown here too",
+            params.messages.len()
+        )
+    }
+
     fn from_oracle(rows: &[CannedRowW]) -> Self {
         let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
             HashMap::new();
@@ -345,7 +414,34 @@ impl QueuedStreamingProvider {
         }
         Self {
             queues: Mutex::new(queues),
+            markers: Vec::new(),
+            calls: Mutex::new(Vec::new()),
         }
+    }
+
+    /// P4.97 — seed the marker table from the spec (the oracle's mock reads
+    /// `spec.calls` directly; this side is handed the same pairs).
+    ///
+    /// The guard is not decoration. Both sides resolve a label by the FIRST
+    /// marker CONTAINED in a message, so a marker that is a substring of
+    /// another silently steals its label — and the theft is invisible: the
+    /// stolen label's attempt cursor runs out, the mock throws, v4's service
+    /// catches it as an ordinary stream error, and the case records a plausible
+    /// `threw` result having measured nothing. (Measured: this lane's bare twin
+    /// first shipped as `please invoke a helper, bare`, and its provider call
+    /// never happened at all.)
+    fn with_markers(mut self, markers: Vec<(String, String)>) -> Self {
+        for (i, (a, _)) in markers.iter().enumerate() {
+            for (j, (b, _)) in markers.iter().enumerate() {
+                assert!(
+                    i == j || !b.contains(a.as_str()),
+                    "corpus markers collide: {a:?} is contained in {b:?} — the \
+                     first would steal the second's label on BOTH sides"
+                );
+            }
+        }
+        self.markers = markers;
+        self
     }
 }
 
@@ -394,6 +490,22 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             params.temperature,
             &params.messages,
         );
+        // P4.97 — the option bag reaching THIS call, in call order. Recorded
+        // BEFORE the queue pop so a canned miss still leaves the bag on the
+        // record. Never part of the key: every recorded canned key is unmoved.
+        self.calls.lock().unwrap().push(json!({
+            "label": self.label_for(params),
+            "provider": provider,
+            "model": params.model,
+            "cacheKey": params.cache_key,
+            "previousResponseId": params.previous_response_id,
+            "stop": params.stop,
+            "toolCount": params
+                .tools
+                .as_ref()
+                .and_then(|t| t.as_array().map(Vec::len))
+                .unwrap_or(0),
+        }));
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
@@ -545,6 +657,8 @@ async fn primary_stream_tier3_matches_oracle() {
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
+    // P4.97 — v4's ordered per-call option bag.
+    let mut oracle_stream_calls: Option<Vec<Value>> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -563,10 +677,22 @@ async fn primary_stream_tier3_matches_oracle() {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
             Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
+            Some("streamcalls") => {
+                oracle_stream_calls = Some(
+                    v["calls"]
+                        .as_array()
+                        .expect("streamcalls row has no calls array")
+                        .clone(),
+                )
+            }
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
     let oracle_llm_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
+    let oracle_stream_calls = oracle_stream_calls.expect(
+        "oracle emitted no streamcalls row — regenerate it (the P4.97 option-bag \
+         side-channel)",
+    );
 
     // Fresh copy so the seed fixture stays pristine.
     let work =
@@ -574,7 +700,12 @@ async fn primary_stream_tier3_matches_oracle() {
     let _ = std::fs::remove_file(&work);
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
 
-    let provider = QueuedStreamingProvider::from_oracle(&oracle_canned);
+    let provider = QueuedStreamingProvider::from_oracle(&oracle_canned).with_markers(
+        spec.calls
+            .iter()
+            .filter_map(|c| Some((c.original_message.clone()?, c.stream_label.clone()?)))
+            .collect(),
+    );
     let router = CannedRouter {
         profile: spec.uncensored_profile.to_effective(),
         key: "uncensored-key".into(),
@@ -695,6 +826,16 @@ async fn primary_stream_tier3_matches_oracle() {
     };
     // P4.D136 (v4 `a1d88aa3a`, bug 106): the attachments a call plants ON THE
     // ARRAY. `needsVision` is read from here now, not from `attachedFiles`.
+    // P4.97 — v4's `runPrimaryStream` passes `characterId: character.id`
+    // UNCONDITIONALLY (`primary-stream.service.ts:207`), and the funnel derives
+    // the key from it per call (`streaming.service.ts:392`), so EVERY primary
+    // and every `restreamInto` leg (which passes `opts.character.id` too) goes
+    // out keyed. v5 carries the derived string in `StreamParams.cache_key` —
+    // the orchestrator sets it at `orchestrator.rs:2826` in production, and
+    // this driver stands in for that. Until this existed the driver built every
+    // params with `cache_key: None`, so no case could see the key at all.
+    let corpus_cache_key =
+        quilltap_core::cheap_llm::build_character_cache_key(Some(&spec.character.id));
     let base_params_with_attachments =
         |messages: Vec<CompletionMessage>, attachments: &[Value], model: &str| StreamParams {
             // The canned registration keeps the oracle-recorded `[{role, content}]`
@@ -719,7 +860,7 @@ async fn primary_stream_tier3_matches_oracle() {
             tools: None,
             web_search_enabled: false,
             profile_parameters: None,
-            cache_key: None,
+            cache_key: corpus_cache_key.clone(),
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
@@ -758,6 +899,9 @@ async fn primary_stream_tier3_matches_oracle() {
                 if call.has_tools {
                     params.tools = Some(json!([{ "function": { "name": "noop" } }]));
                 }
+                // P4.97: v4's `runPrimaryStream` forwards both to the funnel.
+                params.previous_response_id = call.previous_response_id.clone();
+                params.stop = call.stop.clone();
                 let mut state = StreamingState {
                     effective_profile: Some(primary_of(&spec, call).to_effective()),
                     effective_api_key: "primary-key".into(),
@@ -991,11 +1135,16 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.pre_generated_message_id.clone().unwrap(),
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
-                let params = base_params_with_attachments(
+                let mut params = base_params_with_attachments(
                     user_messages(&marker),
                     &call.message_attachments,
                     &primary_of(&spec, call).model_name,
                 );
+                // P4.97: absent on every hardFailover case, carried anyway so
+                // the driver has ONE rule (v4's own: `runPrimaryStream`
+                // forwards whatever its caller passed).
+                params.previous_response_id = call.previous_response_id.clone();
+                params.stop = call.stop.clone();
                 let opts = RunPrimaryStreamOptions {
                     log_context: LogContext::none(),
                     chat_id: call.chat_id.clone().unwrap(),
@@ -1149,10 +1298,113 @@ async fn primary_stream_tier3_matches_oracle() {
         oracle_llm_logs.len()
     );
 
+    // P4.97 — the per-call OPTION BAG, in call order. This is the only view of
+    // the three keys v4's tool-unsupported retry omits: the canned key is
+    // `provider|model|temperature|messages`, so a leg that silently inherited a
+    // chaining token, a stop list or a prompt-cache key diffed clean everywhere
+    // else. Compared call by call (not per key) because the retry re-issues the
+    // SAME messages and therefore SHARES the primary's canned key.
+    let got_stream_calls: Vec<Value> = provider.calls.lock().unwrap().clone();
+    assert_eq!(
+        got_stream_calls.len(),
+        oracle_stream_calls.len(),
+        "streamed-call COUNT diverges (rust {} vs oracle {}) — a leg that fires \
+         on one side only\n  rust:   {:#?}\n  oracle: {:#?}",
+        got_stream_calls.len(),
+        oracle_stream_calls.len(),
+        got_stream_calls,
+        oracle_stream_calls
+    );
+    // Collected, not fail-fast: the retry legs are spread through the corpus, so
+    // "which legs diverge" is the answer worth printing (the red-first run of
+    // this lane wanted the COUNT, not the first index).
+    let diverged: Vec<String> = got_stream_calls
+        .iter()
+        .zip(oracle_stream_calls.iter())
+        .enumerate()
+        .filter(|(_, (got, want))| got != want)
+        .map(|(i, (got, want))| format!("  #{i}\n    rust:   {got}\n    oracle: {want}"))
+        .collect();
+    assert!(
+        diverged.is_empty(),
+        "{} streamed call(s) diverge in their option bag:\n{}",
+        diverged.len(),
+        diverged.join("\n")
+    );
+    // Shape assertions, not decoration. The retry legs are the point of the
+    // side-channel, and each of the three keys is load-bearing on its own:
+    //   - the two SET cases must reach the retry with a primary that CARRIED
+    //     all three (otherwise the clears are asserted against nothing);
+    //   - the BARE twin must reach it carrying only the key (so the clears are
+    //     proven against an unset primary too).
+    // A fixture edit that dropped a key, or a case that stopped reaching the
+    // retry, would otherwise leave this whole comparison vacuously green.
+    for (label, want_prev, want_stop) in [
+        ("tool_unsupported_then_ok", true, true),
+        ("tool_unsupported_then_fail", true, true),
+        ("tool_unsupported_then_ok_bare", false, false),
+    ] {
+        let legs: Vec<&Value> = got_stream_calls
+            .iter()
+            .filter(|c| c["label"].as_str() == Some(label))
+            .collect();
+        assert_eq!(
+            legs.len(),
+            2,
+            "{label}: expected a primary AND a retry leg, saw {}",
+            legs.len()
+        );
+        let (primary, retry) = (legs[0], legs[1]);
+        assert!(
+            primary["cacheKey"].is_string(),
+            "{label}: the primary must carry a prompt-cache key — v4 derives one \
+             from the `characterId` `runPrimaryStream` always passes"
+        );
+        assert_eq!(
+            primary["previousResponseId"].is_string(),
+            want_prev,
+            "{label}: the primary's chaining token is not what the case specifies"
+        );
+        assert_eq!(
+            primary["stop"].as_array().map(|a| !a.is_empty()),
+            Some(want_stop),
+            "{label}: the primary's stop list is not what the case specifies"
+        );
+        assert_eq!(
+            primary["toolCount"],
+            json!(1),
+            "{label}: the primary must carry a tool, or the retry branch is unreachable"
+        );
+        // v4 `primary-stream.service.ts:261-270`: the retry names NO
+        // `characterId`, NO `previousResponseId`, NO `stop` — and `tools: []`.
+        assert_eq!(
+            retry["cacheKey"],
+            Value::Null,
+            "{label}: the retry sent a cache key"
+        );
+        assert_eq!(
+            retry["previousResponseId"],
+            Value::Null,
+            "{label}: the retry sent a chaining token"
+        );
+        assert_eq!(
+            retry["stop"],
+            json!([]),
+            "{label}: the retry sent stop sequences"
+        );
+        assert_eq!(
+            retry["toolCount"],
+            json!(0),
+            "{label}: the retry sent tools"
+        );
+    }
+
     eprintln!(
-        "OK: primary-stream tier-3 matched oracle ({} calls, {} llm_logs rows).",
+        "OK: primary-stream tier-3 matched oracle ({} calls, {} llm_logs rows, \
+         {} streamed calls).",
         result_pairs.len(),
-        got_logs.len()
+        got_logs.len(),
+        got_stream_calls.len()
     );
 }
 

@@ -147,6 +147,18 @@ interface CallSpec {
    * of every existing case's chain AND tier pool.
    */
   profileKey?: 'authPrimaryProfile';
+  /**
+   * P4.97 — the two option-bag keys v4's PRIMARY `streamMessage` call passes
+   * and its tool-unsupported RETRY does not (`primary-stream.service.ts:207`
+   * vs `:261-270`). Absent on every pre-existing case, which is exactly the
+   * blindness this closes: with both unset on the primary, a retry that
+   * inherited them was indistinguishable from one that cleared them.
+   * (`characterId` is the third omitted key; it is passed unconditionally by
+   * `runPrimaryStream`, so it needs no spec knob — what it produces,
+   * `buildCharacterCacheKey`'s derived string, is recorded per call below.)
+   */
+  previousResponseId?: string;
+  stop?: string[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -261,6 +273,22 @@ async function main(): Promise<void> {
     }
   >();
 
+  // P4.97 — the ORDERED per-call option bag (the P4.92 side-channel idiom,
+  // per CALL rather than per KEY). It cannot ride `cannedRecorded`: the
+  // tool-unsupported retry re-issues the SAME messages/model/temperature, so
+  // primary and retry share one canned key and a per-key record would show only
+  // the primary's values — precisely the leg under test. Never part of any key:
+  // every recorded canned key stays byte-identical.
+  const streamCalls: Array<{
+    label: string;
+    provider: string;
+    model: string;
+    cacheKey: string | null;
+    previousResponseId: string | null;
+    stop: string[];
+    toolCount: number;
+  }> = [];
+
   // Per-label attempt cursor.
   const attemptCursor = new Map<string, number>();
 
@@ -303,6 +331,18 @@ async function main(): Promise<void> {
             messages: Array<{ role: string; content: string }>;
             model: string;
             temperature?: number;
+            tools?: unknown[];
+            // P4.97 — the three option-bag keys the funnel forwards to the
+            // provider. This mock sits BELOW the real `streamMessage`
+            // (W4.11b relocated it to `createLLMProvider`), so these arrive
+            // already derived by v4's own funnel: `cacheKey` is
+            // `buildCharacterCacheKey(characterId)` run at
+            // `streaming.service.ts:392`, not something the mock re-derives.
+            // That is what makes "no characterId" observable as "no cacheKey"
+            // on the byte that reaches a provider.
+            cacheKey?: string;
+            previousResponseId?: string;
+            stop?: string[];
           },
           _apiKey: string
         ) {
@@ -317,6 +357,24 @@ async function main(): Promise<void> {
             }
           }
           if (!label) throw new Error(`streamMessage mock: no marker matched in ${JSON.stringify(messages)}`);
+
+          // P4.97: the option bag reaching THIS call, in call order.
+          // `undefined` normalizes to `null` / `[]`, which is exactly what an
+          // omitting call site produces. Recorded BEFORE the attempt cursor is
+          // read, because an EXHAUSTED cursor throws — and a call that throws
+          // there is still a call v4 made. (Measured: recording after the pop
+          // hid v4's second `token_limit_no_chain` call entirely, and the
+          // ordered comparison read that as v5 making one call too many.) The
+          // Rust side records before its own queue pop for the same reason.
+          streamCalls.push({
+            label,
+            provider: providerName,
+            model: params.model,
+            cacheKey: params.cacheKey ?? null,
+            previousResponseId: params.previousResponseId ?? null,
+            stop: params.stop ?? [],
+            toolCount: (params.tools ?? []).length,
+          });
 
           const attempts = spec.streams[label];
           if (!attempts) throw new Error(`streamMessage mock: no streams for label ${label}`);
@@ -484,6 +542,9 @@ async function main(): Promise<void> {
           modelParams: { temperature: 1.0, maxTokens: 4096 },
           actualTools: call.hasTools ? [{ function: { name: 'noop' } }] : [],
           useNativeWebSearch: false,
+          // P4.97: the two keys the primary forwards and the retry omits.
+          previousResponseId: call.previousResponseId,
+          stop: call.stop,
           preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
           attachedFiles: (call.attachedFiles ?? []) as never,
           originalMessage: call.originalMessage,
@@ -612,6 +673,10 @@ async function main(): Promise<void> {
           modelParams: { temperature: 1.0, maxTokens: 4096 },
           actualTools: [],
           useNativeWebSearch: false,
+          // P4.97: absent on every hardFailover case — recorded as null/[] so a
+          // case that silently starts carrying one is caught.
+          previousResponseId: call.previousResponseId,
+          stop: call.stop,
           preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
           attachedFiles: (call.attachedFiles ?? []) as never,
           originalMessage: call.originalMessage,
@@ -654,6 +719,9 @@ async function main(): Promise<void> {
   for (const entry of cannedRecorded.values()) {
     lines.push(JSON.stringify({ kind: 'canned', ...entry }));
   }
+
+  // P4.97: one row carrying every provider call's option bag, in order.
+  lines.push(JSON.stringify({ kind: 'streamcalls', calls: streamCalls }));
 
   const dumpTable = async (table: string, orderBy: string) => {
     const columns = (

@@ -133472,3 +133472,144 @@ engine arm. **Not touched here** — the order restricts this lane to the
 `ImageProfileGenerate` variant, and `api/images.rs` is a sibling to MIRROR, not
 edit. It wants a small order of its own; the whole raw-crossing family is worth
 sweeping for the same shape at the same time.
+## P4.97 unit 1 — the tool-unsupported retry's option bag, and its three log lines (2026-09-17)
+
+**Lane:** `claude/p4-97-retry-option-bag-cache-2b2887`, from `main` `e215760f`.
+**Baseline:** `5f0a57dc4`; the §2 probe PASSED at lane start and again before
+every regen batch (branch `main`, HEAD `bcd7e4852`, both logs empty, tree
+clean). **Regen rule: PIN REQUIRED** — every regen ran from
+`/tmp/qt-v4-pin-p4-97-5f0a57dc4` (verified by `rev-parse` = `5f0a57dc4` and by
+`ls -ld`: no trailing space), with all three symlink classes.
+
+**Version stamp (the order's §R.3 requirement).** `git diff --stat
+5f0a57dc4..bcd7e4852 -- lib/services/chat-message/primary-stream.service.ts
+lib/services/chat-message/streaming.service.ts lib/llm plugins packages` is
+`packages/quilltap/package.json | 2 +-` and nothing else — a version stamp. The
+lane's v4 surfaces are untouched by the drift, as the order predicted.
+
+### What v4 does (measured at `5f0a57dc4`, from the hunks)
+
+`runPrimaryStream`'s PRIMARY call (`:196-210`) names `messages,
+connectionProfile, apiKey, modelParams, tools, useNativeWebSearch, userId,
+messageId, chatId, characterId, previousResponseId, stop`. The RETRY
+(`:261-270`) names the same list minus **`characterId`, `previousResponseId`
+and `stop`**, with `tools: []`. The funnel derives the prompt-cache key per call
+from `characterId` (`streaming.service.ts:392`), so "no `characterId`" IS "no
+key on the wire".
+
+### Three order premises corrected by measurement
+
+1. **The mock does NOT need `requireActual` of `buildCharacterCacheKey`** (item
+   1's prescription, and M5's). W4.11b relocated this family's mock DOWN to
+   `createLLMProvider`, so v4's REAL `streamMessage` funnel runs and hands the
+   provider a `cacheKey` it already derived. The mock records what arrived.
+   That is strictly stronger than re-deriving: the comparand is the byte a
+   provider would have received. M5 was re-aimed accordingly (below).
+2. **`cacheKey` is not a per-case knob.** `runPrimaryStream` passes
+   `characterId` unconditionally, and `restreamInto` passes
+   `opts.character.id` too — so EVERY primary and every failover leg goes out
+   keyed, and only the retry and `recovery.service.ts` (which names no
+   `characterId`) do not. The Rust driver built every `StreamParams` with
+   `cache_key: None`, so the family could not see the key at all; it now seeds
+   the derived key on every params it builds, mirroring production
+   (`orchestrator.rs:2826`). Only `previousResponseId` and `stop` are per-case.
+3. **The side-channel must be per CALL, not per key.** The orchestrator
+   family's P4.92 shape records on the first entry for a canned key; here the
+   retry re-issues the SAME messages and therefore SHARES the primary's key, so
+   a per-key record would have shown only the primary's values — precisely the
+   leg under test.
+
+### Two recording traps, both measured, both now guarded
+
+- **Marker collision.** The bare twin first shipped with the marker `please
+  invoke a helper, bare`, which CONTAINS `please invoke a helper`. Both sides
+  resolve a label by the FIRST marker contained in a message, so the bare case
+  stole the other's label, ran its attempt cursor off the end, and its provider
+  call never happened — while the case still recorded a plausible `threw`
+  result. Fixed (`kindly summon a bare helper`) and guarded: the Rust provider
+  now refuses a marker table where one marker is a substring of another.
+- **Recording after the pop.** The first oracle recorded the option bag AFTER
+  the attempt cursor was read, so v4's SECOND `token_limit_no_chain` call —
+  which throws on an exhausted cursor — was invisible, and the ordered
+  comparison read that as v5 making one call too many (51 vs 50). Both sides
+  now record BEFORE resolving the canned answer.
+
+### Red-first
+
+With the corpus grown and the port unfixed: **exactly 2 streamed calls
+diverged** — the retry legs of `tool_unsupported_retry_success`
+(`previousResponseId=resp_p497_success`, `stop=["</tool_call>","STOP"]`) and
+`tool_unsupported_retry_failure` (`resp_p497_failure`,
+`["</tool_call>","END"]`), against v4's `null` / `[]`. The comparison is
+collected rather than fail-fast, so the count is the answer.
+
+### What landed
+
+- `primary_stream.rs`'s retry block clears all four (`tools`, `cache_key`,
+  `previous_response_id`, `stop`), with the admission comment replaced by the
+  landed rule and the dead `let _ = canned_stream_key::<…>` artifact deleted.
+  `modelParams` is deliberately NOT cleared — v4 passes the same bag.
+- **Tier 2 item 9: v4's three retry log lines, none of which the port had.**
+  The warn (`Model does not support function calling, retrying without tools`,
+  `{chat_id, provider, model, tool_count, error}`, before the status event),
+  the success info (`Tool-unsupported retry succeeded. Consider configuring
+  text-block tools for this model.`, `response_length` as a JS `String.length`
+  — UTF-16 units), and the error (`Tool-unsupported retry also failed`, before
+  `preserve`). Four capture-pinned tests drive the REAL `run_primary_stream`
+  through the branch, including a silence leg.
+- **Tier 2 item 10: the `StreamParams` clone-policy table** — one row per clone
+  site with what it clears and the v4 site it mirrors — in the family header.
+  The retry is the ONE clone that clears all three. (The order's line numbers
+  for the native force-final and the text continuation were stale; the table
+  carries the measured ones, `native_tool_loop.rs:587` and
+  `text_tool_loop.rs:680-687`.)
+
+### Mutation proofs (each reddened exactly its target; reverts by file backup)
+
+| # | mutation | result |
+|---|---|---|
+| M1 | revert the `previous_response_id` clear | 2 legs red |
+| M2 | revert the `stop` clear | 2 legs red |
+| M3 | revert the `cache_key` clear (the P4.95 wire) | **3** legs red — the bare twin's retry too |
+| M4 | clear the three on the PRIMARY call as well | **19** legs red (the clears are retry-scoped) |
+| M5 | bend v5's own derivation (`PROMPT_CACHE_STRUCTURE_VERSION` 4 → 3) | **45** legs red — the key's BYTES are measured against v4's real funnel |
+| M6 | the warn's `tool_count` → constant 0 | the warn test only |
+| M7 | `response_length` counts scalars, not UTF-16 units | the UTF-16 test only |
+| M8 | the success sentence moved onto the FAILURE arm | the success + failure tests |
+| M9 | the warn hoisted OUT of the branch (`if true`) | the silence test only |
+
+### Regen recipe as run (lane-private staging, §R.3)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4-97-5f0a57dc4 ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree> ; TMPO=/tmp/p4.97/qt-primary-stream-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/primary-stream-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/cases/openai-chaining-fallback-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/primary-stream-tier3.json" "$TMPO/fixtures/"
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/p4.97/qt-primary-stream.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-primary-stream-fixture.ts"
+QT_FIXTURE_PRIMARY_STREAM=/tmp/p4.97/qt-primary-stream.db \
+QT_ORACLE_OUT=/tmp/p4.97/oracle-primary-stream.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+    -- "primary-stream-tier3\.test\.ts$"
+QT_ORACLE_OUT=/tmp/p4.97/oracle-openai-fallback.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+    -- "openai-chaining-fallback-tier3\.test\.ts$"
+```
+(The committed header recipe stays canonical — it names no `/tmp` pin; the
+driver's `--v4` is the pin. The anchored jest filters are this run's; the
+committed recipe's unanchored spelling is unchanged.)
+
+**Fixture changed:** `harness/oracle/fixtures/primary-stream-tier3.json` — 29 →
+30 calls, 9 → 10 chats, 26 → 27 stream labels. No other family reads it.
+
+### Findings for the unifier (outside this lane's ownership)
+
+- **`Recoverable request error detected, attempting recovery`** (v4
+  `primary-stream.service.ts:316-322`, the request-limit branch's own info line
+  with `{chatId, provider, model, attachmentCount, error}`) is ALSO absent from
+  v5 — grep returns nothing. It sits outside the retry block this lane owns
+  (`:1311+`), so it is recorded rather than landed: the same #103/#110 class,
+  one line, wants a small order or a rider on whoever next opens that branch.
