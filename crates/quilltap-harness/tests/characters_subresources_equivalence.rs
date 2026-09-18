@@ -284,9 +284,8 @@ fn characters_subresources_match_oracle() {
         let want = project(&oracle["prompt_update_promotes"]["readback"]["body"]["character"]);
         // The row is only worth running if the flag actually moved onto `Backup`
         // — a fixture whose baked default changed would otherwise pass vacuously.
-        assert_eq!(
+        assert!(
             want["defaultSystemPromptId"].as_str().is_some(),
-            true,
             "the oracle's readback must carry a non-null column"
         );
         if norm(&got) != norm(&want) {

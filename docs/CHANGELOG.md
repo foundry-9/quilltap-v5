@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — fix(harness): the subresources readback guard reads as a plain assert
+
+_Versions: harness 0.0.854._
+
+`clippy::bool_assert_comparison` on the `prompt_update_promotes` vacuity guard
+added in the previous commit: `assert_eq!(x.is_some(), true)` becomes
+`assert!(x.is_some())`. No behaviour change; the gate's clippy step is clean in
+both feature sets after it.
+
 #### 2026-09-18 — docs(help): re-vendor character-system-prompts.md at `baa85e19b`
 
 _Versions: harness 0.0.853._
