@@ -395,7 +395,8 @@ fn resolve_general_path(
 
 /// The accessible mount-point id set for a context (v4
 /// `collectAccessibleMountPointIds`): operator override → every enabled store;
-/// else the tiered pool flattened (participants included).
+/// else the tiered pool flattened — the participant AND character tiers included
+/// only while vaults are visible; the opacity covenant subtracts both (v4 bug 152).
 fn collect_accessible_mount_point_ids(
     main: &Connection,
     mount: &Connection,
@@ -450,7 +451,9 @@ fn collect_accessible_mount_point_ids(
 /// preserved and duplicates drop.
 fn describe_characters(context: &PathResolutionContext) -> String {
     let mut ids: Vec<&str> = Vec::new();
-    if let Some(cid) = &context.character_id {
+    // v4 `if (context.characterId)` is JS truthiness: an EMPTY string is skipped
+    // (the `8f910137`-round audit shape — `is_some()` is not `x ? …` over a string).
+    if let Some(cid) = context.character_id.as_deref().filter(|s| !s.is_empty()) {
         ids.push(cid);
     }
     for id in &context.character_ids {
@@ -836,6 +839,9 @@ mod tests {
         assert_eq!(describe_characters(&ctx(Some("a"), &["b", "b"])), "a,b");
         // no acting character: the peers alone, in order
         assert_eq!(describe_characters(&ctx(None, &["c", "b"])), "c,b");
+        // an EMPTY acting id is falsy in v4 (`if (context.characterId)`) — skipped
+        assert_eq!(describe_characters(&ctx(Some(""), &["b"])), "b");
+        assert_eq!(describe_characters(&ctx(Some(""), &[])), "none");
     }
 
     /// The fixture both warn pins share: one enabled `documents` store (the
@@ -952,6 +958,7 @@ mod tests {
             .iter()
             .find(|l| l.contains("Mount point not found or not accessible:"))
             .unwrap_or_else(|| panic!("no not-found warn in {lines:?}"));
+        assert!(warn.starts_with("WARN "), "v4 logs it at warn: {warn}");
         assert!(
             warn.contains(
                 "Mount point not found or not accessible: Leilani Character Vault \
@@ -1140,6 +1147,39 @@ mod tests {
             lines.iter().any(|l| l.starts_with("WARN ")
                 && l.contains("Attempt to access disabled mount point: d-1")),
             "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn an_enabled_store_resolves_on_the_pool_path_with_no_warn_at_all() {
+        // (The self-token warn's silence leg lives in the harness —
+        // `doc_edit_path_resolver_equivalence`'s `self-token` rows — because a
+        // RESOLVING self token needs a real vault behind the character-tier read,
+        // which applies the document-store overlay an in-memory fixture cannot
+        // satisfy.)
+        // The silence leg for the disabled-mount warn (and, on the NON-operator
+        // path, for both refusal warns): `Project Papers` is enabled and linked
+        // to `p-1`, so the pool reaches it and nothing at WARN may fire.
+        let (main, mount) = warn_fixture();
+        let ctx = PathResolutionContext {
+            project_id: Some("p-1".to_string()),
+            mount_point: Some("Project Papers".to_string()),
+            ..Default::default()
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            resolve_doc_edit_path(
+                &main,
+                &mount,
+                DocEditScope::DocumentStore,
+                Some("notes.md"),
+                &ctx,
+                None,
+            )
+        });
+        assert_eq!(out.unwrap().mount_point_id.as_deref(), Some("r-1"));
+        assert!(
+            !lines.iter().any(|l| l.starts_with("WARN ")),
+            "a resolving store must log nothing at WARN: {lines:?}"
         );
     }
 }

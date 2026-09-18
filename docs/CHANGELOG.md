@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — fix(unify): the `89fcc3c0d` round's §3 review fixes — the `ImageProfileGenerate` distinctness twin, `describe_characters`' JS-truthiness arm, the resolver warns' missing silence legs and level assert, the embed guard's history line, the google request-logic family's overclaim reworded, the recovery pin's fields anchored, and three P4.98 nits
+
+_Versions: core 0.0.960, harness 0.0.850, web 0.0.154._
+
+Fixed on the unify branch from the three lanes' reviews (none blocking):
+P4.98's §5 finding that `IMAGE_PROFILE_GENERATE_RAW_FIVE` had no
+distinctness pin — the decode-raw test stays green against a plain
+`Option<Value>` — closed with the twin of P4.98's own test; two off-by-one v4
+line citations in the census notes, a lost line-continuation's space run in
+an edge assertion, and the route family's stale-oracle floor raised 37 → 45.
+P4.D200: `describe_characters` now skips an EMPTY acting id as v4's
+`if (context.characterId)` does (the `8f910137`-round audit shape), pinned by
+two rows; the NOT_FOUND warn pin asserts its level; an enabled store resolving
+on the pool path asserts NO line at WARN (the disabled-mount and refusal
+warns' silence leg), and the self-token warn's silence leg lives in
+`doc_edit_path_resolver_equivalence`'s two resolving `self` rows over the
+real fixture — a unit fixture cannot carry it, the pool's character-tier read
+applies the vault overlay; the collector's doc no longer says "participants
+included"; `help_tree_embed_guard`'s history gains the P4.D200 re-vendor line.
+P4.99: the request-logic google family's pair is a presence + v5-compare arm
+— its recorder's `formatMessagesForGoogle` call cannot receive `cacheKey`, so
+its equality was the recorder's construction; the v4 proof is credited to the
+wire family and the `google.rs` unit pin at all four doc sites; the recovery
+INFO line's field pin is terminator-anchored (`attachment_count=2` no longer
+matches `=20`).
+
 #### 2026-09-18 — chore(unify): the `89fcc3c0d` round's unification wires — the `docs/v4/` mirror at the pin, the CHANGELOG separators the union merge dropped, the lock re-sync, the two sweep artifacts
 
 _Docs-only change (plus `Cargo.lock` re-synced to the recounted crate versions)._

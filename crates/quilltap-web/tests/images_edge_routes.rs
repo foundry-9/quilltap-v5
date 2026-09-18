@@ -240,7 +240,7 @@ async fn the_collection_post_edge_answers_v4s_own_arms() {
         assert_eq!(
             (status, body["error"].as_str()),
             (400, Some("Validation error")),
-            "`{key}: null` must still refuse at this edge after the shared-decoder              rewrite: {body}"
+            "`{key}: null` must still refuse at this edge after the shared-decoder rewrite: {body}"
         );
     }
 }

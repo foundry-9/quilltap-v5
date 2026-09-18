@@ -367,15 +367,21 @@ fn doc_edit_path_resolver_matches_oracle() {
     ];
 
     for (id, scope, path, context) in &cases {
-        let got = sentinelize(&resolve_json(resolve_doc_edit_path(
-            main,
-            mount,
-            *scope,
-            *path,
-            context,
-            Some(&files_dir),
-        )));
+        let (resolved, lines) = quilltap_core::test_support::captured_with(|| {
+            resolve_doc_edit_path(main, mount, *scope, *path, context, Some(&files_dir))
+        });
+        let got = sentinelize(&resolve_json(resolved));
         assert_eq!(got, want("resolve", id), "resolve mismatch for '{id}'");
+        // The silence leg for the self-token warn (P4.D200 Tier 2 item 12, placed
+        // at the `89fcc3c0d` unification): a `self` that RESOLVES against the real
+        // vault logs nothing at WARN. A unit fixture cannot carry it — the pool's
+        // character-tier read applies the vault overlay — so the real fixture does.
+        if *id == "self-token" || *id == "self-token-upper" {
+            assert!(
+                !lines.iter().any(|l| l.starts_with("WARN ")),
+                "'{id}' resolved and must log nothing at WARN: {lines:?}"
+            );
+        }
     }
 
     // ---- URI producers ----

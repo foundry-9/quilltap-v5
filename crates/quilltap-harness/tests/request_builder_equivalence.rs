@@ -301,11 +301,14 @@ const CACHE_KEY_ABSENT_CASES: [&str; 2] = ["cache-key-absent", "cache-key-empty"
 /// closed that**, so it is now pinned in three places and this table's silence
 /// about google is a pointer, not a gap:
 ///   - `request_builder_google_equivalence` — the named `cache-key` /
-///     `cache-key-absent` pair's four recorded outputs are identical, which
-///     pins v4's ignoring;
+///     `cache-key-absent` pair as a PRESENCE + v5-compare arm (its recorder's
+///     logic call cannot receive the key, so the pair's equality there is the
+///     recorder's construction — the `89fcc3c0d` unification's §3 finding);
 ///   - `request_builder_google_wire_equivalence` — the same pair's recorded
 ///     bodies are byte-identical in BOTH modes, and neither carries any
-///     cache-key spelling as a JSON key;
+///     cache-key spelling as a JSON key — THIS is the v4-side proof, since the
+///     wire recorder hands the whole `params` to the real `streamMessage` /
+///     `sendMessage`;
 ///   - `model::request_builder::google`'s `cache_key_ignorer_tests` — v5's own
 ///     `build_config` / `build_google_wire_body` are key-blind by shape.
 const CACHE_KEY_IGNORED: &[(&str, &str)] = &[

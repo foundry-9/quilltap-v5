@@ -3085,7 +3085,7 @@ const IMAGES_GENERATE_RAW_FIVE: &[Row] = &[
         field: "chat_id",
         rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
-        note: "RAW(P4.76, tri-state P4.98) — v4 `:55` `chatId: z.uuid().optional()` \
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:56` `chatId: z.uuid().optional()` \
                (bug 130: folded into the new file's `linkedTo` so a chat-scoped \
                read can see it). One of the THREE that were measurably broken: \
                pre-P4.98 `{\"chatId\": null}` over dispatch collapsed to ABSENT, \
@@ -3097,7 +3097,7 @@ const IMAGES_GENERATE_RAW_FIVE: &[Row] = &[
         field: "tags",
         rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
-        note: "RAW(P4.76, tri-state P4.98) — v4 `:56-64` `tags: z.array(z.object({ \
+        note: "RAW(P4.76, tri-state P4.98) — v4 `:57-64` `tags: z.array(z.object({ \
                tagType: z.enum([…]), tagId: z.string() })).optional()`. The second \
                of the three measurably broken by the plain `Option<Value>` \
                (`zod_tags_null` / `zod_tags_not_array` / `zod_tags_bad_tagtype` / \
@@ -3190,6 +3190,44 @@ fn images_generate_five_decode_raw_so_the_handler_can_refuse() {
                 row.field
             );
         }
+    }
+}
+
+/// The `ImageProfileGenerate` twin of
+/// [`images_generate_keeps_absent_and_explicit_null_apart_at_the_decode`],
+/// landed at the `89fcc3c0d` unification on P4.98's §5 finding: P4.96's list
+/// was held by a shape test and a decode-raw test, and P4.98's M1 proved that
+/// pair does NOT catch a plain `Option<Value>` regression — `null` decodes
+/// fine either way, it just decodes to the WRONG thing. The shape test only
+/// catches it because the `rust_type` string is transcribed by hand; this pin
+/// asks the DECODER, not the transcription.
+#[test]
+fn image_profile_generate_keeps_absent_and_explicit_null_apart_at_the_decode() {
+    use quilltap_core::api::types::Request;
+
+    // The minimum an `ImageProfileGenerate` needs to decode at all, so what is
+    // measured is the raw key's tri-state and not a missing sibling.
+    let base = json!({
+        "type": "imageProfileGenerate",
+        "imageProfileId": "p-1",
+        "prompt": "a kite",
+    });
+    let decode = |body: Value| serde_json::from_value::<Request>(body).expect("decodes");
+    for row in IMAGE_PROFILE_GENERATE_RAW_FIVE {
+        let key = camel(row.field);
+        let absent = decode(base.clone());
+        let mut with_null = base.clone();
+        with_null
+            .as_object_mut()
+            .unwrap()
+            .insert(key.clone(), Value::Null);
+        assert_ne!(
+            absent,
+            decode(with_null),
+            "`{key}` decodes an explicit `null` to the same `Request` as an ABSENT \
+             key — serde has collapsed the tri-state and v4's `.optional()` refusal \
+             has lost the evidence it is built from"
+        );
     }
 }
 

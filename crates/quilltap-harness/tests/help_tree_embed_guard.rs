@@ -22,7 +22,11 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `bcd7e4852`: still 124 — the
+/// The shipped tree at the vendored pin (v4 `89fcc3c0d`: still 124 — the
+/// P4.D200 re-vendor MODIFIED `help/character-system-transparency.md` alone
+/// (bugs 152 + 153, `1065a1f53` + `89fcc3c0d` — the vault-covenant paragraph's
+/// "Vaults, and nothing besides" and "Nor are they so much as named" additions)
+/// and added none; v4 `bcd7e4852`: still 124 — the
 /// P4.D199 re-vendor MODIFIED `help/connection-profiles.md` alone (bug 151,
 /// `bcd7e4852` — the "A travelling portrait packs light" section on the
 /// transport shrink and the per-turn image byte budget) and added none; v4

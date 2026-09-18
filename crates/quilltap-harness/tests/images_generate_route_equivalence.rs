@@ -920,7 +920,7 @@ fn images_generate_matches_oracle() {
         "the driven case list and the oracle's disagree"
     );
     assert!(
-        driven_sorted.len() >= 37,
+        driven_sorted.len() >= 45,
         "the corpus shrank to {} cases — a stale oracle would go green on a subset",
         driven_sorted.len()
     );

@@ -16,10 +16,16 @@
 //!     ollama; google's corpus is separate because the genai SDK reframes its
 //!     wire). Its plugin never reads `params.cacheKey` —
 //!     `provider.ts:108-113` is a `TODO(per-character-caching)` saying so, and
-//!     the key appears nowhere else in its sources — so the contract is the
-//!     stronger one: v4's own four outputs must be IDENTICAL with and without
-//!     the key. That is an assertion ON THE ORACLE, and this is the one place
-//!     it is the point: it pins v4's IGNORING, which is the fact v5 mirrors.
+//!     the key appears nowhere else in its sources. ⚠ THIS family's pair is a
+//!     PRESENCE + v5-compare arm, not the v4 proof: the recorder calls
+//!     `formatMessagesForGoogle(messages, model, hasTools)`, a signature that
+//!     cannot receive `cacheKey`, so the pair's four request-logic outputs are
+//!     equal by the recorder's construction whatever the plugin does with the
+//!     key (the `89fcc3c0d` unification's §3 finding). v4's IGNORING is pinned
+//!     where the whole `params` reaches the real `streamMessage`/`sendMessage`
+//!     — `request_builder_google_wire_equivalence`'s pair (byte-identical
+//!     bodies, no cache-key spelling as a key) — and v5's key-blindness by
+//!     `google.rs`'s `cache_key_ignorer_tests`.
 //!
 //! The corpus is committed
 //! (`harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson`);
@@ -225,9 +231,10 @@ fn google_request_logic_matches_v4() {
         }
         // P4.99 — the ignorer pair. `input_from_json` deliberately does NOT read
         // `cacheKey` into `RequestInput`: the request-LOGIC surface has no
-        // business with it, which is exactly the shape under test. The four
-        // recorded outputs are what v4 produced, so comparing the pair's two
-        // sides compares v4 against itself.
+        // business with it, which is exactly the shape under test. The pair's
+        // equality below is a presence + consistency check — the recorder's
+        // logic call never receives the key (see the module doc); the v4-side
+        // proof of ignoring is the WIRE family's pair.
         if matches!(case, "cache-key" | "cache-key-absent") {
             ignorer_outputs.insert(
                 case.to_string(),
@@ -281,9 +288,10 @@ fn google_request_logic_matches_v4() {
     });
     assert_eq!(
         keyed, twin,
-        "GOOGLE: v4's request logic for a request CARRYING a cache key must be \
-         identical to the one without it — the plugin reads the key nowhere \
-         (provider.ts:108-113). If this ever diverges, google has stopped being an \
-         ignorer and v5's key-blind builder is wrong."
+        "GOOGLE: the recorded request-logic pair diverged — the recorder's \
+         `formatMessagesForGoogle` call cannot even receive the key, so a difference \
+         here means the corpus was recorded from two different inputs, not that \
+         google stopped ignoring the key (that claim is the WIRE family's and the \
+         `google.rs` unit pin's to make)."
     );
 }

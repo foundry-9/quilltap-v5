@@ -2307,19 +2307,38 @@ mod tests {
         // v4's LEVEL is `logger.info` (the hunk at `:319`; the previous round's
         // candidate list said "warn" — the hunk wins, §R.4).
         assert!(line.starts_with("INFO "), "{line}");
-        for field in [
-            "chat_id=chat-1",
-            "provider=GOOGLE",
-            "model=gemini-3-flash",
+        // Anchored the way the P4.99 harness `has_field` is: ` name=value`
+        // followed by a space or the end of the line, so `attachment_count=2`
+        // cannot match `attachment_count=20` (the prefix-match class item 9
+        // retired from the tier-1 log check).
+        let has_field = |name: &str, value: &str| {
+            let needle = format!(" {name}={value}");
+            match line.find(&needle) {
+                None => false,
+                Some(at) => {
+                    let after = at + needle.len();
+                    line.len() == after || line.as_bytes()[after] == b' '
+                }
+            }
+        };
+        for (name, value) in [
+            ("chat_id", "chat-1"),
+            ("provider", "GOOGLE"),
+            ("model", "gemini-3-flash"),
             // Two attachments, so a hard-coded 0 (or a dropped field) reddens.
-            "attachment_count=2",
-            &format!("error={RECOVERABLE}"),
+            ("attachment_count", "2"),
         ] {
             assert!(
-                line.contains(field),
-                "recovery line missing {field}: {line}"
+                has_field(name, value),
+                "recovery line missing {name}={value}: {line}"
             );
         }
+        // The error is a sentence with spaces; the anchored helper cannot carry
+        // it, and a prefix match on the WHOLE sentence is exact enough.
+        assert!(
+            line.contains(&format!(" error={RECOVERABLE}")),
+            "recovery line missing the error: {line}"
+        );
     }
 
     #[tokio::test]
