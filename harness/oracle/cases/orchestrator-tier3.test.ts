@@ -146,6 +146,9 @@ interface Spec {
     category: string;
     fsmBytes?: number[];
     fsmBytesUtf8?: string;
+    /** P4.D199 (bug 151): `len` copies of `byte` — a megabyte an array cannot carry. */
+    fsmBytesFill?: { byte: number; len: number };
+    description?: string;
   }>;
   calls: CallSpec[];
   streams: Record<string, ChunkSpec[][]>;
@@ -496,9 +499,15 @@ async function main(): Promise<void> {
   // The host byte layer: fileId → the spec's bytes (the Rust `CannedBytes`
   // twin). A file id the spec does not carry throws, exactly as a storage miss
   // does — `loadChatFilesForLLM` catches and skips it.
+  // P4.D199 (bug 151): `fsmBytesFill` expands to `len` copies of `byte` — the
+  // Lantern byte budget is 2 MiB of base64, and a literal `fsmBytes` array
+  // cannot carry a megabyte. The Rust `CannedBytes` reader expands it the same
+  // way, so both sides download byte-identical buffers.
   const fsmByFileId: Record<string, Buffer> = {};
   for (const f of spec.files ?? []) {
-    if (f.fsmBytesUtf8 !== undefined) fsmByFileId[f.id] = Buffer.from(f.fsmBytesUtf8, 'utf-8');
+    if (f.fsmBytesFill !== undefined)
+      fsmByFileId[f.id] = Buffer.alloc(f.fsmBytesFill.len, f.fsmBytesFill.byte);
+    else if (f.fsmBytesUtf8 !== undefined) fsmByFileId[f.id] = Buffer.from(f.fsmBytesUtf8, 'utf-8');
     else if (f.fsmBytes) fsmByFileId[f.id] = Buffer.from(f.fsmBytes);
     else fsmByFileId[f.id] = Buffer.alloc(0);
   }

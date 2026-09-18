@@ -51,6 +51,19 @@ pub const TOOL_RESULT_VERBATIM_TURNS: i64 = 3;
 /// `ASSISTANT_IMAGE_LOOKBACK`).
 pub const ASSISTANT_IMAGE_LOOKBACK: usize = 6;
 
+/// Ceiling on the *total* base64 an unseen-image walk may add to one turn (v4
+/// `LANTERN_IMAGE_BASE64_BUDGET`, `lib/files/llm-image-budget.ts:79`, bug 151
+/// `bcd7e4852`).
+///
+/// ~2 MB is four images at the per-image ceiling, which is more pictures than a
+/// turn has ever usefully carried, and leaves a wide margin under the narrowest
+/// provider body limit we have met (NanoGPT's, which bug 151 found somewhere
+/// under 4.5 MB). Spent newest-first: see [`spend_lantern_image_budget`].
+// P4.D199 → P4.D198 handoff: the public home is
+// `files::llm_image_budget::LANTERN_IMAGE_BASE64_BUDGET`; the unifier repoints
+// this to an import (§R.10(a)).
+const LANTERN_IMAGE_BASE64_BUDGET: usize = 2 * 1024 * 1024;
+
 // ===========================================================================
 // The whisper-pipeline message shape.
 // ===========================================================================
@@ -805,6 +818,94 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
     out
 }
 
+/// Spend the per-turn image byte budget over the unseen assistant images the
+/// Lantern walk loaded, and hand back the ones the turn will carry — in
+/// CHRONOLOGICAL order (v4 bug 151, `bcd7e4852`).
+///
+/// v4 does this inline in `buildMessageContext`'s Lantern block, wrapped around
+/// the per-file fallback loop it already had: it iterates `[...extra].reverse()`
+/// (NEWEST first), pushes each formatted prefix onto `lanternPrefixesNewestFirst`
+/// and each still-raw attachment onto `lanternAttachmentsToKeep`, then undoes
+/// both orders with a `reverse()` apiece — `lanternPrefixesNewestFirst.reverse()
+/// .join('')` for the prefix and `lanternAttachmentsToKeep.reverse()` for the
+/// slate.
+///
+/// v5 cannot wrap the same loop: the fallback pass lives BELOW the seam, in
+/// `chat_files::load_lantern_images`, which already returns the concatenated
+/// prefix and the raw-kept attachments in v4's PRE-fix (chronological) order.
+/// So the spend is post-hoc, and the equivalence is this:
+///
+///  * **The prefix needs nothing.** v4's two `reverse()`s compose to the
+///    identity — the prefix after the fix is byte-for-byte the prefix before it,
+///    which is exactly what the seam already hands us. (v4's own comment says
+///    the prefix "reads as a narration of what has happened since this character
+///    last spoke"; that reading is the pre-fix order.)
+///  * **The attachments** are the kept subset in chronological order, so
+///    iterating `.rev()` here is v4's `[...extra].reverse()` restricted to the
+///    files that survived its `unsupported && !error` filter — and the filter is
+///    independent of the budget (v4 tests it BEFORE measuring `wireBytes`), so
+///    restricting first and spending second keeps the same membership and the
+///    same drop decisions. `kept.reverse()` at the end is v4's
+///    `lanternAttachmentsToKeep.reverse()`.
+///
+/// RECORDED DIVERGENCE (order of side effects, not of output): because the
+/// fallback pass runs below the seam, v5 still dispatches it oldest-first where
+/// v4 now dispatches newest-first. Every observable this port compares is
+/// unchanged — the prefix bytes, the kept membership, the kept order, the warn
+/// — because each file's fallback result depends only on that file. What does
+/// move is the ORDER of the fallback's own side effects on a non-vision seat
+/// (the per-image describe calls and their `llm_logs` rows). Reordering them
+/// would mean reordering `load_lantern_images`, which is a different unit's
+/// file.
+///
+/// `wire_bytes` is v4's `fileAttachment.data?.length ?? 0` — the length of the
+/// BASE64 STRING the turn will really put on the wire, not the stored `size`. A
+/// missing or non-string `data` counts 0 and is KEPT, exactly as v4's `?? 0`
+/// keeps it. `str::len` is bytes where v4's `.length` is UTF-16 units; `data` is
+/// always `STANDARD.encode` output (ASCII), so the two counts coincide.
+fn spend_lantern_image_budget(
+    attachments: Vec<Value>,
+    character_participant_id: &str,
+) -> Vec<Value> {
+    let mut budget_left = LANTERN_IMAGE_BASE64_BUDGET;
+    let mut dropped_for_budget = 0usize;
+    let mut kept: Vec<Value> = Vec::new();
+
+    // Newest first: when a budget forces a drop, the picture worth keeping is
+    // the one just generated, not the portrait it replaced. (The sibling USER
+    // re-hydration budget deliberately spends OLDEST-first — v4 contrasts the
+    // two in its own comment; do not harmonize them.)
+    for fa in attachments.into_iter().rev() {
+        let wire_bytes = fa
+            .get("data")
+            .and_then(Value::as_str)
+            .map(str::len)
+            .unwrap_or(0);
+        if wire_bytes > budget_left {
+            dropped_for_budget += 1;
+            continue;
+        }
+        budget_left -= wire_bytes;
+        kept.push(fa);
+    }
+
+    if dropped_for_budget > 0 {
+        tracing::warn!(
+            dropped_for_budget,
+            kept = kept.len(),
+            budget = LANTERN_IMAGE_BASE64_BUDGET,
+            budget_used = LANTERN_IMAGE_BASE64_BUDGET - budget_left,
+            character_participant_id,
+            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent"
+        );
+    }
+
+    // Back to chronological: the attachments anchor in the order the narration
+    // reads.
+    kept.reverse();
+    kept
+}
+
 // ===========================================================================
 // The composition.
 // ===========================================================================
@@ -1354,9 +1455,14 @@ where
         );
         if !ids.is_empty() {
             let load = mc_seams.load_lantern_images(&ids, params.provider).await;
+            // The prefix is used AS RETURNED: v4's bug-151 fix collects the
+            // prefixes newest-first and then `reverse()`s them back, which is the
+            // order the seam already produced. See
+            // [`spend_lantern_image_budget`] for the whole equivalence argument.
             lantern_prefix = load.prefix;
             if !load.attachments.is_empty() {
-                merged_attachments.extend(load.attachments);
+                merged_attachments
+                    .extend(spend_lantern_image_budget(load.attachments, responding_id));
             }
         }
     }
@@ -1838,6 +1944,128 @@ mod tests {
                 .any(|l| l.contains("Re-hydrated user attachments from history")),
             "{lines:#?}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // The bug-151 Lantern image-byte budget (v4 `bcd7e4852`). The walk that
+    // COLLECTS the ids is oracle-pinned by `message_context_leaves_equivalence`
+    // and the whole section-K composition by `orchestrator_tier3`; these drive
+    // [`spend_lantern_image_budget`] directly so the newest-first spend, the
+    // `>`-not-`>=` boundary, the chronological restore, v4's `?? 0` and both
+    // legs of the warn are each measured on their own.
+    // -----------------------------------------------------------------------
+
+    /// One loaded Lantern attachment whose base64 `data` is exactly
+    /// `base64_len` characters — the quantity v4 measures (`data?.length`).
+    fn lantern_att(id: &str, base64_len: usize) -> Value {
+        serde_json::json!({
+            "id": id,
+            "filename": format!("{id}.webp"),
+            "mimeType": "image/webp",
+            "size": base64_len / 4 * 3,
+            "data": "A".repeat(base64_len),
+        })
+    }
+    fn ids_of(atts: &[Value]) -> Vec<&str> {
+        atts.iter()
+            .map(|a| a.get("id").and_then(Value::as_str).unwrap())
+            .collect()
+    }
+
+    /// The budget is spent NEWEST-first, so an oversized OLD portrait is the one
+    /// dropped — and what survives goes back in chronological order. An
+    /// oldest-first spend would have kept `old` and dropped `new`, which is the
+    /// whole point of bug 151's fix.
+    #[test]
+    fn the_image_budget_drops_the_oldest_and_restores_chronological_order() {
+        // Chronological: 1.5 MiB, 0.25 MiB, 0.5 MiB of base64.
+        let atts = vec![
+            lantern_att("old", 1_572_864),
+            lantern_att("mid", 262_144),
+            lantern_att("new", 524_288),
+        ];
+        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+        assert_eq!(
+            ids_of(&kept),
+            vec!["mid", "new"],
+            "the oldest overflowing image is dropped and the rest stay chronological"
+        );
+        let warn = line_with(
+            &lines,
+            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent",
+        );
+        assert!(warn.starts_with("WARN"), "budget line is a warn: {warn}");
+        assert!(warn.contains("dropped_for_budget=1"), "{warn}");
+        assert!(warn.contains("kept=2"), "{warn}");
+        assert!(warn.contains("budget=2097152"), "{warn}");
+        // 2 MiB − (0.5 MiB + 0.25 MiB) spent.
+        assert!(warn.contains("budget_used=786432"), "{warn}");
+        assert!(warn.contains("character_participant_id=\"cp\""), "{warn}");
+    }
+
+    /// v4 drops on `wireBytes > imageBudgetLeft`, so a turn whose images sum to
+    /// EXACTLY the budget carries all of them. `>=` would drop the last one.
+    #[test]
+    fn the_image_budget_fits_a_sum_exactly_equal_to_it() {
+        let half = LANTERN_IMAGE_BASE64_BUDGET / 2;
+        let atts = vec![lantern_att("first", half), lantern_att("second", half)];
+        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+        assert_eq!(
+            ids_of(&kept),
+            vec!["first", "second"],
+            "a sum exactly equal to the budget fits (`>` not `>=`)"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("exceeded the per-turn byte budget")),
+            "nothing was dropped, so the warn must not fire: {lines:#?}"
+        );
+    }
+
+    /// The silence leg: a turn well inside the budget keeps every image, in
+    /// order, and says nothing at all.
+    #[test]
+    fn an_affordable_turn_keeps_every_image_and_logs_nothing() {
+        let atts = vec![
+            lantern_att("a", 307_200),
+            lantern_att("b", 307_200),
+            lantern_att("c", 307_200),
+        ];
+        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+        assert_eq!(ids_of(&kept), vec!["a", "b", "c"]);
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// v4's `fileAttachment.data?.length ?? 0`: an attachment the loader left
+    /// without a base64 body costs nothing and is KEPT — even once the budget is
+    /// exhausted, because `0 > 0` is false.
+    #[test]
+    fn an_attachment_without_data_costs_nothing_and_is_kept() {
+        let atts = vec![
+            serde_json::json!({ "id": "bodyless", "filename": "x.webp" }),
+            lantern_att("whole", LANTERN_IMAGE_BASE64_BUDGET),
+        ];
+        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+        assert_eq!(ids_of(&kept), vec!["bodyless", "whole"]);
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// One image bigger than the whole budget is dropped and the turn still
+    /// runs: the warn is a warn, not an error, and it reports an untouched
+    /// budget.
+    #[test]
+    fn a_single_image_over_the_budget_is_dropped_and_the_turn_still_runs() {
+        let atts = vec![lantern_att("enormous", LANTERN_IMAGE_BASE64_BUDGET + 4)];
+        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+        assert!(kept.is_empty(), "nothing survives: {kept:?}");
+        let warn = line_with(
+            &lines,
+            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent",
+        );
+        assert!(warn.contains("dropped_for_budget=1"), "{warn}");
+        assert!(warn.contains("kept=0"), "{warn}");
+        assert!(warn.contains("budget_used=0"), "{warn}");
     }
 
     /// The a14a1811 §3 review's named silent mutation: the id-set predicate is

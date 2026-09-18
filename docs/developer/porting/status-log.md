@@ -132636,3 +132636,244 @@ ONLY). cli / tauri / web / SPA untouched.
   branch) on both sides plus a corpus file whose ladder bottom stays over the
   provider cap. Named here rather than half-done; the ordering and mime
   arguments it would cover are pinned by the wiring file meanwhile.
+## P4.D199 unit 1 — bug 151's WALK half: the Lantern per-turn image byte budget (v4 `bcd7e4852`)
+
+**Lane:** P4.D199 (the `bcd7e4852` bug-151 drift catch-up + follow-ups round,
+P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97). Branch
+`claude/lantern-byte-budget-walk-306c9b`. Oracle baseline `5f0a57dc4`; **every
+regen in this lane ran from the lane-private pinned worktree
+`/tmp/qt-v4-pin-p4d199-bcd7e4852` (the TARGET) or
+`/tmp/qt-v4-pin-p4d199-5f0a57dc4` (the BASELINE, neutrality only)**, both
+verified by `rev-parse` and by `ls -ld` before first use. The §2 freshness
+probe PASSED at lane start and again before the regen batch (branch `main`,
+tree clean, both logs empty).
+
+### What landed
+
+`services/message_context.rs` gains the private
+`LANTERN_IMAGE_BASE64_BUDGET = 2 * 1024 * 1024` (v4's doc carried; marked with
+the **§R.10(a) handoff line** the unifier greps to repoint it at P4.D198's
+`files/llm_image_budget.rs`) and `spend_lantern_image_budget`, called from
+section K over the `LanternLoad` the seam returns:
+
+* newest-first spend (`.into_iter().rev()`) over
+  `fa["data"].as_str().map(str::len).unwrap_or(0)` — v4's
+  `fileAttachment.data?.length ?? 0`, the length of the BASE64 STRING, not the
+  stored `size`;
+* `if wire_bytes > budget_left { dropped += 1; continue }` — `>`, not `>=`, so
+  a sum exactly equal to the budget fits;
+* the WARN, once per turn and only when something was dropped, with v4's
+  sentence byte-exact and v4's five-field bag in v4's order
+  (`dropped_for_budget`, `kept`, `budget`, `budget_used`,
+  `character_participant_id` — the last one the same `responding_id` binding the
+  sibling bug-121 warn already carries);
+* `kept.reverse()` before the merge, so the slate is CHRONOLOGICAL;
+* the prefix used AS RETURNED.
+
+**Deviation from the order's prescribed shape, recorded:** the order says "the
+spend, in section K"; the spend landed as a private function in the same file
+that section K calls, because that is the file's own idiom (the sibling USER
+budget is `rehydrate_user_attachments`, unit-drivable exactly this way) and
+because a five-way unit pin through the whole `build_message_context`
+composition would need a DB, embeddings, an executor and the build-context
+seams. The section-K WIRING is pinned by the corpus arms below, so the helper
+cannot be orphaned.
+
+### The equivalence argument for a post-hoc spend (carried in the code)
+
+v4 wraps its per-file fallback loop: it iterates `[...extra].reverse()`, pushes
+prefixes onto `lanternPrefixesNewestFirst` and keeps onto
+`lanternAttachmentsToKeep`, then undoes both with a `reverse()` apiece. v5's
+fallback pass lives BELOW the seam, in `chat_files::load_lantern_images`
+(P4.D198's file, READ ONLY here), which already returns the concatenated prefix
+and the raw-kept attachments in v4's PRE-fix chronological order. So:
+
+* **the prefix needs nothing** — v4's two `reverse()`s compose to the identity,
+  so the post-fix prefix is byte-for-byte the pre-fix prefix, which is what the
+  seam hands us (MEASURED: the `nonvision` arm's spliced prefix reads
+  `lb_big`, `lb_small`, `lb_new` — chronological — on v4's own output at the
+  target pin);
+* **the attachments** are the kept subset in chronological order, so `.rev()`
+  here is v4's `[...extra].reverse()` restricted to the files that survived its
+  `unsupported && !error` filter — and that filter is independent of the budget
+  (v4 tests it BEFORE measuring `wireBytes`), so restricting first and spending
+  second keeps the same membership and the same drop decisions.
+
+**RECORDED DIVERGENCE (order of side effects, not of output).** Because the
+fallback pass runs below the seam, v5 still dispatches it oldest-first where v4
+now dispatches newest-first. Every observable this port compares is unchanged —
+prefix bytes, kept membership, kept order, the warn — because each file's
+fallback result depends only on that file. What moves is the ORDER of the
+fallback's own side effects on a non-vision seat: the per-image describe calls
+and their `llm_logs` rows. Reordering them means reordering
+`load_lantern_images`, which is another lane's file. Named in the
+`spend_lantern_image_budget` doc comment with the sha.
+
+### Unit pins (five) and mutation proofs (four)
+
+`the_image_budget_drops_the_oldest_and_restores_chronological_order`,
+`the_image_budget_fits_a_sum_exactly_equal_to_it`,
+`an_affordable_turn_keeps_every_image_and_logs_nothing` (the silence leg),
+`an_attachment_without_data_costs_nothing_and_is_kept` (v4's `?? 0`, kept even
+with the budget exhausted, because `0 > 0` is false), and
+`a_single_image_over_the_budget_is_dropped_and_the_turn_still_runs`
+(`kept=0`, `budget_used=0`). The warn is read through the file's existing
+thread-scoped capture rig, whose local visitor quotes a bare `&str` field — so
+the pin reads `character_participant_id="cp"`, matching the sibling bug-121
+tests.
+
+| mutation | reddens |
+|---|---|
+| `>` → `>=` | `the_image_budget_fits_a_sum_exactly_equal_to_it`, `an_attachment_without_data_costs_nothing_and_is_kept` |
+| delete `kept.reverse()` | all four order-asserting pins |
+| `.into_iter().rev()` → `.into_iter()` (oldest-first) | `..._drops_the_oldest_...` (a DIFFERENT image is dropped) + the three order pins |
+| `if dropped_for_budget > 0` → `>= 0` (warn always) | the silence leg + the two other silent arms |
+
+Each was applied from a file backup and reverted from the same backup
+(`mutation-proof-revert-by-file-backup`), never `git checkout`.
+
+### The differential — `orchestrator_tier3`, five new arms
+
+The family where v4's REAL `buildMessageContext` + `loadChatFilesForLLM` +
+`processFileAttachmentFallback` run over real fixture rows with only the host
+byte layer mocked.
+
+**Measurements made first (the order's item 4):**
+
+* **(a) the seat.** No corpus profile carried `supportsImageUpload`, so the
+  fixture gains `LanternVision` (ANTHROPIC — whose manifest transports
+  `image/*` and whose per-image ceiling is 5 MiB — with the tick) and the
+  character `Lucida` on it. The non-vision arm re-uses `Friday` on `Primary`
+  (ANTHROPIC, no tick), so every image there takes the describe fallback.
+* **(b) the side channel already existed.** P4.D154 (bug 121) records
+  `attachmentsAtWire` — the WHOLE per-message attachment slate, positionally
+  aligned with `messages`, per canned key — on both sides. No mock widening was
+  needed; filenames, order and the base64 itself are all already comparands.
+  The stale-oracle floor was rewritten from a bare `carriers == 1` count into
+  the ordered filename lists the corpus is supposed to produce, so the arms
+  cannot pass vacuously.
+* **(c) `build_context_tier3` drives `buildContext`, NOT `buildMessageContext`**
+  — it has no `MessageContextSeams` at all, real or Noop. So no arm goes there
+  and its seams were not touched; it was regenerated at the target pin as a
+  neutrality leg and is green.
+
+**The `fsmBytesFill` spec key** (`{byte, len}`, expanded to `len` copies of
+`byte`) landed on all three sides — the TS fixture builder, the jest
+`fileStorageManager.downloadFile` mock, and the Rust `CannedBytes` reader —
+because the existing `fsmBytes` array cannot carry a megabyte and the budget is
+2 MiB. `files.size` is planted from the same `len`, so the row is
+self-consistent. The `FileSpec` also gained an optional `description`, which is
+what keeps the non-vision arm free of a model call: the describe fallback's
+first tier reuses a persisted description and never calls vision.
+
+**The junk-byte premise, MEASURED not assumed.** At the TARGET pin v4's
+`readFileAsBase64` runs `shrinkImageForLlmTransport` on every image bound for a
+model. On a run of one byte `sharp(...).metadata()` throws, the function
+catches, warns and returns the input; v5 in this worktree has no shrink at all
+(P4.D198's half). Both sides therefore put the STORED bytes on the wire, which
+is what makes this lane independent of its sibling — and it is measured
+directly in the oracle's recorded slates: `lb_fit_a.webp` is planted at 307,200
+base64 characters and reaches the wire at 307,200. Every row also sits under
+the ANTHROPIC 5 MiB per-image ceiling, so neither side's backstop resize fires
+either. (The `Could not shrink image for LLM transport` warn is NOT visible in
+the jest log — `--silent` suppresses it — so the byte-length equality is the
+measurement of record, and it is the stronger one.)
+
+**A corpus-shape finding.** The first cut posed the arms as 2-LLM-seat chats
+with the images on the other character's turns; the chain then ran a second
+turn with no canned answer in three arms. The second cut used a
+single-LLM-seat chat with the images on the responder's own messages and
+collected NOTHING — because `is_multi_character_chat` is true for ANY salon
+chat with an active LLM participant, so the walk's stop rule is "the
+responder's own participantId", not the single-character "an ASSISTANT message
+without attachments". The shipped shape is the production one: the images ride
+**Lantern announcements** — `role: ASSISTANT`, `systemSender: "lantern"`, NO
+participantId — which `normalize_whisper_roles` keeps as ASSISTANT precisely
+because they carry attachments, and which are nobody's own prior response. One
+LLM seat + the operator, so the chain stops after one turn in every arm.
+
+**The arms** (base64 lengths; the budget is 2,097,152):
+
+| arm | images, chronological | on the wire | warn |
+|---|---|---|---|
+| `lantern_budget_all_fit` | 307,200 + 307,200 | both, chronological | silent |
+| `lantern_budget_drops_oldest` | 1,572,864 + 262,144 + 524,288 | `lb_small`, `lb_new` | `dropped_for_budget=1`, `kept=2`, `budget_used=786,432` |
+| `lantern_budget_exact_fit` | 1,048,576 + 1,048,576 (sum = the budget exactly) | both | silent |
+| `lantern_budget_single_over` | 2,097,156 | nothing | `dropped_for_budget=1`, `kept=0`, `budget_used=0` |
+| `lantern_budget_nonvision_seat_unbudgeted` | the same three as `drops_oldest`, on a seat that cannot transport images | nothing (all three described) | silent — fact (iii): a described image is never budgeted |
+
+An oldest-first spend keeps `lb_big, lb_small` and drops `lb_new`; a missing
+restore reads `lb_new, lb_small`. Both are distinguishable in the recorded
+slate, which is why the floor asserts the ordered filename lists.
+
+**Red-first.** With the spend removed (section K extending `load.attachments`
+directly — v5 as it stood on `main`), the family fails on
+`attachment slate at wire mismatch`. Two of the five arms are red pre-fix
+(`drops_oldest` and `single_over` — the two the fix changes); the other three
+are unchanged by the fix and would be green either way, which is why the floor
+assertion, which names all four carrying slates including `drops_oldest`'s, is
+the arm that cannot be satisfied by an unported v5.
+
+### Neutrality (the order's item 7)
+
+The orchestrator oracle was regenerated **at both pins from the same spec** and
+compared by case over the fields the Rust side compares, with UUIDs and ISO
+stamps placeholdered:
+
+* **56 pre-existing cases: events MOVED — NONE.**
+* **83 cannedStream rows on each side; exactly TWO differ**, both
+  `ANTHROPIC/claude-sees` — the budget arms. Nothing else moved.
+* `background_jobs` and `chat_messages`: **row-for-row identical** after
+  normalization (73 + 213 pre-existing rows and 10 + 28 new-chat rows all
+  match); only the dump ORDER differs, which is the minted-id ordering.
+* `llm_logs`: identical.
+
+**The pin verification is the drift itself, measured on v4's own code:** at the
+BASELINE v4 puts `lb_big + lb_small + lb_new` (2,359,296 base64 characters) and
+the lone `lb_huge` (2,097,156) on the wire unbudgeted; at the TARGET it sends
+`lb_small + lb_new` and nothing, respectively. The target-pinned help-tree
+NDJSON carries `A travelling portrait packs light` and the baseline-pinned
+`help/connection-profiles.md` does not.
+
+**Same-pin determinism (the `ffb6b3119` round's finding, re-measured):** two
+regens at the TARGET pin are NOT byte-identical (`cmp` differs). Under the
+normalizer all 61 cases' events, all 83 canned rows and the `llm_logs` line are
+stable; what moves is the row ORDER of the `background_jobs` / `chat_messages`
+dumps, because the minted ids move. So "regenerate at both pins and `cmp`" is
+the wrong instrument for this family — compare the normalized rows by case, as
+above.
+
+### Regen recipes as run (lane-private staging, §R.3)
+
+```bash
+V5W=<this worktree>; N=~/.nvm/versions/node/v24.13.1/bin
+PIN=/tmp/qt-v4-pin-p4d199-bcd7e4852        # or …-5f0a57dc4 for the neutrality leg
+TMPO=/tmp/p4.d199/orc-tgt
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/lib/pinned-draws.ts"              "$TMPO/lib/"
+cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
+rm -f /tmp/p4.d199/main-tgt.db /tmp/p4.d199/mount-tgt.db /tmp/p4.d199/oracle-tgt.ndjson
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/p4.d199/main-tgt.db QT_FIXTURE_MOUNT_OUT=/tmp/p4.d199/mount-tgt.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-orchestrator-fixture.ts
+QT_FIXTURE_ORCH_MAIN=/tmp/p4.d199/main-tgt.db QT_FIXTURE_ORCH_MOUNT=/tmp/p4.d199/mount-tgt.db \
+TZ=UTC QT_ORACLE_OUT=/tmp/p4.d199/oracle-tgt.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "orchestrator-tier3\.test\.ts$"
+```
+
+The committed recipe header stays canonical (it never names a `/tmp` pin); the
+lane-private paths were supplied through the family's env vars only.
+
+### Banked observations
+
+* The orchestrator fixture builder logs **29** `Failed to bump transcript
+  version` errors (`no such column: "transcriptVersion"`) for pre-existing
+  chats as well as the new ones — a P4.D182-vintage gap in this builder's
+  hand-rolled DDL that predates this lane and is not what any comparand reads.
+  Recorded, not fixed (the fixture is another round's to migrate).
+* The oracle NDJSON grew from ~3 MB to ~10 MB: the P4.D154 slate recording
+  carries each attachment's whole base64, and the budget arms are megabyte-scale
+  by construction. Nothing is committed — the NDJSON and the fixture pair are
+  both `/tmp`.

@@ -184,6 +184,43 @@ resized it — down to 342,376 bytes (456,502 base64) at quality 78 and 242,366
 (323,155) at 45. v4's sharp reached ~98 KB of base64 on its own gaussian-noise
 fixture, so an LCG is the less compressible of the two fixtures; the ceiling is
 cleared either way.
+#### 2026-09-17 — fix(chat): the Lantern unseen-image walk spends a per-turn byte budget (bug 151, the walk half)
+
+_Versions: core 0.0.943, harness 0.0.835._
+
+Port of v4 `bcd7e4852`'s `context-builder.service.ts` half. The Lantern walk
+collects every image a character has not been shown within
+`ASSISTANT_IMAGE_LOOKBACK = 6` messages — a message count with no byte
+equivalent. Two avatars, each under the provider's per-image ceiling and so
+resized by nobody, summed to 4.52 MB of base64 and the provider answered the
+turn with `413 Request Entity Too Large`; the token budget could not see it,
+because image bytes are not tokens.
+
+`LANTERN_IMAGE_BASE64_BUDGET` (2 MiB of base64) is now spent over those images
+NEWEST-first, measured on `data.length` — the base64 the turn will really put on
+the wire, not the stored `size`. What does not fit is dropped whole, counted,
+and reported once per turn by a WARN carrying `dropped_for_budget`, `kept`,
+`budget`, `budget_used` and `character_participant_id`; what survives goes back
+into chronological order before it is merged onto the slate. An image whose
+fallback produced a description is never budgeted (it is text by then), and an
+attachment the loader left without a base64 body costs nothing and is kept, as
+v4's `?? 0` keeps it. A sum exactly equal to the budget fits — the test is `>`,
+not `>=`.
+
+v4 wraps its existing per-file fallback loop and undoes the reversal with two
+`reverse()`s; v5's fallback pass lives below the `load_lantern_images` seam, so
+the spend is post-hoc over the `LanternLoad` the seam returns. The prefix needs
+nothing (v4's two reversals compose to the identity), and restricting to the
+raw-kept files before spending keeps the same membership and the same drops,
+because v4 tests its keep filter before it measures a byte. The one thing that
+does not compose is the ORDER of the fallback's own side effects on a
+non-vision seat, which is recorded in the code.
+
+`orchestrator_tier3` gains five arms over v4's real `buildMessageContext`, and
+the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
+megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
+(2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
+drops the oldest and the over-large one, which is what v5 now does.
 
 #### 2026-09-17 — docs(porting): order the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97)
 

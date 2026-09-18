@@ -101,6 +101,18 @@ interface FileSpec {
   category: string;
   fsmBytes?: number[];
   fsmBytesUtf8?: string;
+  /**
+   * P4.D199 (bug 151): `len` copies of `byte`, expanded identically on both
+   * sides. The Lantern byte budget is 2 MiB of base64, so its arms need files
+   * around a megabyte — a literal `fsmBytes` array cannot carry one.
+   */
+  fsmBytesFill?: { byte: number; len: number };
+  /**
+   * P4.D199: a persisted `files.description`. The describe fallback's first
+   * tier reuses it and never makes a vision call, which is what keeps the
+   * non-vision budget arm deterministic.
+   */
+  description?: string;
 }
 interface ChatSpec {
   id: string;
@@ -185,6 +197,13 @@ interface Spec {
      * the provider default.
      */
     multiCharacterPrefill?: boolean;
+    /**
+     * P4.D199 (bug 151): the operator's per-profile vision tick. With it set
+     * (and a provider whose plugin transports `image/*`) an unseen Lantern
+     * image keeps its RAW bytes and reaches the byte budget; without it the
+     * image takes the describe fallback instead and is never budgeted.
+     */
+    supportsImageUpload?: boolean;
   }>;
   chatSettings: {
     id: string;
@@ -315,6 +334,9 @@ async function main(): Promise<void> {
         ...(cp.multiCharacterPrefill !== undefined
           ? { multiCharacterPrefill: cp.multiCharacterPrefill }
           : {}),
+        ...(cp.supportsImageUpload !== undefined
+          ? { supportsImageUpload: cp.supportsImageUpload }
+          : {}),
       } as never,
       { id: cp.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
@@ -392,7 +414,9 @@ async function main(): Promise<void> {
     const chatIds = spec.chats.map((c) => c.id);
     for (const f of spec.files) {
       const size =
-        f.fsmBytes?.length ?? (f.fsmBytesUtf8 ? Buffer.byteLength(f.fsmBytesUtf8) : 0);
+        f.fsmBytesFill?.len ??
+        f.fsmBytes?.length ??
+        (f.fsmBytesUtf8 ? Buffer.byteLength(f.fsmBytesUtf8) : 0);
       await repos.files.create(
         {
           userId: spec.userId,
@@ -409,6 +433,7 @@ async function main(): Promise<void> {
           tags: [],
           storageKey: `storage/${f.key}`,
           fileStatus: 'ok',
+          ...(f.description !== undefined ? { description: f.description } : {}),
         } as never,
         { id: f.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
       );

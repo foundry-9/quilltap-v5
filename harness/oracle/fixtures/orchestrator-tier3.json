@@ -84,6 +84,13 @@
    "name": "ChainPrimary",
    "provider": "OPENAI",
    "modelName": "gpt-chains"
+  },
+  {
+   "id": "1a151000-0000-4000-8000-000000000151",
+   "name": "LanternVision",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sees",
+   "supportsImageUpload": true
   }
  ],
  "chatSettings": {
@@ -183,6 +190,15 @@
    "controlledBy": "llm",
    "talkativeness": 0.5,
    "connectionProfileId": "ab000079-0000-4000-8000-00000000007a"
+  },
+  {
+   "id": "1c151000-0000-4000-8000-000000000151",
+   "name": "Lucida",
+   "description": "A character who reads pictures.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "1a151000-0000-4000-8000-000000000151"
   }
  ],
  "files": [
@@ -236,6 +252,97 @@
     8,
     0
    ]
+  },
+  {
+   "key": "lb_fit_a",
+   "id": "1f151001-0000-4000-8000-000000000001",
+   "originalFilename": "lb_fit_a.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 11,
+    "len": 230400
+   }
+  },
+  {
+   "key": "lb_fit_b",
+   "id": "1f151002-0000-4000-8000-000000000002",
+   "originalFilename": "lb_fit_b.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 22,
+    "len": 230400
+   }
+  },
+  {
+   "key": "lb_big",
+   "id": "1f151003-0000-4000-8000-000000000003",
+   "originalFilename": "lb_big.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 33,
+    "len": 1179648
+   },
+   "description": "A tall portrait in oils, the oldest of the three."
+  },
+  {
+   "key": "lb_small",
+   "id": "1f151004-0000-4000-8000-000000000004",
+   "originalFilename": "lb_small.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 44,
+    "len": 196608
+   },
+   "description": "A pocket miniature, the middle of the three."
+  },
+  {
+   "key": "lb_new",
+   "id": "1f151005-0000-4000-8000-000000000005",
+   "originalFilename": "lb_new.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 55,
+    "len": 393216
+   },
+   "description": "A fresh sketch, the newest of the three."
+  },
+  {
+   "key": "lb_half1",
+   "id": "1f151006-0000-4000-8000-000000000006",
+   "originalFilename": "lb_half1.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 66,
+    "len": 786432
+   }
+  },
+  {
+   "key": "lb_half2",
+   "id": "1f151007-0000-4000-8000-000000000007",
+   "originalFilename": "lb_half2.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 77,
+    "len": 786432
+   }
+  },
+  {
+   "key": "lb_huge",
+   "id": "1f151008-0000-4000-8000-000000000008",
+   "originalFilename": "lb_huge.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 88,
+    "len": 1572867
+   }
   }
  ],
  "chats": [
@@ -1819,6 +1926,291 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "1e151001-0000-4000-8000-000000000101",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151001-0000-4000-8000-0000000002a1",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151001-0000-4000-8000-0000000002b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151001-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida studies the empty easel.",
+     "participantId": "1d151001-0000-4000-8000-0000000002a1"
+    },
+    {
+     "id": "1b151001-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs the first study.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151001-0000-4000-8000-000000000001"
+     ]
+    },
+    {
+     "id": "1b151001-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs the second study.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151002-0000-4000-8000-000000000002"
+     ]
+    },
+    {
+     "id": "1b151001-0000-4000-8000-000000000309",
+     "createdAt": "2026-01-02T03:04:20.000Z",
+     "role": "USER",
+     "content": "Two small studies for you, Lucida.",
+     "participantId": "1d151001-0000-4000-8000-0000000002b1"
+    }
+   ]
+  },
+  {
+   "id": "1e151002-0000-4000-8000-000000000102",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151002-0000-4000-8000-0000000002a2",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151002-0000-4000-8000-0000000002b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151002-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida sets down her glass.",
+     "participantId": "1d151002-0000-4000-8000-0000000002a2"
+    },
+    {
+     "id": "1b151002-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern unveils the oil portrait.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151003-0000-4000-8000-000000000003"
+     ]
+    },
+    {
+     "id": "1b151002-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern sets out the miniature.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151004-0000-4000-8000-000000000004"
+     ]
+    },
+    {
+     "id": "1b151002-0000-4000-8000-000000000303",
+     "createdAt": "2026-01-02T03:04:09.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern pins up the fresh sketch.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151005-0000-4000-8000-000000000005"
+     ]
+    },
+    {
+     "id": "1b151002-0000-4000-8000-000000000309",
+     "createdAt": "2026-01-02T03:04:20.000Z",
+     "role": "USER",
+     "content": "Three pictures, Lucida — mind the load.",
+     "participantId": "1d151002-0000-4000-8000-0000000002b2"
+    }
+   ]
+  },
+  {
+   "id": "1e151003-0000-4000-8000-000000000103",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151003-0000-4000-8000-0000000002a3",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151003-0000-4000-8000-0000000002b3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151003-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida squares the frames on the wall.",
+     "participantId": "1d151003-0000-4000-8000-0000000002a3"
+    },
+    {
+     "id": "1b151003-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs the left panel.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151006-0000-4000-8000-000000000006"
+     ]
+    },
+    {
+     "id": "1b151003-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs the right panel.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151007-0000-4000-8000-000000000007"
+     ]
+    },
+    {
+     "id": "1b151003-0000-4000-8000-000000000309",
+     "createdAt": "2026-01-02T03:04:20.000Z",
+     "role": "USER",
+     "content": "A matched pair, Lucida, and not a byte to spare.",
+     "participantId": "1d151003-0000-4000-8000-0000000002b3"
+    }
+   ]
+  },
+  {
+   "id": "1e151004-0000-4000-8000-000000000104",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151004-0000-4000-8000-0000000002a4",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151004-0000-4000-8000-0000000002b4",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151004-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida rolls up her sleeves.",
+     "participantId": "1d151004-0000-4000-8000-0000000002a4"
+    },
+    {
+     "id": "1b151004-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern wheels in the enormous canvas.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151008-0000-4000-8000-000000000008"
+     ]
+    },
+    {
+     "id": "1b151004-0000-4000-8000-000000000309",
+     "createdAt": "2026-01-02T03:04:20.000Z",
+     "role": "USER",
+     "content": "One enormous canvas, Lucida.",
+     "participantId": "1d151004-0000-4000-8000-0000000002b4"
+    }
+   ]
+  },
+  {
+   "id": "1e151005-0000-4000-8000-000000000105",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151005-0000-4000-8000-0000000002a5",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151005-0000-4000-8000-0000000002b5",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151005-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Friday closes the ledger.",
+     "participantId": "1d151005-0000-4000-8000-0000000002a5"
+    },
+    {
+     "id": "1b151005-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern unveils the oil portrait.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151003-0000-4000-8000-000000000003"
+     ]
+    },
+    {
+     "id": "1b151005-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern sets out the miniature.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151004-0000-4000-8000-000000000004"
+     ]
+    },
+    {
+     "id": "1b151005-0000-4000-8000-000000000303",
+     "createdAt": "2026-01-02T03:04:09.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern pins up the fresh sketch.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151005-0000-4000-8000-000000000005"
+     ]
+    },
+    {
+     "id": "1b151005-0000-4000-8000-000000000309",
+     "createdAt": "2026-01-02T03:04:20.000Z",
+     "role": "USER",
+     "content": "Three pictures again, Friday, but you cannot see them.",
+     "participantId": "1d151005-0000-4000-8000-0000000002b5"
+    }
+   ]
   }
  ],
  "calls": [
@@ -2464,6 +2856,61 @@
    "streamLabel": "agent_force_final",
    "cheapLLMSettings": false,
    "summaryCheck": false
+  },
+  {
+   "name": "lantern_budget_all_fit",
+   "kind": "single",
+   "chatId": "1e151001-0000-4000-8000-000000000101",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "lantern_budget_all_fit",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151001-0000-4000-8000-0000000002a1"
+  },
+  {
+   "name": "lantern_budget_drops_oldest",
+   "kind": "single",
+   "chatId": "1e151002-0000-4000-8000-000000000102",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "lantern_budget_drops_oldest",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151002-0000-4000-8000-0000000002a2"
+  },
+  {
+   "name": "lantern_budget_exact_fit",
+   "kind": "single",
+   "chatId": "1e151003-0000-4000-8000-000000000103",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "lantern_budget_exact_fit",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151003-0000-4000-8000-0000000002a3"
+  },
+  {
+   "name": "lantern_budget_single_over",
+   "kind": "single",
+   "chatId": "1e151004-0000-4000-8000-000000000104",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "lantern_budget_single_over",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151004-0000-4000-8000-0000000002a4"
+  },
+  {
+   "name": "lantern_budget_nonvision_seat_unbudgeted",
+   "kind": "single",
+   "chatId": "1e151005-0000-4000-8000-000000000105",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "lantern_budget_nonvision_seat_unbudgeted",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151005-0000-4000-8000-0000000002a5"
   }
  ],
  "streams": {
@@ -3746,6 +4193,81 @@
       "promptTokens": 52,
       "completionTokens": 5,
       "totalTokens": 57
+     }
+    }
+   ]
+  ],
+  "lantern_budget_all_fit": [
+   [
+    {
+     "content": "Lucida names both studies without hesitation."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "lantern_budget_drops_oldest": [
+   [
+    {
+     "content": "Lucida describes the sketch and the miniature."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "lantern_budget_exact_fit": [
+   [
+    {
+     "content": "Lucida takes in both panels at once."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "lantern_budget_single_over": [
+   [
+    {
+     "content": "Lucida looks at the bare wall and says so."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "lantern_budget_nonvision_seat_unbudgeted": [
+   [
+    {
+     "content": "Friday reads the three descriptions aloud."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
      }
     }
    ]

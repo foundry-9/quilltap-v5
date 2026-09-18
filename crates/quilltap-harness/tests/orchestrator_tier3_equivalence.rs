@@ -39,6 +39,18 @@
 //! fix the Rust side asked for `(OPENAI, claude-falls-over)` — the understudy's
 //! provider with the primary's model — and had no canned answer.
 //!
+//! **P4.D199** (v4 `bcd7e4852`, bug 151) adds the five `lantern_budget_*` arms:
+//! a seat on the `LanternVision` profile (ANTHROPIC with `supportsImageUpload`,
+//! so `image/webp` keeps its RAW bytes) is handed unseen Lantern announcements
+//! carrying `image/webp` files sized in base64 against the 2 MiB per-turn
+//! budget, and the recorded attachment slate below is what says which images
+//! reached the wire and in what order. The image bytes come from the new
+//! `fsmBytesFill` spec key (a run of one byte — an `fsmBytes` array cannot carry
+//! a megabyte), and they are JUNK, which is what makes this family independent
+//! of the loader half: v5's `NotConfiguredTranscoder` and v4's real `sharp` both
+//! fail to shrink junk and pass the stored bytes through, MEASURED by the
+//! recorded base64 lengths (307,200 in, 307,200 on the wire).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
 //! `.claude/` paths, so the case is staged in a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -172,6 +184,20 @@ struct FileSpecW {
     fsm_bytes: Vec<u8>,
     #[serde(default)]
     fsm_bytes_utf8: Option<String>,
+    /// P4.D199 (bug 151): `len` copies of `byte`, expanded identically by the
+    /// oracle's `fileStorageManager.downloadFile` mock. The Lantern byte budget
+    /// is 2 MiB of base64, so its arms need megabyte-scale files and a literal
+    /// `fsmBytes` array cannot carry one.
+    #[serde(default)]
+    fsm_bytes_fill: Option<FsmFillW>,
+}
+
+/// P4.D199: the `fsmBytesFill` run-length spec.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FsmFillW {
+    byte: u8,
+    len: usize,
 }
 
 #[derive(Deserialize)]
@@ -1030,16 +1056,27 @@ fn orchestrator_tier3_matches_oracle() {
     let mut initial_logs: HashMap<String, Vec<String>> = HashMap::new();
 
     // P4.D154 (bug 121): the host byte layer the re-hydration reads through.
-    // The corpus's planted files are text / pdf / zip, so nothing image-shaped
-    // reaches the transcoder and `NotConfiguredTranscoder` stays honest.
+    //
+    // P4.D199 (bug 151) adds `image/webp` rows for the Lantern byte budget, so
+    // image-shaped bytes DO reach the loaders now — but they are junk (a run of
+    // one byte, `fsmBytesFill`), and junk is what makes the two sides agree
+    // without a codec: v5's `NotConfiguredTranscoder` answers `Err` to every
+    // transcode, and v4's real `sharp` throws on a buffer that is not an image
+    // (its `Could not shrink image for LLM transport; sending stored bytes` warn
+    // in the oracle's stderr is the proof it ran), so BOTH sides put the stored
+    // bytes on the wire. Every row's base64 also sits under the ANTHROPIC
+    // 5 MiB per-image ceiling, so neither side's provider backstop resize fires
+    // either. That is what makes this family independent of P4.D198's loader
+    // half; the unifier re-runs it over the union.
     let canned_bytes = CannedBytes {
         by_file_id: spec
             .files
             .iter()
             .map(|f| {
-                let bytes = match &f.fsm_bytes_utf8 {
-                    Some(t) => t.as_bytes().to_vec(),
-                    None => f.fsm_bytes.clone(),
+                let bytes = match (&f.fsm_bytes_fill, &f.fsm_bytes_utf8) {
+                    (Some(fill), _) => vec![fill.byte; fill.len],
+                    (None, Some(t)) => t.as_bytes().to_vec(),
+                    (None, None) => f.fsm_bytes.clone(),
                 };
                 (f.id.clone(), bytes)
             })
@@ -1656,22 +1693,68 @@ fn orchestrator_tier3_matches_oracle() {
                 "attachment slate at wire mismatch for key:\n{key}"
             );
         }
-        // Stale-oracle floor: the corpus plants a natively-supported file on a
-        // re-hydrated user message, so at least one recorded call MUST carry a
-        // non-empty slate. An oracle regenerated from a tree without the fix (or
-        // without this recording) would make every arm above vacuous.
-        let carriers = recorded
+        // Stale-oracle floor, now also the bug-151 budget's OUTCOME pin
+        // (P4.D199): every call that reached the wire with attachments, named by
+        // the ordered filenames it carried. The per-key equality above compares
+        // v4 against v5; THIS says what the corpus is supposed to be exercising,
+        // so an oracle regenerated from a pre-fix tree, a fixture that lost the
+        // image rows, or a v5 that stopped budgeting cannot pass vacuously.
+        //
+        //   dossier.pdf                  — the bug-121 re-hydration row.
+        //   lb_fit_a + lb_fit_b          — `lantern_budget_all_fit`: 0.6 MiB of
+        //                                  base64 against a 2 MiB budget.
+        //   lb_small + lb_new            — `lantern_budget_drops_oldest`: the
+        //                                  1.5 MiB OLDEST portrait is the one
+        //                                  dropped, and the survivors are
+        //                                  CHRONOLOGICAL. An oldest-first spend
+        //                                  would read `lb_big + lb_small`, and a
+        //                                  missing restore `lb_new + lb_small`.
+        //   lb_half1 + lb_half2          — `lantern_budget_exact_fit`: two halves
+        //                                  summing to exactly 2,097,152, both
+        //                                  kept (`>` not `>=`).
+        //
+        // `lantern_budget_single_over` (one image over the whole budget) and
+        // `lantern_budget_nonvision_seat_unbudgeted` (every image described
+        // instead of transported, so the budget never engages) deliberately
+        // carry NOTHING and are absent from this list.
+        let mut carried: Vec<Vec<String>> = recorded
             .values()
-            .filter(|v| {
-                v.as_array().is_some_and(|per_msg| {
-                    per_msg.iter().any(|a| !a.as_array().unwrap().is_empty())
-                })
+            .flat_map(|v| {
+                v.as_array()
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[])
+                    .iter()
+                    .filter_map(|per_msg| {
+                        let atts = per_msg.as_array()?;
+                        if atts.is_empty() {
+                            return None;
+                        }
+                        Some(
+                            atts.iter()
+                                .map(|a| {
+                                    a.get("filename")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("<no filename>")
+                                        .to_string()
+                                })
+                                .collect::<Vec<String>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
             })
-            .count();
+            .collect();
+        carried.sort();
         assert_eq!(
-            carriers, 1,
-            "expected exactly one stream call carrying attachments (the bug-121 \
-             re-hydration row); the corpus or the oracle has gone stale"
+            carried,
+            vec![
+                vec!["dossier.pdf".to_string()],
+                vec!["lb_fit_a.webp".to_string(), "lb_fit_b.webp".to_string()],
+                vec!["lb_half1.webp".to_string(), "lb_half2.webp".to_string()],
+                vec!["lb_small.webp".to_string(), "lb_new.webp".to_string()],
+            ],
+            "the attachment slates reaching the wire are not the corpus's; the \
+             fixture or the oracle has gone stale (or the Lantern byte budget \
+             moved)"
         );
     }
 
