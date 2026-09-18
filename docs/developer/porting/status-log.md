@@ -135372,3 +135372,165 @@ order's named pin verification, run in both directions.
 
 Per the P4.D194 rule, **no host bump for help alone**: the re-vendor moves the
 embedded table but no host SOURCE.
+## Lane record — P4.D202, bug 154's SPA half (the `baa85e19b` drift catch-up round), 2026-09-18
+
+Branch `claude/p4-d202-system-prompt-resolver-f0845d`, from `main` `57fd1680`.
+**Every Tier-1 and Tier-2 item LANDED; nothing deferred beyond the order's own
+Tier-3 rows.** Six commits.
+
+### §0 — the probe and the regen rule
+
+The drift ledger's §2 freshness probe at lane open: branch `main`, tree CLEAN,
+`git log baa85e19b..main` EMPTY, `git log 1a2b2164c..bugfix` EMPTY, HEAD
+`baa85e19b9d904354b999924e3aa8c12f8130811`. **PASS** — §1's verdict and regen
+rule stand.
+
+**This lane regenerated nothing** (§R.3): its oracle is v4's own jest suite
+`__tests__/unit/lib/characters/default-system-prompt.test.ts` at `baa85e19b`,
+transcribed into the twin's parity spec with the sha and path in the file doc
+(the `carina-parser.ts` / `format-date.ts` precedent — the SPA has no jest
+venue to run v4's suite against), plus the §S.2 table's extras. No wire moved
+(§S.1), no fixture changed, no harness family was touched, and no source
+census moved.
+
+### §1 — what landed, unit by unit
+
+1. **The twin** (`8ca8c537`) — NEW `apps/web/src/app/shared/default-system-prompt.ts`,
+   a character-for-character transcription of v4's new module: the JS
+   truthiness tests stay `if (character.defaultSystemPromptId)` and
+   `p.isDefault`, and the `Id` form is `resolve(...)?.id ?? null`. The spec
+   carries v4's five vectors verbatim (names, fixtures, expectations) plus the
+   §S.2 additions. **M1** (the column's existence check removed) reddens v4's
+   third vector *and* the §S.2 stale-column extra — two of nine, and nothing
+   else.
+2. **The two broken seeds, red-first** (`f78c49d4`) — `seedSelectedCharacter`
+   (`new-chat.logic.ts:49-51`) and `seedFromCharacter`
+   (`new-chat.state.ts:401-403`), both the broken ternary the ledger predicted.
+   The missing vector went in FIRST and failed on both: a character with
+   `defaultSystemPromptId: 'gone'` and a flagged `sp-2` read `null`. Four new
+   specs (two per file), plus two arms the state path had never pinned at all
+   (the valid column and the no-prompts case). **M2** (the ternary restored in
+   either file) reddens exactly that file's two.
+3. **The announcement dialog's neutral fold** (`76457db5`) — four arms written
+   FIRST and run GREEN against the pre-fold code, then green again after it;
+   the whole dialog spec is 29/29 either side. §R.4(a)'s trap confirmed by
+   measurement: v4's copy here was never one of the "two that seeded a chat
+   with no system prompt at all", and v5's mirror had copied the correct
+   version.
+4. **The star's optimistic write** (`65e4dd8c`) — the snapshot, the pre-dispatch
+   `setQueryData`, and rollback-then-refetch on rejection, in that order. Three
+   deferred-promise specs.
+5. **The dialog width** (`839c407e`) — `2xl` → `4xl`, v4's rationale moved into
+   the component file doc (an Angular tag has no room for an inline comment
+   beside the prop). **M5** (`2xl` restored) reddens the new pin.
+6. **The gated live beat + the Tier-2 render pin** (this commit) — see §3/§4.
+
+### §2 — measurements the order asked for, and what they said
+
+- **`qt-modal` already carries `4xl`** at 56rem (`ui/modal.ts`'s `MAX_WIDTHS`,
+  added for the Library file picker). **No shared-component change was needed**
+  — the order's conditional clause does not fire.
+- **The tab renders no success sentence.** There is no `success` signal on
+  `system-prompts-tab.ts` at all (`grep -n 'success' → nothing`), so v4's
+  `setSuccess('Default prompt updated')` + its 3 s clear have nowhere to land.
+  **PRE-EXISTING GAP, recorded not invented** — and wider than this hunk: v4
+  shows that sentence on every mutation on this tab, not just the star. Named
+  in `setDefault`'s doc comment.
+- **The announcement dialog's promptless arm OMITS the key.** The resolver
+  answers `null` and `previewAnnouncement` spreads `systemPromptId` in only
+  when truthy (`post-office.api.ts:161`), so a promptless character sends no
+  key at all rather than an explicit null. The spec says so.
+- **`defaults-tab.ts` needed no change** (§S.1) — its `<select>` is built from
+  the character's own prompts, so it can never send the foreign id P4.D201's
+  400 refuses. The Tier-2 item landed as a RENDER pin with §S.1's sentence as
+  the fixture.
+
+### §3 — the methodological catch: a mutation that SURVIVED
+
+**M4 (the rollback deleted outright) survived as the order's spec (b) was first
+written**, and per §R.6 that is a finding to fix, not a line to delete. The
+cause: spec (b) asserted only the settled state, and the refetch *alone*
+restores the same rows the rollback would have — the two are
+indistinguishable once both have run.
+
+The rollback is observable only in the window between itself and the refetch's
+answer. So `heldClient` grew a `holdRelist` gate, and (b) now asserts INSIDE
+that window: the dispatch rejects, the cache is already back to the snapshot,
+and the relist has not answered yet. **M4 then reddens exactly (b), and only
+(b).** The shape is the `e2e-assertion-can-read-the-pre-click-state` class
+applied to a rollback rather than a click — worth a memory note.
+
+Mutation table as run (each reverted by file backup, never `git checkout`):
+
+| # | mutation | predicted | measured |
+|---|---|---|---|
+| M1 | the resolver's existence check removed | vector 3 red | vector 3 + the §S.2 stale-column extra red (2/9) |
+| M2 | the ternary restored in either seed | that file's spec red | that file's TWO new specs red (4/4 across both) |
+| M3 | the optimistic write moved after the `await` | (a) red | (a) AND (b) red — (b) also asserts the intermediate state |
+| M4 | the rollback dropped | (b) red | **SURVIVED as first written** → spec repaired → (b) red, alone |
+| M5 | `2xl` restored | the width pin red | the width pin red, alone |
+
+### §4 — the gated beat
+
+NEW `apps/web/e2e/character-system-prompts-flow.spec.ts` (the order's
+"or a NEW file — say which": **a new file**). Not a beat inside
+`characters-flow.spec.ts`, because that spec boots its own locked server on
+port 4322 against the committed `characters-*` pair and this walk needs none
+of that fixture — it mints a throwaway character (`Pentimento`), creates two
+prompts through the tab's own modal, stars the second, and deletes the
+character in the beat's `finally`. Nothing it writes outlives it.
+
+The gate is **`P4D201_SERVER_LANDED = false`**, a NAMED constant and not a
+capability probe: `characterPromptSetDefault` already EXISTS and already
+answers on `main`, so a probe would see a working verb, activate the beat, and
+fail on the column alone.
+
+The `test.skip(...)` sits MID-beat, deliberately, so the UNGATED half runs
+today — the badge moving is the whole of what this lane shipped and stands on
+its own. Only the last assertion (`characterGet().defaultSystemPromptId ===
+the starred prompt's id`) waits on P4.D201.
+
+**FOR THE UNIFIER — the flip recipe:** set `P4D201_SERVER_LANDED = true` in
+`apps/web/e2e/character-system-prompts-flow.spec.ts`. Post-flip the beat
+asserts, in one run: the badge moves in the UI; `characterPromptList` shows
+exactly `['The fighting has started']` flagged; and `characterGet`'s
+`defaultSystemPromptId` equals that prompt's id. Until the flip the suite
+carries **one more skip** than the previous round's gate (322 / 0 / 6 → the
+beat reports skipped after running its UI half).
+
+⚠ **The beat's UI half was exercised against a locally built debug
+`quilltap-web` + SPA bundle before this record was written** (see §5) — the
+gesture defects an activated beat's first run usually catches were hunted
+here, not left for the unifier.
+
+### §5 — findings outside this lane's mandate, named for the unifier
+
+1. **`openCreate()` does not seed `isDefault: prompts.length === 0`.** v4's
+   `openCreateModal` (`useSystemPrompts.ts`) marks a character's FIRST system
+   prompt default in the create form; v5's `system-prompts-tab.ts` `openCreate`
+   opens the modal on `INITIAL_PROMPT_FORM_DATA`, whose `isDefault` is `false`.
+   Pre-existing, unrelated to bug 154, and outside this order's mandate (which
+   is the five client hunks) — **recorded, not fixed.** The gated beat ticks the
+   checkbox explicitly rather than relying on the seed, so it is agnostic to
+   whichever way this is settled.
+2. **The tab has no success sentence at all** (§2) — a whole-tab gap, not a
+   `setDefault` one.
+3. **Prettier is not enforced on `apps/web/src`.** Six of the seven files this
+   lane touched were already non-conforming on `main`; only the NEW files and
+   `defaults-tab.spec.ts` (clean on main) were formatted, deliberately, to keep
+   the diff the size of the change (`prettier-write-a-directory-is-never-a-noop`).
+
+### §6 — the gate
+
+Per the round's gate, the P4.D202 rows only (no Rust source moved; §9's
+censuses: **none moved** — confirmed, this lane touches no Rust and no
+generated table):
+
+- §R.2 probe: **PASS** (opening; re-checked before close).
+- `npm run lint`: clean — `check-qt-classes --self-test: 5/5`, **952 qt-*
+  classes defined, every guarded reference resolves**.
+- `npm test` (whole): see the commit's changelog line for the file/test counts.
+- The new and changed spec files by name, each run individually and green.
+- Mutation proofs M1–M5: the table in §3.
+- `npm run build`: clean.
+

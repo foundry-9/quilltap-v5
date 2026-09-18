@@ -113,6 +113,34 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — test(characters): a gated live walk of the System Prompts star, and a render pin on the defaults tab's refusal (P4.D202 unit 6 + Tier 2)
+
+_Versions: SPA 0.5.737._
+
+A NEW `apps/web/e2e/character-system-prompts-flow.spec.ts` rather than a beat
+inside `characters-flow.spec.ts`: that spec boots its own locked server on
+port 4322 against the committed `characters-*` pair, and this walk needs none
+of that fixture. It mints a throwaway character on the shared global-setup
+instance, creates two prompts through the tab's own modal, stars the second,
+and deletes the character in the beat's `finally`, so nothing it writes
+outlives it.
+
+The wire assertion — the character's `defaultSystemPromptId` naming the
+starred prompt — is gated behind `P4D201_SERVER_LANDED`, currently `false`:
+that lockstep is P4.D201's, a sibling lane in this round. A NAMED constant and
+not a capability probe, because `characterPromptSetDefault` already exists and
+already answers, so a probe would see a working verb, activate the beat, and
+fail on the column alone. The `test.skip` sits mid-beat deliberately, so the
+UI half — the badge moving, which is the whole of what this lane shipped —
+runs today and stands on its own.
+
+Tier 2: a render pin on `defaults-tab.spec.ts`. That tab is the SPA's only
+sender of `defaultSystemPromptId`, and its `<select>` is built from the
+character's own prompts, so it can never provoke P4.D201's new 400. The pin
+uses that sentence as the fixture and asserts the tab surfaces the SERVER's
+words rather than its own fallback — a render pin, not a gesture. No client
+change was needed.
+
 #### 2026-09-18 — fix(characters): the Edit Prompt dialog is wide enough for its own markdown toolbar (P4.D202 unit 5)
 
 _Versions: SPA 0.5.736._

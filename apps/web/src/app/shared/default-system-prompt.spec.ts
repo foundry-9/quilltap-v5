@@ -17,10 +17,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  resolveDefaultSystemPrompt,
-  resolveDefaultSystemPromptId,
-} from './default-system-prompt';
+import { resolveDefaultSystemPrompt, resolveDefaultSystemPromptId } from './default-system-prompt';
 
 // v4's two fixtures, verbatim.
 const main = { id: 'main', isDefault: true, content: 'the everyday voice' };

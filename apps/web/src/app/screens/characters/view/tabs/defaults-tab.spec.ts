@@ -222,6 +222,46 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     expect(req!['character']).toEqual({ defaultSystemPromptId: 'sp2' });
   });
 
+  /**
+   * P4.D201 (v4 `baa85e19b`, bug 154) routes `defaultSystemPromptId` out of the
+   * generic character patch and through `setDefaultSystemPrompt`, which answers
+   * `System prompt not found on this character` for an id the character does not
+   * have. This tab is the SPA's only sender of that key, and its `<select>` is
+   * built from the character's OWN prompts — so it can never provoke the 400.
+   * This is a RENDER pin, not a gesture: the sentence is the fixture, and what
+   * is pinned is that the tab surfaces the SERVER's words rather than its own
+   * fallback. No client change was needed for the server half.
+   */
+  it('renders the server’s own sentence when a default-prompt save is refused', async () => {
+    const failing: Partial<CoreClient> = {
+      dispatchData: (async () => {
+        throw new Error('System prompt not found on this character');
+      }) as CoreClient['dispatchData'],
+    };
+    const fixture = await render(failing, {
+      character: character({
+        systemPrompts: [
+          { id: 'sp1', name: 'Formal', content: '', isDefault: true, createdAt: '', updatedAt: '' },
+          {
+            id: 'sp2',
+            name: 'Casual',
+            content: '',
+            isDefault: false,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      }),
+    });
+    change(selectByFirstOptionText(fixture, 'Use first prompt marked as default'), 'sp2');
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'System prompt not found on this character',
+    });
+  });
+
   it('dispatches characterUpdate {defaultScenarioId} from the default-scenario select (only shown when >1 scenario)', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(
