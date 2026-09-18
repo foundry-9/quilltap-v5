@@ -429,6 +429,62 @@ too narrow under the reproduction seam's delay — a claim's flush landing
 later than usual let the completion's publish merge into the same
 coalescing window — widened to `+ 150 ms` with the interaction documented.
 New mutation-proof test `an_over_publish_still_surfaces_past_the_expected_count`.
+#### 2026-09-18 — feat(web): the shared decoder for tri-state REST edges (P4.102)
+
+_Versions: web 0.0.155._
+
+Generalized P4.98's `images_generate_request` into one helper
+(`request_envelope.rs`) that every REST edge whose `Request` variant
+carries an `Option<Option<Value>>` field now shares: given a `kind`, the
+parsed body, the tri-state keys and the URL-sourced path fields, it lifts
+them into a dispatch-shaped envelope and runs the exact same
+`serde_json::from_value::<Request>` decode `POST /api/dispatch` runs. The
+two hand-rolled `tri()` mirrors in `subprompts_routes.rs` and
+`prompt_templates_routes.rs` are retired onto it; `images_routes.rs`'s
+`images_generate_request` is now a one-line call onto the same function,
+and its P4.98 pin stays green unchanged.
+
+A new `tri_state_edges_share_the_decoder.rs` carries the decode-identity
+pins (edge decode == dispatch decode, for every tri-state key in all three
+states — absent / explicit `null` / value — on all four converted edges)
+plus a distinctness check, and a census guard that mechanically derives
+every tri-state `Request` variant from `api/types.rs` and asserts no
+`*_routes.rs` file constructs one by hand outside the helper. The set is
+not quite empty: `characters_routes.rs`'s `answer_body_failure` builds a
+`Request::CharacterRename` existence probe with every tri-state field a
+compile-time literal `None` — not a second decoder, since it never reads a
+parsed body — recorded as the one named, pinned exception rather than
+silently excluded. The remaining 109 hand-built constructions across
+19 files carry only typed fields (a different, already-adjudicated class,
+`web_edge_body_parse_guard.rs`'s) and are counted per file in a recorded
+table.
+
+`subprompts_web_routes.rs` and `prompt_templates_web_routes.rs` grow
+explicit-null arms per tri-state key, asserting v4's `{error: 'Validation
+error', details}` envelope. Mutation M1 (the helper skipping a `null` key)
+reddened exactly the five null-arm/decode-identity tests; mutation M2 (a
+`tri()` reintroduced on one edge) reddened exactly the census guard,
+naming the new hit. Both reverted by file backup.
+
+**Standing finding, unrelated to this change (zero `quilltap-core`/
+`quilltap-harness` diff in this commit):** `subprompts_routes_equivalence`
+has a pre-existing, isolated standing red — 7 of 44 cases (all PUT/DELETE
+cases whose subprompt is actually selected by a chat participant) mismatch
+on the RECORDED fan-out seams (`compile: []` where v4 expects a recompile
+entry; the publish list missing a `chats` entry). Diagnosed to a
+fixture-vintage gap: the committed `subprompts-main.db`/`subprompts-
+mount.db` pair predates the P4.D171 (`chats.cycleOrder`) and/or P4.D182
+(`chats.transcriptVersion`) schema migrations, and this differential opens
+the fixture raw via `Db::open` without the `test_support::
+ensure_p4d171_columns`/`ensure_p4d182_columns` patch `fanout.rs`'s own
+`log_tests` module already carries (`132302be`) — `chats_read::
+find_by_character_id` likely errors on the missing column, and
+`fan_out_subprompt_change`'s fail-soft `Err` arm silently skips every
+chat. `prompt_templates_routes_equivalence` (31/31) and
+`images_generate_route_equivalence` (45/45) are unaffected. Outside this
+order's ownership (`crates/quilltap-core/**`, `crates/quilltap-harness/
+tests/subprompts_routes_equivalence.rs`, and the fixture itself); recorded
+for the unifier, not fixed here.
 
 #### 2026-09-18 — docs(porting): order the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102)
 

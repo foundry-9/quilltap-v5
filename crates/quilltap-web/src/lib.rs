@@ -64,6 +64,9 @@ pub mod spa;
 // === end P4.10 ===
 pub mod state;
 pub mod static_serve;
+// === P4.102: the shared decoder for tri-state REST edges ===
+pub mod request_envelope;
+// === end P4.102 ===
 // === P4.83: the prompt-templates REST edges ===
 pub mod prompt_templates_routes;
 // === end P4.83 ===

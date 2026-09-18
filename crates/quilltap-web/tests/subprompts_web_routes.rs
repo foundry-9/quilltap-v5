@@ -98,6 +98,49 @@ async fn subprompts_edges() {
         })
     );
 
+    // --- POST with an explicit-null tri-state key: v4's `received null` -------
+    // (P4.102 — the null arm the shared decoder exists to preserve; measured
+    // against `subprompts_routes_equivalence`'s `create_zod_title_null_400`.)
+    let (status, body) = send(
+        &client,
+        &addr,
+        reqwest::Method::POST,
+        &base_path,
+        Some(r#"{"title":null,"content":"x"}"#),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "error": "Validation error",
+            "details": [{
+                "expected": "string", "code": "invalid_type", "path": ["title"],
+                "message": "Invalid input: expected string, received null"
+            }]
+        })
+    );
+
+    let (status, body) = send(
+        &client,
+        &addr,
+        reqwest::Method::POST,
+        &base_path,
+        Some(r#"{"title":"T","content":null}"#),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "error": "Validation error",
+            "details": [{
+                "expected": "string", "code": "invalid_type", "path": ["content"],
+                "message": "Invalid input: expected string, received null"
+            }]
+        })
+    );
+
     // --- POST bad body on a MISSING character: 400 beats 404 (measured) -------
     let (status, body) = send(
         &client,
@@ -154,6 +197,50 @@ async fn subprompts_edges() {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["subprompt"]["title"], "Be brief");
     assert_eq!(body["subprompt"]["id"], "terse");
+
+    // --- PUT with an explicit-null tri-state key: v4's `received null` -------
+    // (measured against `subprompts_routes_equivalence`'s
+    // `update_zod_title_null_400`.)
+    let (status, body) = send(
+        &client,
+        &addr,
+        reqwest::Method::PUT,
+        &format!("{base_path}/terse"),
+        Some(r#"{"title":null}"#),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "error": "Validation error",
+            "details": [{
+                "expected": "string", "code": "invalid_type", "path": ["title"],
+                "message": "Invalid input: expected string, received null"
+            }]
+        })
+    );
+
+    let (status, body) = send(
+        &client,
+        &addr,
+        reqwest::Method::PUT,
+        &format!("{base_path}/terse"),
+        Some(r#"{"content":null}"#),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body,
+        json!({
+            "error": "Validation error",
+            "details": [{
+                "expected": "string", "code": "invalid_type", "path": ["content"],
+                "message": "Invalid input: expected string, received null"
+            }]
+        })
+    );
+
     let (status, body) = send(
         &client,
         &addr,

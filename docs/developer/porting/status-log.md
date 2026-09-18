@@ -136269,3 +136269,229 @@ file touched.
 
 Versions: harness 0.0.851. core/host/web/cli/tauri/SPA unchanged by this
 unit.
+## P4.102 — the shared-decoder class closed for the tri-state REST edges (lane record, 2026-09-18)
+
+Lane branch `claude/shared-decoder-tri-state-edges-e875d2`, from `main`
+`57fd1680`. One commit: the `request_envelope.rs` helper, the two hand-rolled
+`tri()` retirements, the `images_generate_request` repoint, the new
+`tri_state_edges_share_the_decoder.rs` (decode-identity pins + distinctness +
+the census guard), the null-arm growth in the two edge-test files, and the
+CHANGELOG entry.
+
+### §0 — the probe and the pin
+
+The §R.2 probe PASSED at lane start: branch `main`, HEAD `baa85e19b` = §1,
+both logs (`log baa85e19b..main`, `log 1a2b2164c..bugfix`) empty, tree CLEAN.
+Regen rule: PIN REQUIRED. Pinned `/tmp/qt-v4-pin-p4102-89fcc3c0d` at the
+BASELINE `89fcc3c0d` (verified by `rev-parse` →
+`89fcc3c0da5eaec10ee49907cbf8733cd5749405` AND `ls -ld`), the three symlink
+classes linked per ledger §5.1, `git worktree list` checked before the regen
+batch (only this lane's pin present).
+
+### §1 — the survey confirmed the order's premises
+
+Read `images_routes.rs`'s P4.98 idiom, `subprompts_routes.rs`/
+`prompt_templates_routes.rs`'s `tri()` + variant definitions, `dispatch.rs`'s
+decode, and `api/types.rs`'s tri-state variants. Mechanically re-derived (not
+assumed) the tri-state variant set from `api/types.rs` by field-type
+substring (`Option<Option<`, whitespace-collapsed) rather than by hunting the
+`double_option` attribute — the file has exactly ONE multi-line
+`#[serde(...)]` attribute (`ChatUpdate.concierge_state`,
+`dispatch-census-strip-noise-and-multi-line-serde-attrs`'s exact landmine),
+which a line-prefix stripper corrupts; this lane's stripper removes
+bracket-balanced `#[...]` spans over `char`s instead, robust to it. Found 26
+tri-state variants (one more than the order's context-window list —
+`ChatUpdate` itself, via `concierge_state`).
+
+**A genuine counter-example to "the set must be EMPTY", measured, not
+assumed:** `characters_routes.rs:596`'s `answer_body_failure` builds
+`Request::CharacterRename { character_id, primary_rename: None,
+additional_replacements: None, dry_run: None }` — a hand-built construction
+of a tri-state variant, outside this order's ownership. Every field is a
+compile-time literal `None`, never read from a parsed body — it is a
+fixed-fields existence probe (v4's 404-before-body-validation ordering), not
+a second spelling of the presence/null/value decode. A comprehensive scan
+(`grep -noE '(CoreRequest|Request)::[A-Za-z0-9_]+ *\{' crates/quilltap-web/
+src/*_routes.rs`, 110 hits across 19 files, post-conversion) found NO other
+tri-state-variant hit anywhere else — confirming the order's "every other
+tri-state variant either has no REST edge or already decodes through the
+enum" for the remaining 24. Recorded as the ONE named, pinned exception in
+`ALLOWED_TRI_STATE_HAND_BUILDS`, held by its own presence-assertion (a stale
+entry would also fail the test) rather than silently excluded.
+
+### §2 — what landed (Tier 1, complete; Tier 2, complete)
+
+1. `crates/quilltap-web/src/request_envelope.rs` — the helper, generalizing
+   P4.98's `images_generate_request` verbatim (`kind`, `parsed`, `body_keys`,
+   `path_fields`). `images_generate_request` is now a one-line call onto it;
+   its P4.98 pin (`images_edge_and_dispatch_decode_the_five_keys_
+   identically`) stays green UNCHANGED — the proof the generalization moved
+   nothing.
+2. `subprompts_routes.rs` / `prompt_templates_routes.rs` — both `tri()`
+   helpers DELETED; the four edges (`CharacterSubpromptCreate`/`Update`,
+   `PromptTemplateCreate`/`Update`) construct through the helper, URL ids as
+   `path_fields`. `PromptTemplateGet` measured to carry no tri-state field
+   (only `id`) — the order's "probable false positive" confirmed.
+3. NEW `crates/quilltap-web/tests/tri_state_edges_share_the_decoder.rs`:
+   - **Decode-identity pins** (the P4.98 shape) for all four edges × every
+     tri-state key × {absent, null, value, structured value} — the edge's
+     decode equals what dispatch decodes from the identical wire bytes.
+   - **A distinctness pin** beside it (`a-decode-raw-test-cannot-catch-a-
+     wrong-decode`): absent ≠ null ≠ value, independently of the
+     decode-identity comparison.
+   - **The census guard** (`no_new_tri_state_variant_is_hand_built_outside_
+     the_helper`): the mechanical tri-state-variant walk × a scan of every
+     `crates/quilltap-web/src/*_routes.rs` file for `CoreRequest::<V> {` /
+     `Request::<V> {` constructions — asserted against
+     `ALLOWED_TRI_STATE_HAND_BUILDS` (one entry), not bare emptiness, with
+     the allow-list's own presence checked.
+   - **The Tier-2 enumeration** (`typed_only_hand_built_construction_count_
+     matches_the_recorded_table`): the same scan's remaining 109 hits (19
+     files, typed-field-only variants — a different, already-adjudicated
+     class, `web_edge_body_parse_guard.rs`'s) counted per file into
+     `TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE`, asserted against a fresh
+     recount so drift cannot pass silently.
+4. `subprompts_web_routes.rs` — three explicit-null arms (POST `title`,
+   POST `content`, PUT `title`, PUT `content` — four total), pinned against
+   `subprompts_routes_equivalence`'s existing `create_zod_title_null_400` /
+   `update_zod_title_null_400` rows (measured to exist) and derived directly
+   from the handler's `check_string` ladder for `content` (no existing row;
+   the same code path, driven for real by this wire test).
+   `prompt_templates_web_routes.rs` — five null arms on POST and five on PUT
+   (one per key: `name`, `content`, `description`, `category`, `modelHint`),
+   pinned against the handler's own `check_string` ladder — no route-family
+   oracle row exists for any of them, recorded as edge-only per the order's
+   §4 fallback.
+5. `images_routes.rs`'s doc paragraph updated to point at the shared home
+   (Tier 2 item 8).
+6. **The three route families re-run at the baseline pin** — see §3.
+
+### §3 — the three route families: two green, one PRE-EXISTING red
+
+- **`prompt_templates_routes_equivalence`** — 31/31 GREEN, regenerated fresh.
+- **`images_generate_route_equivalence`** — 45/45 GREEN, regenerated fresh.
+- **`subprompts_routes_equivalence`** — **RED, 7 of 44 cases** (`update_a_
+  title_only`, `update_a_content_only`, `update_a_both`, `update_a_empty_
+  body_noop_rewrite`, `update_a_verse_lower_case_writes_lower_path`,
+  `delete_a_terse_fans_out`, `delete_a_VERSE_case_insensitive_strip`) —
+  **measured to be entirely PRE-EXISTING and unrelated to this lane**:
+  `git diff main -- crates/quilltap-core crates/quilltap-harness` is EMPTY
+  for this branch, and the failure is in `quilltap_core::api::subprompts`
+  handlers this lane never touches, driven by a `quilltap-harness` test this
+  lane never touches. Every failing row is a status/body MATCH — only the
+  RECORDED fan-out seams differ (`compile: []` where v4's oracle expects a
+  recompile entry; the sorted `publish` array missing a `chats` entry,
+  `characters` alone surviving).
+
+  **Root-caused, not left as "something's wrong":**
+  `crates/quilltap-core/src/subprompts/fanout.rs`'s `fan_out_subprompt_
+  change` fails SOFT on a `chats_read::find_by_character_id` error (warns,
+  returns the empty default — zero `compile`/`chats` calls, while
+  `character_subprompt_update`/`delete` still call `seams.publish_
+  character` unconditionally on success, exactly matching the observed
+  GOT/WANT shape). Commit `132302be` (P4.D171 unit 4, "the reduced-DDL sweep
+  to a green cargo test --workspace") added `crate::test_support::
+  ensure_p4d171_columns(main_w.connection())` to `fanout.rs`'s OWN inline
+  `log_tests` fixture setup — because the committed `subprompts-main.db`
+  predates the P4.D171 `chats.cycleOrder` column (and, per
+  `test_support::ensure_p4d182_columns`'s doc, possibly the later P4.D182
+  `chats.transcriptVersion` too) — but that patch was never applied to the
+  SEPARATE `crates/quilltap-harness/tests/subprompts_routes_equivalence.rs`,
+  which opens the same committed fixture pair raw via `Db::open` with no
+  ensure step. Every failing case is a PUT/DELETE that touches a subprompt
+  actually selected by a chat participant (the ones that trigger the
+  fan-out); every case that doesn't (creates, gets, missing-id arms, and
+  update/delete cases with no chat selection) passes. This is a
+  **fixture-vintage gap** (`fixture-vintage-gap-which-columns-are-fatal`,
+  `the-oracle-side-needs-the-vintage-heal-too`), not a decode/handler defect.
+
+  **Outside this lane's ownership** (`crates/quilltap-core/**`,
+  `crates/quilltap-harness/tests/subprompts_routes_equivalence.rs`, and the
+  committed fixture pair are none of P4.102's) and a nontrivial fix (widening
+  a committed fixture that other families may share, or patching the harness
+  test's `Db::open` call site with the ensure helpers, needs its own
+  differential re-verification). **Recorded for the unifier, not fixed
+  here** — this is precisely the §R.5 "a red that appears in a family a lane
+  did NOT touch... is probably not that lane's" case, confirmed by measurement
+  rather than assumed.
+
+### §4 — mutation proofs (reverted by file backup, never `git checkout`)
+
+| # | mutation | reddened | stayed green |
+|---|---|---|---|
+| **M1** | `request_envelope` skips a `null` key (`if !v.is_null() { insert }`) | `subprompt_create_edge_and_dispatch_decode_identically`, `subprompt_update_…`, `prompt_template_create_…`, `prompt_template_update_…`, `absent_null_and_value_stay_three_distinct_requests_for_every_edge` (5/9) | the census guard, the parser floor test, `unknown_keys_are_stripped_…` |
+| **M2** | the retired `tri()` reintroduced on `subprompt_item_put`, `CharacterSubpromptUpdate` hand-built again | `no_new_tri_state_variant_is_hand_built_outside_the_helper` ONLY, naming the exact new hit `(subprompts_routes.rs, CharacterSubpromptUpdate, line 177)` | all 8 other tests, incl. the decode-identity pins (both sides now agree on the SAME wrong answer, which is exactly why the census guard — not the decode-identity pin — is the instrument for this class) |
+
+Both confirmed and reverted (`diff` against the pre-mutation backup showed no
+change) before the final gate ran.
+
+### §5 — the verification gate
+
+1. §R.2 probe — PASS (open and before the regen batch).
+2. `cargo fmt --all --check` — clean (after one `cargo fmt --all` pass on the
+   new test file).
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean, BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. The three families regenerated fresh from `/tmp/qt-v4-pin-p4102-
+   89fcc3c0d` via `harness/tools/recipe_sweep.py --run <family> --v4
+   "$PIN" --v5w "$PWD"` — `prompt_templates_routes_equivalence` (31 cases),
+   `images_generate_route_equivalence` (45 cases) GREEN; `subprompts_routes_
+   equivalence` (58 cases regenerated, oracle non-empty and fresh) RED as
+   §3 details, re-run standalone with `--nocapture` for the full per-case
+   breakdown. Zero `SKIP:` in any of the three regens.
+5. `web_edge_body_parse_guard` (quilltap-harness) re-run — unaffected, both
+   tests green, counts unmoved (neither converted file ever carried the
+   `.and_then(Value::as_*)` collapsing idiom that census covers — `tri()`
+   already preserved the tri-state correctly, so its retirement is a
+   different class entirely).
+6. `cargo build --workspace --release` — clean. (Run TWICE: the first run
+   overlapped in wall-clock with the M1/M2 mutation cycles on
+   `crates/quilltap-web/src/*.rs`, a genuine risk of a contaminated release
+   binary if cargo happened to compile `quilltap-web` for release mid-
+   mutation; rebuilt clean after both mutations were confirmed reverted,
+   `quilltap-web v0.0.155` compiling from the settled, correct source.)
+7. `cargo test --workspace --no-fail-fast -- --nocapture`, `CARGO_
+   INCREMENTAL=0`, `TZ=UTC`, with `QT_ORACLE_SUBPROMPTS_ROUTES`, `QT_ORACLE_
+   PT_ROUTES` + `QT_FIXTURE_PT_ROUTES`, `QT_ORACLE_IMAGES_GENERATE` set (this
+   lane's three families — every other family's var left unset, one
+   resulting `SKIP:` observed: `QT_ORACLE_ROUTE_TRAIL`, not this lane's):
+   **572 test binaries, 578 `test result:` lines, 3,457 tests passed, 1
+   FAILED** (`subprompts_routes_equivalence`, §3), **1 `SKIP:` line total**
+   (not this lane's). The lane's own tests confirmed RUN and green by name:
+   `images_generate_decoder_tests::{images_edge_and_dispatch_decode_the_
+   five_keys_identically, unknown_keys_are_stripped_and_a_non_object_folds_
+   to_absent}`, `subprompts_edges`, `prompt_template_edges`, `a_bare_
+   instance_gets_the_table_and_the_catalogue`, `a_bare_instance_creates_
+   through_post_first`, and all nine of `tri_state_edges_share_the_
+   decoder`'s tests. Deliberately did NOT include this ONE known-red family
+   as a withheld var — it is this lane's family per the order's Tier 1 item
+   6, and withholding it would have hidden the true state behind a false
+   `SKIP:` rather than showing what actually happened.
+
+**Deviation from the order's literal Tier 1 item 6** ("green, zero SKIP"
+for all three families): two of three are green; the third's redness is
+measured, root-caused, and confirmed pre-existing and out of scope — see §3.
+Flagged here rather than silently claimed as met.
+
+### §6 — findings for the unifier (outside this lane's ownership)
+
+- **`subprompts_routes_equivalence`'s fixture-vintage gap** (§3) — the fix
+  is either widening `crates/quilltap-web/tests/fixtures/subprompts-main.db`
+  in place (through v4's own migration statements, per `fixture-rebuild-vs-
+  migrate-in-place`) or adding `test_support::ensure_p4d171_columns`/
+  `ensure_p4d182_columns` calls to the harness test's `Db::open` call site —
+  either needs `crates/quilltap-core/**` and/or `crates/quilltap-harness/
+  tests/**`, both outside P4.102's ownership. Worth checking whether any
+  OTHER family shares this exact fixture pair before touching it.
+- **The remaining shared-decoder candidates** (Tier 3, deliberately not
+  converted): every typed-field-only hand-built edge in
+  `TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE` — their wrong-type verdicts
+  already live in `web_edge_body_parse_guard.rs`; converting the class is a
+  later order's scope per the order text.
+
+### §7 — deferred loud
+
+- **Query-string tri-states** (`?action=` folds) — untouched, a different
+  reader (`query_params.rs`), per the order's Tier 3.
+- 💸 the dogfood queue is unaffected by this lane (no wire, no schema, no SPA
+  change — §S.1 held: nothing observable moved for any consumer).

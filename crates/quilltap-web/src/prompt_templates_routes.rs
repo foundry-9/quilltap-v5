@@ -76,13 +76,6 @@ fn non_object_refusal(body: &Value) -> Option<AxumResponse> {
     )
 }
 
-/// The flat variants' tri-state from a parsed object body: absent → `None`,
-/// present-null → `Some(None)`, present → `Some(Some(v))`.
-fn tri(body: &Value, key: &str) -> Option<Option<Value>> {
-    body.get(key)
-        .map(|v| if v.is_null() { None } else { Some(v.clone()) })
-}
-
 async fn dispatch(state: &SharedState, req: CoreRequest, ok: StatusCode) -> AxumResponse {
     match dispatch_core(state, req).await {
         Ok(resp) => unwrap_to_http(resp, ok),
@@ -98,6 +91,8 @@ pub async fn prompt_templates_collection_get(State(state): State<SharedState>) -
     dispatch(&state, CoreRequest::PromptTemplateList, StatusCode::OK).await
 }
 
+const TRI_STATE_KEYS: [&str; 5] = ["name", "content", "description", "category", "modelHint"];
+
 pub async fn prompt_templates_collection_post(
     State(state): State<SharedState>,
     body: axum::body::Bytes,
@@ -106,12 +101,18 @@ pub async fn prompt_templates_collection_post(
     if let Some(refusal) = non_object_refusal(&parsed) {
         return refusal;
     }
-    let req = CoreRequest::PromptTemplateCreate {
-        name: tri(&parsed, "name"),
-        content: tri(&parsed, "content"),
-        description: tri(&parsed, "description"),
-        category: tri(&parsed, "category"),
-        model_hint: tri(&parsed, "modelHint"),
+    // P4.102: the five fields cross through the shared decoder rather than a
+    // hand-mirrored tri-state — see `request_envelope`'s doc and
+    // `tri_state_edges_share_the_decoder.rs`.
+    let req = match crate::request_envelope::request_envelope(
+        "promptTemplateCreate",
+        &parsed,
+        &TRI_STATE_KEYS,
+        &[],
+    ) {
+        Some(r) => r,
+        // Unreachable while the five stay raw `Option<Option<Value>>`.
+        None => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
     // v4 `NextResponse.json({ template }, { status: 201 })`.
     dispatch(&state, req, StatusCode::CREATED).await
@@ -142,13 +143,14 @@ pub async fn prompt_template_item_put(
     if let Some(refusal) = non_object_refusal(&parsed) {
         return refusal;
     }
-    let req = CoreRequest::PromptTemplateUpdate {
-        id,
-        name: tri(&parsed, "name"),
-        content: tri(&parsed, "content"),
-        description: tri(&parsed, "description"),
-        category: tri(&parsed, "category"),
-        model_hint: tri(&parsed, "modelHint"),
+    let req = match crate::request_envelope::request_envelope(
+        "promptTemplateUpdate",
+        &parsed,
+        &TRI_STATE_KEYS,
+        &[("id", Value::String(id))],
+    ) {
+        Some(r) => r,
+        None => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
     dispatch(&state, req, StatusCode::OK).await
 }

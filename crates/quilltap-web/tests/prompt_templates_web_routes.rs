@@ -130,6 +130,50 @@ async fn prompt_template_edges() {
         })
     );
 
+    // --- POST with an explicit-null tri-state key, one per key ---------------
+    // (P4.102 — the shared decoder's null-arm pins. No route-family oracle row
+    // exists for this family's null arms — `check_string`'s ladder distinguishes
+    // absent from explicit `null` identically to `subprompts`' measured
+    // `create_zod_title_null_400`, so this is pinned against the handler's own
+    // code path, driven for real here, and recorded as edge-only.)
+    for (key, body_in) in [
+        ("name", json!({"name": null, "content": "c"})),
+        ("content", json!({"name": "n", "content": null})),
+        (
+            "description",
+            json!({"name": "n", "content": "c", "description": null}),
+        ),
+        (
+            "category",
+            json!({"name": "n", "content": "c", "category": null}),
+        ),
+        (
+            "modelHint",
+            json!({"name": "n", "content": "c", "modelHint": null}),
+        ),
+    ] {
+        let (status, body) = send(
+            &client,
+            &addr,
+            reqwest::Method::POST,
+            COLLECTION,
+            Some(&body_in.to_string()),
+        )
+        .await;
+        assert_eq!(status, 400, "key={key}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Validation error",
+                "details": [{
+                    "expected": "string", "code": "invalid_type", "path": [key],
+                    "message": "Invalid input: expected string, received null"
+                }]
+            }),
+            "key={key}"
+        );
+    }
+
     // --- GET [id] -------------------------------------------------------------
     let (status, body) = send(
         &client,
@@ -172,6 +216,32 @@ async fn prompt_template_edges() {
     .await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["template"]["name"], "Renamed on the wire");
+
+    // --- PUT with an explicit-null tri-state key, one per key -----------------
+    for key in ["name", "content", "description", "category", "modelHint"] {
+        let mut one_key_body = serde_json::Map::new();
+        one_key_body.insert(key.to_string(), Value::Null);
+        let (status, body) = send(
+            &client,
+            &addr,
+            reqwest::Method::PUT,
+            &format!("{COLLECTION}/{created}"),
+            Some(&Value::Object(one_key_body).to_string()),
+        )
+        .await;
+        assert_eq!(status, 400, "key={key}: {body}");
+        assert_eq!(
+            body,
+            json!({
+                "error": "Validation error",
+                "details": [{
+                    "expected": "string", "code": "invalid_type", "path": [key],
+                    "message": "Invalid input: expected string, received null"
+                }]
+            }),
+            "key={key}"
+        );
+    }
 
     // --- PUT / DELETE a BUILT-IN: the route's 403 refusals ---------------------
     let (status, body) = send(

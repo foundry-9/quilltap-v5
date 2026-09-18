@@ -90,14 +90,6 @@ fn non_object_refusal(body: &Value) -> Option<AxumResponse> {
     )
 }
 
-/// The flat variant's tri-state from a parsed object body: absent → `None`,
-/// present-null → `Some(None)`, present → `Some(Some(v))` (the `double_option`
-/// shape the dispatch decoder produces for the same wire).
-fn tri(body: &Value, key: &str) -> Option<Option<Value>> {
-    body.get(key)
-        .map(|v| if v.is_null() { None } else { Some(v.clone()) })
-}
-
 async fn dispatch(state: &SharedState, req: CoreRequest, ok: StatusCode) -> AxumResponse {
     match dispatch_core(state, req).await {
         Ok(resp) => unwrap_to_http(resp, ok),
@@ -130,10 +122,18 @@ pub async fn subprompts_collection_post(
     if let Some(refusal) = non_object_refusal(&parsed) {
         return refusal;
     }
-    let req = CoreRequest::CharacterSubpromptCreate {
-        character_id: id,
-        title: tri(&parsed, "title"),
-        content: tri(&parsed, "content"),
+    // P4.102: `title` / `content` cross through the shared decoder rather
+    // than a hand-mirrored tri-state (the class `request_envelope` exists to
+    // close — see its doc and `tri_state_edges_share_the_decoder.rs`).
+    let req = match crate::request_envelope::request_envelope(
+        "characterSubpromptCreate",
+        &parsed,
+        &["title", "content"],
+        &[("characterId", Value::String(id))],
+    ) {
+        Some(r) => r,
+        // Unreachable while `title` / `content` stay raw `Option<Option<Value>>`.
+        None => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
     // v4 `created(...)` → 201.
     dispatch(&state, req, StatusCode::CREATED).await
@@ -167,11 +167,17 @@ pub async fn subprompt_item_put(
     if let Some(refusal) = non_object_refusal(&parsed) {
         return refusal;
     }
-    let req = CoreRequest::CharacterSubpromptUpdate {
-        character_id: id,
-        subprompt_id,
-        title: tri(&parsed, "title"),
-        content: tri(&parsed, "content"),
+    let req = match crate::request_envelope::request_envelope(
+        "characterSubpromptUpdate",
+        &parsed,
+        &["title", "content"],
+        &[
+            ("characterId", Value::String(id)),
+            ("subpromptId", Value::String(subprompt_id)),
+        ],
+    ) {
+        Some(r) => r,
+        None => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
     };
     dispatch(&state, req, StatusCode::OK).await
 }

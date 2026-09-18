@@ -254,6 +254,14 @@ pub async fn images_post(
 /// transports cannot drift apart again. Pinned by
 /// `images_edge_and_dispatch_decode_the_five_keys_identically` below.
 ///
+/// **P4.102 generalized this envelope into `crate::request_envelope::
+/// request_envelope`** — the shared home for every REST edge whose `Request`
+/// variant carries `Option<Option<Value>>` fields, retiring the hand-rolled
+/// `tri()` helpers in `subprompts_routes.rs` and `prompt_templates_routes.rs`
+/// onto the same code this edge already ran. `images_generate_request` below
+/// is now a one-line call onto it; the class is held shut by
+/// `tri_state_edges_share_the_decoder.rs`'s census guard.
+///
 /// Unknown keys are dropped on the way in, which is v4's own behaviour: its
 /// `generateImageSchema` is a `z.object`, and a `z.object` STRIPS undeclared
 /// keys rather than refusing them.
@@ -285,24 +293,14 @@ async fn images_generate(state: SharedState, req: axum::extract::Request) -> Axu
 /// Lift v4's five `generateImageSchema` keys out of a parsed request body and
 /// decode them through the dispatch envelope — see `images_generate`.
 ///
-/// A body that PARSES but is not an object still reaches v4's Zod parse, which
-/// refuses it, so it folds to all-absent here and the HANDLER answers.
+/// **P4.102** generalized this into `crate::request_envelope::request_envelope`,
+/// the ONE helper every tri-state REST edge now shares (`subprompts_routes.rs`,
+/// `prompt_templates_routes.rs`); this is a one-line call onto it. The pin
+/// below (`images_edge_and_dispatch_decode_the_five_keys_identically`) is the
+/// proof the generalization moved nothing: it stays green unchanged.
 fn images_generate_request(parsed: &Value) -> Option<CoreRequest> {
     const KEYS: [&str; 5] = ["prompt", "profileId", "chatId", "tags", "options"];
-    let mut envelope = serde_json::Map::new();
-    envelope.insert("type".into(), Value::String("imagesGenerate".into()));
-    if let Value::Object(map) = parsed {
-        for key in KEYS {
-            // PRESENT-ness is what carries: a key holding `null` must be
-            // inserted as `null`, not skipped. v4 bug 130's `chatId` included —
-            // without it the field never arrives and the route leg of the
-            // differential is vacuously green.
-            if let Some(v) = map.get(key) {
-                envelope.insert(key.to_string(), v.clone());
-            }
-        }
-    }
-    serde_json::from_value::<CoreRequest>(Value::Object(envelope)).ok()
+    crate::request_envelope::request_envelope("imagesGenerate", parsed, &KEYS, &[])
 }
 
 #[cfg(test)]
