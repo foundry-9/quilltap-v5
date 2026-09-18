@@ -956,3 +956,106 @@ mod disable_tools_log_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod cache_key_ignorer_tests {
+    //! P4.99 — GOOGLE is the third cache-key IGNORER, and this module freezes
+    //! the fact that v5's builder is key-blind BY SHAPE.
+    //!
+    //! v4's plugin never reads `params.cacheKey`: `provider.ts:108-113` is a
+    //! `TODO(per-character-caching)` saying so in as many words ("Today this
+    //! plugin only surfaces `cachedContentTokenCount` on responses; it does not
+    //! yet create or refresh cached content on the request side"), and the key
+    //! appears nowhere else in the plugin's sources. Measured at `bcd7e4852`.
+    //!
+    //! The recorded corpora carry the named `cache-key` / `cache-key-absent`
+    //! pair and both google families assert v4's own outputs are identical
+    //! across it. This is the v5 half of the same claim, and it is the cheaper
+    //! tripwire: `google.rs` has ZERO occurrences of `cache_key` in its
+    //! production code, so the day someone wires the key in — correctly or not
+    //! — these two tests go red before the corpus is ever re-recorded.
+
+    use super::*;
+    use crate::model::request_builder::StreamMessage;
+
+    fn input(cache_key: Option<&str>) -> RequestInput {
+        RequestInput {
+            model: "gemini-2.5-flash".to_string(),
+            messages: vec![
+                StreamMessage::system("You are a helpful assistant."),
+                StreamMessage::user("Hello there."),
+            ],
+            temperature: Some(0.5),
+            max_tokens: Some(1000),
+            top_p: Some(0.9),
+            tools: Some(vec![json!({
+                "name": "search",
+                "description": "Search.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "query": { "type": "string" } },
+                    "required": ["query"]
+                }
+            })]),
+            cache_key: cache_key.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn build_config_is_byte_identical_with_and_without_a_cache_key() {
+        let keyed = input(Some("char-1234"));
+        let bare = input(None);
+        let render = |i: &RequestInput| {
+            let (tools, has_tools) = build_tools(i);
+            let sys = format_messages_for_google(&i.messages, &i.model, has_tools);
+            serde_json::to_string(&build_config(i, &sys, tools, has_tools)).unwrap()
+        };
+        assert_eq!(
+            render(&keyed),
+            render(&bare),
+            "google's `config` must not depend on the cache key — v4's plugin \
+             never reads it"
+        );
+    }
+
+    #[test]
+    fn the_wire_body_is_byte_identical_with_and_without_a_cache_key() {
+        let render = |i: &RequestInput| {
+            let mut results = crate::model::stream::StreamAttachmentResults::default();
+            serde_json::to_string(&build_google_wire_body(i, &mut results).expect("wire body"))
+                .unwrap()
+        };
+        let got = render(&input(Some("char-1234")));
+        assert_eq!(
+            got,
+            render(&input(None)),
+            "google's wire body must not depend on the cache key"
+        );
+        // And the key's own spellings never appear — a builder that wrote the
+        // WRONG one would satisfy the equality above only by writing it on both
+        // sides, which this catches. Keys, not text: the contents carry
+        // `"role": "user"`, so a substring search for `user` always hits.
+        let body: Value = serde_json::from_str(&got).unwrap();
+        let mut keys = std::collections::BTreeSet::new();
+        fn walk(node: &Value, out: &mut std::collections::BTreeSet<String>) {
+            match node {
+                Value::Array(a) => a.iter().for_each(|c| walk(c, out)),
+                Value::Object(o) => {
+                    for (k, v) in o {
+                        out.insert(k.clone());
+                        walk(v, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        walk(&body, &mut keys);
+        for spelling in ["prompt_cache_key", "user", "user_id", "cachedContent"] {
+            assert!(
+                !keys.contains(spelling),
+                "google's wire body carries `{spelling}`; keys were {keys:?}"
+            );
+        }
+    }
+}

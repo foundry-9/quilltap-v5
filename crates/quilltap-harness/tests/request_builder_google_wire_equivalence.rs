@@ -32,6 +32,16 @@
 //! explicitly in BOTH directions below (header present, query param absent).
 //! Fixed in the google manifest; see `model::provider_auth`'s module header.
 //!
+//! **The cache-key ignorer (P4.99).** GOOGLE is the third ignorer — its plugin
+//! never reads `params.cacheKey` (`provider.ts:108-113` is a
+//! `TODO(per-character-caching)` saying so in as many words, and the key appears
+//! nowhere else in its sources), so a request carrying one must serialize to the
+//! SAME BYTES as the twin that omits it. The named `cache-key` / `cache-key-absent`
+//! pair pins that, and the per-row body compare above proves v5's builder agrees.
+//! The absence leg scans the body's JSON KEYS, never its text: google's contents
+//! carry `"role": "user"`, so a substring search for the `user` spelling is a
+//! guaranteed false positive.
+//!
 //! Regenerate the fixture (Node 24):
 //!   V4=~/source/quilltap-server V5=<repo-root> \
 //!     bash <V5>/harness/oracle/providers/regenerate-google-wire.sh
@@ -172,6 +182,29 @@ fn input_from_json(input: &Value, stream: bool) -> RequestInput {
     }
 }
 
+/// Every JSON key that appears anywhere in `node` (P4.99). The cache-key
+/// absence claim is about KEYS: google's `contents` carry `"role": "user"`, so
+/// a substring check on the serialized body matches the `user` spelling on
+/// every row and proves nothing.
+fn all_keys(node: &Value, out: &mut std::collections::BTreeSet<String>) {
+    match node {
+        Value::Array(a) => a.iter().for_each(|c| all_keys(c, out)),
+        Value::Object(o) => {
+            for (k, v) in o {
+                out.insert(k.clone());
+                all_keys(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Every spelling any v4 plugin uses for the key (the
+/// `request_builder_equivalence` vocabulary), plus google's own would-be
+/// wire name: a builder that wrote the WRONG key would otherwise sail through
+/// an absence leg that only looked for the right one.
+const CACHE_KEY_SPELLINGS: [&str; 4] = ["prompt_cache_key", "user", "user_id", "cachedContent"];
+
 #[test]
 fn google_wire_body_matches_recorded() {
     let text = std::fs::read_to_string(corpus_path())
@@ -190,6 +223,9 @@ fn google_wire_body_matches_recorded() {
     let mut count = 0usize;
     let mut attachment_rows = 0usize;
     let mut modes = std::collections::HashSet::new();
+    // P4.99 — the ignorer pair's recorded bodies, keyed by (case, mode).
+    let mut ignorer_bodies: std::collections::HashMap<(String, String), String> =
+        std::collections::HashMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let case = row.get("case").and_then(Value::as_str).unwrap_or("?");
@@ -213,6 +249,34 @@ fn google_wire_body_matches_recorded() {
             got, want,
             "google wire body diverged (case '{case}' [{mode}])"
         );
+
+        // P4.99 — the ignorer pair. The recorded body is v4's own bytes, so
+        // comparing the two cases' bodies compares v4 against itself; the byte
+        // compare above has already proven v5's builder produces each of them.
+        if matches!(case, "cache-key" | "cache-key-absent") {
+            ignorer_bodies.insert(
+                (case.to_string(), mode.to_string()),
+                row["body"].as_str().unwrap().to_string(),
+            );
+            let mut keys = std::collections::BTreeSet::new();
+            all_keys(&recorded_body, &mut keys);
+            for spelling in CACHE_KEY_SPELLINGS {
+                assert!(
+                    !keys.contains(spelling),
+                    "google/{case}[{mode}]: v4's recorded body carries the key \
+                     `{spelling}` — google is supposed to IGNORE the cache key"
+                );
+            }
+            let mut got_keys = std::collections::BTreeSet::new();
+            all_keys(&built.body, &mut got_keys);
+            for spelling in CACHE_KEY_SPELLINGS {
+                assert!(
+                    !got_keys.contains(spelling),
+                    "google/{case}[{mode}]: v5's built body carries `{spelling}` \
+                     where v4's does not"
+                );
+            }
+        }
 
         // The url is where the streaming split lives for this provider.
         assert_eq!(
@@ -313,8 +377,39 @@ fn google_wire_body_matches_recorded() {
         "v5 no longer sends google's `x-goog-api-key`; headers were {:?}",
         v5_headers.keys().collect::<Vec<_>>()
     );
+    // P4.99 — the ignorer proof per mode, presence-asserted first so a corpus
+    // that lost either row fails BY NAME instead of passing on a pair it no
+    // longer carries.
+    for mode in ["stream", "send"] {
+        let keyed = ignorer_bodies
+            .get(&("cache-key".to_string(), mode.to_string()))
+            .unwrap_or_else(|| {
+                panic!(
+                    "the google wire corpus lost its `cache-key` row [{mode}] — nothing \
+                     now pins that v4 IGNORES the key; re-record with \
+                     regenerate-google-wire.sh"
+                )
+            });
+        let twin = ignorer_bodies
+            .get(&("cache-key-absent".to_string(), mode.to_string()))
+            .unwrap_or_else(|| {
+                panic!(
+                    "the google wire corpus lost its `cache-key-absent` twin [{mode}] — \
+                     the ignorer claim has nothing to compare against; re-record with \
+                     regenerate-google-wire.sh"
+                )
+            });
+        assert_eq!(
+            keyed, twin,
+            "GOOGLE[{mode}]: a request carrying a cache key must serialize to the SAME \
+             BYTES as the one without it — v4's plugin reads the key nowhere \
+             (provider.ts:108-113)"
+        );
+    }
+
     eprintln!(
         "OK: google wire framing matched recorded ({count} cases, both modes); \
-         headers pinned on {header_rows} rows."
+         headers pinned on {header_rows} rows; the cache-key ignorer pair proven \
+         byte-identical in both modes."
     );
 }

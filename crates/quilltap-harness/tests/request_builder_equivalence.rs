@@ -292,9 +292,22 @@ const CACHE_KEY_ABSENT_CASES: [&str; 2] = ["cache-key-absent", "cache-key-empty"
 /// The providers whose plugins IGNORE the key, each with a comment in v4 saying
 /// so (`anthropic provider.ts:76`, `ollama :64`). Their contract is the
 /// stronger one: a request carrying a key must build the SAME BYTES as the one
-/// without it. (GOOGLE is the third ignorer; it lives in the separate
-/// `google-request.recorded.ndjson` corpus, whose differential is not this
-/// lane's to assert — it stays covered by the unit table.)
+/// without it.
+///
+/// GOOGLE is the third ignorer (`provider.ts:108-113`, a
+/// `TODO(per-character-caching)`) and is absent from THIS corpus because the
+/// genai SDK reframes its wire — it lives in the two separate google corpora.
+/// P4.97 could not assert it and banked the claim on the unit table; **P4.99
+/// closed that**, so it is now pinned in three places and this table's silence
+/// about google is a pointer, not a gap:
+///   - `request_builder_google_equivalence` — the named `cache-key` /
+///     `cache-key-absent` pair's four recorded outputs are identical, which
+///     pins v4's ignoring;
+///   - `request_builder_google_wire_equivalence` — the same pair's recorded
+///     bodies are byte-identical in BOTH modes, and neither carries any
+///     cache-key spelling as a JSON key;
+///   - `model::request_builder::google`'s `cache_key_ignorer_tests` — v5's own
+///     `build_config` / `build_google_wire_body` are key-blind by shape.
 const CACHE_KEY_IGNORED: &[(&str, &str)] = &[
     ("ANTHROPIC", "stream"),
     ("ANTHROPIC", "send"),

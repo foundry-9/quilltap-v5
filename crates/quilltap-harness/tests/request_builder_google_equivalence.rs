@@ -11,6 +11,15 @@
 //!     `tools` array as it lands ON THE WIRE (the SDK passes `functionDeclarations`
 //!     through faithfully), compared against the effective tools this builder
 //!     would send.
+//!   - **P4.99:** the cache-key IGNORER pair. GOOGLE is the third ignorer
+//!     (`request_builder_equivalence`'s `CACHE_KEY_IGNORED` names anthropic and
+//!     ollama; google's corpus is separate because the genai SDK reframes its
+//!     wire). Its plugin never reads `params.cacheKey` —
+//!     `provider.ts:108-113` is a `TODO(per-character-caching)` saying so, and
+//!     the key appears nowhere else in its sources — so the contract is the
+//!     stronger one: v4's own four outputs must be IDENTICAL with and without
+//!     the key. That is an assertion ON THE ORACLE, and this is the one place
+//!     it is the point: it pins v4's IGNORING, which is the fact v5 mirrors.
 //!
 //! The corpus is committed
 //! (`harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson`);
@@ -142,6 +151,12 @@ fn google_request_logic_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed google request NDJSON");
     let mut rows = 0usize;
     let mut attachment_rows = 0usize;
+    // P4.99 — the ignorer pair's recorded outputs, keyed by case name. Named
+    // rather than inferred: `request_builder_equivalence` measured that
+    // coverage credited to "whatever row happened to omit a key" survives
+    // deleting the row that was meant to pin it.
+    let mut ignorer_outputs: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     for line in text.lines() {
         if line.trim().is_empty() {
@@ -208,6 +223,25 @@ fn google_request_logic_matches_v4() {
                 "google/{case} reported attachment results v4 did not"
             ),
         }
+        // P4.99 — the ignorer pair. `input_from_json` deliberately does NOT read
+        // `cacheKey` into `RequestInput`: the request-LOGIC surface has no
+        // business with it, which is exactly the shape under test. The four
+        // recorded outputs are what v4 produced, so comparing the pair's two
+        // sides compares v4 against itself.
+        if matches!(case, "cache-key" | "cache-key-absent") {
+            ignorer_outputs.insert(
+                case.to_string(),
+                serde_json::to_string(&serde_json::json!({
+                    "contents": row["contents"],
+                    "systemInstruction": row["systemInstruction"],
+                    "shouldDisableTools": row["shouldDisableTools"],
+                    "wireTools": row["wireTools"],
+                    "attachmentResults": row.get("attachmentResults"),
+                }))
+                .unwrap(),
+            );
+        }
+
         if row
             .get("input")
             .and_then(|i| i.get("messages"))
@@ -228,5 +262,28 @@ fn google_request_logic_matches_v4() {
     assert!(
         attachment_rows >= 3,
         "the google corpus lost its attachment vectors (P4.21), got {attachment_rows}"
+    );
+
+    // P4.99 — the ignorer proof, and a PRESENCE assert first so a corpus that
+    // lost either row fails BY NAME rather than passing on a pair it no longer
+    // has (the vacuous-green class).
+    let keyed = ignorer_outputs.get("cache-key").unwrap_or_else(|| {
+        panic!(
+            "the google corpus lost its `cache-key` row — nothing now pins that v4's \
+             plugin IGNORES the key; re-record with `record-google-request.mjs`"
+        )
+    });
+    let twin = ignorer_outputs.get("cache-key-absent").unwrap_or_else(|| {
+        panic!(
+            "the google corpus lost its `cache-key-absent` twin — the ignorer claim \
+             has nothing to compare against; re-record with `record-google-request.mjs`"
+        )
+    });
+    assert_eq!(
+        keyed, twin,
+        "GOOGLE: v4's request logic for a request CARRYING a cache key must be \
+         identical to the one without it — the plugin reads the key nowhere \
+         (provider.ts:108-113). If this ever diverges, google has stopped being an \
+         ignorer and v5's key-blind builder is wrong."
     );
 }

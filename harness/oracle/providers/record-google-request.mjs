@@ -121,6 +121,19 @@ const CASES = [
   { name: 'multi-attachment', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, IMG_ATT_2] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'merged-user-attachments', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'First image.', attachments: [IMG_ATT] }, { role: 'user', content: 'Second image.', attachments: [IMG_ATT_2] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
   { name: 'attachment-no-data', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  // P4.99 — GOOGLE is the THIRD cache-key ignorer (the two named in
+  // `request_builder_equivalence`'s `CACHE_KEY_IGNORED` are anthropic and
+  // ollama; google lives in this separate corpus because the genai SDK
+  // reframes its wire, so the envelope family cannot reach it). The plugin
+  // never reads `params.cacheKey` — `provider.ts:108-113` is a
+  // `TODO(per-character-caching)` saying so in as many words, and the key
+  // appears nowhere else in its sources. The contract is therefore the
+  // stronger one: a request carrying a key must build the SAME request logic
+  // as one without it, which only a NAMED pair can assert. The twin is
+  // deliberately a content-duplicate of `plain` rather than a reference to it,
+  // so the claim survives anyone editing `plain`.
+  { name: 'cache-key', params: { model: 'gemini-2.5-flash', messages: [SYS, USER], cacheKey: 'char-1234', temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
+  { name: 'cache-key-absent', params: { model: 'gemini-2.5-flash', messages: [SYS, USER], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
 ];
 
 /**

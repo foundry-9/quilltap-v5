@@ -341,6 +341,46 @@ are the two that cannot show the defect P4.98 fixes.
 Mutation-proven: driving the case with a valid prompt instead of the null
 reddens the family on exactly that row, v5 answering 201 with a generated
 image against v4's 400.
+#### 2026-09-18 — port(google): pin GOOGLE as the third cache-key ignorer, in all three places (P4.99 Tier 1)
+
+_Versions: core 0.0.952, harness 0.0.843._
+
+GOOGLE never reads `params.cacheKey`: v4's plugin says so in as many words at
+`provider.ts:108-113` (a `TODO(per-character-caching)` — "it does not yet
+create or refresh cached content on the request side"), and the key appears
+nowhere else in its sources. P4.97 pinned the other two ignorers in
+`request_builder_equivalence`'s `CACHE_KEY_IGNORED` table and could not pin
+google, whose corpus is separate because the genai SDK reframes its wire; it
+banked the claim on a unit table and said so in a comment. This closes it.
+
+Both google corpora gain the named `cache-key` / `cache-key-absent` pair,
+re-recorded against v4's REAL plugin from a worktree pinned at the oracle
+baseline. Every pre-existing row is byte-identical — `git diff --numstat`
+reports 2/0 and 4/0, additions only, so no self-dating marker moved. The twin
+is deliberately a content-duplicate of `plain` rather than a reference to it,
+so the claim survives anyone editing `plain`; naming the pair is what makes a
+re-record that drops it fail BY NAME, which is the lesson
+`request_builder_equivalence` learned when a mutation deleting DeepSeek's twin
+survived on a dozen unrelated keyless rows.
+
+`request_builder_google_equivalence` asserts v4's own four outputs are
+identical across the pair; `request_builder_google_wire_equivalence` asserts
+the recorded bodies are byte-identical in BOTH modes and that neither carries
+any cache-key spelling. The absence leg scans JSON KEYS, not text: google's
+contents carry `"role": "user"`, so a substring search for the `user` spelling
+hits on every row and proves nothing. A new `cache_key_ignorer_tests` module in
+`google.rs` is the v5 half — `build_config` and `build_google_wire_body`
+byte-identical with and without a key — and it is the cheaper tripwire, since
+the production file has zero occurrences of `cache_key`.
+
+The mutations corrected an order premise. Writing `cachedContent` into
+`config` reddens the unit pin and leaves BOTH families green: the reframer
+copies only a fixed key list into the wire root, so a stray config key is
+silently dropped — which is exactly why the unit pin is not redundant. Writing
+it into the wire root instead reddens the unit pin and the wire family, naming
+the spelling. Deleting the pair from both corpora reddens both families, each
+naming the row it lost.
+
 #### 2026-09-18 — port(primary-stream): say that a recoverable request error is being recovered from (P4.99 Tier 1)
 
 _Versions: core 0.0.951._

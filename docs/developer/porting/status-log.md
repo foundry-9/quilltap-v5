@@ -134599,3 +134599,85 @@ bare names ran ZERO tests and every result parsed as "not found". A battery
 whose parse fails looks exactly like a battery whose mutations all survived.
 The re-run prints a per-run `test result:` summary line precisely so a
 zero-tests-ran run is visible; both are worth a memory note.
+
+### §2 — Tier 1 items 3–6 (M5, M5b, M6): GOOGLE's cache-key ignorer rows
+
+**v4, measured at the pin** (`git show bcd7e4852:plugins/dist/qtap-plugin-google/provider.ts`,
+`:108-113`): a `TODO(per-character-caching)` saying `params.cacheKey` is not
+wired — "Today this plugin only surfaces `cachedContentTokenCount` on
+responses; it does not yet create or refresh cached content on the request
+side." `ggrep -n cacheKey` over the plugin's FOUR TS sources
+(`provider.ts`, `index.ts`, `types.ts`, `image-provider.ts`) returns exactly
+that one comment line; `index.js` is the bundled SDK, not plugin logic.
+
+**Two recorders, not one** (the order warned to read `regenerate-google-wire.sh`
+before assuming otherwise, and it was right): `google-request.recorded.ndjson`
+comes from `record-google-request.mjs`, `google-wire.recorded.ndjson` from
+`record-request-envelopes.mjs --provider google --mode stream|send` via that
+shell script. Both got the pair.
+
+**Regen, AS RUN** (Node 24, from the pin; the wardrobe rider is REQUIRED or the
+two bug-125 rows silently vanish — the committed corpus is 9 CASES + 2
+wardrobe):
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.13.1/bin:$PATH"   # v24.13.1
+PIN=/tmp/qt-v4-pin-p4-99-bcd7e4852
+V5=<this worktree>
+# (a) the wardrobe params — from the pin ROOT (the `@/` alias needs its tsconfig)
+cd "$PIN" && npx tsx "$V5/harness/oracle/providers/dump-wardrobe-tool-params.mjs" \
+  --out /tmp/p4.99/wardrobe-tool-params.json
+# (b) the request-LOGIC corpus — from the pin's PLUGIN dir
+cd "$PIN/plugins/dist/qtap-plugin-google" && \
+  npx tsx "$V5/harness/oracle/providers/record-google-request.mjs" \
+    --out "$V5/harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson" \
+    --wardrobe-params /tmp/p4.99/wardrobe-tool-params.json
+# (c) the WIRE corpus — both modes, concatenated by the script
+V4="$PIN" V5="$V5" bash "$V5/harness/oracle/providers/regenerate-google-wire.sh"
+```
+
+`rm -f` the fixture first in each case (§5.2); the builders' last lines read
+`wrote 13 google case(s)` and `wrote 11 line(s) … [stream]` / `[send]`.
+
+**Corpus neutrality — proven by git itself.** `git diff --numstat` over the two
+files is **`2 0`** and **`4 0`**: additions only, zero deletions, so every
+pre-existing row is byte-identical in content AND position-order. (A python
+row-multiset check agreed: 11 → 13 and 18 → 22, the kept rows equal to the old
+files line for line.) P4.D158's self-dating-marker caveat did NOT bite.
+
+**What v4 does with the key, measured on the fresh corpora:** all four
+request-logic outputs identical across the pair (and identical to `plain`'s);
+the wire bodies byte-identical in both modes and to `plain`'s; the urls equal.
+
+⚠ **A substring absence check on a google wire body is a guaranteed false
+positive.** `'user' in body` is TRUE on every google row — it is the ROLE
+VALUE (`"role": "user"`), not a key. Both the family and the unit pin walk the
+parsed body's KEYS. (The envelope family got this right for free because its
+bodies are flat and it uses `body.get(spelling)`.)
+
+**Mutations** (`--no-fail-fast`, revert by file backup):
+
+| # | mutation | unit pin | request family | wire family |
+|---|---|---|---|---|
+| — | baseline | ok (2) | ok | ok |
+| M5 | `cachedContent` written into `config` | **FAILED** | ok | **ok** |
+| M5b | `cachedContent` written into the WIRE root | **FAILED** | ok | **FAILED** (names the spelling) |
+| M6 | the pair deleted from both corpora | — | **FAILED** (names the row) | **FAILED** (names the row) |
+
+**M5 REFUTES the order's prediction** ("the unit pin red AND the wire row
+red"). `build_google_wire_body` copies only a FIXED key list out of `config`
+(`GENERATION_CONFIG_FIELDS` plus the four named root keys), so a stray config
+key is silently dropped by the reframer and the wire body never changes. The
+unit pin is therefore the ONLY instrument that can see a `build_config`
+regression — which is the justification for it, and M5b (the same key written
+one layer out) proves the wire leg is not itself vacuous.
+
+⚠ **`cargo test --test A --test B` fail-fasts between BINARIES.** The first M6
+run reported the wire family as `NOT-RUN` because the request family had
+already failed; its leg measured nothing. `--no-fail-fast` is required for any
+mutation battery spanning more than one test binary.
+
+**`request_builder_equivalence`'s `CACHE_KEY_IGNORED` doc** is repointed
+(doc-only; the table itself unchanged — GOOGLE's rows live in the google
+corpora, not the envelope corpus): it now names the three places google is
+pinned instead of saying the claim is "not this lane's to assert".

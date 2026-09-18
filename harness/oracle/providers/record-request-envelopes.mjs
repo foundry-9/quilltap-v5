@@ -711,6 +711,15 @@ function casesFor(provider) {
     add('multi-attachment', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, IMG_ATT_2] }] });
     add('merged-user-attachments', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'First image.', attachments: [IMG_ATT] }, { role: 'user', content: 'Second image.', attachments: [IMG_ATT_2] }] });
     add('attachment-no-data', { ...base, model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
+    // P4.99 — the cache-key IGNORER pair. GOOGLE's plugin never reads
+    // `params.cacheKey` (`provider.ts:108-113` is a TODO saying so), so the
+    // wire body carrying one must be byte-identical to the twin's and must
+    // carry none of the three spellings any v4 plugin uses. Named, not
+    // inferred: the `request_builder_equivalence` lesson is that coverage
+    // credited to "whatever row happened to omit a key" survives deleting the
+    // row that was supposed to pin it.
+    add('cache-key', { ...base, model: 'gemini-2.5-flash', cacheKey: 'char-1234' });
+    add('cache-key-absent', { ...base, model: 'gemini-2.5-flash' });
   }
   return cases;
 }
