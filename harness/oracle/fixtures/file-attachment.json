@@ -291,7 +291,7 @@
         13,
         14
       ],
-      "$comment": "P4.D151 (v4 0b0617fee, bug 116): the live incident's shape — a long, confident, section-headed description billed for 38 prompt tokens. Its Z_AI stand-in is ALSO billed below the ceiling, so BOTH describers refuse by verdict and the primary's whole sentence lands in the final error beside the fallback's."
+      "$comment": "P4.D151 (v4 0b0617fee, bug 116): the live incident's shape \u2014 a long, confident, section-headed description billed for 38 prompt tokens. Its Z_AI stand-in is ALSO billed below the ceiling, so BOTH describers refuse by verdict and the primary's whole sentence lands in the final error beside the fallback's."
     },
     {
       "key": "verdictChain",
@@ -313,7 +313,7 @@
         17,
         18
       ],
-      "$comment": "P4.D151: v4's third new test — the primary never saw the image and the chain advances to a describer that did. The primary's refusal sentence is preserved byte-for-byte in processingMetadata.fallbackAttemptTrail."
+      "$comment": "P4.D151: v4's third new test \u2014 the primary never saw the image and the chain advances to a describer that did. The primary's refusal sentence is preserved byte-for-byte in processingMetadata.fallbackAttemptTrail."
     },
     {
       "key": "verdictCeiling",
@@ -379,7 +379,7 @@
         29,
         30
       ],
-      "$comment": "P4.D151: 20 prompt tokens plus an 800-token cache read is a REAL call — every plugin normalises cache reads out of promptTokens (the 4.6.1 invariant), so dropping the add-back turns this into a refusal."
+      "$comment": "P4.D151: 20 prompt tokens plus an 800-token cache read is a REAL call \u2014 every plugin normalises cache reads out of promptTokens (the 4.6.1 invariant), so dropping the add-back turns this into a refusal."
     },
     {
       "key": "verdictFailedEmpty",
@@ -445,7 +445,96 @@
         41,
         42
       ],
-      "$comment": "P4.D151: an EMPTY answer billed for 38 prompt tokens. The verdict runs ahead of every content check, so the trail records 'did not process the image', not 'returned empty response' — this row is what the sentence ORDER is measured by."
+      "$comment": "P4.D151: an EMPTY answer billed for 38 prompt tokens. The verdict runs ahead of every content check, so the trail records 'did not process the image', not 'returned empty response' \u2014 this row is what the sentence ORDER is measured by."
+    },
+    {
+      "key": "shrinkLegacy",
+      "id": "f0000000-0000-4000-8000-0000000000a1",
+      "originalFilename": "portrait-avatar.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytesPattern": {
+        "len": 64
+      },
+      "shrinkScript": {
+        "metadata": {
+          "width": 2048,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 40
+          }
+        ]
+      }
+    },
+    {
+      "key": "shrinkNeverFits",
+      "id": "f0000000-0000-4000-8000-0000000000a2",
+      "originalFilename": "incompressible.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytesPattern": {
+        "len": 500
+      },
+      "shrinkScript": {
+        "metadata": {
+          "width": 4000,
+          "height": 3000
+        },
+        "final": {
+          "width": 1024,
+          "height": 768
+        },
+        "steps": [
+          {
+            "len": 384001
+          },
+          {
+            "len": 384001
+          },
+          {
+            "len": 384001
+          },
+          {
+            "len": 384001
+          }
+        ]
+      }
+    },
+    {
+      "key": "shrinkFails",
+      "id": "f0000000-0000-4000-8000-0000000000a3",
+      "originalFilename": "undecodable.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytesPattern": {
+        "len": 96
+      },
+      "shrinkScript": {
+        "metadata": "throws",
+        "metadataThrowMessage": "scripted probe failure (tier 3)",
+        "final": {
+          "width": null,
+          "height": null
+        },
+        "steps": [
+          {
+            "throw": "scripted probe failure (tier 3)"
+          }
+        ]
+      },
+      "v5Calls": [
+        {
+          "maxEdge": 1024,
+          "quality": 78
+        }
+      ],
+      "v5CallsWhy": "v4's `sharp(buffer).metadata()` REJECTS on undecodable bytes and the whole `try` lands in the `catch`, so v4 never reaches the ladder. v5's `ImageTranscoder::metadata` is infallible: it answers no dimensions, `longest_edge` is 0, the early return's first conjunct fails, the ladder is asked ONCE and `shrink_to_webp` refuses. Same outcome (stored bytes, one warn), one extra recorded rung \u2014 the mapping recorded in `shrink_to_webp`'s doc and pinned identically by `llm_image_budget_equivalence`'s `undecodable_metadata_throws` row."
     }
   ],
   "mount": {
@@ -717,7 +806,7 @@
     {
       "label": "adapt_noop_profile_accepts",
       "profile": "imgOK",
-      "$why": "The substitute reads what the original did — same reference again, the overwhelmingly common case.",
+      "$why": "The substitute reads what the original did \u2014 same reference again, the overwhelmingly common case.",
       "messages": [
         {
           "role": "user",
@@ -838,7 +927,7 @@
     {
       "label": "adapt_only_foreign_bag_is_a_noop",
       "profile": "noImg",
-      "$why": "…and with nothing else to decide, the array comes back by reference.",
+      "$why": "\u2026and with nothing else to decide, the array comes back by reference.",
       "messages": [
         {
           "role": "user",
@@ -939,5 +1028,33 @@
       "label": "mimes_empty",
       "attachments": []
     }
-  ]
+  ],
+  "extraMounts": [
+    {
+      "key": "shrinkMount",
+      "relativePath": "attach/vault-portrait.webp",
+      "fileName": "vault-portrait.webp",
+      "originalFileName": "Portrait of the Hour.webp",
+      "storedMimeType": "image/webp",
+      "dataPattern": {
+        "len": 128
+      },
+      "shrinkScript": {
+        "metadata": {
+          "width": 1024,
+          "height": 1536
+        },
+        "final": {
+          "width": 683,
+          "height": 1024
+        },
+        "steps": [
+          {
+            "len": 70
+          }
+        ]
+      }
+    }
+  ],
+  "$p4d198": "P4.D198 / v4 bcd7e4852 (bug 151): the two attachment loaders now run `shrinkImageForLlmTransport` FIRST, so this corpus drives a SCRIPTED encoder on both sides (v4 a `jest.doMock('sharp')`, v5 `quilltap_harness::ScriptedTranscoder`) keyed by the BYTES each file serves. A file with no `shrinkScript` gets the DEFAULT script \u2014 8x8, no rungs \u2014 so the budget's early return fires and its row is byte-identical to the pre-bug-151 oracle; that diff is the neutrality proof. `fsmBytesPattern` / `dataPattern` generate `(i * 7 + 13) & 0xff` bytes (the same generator as llm-image-budget.json) because a 400 KB literal array has no business in a corpus. `extraMounts` is the second mount blob the mount-path rows load \u2014 v4's hunk calls that path 'where every character avatar actually travels', so it is the primary arm."
 }

@@ -22,9 +22,16 @@
  *     table dump is out of scope for this differential (the logging port is
  *     verified separately by W4.7e / the Phase-2 `llm_logs_tier2`); the Rust
  *     `log_llm_call` write is symmetrically inert (no llm-logs partition opened).
- *   - No `sharp` mock: every corpus image is small, so `resizeImageForProvider`
- *     early-returns before touching the codec (oversized-resize is skipped — the
- *     schedule is unit-tested in Rust).
+ *   - `sharp` → the SCRIPTED encoder (P4.D198, v4 bug 151 `bcd7e4852`), mirrored
+ *     on the Rust side by `quilltap_harness::ScriptedTranscoder` over the SAME
+ *     per-file scripts. A corpus file with no `shrinkScript` gets the DEFAULT —
+ *     8x8, no rungs — so `shrinkImageForLlmTransport`'s early return fires and
+ *     its row is byte-identical to the pre-bug-151 oracle. (Before P4.D198 this
+ *     read "No `sharp` mock: every corpus image is small, so
+ *     `resizeImageForProvider` early-returns before touching the codec"; the
+ *     provider-ceiling BACKSTOP is still never reached — every image is under
+ *     the 4 MB per-image cap — but the transport shrink now runs FIRST and does
+ *     consult the codec.)
  *
  * Real-DB-under-jest (memory-gate-tier3 recipe): resetModules + doMock past
  * jest.setup's global DB mocks + better-sqlite3 -> better-sqlite3-multiple-ciphers.
@@ -38,9 +45,10 @@
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-fa-mount.db \
  *     $N/node --import tsx $V5/harness/oracle/fixtures/build-file-attachment-fixture.ts
- *   mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp $V5/harness/oracle/cases/file-attachment-tier3.test.ts "$TMPO/cases/"
  *   cp $V5/harness/oracle/fixtures/file-attachment.json       "$TMPO/fixtures/"
+ *   cp $V5/harness/oracle/lib/shrink-script.ts                "$TMPO/lib/"
  *   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-fa-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-file-attachment.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -53,6 +61,13 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+import {
+  originalBuffer,
+  scriptedSharpMulti,
+  type ScriptEntry,
+  type ShrinkScript,
+} from '../lib/shrink-script';
+
 interface FileSpec {
   key: string;
   id: string;
@@ -61,6 +76,10 @@ interface FileSpec {
   category: string;
   fsmBytes?: number[];
   fsmBytesUtf8?: string;
+  /** P4.D198: generated `(i * 7 + 13) & 0xff` bytes (see `originalBuffer`). */
+  fsmBytesPattern?: { len: number };
+  /** P4.D198: this file's scripted encoder behaviour. */
+  shrinkScript?: ShrinkScript;
   fsmMissing?: boolean;
   generationPrompt?: string;
   generationRevisedPrompt?: string;
@@ -93,6 +112,15 @@ interface AdaptCase {
   messages: Array<{ role: string; content: string; attachments?: AttachmentRef[] }>;
 }
 interface MimeCase { label: string; attachments: AttachmentRef[] }
+interface ExtraMount {
+  key: string;
+  relativePath: string;
+  fileName: string;
+  originalFileName?: string;
+  storedMimeType: string;
+  dataPattern: { len: number };
+  shrinkScript?: ShrinkScript;
+}
 interface Spec {
   testPepperBase64: string;
   userId: string;
@@ -102,10 +130,12 @@ interface Spec {
   vision: VisionSpec[];
   adaptCases: AdaptCase[];
   mimeCases: MimeCase[];
+  extraMounts?: ExtraMount[];
 }
 interface Meta {
   mountLinkId: string;
   mountPointId: string;
+  extraMountLinkIds?: Record<string, string>;
 }
 
 async function main(): Promise<void> {
@@ -132,24 +162,22 @@ async function main(): Promise<void> {
   for (const f of spec.files) fileByKey[f.key] = f;
 
   // fileId -> stored bytes for the FSM downloadFile mock (missing files absent).
+  const bytesOf = (f: FileSpec): Buffer => {
+    if (f.fsmBytesPattern) return originalBuffer(f.fsmBytesPattern.len);
+    if (f.fsmBytesUtf8 !== undefined) return Buffer.from(f.fsmBytesUtf8, 'utf-8');
+    if (f.fsmBytes) return Buffer.from(f.fsmBytes);
+    return Buffer.alloc(0);
+  };
   const fsmByFileId: Record<string, Buffer | null> = {};
   for (const f of spec.files) {
-    if (f.fsmMissing) {
-      fsmByFileId[f.id] = null;
-      continue;
-    }
-    if (f.fsmBytesUtf8 !== undefined) fsmByFileId[f.id] = Buffer.from(f.fsmBytesUtf8, 'utf-8');
-    else if (f.fsmBytes) fsmByFileId[f.id] = Buffer.from(f.fsmBytes);
-    else fsmByFileId[f.id] = Buffer.alloc(0);
+    fsmByFileId[f.id] = f.fsmMissing ? null : bytesOf(f);
   }
 
   // The base64 `data` a (B) processFileAttachmentFallback case feeds as the
   // fileAttachment payload (mirrored byte-for-byte on the Rust side).
   const dataByKey: Record<string, string> = {};
   for (const f of spec.files) {
-    if (f.fsmBytesUtf8 !== undefined) dataByKey[f.key] = Buffer.from(f.fsmBytesUtf8, 'utf-8').toString('base64');
-    else if (f.fsmBytes) dataByKey[f.key] = Buffer.from(f.fsmBytes).toString('base64');
-    else dataByKey[f.key] = '';
+    dataByKey[f.key] = f.fsmMissing ? '' : bytesOf(f).toString('base64');
   }
 
   // The recorded canned vision calls (deduped by key).
@@ -255,6 +283,40 @@ async function main(): Promise<void> {
       }),
     };
   });
+
+  // sharp → the SCRIPTED encoder (P4.D198, bug 151). Keyed by the exact BYTES
+  // each file serves, so one mock covers the legacy `files` path and the
+  // mount-blob path at once. A file with no `shrinkScript` answers the DEFAULT —
+  // 8x8, no rungs — which takes `shrinkImageForLlmTransport`'s early return and
+  // is what keeps every pre-existing row byte-identical to the pre-bug-151
+  // oracle. Mocked by RESOLVED path: this case is staged under /tmp, where a
+  // bare `sharp` specifier does not resolve (unlike `better-sqlite3`, which the
+  // jest config maps to a `<rootDir>/__mocks__` file).
+  const DEFAULT_SHRINK_SCRIPT: ShrinkScript = {
+    metadata: { width: 8, height: 8 },
+    final: { width: null, height: null },
+    steps: [],
+  };
+  const scriptEntries: ScriptEntry[] = [];
+  for (const f of spec.files) {
+    if (f.shrinkScript && !f.fsmMissing) {
+      scriptEntries.push({ bytes: bytesOf(f), script: f.shrinkScript, calls: [] });
+    }
+  }
+  for (const m of spec.extraMounts ?? []) {
+    if (m.shrinkScript) {
+      scriptEntries.push({
+        bytes: originalBuffer(m.dataPattern.len),
+        script: m.shrinkScript,
+        calls: [],
+      });
+    }
+  }
+  const sharpPath = join(process.cwd(), 'node_modules', 'sharp');
+  jest.doMock(sharpPath, () => ({
+    __esModule: true,
+    default: scriptedSharpMulti(scriptEntries, DEFAULT_SHRINK_SCRIPT),
+  }));
 
   // logLLMCall → no-op (the compared results carry no llm_logs state).
   jest.doMock('@/lib/services/llm-logging.service', () => {
@@ -458,6 +520,78 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'case', family: 'lcffl', label: 'lcffl_mount', result: attachments }));
   }
 
+  // ---- (F) the bug-151 transport shrink at BOTH loaders (P4.D198) ----------
+  //
+  // v4 `bcd7e4852` runs `shrinkImageForLlmTransport` FIRST at both load paths.
+  // The mount-blob path is the primary arm — v4's own hunk calls it "where every
+  // character avatar actually travels" — so it gets both the shrink row and the
+  // `autoResize: false` row. Placed after (C) so the sections' order matches the
+  // Rust side's exactly.
+  {
+    const extraIds = meta.extraMountLinkIds ?? {};
+    const mountLinkId = extraIds['shrinkMount'];
+    if (!mountLinkId) {
+      throw new Error('the fixture sidecar carries no extraMountLinkIds.shrinkMount — rebuild it');
+    }
+    const byKey = (k: string): string => fileByKey[k].id;
+
+    interface ShrinkCase {
+      label: string;
+      ids: string[];
+      options: Record<string, unknown>;
+    }
+    const shrinkCases: ShrinkCase[] = [
+      // (a) the legacy `files` path: an oversize-EDGE image whose first rung
+      //     clears the ceiling. `size` on the descriptor stays the STORED
+      //     `fileEntry.size` — v4 does not re-derive it on this path, even
+      //     though `data` is now the shrunk bytes.
+      { label: 'lcffl_shrink_legacy', ids: [byKey('shrinkLegacy')], options: { provider: 'NANOGPT' } },
+      // (c) all four rungs miss the ceiling: the image still goes out, at the
+      //     bottom rung.
+      {
+        label: 'lcffl_shrink_never_fits',
+        ids: [byKey('shrinkNeverFits')],
+        options: { provider: 'NANOGPT' },
+      },
+      // (e) the shrink FAILS (the probe throws): stored bytes, stored mime, and
+      //     no resize either — the file is under the 4 MB backstop.
+      { label: 'lcffl_shrink_fails', ids: [byKey('shrinkFails')], options: { provider: 'NANOGPT' } },
+      // (d) the same oversize file with `autoResize: false`: stored bytes
+      //     verbatim. The arm v4's own comments name.
+      {
+        label: 'lcffl_shrink_no_autoresize_legacy',
+        ids: [byKey('shrinkLegacy')],
+        options: { provider: 'NANOGPT', autoResize: false },
+      },
+      // (b) the MOUNT path — the avatar's own road. `size` here IS the
+      //     post-processing `buffer.length`, so it follows the shrink.
+      { label: 'lcffl_shrink_mount', ids: [mountLinkId], options: { provider: 'NANOGPT' } },
+      // (d) again, on the mount path.
+      {
+        label: 'lcffl_shrink_no_autoresize_mount',
+        ids: [mountLinkId],
+        options: { provider: 'NANOGPT', autoResize: false },
+      },
+    ];
+    for (const c of shrinkCases) {
+      const attachments = await loadChatFilesForLLM(c.ids, c.options as never);
+      lines.push(
+        JSON.stringify({ kind: 'case', family: 'lcffl', label: c.label, result: attachments }),
+      );
+    }
+
+    // The scripted ladders, per file, as a comparand of their own: which rungs
+    // each loader asked for. Mirrored by the Rust family off the same instance.
+    lines.push(
+      JSON.stringify({
+        kind: 'case',
+        family: 'lcffl',
+        label: 'lcffl_shrink_ladders',
+        result: scriptEntries.map((e) => ({ bytes: e.bytes.length, calls: e.calls })),
+      }),
+    );
+  }
+
   // ---- (D) the describer transport guard (bug 91, a14a1811) -----------------
   // Point the user's Image Description Profile at the OLLAMA describer — a
   // profile whose plugin cannot transport images. `describeImageWithProfile`
@@ -541,7 +675,8 @@ async function main(): Promise<void> {
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   process.stderr.write(
-    `file-attachment oracle wrote ${outPath} (${lapCases.length + fbCases.length + 1} cases, ${Object.keys(cannedByKey).length} canned)\n`,
+    `file-attachment oracle wrote ${outPath} (${lines.length} lines, ` +
+      `${Object.keys(cannedByKey).length} canned)\n`,
   );
 }
 

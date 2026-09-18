@@ -12,6 +12,56 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — fix(images): the transport shrink runs first at both attachment loaders (P4.D198)
+
+_Versions: core 0.0.945, harness 0.0.836._
+
+v4 `bcd7e4852`'s `lib/chat-files-v2.ts` hunks, ported into both loaders in
+`services/chat_files.rs`: `shrink_image_for_llm_transport` runs FIRST on every
+image bound for a model, then the pre-existing provider-ceiling resize stays
+behind it as the backstop — now gated on, and handed, the possibly-WebP output
+mime rather than the stored one (v4's `:521` hunk). The gate asymmetry v4 keeps
+is kept: the shrink's gate has no `can_resize_image` because the budget module
+checks it internally, while the backstop's does. Both stages sit under the
+caller's resize switch, so an `auto_resize: false` caller still gets stored
+bytes verbatim, and the legacy path's descriptor keeps the STORED `files.size`
+even when `data` shrank — v4 does not re-derive it there. Tier-2 item 10
+re-measured at the new baseline: nothing in v4's `lib/` reads the
+`wasResized` this function returns, so v5's drop of that flag stands.
+
+`file_attachment_tier3` grew six loader rows plus a per-file ladder record, and
+its seam swapped `NotConfiguredTranscoder` for a `ScriptedTranscoder` over the
+corpus's per-file scripts, mirrored by a `jest.doMock('sharp')` in the oracle.
+A corpus file with no script answers the DEFAULT — 8x8, no rungs — so the
+budget's early return fires and its row does not move. Measured at both pins:
+47 of the 51 shared labels and all 18 canned vision rows are byte-identical
+between `5f0a57dc4` and `bcd7e4852`, and the four that move are exactly the
+shrinking rows. That diff is both the neutrality proof and the proof that the
+early return fires where v4's fires.
+
+Two mutations SURVIVED as first written, with one root cause, and both are now
+closed rather than recorded: running the shrink after the backstop, and handing
+the backstop the stored mime, each left the tier-3 family green — because every
+image in that corpus is under the 4 MB per-image provider cap, so the backstop
+never acts at all. That is v4's own observation about its new code, and it
+means neither ordering nor the mime argument had any witness. The new
+`lantern_loader_transcoder_wiring.rs` gives the backstop work to do (an image
+whose ladder BOTTOM is still over the cap) and records the ordered seam log;
+the format separates the two mutations, since `determine_output_format` answers
+`Webp` for the shrink's output and `Jpeg` for the stored PNG. Both mutations
+now redden it, the first catastrophically — with the stages swapped the
+transport budget does nothing at all, because the backstop's small output then
+satisfies the budget's early return.
+
+The same file carries the production wiring pin: the loaders' transcoder
+reaches `HostImageCodec`, proven in two halves — the codec really shrinks (run
+against real bytes through the whole budget) and the wire really names it (a
+source census over the host spine's concrete `Arc<HostImageCodec>` field and
+its two `OrchestratorDeps` hand-offs, plus the measurement that both
+`NotConfiguredTranscoder` sites in the core sit inside `#[cfg(test)]` modules).
+Without it, a loader handed the wrong transcoder would send stored bytes
+forever and look exactly like a provider that cannot resize.
+
 #### 2026-09-17 — feat(images): the per-image transport budget as one core module, with a scripted-encoder tier-1 differential (P4.D198)
 
 _Versions: core 0.0.944, harness 0.0.835._

@@ -70,6 +70,136 @@ export function encodedBuffer(quality: number, len: number): Buffer {
 }
 
 /**
+ * Whether `buffer` looks like an [`encodedBuffer`] product: every byte is its
+ * predecessor plus one (mod 256), which `originalBuffer`'s step of 7 is not.
+ * Ambiguous under 2 bytes, so callers require the length; no corpus carries a
+ * one-byte image. Structural rather than rebuild-and-compare, which would
+ * allocate a hundred candidates per probe for the 384 KB rungs. Mirrored by the
+ * Rust `is_encoded_pattern`.
+ */
+export function isEncodedPattern(buffer: Buffer): boolean {
+  if (buffer.length === 0) return false;
+  const q0 = buffer[0];
+  for (let i = 0; i < buffer.length; i += 1) {
+    if (buffer[i] !== ((q0 + i) & 0xff)) return false;
+  }
+  return true;
+}
+
+/** One original buffer and the script that describes it. */
+export interface ScriptEntry {
+  bytes: Buffer;
+  script: ShrinkScript;
+  /** Filled in as the ladder runs, in order. */
+  calls: RecordedCall[];
+}
+
+/**
+ * The MULTI-script `sharp` stand-in: one mock serving several original buffers,
+ * each with its own script, plus a DEFAULT for buffers no script names.
+ *
+ * `file_attachment_tier3` needs this shape — its corpus carries twenty-two
+ * files and scripts only the bug-151 ones, so everything else must behave as
+ * SMALL (the default) and take the budget's early return, which is what keeps
+ * every pre-existing oracle row byte-identical.
+ *
+ * Which script a probe belongs to is resolved the same way on both sides: a
+ * buffer that IS a registered original names its script (and becomes the
+ * "current" one); a buffer that is one of the current script's own produced
+ * encodes is v4's `sharp(best).metadata()` and answers that script's `final`;
+ * anything else is the default.
+ */
+export function scriptedSharpMulti(
+  entries: ScriptEntry[],
+  defaultScript: ShrinkScript,
+): (buffer: Buffer) => unknown {
+  let current: ScriptEntry | null = null;
+  let defaultCalls = 0;
+
+  const dims = (d: { width: number | null; height: number | null }) => ({
+    width: d.width ?? undefined,
+    height: d.height ?? undefined,
+  });
+
+  return (buffer: Buffer) => {
+    const own = Buffer.isBuffer(buffer)
+      ? (entries.find((e) => e.bytes.equals(buffer)) ?? null)
+      : null;
+    if (own) current = own;
+
+    return {
+      async metadata() {
+        if (own) {
+          if (own.script.metadata === 'throws') {
+            throw new Error(own.script.metadataThrowMessage ?? 'scripted metadata failure');
+          }
+          return dims(own.script.metadata);
+        }
+        if (
+          current &&
+          buffer.length >= 2 &&
+          isEncodedPattern(buffer) &&
+          current.script.steps.some((st) => 'len' in st && st.len === buffer.length)
+        ) {
+          return dims(current.script.final);
+        }
+        if (defaultScript.metadata === 'throws') {
+          throw new Error(defaultScript.metadataThrowMessage ?? 'scripted metadata failure');
+        }
+        return dims(defaultScript.metadata);
+      },
+      resize(opts: { width: number; height: number; fit: string; withoutEnlargement: boolean }) {
+        if (
+          typeof opts?.width !== 'number' ||
+          opts.height !== opts.width ||
+          opts.fit !== 'inside' ||
+          opts.withoutEnlargement !== true
+        ) {
+          throw new Error(
+            `the shrink's resize options moved: ${JSON.stringify(opts)} — the port's ` +
+              '`shrink_to_webp` contract is fit-inside/never-enlarge on a square box, ' +
+              'so a change here needs a matching change on the Rust seam',
+          );
+        }
+        const maxEdge = opts.width;
+        const target = own;
+        return {
+          webp({ quality }: { quality: number }) {
+            return {
+              async toBuffer() {
+                const script = target ? target.script : defaultScript;
+                let rung: number;
+                if (target) {
+                  target.calls.push({ maxEdge, quality });
+                  rung = target.calls.length - 1;
+                } else {
+                  // An UNSCRIPTED buffer reached the ladder. For a tier-3
+                  // corpus that is a finding, not a fixture detail: the default
+                  // is "small", so the budget should have early-returned.
+                  rung = defaultCalls;
+                  defaultCalls += 1;
+                }
+                const step = script.steps[rung];
+                if (step === undefined) {
+                  throw new Error(
+                    `${target ? 'the ladder' : 'an UNSCRIPTED buffer'} asked for rung ` +
+                      `${rung + 1} (quality ${quality}, ${buffer.length} bytes); the script ` +
+                      `carries ${script.steps.length} — a CORPUS bug, not a port one. A file ` +
+                      'that reaches the codec needs its own `shrinkScript`.',
+                  );
+                }
+                if ('throw' in step) throw new Error(step.throw);
+                return encodedBuffer(quality, step.len);
+              },
+            };
+          },
+        };
+      },
+    };
+  };
+}
+
+/**
  * Build the `sharp` module stand-in for one case's script.
  *
  * Shape: `sharp(buffer)` returns a chainable whose `.metadata()` answers from
@@ -90,51 +220,10 @@ export function scriptedSharp(
   original: Buffer,
   calls: RecordedCall[],
 ): (buffer: Buffer) => unknown {
-  return (buffer: Buffer) => {
-    const isOriginal = Buffer.isBuffer(buffer) && buffer.equals(original);
-    return {
-      async metadata() {
-        if (isOriginal) {
-          if (script.metadata === 'throws') {
-            throw new Error(script.metadataThrowMessage ?? 'scripted metadata failure');
-          }
-          return { width: script.metadata.width ?? undefined, height: script.metadata.height ?? undefined };
-        }
-        return { width: script.final.width ?? undefined, height: script.final.height ?? undefined };
-      },
-      resize(opts: { width: number; height: number; fit: string; withoutEnlargement: boolean }) {
-        if (
-          typeof opts?.width !== 'number' ||
-          opts.height !== opts.width ||
-          opts.fit !== 'inside' ||
-          opts.withoutEnlargement !== true
-        ) {
-          throw new Error(
-            `the shrink's resize options moved: ${JSON.stringify(opts)} — the port's ` +
-              '`shrink_to_webp` contract is fit-inside/never-enlarge on a square box, ' +
-              'so a change here needs a matching change on the Rust seam',
-          );
-        }
-        const maxEdge = opts.width;
-        return {
-          webp({ quality }: { quality: number }) {
-            return {
-              async toBuffer() {
-                calls.push({ maxEdge, quality });
-                const step = script.steps[calls.length - 1];
-                if (step === undefined) {
-                  throw new Error(
-                    `the ladder asked for rung ${calls.length} (quality ${quality}); the ` +
-                      `script carries ${script.steps.length} — a CORPUS bug, not a port one`,
-                  );
-                }
-                if ('throw' in step) throw new Error(step.throw);
-                return encodedBuffer(quality, step.len);
-              },
-            };
-          },
-        };
-      },
-    };
-  };
+  // The one-script case is the multi-script one with a single entry and a
+  // default that can never be reached (every probe is either the original or
+  // one of its encodes). Sharing the body keeps the two bug-151 oracles from
+  // drifting apart in how they resolve a probe.
+  const entry: ScriptEntry = { bytes: original, script, calls };
+  return scriptedSharpMulti([entry], script);
 }

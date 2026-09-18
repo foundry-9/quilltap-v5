@@ -10,8 +10,22 @@
 //! * a Scriptorium mount file → bytes from the mount-index DB (`doc_mount_blobs`),
 //!   no host seam.
 //!
-//! Both apply the resize DECISION over the injected
-//! [`crate::files::image_processing::ImageTranscoder`] seam.
+//! Both run TWO image stages over the injected
+//! [`crate::files::image_processing::ImageTranscoder`] seam, in this order
+//! (v4 bug 151, `bcd7e4852`):
+//!
+//! 1. [`crate::files::llm_image_budget::shrink_image_for_llm_transport`] — the
+//!    per-image TRANSPORT budget. Runs first, on every image bound for a model,
+//!    and is what makes the wire copy small; the stored file is untouched.
+//! 2. `resize_image_for_provider` — the provider's per-image ceiling, as a
+//!    BACKSTOP over the (possibly WebP) output of stage 1. v4's own note: "the
+//!    transport budget above is the lower limit in every case we know of, so
+//!    this fires only for a format it had to pass through".
+//!
+//! Both stages are gated on the caller's resize switch, so an
+//! `auto_resize: false` caller still gets the stored bytes verbatim. NOTE the
+//! gate asymmetry v4 keeps: stage 1's gate has no `can_resize_image` (the budget
+//! module checks it internally and answers `unchanged`); stage 2's does.
 //!
 //! Faithful quirks: NO dedup by id (a repeated id loads twice); a per-file load
 //! failure is skipped + logged, never fatal; the legacy path keeps the ORIGINAL
@@ -26,6 +40,7 @@ use crate::files::image_processing::{
     calculate_base64_size, can_resize_image, get_provider_max_base64_size,
     resize_image_for_provider, ImageTranscoder, DEFAULT_QUALITY,
 };
+use crate::files::llm_image_budget::shrink_image_for_llm_transport;
 use crate::model::completion::CompletionProvider;
 use crate::services::file_fallback::{self, FallbackDeps, FallbackFile, FallbackType};
 use crate::services::message_context::{LanternLoad, UserAttachmentFile, UserAttachmentLoad};
@@ -103,15 +118,53 @@ fn read_file_as_base64(
     let mut buffer = bytes.download_file(&entry)?;
     let mut output_mime_type = mime_type.to_string();
 
+    // Trim the image to what a model needs to read it before anything else
+    // looks at its size (v4 bug 151, `bcd7e4852`). These bytes are for one
+    // request and are discarded after it; the stored file keeps its full
+    // resolution and quality 90. `provider` is already the caller's
+    // `auto_resize` switch — `load_chat_files_for_llm` passes it only when
+    // resizing is wanted — so an `auto_resize: false` caller still gets the
+    // stored bytes verbatim.
+    //
+    // NOTE the gate asymmetry v4 keeps: there is NO `can_resize_image` here
+    // (the budget module checks it internally and answers `unchanged`), while
+    // the backstop gate below does have one.
     if let Some(provider) = provider {
-        if mime_type.starts_with("image/") && can_resize_image(mime_type) {
+        if mime_type.starts_with("image/") {
+            let shrunk = shrink_image_for_llm_transport(
+                transcoder,
+                &buffer,
+                mime_type,
+                Some(provider),
+                Some(entry.original_filename.as_str()),
+            );
+            if shrunk.was_shrunk {
+                buffer = shrunk.buffer;
+                output_mime_type = shrunk.mime_type;
+                // v4 also sets `wasResized = true` here. v5 drops that flag
+                // (`:74-77`) because nothing reads it — RE-MEASURED at
+                // `bcd7e4852`: the only `wasResized` readers anywhere in v4's
+                // `lib/` are `resizeImageForProvider`'s OWN result, and this
+                // function's `{data, wasResized, mimeType}` return is
+                // destructured as `{data, mimeType}` by its one caller.
+            }
+        }
+    }
+
+    // Provider ceiling, as a backstop: the transport budget above is the lower
+    // limit in every case we know of, so this fires only for a format it had to
+    // pass through (and for `auto_resize: false` callers, who get the old
+    // behaviour untouched). Re-gated on the POSSIBLY-WEBP output mime, and the
+    // resize is handed that mime too (v4's `:521` hunk).
+    if let Some(provider) = provider {
+        if output_mime_type.starts_with("image/") && can_resize_image(&output_mime_type) {
             let max_base64_size = get_provider_max_base64_size(provider);
             let base64_size = calculate_base64_size(buffer.len());
             if base64_size > max_base64_size {
                 let result = resize_image_for_provider(
                     provider,
                     &buffer,
-                    mime_type,
+                    &output_mime_type,
                     DEFAULT_QUALITY,
                     transcoder,
                 );
@@ -221,6 +274,36 @@ fn load_mount_file_as_attachment(
     let mut buffer = bytes;
     let mut output_mime_type = blob.stored_mime_type.clone();
 
+    let mount_filename = mount_link
+        .original_file_name
+        .clone()
+        .unwrap_or_else(|| mount_link.file_name.clone());
+
+    // The transport budget first (v4 bug 151, `bcd7e4852`) — a character's
+    // avatar lives in their vault, so this is the path every generated portrait
+    // takes to a model, and it is the path bug 151 put 4.52 MB of base64 on the
+    // wire through. The blob keeps its stored resolution; only this request's
+    // copy is trimmed.
+    if auto_resize {
+        if let Some(provider) = provider.as_deref() {
+            if output_mime_type.starts_with("image/") {
+                let shrunk = shrink_image_for_llm_transport(
+                    transcoder,
+                    &buffer,
+                    &output_mime_type,
+                    Some(provider),
+                    Some(mount_filename.as_str()),
+                );
+                if shrunk.was_shrunk {
+                    buffer = shrunk.buffer;
+                    output_mime_type = shrunk.mime_type;
+                }
+            }
+        }
+    }
+
+    // Provider ceiling, as a backstop (see the matching note in
+    // `read_file_as_base64`).
     if auto_resize {
         if let Some(provider) = provider.as_deref() {
             if output_mime_type.starts_with("image/") && can_resize_image(&output_mime_type) {
@@ -243,10 +326,7 @@ fn load_mount_file_as_attachment(
         }
     }
 
-    let filename = mount_link
-        .original_file_name
-        .clone()
-        .unwrap_or_else(|| mount_link.file_name.clone());
+    let filename = mount_filename;
     let url = format!(
         "/api/v1/mount-points/{}/blobs/{}",
         mount_link.mount_point_id,

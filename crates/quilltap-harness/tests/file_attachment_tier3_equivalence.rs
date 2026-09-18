@@ -22,8 +22,23 @@
 //! fixture's per-fileId FSM bytes, mirrored by the oracle's `downloadFile` mock);
 //! `logLLMCall` is a no-op both sides (no llm-logs partition opened → the Rust
 //! `log_llm_call` write is inert, matching the oracle's mock) so the llm_logs table
-//! is out of scope. No resize is exercised (small images), so the transcoder seam
-//! (`NotConfiguredTranscoder`) is never consulted.
+//! is out of scope. The provider-ceiling BACKSTOP resize is still never exercised
+//! (every corpus image is under the 4 MB per-image cap, so
+//! `resize_image_for_provider` early-returns), but since P4.D198 the bug-151
+//! TRANSPORT shrink runs first at both loaders and does consult the codec — so the
+//! seam is a [`ScriptedTranscoder`] over the corpus's per-file scripts, mirrored by
+//! the oracle's `jest.doMock('sharp')`, rather than `NotConfiguredTranscoder`.
+//!
+//! ## The bug-151 rows (section F, P4.D198)
+//!
+//! A corpus file with no `shrinkScript` answers the DEFAULT script — 8x8, no
+//! rungs — so the budget's early return fires and its row is byte-identical to
+//! the pre-bug-151 oracle. MEASURED at both pins: 47 of the 51 shared labels and
+//! all 18 canned vision rows are byte-identical between `5f0a57dc4` and
+//! `bcd7e4852`; the four that move are exactly the shrinking rows this section
+//! adds (`lcffl_shrink_legacy`, `lcffl_shrink_mount`, `lcffl_shrink_never_fits`
+//! and the ladder record). That diff is both the neutrality proof and the proof
+//! that the early return fires where v4's fires.
 //!
 //! ## The arrival verdict (bug 116)
 //!
@@ -51,9 +66,10 @@
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-fa-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-file-attachment-fixture.ts
-//!   mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp $V5/harness/oracle/cases/file-attachment-tier3.test.ts "$TMPO/cases/"
 //!   cp $V5/harness/oracle/fixtures/file-attachment.json       "$TMPO/fixtures/"
+//!   cp $V5/harness/oracle/lib/shrink-script.ts                "$TMPO/lib/"
 //!   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-fa-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-file-attachment.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -71,7 +87,6 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use quilltap_core::db::files::FileEntry;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::files::image_processing::NotConfiguredTranscoder;
 use quilltap_core::model::completion::{
     canned_completion_key_with_attachments, CannedCompletionProvider, CompletionAttachment,
     CompletionMessage, CompletionResponse, CompletionRole, CompletionUsage,
@@ -82,6 +97,9 @@ use quilltap_core::services::chat_files::{
 };
 use quilltap_core::services::file_fallback::{
     process_file_attachment_fallback, FallbackDeps, FallbackFile, IMAGE_DESCRIPTION_INSTRUCTION,
+};
+use quilltap_harness::scripted_transcoder::{
+    original_bytes, RecordedCall, ScriptMetadata, ScriptedTranscoder, ShrinkScript,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -107,6 +125,97 @@ struct Spec {
     adapt_cases: Vec<AdaptCase>,
     #[serde(rename = "mimeCases")]
     mime_cases: Vec<MimeCase>,
+    /// P4.D198: further blobs on the same mount point — the bug-151 mount-path
+    /// rows' own avatar (v4's hunk: "where every character avatar actually
+    /// travels").
+    #[serde(rename = "extraMounts", default)]
+    extra_mounts: Vec<ExtraMount>,
+}
+
+#[derive(Deserialize, Clone)]
+struct ExtraMount {
+    #[serde(rename = "dataPattern")]
+    data_pattern: PatternLen,
+    #[serde(rename = "shrinkScript", default)]
+    shrink_script: Option<CorpusScript>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+struct PatternLen {
+    len: usize,
+}
+
+/// One scripted corpus file's ladder expectation, in the order both sides build
+/// them (files first, then the extra mounts).
+struct ScriptedFile {
+    bytes: Vec<u8>,
+    /// A DECLARED divergence from v4's ladder, with its reason.
+    v5_calls: Option<Vec<CorpusCall>>,
+    why: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+struct CorpusCall {
+    #[serde(rename = "maxEdge")]
+    max_edge: i64,
+    quality: i64,
+}
+
+/// One file's (or blob's) scripted encoder behaviour, as the corpus spells it.
+/// The same shape `llm_image_budget_equivalence` reads — deliberately
+/// duplicated rather than shared, because the two families' corpora are
+/// independent and a shared `mod` between integration tests would couple their
+/// regens.
+#[derive(Deserialize, Clone)]
+struct CorpusScript {
+    metadata: Value,
+    #[serde(rename = "metadataThrowMessage", default)]
+    metadata_throw_message: Option<String>,
+    #[serde(rename = "final")]
+    final_dims: CorpusDims,
+    steps: Vec<CorpusStep>,
+}
+
+#[derive(Deserialize, Clone)]
+struct CorpusDims {
+    width: Option<i64>,
+    height: Option<i64>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(untagged)]
+enum CorpusStep {
+    Ok { len: usize },
+    Throw { throw: String },
+}
+
+impl CorpusScript {
+    fn to_script(&self) -> ShrinkScript {
+        let metadata = if self.metadata.as_str() == Some("throws") {
+            ScriptMetadata::Throws(
+                self.metadata_throw_message
+                    .clone()
+                    .unwrap_or_else(|| "scripted metadata failure".to_string()),
+            )
+        } else {
+            ScriptMetadata::Dims(
+                self.metadata.get("width").and_then(Value::as_i64),
+                self.metadata.get("height").and_then(Value::as_i64),
+            )
+        };
+        ShrinkScript {
+            metadata,
+            final_dims: (self.final_dims.width, self.final_dims.height),
+            steps: self
+                .steps
+                .iter()
+                .map(|st| match st {
+                    CorpusStep::Ok { len } => Ok(*len),
+                    CorpusStep::Throw { throw } => Err(throw.clone()),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// One attachment slot in an adapter case: either a fixture file by key, or a
@@ -152,6 +261,20 @@ struct FileSpec {
     fsm_bytes: Option<Vec<u8>>,
     #[serde(rename = "fsmBytesUtf8", default)]
     fsm_bytes_utf8: Option<String>,
+    /// P4.D198: generated `(i * 7 + 13) & 0xff` bytes instead of a literal
+    /// array — the bug-151 rows need buffers a JSON array has no business
+    /// carrying. Same generator as the TS side's `originalBuffer`.
+    #[serde(rename = "fsmBytesPattern", default)]
+    fsm_bytes_pattern: Option<PatternLen>,
+    /// P4.D198: this file's scripted encoder behaviour (absent → the default).
+    #[serde(rename = "shrinkScript", default)]
+    shrink_script: Option<CorpusScript>,
+    /// P4.D198: a DECLARED ladder divergence — the rungs v5 asks for where they
+    /// differ from v4's, with the reason. Only the undecodable file carries one.
+    #[serde(rename = "v5Calls", default)]
+    v5_calls: Option<Vec<CorpusCall>>,
+    #[serde(rename = "v5CallsWhy", default)]
+    v5_calls_why: Option<String>,
     #[serde(rename = "fsmMissing", default)]
     fsm_missing: Option<bool>,
 }
@@ -161,6 +284,9 @@ impl FileSpec {
     fn fsm(&self) -> Option<Vec<u8>> {
         if self.fsm_missing == Some(true) {
             return None;
+        }
+        if let Some(p) = &self.fsm_bytes_pattern {
+            return Some(original_bytes(p.len));
         }
         if let Some(s) = &self.fsm_bytes_utf8 {
             return Some(s.as_bytes().to_vec());
@@ -276,6 +402,21 @@ impl FileBytesStore for CannedBytes {
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/oracle/fixtures/file-attachment.json")
+}
+
+/// The fixture sidecar's `extraMountLinkIds` (P4.D198) — the minted link ids of
+/// the extra blobs, keyed by their corpus key. Read from the sidecar rather than
+/// pinned in the corpus because `linkBlobContent` mints them.
+fn meta_extra_mount_ids(main_fixture: &str) -> serde_json::Map<String, Value> {
+    let meta: Value = serde_json::from_str(
+        &std::fs::read_to_string(format!("{main_fixture}.meta.json"))
+            .unwrap_or_else(|e| panic!("read meta sidecar: {e}")),
+    )
+    .expect("parse meta sidecar");
+    meta.get("extraMountLinkIds")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn env_or_skip(key: &str) -> Option<String> {
@@ -452,7 +593,29 @@ fn file_attachment_matches_oracle() {
         by_file_id.insert(f.id.clone(), f.fsm());
     }
     let bytes = CannedBytes { by_file_id };
-    let transcoder = NotConfiguredTranscoder;
+
+    // P4.D198 — the scripted encoder, keyed by the exact BYTES each file serves,
+    // mirroring the oracle's `jest.doMock('sharp')`. Everything unscripted
+    // answers the DEFAULT (8x8, no rungs), which takes the budget's early return
+    // and is what keeps the pre-existing rows byte-identical.
+    let default_script = ShrinkScript {
+        metadata: ScriptMetadata::Dims(Some(8), Some(8)),
+        final_dims: (None, None),
+        steps: vec![],
+    };
+    let mut transcoder = ScriptedTranscoder::new().with_default(default_script);
+    for f in &spec.files {
+        if let (Some(script), Some(b)) = (&f.shrink_script, f.fsm()) {
+            transcoder = transcoder.with_script(b, script.to_script());
+        }
+    }
+    for m in &spec.extra_mounts {
+        if let Some(script) = &m.shrink_script {
+            transcoder =
+                transcoder.with_script(original_bytes(m.data_pattern.len), script.to_script());
+        }
+    }
+    let transcoder = transcoder;
 
     let (main_work, mount_work) = fresh_copy(&main_fixture, &mount_fixture);
     let db = Db::open(
@@ -735,6 +898,184 @@ fn file_attachment_matches_oracle() {
             .get("lcffl_mount")
             .expect("oracle missing case lcffl_mount");
         assert_eq!(&got, want, "lcffl_mount diverged");
+    }
+
+    // ---- (F) the bug-151 transport shrink at BOTH loaders (P4.D198) --------
+    //
+    // v4 `bcd7e4852` runs `shrinkImageForLlmTransport` FIRST at both load paths.
+    // The mount-blob path is the primary arm — v4's own hunk calls it "where
+    // every character avatar actually travels". Placed after (C) so the
+    // sections' order matches the oracle's exactly (the scripted encoder is
+    // stateful about which shrink is in flight, so section order is load-
+    // bearing on both sides).
+    {
+        let extra_ids = meta_extra_mount_ids(&main_fixture);
+        let mount_link_id = extra_ids
+            .get("shrinkMount")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| {
+                panic!("the fixture sidecar carries no extraMountLinkIds.shrinkMount — rebuild it")
+            })
+            .to_string();
+        let id_of = |k: &str| file_by_key[k].id.clone();
+
+        let shrink_cases: Vec<(&str, Vec<String>, LoadChatFilesOptions)> = vec![
+            // (a) the legacy `files` path: an oversize-EDGE image whose first
+            //     rung clears the ceiling. `size` on the descriptor stays the
+            //     STORED `fileEntry.size` — v4 does not re-derive it here, even
+            //     though `data` is now the shrunk bytes.
+            (
+                "lcffl_shrink_legacy",
+                vec![id_of("shrinkLegacy")],
+                LoadChatFilesOptions::with_provider(Some("NANOGPT".to_string())),
+            ),
+            // (c) all four rungs miss the ceiling: the image still goes out, at
+            //     the bottom rung. Never refuses.
+            (
+                "lcffl_shrink_never_fits",
+                vec![id_of("shrinkNeverFits")],
+                LoadChatFilesOptions::with_provider(Some("NANOGPT".to_string())),
+            ),
+            // (e) the shrink FAILS (the probe throws): stored bytes, stored
+            //     mime, and no resize either — the file is under the 4 MB
+            //     backstop, so nothing downstream touches it.
+            (
+                "lcffl_shrink_fails",
+                vec![id_of("shrinkFails")],
+                LoadChatFilesOptions::with_provider(Some("NANOGPT".to_string())),
+            ),
+            // (d) the SAME oversize file with `auto_resize: false`: stored bytes
+            //     verbatim. The arm v4's own comments name.
+            (
+                "lcffl_shrink_no_autoresize_legacy",
+                vec![id_of("shrinkLegacy")],
+                LoadChatFilesOptions {
+                    provider: Some("NANOGPT".to_string()),
+                    auto_resize: false,
+                },
+            ),
+            // (b) the MOUNT path — the avatar's own road. `size` here IS the
+            //     post-processing `buffer.len()`, so it follows the shrink.
+            (
+                "lcffl_shrink_mount",
+                vec![mount_link_id.clone()],
+                LoadChatFilesOptions::with_provider(Some("NANOGPT".to_string())),
+            ),
+            // (d) again, on the mount path.
+            (
+                "lcffl_shrink_no_autoresize_mount",
+                vec![mount_link_id.clone()],
+                LoadChatFilesOptions {
+                    provider: Some("NANOGPT".to_string()),
+                    auto_resize: false,
+                },
+            ),
+        ];
+        for (label, ids, options) in &shrink_cases {
+            let attachments = load_chat_files_for_llm(&db, &bytes, &transcoder, ids, options);
+            let got = Value::Array(attachments);
+            let (_family, want) = cases
+                .get(*label)
+                .unwrap_or_else(|| panic!("oracle missing case {label}"));
+            assert_eq!(&got, want, "{label} diverged");
+        }
+
+        // The scripted ladders, per file: which rungs each loader asked for, in
+        // order. The oracle records the same list off its own mock, so a v5
+        // that reached the right bytes by a different ladder still reddens.
+        let want_ladders = cases
+            .get("lcffl_shrink_ladders")
+            .map(|(_f, v)| v.clone())
+            .expect("oracle missing case lcffl_shrink_ladders");
+        // The scripted originals in the SAME order both sides build them:
+        // files first, then the extra mounts. A DECLARED `v5Calls` override
+        // replaces v4's rungs for that one file (the undecodable probe), and is
+        // asserted to genuinely differ so a converged mechanism retires it
+        // loudly instead of rotting.
+        let mut scripted: Vec<ScriptedFile> = Vec::new();
+        for f in &spec.files {
+            if let (Some(_), Some(b)) = (&f.shrink_script, f.fsm()) {
+                scripted.push(ScriptedFile {
+                    bytes: b,
+                    v5_calls: f.v5_calls.clone(),
+                    why: f.v5_calls_why.clone(),
+                });
+            }
+        }
+        for m in &spec.extra_mounts {
+            if m.shrink_script.is_some() {
+                scripted.push(ScriptedFile {
+                    bytes: original_bytes(m.data_pattern.len),
+                    v5_calls: None,
+                    why: None,
+                });
+            }
+        }
+        let want_rows = want_ladders.as_array().expect("ladders is an array");
+        assert_eq!(
+            want_rows.len(),
+            scripted.len(),
+            "the oracle records {} scripted files and the corpus builds {}",
+            want_rows.len(),
+            scripted.len()
+        );
+        for (i, sf) in scripted.iter().enumerate() {
+            let (b, override_calls, why) = (&sf.bytes, &sf.v5_calls, &sf.why);
+            let want_row = &want_rows[i];
+            assert_eq!(
+                want_row["bytes"].as_u64(),
+                Some(b.len() as u64),
+                "ladder row {i}: the two sides disagree on which file this is"
+            );
+            let v4_calls = want_row["calls"].clone();
+            let expect_calls = match override_calls {
+                Some(o) => {
+                    let v5 = Value::Array(
+                        o.iter()
+                            .map(|c| json!({"maxEdge": c.max_edge, "quality": c.quality}))
+                            .collect(),
+                    );
+                    assert_ne!(
+                        v4_calls,
+                        v5,
+                        "ladder row {i} declares a v5Calls override ({}) but v4 now asks for \
+                         the SAME ladder — the mechanism converged; retire the override",
+                        why.as_deref().unwrap_or("no reason recorded")
+                    );
+                    assert!(
+                        why.is_some(),
+                        "ladder row {i}: a v5Calls override needs its reason in the corpus"
+                    );
+                    v5
+                }
+                None => v4_calls,
+            };
+            let got_calls = Value::Array(
+                transcoder
+                    .calls_for(b)
+                    .iter()
+                    .map(|c: &RecordedCall| json!({"maxEdge": c.max_edge, "quality": c.quality}))
+                    .collect(),
+            );
+            assert_eq!(
+                got_calls,
+                expect_calls,
+                "ladder row {i} ({} bytes): the rungs the loader asked for",
+                b.len()
+            );
+        }
+
+        // And nothing UNSCRIPTED reached the codec: an unscripted file is
+        // "small", so the budget must early-return before consulting it. A
+        // non-zero count means some row silently stopped measuring what it
+        // claims to (and the oracle's own mock throws on that path, so the two
+        // sides notice it differently but both notice).
+        assert_eq!(
+            transcoder.default_ladder_calls(),
+            0,
+            "an unscripted corpus file reached the shrink ladder — it needs its own \
+             `shrinkScript`, or the early return has stopped firing"
+        );
     }
 
     // ---- (D) the describer transport guard (bug 91, a14a1811) ----

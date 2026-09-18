@@ -322,6 +322,14 @@ pub mod scripted_transcoder {
     /// `file_attachment_tier3` shape) as well as one case at a time.
     pub struct ScriptedTranscoder {
         scripts: Vec<(Vec<u8>, ShrinkScript)>,
+        /// The answer for a buffer no script names. Registered by
+        /// `file_attachment_tier3`, whose corpus carries many files and scripts
+        /// only the bug-151 ones: everything else must behave as SMALL so the
+        /// budget's early return fires and its oracle row stays byte-identical
+        /// to the pre-bug-151 one. Absent by default, so the tier-1 family's
+        /// one-script-per-case shape still panics on a stray buffer.
+        default: Option<ShrinkScript>,
+        default_calls: Mutex<usize>,
         calls: Mutex<Vec<(usize, RecordedCall)>>,
         /// The script whose original was probed most recently. A probe of a
         /// NON-original buffer is v4's `sharp(best).metadata()`, which can only
@@ -334,9 +342,17 @@ pub mod scripted_transcoder {
         pub fn new() -> Self {
             ScriptedTranscoder {
                 scripts: Vec::new(),
+                default: None,
+                default_calls: Mutex::new(0),
                 calls: Mutex::new(Vec::new()),
                 current: Mutex::new(None),
             }
+        }
+
+        /// Register the answer for buffers no script names (see [`Self::default`]).
+        pub fn with_default(mut self, script: ShrinkScript) -> Self {
+            self.default = Some(script);
+            self
         }
 
         /// Register a script for one original buffer.
@@ -367,7 +383,16 @@ pub mod scripted_transcoder {
         /// Forget every recorded call (between cases sharing one instance).
         pub fn reset_calls(&self) {
             self.calls.lock().unwrap().clear();
+            *self.default_calls.lock().unwrap() = 0;
             *self.current.lock().unwrap() = None;
+        }
+
+        /// Whether any buffer the DEFAULT script covers reached the ladder. A
+        /// tier-3 corpus expects zero: an unscripted file is "small", so the
+        /// budget early-returns before consulting the codec, and a non-zero
+        /// count means a row silently stopped measuring what it claims to.
+        pub fn default_ladder_calls(&self) -> usize {
+            *self.default_calls.lock().unwrap()
         }
 
         fn index_of(&self, buffer: &[u8]) -> Option<usize> {
@@ -397,18 +422,46 @@ pub mod scripted_transcoder {
                     },
                 };
             }
-            // Not an original: this is the post-shrink probe of the shrink in
-            // flight.
-            let idx = self
-                .current
-                .lock()
-                .unwrap()
-                .expect("a metadata probe of non-original bytes with no shrink in flight");
-            let (w, h) = self.scripts[idx].1.final_dims;
-            ImageMetadata {
-                width: w,
-                height: h,
-                has_alpha: false,
+            // Not a registered original. Two possibilities, and they are
+            // distinguishable: this is either the post-shrink probe of the
+            // shrink in flight (v4's `sharp(best).metadata()`, whose bytes are
+            // one of the current script's own produced encodes) or a buffer the
+            // DEFAULT script covers.
+            let current = *self.current.lock().unwrap();
+            if let Some(idx) = current {
+                // Recognized STRUCTURALLY, not by rebuilding candidates: an
+                // encode is `(q + i) & 0xff` with `q` its own first byte, so
+                // one O(n) scan settles it. (Rebuilding 101 candidate buffers
+                // per probe would allocate ~39 MB for the 384 KB rungs.)
+                let produced = buffer.len() >= 2
+                    && is_encoded_pattern(buffer)
+                    && self.scripts[idx]
+                        .1
+                        .steps
+                        .iter()
+                        .any(|st| matches!(st, Ok(len) if *len == buffer.len()));
+                if produced {
+                    let (w, h) = self.scripts[idx].1.final_dims;
+                    return ImageMetadata {
+                        width: w,
+                        height: h,
+                        has_alpha: false,
+                    };
+                }
+            }
+            match &self.default {
+                Some(d) => match &d.metadata {
+                    ScriptMetadata::Throws(_) => ImageMetadata::default(),
+                    ScriptMetadata::Dims(w, h) => ImageMetadata {
+                        width: *w,
+                        height: *h,
+                        has_alpha: false,
+                    },
+                },
+                None => panic!(
+                    "a metadata probe of {} unscripted bytes with no default script                      registered — add a `shrinkScript` for that corpus file, or a default",
+                    buffer.len()
+                ),
             }
         }
 
@@ -434,9 +487,33 @@ pub mod scripted_transcoder {
             max_edge: i64,
             quality: i64,
         ) -> Result<Vec<u8>, String> {
-            let idx = self
-                .index_of(buffer)
-                .unwrap_or_else(|| panic!("no script for a {}-byte shrink input", buffer.len()));
+            let Some(idx) = self.index_of(buffer) else {
+                // An unscripted buffer reached the LADDER. For a tier-3 corpus
+                // that is a finding, not a fixture detail: the default script is
+                // "small", so the budget should have early-returned. Count it so
+                // the family can assert zero, and answer from the default's own
+                // (usually empty) rungs — which panics loudly below.
+                let d = self.default.as_ref().unwrap_or_else(|| {
+                    panic!(
+                        "no script for a {}-byte shrink input and no default registered",
+                        buffer.len()
+                    )
+                });
+                let mut n = self.default_calls.lock().unwrap();
+                let rung = *n;
+                *n += 1;
+                drop(n);
+                return match d.steps.get(rung) {
+                    Some(Ok(len)) => Ok(encoded_bytes(quality, *len)),
+                    Some(Err(m)) => Err(m.clone()),
+                    None => panic!(
+                        "an UNSCRIPTED buffer ({} bytes) reached the ladder at rung {}                          (quality {quality}); the default script carries {} rungs. A corpus                          file that reaches the codec needs its own `shrinkScript`.",
+                        buffer.len(),
+                        rung + 1,
+                        d.steps.len()
+                    ),
+                };
+            };
             let mut calls = self.calls.lock().unwrap();
             let rung = calls.iter().filter(|(i, _)| *i == idx).count();
             calls.push((idx, RecordedCall { max_edge, quality }));
@@ -451,6 +528,20 @@ pub mod scripted_transcoder {
                     self.scripts[idx].1.steps.len()
                 ),
             }
+        }
+    }
+
+    /// Whether `buffer` looks like an [`encoded_bytes`] product: every byte is
+    /// its predecessor plus one (mod 256), which `original_bytes`'s step of 7
+    /// is not. Ambiguous for buffers under 2 bytes, so callers require length;
+    /// no corpus carries a 1-byte image.
+    fn is_encoded_pattern(buffer: &[u8]) -> bool {
+        match buffer.first() {
+            None => false,
+            Some(&q0) => buffer
+                .iter()
+                .enumerate()
+                .all(|(i, b)| *b == ((q0 as usize + i) & 0xff) as u8),
         }
     }
 
@@ -535,6 +626,43 @@ pub mod scripted_transcoder {
                 },
             );
             assert_eq!(t.metadata(&orig), ImageMetadata::default());
+        }
+
+        /// The tier-3 shape: an unscripted buffer answers the DEFAULT, and if
+        /// the default is "small" (so the budget early-returns) it never
+        /// reaches the ladder — which `default_ladder_calls() == 0` is how a
+        /// family asserts.
+        #[test]
+        fn an_unscripted_buffer_answers_the_default() {
+            let scripted = original_bytes(48);
+            let t = ScriptedTranscoder::new()
+                .with_default(ShrinkScript {
+                    metadata: ScriptMetadata::Dims(Some(8), Some(8)),
+                    final_dims: (None, None),
+                    steps: vec![],
+                })
+                .with_script(
+                    scripted.clone(),
+                    ShrinkScript {
+                        metadata: ScriptMetadata::Dims(Some(2048), Some(1536)),
+                        final_dims: (Some(683), Some(1024)),
+                        steps: vec![Ok(40)],
+                    },
+                );
+            // An unscripted original: the default's small dimensions.
+            let m = t.metadata(&original_bytes(12));
+            assert_eq!((m.width, m.height), (Some(8), Some(8)));
+            assert_eq!(t.default_ladder_calls(), 0);
+            // The scripted one still answers its own, and its post-shrink probe
+            // is recognized as an ENCODE rather than falling to the default.
+            assert_eq!(
+                (t.metadata(&scripted).width, t.metadata(&scripted).height),
+                (Some(2048), Some(1536))
+            );
+            let enc = t.shrink_to_webp(&scripted, 1024, 78).unwrap();
+            let fm = t.metadata(&enc);
+            assert_eq!((fm.width, fm.height), (Some(683), Some(1024)));
+            assert_eq!(t.default_ladder_calls(), 0, "the default never laddered");
         }
 
         #[test]
