@@ -134681,3 +134681,54 @@ mutation battery spanning more than one test binary.
 (doc-only; the table itself unchanged — GOOGLE's rows live in the google
 corpora, not the envelope corpus): it now names the three places google is
 pinned instead of saying the claim is "not this lane's to assert".
+
+### §3 — Tier 2 items 8 + 9: the harness DRY and the anchored log asserts
+
+**Item 8 — `CorpusScript` in ONE home.** The two P4.D198 families carried
+character-identical copies (`CorpusScript`/`CorpusDims`/`CorpusStep` vs
+`CaseScript`/`Dims`/`Step`, plus `to_script`). The shared home is
+`crates/quilltap-harness/src/lib.rs`'s `scripted_transcoder` module, beside
+the `ShrinkScript` it builds — `quilltap-harness`'s lib is already a real
+dependency of both test binaries and carries no corpus, so reading it couples
+no regen (which was the stated reason for the duplication). 110 duplicate
+lines deleted; the two corpora keep their independent JSON.
+
+Both families regenerated FRESH from the baseline pin through the sanctioned
+driver and green, zero row change:
+
+```bash
+python3 harness/tools/recipe_sweep.py --run file_attachment_tier3_equivalence \
+  --v4 /tmp/qt-v4-pin-p4-99-bcd7e4852 --v5w <ABSOLUTE worktree>
+python3 harness/tools/recipe_sweep.py --run llm_image_budget_equivalence \
+  --v4 /tmp/qt-v4-pin-p4-99-bcd7e4852 --v5w <ABSOLUTE worktree>
+```
+
+`OK: file-attachment differential matched the oracle across all cases` and
+`OK: llm-image-budget differential matched the oracle across all 15 cases`;
+both recipes `ran end-to-end`, exit 0. Noted for the unifier: the two families
+do NOT share staging (`/tmp/qt-oracle-run` vs `/tmp/qt-oracle-run-llmib`), but
+`/tmp/qt-oracle-run` IS shared with `image_ingest_tier2_equivalence`
+(`--collisions` says so) — no lane this round touches it, and nothing was
+running, but a concurrent sweep of that family would have been destroyed by
+this one's `rm -rf`.
+
+**Item 9 — the anchored log asserts.** The capture layer renders a field as
+`" {name}={value}"`, so `line.contains("ceiling=512000")` is a PREFIX match:
+it also matches `ceiling=5120000`, and `final_size=98` matches
+`final_size=980000`. Every assert in that loop is a number, so off-by-a-digit
+is precisely the shape a wrong port produces. A `has_field` helper requires
+the terminator (the next field's space, or end of line). It also repairs the
+absent-field leg, which asserted `"{absent}= "` with a trailing space and
+would have been a false negative had the empty field ever been LAST on the
+line.
+
+**The proof is two-sided** — the only way to show an anchor is load-bearing.
+Chop one digit off a real value in the oracle
+(`provider_declares_a_ceiling`'s `ceiling` 512000 → 51200, a strict prefix):
+
+| assert spelling | result |
+|---|---|
+| baseline, true oracle | ok. 1 passed; 0 failed |
+| `has_field` (P4.99), chopped oracle | **FAILED** — names `bag ceiling=51200 missing` |
+| the PRE-P4.99 `contains`, chopped oracle | **ok. 1 passed** — blind to it |
+| restored | ok. 1 passed; 0 failed |

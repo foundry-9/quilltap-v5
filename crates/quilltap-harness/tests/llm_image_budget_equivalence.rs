@@ -72,7 +72,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use quilltap_core::files::llm_image_budget::shrink_image_for_llm_transport;
 use quilltap_harness::scripted_transcoder::{
-    encoded_bytes, original_bytes, RecordedCall, ScriptMetadata, ScriptedTranscoder, ShrinkScript,
+    encoded_bytes, original_bytes, CorpusScript, RecordedCall, ScriptedTranscoder,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -112,7 +112,7 @@ struct Case {
     filename: Option<String>,
     #[serde(rename = "originalLen")]
     original_len: usize,
-    script: CaseScript,
+    script: CorpusScript,
     /// A DECLARED ladder divergence: the rungs v5 asks for where they differ
     /// from v4's, with the reason. Only the `undecodable` row carries one (v4
     /// throws at the probe and never reaches the ladder; v5's probe cannot
@@ -129,59 +129,6 @@ struct CaseCall {
     #[serde(rename = "maxEdge")]
     max_edge: i64,
     quality: i64,
-}
-
-#[derive(Deserialize, Clone)]
-struct CaseScript {
-    /// `{"width": n|null, "height": n|null}` or the string `"throws"`.
-    metadata: Value,
-    #[serde(rename = "metadataThrowMessage", default)]
-    metadata_throw_message: Option<String>,
-    #[serde(rename = "final")]
-    final_dims: Dims,
-    steps: Vec<Step>,
-}
-
-#[derive(Deserialize, Clone)]
-struct Dims {
-    width: Option<i64>,
-    height: Option<i64>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(untagged)]
-enum Step {
-    Ok { len: usize },
-    Throw { throw: String },
-}
-
-impl CaseScript {
-    fn to_script(&self) -> ShrinkScript {
-        let metadata = if self.metadata.as_str() == Some("throws") {
-            ScriptMetadata::Throws(
-                self.metadata_throw_message
-                    .clone()
-                    .unwrap_or_else(|| "scripted metadata failure".to_string()),
-            )
-        } else {
-            ScriptMetadata::Dims(
-                self.metadata.get("width").and_then(Value::as_i64),
-                self.metadata.get("height").and_then(Value::as_i64),
-            )
-        };
-        ShrinkScript {
-            metadata,
-            final_dims: (self.final_dims.width, self.final_dims.height),
-            steps: self
-                .steps
-                .iter()
-                .map(|s| match s {
-                    Step::Ok { len } => Ok(*len),
-                    Step::Throw { throw } => Err(throw.clone()),
-                })
-                .collect(),
-        }
-    }
 }
 
 // ===========================================================================
@@ -255,6 +202,28 @@ fn rendered(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         other => other.to_string(),
+    }
+}
+
+/// Whether `line` carries the field `name` with EXACTLY this rendered value
+/// (P4.99).
+///
+/// The capture layer renders a field as `" {name}={value}"`, so a field is
+/// terminated by the next field's leading space or by end of line. A plain
+/// `contains("{name}={value}")` is therefore a PREFIX match on the value:
+/// `ceiling=512000` also matches a line reading `ceiling=5120000`, and
+/// `final_size=98` matches `final_size=980000`. Every one of these asserts is
+/// a number, so the off-by-a-digit case is exactly the one a wrong port
+/// produces. The anchor is the delimiter.
+fn has_field(line: &str, name: &str, value: &str) -> bool {
+    let needle = format!(" {name}={value}");
+    match line.find(&needle) {
+        None => false,
+        Some(at) => {
+            let after = at + needle.len();
+            // Terminated by the next field, or by the end of the line.
+            line.len() == after || line.as_bytes()[after] == b' '
+        }
     }
 }
 
@@ -489,7 +458,7 @@ fn llm_image_budget_matches_oracle() {
                             )
                         });
                     assert!(
-                        line.contains(&format!("{snake}={}", rendered(v))),
+                        has_field(line, snake, &rendered(v)),
                         "[{}] bag {k}={} missing from {line}",
                         c.label,
                         rendered(v)
@@ -501,7 +470,7 @@ fn llm_image_budget_matches_oracle() {
                 for absent in ["provider", "filename"] {
                     if !log.bag.contains_key(absent) {
                         assert!(
-                            line.contains(&format!("{absent}= ")),
+                            has_field(line, absent, ""),
                             "[{}] v4 dropped {absent} (undefined); v5 must render it EMPTY — \
                              the recorded narrowing. line: {line}",
                             c.label

@@ -341,6 +341,35 @@ are the two that cannot show the defect P4.98 fixes.
 Mutation-proven: driving the case with a valid prompt instead of the null
 reddens the family on exactly that row, v5 answering 201 with a generated
 image against v4's 400.
+#### 2026-09-18 — chore(harness): one home for `CorpusScript`, and log asserts that cannot match a longer number (P4.99 Tier 2)
+
+_Versions: harness 0.0.844._
+
+P4.D198 landed the scripted-transcoder corpus reader twice, character-identical
+modulo names: `CorpusScript`/`CorpusDims`/`CorpusStep` in
+`file_attachment_tier3_equivalence`, `CaseScript`/`Dims`/`Step` in
+`llm_image_budget_equivalence`. The duplication was deliberate at the time — a
+`mod` shared between two integration-test binaries would couple their regens —
+but the shared home was always `quilltap-harness`'s own lib, beside
+`ShrinkScript`, the type it builds: both test binaries already depend on it, and
+it carries no corpus of its own, so reading it couples nothing. The two corpora
+keep their independent JSON; only the reader is shared. 110 lines of duplicate
+deleted, zero row change: both families regenerated fresh from a worktree
+pinned at the oracle baseline and green (15 cases, and all cases).
+
+The log-bag asserts in `llm_image_budget_equivalence` were prefix matches. The
+capture layer renders a field as `" {name}={value}"`, so
+`contains("ceiling=512000")` also matches a line reading `ceiling=5120000`, and
+every one of these asserts is a number — the off-by-a-digit case is exactly what
+a wrong port produces. A `has_field` helper now requires the delimiter (the next
+field's space, or end of line), which also makes the absent-field leg correct
+when the empty field happens to be last.
+
+Proven two-sided, which is the only way to show an anchor is load-bearing:
+chop one digit off a real `ceiling=512000` in the oracle and the anchored assert
+goes red naming the bag, while the pre-P4.99 `contains` spelling passes it
+green.
+
 #### 2026-09-18 — port(google): pin GOOGLE as the third cache-key ignorer, in all three places (P4.99 Tier 1)
 
 _Versions: core 0.0.952, harness 0.0.843._

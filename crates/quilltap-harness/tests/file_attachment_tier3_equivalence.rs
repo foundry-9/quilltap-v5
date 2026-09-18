@@ -99,7 +99,7 @@ use quilltap_core::services::file_fallback::{
     process_file_attachment_fallback, FallbackDeps, FallbackFile, IMAGE_DESCRIPTION_INSTRUCTION,
 };
 use quilltap_harness::scripted_transcoder::{
-    original_bytes, RecordedCall, ScriptMetadata, ScriptedTranscoder, ShrinkScript,
+    original_bytes, CorpusScript, RecordedCall, ScriptMetadata, ScriptedTranscoder, ShrinkScript,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -159,63 +159,6 @@ struct CorpusCall {
     #[serde(rename = "maxEdge")]
     max_edge: i64,
     quality: i64,
-}
-
-/// One file's (or blob's) scripted encoder behaviour, as the corpus spells it.
-/// The same shape `llm_image_budget_equivalence` reads — deliberately
-/// duplicated rather than shared, because the two families' corpora are
-/// independent and a shared `mod` between integration tests would couple their
-/// regens.
-#[derive(Deserialize, Clone)]
-struct CorpusScript {
-    metadata: Value,
-    #[serde(rename = "metadataThrowMessage", default)]
-    metadata_throw_message: Option<String>,
-    #[serde(rename = "final")]
-    final_dims: CorpusDims,
-    steps: Vec<CorpusStep>,
-}
-
-#[derive(Deserialize, Clone)]
-struct CorpusDims {
-    width: Option<i64>,
-    height: Option<i64>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(untagged)]
-enum CorpusStep {
-    Ok { len: usize },
-    Throw { throw: String },
-}
-
-impl CorpusScript {
-    fn to_script(&self) -> ShrinkScript {
-        let metadata = if self.metadata.as_str() == Some("throws") {
-            ScriptMetadata::Throws(
-                self.metadata_throw_message
-                    .clone()
-                    .unwrap_or_else(|| "scripted metadata failure".to_string()),
-            )
-        } else {
-            ScriptMetadata::Dims(
-                self.metadata.get("width").and_then(Value::as_i64),
-                self.metadata.get("height").and_then(Value::as_i64),
-            )
-        };
-        ShrinkScript {
-            metadata,
-            final_dims: (self.final_dims.width, self.final_dims.height),
-            steps: self
-                .steps
-                .iter()
-                .map(|st| match st {
-                    CorpusStep::Ok { len } => Ok(*len),
-                    CorpusStep::Throw { throw } => Err(throw.clone()),
-                })
-                .collect(),
-        }
-    }
 }
 
 /// One attachment slot in an adapter case: either a fixture file by key, or a

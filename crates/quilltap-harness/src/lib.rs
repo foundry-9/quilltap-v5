@@ -310,6 +310,77 @@ pub mod scripted_transcoder {
         pub steps: Vec<Result<usize, String>>,
     }
 
+    /// The corpus spelling of a [`ShrinkScript`] (P4.99).
+    ///
+    /// Both P4.D198 families read the same JSON shape out of their own
+    /// (independent) corpora and each had its own character-identical copy of
+    /// this struct and `to_script` — `CorpusScript`/`CorpusDims`/`CorpusStep`
+    /// in `file_attachment_tier3_equivalence`, `CaseScript`/`Dims`/`Step` in
+    /// `llm_image_budget_equivalence`. The duplication was deliberate at the
+    /// time (a `mod` shared between two integration-test binaries would couple
+    /// their regens), but the shared home was always here, beside the type it
+    /// builds: `quilltap-harness`'s own lib is a real dependency of both test
+    /// binaries and carries no corpus of its own, so neither family's
+    /// regeneration is coupled to the other's by reading it.
+    ///
+    /// The two corpora keep their independent JSON; only the reader is shared.
+    #[derive(serde::Deserialize, Clone)]
+    pub struct CorpusScript {
+        /// `{"width": n|null, "height": n|null}` or the string `"throws"`.
+        pub metadata: serde_json::Value,
+        #[serde(rename = "metadataThrowMessage", default)]
+        pub metadata_throw_message: Option<String>,
+        #[serde(rename = "final")]
+        pub final_dims: CorpusDims,
+        pub steps: Vec<CorpusStep>,
+    }
+
+    #[derive(serde::Deserialize, Clone)]
+    pub struct CorpusDims {
+        pub width: Option<i64>,
+        pub height: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize, Clone)]
+    #[serde(untagged)]
+    pub enum CorpusStep {
+        Ok { len: usize },
+        Throw { throw: String },
+    }
+
+    impl CorpusScript {
+        pub fn to_script(&self) -> ShrinkScript {
+            let metadata = if self.metadata.as_str() == Some("throws") {
+                ScriptMetadata::Throws(
+                    self.metadata_throw_message
+                        .clone()
+                        .unwrap_or_else(|| "scripted metadata failure".to_string()),
+                )
+            } else {
+                ScriptMetadata::Dims(
+                    self.metadata
+                        .get("width")
+                        .and_then(serde_json::Value::as_i64),
+                    self.metadata
+                        .get("height")
+                        .and_then(serde_json::Value::as_i64),
+                )
+            };
+            ShrinkScript {
+                metadata,
+                final_dims: (self.final_dims.width, self.final_dims.height),
+                steps: self
+                    .steps
+                    .iter()
+                    .map(|st| match st {
+                        CorpusStep::Ok { len } => Ok(*len),
+                        CorpusStep::Throw { throw } => Err(throw.clone()),
+                    })
+                    .collect(),
+            }
+        }
+    }
+
     /// One resize+encode the ladder asked for.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct RecordedCall {
