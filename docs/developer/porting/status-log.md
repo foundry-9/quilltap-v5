@@ -134732,3 +134732,85 @@ Chop one digit off a real value in the oracle
 | `has_field` (P4.99), chopped oracle | **FAILED** — names `bag ceiling=51200 missing` |
 | the PRE-P4.99 `contains`, chopped oracle | **ok. 1 passed** — blind to it |
 | restored | ok. 1 passed; 0 failed |
+
+### §4 — the lane's gate
+
+Run from the lane worktree, `CARGO_INCREMENTAL=0`, `TZ=UTC`, ONE sentinel-
+guarded chain with the full log captured (never `| tail`), the per-binary
+`test result:` lines read.
+
+1. **§R.2 probe** — the order's expectation FAILED at lane open and the lane
+   STOPped twice (§0); after `/driftcheck` recorded `baa85e19b` and **the
+   human WAIVED** the one-commit gap, re-run before the regen batch and
+   clean: branch `main`, HEAD `baa85e19b`, tree CLEAN, `baa85e19b..main` and
+   `1a2b2164c..bugfix` both EMPTY, `git worktree list` showing four
+   lane-unique pins (no sharing).
+2. `cargo fmt --all --check` — clean.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — clean in BOTH
+   feature sets (default; `--features quilltap-core/native-transport`).
+4. `cargo build --workspace --release` — clean.
+5. `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+   block (`QT_ORACLE_FILE_ATTACHMENT`, `QT_FIXTURE_FILE_ATTACH_{MAIN,MOUNT}`,
+   `QT_ORACLE_LLM_IMAGE_BUDGET`; every other family's var WITHHELD so it
+   SKIPs honestly): **575 test binaries / 3,428 passed / 0 failed / 2
+   ignored — exit 0.** The 483 `SKIP:` lines are the withheld families'
+   (cargo prints them under `--nocapture`); **zero of them are in any of this
+   lane's five family binaries**, each confirmed RUN by name and duration:
+   `request_builder_google_equivalence` 0.00 s, `request_builder_google_wire_
+   equivalence` 0.01 s, `request_builder_equivalence` 0.11 s,
+   `llm_image_budget_equivalence` 0.17 s, `file_attachment_tier3_equivalence`
+   0.06 s — all 1 passed / 0 failed. The lane's five NEW unit tests are in
+   the log by name and green (the three recovery-line pins, the two
+   cache-key ignorer pins), with `OK: google wire framing matched recorded
+   (22 cases, both modes) … the cache-key ignorer pair proven byte-identical
+   in both modes`.
+6. **Source censuses:** none moved (the order predicted none, and none did —
+   this lane adds no dispatch verb, no `*_id` field, no qt-class and closes
+   no divergence a census counts).
+
+**Fixtures changed, and what they invalidate:** `google-request.recorded.
+ndjson` and `google-wire.recorded.ndjson` (+2 and +4 rows, additions only).
+Their ONLY readers are `request_builder_google_equivalence` and
+`request_builder_google_wire_equivalence` — both re-run and green. No other
+family reads them (GOOGLE is absent from `request-envelopes.recorded.
+ndjson`: 367 rows across nine providers, none google). The two P4.D198
+corpora were NOT touched; their oracles are `/tmp` artifacts regenerated
+fresh at the pin for the DRY's neutrality proof.
+
+**Versions:** core 0.0.952, harness 0.0.844 (base at planning: core 0.0.950,
+harness 0.0.842 — three commits, two core bumps and two harness bumps).
+Nothing else touched: no `web`, `host`, `cli`, `tauri`, no `apps/web/**`.
+
+### §5 — findings and deferrals
+
+**For the unifier, outside this lane's ownership (recorded, not acted on):**
+
+- **The order's M5 prediction was WRONG** and the measurement is the
+  interesting half — see §2. A cache key written into google's `config` is
+  invisible to BOTH differentials; only the unit pin sees it.
+- **`primary_stream.rs` has no other absent v4 log line in the branch
+  region** (Tier-3 item 3's survey). Reading v4 `:275-345` at the pin against
+  v5 `:1251-1470`: v4's three tool-unsupported lines are ported (P4.97), the
+  recovery INFO line is this lane's, and there is no fourth. The recovery
+  SERVICE (`services/recovery.rs`) emits no tracing at all on either side —
+  v4's `recovery.service.ts` is equally silent, so that is parity, not a gap.
+- **`/tmp/qt-oracle-run` is shared staging** between
+  `file_attachment_tier3_equivalence` and `image_ingest_tier2_equivalence`
+  (the driver's `--collisions` says so). Neither is another lane's this
+  round, and nothing was running, but the recipe's `rm -rf "$TMPO"` would
+  destroy a concurrent `image_ingest` regen. Worth a lane-private staging
+  var if the two ever run in one round.
+
+**Deferred, loudly, by name (Tier 3 — untouched, as the order says):**
+
+- **P4.D198's tier-3 backstop blindness** — `file_attachment_tier3` still
+  cannot see the provider-ceiling backstop act; it needs
+  `resizeImageForProvider`'s whole pipeline scripted in the shared mock. NOT
+  this lane.
+- **The `name`-field turn-path measurement** (`[CHEAP_LLM_NAME_FIELD_GAP]`)
+  — a request-envelopes corpus question; that corpus is untouched this
+  round. NOT this lane.
+
+**💸 the dogfood queue gains:** a real token-limit or PDF-page-cap turn whose
+`combined.log` now carries `Recoverable request error detected, attempting
+recovery` with its five fields, ahead of whatever the recovery then does.
