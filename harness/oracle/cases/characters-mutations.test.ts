@@ -963,6 +963,18 @@ async function main(): Promise<void> {
       nonStringPrompt: 42,
       extraBody: { name: 'Aria Should Not Persist' },
     },
+    // The uuid HALF of the same gate. `z.uuid()` refuses a string that is not
+    // a uuid at the parse too, so v4 writes NOTHING — where a well-formed
+    // unknown id (`update_name_and_bad_default`) lands the generic patch first.
+    // [unify, the `baa85e19b` round's §3 review] v5 had reproduced the
+    // non-string half only; a non-uuid string reached the write.
+    {
+      name: 'update_name_and_nonuuid_default',
+      kind: 'default-prompt',
+      id: ARIA,
+      literalPromptId: 'not-a-uuid',
+      extraBody: { name: 'Aria Should Not Persist Either' },
+    },
     // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist through
     // PUT (previously stripped before update()). Echo reflects both DB columns.
     {

@@ -494,28 +494,26 @@ fn zod_theme_preference(v: &Value) -> Result<chat_settings::SettingsColVal, Stri
         .map_err(|_| err())
 }
 
-// ---------------------------------------------------------------------------
-// P4.D73 — `SmartTypographySettingsSchema.parse` at the route (v4 4.8.2
-// `2d31810f`, `settings/chat/route.ts` L273).
-// ---------------------------------------------------------------------------
-
-/// Re-exported for `db/prompt_templates.rs`, which imports the uuid gate by
-/// this path; every other consumer now names [`crate::api::zod_issues`]
-/// directly.
-pub(crate) use super::zod_issues::zod_uuid_ok;
 /// The Zod-4 issue type, its constructors, the `parsedType` word, the uuid
 /// gate and the `ZodError.message` renderer all live in ONE home now
 /// ([`crate::api::zod_issues`], P4.101) — this file grew the first copy and
 /// seven more followed it around the tree. Nothing observable moved in the
 /// fold: the key order per code was measured against the checkout's real
 /// `zod` 4.5.4 and every family that pins these envelopes was re-run unchanged
-/// at the `89fcc3c0d` baseline pin.
+/// at the `89fcc3c0d` baseline pin. (Every consumer names the home directly —
+/// the transitional `zod_uuid_ok` re-export for `db/prompt_templates.rs` was
+/// retired at the round's unification.)
 ///
 /// The one shape change is `path`: the home carries Zod's own
 /// `(string | number)[]` as `Vec<Value>`, where this file used `Vec<String>`.
 /// No settings path carries an index — every one is built by [`zod_path`] or
 /// is a single literal key — so the JSON is identical.
-use super::zod_issues::{zod_error_message, ZodIssue};
+use super::zod_issues::{zod_error_message, zod_uuid_ok, ZodIssue};
+
+// ---------------------------------------------------------------------------
+// P4.D73 — `SmartTypographySettingsSchema.parse` at the route (v4 4.8.2
+// `2d31810f`, `settings/chat/route.ts` L273).
+// ---------------------------------------------------------------------------
 
 /// The path for a key inside a bag reached under `prefix` — `[]` for a
 /// route-level `Schema.parse` (the bag IS the parse root), `["cheapLLMSettings"]`

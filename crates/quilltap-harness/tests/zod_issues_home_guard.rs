@@ -177,7 +177,14 @@ fn strip_test_modules(text: &str) -> String {
     let mut i = 0usize;
     while i < bytes.len() {
         let rest = &text[i..];
-        if rest.starts_with("#[cfg(test)]") {
+        // Only an attribute that BEGINS its line and heads a `mod` item enters
+        // the brace scan. A brace-less `#[cfg(test)] const …` (`db/files.rs`)
+        // or the attribute quoted inside a `//!` doc comment
+        // (`test_support.rs`) used to send the scan to the next `{` anywhere in
+        // the file and strip PRODUCTION code from the census's view — a hole a
+        // ninth copy could have hidden in (the `baa85e19b` round's §3 review).
+        let at_line_start = i == 0 || bytes[i - 1] == b'\n';
+        if at_line_start && rest.starts_with("#[cfg(test)]") && heads_a_module(rest) {
             // Skip to the opening brace of the item, then to its match.
             let Some(open_rel) = rest.find('{') else {
                 break;
@@ -235,6 +242,32 @@ fn strip_test_modules(text: &str) -> String {
         i += ch.len_utf8();
     }
     out
+}
+
+/// Does the text between a `#[cfg(test)]` and its first `{` read as a module
+/// header (`mod x`, `pub mod x`, `pub(crate) mod x`)? Anything else — a
+/// `const`, a `fn`, a `use`, a doc-comment quotation — is not a module and
+/// must not be stripped.
+fn heads_a_module(rest: &str) -> bool {
+    let Some(open) = rest.find('{') else {
+        return false;
+    };
+    let header = rest["#[cfg(test)]".len()..open].trim();
+    let header = header
+        .strip_prefix("pub")
+        .map(str::trim_start)
+        .unwrap_or(header);
+    let header = header
+        .strip_prefix('(')
+        .and_then(|h| h.split_once(')').map(|(_, t)| t.trim_start()))
+        .unwrap_or(header);
+    match header.strip_prefix("mod") {
+        Some(t) => {
+            t.starts_with(char::is_whitespace)
+                && t.trim().chars().all(|c| c.is_alphanumeric() || c == '_')
+        }
+        None => false,
+    }
 }
 
 fn count(text: &str, needles: &[&str]) -> usize {

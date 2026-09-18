@@ -31,7 +31,11 @@
 //! spelling is unobservable in production; it is written out anyway (and asked
 //! by the corpus) so a future reader cannot mistake a narrowing for the contract.
 //! The column match is JS `===`, so a truthy NON-string column can never equal a
-//! string `id` and falls through exactly as a falsy one would.
+//! string `id` and falls through exactly as a falsy one would. The `Id` form
+//! narrows a non-string `id` to `None` where v4's `?.id ?? null` would return
+//! it as-is — unreachable from the vault reader (every id is a path-derived
+//! string), and the corpus's row type carries `id` as an optional string, so
+//! the shape is stated here rather than asked.
 
 use serde_json::Value;
 

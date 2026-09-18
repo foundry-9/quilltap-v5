@@ -112,6 +112,45 @@ fn assert_edge_matches_dispatch(
     }
 }
 
+/// The URL id wins over a body key that spells the same name. v4's route
+/// schemas are `z.object`s over the body keys alone — a body `characterId`
+/// is STRIPPED and the path param is what the handler reads — so the helper
+/// must never let a body key redirect the write. Pinned with the path key
+/// deliberately listed among `body_keys`, which is the only way the two can
+/// collide (the `baa85e19b` round's §3 review: path fields used to be
+/// inserted FIRST, so a same-named body key would have overwritten them).
+#[test]
+fn a_body_key_spelling_a_path_id_cannot_overwrite_the_url() {
+    let parsed = json!({
+        "characterId": "from-the-body",
+        "subpromptId": "also-from-the-body",
+        "title": "t",
+    });
+    let req = request_envelope(
+        "characterSubpromptUpdate",
+        &parsed,
+        &["title", "content", "characterId", "subpromptId"],
+        &[
+            ("characterId", json!("from-the-url")),
+            ("subpromptId", json!("url-subprompt")),
+        ],
+    )
+    .expect("decodes");
+    match req {
+        CoreRequest::CharacterSubpromptUpdate {
+            character_id,
+            subprompt_id,
+            title,
+            ..
+        } => {
+            assert_eq!(character_id, "from-the-url");
+            assert_eq!(subprompt_id, "url-subprompt");
+            assert_eq!(title, Some(Some(json!("t"))));
+        }
+        other => panic!("wrong variant: {other:?}"),
+    }
+}
+
 const SUBPROMPT_KEYS: [&str; 2] = ["title", "content"];
 const PROMPT_TEMPLATE_KEYS: [&str; 5] = ["name", "content", "description", "category", "modelHint"];
 

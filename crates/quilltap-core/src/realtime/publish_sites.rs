@@ -192,7 +192,15 @@ impl HintCapture {
                 }
                 // The channel closed (the bus was disarmed mid-wait) — no
                 // more hints are coming.
-                Ok(Err(_)) => break,
+                Ok(Err(broadcast::error::RecvError::Closed)) => break,
+                // A receiver that fell behind the 256-slot buffer is NOT a
+                // close: treating it as one would hand back a partial that
+                // reads like the channel simply ran dry (the `baa85e19b`
+                // round's §3 review). Loud, naming the loss.
+                Ok(Err(broadcast::error::RecvError::Lagged(skipped))) => panic!(
+                    "HintCapture::drain_expecting({n}) LAGGED — {skipped} hint(s) \
+                     were dropped before they could be read; collected so far: {out:?}"
+                ),
                 Err(_) => panic!(
                     "HintCapture::drain_expecting({n}) timed out after {deadline:?} \
                      waiting for hint #{}; collected so far: {out:?}",

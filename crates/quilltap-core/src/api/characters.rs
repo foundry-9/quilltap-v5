@@ -2207,16 +2207,23 @@ pub async fn character_update(
         // absent; `Value::Null` is the clear; a string names a prompt.
         let raw_default_prompt = patch.remove("defaultSystemPromptId");
         // v4 declares the field `z.uuid().nullable().optional()` (`put.ts:61`),
-        // so a non-string, non-null value never reaches its handler: Zod answers
-        // 400 at the PARSE, before any write. v5's `build_update_patch` is a
-        // strip, not a validator (the standing Zod-format-validator deferral), so
-        // the value arrives here — refused at v4's POSITION, so nothing is
-        // written, with v5's own sentence (the deferral's recorded cost). ⚠ Not
-        // collapsed onto `None`: a bare `as_str()` would read `42` as the CLEAR
-        // and silently drop the default on a request v4 refuses outright.
+        // so a non-string, non-null value — AND a string that is not a uuid —
+        // never reaches its handler: Zod answers 400 at the PARSE, before any
+        // write. v5's `build_update_patch` is a strip, not a validator (the
+        // standing Zod-format-validator deferral), so the value arrives here —
+        // refused at v4's POSITION, so nothing is written, with v5's own
+        // sentence (the deferral's recorded cost). ⚠ Not collapsed onto `None`:
+        // a bare `as_str()` would read `42` as the CLEAR and silently drop the
+        // default on a request v4 refuses outright. ⚠ The uuid half is
+        // load-bearing too (the `baa85e19b` round's §3 review, red-first on
+        // `characters_mutations`' `update_name_and_nonuuid_default`): without
+        // it a non-uuid string fell through to the chokepoint's miss BELOW —
+        // after the generic patch had already landed — so the `name` beside it
+        // persisted on a request v4 writes nothing for.
         let bad_type = matches!(
             raw_default_prompt,
-            Some(ref v) if !v.is_null() && !v.is_string()
+            Some(ref v) if !v.is_null()
+                && !v.as_str().is_some_and(crate::api::zod_issues::zod_uuid_ok)
         );
         if bad_type {
             return Ok(Err(bad_request(

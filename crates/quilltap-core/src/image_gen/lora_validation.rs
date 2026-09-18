@@ -139,6 +139,9 @@ pub fn validate_profile_loras(parameters: &Value) -> Option<Vec<LoraZodIssue>> {
 
 /// The `details` array of v4's `validationError(err)` body, ready for the
 /// [`crate::api::types::Response`] carry.
+///
+/// Kept as this file's callers' spelling; the home
+/// ([`crate::api::zod_issues::zod_issue_details`]) owns the bytes (P4.101).
 pub fn lora_issue_details(issues: &[LoraZodIssue]) -> Value {
     crate::api::zod_issues::zod_issue_details(issues)
 }

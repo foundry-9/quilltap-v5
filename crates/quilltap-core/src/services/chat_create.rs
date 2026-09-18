@@ -349,6 +349,9 @@ use crate::weighted_random::{pick_weighted_random, DrawSource};
 
 /// The `details` array of v4's `validationError(err)` body, ready for
 /// [`CoreError::details`](crate::api::types::CoreError::details).
+///
+/// Kept as this file's callers' spelling; the home
+/// ([`crate::api::zod_issues::zod_issue_details`]) owns the bytes (P4.101).
 pub fn create_issue_details(issues: &[CreateZodIssue]) -> Value {
     zod_issue_details(issues)
 }

@@ -353,7 +353,7 @@ fn raw_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawRow> {
 /// raw SQL (v4's own repo `create` will not write it) and v4's list comes back
 /// one row shorter than the table.
 fn validate_safe(raw: RawRow) -> Option<PromptTemplateRecord> {
-    use crate::api::settings::zod_uuid_ok;
+    use crate::api::zod_issues::zod_uuid_ok;
     use crate::jsstr::{zod_len_max_ok, zod_len_min_ok};
 
     if !zod_uuid_ok(&raw.id) {

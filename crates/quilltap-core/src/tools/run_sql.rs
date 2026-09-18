@@ -186,7 +186,7 @@ fn validate_input(args: &Value) -> Result<RunSqlInput, String> {
     // database: enum, optional (default main).
     let database = match obj.get("database") {
         None | Some(Value::Null) => "main".to_string(),
-        Some(Value::String(s)) if s == "main" || s == "llm-logs" || s == "mount-index" => s.clone(),
+        Some(Value::String(s)) if DATABASES.contains(&s.as_str()) => s.clone(),
         Some(other) => {
             // Scope limit 1 above: the `, received <type>` suffix is this
             // port's, not zod's. Kept verbatim so P4.101 moves no byte.

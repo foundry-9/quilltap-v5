@@ -200,6 +200,45 @@ describe('CharacterSystemPromptsTab', () => {
     expect(createCall!['content']).toBe('Speak tenderly.');
   });
 
+  describe('the create form’s default seed (v4 `openCreateModal`)', () => {
+    /** The create modal's "Set as default prompt" checkbox. */
+    function isDefaultBox(fixture: ComponentFixture<unknown>): HTMLInputElement {
+      return fixture.nativeElement.querySelector('#isDefault') as HTMLInputElement;
+    }
+
+    it('a character’s FIRST prompt opens the form already starred, and the create carries it', async () => {
+      const seen: Array<{ type: string; [k: string]: unknown }> = [];
+      const fixture = await render(stubClient([], (req) => seen.push(req)));
+
+      clickButtonWithText(fixture, '+ Add Prompt');
+      await settle(fixture);
+      expect(isDefaultBox(fixture).checked).toBe(true);
+
+      const nameInput = fixture.nativeElement.querySelector(
+        'input[placeholder="e.g., Romantic, Companion, Professional"]',
+      ) as HTMLInputElement;
+      nameInput.value = 'Romantic';
+      nameInput.dispatchEvent(new Event('input'));
+      contentEditor(fixture).setMarkdown('Speak tenderly.');
+      await settle(fixture);
+      clickButtonWithText(fixture, 'Create');
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+
+      const createCall = seen.find((r) => r.type === 'characterPromptCreate');
+      expect(createCall).toBeTruthy();
+      expect(createCall!['isDefault']).toBe(true);
+    });
+
+    it('a SECOND prompt opens the form unstarred (the seed is `prompts.length === 0`, not always)', async () => {
+      const fixture = await render(stubClient([prompt({ isDefault: true })]));
+
+      clickButtonWithText(fixture, '+ Add Prompt');
+      await settle(fixture);
+      expect(isDefaultBox(fixture).checked).toBe(false);
+    });
+  });
+
   it('editing a prompt dispatches characterPromptUpdate', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient([prompt()], (req) => seen.push(req)));

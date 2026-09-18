@@ -260,19 +260,40 @@ fn run_op(main: &Writer, mount: &Writer, character_id: &str, op: &Op) {
                 .target_name
                 .as_deref()
                 .map(|name| resolve_item_id(main, mount, cid, "systemPrompts", "name", name));
-            arr::set_default_system_prompt(m, mo, cid, id.as_deref())
-                .expect("set_default_system_prompt");
+            // The SILENCE leg of the `System prompt not found` warn (below): a
+            // resolved id — or the `None` clear — must not fire it.
+            let (accepted, lines) = quilltap_core::test_support::captured_with(|| {
+                arr::set_default_system_prompt(m, mo, cid, id.as_deref())
+                    .expect("set_default_system_prompt")
+            });
+            assert!(accepted, "setDefaultSystemPrompt: v5 refused a resolved id");
+            assert!(
+                !lines.iter().any(|l| l.contains("System prompt not found")),
+                "setDefaultSystemPrompt: the miss warn fired on a hit: {lines:?}"
+            );
         }
         // [P4.D201 / v4 `baa85e19b`] the refusal arm: a NON-null id the character
         // does not have. v4 warns and returns null having written nothing; v5
-        // answers `Ok(false)`. The six-table census proves the nothing.
+        // answers `Ok(false)`. The six-table census proves the nothing; the
+        // capture layer pins v4's `logger.warn('System prompt not found',
+        // { characterId, promptId })` with both fields (the `baa85e19b` round's
+        // §3 review — the order's Tier-1 item 2 asked for the pin and the lane
+        // ported the line without one).
         "setDefaultSystemPromptMissing" => {
             let pid = op.prompt_id.as_deref().expect("promptId");
-            let accepted = arr::set_default_system_prompt(m, mo, cid, Some(pid))
-                .expect("set_default_system_prompt (missing)");
+            let (accepted, lines) = quilltap_core::test_support::captured_with(|| {
+                arr::set_default_system_prompt(m, mo, cid, Some(pid))
+                    .expect("set_default_system_prompt (missing)")
+            });
             assert!(
                 !accepted,
                 "setDefaultSystemPromptMissing: v5 accepted a foreign prompt id"
+            );
+            assert!(
+                lines.iter().any(|l| l.contains("System prompt not found")
+                    && l.contains(&format!("characterId={cid}"))
+                    && l.contains(&format!("promptId={pid}"))),
+                "setDefaultSystemPromptMissing: v4's warn with both fields is missing: {lines:?}"
             );
         }
         "deleteSystemPrompt" => {

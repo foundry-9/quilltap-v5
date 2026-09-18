@@ -1327,11 +1327,12 @@ fn characters_mutations_match_oracle() {
             /// first route-level archived WRITE in this family), not part of bug
             /// 154; named for the unifier as a follow-up.
             ArchivedGuard500,
-            /// status + readback only. v4 refuses a non-string at the ZOD PARSE
-            /// and answers its validation envelope; v5 has no validator on this
-            /// field (the standing Zod-format-validator deferral) and refuses at
-            /// the same POSITION with its own sentence. Both write NOTHING,
-            /// which the readback proves.
+            /// status + readback only. v4 refuses a non-string — and a string
+            /// that is not a uuid (`z.uuid()`) — at the ZOD PARSE and answers
+            /// its validation envelope; v5 has no Zod validator on this field
+            /// (the standing Zod-format-validator deferral) and refuses both at
+            /// the same POSITION with its own sentence, gating the string on
+            /// `zod_uuid_ok`. Both write NOTHING, which the readback proves.
             NonStringSentence,
         }
         let arms: Vec<(&str, &str, Sends, Value, Compare)> = vec![
@@ -1389,6 +1390,20 @@ fn characters_mutations_match_oracle() {
                 ARIA,
                 Sends::NonString(json!(42)),
                 json!({ "name": "Aria Should Not Persist" }),
+                Compare::NonStringSentence,
+            ),
+            // The uuid HALF of the same Zod gate (`z.uuid()`): a STRING that is
+            // not a uuid is refused at v4's parse too, before any write. The
+            // `baa85e19b` round's §3 review found v5 reproducing only the
+            // non-string half — a non-uuid string reached the generic write
+            // first, so the `name` beside it persisted (the partial-write shape
+            // v4 reserves for a WELL-FORMED unknown id). RED-FIRST on the
+            // readback; same comparand as the non-string arm.
+            (
+                "update_name_and_nonuuid_default",
+                ARIA,
+                Sends::Literal("not-a-uuid"),
+                json!({ "name": "Aria Should Not Persist Either" }),
                 Compare::NonStringSentence,
             ),
         ];

@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — fix(unify): the `baa85e19b` round's §3 review fixes — the uuid half of the character PUT's default-prompt gate, the miss warn's capture pin, the envelope helper's path-wins ordering, the census stripper, the drain's `Lagged` arm, the first-prompt default seed
+
+_Versions: core 0.0.966, harness 0.0.857, web 0.0.156, SPA 0.5.739._
+
+Seven repairs from the unification's own read of the combined diff against v4's real
+code, none blocking, three of them shaping behaviour. **The uuid half of v4's
+`z.uuid().nullable().optional()` gate** (`api/characters.rs`, P4.D201): the lane refused
+a non-string `defaultSystemPromptId` at v4's parse position but let a STRING that is not
+a uuid through to the chokepoint's miss — after the generic patch had already landed —
+so `{name, defaultSystemPromptId: "not-a-uuid"}` persisted the `name` on a request v4
+writes nothing for. Now gated on `zod_uuid_ok` at the same position; red-first on
+`characters_mutations_equivalence`'s new `update_name_and_nonuuid_default` arm (the
+readback carried the new name before the fix; v4's does not), green after. **The
+`System prompt not found` warn's capture pin** (P4.D201 Tier-1 item 2 asked for one; the
+lane ported the line without it): pinned with both fields in
+`characters_arrays_tier2_equivalence`'s `setDefaultSystemPromptMissing` op, with silence
+legs on the resolved-id and clear ops. **`request_envelope`'s ordering** (P4.102): the
+URL-sourced path fields were inserted BEFORE the body keys, so a body key spelling a
+path id would have overwritten the URL (no current caller was exposed, measured against
+all four edges); path fields now go in LAST and win, pinned by
+`a_body_key_spelling_a_path_id_cannot_overwrite_the_url`. **The `zod_issues` census
+stripper** (P4.101): its test-module scan entered on ANY `#[cfg(test)]` and brace-matched
+from the next `{` anywhere in the file, so a brace-less `#[cfg(test)] const` (`db/files.rs`)
+and a `//!` doc comment quoting the attribute (`test_support.rs`) each stripped ~70 lines
+of PRODUCTION code from the census's view — a hole a ninth copy could have hidden in; it
+now enters only for a line-leading attribute that heads a `mod`. **`drain_expecting`'s
+recv-error arm** (P4.100) treated a `Lagged` receiver exactly like a clean `Closed` — a
+silently-returned partial reading as "the channel ran dry"; it now panics naming the
+dropped count. **The create form's first-prompt seed** (P4.D202's recorded out-of-mandate
+gap): a character's FIRST system prompt now opens the Edit/Create Prompt dialog already
+starred, v4 `openCreateModal`'s `isDefault: prompts.length === 0`, seeded through the
+same `initialForm` door `onImport` already used; two specs. Plus: the transitional
+`zod_uuid_ok` re-export in `api/settings.rs` retired with its one importer
+(`db/prompt_templates.rs`) repointed at the home; `run_sql`'s `database` membership gate
+folded onto the `DATABASES` constant it already carried; three doc-precision notes on the
+D201 port (the voice preview's front-arm `''` filter vs v4's `??`, recorded; the `Id`
+form's non-string-id narrowing; `update_system_prompt`'s patch merge ahead of the
+projection); two one-line notes on why `create_issue_details` / `lora_issue_details`
+survive as spellings; and the P4.101 lane record's "`pub(crate) mod` is impossible" claim
+corrected (it was possible — `pub mod` stands as a consistency choice). Recorded onward,
+not fixed here: the uuid gate still has TWO copies outside the P4.101 home
+(`api/chat_outfits.rs::is_zod_uuid`, `services/file_storage.rs::is_zod_uuid`, ~8
+importers); the System Prompts tab's whole-tab missing success sentence; the prompt-RENAME
+column wart (both sides).
+
 #### 2026-09-18 — fix(harness): the subresources readback guard reads as a plain assert
 
 _Versions: harness 0.0.854._

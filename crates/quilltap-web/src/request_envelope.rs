@@ -59,9 +59,6 @@ pub fn request_envelope(
 ) -> Option<CoreRequest> {
     let mut envelope = serde_json::Map::new();
     envelope.insert("type".into(), Value::String(kind.to_string()));
-    for (key, value) in path_fields {
-        envelope.insert((*key).to_string(), value.clone());
-    }
     if let Value::Object(map) = parsed {
         for key in body_keys {
             // PRESENT-ness is what carries: a key holding `null` must be
@@ -71,6 +68,15 @@ pub fn request_envelope(
                 envelope.insert(key.to_string(), v.clone());
             }
         }
+    }
+    // The URL-sourced ids go in LAST, so they win: v4's route schemas are
+    // `z.object`s over the BODY keys alone and the path param is read from the
+    // URL, so a body that also spells `characterId` can never redirect the
+    // write. Inserting them first would let a same-named body key overwrite
+    // them (the `baa85e19b` round's §3 review; pinned by
+    // `a_body_key_spelling_a_path_id_cannot_overwrite_the_url`).
+    for (key, value) in path_fields {
+        envelope.insert((*key).to_string(), value.clone());
     }
     serde_json::from_value::<CoreRequest>(Value::Object(envelope)).ok()
 }

@@ -110,7 +110,12 @@ fn demote_all(items: &mut [Value]) {
 /// The `isDefault` test is `as_bool() == Some(true)` rather than the resolver's
 /// general JS truthiness: these items come from the read overlay, whose
 /// `normalize_prompt_defaults` types the flag as a `bool` (and guarantees exactly
-/// one default among a non-empty list) before any writer touches it.
+/// one default among a non-empty list) before any writer touches it. The one
+/// writer that merges a CALLER's patch into an item first — [`update_system_
+/// prompt`] — reaches this through the typed `characterPromptUpdate` verb, whose
+/// `isDefault` is an `Option<bool>`, so a non-bool flag cannot arrive here in
+/// production either (it would leave the siblings undemoted and the column
+/// unmoved where v4's JS-truthy `if (data.isDefault)` would promote).
 fn project_system_prompts(
     main: &Connection,
     mount: &Connection,

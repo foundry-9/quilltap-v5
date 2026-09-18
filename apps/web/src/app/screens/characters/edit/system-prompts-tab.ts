@@ -11,7 +11,7 @@ import {
   type PromptTemplateRecord,
 } from '../generators/prompts-editor/prompt-templates.api';
 import { CharacterPromptPreviewModal } from '../generators/prompts-editor/preview-modal';
-import { PromptModal, type PromptFormData } from './prompt-modal';
+import { INITIAL_PROMPT_FORM_DATA, PromptModal, type PromptFormData } from './prompt-modal';
 import { ProgressionsSection } from '../../../progressions/progressions-section';
 import { SubpromptsSection } from '../../../subprompts/subprompts-section';
 
@@ -236,9 +236,19 @@ export class CharacterSystemPromptsTab {
     }
   }
 
+  /**
+   * v4 `openCreateModal` (`useSystemPrompts.ts:111-117`): a character's FIRST
+   * system prompt opens the create form already starred — `isDefault:
+   * prompts.length === 0`, "First prompt is default". Seeded through the same
+   * `initialForm` door `onImport` uses. (A pre-existing v5 gap the P4.D202 lane
+   * recorded and the `baa85e19b` round's §3 review closed — unrelated to bug
+   * 154, but the star beat's own gesture had to tick the box by hand for it.)
+   */
   protected openCreate(): void {
     this.editingPrompt.set(null);
-    this.importedForm.set(null);
+    this.importedForm.set(
+      this.prompts().length === 0 ? { ...INITIAL_PROMPT_FORM_DATA, isDefault: true } : null,
+    );
     this.error.set(null);
     this.modalOpen.set(true);
   }

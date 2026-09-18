@@ -857,6 +857,13 @@ pub async fn chat_impersonation_voice_preview(
     // a column naming a prompt the character no longer had won over the prompt
     // actually flagged default. v5 reproduced that chain, comment and all, until
     // this port; `resolve_default_system_prompt_id` checks existence first.
+    //
+    // RECORDED (pre-existing, kept): the two front arms filter `''` where v4's
+    // `??` keeps it. The override arm cannot carry `''` (`z.uuid()` refuses it);
+    // the seat's `selectedSystemPromptId` is a DB column that could, and there
+    // v4 resolves `''` (which `getSelectedOrDefaultSystemPrompt` then misses,
+    // falling to the default) while v5 falls through to the default's id — the
+    // same assembled prompt, a different LOGGED `systemPromptId`.
     let resolved_system_prompt_id: Option<String> = system_prompt_id
         .filter(|s| !s.is_empty())
         .map(str::to_string)
