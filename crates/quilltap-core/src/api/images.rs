@@ -1467,9 +1467,14 @@ fn parse_generate_body(
                 _ => return Err(bad()),
             }
         }
+        // `style: z.enum(['vivid','natural'])` — through the ONE list since
+        // P4.96 ([`crate::image_gen::style`]), which the tool schema and the
+        // profile-id generate route share.
         if let Some(v) = o.get("style") {
             match v.as_str() {
-                Some(s @ ("vivid" | "natural")) => overrides.style = Some(s.to_string()),
+                Some(s) if crate::image_gen::style::is_image_style(s) => {
+                    overrides.style = Some(s.to_string())
+                }
                 _ => return Err(bad()),
             }
         }

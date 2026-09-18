@@ -31,7 +31,10 @@ use crate::tools::generate_image::{
 
 // P4.56: the three profile-update handlers share ONE reader for the JS
 // semantics of `apiKeyId` / `baseUrl`; only the consequences differ per site.
-use super::settings::{classify_api_key_id, classify_base_url, ApiKeyIdPatch, BaseUrlPatch};
+use super::settings::{
+    classify_api_key_id, classify_base_url, zod_uuid_ok, ApiKeyIdPatch, BaseUrlPatch,
+    ZOD_UUID_PATTERN,
+};
 use super::types::{ErrorKind, Response};
 
 // ===========================================================================
@@ -615,48 +618,354 @@ pub fn image_provider_list() -> Response {
 }
 
 // ===========================================================================
-// generate (P4.6ai — the un-refusal over the injected W4.9a runner)
+// generate (P4.6ai — the un-refusal over the injected W4.9a runner;
+//           P4.96 — v4's whole `generateImageSchema` body, all eight keys)
 // ===========================================================================
 
+/// v4's `generateImageSchema` input, RAW.
+///
+/// Every field is the value as it arrived (`None` = the key was ABSENT), never
+/// a decoded `String`/`i64`, because `.optional()` is not `.nullable()` and Zod
+/// reports the *received type* in its issue message: a typed decode collapses
+/// `null`, `1024` and `{}` into one indistinguishable "absent" and destroys the
+/// evidence the refusal is built from. This is the `ChatCreate`-trio /
+/// `ImagesGenerate` rule stated at [`crate::api::types::Request`]
+/// (`ImagesGenerate`'s doc) and ruled by P4.62/P4.73: the RAW value crosses the
+/// boundary and the HANDLER refuses it, so Tauri IPC and HTTP answer the same
+/// bytes rather than a serde decode error at one edge and a Zod envelope at the
+/// other.
+///
+/// `prompt` and `count` ride raw here for the same reason, even though the
+/// dispatch variant still types them (`prompt: String`, `count: Option<i64>` —
+/// the recorded pre-existing narrowing this order does not reopen: the WEB EDGE
+/// refuses a non-string prompt or a `"2"` count with a serde sentence before
+/// this handler is reached). The handler itself is v4-faithful for every shape,
+/// and `image_generate_route_equivalence` drives it directly, so the narrowing
+/// is visible exactly where it is: at the transport, pinned by
+/// `dispatch_wrong_type_census`.
+#[derive(Debug, Default, Clone)]
+pub struct ImageProfileGenerateBody {
+    pub prompt: Option<Value>,
+    pub chat_id: Option<Value>,
+    pub count: Option<Value>,
+    pub size: Option<Value>,
+    pub quality: Option<Value>,
+    pub style: Option<Value>,
+    pub aspect_ratio: Option<Value>,
+    pub negative_prompt: Option<Value>,
+}
+
+/// The parsed body — v4's `validated`.
+struct ParsedGenerate {
+    prompt: String,
+    chat_id: Option<String>,
+    /// `.optional().prefault(1)` — absent means 1, BEFORE the profile's own `n`.
+    count: i64,
+    size: Option<String>,
+    quality: Option<String>,
+    style: Option<String>,
+    aspect_ratio: Option<String>,
+    negative_prompt: Option<String>,
+}
+
+/// JS `Number.MAX_SAFE_INTEGER` — the bound Zod 4's `z.int()` reports as
+/// `format: "safeint"`.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
+fn generate_parsed_type(v: Option<&Value>) -> &'static str {
+    match v {
+        None => "undefined",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
+
+/// One Zod 4.5 issue of `generateImageSchema`, rendered as v4's
+/// `validationError(err)` body carries it (`details: zodError.issues`).
+///
+/// The five shapes and their EXACT key sets were MEASURED through the oracle at
+/// `5f0a57dc4` (`image_generate_route_equivalence`'s refusal rows), never
+/// hand-written: note that `invalid_type` carries no `origin` while `too_big` /
+/// `too_small` / `invalid_format` do, that the `z.int()` miss adds
+/// `format: "safeint"` to an `invalid_type`, and that the string and number
+/// bounds print DIFFERENT sentences for the same `code`.
+fn issue_invalid_type(expected: &str, key: &str, got: Option<&Value>) -> Value {
+    json!({
+        "expected": expected,
+        "code": "invalid_type",
+        "path": [key],
+        "message": format!("Invalid input: expected {expected}, received {}", generate_parsed_type(got)),
+    })
+}
+
+/// `z.int()` over a number that is not a safe integer — an `invalid_type` with
+/// Zod's `format` rider (`Invalid input: expected int, received number`).
+fn issue_not_int(key: &str, got: Option<&Value>) -> Value {
+    json!({
+        "expected": "int",
+        "format": "safeint",
+        "code": "invalid_type",
+        "path": [key],
+        "message": format!("Invalid input: expected int, received {}", generate_parsed_type(got)),
+    })
+}
+
+/// A `z.enum([...])` / `imageQualitySchema` miss. Zod 4 reports `invalid_value`
+/// and prints the options double-quoted and pipe-joined.
+fn issue_invalid_value(values: &[&str], key: &str) -> Value {
+    let rendered = values
+        .iter()
+        .map(|v| format!("\"{v}\""))
+        .collect::<Vec<_>>()
+        .join("|");
+    json!({
+        "code": "invalid_value",
+        "values": values,
+        "path": [key],
+        "message": format!("Invalid option: expected one of {rendered}"),
+    })
+}
+
+/// `z.uuid()` — the pattern rides as a VALUE, so it is the one Zod source
+/// pattern the tree already transcribes ([`ZOD_UUID_PATTERN`]).
+fn issue_invalid_uuid(key: &str) -> Value {
+    json!({
+        "origin": "string",
+        "code": "invalid_format",
+        "format": "uuid",
+        "pattern": ZOD_UUID_PATTERN,
+        "path": [key],
+        "message": "Invalid UUID",
+    })
+}
+
+fn issue_string_too_small(minimum: i64, key: &str) -> Value {
+    json!({
+        "origin": "string",
+        "code": "too_small",
+        "minimum": minimum,
+        "inclusive": true,
+        "path": [key],
+        "message": format!("Too small: expected string to have >={minimum} characters"),
+    })
+}
+fn issue_string_too_big(maximum: i64, key: &str) -> Value {
+    json!({
+        "origin": "string",
+        "code": "too_big",
+        "maximum": maximum,
+        "inclusive": true,
+        "path": [key],
+        "message": format!("Too big: expected string to have <={maximum} characters"),
+    })
+}
+fn issue_number_too_small(minimum: i64, key: &str) -> Value {
+    json!({
+        "origin": "number",
+        "code": "too_small",
+        "minimum": minimum,
+        "inclusive": true,
+        "path": [key],
+        "message": format!("Too small: expected number to be >={minimum}"),
+    })
+}
+fn issue_number_too_big(maximum: i64, key: &str) -> Value {
+    json!({
+        "origin": "number",
+        "code": "too_big",
+        "maximum": maximum,
+        "inclusive": true,
+        "path": [key],
+        "message": format!("Too big: expected number to be <={maximum}"),
+    })
+}
+
+/// `z.string().optional()` — any string passes; an ABSENT key stays absent; a
+/// PRESENT non-string (`null` included, since `.optional()` is not
+/// `.nullable()`) is one `invalid_type`.
+fn parse_optional_string(
+    raw: Option<&Value>,
+    key: &str,
+    issues: &mut Vec<Value>,
+) -> Option<String> {
+    match raw {
+        None => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(other) => {
+            issues.push(issue_invalid_type("string", key, Some(other)));
+            None
+        }
+    }
+}
+
+/// `z.enum([...]).optional()` / `imageQualitySchema.optional()`. Zod checks the
+/// VALUE, so a non-string present value is an `invalid_value` too — the enum
+/// has no separate type gate.
+fn parse_optional_enum(
+    raw: Option<&Value>,
+    key: &str,
+    values: &[&str],
+    issues: &mut Vec<Value>,
+) -> Option<String> {
+    match raw {
+        None => None,
+        Some(Value::String(s)) if values.contains(&s.as_str()) => Some(s.clone()),
+        Some(_) => {
+            issues.push(issue_invalid_value(values, key));
+            None
+        }
+    }
+}
+
+/// v4 `generateImageSchema.parse(body)`, whole
+/// (`app/api/v1/image-profiles/[id]/route.ts:21-30`) — ONE validation stage
+/// whose failure is the context middleware's `validationError(err)`: a 400
+/// `{error: 'Validation error', details: [...]}` (`lib/api/middleware/
+/// context.ts:166`, `lib/api/responses.ts:108-119`).
+///
+/// Zod collects EVERY failing key rather than stopping at the first, and orders
+/// the issues by the schema's DECLARATION order — `prompt`, `chatId`, `count`,
+/// `size`, `quality`, `style`, `aspectRatio`, `negativePrompt` — not by the
+/// body's key order. Both facts are pinned by the corpus
+/// (`generate_two_bad_fields`, `generate_three_bad_ordered`, whose body spells
+/// its keys backwards).
+///
+/// `z.string().min(1).max(4000)` measures CODE POINTS since Zod 4.5 (v4
+/// `6e1a64ea6`; `zod_version_guard` pins 4.5.4), so `prompt` goes through the
+/// [`crate::jsstr`] helpers its sibling `images_generate` route already used —
+/// P4.85 item 5.
+fn parse_generate_body(body: &ImageProfileGenerateBody) -> Result<ParsedGenerate, Value> {
+    let mut issues: Vec<Value> = Vec::new();
+
+    // prompt: z.string().min(1).max(4000) — REQUIRED.
+    let prompt = match body.prompt.as_ref() {
+        Some(Value::String(s)) => {
+            if !crate::jsstr::zod_len_min_ok(s, 1) {
+                issues.push(issue_string_too_small(1, "prompt"));
+            } else if !crate::jsstr::zod_len_max_ok(s, 4000) {
+                issues.push(issue_string_too_big(4000, "prompt"));
+            }
+            s.clone()
+        }
+        other => {
+            issues.push(issue_invalid_type("string", "prompt", other));
+            String::new()
+        }
+    };
+
+    // chatId: z.uuid().optional() (v4 bug 130's sibling gate). v5 never gated
+    // this key at all until P4.96 — a non-uuid chatId reached the tool.
+    let chat_id = match body.chat_id.as_ref() {
+        None => None,
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(issue_invalid_uuid("chatId"));
+            None
+        }
+        Some(other) => {
+            issues.push(issue_invalid_type("string", "chatId", Some(other)));
+            None
+        }
+    };
+
+    // count: z.int().min(1).max(10).optional().prefault(1). Note this is the
+    // ROUTE's schema, NOT the tool's `llmNumber(...)` preprocess: no string is
+    // coerced here, so `"2"` is an `invalid_type`, not 2.
+    let count = match body.count.as_ref() {
+        None => 1,
+        Some(Value::Number(n)) => match n.as_f64() {
+            Some(f) if f.fract() == 0.0 && f.abs() <= MAX_SAFE_INTEGER => {
+                let i = f as i64;
+                if i < 1 {
+                    issues.push(issue_number_too_small(1, "count"));
+                } else if i > 10 {
+                    issues.push(issue_number_too_big(10, "count"));
+                }
+                i
+            }
+            _ => {
+                issues.push(issue_not_int("count", body.count.as_ref()));
+                1
+            }
+        },
+        other => {
+            issues.push(issue_invalid_type("number", "count", other));
+            1
+        }
+    };
+
+    // size / aspectRatio / negativePrompt: `z.string().optional()` — ANY string.
+    // The route deliberately does NOT narrow them to the TOOL's enums, so a
+    // `size` or `aspectRatio` the tool will refuse still passes here and is
+    // refused downstream with v4's one blanket sentence (measured:
+    // `generate_aspect_ratio_off_tool_enum`).
+    let size = parse_optional_string(body.size.as_ref(), "size", &mut issues);
+    let quality = parse_optional_enum(
+        body.quality.as_ref(),
+        "quality",
+        &crate::image_gen::quality::IMAGE_QUALITY_VALUES,
+        &mut issues,
+    );
+    let style = parse_optional_enum(
+        body.style.as_ref(),
+        "style",
+        &crate::image_gen::style::IMAGE_STYLE_VALUES,
+        &mut issues,
+    );
+    let aspect_ratio =
+        parse_optional_string(body.aspect_ratio.as_ref(), "aspectRatio", &mut issues);
+    let negative_prompt =
+        parse_optional_string(body.negative_prompt.as_ref(), "negativePrompt", &mut issues);
+
+    if issues.is_empty() {
+        Ok(ParsedGenerate {
+            prompt,
+            chat_id,
+            count,
+            size,
+            quality,
+            style,
+            aspect_ratio,
+            negative_prompt,
+        })
+    } else {
+        Err(Value::Array(issues))
+    }
+}
+
 /// v4 `POST /api/v1/image-profiles/[id]?action=generate` — the profile-404 gate,
-/// then `executeImageGenerationTool` (the injected [`ErasedImageGeneration`] runner,
-/// wired LIVE in the host from the W4.7f `Real*Provider`s), then the
-/// `successResponse({success, data, expandedPrompt, metadata}, 201)` envelope or the
-/// `badRequest(result.error || 'Image generation failed')` arm. Spine-less
-/// assemblies never reach here (the engine's `image_generation` seam gate keeps the
-/// loud not-assembled refusal). The dispatch variant carries only the Shared-contract
-/// four (`prompt/chatId/count` + the profile id); v4's `size/quality/style/
-/// aspectRatio/negativePrompt` extras are the KNOWN narrowing divergence and stay
-/// `None`.
+/// then `generateImageSchema.parse(body)`, then `executeImageGenerationTool`
+/// (the injected [`ErasedImageGeneration`] runner, wired LIVE in the host from
+/// the W4.7f `Real*Provider`s), then the
+/// `successResponse({success, data, expandedPrompt, metadata}, 201)` envelope or
+/// the `badRequest(result.error || 'Image generation failed')` arm. Spine-less
+/// assemblies never reach here (the engine's `image_generation` seam gate keeps
+/// the loud not-assembled refusal).
 ///
-/// **P4.D196 measured that divergence rather than assuming it.** v4 at
-/// `5f0a57dc4` DOES thread all five: `generateImageSchema` parses them
-/// (`app/api/v1/image-profiles/[id]/route.ts:21-29`) and the handler hands
-/// every one to `executeImageGenerationTool` (`:246-255`), so a caller of this
-/// route can shape the image and a v5 caller cannot. `d8d2890ee` widened that
-/// schema's `quality` from `z.enum(['standard','hd'])` to the shared
-/// `imageQualitySchema`, which is a NO-OP for v5 precisely because v5 never
-/// parsed the key.
+/// **The guard order is v4's and is pinned**: the profile is fetched FIRST, so a
+/// missing profile with a garbage body answers 404, never 400
+/// (`generate_404_beats_400`).
 ///
-/// Closing it is an ORDERED FOLLOW-UP, not this lane's: the five fields have to
-/// reach `Request::ImageProfileGenerate` (`api/types.rs`), its `engine.rs` arm,
-/// the `quilltap-web` body parser and the dispatch wrong-type census — four
-/// files P4.D196 does not own, and a contract widening its sibling SPA lane
-/// cannot see (§S.3). The shape, for whoever takes it: add
-/// `size/quality/style/aspect_ratio/negative_prompt` to the variant as
-/// `Option<String>`, parse `quality` through
-/// [`crate::image_gen::quality::is_image_quality`] and `style` through
-/// `['vivid','natural']` (400 `Validation error` on either), leave `size` and
-/// `aspectRatio` as free strings as v4's `z.string()` does, and grow
-/// `image_generate_route_equivalence` a row per field.
+/// **P4.96 closed the narrowing P4.D196 measured.** Until this lane the variant
+/// carried only `prompt/chatId/count` and the tool input was built with five
+/// hard `None`s, so a caller of v4's route could shape the image and a v5 caller
+/// could not — and every one of the five keys was silently DROPPED rather than
+/// refused, which is the far worse half (v4 400s an unknown `quality`; v5
+/// answered 201 having ignored it). All five now ride
+/// [`ImageProfileGenerateBody`] RAW and are parsed here, in v4's order, with
+/// v4's measured Zod envelope. `orientation` stays `None`: v4's route passes
+/// none, which is why the tool falls to its square default.
 pub async fn image_profile_generate(
     db: &Db,
     runner: &ErasedImageGeneration,
     user_id: &str,
     profile_id: &str,
-    prompt: &str,
-    chat_id: Option<&str>,
-    count: Option<i64>,
+    body: &ImageProfileGenerateBody,
 ) -> Response {
     // v4: `notFound('Image profile')` before validating the body / running the tool.
     match db.read_main(|conn| ip::find_by_id(conn, profile_id)) {
@@ -666,37 +975,25 @@ pub async fn image_profile_generate(
     }
 
     // v4 runs `generateImageSchema.parse(body)` HERE — after the 404, before the
-    // tool (`image-profiles/[id]/route.ts:236-242`): `prompt` is
-    // `z.string().min(1).max(4000)` and `count` is `z.int().min(1).max(10)`, and
-    // a ZodError is the context handler's `validationError` — 400
-    // `{"error":"Validation error", details}` (the `details` array is the
-    // sibling routes' recorded omission). Without this gate a `count: 20` fell
+    // tool (`image-profiles/[id]/route.ts:235-236`). An uncaught ZodError is the
+    // context handler's `validationError`. Without this gate a `count: 20` fell
     // through to the TOOL's own schema and answered its fixed sentence instead
     // (the §3 unification review of the follow-ups round).
-    //
-    // `z.string().min(1).max(4000)` measures CODE POINTS since Zod 4.5 (v4
-    // `6e1a64ea6`; `zod_version_guard` pins 4.5.4), so it goes through the
-    // `jsstr::zod_len_*` helpers the sibling `images_generate` route already
-    // used for the IDENTICAL schema — P4.85 item 5. Until this lane the two
-    // routes disagreed on an astral prompt: 4000 code points is 4001+ UTF-16
-    // units, which v4 accepts and the old `utf16_len` refused.
-    let prompt_ok =
-        crate::jsstr::zod_len_min_ok(prompt, 1) && crate::jsstr::zod_len_max_ok(prompt, 4000);
-    if !prompt_ok || count.is_some_and(|n| !(1..=10).contains(&n)) {
-        return bad_request("Validation error");
-    }
+    let parsed = match parse_generate_body(body) {
+        Ok(p) => p,
+        Err(issues) => return Response::validation_error(issues),
+    };
 
-    // v4's `generateImageSchema.count` prefaults to 1 (BEFORE the profile's
-    // `parameters.n`), so a missing count pins n=1 exactly as v4 does.
     let input = ImageGenerationToolInput {
-        prompt: prompt.to_string(),
-        negative_prompt: None,
+        prompt: parsed.prompt.clone(),
+        negative_prompt: parsed.negative_prompt,
+        // v4's route passes no `orientation` — the tool's own default applies.
         orientation: None,
-        size: None,
-        style: None,
-        quality: None,
-        aspect_ratio: None,
-        count: Some(count.unwrap_or(1)),
+        size: parsed.size,
+        style: parsed.style,
+        quality: parsed.quality,
+        aspect_ratio: parsed.aspect_ratio,
+        count: Some(parsed.count),
         // Built in-process from the route's own validated body, exactly as v4's
         // `?action=generate` route assembles its object — there is no model JSON
         // to carry, so the validator synthesizes the equivalent one.
@@ -705,7 +1002,7 @@ pub async fn image_profile_generate(
     let ctx = ImageToolExecutionContext {
         user_id: user_id.to_string(),
         profile_id: profile_id.to_string(),
-        chat_id: chat_id.map(str::to_string),
+        chat_id: parsed.chat_id,
         // v4's route passes no callingParticipantId (undefined).
         calling_participant_id: None,
     };
@@ -731,7 +1028,10 @@ pub async fn image_profile_generate(
         .map(generate_image::generated_image_to_value)
         .collect();
     let mut metadata = Map::new();
-    metadata.insert("originalPrompt".into(), Value::String(prompt.to_string()));
+    metadata.insert(
+        "originalPrompt".into(),
+        Value::String(parsed.prompt.clone()),
+    );
     if let Some(p) = &out.provider {
         metadata.insert("provider".into(), Value::String(p.clone()));
     }
@@ -740,16 +1040,16 @@ pub async fn image_profile_generate(
     }
     metadata.insert("count".into(), json!(out.images.len()));
 
-    let mut body = Map::new();
-    body.insert("success".into(), Value::Bool(true));
-    body.insert("data".into(), Value::Array(data));
+    let mut envelope = Map::new();
+    envelope.insert("success".into(), Value::Bool(true));
+    envelope.insert("data".into(), Value::Array(data));
     // `expandedPrompt: result.expandedPrompt` — a JS `undefined` drops (always Some
     // on the success path).
     if let Some(ep) = &out.expanded_prompt {
-        body.insert("expandedPrompt".into(), Value::String(ep.clone()));
+        envelope.insert("expandedPrompt".into(), Value::String(ep.clone()));
     }
-    body.insert("metadata".into(), Value::Object(metadata));
-    Response::ImageProfile(Value::Object(body))
+    envelope.insert("metadata".into(), Value::Object(metadata));
+    Response::ImageProfile(Value::Object(envelope))
 }
 
 // ===========================================================================

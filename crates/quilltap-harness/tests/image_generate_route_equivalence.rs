@@ -19,6 +19,20 @@
 //! closure (the route passes no orientation → the square default), and the frozen
 //! `now_ms`.
 //!
+//! P4.96 widened the family from the four-field Shared contract to v4's WHOLE
+//! `generateImageSchema` body (eight keys), and added two comparands the
+//! envelope cannot supply:
+//!   - the `details` issue array is NO LONGER subtracted (it used to be, so
+//!     every refusal row compared a fixed sentence against a fixed sentence);
+//!   - a `kind:"toolInput"` SIDE CHANNEL — the oracle WRAPS v4's
+//!     `executeImageGenerationTool` (the real one still runs, so no envelope
+//!     row moves) and records the object the route assembled, and the Rust
+//!     runner records its own. The five shaping fields appear NOWHERE in
+//!     `{success, data, expandedPrompt, metadata}`, so this is the only place
+//!     they can be diffed at all.
+//!
+//! 24 of the 30 rows are red against the pre-P4.96 handler.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … build-image-generation-fixture.ts (QT_FIXTURE_IMGGEN_MAIN/MOUNT) …
 //!   QT_ORACLE_OUT=/tmp/oracle-image-generate-route.ndjson \
@@ -30,8 +44,9 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use quilltap_core::api::image_profiles::image_profile_generate;
+use quilltap_core::api::image_profiles::{image_profile_generate, ImageProfileGenerateBody};
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::image_gen::params_builder::ImageDeclarations;
@@ -52,7 +67,7 @@ use quilltap_core::tools::generate_image::{
     NoLanternNotification,
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 mod common;
 
@@ -93,15 +108,69 @@ struct ResultRow {
     body: Value,
 }
 
-/// One test case (mirrors the oracle's `cases`).
+/// The P4.96 side channel: the input object v4's route handed
+/// `executeImageGenerationTool` (`null` when the route refused before the tool).
+#[derive(Deserialize)]
+struct ToolInputRow {
+    name: String,
+    input: Value,
+}
+
+/// One test case. `body` is the JSON object the oracle POSTs to v4's route,
+/// spelled IDENTICALLY here — P4.96 moved the case from four decoded fields to
+/// the raw body so the two lists stay diffable key for key, and so every shape
+/// v4's `generateImageSchema` can refuse (`null`, a number, `{}`, a bad enum) is
+/// expressible on this side at all.
 struct Case {
     name: &'static str,
     id: String,
-    /// Owned, not `&'static str`: the P4.85 astral arms are BUILT (4000 code
-    /// points), never spelled, and built the same way the oracle builds them.
-    prompt: String,
-    chat_id: Option<&'static str>,
-    count: Option<i64>,
+    body: Value,
+}
+
+/// The `Request::ImageProfileGenerate` body the handler takes, built from the
+/// case's raw JSON exactly as the engine arm builds it from the variant — an
+/// ABSENT key stays `None` (v4's `.optional()`), a present one rides RAW.
+fn body_of(case: &Case) -> ImageProfileGenerateBody {
+    let g = |k: &str| case.body.get(k).cloned();
+    ImageProfileGenerateBody {
+        prompt: g("prompt"),
+        chat_id: g("chatId"),
+        count: g("count"),
+        size: g("size"),
+        quality: g("quality"),
+        style: g("style"),
+        aspect_ratio: g("aspectRatio"),
+        negative_prompt: g("negativePrompt"),
+    }
+}
+
+/// The `kind:"toolInput"` comparand: the object v4's route hands
+/// `executeImageGenerationTool`, rebuilt from the v5 tool input.
+///
+/// v4 passes exactly seven keys (`prompt`, `count`, `size`, `quality`, `style`,
+/// `aspectRatio`, `negativePrompt`) and `JSON.stringify` drops the `undefined`
+/// ones, so an absent field is an absent KEY on both sides. `orientation` is
+/// rendered when present precisely BECAUSE v4 never passes it: a v5 handler that
+/// started setting it would diverge here rather than silently.
+fn tool_input_comparand(input: &ImageGenerationToolInput) -> Value {
+    let mut o = serde_json::Map::new();
+    o.insert("prompt".into(), Value::String(input.prompt.clone()));
+    if let Some(n) = input.count {
+        o.insert("count".into(), serde_json::json!(n));
+    }
+    for (k, v) in [
+        ("size", &input.size),
+        ("quality", &input.quality),
+        ("style", &input.style),
+        ("aspectRatio", &input.aspect_ratio),
+        ("negativePrompt", &input.negative_prompt),
+        ("orientation", &input.orientation),
+    ] {
+        if let Some(v) = v {
+            o.insert(k.into(), Value::String(v.clone()));
+        }
+    }
+    Value::Object(o)
 }
 
 /// The oracle's `ASTRAL_AT_MAX` / `ASTRAL_OVER_MAX`, character for character:
@@ -184,6 +253,13 @@ struct TestImageRunner {
     completion: CannedCompletionProvider,
     api_keys: CannedApiKeys,
     now_ms: i64,
+    /// P4.96's side channel, mirroring the oracle's wrapped
+    /// `executeImageGenerationTool`: the input the handler assembled for the
+    /// case in flight. The route envelope carries none of the five shaping
+    /// keys, so without this the differential cannot see them at all. Shared
+    /// with the test loop: the runner is moved into the erased box, so the
+    /// handle — not the struct — is what the per-case read goes through.
+    recorded_input: Arc<Mutex<Option<Value>>>,
 }
 impl ImageGenerationRunner for TestImageRunner {
     fn run<'a>(
@@ -194,6 +270,8 @@ impl ImageGenerationRunner for TestImageRunner {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ImageGenerationToolOutput> + Send + 'a>>
     {
         Box::pin(async move {
+            *self.recorded_input.lock().expect("recorded_input") =
+                Some(tool_input_comparand(input));
             let moderation = NoModerationProvider;
             let transcoder = PassthroughTranscoder;
             let lantern = NoLanternNotification;
@@ -375,16 +453,14 @@ fn norm_uuids_in_string(s: &str) -> String {
 }
 
 fn norm(v: &Value) -> String {
+    // P4.96: the `details` issue array is NO LONGER dropped. It used to be —
+    // v5's `Validation error` envelope carried only the sentence, so the array
+    // was subtracted and the refusal rows compared a fixed string against a
+    // fixed string. Every Zod issue this route can raise is now reproduced
+    // byte-for-byte (measured through this oracle at `5f0a57dc4`, never
+    // hand-written), so the array is a real comparand: `path`, `code`, the
+    // enum's `values`, the bound sentences, and the issue ORDER.
     let mut v = v.clone();
-    // v4's `validationError` carries Zod's `details` issue array beside the
-    // fixed `error`; v5's `Validation error` envelope omits it everywhere (the
-    // autonomous-rooms / characters precedent), so the array is dropped from
-    // the comparand — the sentence and the status are what is pinned.
-    if v.get("error").and_then(Value::as_str) == Some("Validation error") {
-        if let Some(obj) = v.as_object_mut() {
-            obj.remove("details");
-        }
-    }
     canon_numbers(&mut v);
     let s = serde_json::to_string_pretty(&sorted(&v)).unwrap();
     norm_uuids_in_string(&s)
@@ -421,7 +497,14 @@ fn envelope_and_status(r: &Response) -> (i64, Value) {
                 ErrorKind::Unavailable => 503,
                 ErrorKind::Internal => 500,
             };
-            (status, serde_json::json!({ "error": e.message }))
+            // v4 `validationError(err)` answers `{error, details}`; the ONE home
+            // of that body is `CoreError::validation_wire_body`, which both
+            // transports render through — so what this family diffs is what the
+            // wire sends. A refusal with no `details` keeps the plain `{error}`.
+            let body = e
+                .validation_wire_body()
+                .unwrap_or_else(|| serde_json::json!({ "error": e.message }));
+            (status, body)
         }
         other => {
             let data = serde_json::to_value(other)
@@ -496,6 +579,7 @@ fn image_generate_route_matches_oracle() {
     // Parse the oracle: canned image WIRE + per-case result envelopes.
     let mut image_transport = CannedWireTransport::new();
     let mut results: HashMap<String, ResultRow> = HashMap::new();
+    let mut tool_inputs: HashMap<String, Value> = HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle {oracle_path}: {e}"))
         .lines()
@@ -511,85 +595,227 @@ fn image_generate_route_matches_oracle() {
                 let row: ResultRow = serde_json::from_value(v).expect("parse result row");
                 results.insert(row.name.clone(), row);
             }
+            Some("toolInput") => {
+                let row: ToolInputRow = serde_json::from_value(v).expect("parse toolInput row");
+                tool_inputs.insert(row.name.clone(), row.input);
+            }
             _ => {}
         }
     }
 
     // One runner over the canned seams (the executor is rebuilt per run inside it).
+    let recorded_input: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let runner = ErasedImageGeneration::new(TestImageRunner {
         image_provider: RealImageProvider::new(image_transport),
         completion: CannedCompletionProvider::new(),
         api_keys: CannedApiKeys(spec.api_keys.clone()),
         now_ms: spec.frozen_now_ms,
+        recorded_input: Arc::clone(&recorded_input),
     });
 
+    // The case list mirrors `harness/oracle/cases/image-generate-route.test.ts`
+    // name for name and body for body — the ONE list rule
+    // (`a-case-added-only-to-the-oracle-is-never-run`, which this very family
+    // suffered). `cases_cover_the_oracle` below asserts the two sets are equal,
+    // so a row added on either side alone is a RED, not a silent skip.
     let cases = [
         Case {
             name: "generate_happy_chat",
             id: spec.profile_id.clone(),
-            prompt: "A serene mountain lake at dawn, mist over the water".to_string(),
-            chat_id: Some(CHAT_PLAIN),
-            count: Some(1),
+            body: json!({ "prompt": "A serene mountain lake at dawn, mist over the water", "chatId": CHAT_PLAIN, "count": 1 }),
         },
         Case {
             name: "generate_no_chat",
             id: spec.profile_id.clone(),
-            prompt: "A quiet forest path".to_string(),
-            chat_id: None,
-            count: Some(1),
+            body: json!({ "prompt": "A quiet forest path", "count": 1 }),
         },
         Case {
             name: "generate_count2",
             id: spec.profile_id.clone(),
-            prompt: "A tall waterfall in a canyon".to_string(),
-            chat_id: Some(CHAT_ORIENT),
-            count: Some(2),
+            body: json!({ "prompt": "A tall waterfall in a canyon", "chatId": CHAT_ORIENT, "count": 2 }),
         },
         Case {
             name: "generate_profile_404",
             id: BOGUS_PROFILE.to_string(),
-            prompt: "anything".to_string(),
-            chat_id: None,
-            count: Some(1),
+            body: json!({ "prompt": "anything", "count": 1 }),
         },
-        // The route's own `generateImageSchema` gate (v4 `route.ts:242`), which
+        // The route's own `generateImageSchema` gate (v4 `route.ts:236`), which
         // runs after the 404 and before the tool — the §3 unification review of
         // the follow-ups round: v5 handed `count: 20` to the TOOL's schema and
         // answered its fixed sentence where v4 answers `Validation error`.
         Case {
             name: "generate_count_over_max",
             id: spec.profile_id.clone(),
-            prompt: "A lighthouse at night".to_string(),
-            chat_id: None,
-            count: Some(20),
+            body: json!({ "prompt": "A lighthouse at night", "count": 20 }),
         },
         Case {
             name: "generate_prompt_empty",
             id: spec.profile_id.clone(),
-            prompt: String::new(),
-            chat_id: None,
-            count: Some(1),
+            body: json!({ "prompt": "", "count": 1 }),
         },
         // P4.85 item 5 — the ASTRAL boundary of the SAME gate. 4000 code
         // points in 4001 UTF-16 units: v4 accepts it and runs the tool, and
-        // v5 refused it with `Validation error` until this lane, because this
+        // v5 refused it with `Validation error` until that lane, because this
         // route counted UTF-16 units where its sibling `images_generate`
-        // route already counted code points for the identical schema.
+        // route already counted code points.
         Case {
             name: "generate_prompt_astral_at_max",
             id: spec.profile_id.clone(),
-            prompt: astral_prompt(3983),
-            chat_id: None,
-            count: Some(1),
+            body: json!({ "prompt": astral_prompt(3983), "count": 1 }),
         },
         // One code point over: still refused — in code points, so the fix
         // cannot have been "stop counting".
         Case {
             name: "generate_prompt_astral_over_max",
             id: spec.profile_id.clone(),
-            prompt: astral_prompt(3984),
-            chat_id: None,
-            count: Some(1),
+            body: json!({ "prompt": astral_prompt(3984), "count": 1 }),
+        },
+        // ------------------------------------------------------------------
+        // P4.96 — v4's five optional shaping keys. Each happy row sets ONE, so
+        // the `toolInput` comparand names exactly which key moved; the
+        // `all_five` row proves they compose. Before this lane the handler
+        // built its tool input with five hard `None`s, so EVERY one of these
+        // rows was red: the happy rows on the missing key, the refusal rows on
+        // a 201 where v4 answers 400.
+        // ------------------------------------------------------------------
+        Case {
+            name: "generate_size",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A cliffside monastery", "count": 1, "size": "1024x1536" }),
+        },
+        Case {
+            name: "generate_quality_hd",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A brass orrery", "count": 1, "quality": "hd" }),
+        },
+        // `d8d2890ee` widened this key from `z.enum(['standard','hd'])` to the
+        // shared eight-tier `imageQualitySchema`; `max` is only reachable
+        // through that widening.
+        Case {
+            name: "generate_quality_max",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A glass conservatory", "count": 1, "quality": "max" }),
+        },
+        Case {
+            name: "generate_style_natural",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A harbour at slack tide", "count": 1, "style": "natural" }),
+        },
+        Case {
+            name: "generate_aspect_ratio_ok",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A long viaduct", "count": 1, "aspectRatio": "16:9" }),
+        },
+        // MEASURED, not assumed: the ROUTE's `aspectRatio` is `z.string()` —
+        // any string — while the TOOL's is
+        // `z.enum(['1:1','3:4','4:3','9:16','16:9'])`. So `3:2` passes the
+        // route, REACHES the tool (the toolInput row proves it) and is refused
+        // there, reported through v4's one blanket sentence, which names
+        // `prompt` and means "the whole object". A route that pre-gated the
+        // key on the tool's enum would answer the Zod envelope instead — this
+        // row is what forbids that shortcut.
+        Case {
+            name: "generate_aspect_ratio_off_tool_enum",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A long viaduct", "count": 1, "aspectRatio": "3:2" }),
+        },
+        Case {
+            name: "generate_negative_prompt",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A milliner at work", "count": 1, "negativePrompt": "no hats" }),
+        },
+        Case {
+            name: "generate_all_five",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A zeppelin over the fens", "chatId": CHAT_PLAIN, "count": 1, "size": "1024x1536", "quality": "high", "style": "vivid", "aspectRatio": "16:9", "negativePrompt": "no wires" }),
+        },
+        // ---- the refusal arms: `.optional()` is NOT `.nullable()`,
+        // `z.string()` rejects every non-string, and `z.enum` /
+        // `imageQualitySchema` reject an unknown member. v5 answered 201
+        // having silently ignored the key.
+        Case {
+            name: "generate_quality_unknown",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "quality": "ultra" }),
+        },
+        Case {
+            name: "generate_style_unknown",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "style": "sketch" }),
+        },
+        Case {
+            name: "generate_size_number",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "size": 1024 }),
+        },
+        Case {
+            name: "generate_size_null",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "size": Value::Null }),
+        },
+        Case {
+            name: "generate_negative_prompt_object",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "negativePrompt": {} }),
+        },
+        Case {
+            name: "generate_aspect_ratio_bool",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "aspectRatio": true }),
+        },
+        // The PRE-EXISTING serde-typed class, recorded as it stands: `count` is
+        // `Option<i64>` on the dispatch variant, so the WEB EDGE refuses a
+        // string before this handler is reached. The handler itself is
+        // v4-faithful, which is what this row pins.
+        Case {
+            name: "generate_count_string",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": "2" }),
+        },
+        Case {
+            name: "generate_count_zero",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 0 }),
+        },
+        Case {
+            name: "generate_count_fractional",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1.5 }),
+        },
+        // `prompt: z.string()` against a number — likewise the handler's arm;
+        // the variant types `prompt` as a required `String`.
+        Case {
+            name: "generate_prompt_number",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": 5, "count": 1 }),
+        },
+        // `chatId: z.uuid().optional()` — v5 never gated this key AT ALL until
+        // P4.96: a non-uuid chat id reached the tool.
+        Case {
+            name: "generate_chat_id_not_uuid",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "chatId": "not-a-uuid" }),
+        },
+        // Zod collects EVERY failing key into one issue array, in schema order
+        // (`quality` is declared before `style`).
+        Case {
+            name: "generate_two_bad_fields",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "quality": "ultra", "style": "sketch" }),
+        },
+        // …and across three DIFFERENT issue kinds, in the schema's DECLARATION
+        // order — not the body's key order, which is reversed here.
+        Case {
+            name: "generate_three_bad_ordered",
+            id: spec.profile_id.clone(),
+            body: json!({ "size": 1, "count": 99, "prompt": "" }),
+        },
+        // Guard order: v4 reads the body only AFTER `findById`, so a missing
+        // profile with a garbage body is a 404, never a 400.
+        Case {
+            name: "generate_404_beats_400",
+            id: BOGUS_PROFILE.to_string(),
+            body: json!({ "prompt": 5, "quality": "ultra", "size": Value::Null }),
         },
     ];
 
@@ -617,14 +843,13 @@ fn image_generate_route_matches_oracle() {
         )
         .unwrap_or_else(|e| panic!("open fixture {}: {e}", case.name));
 
+        *recorded_input.lock().expect("recorded_input") = None;
         let resp = rt.block_on(image_profile_generate(
             &db,
             &runner,
             &spec.user_id,
             &case.id,
-            &case.prompt,
-            case.chat_id,
-            case.count,
+            &body_of(case),
         ));
 
         let want = results
@@ -642,6 +867,27 @@ fn image_generate_route_matches_oracle() {
             );
             failed.push(case.name.to_string());
         }
+        // P4.96: the tool-input side channel. `null` on BOTH sides means the
+        // route refused before the tool — which is itself the comparand for
+        // every refusal row (a v5 that silently dropped a bad `quality` would
+        // record an input where v4 records none).
+        let got_input = recorded_input
+            .lock()
+            .expect("recorded_input")
+            .clone()
+            .unwrap_or(Value::Null);
+        let want_input = tool_inputs
+            .get(case.name)
+            .unwrap_or_else(|| panic!("oracle missing toolInput for case {}", case.name));
+        if norm(&got_input) != norm(want_input) {
+            eprintln!(
+                "[{}] TOOL INPUT diverged:\n{}",
+                case.name,
+                first_diff(&norm(&got_input), &norm(want_input))
+            );
+            failed.push(case.name.to_string());
+        }
+
         let got_n = norm(&got_body);
         let want_n = norm(&want.body);
         if got_n != want_n {
@@ -662,6 +908,23 @@ fn image_generate_route_matches_oracle() {
         cleanup(&main_work, &mount_work);
         let _ = std::fs::remove_file(&ll_work);
     }
+
+    // The ONE-list rule, made executable: every oracle row must have a Rust
+    // case and vice versa. A row added to the .test.ts alone would otherwise
+    // simply never run (`a-case-added-only-to-the-oracle-is-never-run`).
+    let rust_names: std::collections::BTreeSet<&str> = cases.iter().map(|c| c.name).collect();
+    let oracle_names: std::collections::BTreeSet<&str> =
+        results.keys().map(String::as_str).collect();
+    assert_eq!(
+        rust_names, oracle_names,
+        "the Rust case list and the oracle case list must match name for name"
+    );
+    // The floor the order sets: 8 pre-P4.96 rows + at least 12 new ones.
+    assert!(
+        cases.len() >= 20,
+        "expected >= 20 cases, found {}",
+        cases.len()
+    );
 
     assert!(
         failed.is_empty(),

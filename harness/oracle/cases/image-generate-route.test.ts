@@ -33,9 +33,17 @@
  *   - Date.now() frozen (spec.frozenNowMs) so the provider filename
  *     `generated_<ts>.<ext>` is pinned.
  *
- * Emits one NDJSON line per RECORDED canned image call (kind:"cannedImage") and one
- * per case (kind:"result", { name, status, body }). The minted `files.id` (+ its
- * `/api/v1/images|files/<id>` url/filepath) is uuid-normalized in the harness.
+ *   - `executeImageGenerationTool` (`@/lib/tools/handlers/image-generation-handler`)
+ *     → WRAPPED, not replaced (P4.96): the real handler still runs, and the input
+ *     object the route assembled from its validated body is recorded verbatim.
+ *     The route envelope carries none of v4's five shaping fields, so this is the
+ *     only comparand that can see them.
+ *
+ * Emits one NDJSON line per RECORDED canned image call (kind:"cannedImage"), one
+ * per case (kind:"result", { name, status, body }), and one per case
+ * (kind:"toolInput", { name, input }) — `input` is `null` when the route refused
+ * before the tool. The minted `files.id` (+ its `/api/v1/images|files/<id>`
+ * url/filepath) is uuid-normalized in the harness.
  *
  * Run (Node 24, from the v4 checkout; stage OUTSIDE any .claude path — v4's jest
  * ignores /\.claude/; multi-case → --testTimeout=120000):
@@ -164,16 +172,82 @@ async function main(): Promise<void> {
     // One code point over: refused at the same gate, in code points too — so
     // the fix cannot be "stop counting".
     { name: 'generate_prompt_astral_over_max', id: spec.profileId, body: { prompt: ASTRAL_OVER_MAX, count: 1 } },
+
+    // ------------------------------------------------------------------
+    // P4.96 — v4's five optional shaping fields (`generateImageSchema`
+    // `route.ts:25-29`), threaded into `executeImageGenerationTool`
+    // (`:246-255`). Each happy row sets ONE field so the `toolInput`
+    // side-channel row below names exactly which key moved; the `all_five`
+    // row proves they compose. v5 carried NONE of them until this lane —
+    // the variant stopped at `prompt/chatId/count`.
+    // ------------------------------------------------------------------
+    { name: 'generate_size', id: spec.profileId, body: { prompt: 'A cliffside monastery', count: 1, size: '1024x1536' } },
+    { name: 'generate_quality_hd', id: spec.profileId, body: { prompt: 'A brass orrery', count: 1, quality: 'hd' } },
+    // `d8d2890ee` widened this key from `z.enum(['standard','hd'])` to the
+    // shared eight-tier `imageQualitySchema`; `max` is only reachable through
+    // that widening.
+    { name: 'generate_quality_max', id: spec.profileId, body: { prompt: 'A glass conservatory', count: 1, quality: 'max' } },
+    { name: 'generate_style_natural', id: spec.profileId, body: { prompt: 'A harbour at slack tide', count: 1, style: 'natural' } },
+    { name: 'generate_aspect_ratio_ok', id: spec.profileId, body: { prompt: 'A long viaduct', count: 1, aspectRatio: '16:9' } },
+    // MEASURED, not assumed: the ROUTE's `aspectRatio` is `z.string()` — any
+    // string — while the TOOL's is `z.enum(['1:1','3:4','4:3','9:16','16:9'])`
+    // (`lib/tools/image-generation-tool.ts:57-60`). So `3:2` passes the route,
+    // reaches `executeImageGenerationTool` (the toolInput row proves it), and
+    // is refused there by the tool's own `safeParse` — reported through v4's
+    // one blanket sentence, which names `prompt` and means "the whole object".
+    // The route must NOT pre-gate it, or this row would 400 with the Zod
+    // envelope instead.
+    { name: 'generate_aspect_ratio_off_tool_enum', id: spec.profileId, body: { prompt: 'A long viaduct', count: 1, aspectRatio: '3:2' } },
+    { name: 'generate_negative_prompt', id: spec.profileId, body: { prompt: 'A milliner at work', count: 1, negativePrompt: 'no hats' } },
+    { name: 'generate_all_five', id: spec.profileId, body: { prompt: 'A zeppelin over the fens', chatId: CHAT_PLAIN, count: 1, size: '1024x1536', quality: 'high', style: 'vivid', aspectRatio: '16:9', negativePrompt: 'no wires' } },
+
+    // ---- the refusal arms: `.optional()` is NOT `.nullable()`, `z.string()`
+    // rejects every non-string, `z.enum`/`imageQualitySchema` reject an
+    // unknown member. v5 answered 201 having silently ignored the key.
+    { name: 'generate_quality_unknown', id: spec.profileId, body: { prompt: 'A kite', count: 1, quality: 'ultra' } },
+    { name: 'generate_style_unknown', id: spec.profileId, body: { prompt: 'A kite', count: 1, style: 'sketch' } },
+    { name: 'generate_size_number', id: spec.profileId, body: { prompt: 'A kite', count: 1, size: 1024 } },
+    { name: 'generate_size_null', id: spec.profileId, body: { prompt: 'A kite', count: 1, size: null } },
+    { name: 'generate_negative_prompt_object', id: spec.profileId, body: { prompt: 'A kite', count: 1, negativePrompt: {} } },
+    { name: 'generate_aspect_ratio_bool', id: spec.profileId, body: { prompt: 'A kite', count: 1, aspectRatio: true } },
+    // The PRE-EXISTING serde-typed class, recorded as it stands: `count` is
+    // `Option<i64>` on the dispatch variant, so the WEB EDGE refuses a string
+    // before the handler is reached. The handler itself reproduces v4.
+    { name: 'generate_count_string', id: spec.profileId, body: { prompt: 'A kite', count: '2' } },
+    // `chatId: z.uuid().optional()` — v5 never gated it at all.
+    { name: 'generate_chat_id_not_uuid', id: spec.profileId, body: { prompt: 'A kite', count: 1, chatId: 'not-a-uuid' } },
+    // Zod collects EVERY failing key into one issue array, in schema order
+    // (`quality` is declared before `style`).
+    { name: 'generate_two_bad_fields', id: spec.profileId, body: { prompt: 'A kite', count: 1, quality: 'ultra', style: 'sketch' } },
+    // The remaining `count` arms of `z.int().min(1).max(10)`: under the floor,
+    // and a non-integer (Zod 4 reports the int check as its own issue kind).
+    { name: 'generate_count_zero', id: spec.profileId, body: { prompt: 'A kite', count: 0 } },
+    { name: 'generate_count_fractional', id: spec.profileId, body: { prompt: 'A kite', count: 1.5 } },
+    // `prompt: z.string()` against a number — the handler's own arm. (The
+    // dispatch variant types `prompt` as a required `String`, so the WEB EDGE
+    // refuses this earlier; the recorded pre-existing narrowing, unchanged.)
+    { name: 'generate_prompt_number', id: spec.profileId, body: { prompt: 5, count: 1 } },
+    // …and across three DIFFERENT issue kinds, in the schema's DECLARATION
+    // order (prompt, chatId, count, size, quality, style, aspectRatio,
+    // negativePrompt) — not the body's key order, which is reversed here.
+    { name: 'generate_three_bad_ordered', id: spec.profileId, body: { size: 1, count: 99, prompt: '' } },
+    // Guard order: v4 reads the body only AFTER `findById`, so a missing
+    // profile with a garbage body is a 404, never a 400.
+    { name: 'generate_404_beats_400', id: BOGUS_PROFILE, body: { prompt: 5, quality: 'ultra', size: null } },
   ];
 
   const lines: string[] = [];
   const RealDate = Date;
+  // P4.96: the input `executeImageGenerationTool` was handed for the case in
+  // flight (reset per case; `null` when the route refused before the tool).
+  let recordedToolInput: unknown = null;
   const recordedImages = new Map<
     string,
     { provider: string; model: string; key: string; images: Array<{ data: string; mimeType?: string; revisedPrompt?: string }> }
   >();
 
   for (const c of cases) {
+    recordedToolInput = null;
     const scratch = mkdtempSync(join(tmpdir(), 'qt-imggenroute-oracle-'));
     mkdirSync(join(scratch, 'data'), { recursive: true });
     const mainWork = join(scratch, 'main.db');
@@ -296,6 +370,24 @@ async function main(): Promise<void> {
       __esModule: true,
       logLLMCall: async () => undefined,
     }));
+    // P4.96 SIDE CHANNEL (the P4.92 shape): the route envelope alone cannot
+    // see the five shaping fields — `{success, data, expandedPrompt, metadata}`
+    // carries none of them. So the tool entry point is WRAPPED, not replaced:
+    // the real `executeImageGenerationTool` still runs (every envelope row is
+    // unchanged by this mock), and the input object the route assembled is
+    // recorded verbatim as a `kind:"toolInput"` row. That object is exactly
+    // what the Rust `ImageGenerationToolInput` must carry.
+    jest.doMock('@/lib/tools/handlers/image-generation-handler', () => {
+      const actual = jest.requireActual('@/lib/tools/handlers/image-generation-handler');
+      return {
+        __esModule: true,
+        ...actual,
+        executeImageGenerationTool: async (input: unknown, context: unknown) => {
+          recordedToolInput = JSON.parse(JSON.stringify(input ?? null));
+          return actual.executeImageGenerationTool(input, context);
+        },
+      };
+    });
     jest.doMock('@/lib/plugins/moderation-provider-registry', () => ({
       __esModule: true,
       moderationProviderRegistry: {
@@ -341,6 +433,7 @@ async function main(): Promise<void> {
       const resp = await route.POST(mockRequest(url, c.body), { params: Promise.resolve({ id: c.id }) });
       const body = await resp.json();
       lines.push(JSON.stringify({ kind: 'result', name: c.name, status: resp.status, body }));
+      lines.push(JSON.stringify({ kind: 'toolInput', name: c.name, input: recordedToolInput }));
     } finally {
       global.Date = RealDate;
       await new Promise((resolve) => setTimeout(resolve, 50));

@@ -209,8 +209,10 @@ const SCHEMA_SIZES: [&str; 5] = [
 ];
 /// The `orientation` enum.
 const SCHEMA_ORIENTATIONS: [&str; 3] = ["portrait", "landscape", "square"];
-/// The `style` enum.
-const SCHEMA_STYLES: [&str; 2] = ["vivid", "natural"];
+/// The `style` enum — the SHARED list since P4.96, on the `SCHEMA_QUALITIES`
+/// precedent: this schema, both HTTP generate routes and the profile-id
+/// generate route all read [`crate::image_gen::style::IMAGE_STYLE_VALUES`].
+const SCHEMA_STYLES: [&str; 2] = crate::image_gen::style::IMAGE_STYLE_VALUES;
 /// The `quality` enum — the SHARED list (`d8d2890ee`), not a local copy: this
 /// schema, both HTTP generate routes and the profile editor all read
 /// [`IMAGE_QUALITY_VALUES`], because two of them were still spelling DALL·E's

@@ -1046,11 +1046,31 @@ pub enum Request {
     },
     /// v4 `GET /api/v1/image-profiles?action=list-providers` → `{providers, count}`.
     ImageProviderList,
-    /// v4 `POST /api/v1/image-profiles/[id]?action=generate` — LLM/IO-coupled
-    /// (still a loud refusal arm; the P4.6ab tier-2 un-refusal is OPEN). Params
-    /// follow the P4.6ab/ac/ad Shared contract (`{imageProfileId, prompt,
-    /// chatId?, count?}`) so the SPA's generate dialog reaches the refusal
-    /// envelope rather than a parse error (reconciled at unification).
+    /// v4 `POST /api/v1/image-profiles/[id]?action=generate` — the whole
+    /// `generateImageSchema` body (`app/api/v1/image-profiles/[id]/route.ts:21-30`).
+    /// LIVE since P4.6ai's un-refusal over the injected image-generation runner
+    /// (`engine.rs`'s `ready_generate_image()` arm); a spine-less assembly still
+    /// answers the loud not-assembled refusal, which is the only refusal left here.
+    ///
+    /// **P4.96 added v4's five shaping keys.** Until then the variant stopped at
+    /// `{imageProfileId, prompt, chatId?, count?}` and the handler built its tool
+    /// input with five hard `None`s, so a v4 caller could shape the image and a v5
+    /// caller could not — and an unknown `quality` was silently DROPPED where v4
+    /// answers 400.
+    ///
+    /// The five ride as RAW [`serde_json::Value`]s, NOT `Option<String>`: this is
+    /// the `ChatCreate`-trio / [`Request::ImagesGenerate`] rule ruled by P4.62 and
+    /// P4.73. A serde-typed field turns v4's 400 `Validation error` into a dispatch
+    /// DECODE error at the web edge and a different sentence over Tauri IPC; the raw
+    /// crossing lets
+    /// [`image_profile_generate`](crate::api::image_profiles::image_profile_generate)
+    /// refuse with v4's own Zod envelope on both transports. `.optional()` is not
+    /// `.nullable()`, so an explicit `null` must stay distinguishable from an absent
+    /// key — a typed decode destroys exactly that evidence.
+    ///
+    /// `prompt` and `count` stay serde-TYPED: their `dispatch_wrong_type_census`
+    /// rows are the recorded pre-existing narrowing (the edge refuses a non-string
+    /// prompt / a `"2"` count with a serde sentence), which P4.96 does not reopen.
     #[serde(rename_all = "camelCase")]
     ImageProfileGenerate {
         image_profile_id: String,
@@ -1059,6 +1079,16 @@ pub enum Request {
         chat_id: Option<String>,
         #[serde(default)]
         count: Option<i64>,
+        #[serde(default)]
+        size: Option<serde_json::Value>,
+        #[serde(default)]
+        quality: Option<serde_json::Value>,
+        #[serde(default)]
+        style: Option<serde_json::Value>,
+        #[serde(default)]
+        aspect_ratio: Option<serde_json::Value>,
+        #[serde(default)]
+        negative_prompt: Option<serde_json::Value>,
     },
     /// v4 `POST /api/v1/image-profiles?action=validate-key` — live IO (loud refusal
     /// arm this round).

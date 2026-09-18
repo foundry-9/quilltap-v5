@@ -2925,24 +2925,46 @@ impl CoreEngine {
                 Ok(_) => super::image_profiles::image_provider_list(),
                 Err(r) => r,
             },
-            // === P4.6ai: the imageProfileGenerate un-refusal — thread
-            // prompt/chat_id/count into the W4.9a runner via the image-generation
-            // seam. A spine-less assembly keeps the loud not-assembled refusal. ===
+            // === P4.6ai: the imageProfileGenerate un-refusal — thread the
+            // validated body into the W4.9a runner via the image-generation seam.
+            // A spine-less assembly keeps the loud not-assembled refusal.
+            // P4.96: the body is v4's WHOLE `generateImageSchema` object, carried
+            // as the raw values v4's Zod sees, so the HANDLER answers v4's
+            // envelope on both transports (§`ImageProfileGenerateBody`). The
+            // serde-typed `prompt`/`count` are re-wrapped here rather than
+            // re-typed on the variant: their census rows are the recorded
+            // pre-existing narrowing this order does not reopen. ===
             Request::ImageProfileGenerate {
                 image_profile_id,
                 prompt,
                 chat_id,
                 count,
+                size,
+                quality,
+                style,
+                aspect_ratio,
+                negative_prompt,
             } => match self.ready_generate_image() {
                 Ok((db, runner)) => {
+                    let body = super::image_profiles::ImageProfileGenerateBody {
+                        prompt: Some(serde_json::Value::String(prompt)),
+                        chat_id: chat_id.map(serde_json::Value::String),
+                        // An absent `count` must stay ABSENT: v4's
+                        // `.optional().prefault(1)` is what supplies the 1, and
+                        // the handler reproduces it.
+                        count: count.map(serde_json::Value::from),
+                        size,
+                        quality,
+                        style,
+                        aspect_ratio,
+                        negative_prompt,
+                    };
                     super::image_profiles::image_profile_generate(
                         &db,
                         &runner,
                         SINGLE_USER_ID,
                         &image_profile_id,
-                        &prompt,
-                        chat_id.as_deref(),
-                        count,
+                        &body,
                     )
                     .await
                 }

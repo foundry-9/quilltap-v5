@@ -252,6 +252,47 @@ the corpus gains a `fsmBytesFill` spec key so a fixture file can carry a
 megabyte. Measured at both pins: at `5f0a57dc4` v4 puts all three images
 (2.36 MB of base64) and the single 2 MB one on the wire; at `bcd7e4852` it
 drops the oldest and the over-large one, which is what v5 now does.
+#### 2026-09-17 — feat(images): the profile-id generate route carries v4's five shaping fields (P4.96)
+
+_Versions: core 0.0.943, harness 0.0.835._
+
+`POST /api/v1/image-profiles/[id]?action=generate` accepts eight body keys in
+v4, and v5's `imageProfileGenerate` verb carried four. `size`, `quality`,
+`style`, `aspectRatio` and `negativePrompt` were not merely unreachable — they
+were silently DROPPED, so a caller who asked for `quality: "ultra"` got a 201
+and an image at whatever the profile stored, where v4 answers 400.
+
+All five now ride `Request::ImageProfileGenerate` as RAW `serde_json::Value`s
+(the `ChatCreate`-trio / `ImagesGenerate` rule ruled by P4.62 and P4.73), so
+the refusal is decided in the handler and both transports answer v4's bytes
+rather than a serde decode error at the web edge and a different sentence over
+Tauri IPC. `.optional()` is not `.nullable()`, and only the raw crossing keeps
+an explicit `null` distinguishable from an absent key.
+
+The handler gained v4's whole `generateImageSchema` as ONE validation stage,
+placed where v4 places it — after the profile 404, before the tool — and it now
+answers the real Zod envelope: `{error: "Validation error", details: [...]}`
+with every issue's `code`, `path`, `values`, bound sentence and declaration
+ORDER reproduced. Every shape was measured through the oracle against v4's real
+route at `5f0a57dc4`, never hand-written. Two divergences fell out of writing
+it: `chatId` had no `z.uuid()` gate at all, and `count` had no `z.int()` check,
+so `1.5` reached the tool.
+
+The route deliberately does NOT narrow `size` / `aspectRatio` to the tool's own
+enums — v4's route schema is `z.string()` there. A ratio like `3:2` passes the
+route, reaches `executeImageGenerationTool` and is refused by the TOOL, which
+reports v4's one blanket sentence naming `prompt`. That measured
+route-versus-tool disagreement is now a corpus row.
+
+`image_generate_route_equivalence` grew 8 cases to 30 and gained a tool-input
+side channel: the oracle WRAPS v4's `executeImageGenerationTool` (the real one
+still runs) and records the object the route assembled, because the response
+envelope carries none of the five keys and cannot see them. The `details` array
+is no longer subtracted from the comparand. 24 of the 30 rows are red against
+the pre-P4.96 handler.
+
+Also: the `['vivid','natural']` style pair, spelled out at three v5 sites, now
+has one home in `image_gen::style` on the `image_gen::quality` precedent.
 
 #### 2026-09-17 — docs(porting): order the `bcd7e4852` bug-151 drift catch-up + follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97)
 

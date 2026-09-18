@@ -133091,3 +133091,175 @@ never piped through `tail`).
 embedded table but no host source — §R.8 / the P4.D194 rule); no web, cli,
 tauri or SPA bump. ⚠ The unifier RECOUNTS: all four lanes bump `harness`, and
 identical bumps auto-merge as ONE.
+## P4.96 — the profile-id generate route's five shaping fields (lane record, 2026-09-17)
+
+Lane branch `claude/image-profile-generate-fields-1341bb`, from `main`
+`e215760f`. Order: `docs/developer/porting/work-orders/p4.96-image-profile-
+generate-fields.md`. Part of the `bcd7e4852` bug-151 drift catch-up +
+follow-ups round (P4.D198 ∥ P4.D199 ∥ P4.96 ∥ P4.97).
+
+### §0 Probe and pin
+
+The drift ledger's §2 freshness probe at lane start: branch `main`, HEAD
+`bcd7e485266be2efa5bacd9644a9814e7dc32d89`, tree CLEAN,
+`log bcd7e4852..main` EMPTY, `log 1a2b2164c..bugfix` EMPTY — **PASS**, so the
+ledger's §1 stands and its regen rule (**PIN REQUIRED**) applies unchanged.
+
+The order's pre-regen measurement, run and recorded before the first regen:
+
+```
+git -C ~/source/quilltap-server diff --stat 5f0a57dc4..bcd7e4852 \
+  -- app/api/v1/image-profiles lib/tools lib/image-gen plugins packages
+ packages/quilltap/package.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+
+A version stamp and nothing else — this lane's v4 surfaces are identical at
+the baseline and the target, exactly as the order predicted. Pin:
+`/tmp/qt-v4-pin-p4-96-5f0a57dc4`, `rev-parse HEAD` =
+`5f0a57dc4ce9bdd997b194c0f6af485ded6fcf66`, `ls -ld` shows no trailing space
+(the last unification's zsh trap), all three node_modules symlink classes
+linked. Every regen ran from it; all staging is lane-private under
+`/tmp/p4.96/` (the recorded `/tmp/qt-imggen-*` collision with
+`image_generation_tier3`), and that family's oracle and fixture were never
+touched.
+
+### §1 What the measurement found, before any code was written
+
+The order said to measure v4's refusal envelope through the oracle FIRST.
+Doing so settled three things a hand-written port would have got wrong, and
+one of them contradicts the tree's own standing practice:
+
+1. **v4 answers `details`.** `handleRouteError` (`lib/api/middleware/
+   context.ts:166`) turns a ZodError into `validationError(err)`, whose body
+   is `{error: 'Validation error', details: zodError.issues}`
+   (`lib/api/responses.ts:108-119`). The family's normalizer had been
+   SUBTRACTING that array, on the recorded "standing project-wide omission"
+   — so its three pre-existing refusal rows were comparing a fixed sentence
+   against a fixed sentence and could not have caught a wrong `path`, a
+   wrong `code` or a wrong issue order. The subtraction is GONE, and every
+   issue shape is now reproduced byte-for-byte.
+2. **The five issue shapes do not share a key set.** `invalid_type` carries
+   no `origin` while `too_big` / `too_small` / `invalid_format` do; the
+   `z.int()` miss is an `invalid_type` with an extra `format: "safeint"`;
+   and the same `code` prints DIFFERENT sentences for a string bound
+   (`Too big: expected string to have <=4000 characters`) and a number bound
+   (`Too big: expected number to be <=10`). None of that is derivable.
+3. **The route does NOT share the tool's enums.** v4's route declares
+   `size: z.string()` and `aspectRatio: z.string()` — any string — while
+   `lib/tools/image-generation-tool.ts:47-60` declares five-member enums for
+   both. So `aspectRatio: "3:2"` PASSES the route, reaches
+   `executeImageGenerationTool`, and is refused THERE, reported through v4's
+   one blanket sentence `Invalid input: prompt is required and must be a
+   non-empty string` — which names `prompt` and means "the whole object".
+   A route that pre-gated the key on the tool's enum would answer the Zod
+   envelope instead. `generate_aspect_ratio_off_tool_enum` is the row that
+   forbids that shortcut, and it was written only because the measurement
+   produced a 400 where the plan expected a 201.
+
+### §2 What landed
+
+**Tier 1 item 1 — the variant.** Five new fields on
+`Request::ImageProfileGenerate`, camelCase, each `#[serde(default)]
+Option<serde_json::Value>` — the RAW crossing of the `ChatCreate`-trio /
+`ImagesGenerate` idiom, not `Option<String>`. The stale doc paragraph
+("still a loud refusal arm; the P4.6ab tier-2 un-refusal is OPEN") is
+CORRECTED: the arm has been live since P4.6ai. `prompt` and `count` stay
+serde-TYPED — their census rows are the recorded pre-existing narrowing this
+order does not reopen.
+
+**Tier 1 items 2+3 — the parse stage and the engine arm.** The handler takes
+a new `ImageProfileGenerateBody` (all eight keys RAW, `None` = absent), and
+`parse_generate_body` is v4's `generateImageSchema.parse(body)` whole: one
+validation stage, AFTER the 404 gate, collecting EVERY failing key in the
+schema's DECLARATION order. The engine arm builds the body from the variant,
+re-wrapping the two serde-typed fields. Two pre-existing v5 divergences fell
+out of writing it and are now closed:
+
+- **`chatId` had no gate at all.** v4 declares `chatId: z.uuid().optional()`;
+  v5 accepted any string and handed it to the tool.
+- **`count` had no `z.int()` check.** v5's `(1..=10).contains(&n)` ran on an
+  already-decoded `i64`, so the non-integer arm did not exist.
+
+**Tier 1 item 4 — the census.** Five new rows, the ledger extended; see the
+census commit's own record below.
+
+**Tier 1 item 5 — the dispatch wire pin.** See its commit record below.
+
+**Tier 1 item 6 — the SPA contract type.** See its commit record below.
+
+**Tier 1 item 7 — the differential.** `image_generate_route_equivalence`
+grew 8 → **30** cases, with a `kind:"toolInput"` SIDE CHANNEL on both sides:
+the oracle WRAPS v4's `executeImageGenerationTool` (`...actual` plus a
+recording delegate, so the real handler still runs and no envelope row
+moves), and the Rust `TestImageRunner` records its own input through a shared
+`Arc<Mutex<_>>`. This was necessary, not decorative: the response envelope
+`{success, data, expandedPrompt, metadata}` carries NONE of the five keys, so
+without the side channel the happy rows would have been proved only
+indirectly (through a canned-wire-key miss). A `cases_cover_the_oracle`-style
+assertion now compares the two name sets, so a row added on one side alone is
+a RED rather than a silent skip — the `a-case-added-only-to-the-oracle-is-
+never-run` class this family has suffered before.
+
+**Tier 2 item 9 — the style list's ONE home.** NEW
+`crates/quilltap-core/src/image_gen/style.rs` (`IMAGE_STYLE_VALUES` +
+`is_image_style`), with `tools/generate_image.rs`'s `SCHEMA_STYLES` and
+`api/images.rs`'s inline pair repointed to it. **Ownership expansion, named
+as the order requires:** this added one line to
+`crates/quilltap-core/src/image_gen.rs` (`pub mod style;`), which the order's
+Owns column does not spell out; no other lane this round touches `image_gen/`.
+`model/openai_image_options.rs` is deliberately NOT repointed — it is a UI
+label list with per-row `helpText`, not a validator.
+
+**Tier 2 item 10 — the docs.** The `image_profiles.rs` "ORDERED FOLLOW-UP"
+paragraph is deleted and replaced by a description of the landed shape.
+
+### §3 Red-first
+
+The order asks for the pre-fix counts. Measured by reverting the handler to
+its pre-P4.96 behaviour in place (the five keys ignored and threaded as hard
+`None`s, `chatId` ungated, the bare `bad_request("Validation error")`
+envelope) and re-running the widened family against the SAME oracle:
+
+**24 of the 30 rows RED.** The happy rows red on a missing key in the
+`toolInput` comparand; three of them (`quality_max`, `style_natural`,
+`all_five`) additionally red on STATUS, because a tool input missing the
+shaping keys builds a different provider request and MISSES the canned wire
+entirely. The refusal rows red on the body — v5 answered 201 having silently
+dropped the key, or answered a `details`-less envelope. The six that stayed
+green are the rows that set none of the five and refuse on nothing:
+`generate_happy_chat`, `generate_no_chat`, `generate_count2`,
+`generate_profile_404`, `generate_prompt_astral_at_max`,
+`generate_404_beats_400`.
+
+### §4 Regen recipe (as run)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4-96-5f0a57dc4   # git worktree add --detach, rev-parse verified
+N=~/.nvm/versions/node/v24.13.1/bin
+WT=<this worktree>
+cd "$PIN"
+QT_FIXTURE_IMGGEN_MAIN=/tmp/p4.96/qt-imggen-main.db \
+QT_FIXTURE_IMGGEN_MOUNT=/tmp/p4.96/qt-imggen-mount.db \
+  $N/node --import tsx $WT/harness/oracle/fixtures/build-image-generation-fixture.ts
+TMPO=/tmp/p4.96/qt-imggenroute-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $WT/harness/oracle/cases/image-generate-route.test.ts "$TMPO/cases/"
+cp $WT/harness/oracle/fixtures/image-generation.json     "$TMPO/fixtures/"
+QT_FIXTURE_IMGGEN_MAIN=/tmp/p4.96/qt-imggen-main.db \
+QT_FIXTURE_IMGGEN_MOUNT=/tmp/p4.96/qt-imggen-mount.db \
+QT_ORACLE_OUT=/tmp/p4.96/oracle-image-generate-route.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=600000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "image-generate-route.test"
+# run
+cd $WT
+QT_ORACLE_IMGGEN_ROUTE=/tmp/p4.96/oracle-image-generate-route.ndjson \
+QT_FIXTURE_IMGGEN_MAIN=/tmp/p4.96/qt-imggen-main.db \
+QT_FIXTURE_IMGGEN_MOUNT=/tmp/p4.96/qt-imggen-mount.db \
+  cargo test -p quilltap-harness --test image_generate_route_equivalence -- --nocapture
+```
+
+The committed recipe header stays canonical (`/tmp/qt-imggen-*`); the
+lane-private staging is the collision rule, not a recipe change. **No
+committed fixture changed** — `harness/oracle/fixtures/image-generation.json`
+and `build-image-generation-fixture.ts` are untouched, so no sibling family is
+invalidated and `image_generation_tier3` needs nothing from this lane.
