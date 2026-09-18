@@ -47,7 +47,7 @@
  *   cp "$V5W/harness/oracle/lib/shrink-script.ts" "$TMPO/lib/"
  *   QT_ORACLE_OUT=/tmp/oracle-llm-image-budget.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
- *       --roots "$PWD" --roots "$TMPO/cases" -- llm-image-budget
+ *       --roots "$PWD" --roots "$TMPO/cases" -- cases/llm-image-budget
  * Run:
  *   QT_ORACLE_LLM_IMAGE_BUDGET=/tmp/oracle-llm-image-budget.ndjson \
  *     cargo test -p quilltap-harness --test llm_image_budget_equivalence -- --nocapture

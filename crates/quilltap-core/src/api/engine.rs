@@ -2948,7 +2948,7 @@ impl CoreEngine {
                 Ok((db, runner)) => {
                     let body = super::image_profiles::ImageProfileGenerateBody {
                         prompt: Some(serde_json::Value::String(prompt)),
-                        chat_id: chat_id.map(serde_json::Value::String),
+                        chat_id: chat_id.map(|v| v.unwrap_or(serde_json::Value::Null)),
                         // An absent `count` must stay ABSENT: v4's
                         // `.optional().prefault(1)` is what supplies the 1, and
                         // the handler reproduces it.

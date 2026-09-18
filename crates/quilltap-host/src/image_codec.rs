@@ -582,6 +582,89 @@ mod tests {
         );
     }
 
+    /// P4.D198 Tier-1 item 2, the WHOLE transport budget over the REAL codec —
+    /// v4's `llm-image-budget.test.ts` shapes ("caps the long edge at 1024 for a
+    /// portrait avatar", "caps a landscape story background", "brings the
+    /// payload under the 500K base64 ceiling"), driven through
+    /// `shrink_image_for_llm_transport` rather than the seam method alone, so
+    /// the ladder's break-on-fit and the reported dimensions are measured
+    /// against `image` + `webp` and not a script. Landed at the `bcd7e4852`
+    /// unification (the §3 review found only the seam-level half here).
+    #[test]
+    fn the_transport_budget_over_the_real_codec_takes_v4s_shape() {
+        use quilltap_core::files::image_processing::calculate_base64_size;
+        use quilltap_core::files::llm_image_budget::{
+            shrink_image_for_llm_transport, LLM_TRANSPORT_MAX_EDGE, LLM_TRANSPORT_TARGET_BASE64,
+        };
+        let codec = HostImageCodec;
+        let t: &dyn quilltap_core::files::image_processing::ImageTranscoder = &codec;
+
+        let portrait = noise_webp(1024, 1536);
+        let r = shrink_image_for_llm_transport(t, &portrait, "image/webp", Some("NANOGPT"), None);
+        assert!(r.was_shrunk, "a 1024x1536 avatar is shrunk");
+        assert_eq!(r.mime_type, "image/webp");
+        assert_eq!(
+            r.width.unwrap_or(0).max(r.height.unwrap_or(0)),
+            LLM_TRANSPORT_MAX_EDGE,
+            "the long edge is capped at 1024"
+        );
+        assert_eq!(
+            (r.width, r.height),
+            (Some(683), Some(1024)),
+            "aspect preserved"
+        );
+        assert!(
+            calculate_base64_size(r.final_size) <= LLM_TRANSPORT_TARGET_BASE64,
+            "the payload clears the 500 KiB ceiling: {}",
+            calculate_base64_size(r.final_size)
+        );
+        assert_eq!(r.original_size, portrait.len());
+
+        let landscape = noise_webp(1536, 1024);
+        let r2 = shrink_image_for_llm_transport(t, &landscape, "image/webp", Some("NANOGPT"), None);
+        assert!(r2.was_shrunk);
+        assert_eq!(
+            (r2.width, r2.height),
+            (Some(1024), Some(683)),
+            "landscape twin"
+        );
+    }
+
+    /// v4 "keeps two shrunk avatars inside the per-turn budget that bug 151
+    /// blew" — the reported turn reproduced over the real codec: two unseen
+    /// avatars on one request sum under `LANTERN_IMAGE_BASE64_BUDGET`, and
+    /// under the 4.52 MB NanoGPT answered with 413.
+    #[test]
+    fn two_shrunk_avatars_fit_the_per_turn_budget_bug_151_blew() {
+        use quilltap_core::files::image_processing::calculate_base64_size;
+        use quilltap_core::files::llm_image_budget::{
+            shrink_image_for_llm_transport, LANTERN_IMAGE_BASE64_BUDGET,
+        };
+        let codec = HostImageCodec;
+        let t: &dyn quilltap_core::files::image_processing::ImageTranscoder = &codec;
+        let a = shrink_image_for_llm_transport(
+            t,
+            &noise_webp(1024, 1536),
+            "image/webp",
+            Some("NANOGPT"),
+            None,
+        );
+        let b = shrink_image_for_llm_transport(
+            t,
+            &noise_webp(1024, 1536),
+            "image/webp",
+            Some("NANOGPT"),
+            None,
+        );
+        let on_the_wire = calculate_base64_size(a.final_size) + calculate_base64_size(b.final_size);
+        assert!(
+            on_the_wire <= LANTERN_IMAGE_BASE64_BUDGET as i64,
+            "two shrunk avatars must fit the per-turn budget: {on_the_wire}"
+        );
+        // 4.52 MB was what NanoGPT answered with 413.
+        assert!(on_the_wire < (4.52 * 1024.0 * 1024.0) as i64);
+    }
+
     /// A decode failure is an `Err`, and specifically NOT the input bytes —
     /// the collapse `resize_step`'s infallible shape forces and this seam
     /// forbids (M6 targets exactly this assertion).

@@ -12,6 +12,56 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-17 — fix(unify): the `bcd7e4852` round's §3 review fixes — `chatId` joins the generate verb's raw tri-state, the mount loader's stage order pinned, the host whole-budget tests, the primary-stream neutrality loop, the new family's jest filter anchored, and the `attach-file-*` pair widened through a migrator whose index step now runs AFTER its ALTER
+
+_Versions: core 0.0.950, harness 0.0.842, host 0.0.139, web 0.0.152._
+
+Six findings from the unification review, none blocking, all fixed here:
+
+- **P4.96 — `chatId` was still serde-typed** (`Option<String>` on
+  `Request::ImageProfileGenerate`), so over dispatch an explicit `null`
+  collapsed to absent and answered 201 where v4 400s, and a number answered
+  serde's sentence instead of v4's Zod envelope; the handler gate P4.96 added
+  was reachable only by the handler-direct differential. `chatId` is now the
+  same `Option<Option<Value>>` tri-state as the five shaping keys; the engine
+  arm collapses it; the census's raw list gains the row (its `EXCLUDED_BY_THE_
+  ROUTE_IDENTIFIER_RULE` falls 442 → 441 with the arithmetic recorded); the
+  dispatch wire test gains three `chatId` arms (`null`, `7`, a non-uuid); and
+  `image_generate_route_equivalence` gains `generate_chat_id_null` +
+  `generate_chat_id_number` on both sides, regenerated at the pin — both
+  400/400 against v4's real route.
+- **P4.D198 — the mount loader's stage order was unpinned** (the wiring pin
+  drove only the legacy `files` path; swapping the mount loader's two blocks,
+  or handing its backstop the stored mime, left `file_attachment_tier3` green).
+  `lantern_loader_transcoder_wiring.rs` gains the mount twin over a scratch
+  copy of the committed `images-{main,mount}.db` pair with the `in-use.webp`
+  blob re-stamped to 3.2 MB of `image/png`; mutation-proven (the swapped
+  stages redden exactly that test).
+- **P4.D198 — Tier-1 item 2's whole-budget host tests were only half there**
+  (the seam method was tested, not `shrink_image_for_llm_transport` over the
+  real codec). Two host tests added: a 1024×1536 noise avatar → `was_shrunk`,
+  683×1024, under the 500 KiB ceiling (and the landscape twin), and v4's "two
+  shrunk avatars fit the per-turn budget bug 151 blew".
+- **P4.D198 — the new family's jest filter (`-- llm-image-budget`) also ran
+  v4's own real-sharp unit test** at every regen; anchored to
+  `cases/llm-image-budget` in both recipe headers.
+- **P4.97 — the order's item-4 neutrality assertion was missing**: a fixture
+  edit giving a pre-existing case a chaining token or a stop list would have
+  been carried on BOTH sides and passed the ordered compare. Every non-retry
+  call is now asserted to carry neither.
+- **The `attach_mount_file_equivalence` red P4.D198 withheld was NOT a v4 bug**
+  (the lane record's diagnosis is corrected in the round record): the
+  committed `attach-file-main.db` lagged v4's schema by five columns, so v4's
+  `$inc transcriptVersion` on the Librarian announcement write threw and the
+  route answered 500. Widened in place through v4's own migration DDL from the
+  `bcd7e4852` pin — which found a regression in the migrator itself: the
+  `53294163f` unification's index-gating fix ran a migration's `extraSql`
+  (`CREATE INDEX … ("generationKey")`) BEFORE its ALTER, which only works on a
+  partition already carrying the column; on this pair it died `no such
+  column`. The ALTER now runs first when the column is absent, the index
+  statements always after. The family is green on a pin-fresh oracle with zero
+  core change and its oracle var returns to the gate block.
+
 #### 2026-09-17 — docs(porting): close the P4.D198 lane — what `combined.log` shows, and the lane record
 
 _Versions: core 0.0.945, harness 0.0.836, host 0.0.138 (unchanged by this commit)._

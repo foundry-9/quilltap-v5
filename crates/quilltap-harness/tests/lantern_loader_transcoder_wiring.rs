@@ -392,3 +392,148 @@ fn the_shrink_runs_before_the_backstop_and_hands_it_the_shrunk_mime() {
     drop(db);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The committed `images-mount.db` link whose file id is NOT in `images-main.db`'s
+/// `files` (so `load_chat_files_for_llm` falls through to the MOUNT path) and
+/// whose blob the scratch copy re-stamps: `in-use.webp`.
+const MOUNT_LINK_ID: &str = "5349c92e-b239-420b-a8d8-7508b02cf7cd";
+const MOUNT_FILE_ID: &str = "0dffc1e1-ba0a-4530-8ed0-3027da543650";
+
+/// The MOUNT-path twin of the pin above — v4's own "where every character
+/// avatar actually travels" (`chat-files-v2.ts` `loadMountFileAsAttachment`),
+/// landed at the `bcd7e4852` unification (the §3 review found the legacy pin
+/// alone: swapping the mount loader's two stages, or handing its backstop
+/// `blob.stored_mime_type`, left `file_attachment_tier3` green because the
+/// backstop never acts in that corpus). Same shape, same discriminators; the
+/// bytes come from the blob row, not the byte store, and the descriptor's
+/// `size` is the POST-processing length — the mount path's own quirk.
+#[test]
+fn the_mount_path_shrinks_before_its_backstop_too() {
+    let stored = original_bytes(3_200_000);
+    assert!(
+        quilltap_core::files::image_processing::calculate_base64_size(stored.len())
+            > DEFAULT_MAX_BASE64_SIZE,
+        "the pin's premise: the stored blob must exceed the provider cap"
+    );
+
+    let dir = std::env::temp_dir().join(format!("qt-p4d198-mount-order-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures");
+    let main = dir.join("main.db");
+    let mount = dir.join("mount.db");
+    std::fs::copy(fixtures.join("images-main.db"), &main).unwrap();
+    std::fs::copy(fixtures.join("images-mount.db"), &mount).unwrap();
+    // Re-stamp the committed 34-byte `image/webp` blob as a 3.2 MB `image/png`
+    // in the SCRATCH copy — the same reason as the legacy pin: a stored WebP
+    // would make the shrink's `image/webp` output invisible to the mime
+    // mutation. (A plant in a scratch copy, not a differential fixture.)
+    {
+        let w = quilltap_core::db::Writer::open_writable(&mount, PEPPER).unwrap();
+        let n = w
+            .connection()
+            .execute(
+                "UPDATE doc_mount_blobs SET data = ?1, storedMimeType = 'image/png', sizeBytes = ?2 \
+                 WHERE fileId = ?3",
+                rusqlite::params![stored, stored.len() as i64, MOUNT_FILE_ID],
+            )
+            .unwrap();
+        assert_eq!(n, 1, "the committed fixture's `in-use.webp` blob row");
+    }
+
+    let db = Db::open(
+        DbPaths {
+            main: main.clone(),
+            mount_index: Some(mount.clone()),
+            llm_logs: None,
+        },
+        PEPPER,
+    )
+    .expect("open the seeded pair");
+
+    let transcoder = RecordingTranscoder {
+        rung_len: stored.len(),
+        resize_len: 100,
+        log: Mutex::new(Vec::new()),
+    };
+    // The byte store must NOT be consulted on the mount path; a store that
+    // answers would mask a loader that resolved the wrong way.
+    struct NoBytes;
+    impl FileBytesStore for NoBytes {
+        fn download_file(&self, e: &FileEntry) -> Result<Vec<u8>, String> {
+            panic!(
+                "the mount path must not read the byte store (asked for {})",
+                e.id
+            )
+        }
+    }
+    let attachments = load_chat_files_for_llm(
+        &db,
+        &NoBytes,
+        &transcoder,
+        &[MOUNT_LINK_ID.to_string()],
+        &LoadChatFilesOptions::with_provider(Some("NANOGPT".to_string())),
+    );
+
+    let log = transcoder.log.lock().unwrap().clone();
+    assert_eq!(
+        log,
+        vec![
+            SeamCall::Shrink {
+                max_edge: 1024,
+                quality: 78
+            },
+            SeamCall::Shrink {
+                max_edge: 1024,
+                quality: 65
+            },
+            SeamCall::Shrink {
+                max_edge: 1024,
+                quality: 55
+            },
+            SeamCall::Shrink {
+                max_edge: 1024,
+                quality: 45
+            },
+            SeamCall::Resize {
+                target_width: 819,
+                format: OutputFormat::Webp,
+                quality: 85
+            },
+        ],
+        "the MOUNT loader's seam call order and the backstop's format: a shrink \
+         that ran AFTER the backstop would put the Resize first AND ask for Jpeg; \
+         a backstop handed the STORED `image/png` would ask for Jpeg in place."
+    );
+
+    assert_eq!(attachments.len(), 1);
+    let a = &attachments[0];
+    assert_eq!(a["id"].as_str(), Some(MOUNT_LINK_ID));
+    assert_eq!(a["filename"].as_str(), Some("in-use.webp"));
+    assert_eq!(
+        a["mimeType"].as_str(),
+        Some("image/webp"),
+        "the backstop's output mime reaches the mount descriptor"
+    );
+    assert_eq!(
+        a["size"]
+            .as_u64()
+            .or_else(|| a["size"].as_f64().map(|f| f as u64)),
+        Some(100),
+        "the mount path's `size` is the POST-processing length (v4 `:663`), unlike the legacy path"
+    );
+    use base64::Engine;
+    assert_eq!(
+        a["data"].as_str(),
+        Some(
+            base64::engine::general_purpose::STANDARD
+                .encode(vec![b'R'; 100])
+                .as_str()
+        ),
+        "the bytes on the wire are the backstop's 100-byte output"
+    );
+
+    drop(db);
+    let _ = std::fs::remove_dir_all(&dir);
+}

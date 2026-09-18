@@ -169,6 +169,12 @@ async fn the_five_shaping_keys_are_refused_by_the_handler_not_the_decode() {
         ("style", json!("sketch"), "invalid_value"),
         ("aspectRatio", json!(true), "invalid_type"),
         ("negativePrompt", json!({}), "invalid_type"),
+        // `chatId: z.uuid().optional()` — raw since the `bcd7e4852`
+        // unification. An explicit `null` used to collapse to ABSENT here and
+        // pass; a number used to answer serde's sentence.
+        ("chatId", json!(Value::Null), "invalid_type"),
+        ("chatId", json!(7), "invalid_type"),
+        ("chatId", json!("not-a-uuid"), "invalid_format"),
     ] {
         let (status, v) = post(body(json!({ key: wrong }))).await;
         assert_eq!(status, 400, "{key}: {v}");

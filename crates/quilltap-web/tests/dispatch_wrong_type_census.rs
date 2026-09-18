@@ -2534,7 +2534,14 @@ fn is_route_identifier(field: &str) -> bool {
 // unification as base 435 + P4.D183's 2 + P4.D185's 5 (the three
 // `CharacterAvatarRoll*` verbs' `character_id`s and the two `file_id`s;
 // see P4.D185's block above). Neither lane's own total is the answer.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 442;
+//
+// **The `bcd7e4852` unification (−1): 442 → 441.** `ImageProfileGenerate.chat_id`
+// left the TYPED set when it became the raw `Option<Option<Value>>` tri-state
+// (the §3 review's catch on P4.96 — see `IMAGE_PROFILE_GENERATE_RAW_FIVE`'s
+// `chatId` row); it had been dropped by the `*_id` rule as a typed field, so the
+// excluded count falls by exactly one. It is a genuine BODY key on v4's route
+// (`z.uuid().optional()`), now adjudicated in the raw list rather than here.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 441;
 
 #[test]
 fn census_covers_every_typed_request_field() {
@@ -2779,6 +2786,20 @@ fn the_census_reads_the_file_it_claims_to() {
 const IMAGE_PROFILE_GENERATE_RAW_FIVE: &[Row] = &[
     Row {
         variant: "ImageProfileGenerate",
+        field: "chat_id",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.96, at the `bcd7e4852` unification) — v4 `image-profiles/[id]/route.ts:23` \
+               `chatId: z.uuid().optional()`. P4.96 gated it in the handler but \
+               left the variant `Option<String>`, so over dispatch an explicit \
+               `null` collapsed to ABSENT (201 where v4 400s) and a number answered \
+               serde's sentence — the §3 review's catch; now the same tri-state as \
+               the five shaping keys (`image_generate_route_equivalence` \
+               `generate_chat_id_null` / `generate_chat_id_number`; the dispatch \
+               wire test's `chatId` arms).",
+    },
+    Row {
+        variant: "ImageProfileGenerate",
         field: "size",
         rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
@@ -2920,8 +2941,9 @@ fn the_raw_five_list_covers_every_raw_field_on_the_variant() {
     );
     assert_eq!(
         have.len(),
-        5,
-        "v4's `generateImageSchema` has five shaping keys"
+        6,
+        "v4's `generateImageSchema` has five shaping keys, plus `chatId` (raw since \
+         the `bcd7e4852` unification)"
     );
 }
 
@@ -2938,7 +2960,7 @@ fn image_profile_generate_five_decode_raw_so_the_handler_can_refuse() {
     });
     for row in IMAGE_PROFILE_GENERATE_RAW_FIVE {
         assert!(
-            row.note.starts_with("RAW(P4.96)"),
+            row.note.starts_with("RAW(P4.96"),
             "{}.{} must carry its owning lane",
             row.variant,
             row.field

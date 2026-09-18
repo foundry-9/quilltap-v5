@@ -792,6 +792,16 @@ fn image_generate_route_matches_oracle() {
         // `chatId: z.uuid().optional()` — v5 never gated this key AT ALL until
         // P4.96: a non-uuid chat id reached the tool.
         Case {
+            name: "generate_chat_id_null",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "chatId": Value::Null }),
+        },
+        Case {
+            name: "generate_chat_id_number",
+            id: spec.profile_id.clone(),
+            body: json!({ "prompt": "A kite", "count": 1, "chatId": 7 }),
+        },
+        Case {
             name: "generate_chat_id_not_uuid",
             id: spec.profile_id.clone(),
             body: json!({ "prompt": "A kite", "count": 1, "chatId": "not-a-uuid" }),

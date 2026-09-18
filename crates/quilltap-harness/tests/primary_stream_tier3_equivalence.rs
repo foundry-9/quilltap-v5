@@ -1399,6 +1399,35 @@ async fn primary_stream_tier3_matches_oracle() {
         );
     }
 
+    // The neutrality leg the order's item 4 asked for and the lane left to the
+    // side-by-side compare alone (the `bcd7e4852` unification's §3 catch): a
+    // fixture edit that gave a pre-existing case a chaining token or a stop list
+    // would be carried on BOTH sides and pass the ordered compare green. Every
+    // call outside the three retry labels must carry NEITHER — true today for
+    // all of them, incl. the hard-failover and recovery legs — so a case that
+    // silently starts carrying one is caught here, not by luck.
+    for c in &got_stream_calls {
+        let label = c["label"].as_str().unwrap_or("");
+        if matches!(
+            label,
+            "tool_unsupported_then_ok"
+                | "tool_unsupported_then_fail"
+                | "tool_unsupported_then_ok_bare"
+        ) {
+            continue;
+        }
+        assert_eq!(
+            c["previousResponseId"],
+            Value::Null,
+            "{label}: a non-retry case started carrying a chaining token — record it as a case-spec change, it is not this family's neutrality"
+        );
+        assert_eq!(
+            c["stop"],
+            json!([]),
+            "{label}: a non-retry case started carrying stop sequences — record it as a case-spec change"
+        );
+    }
+
     eprintln!(
         "OK: primary-stream tier-3 matched oracle ({} calls, {} llm_logs rows, \
          {} streamed calls).",

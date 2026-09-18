@@ -1,0 +1,78 @@
+{
+  "label": "unify bcd7e4852 round, target pin",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "llm_image_budget_equivalence",
+    "file_attachment_tier3_equivalence",
+    "orchestrator_tier3_equivalence",
+    "help_tree_equivalence",
+    "build_context_tier3_equivalence",
+    "attach_mount_file_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "generation_key_travels_as_is_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "llm_image_budget_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "file_attachment_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "help_tree_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "build_context_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "attach_mount_file_equivalence",
+      "status": "run_failed",
+      "cause": "[attach_missing_relative_path] body OK.\n[attach_twice] STATUS 200 != 500\n[attach_twice] BODY MISMATCH:\n   = {\n   =   \"first\": {\n  GOT :     \"announcement\": {\n  WANT:     \"error\": \"Failed to post Librarian attachment announcement\"\n[attach_twice tables] OK.\nthread 'attach_mount_file_matches_oracle' (12280199) panicked at crates/quilltap-harness/tests/attach_mount_file_equivalence.rs:675:5:\nattach-mount-file FAILED: [\"attach_cached_status\", \"attach_cached\", \"attach_kept_image_status\", \"attach_kept_image\", \"attach_vision_status\", \"attach_vision\", \"attach_refusal_retry_status\", \"attach_refusal_retry\", \"attach_reasoning_status\", \"attach_reasoning\", \"attach_verdict_unseen_status\", \"attach_verdict_unseen\", \"attach_non_image_status\", \"attach_non_image\", \"attach_native_text_status\", \"attach_native_text\", \"attach_twice_status\", \"attach_twice\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test attach_mount_file_equivalence`",
+      "exit": 101,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 5,
+    "run_failed": 1
+  }
+}

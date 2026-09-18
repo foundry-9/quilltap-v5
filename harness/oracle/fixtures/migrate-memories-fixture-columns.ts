@@ -199,6 +199,15 @@
  *   (the mount partitions and `salon-long-*` report `current` — measured, not
  *   skipped; `salon-long-*` is deliberately NOT widened, see above)
  *
+ * The `attach-file-*` trio (the SIXTH pair, widened in place 2026-09-17 at v4
+ * `bcd7e4852` by the `bcd7e4852` round's unification — `attach_mount_file_
+ * equivalence` had been RED at both pins because v4's `$inc transcriptVersion`
+ * on the Librarian announcement write threw on the pre-`31436bae4` vintage and
+ * the route answered 500; the main partition lacked FIVE columns):
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     $F/attach-file-main.db $F/attach-file-mount.db $F/attach-file-llmlogs.db
+ *   (the mount and llm-logs partitions report `current`)
+ *
  * `--report-only` (anywhere on argv) reports what WOULD be applied and writes
  * nothing — the dry run that measures a gap before touching a committed file.
  * It opens each target read-only, so it cannot leave `.db-journal` residue.
@@ -439,15 +448,23 @@ function main(): void {
       const cols = (db.prepare(`PRAGMA table_info("${m.table}")`).all() as { name: string }[]).map(
         (c) => c.name,
       );
-      // The index statements ride OUTSIDE the column guard: v4's `llm_logs`
-      // migration creates its indexes on every `run()` (`add-llm-logs-profile-
+      // The ALTER first, when the column is absent (v4's guard) …
+      if (!cols.includes(m.column)) {
+        if (!reportOnly) db.exec(m.sql);
+        applied.push(`${m.table}.${m.column}`);
+      }
+      // … and the index statements ALWAYS, after it: v4's `llm_logs` migration
+      // creates its indexes on every `run()` (`add-llm-logs-profile-
       // columns.ts:84`, after the `if` at `:82` closes), and every statement
       // here is `IF NOT EXISTS`, so a partition carrying the column but not its
       // index still gets the index — the shape v5's own boot ensures produce.
+      // ⚠ The order matters: the `53294163f` unification's index-gating fix put
+      // the `extraSql` loop BEFORE the ALTER and the guard, which only works on a
+      // partition that already carries the column — on one that does not,
+      // `CREATE INDEX … ("generationKey")` died `no such column` before the
+      // ALTER ran (found by the `bcd7e4852` unification widening
+      // `attach-file-main.db`, the sixth pair).
       if (!reportOnly) for (const extra of m.extraSql ?? []) db.exec(extra);
-      if (cols.includes(m.column)) continue; // v4's guard: already migrated
-      if (!reportOnly) db.exec(m.sql);
-      applied.push(`${m.table}.${m.column}`);
     }
     db.close();
     const verb = reportOnly ? 'WOULD ADD ' : '+';

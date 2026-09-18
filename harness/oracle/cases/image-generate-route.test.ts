@@ -215,6 +215,11 @@ async function main(): Promise<void> {
     // before the handler is reached. The handler itself reproduces v4.
     { name: 'generate_count_string', id: spec.profileId, body: { prompt: 'A kite', count: '2' } },
     // `chatId: z.uuid().optional()` — v5 never gated it at all.
+    // …and the two shapes the variant used to swallow before the `bcd7e4852`
+    // unification made `chatId` a raw tri-state: an explicit null (collapsed to
+    // absent → 201) and a number (serde's sentence at the edge).
+    { name: 'generate_chat_id_null', id: spec.profileId, body: { prompt: 'A kite', count: 1, chatId: null } },
+    { name: 'generate_chat_id_number', id: spec.profileId, body: { prompt: 'A kite', count: 1, chatId: 7 } },
     { name: 'generate_chat_id_not_uuid', id: spec.profileId, body: { prompt: 'A kite', count: 1, chatId: 'not-a-uuid' } },
     // Zod collects EVERY failing key into one issue array, in schema order
     // (`quality` is declared before `style`).

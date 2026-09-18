@@ -1079,12 +1079,18 @@ pub enum Request {
     /// `prompt` and `count` stay serde-TYPED: their `dispatch_wrong_type_census`
     /// rows are the recorded pre-existing narrowing (the edge refuses a non-string
     /// prompt / a `"2"` count with a serde sentence), which P4.96 does not reopen.
+    /// `chatId` joined the raw tri-state at the `bcd7e4852` unification.
     #[serde(rename_all = "camelCase")]
     ImageProfileGenerate {
         image_profile_id: String,
         prompt: String,
-        #[serde(default)]
-        chat_id: Option<String>,
+        /// `chatId: z.uuid().optional()` — RAW and tri-state like the five
+        /// shaping keys (the `bcd7e4852` unification's §3 catch: P4.96 left it
+        /// `Option<String>`, so `{"chatId": null}` collapsed to absent and
+        /// answered 201 where v4 400s, and `{"chatId": 7}` answered serde's
+        /// sentence over dispatch where v4 answers the Zod envelope).
+        #[serde(default, deserialize_with = "double_option")]
+        chat_id: Option<Option<serde_json::Value>>,
         #[serde(default)]
         count: Option<i64>,
         #[serde(default, deserialize_with = "double_option")]
