@@ -133018,3 +133018,76 @@ non-lib edits in those files leave the mirror untouched.)
 * **The USER-side re-hydration budget was not touched.** v4 kept it
   OLDEST-first and CHAR-counted and says so in its own comment; harmonizing
   the two would be an invention.
+
+---
+
+## P4.D199 — the lane gate (the gate of record for this lane)
+
+Run from the lane worktree on `claude/lantern-byte-budget-walk-306c9b` after
+`41b8bc3c`, with `CARGO_INCREMENTAL=0` and `TZ=UTC`, as ONE logged,
+sentinel-guarded chain (`/tmp/p4.d199/gate.sh` → `gate.log` + `workspace.log`,
+never piped through `tail`).
+
+1. **§R.2 probe — PASS**, at lane start and again before the regen batch
+   (branch `main`, tree CLEAN, `bcd7e4852..main` empty, `1a2b2164c..bugfix`
+   empty). Re-checked a third time mid-lane: unchanged.
+2. `cargo fmt --all --check` — **clean**.
+3. `cargo clippy --workspace --all-targets -- -D warnings` — **clean**, and
+   again with `--features quilltap-core/native-transport` — **clean**.
+4. **The lane's differentials by NAME**, each regenerated fresh from the pin
+   §R.3 assigns it, run with `--nocapture`, the log grepped for `SKIP:`
+   (ZERO), the fresh NDJSON grepped for the changed bytes (> 0):
+   - `orchestrator_tier3_equivalence` — green over the target-pinned oracle;
+     **red-first recorded** (`attachment slate at wire mismatch` with the spend
+     removed). Changed bytes confirmed: the five new case labels present ×1
+     each, and the recorded `claude-sees` slates read
+     `[lb_fit_a, lb_fit_b]`, `[lb_small, lb_new]`, `[lb_half1, lb_half2]`.
+   - `help_tree_equivalence` — green; **red-first recorded**
+     (`docs[38] differs` with the pre-re-vendor page). Marker confirmed:
+     `A travelling portrait packs light` ×1 in the target-pinned NDJSON, ×0 in
+     the baseline-pinned `help/connection-profiles.md`.
+   - `help_tree_embed_guard` — green (124 files, embedded == disk).
+   - `build_context_tier3_equivalence` — green at the target pin, zero change
+     on its side (the neutrality leg; it drives `buildContext`, not
+     `buildMessageContext`).
+   - **Tier R** (`cli_differential`) at the target pin, by name with
+     `--nocapture`: **223 cases, 0 failures** (560.7 s) — the
+     `4.10.0-dev.45` stamp moves no `--version` arm.
+5. **Neutrality** — the orchestrator oracle regenerated at BOTH pins from the
+   same spec and compared by case over the normalized rows (this family is NOT
+   `cmp`-deterministic across regens at the SAME pin, re-measured): 56
+   pre-existing cases' events **unmoved**; 83 canned rows each side with
+   **exactly two** differing, both the budget arms; `background_jobs` and
+   `chat_messages` row-for-row identical after normalization (only the dump
+   order moves); `llm_logs` identical.
+6. **Mutation proofs** — four, each reddening exactly its targets, each
+   applied and reverted by file backup, never `git checkout`:
+   `>` → `>=`; `kept.reverse()` deleted; `.rev()` dropped (oldest-first);
+   the warn made unconditional.
+7. `cargo build --workspace --release` — **clean** (7m02s).
+8. `cargo test --workspace --no-fail-fast` with the lane's env block (its own
+   five oracle/fixture vars + `QT_V4_CHECKOUT` at the TARGET pin + `QT_NODE`
+   = the node BINARY; `QT_ORACLE_IMGGEN_ROUTE` deliberately WITHHELD, §R.10(d)
+   — that family is P4.96's to prove by name): **572 test binaries / 3,388
+   passed / 0 failed / 2 ignored, ZERO `SKIP:` lines, exit 0.** The lane's
+   five families confirmed RUN by non-zero duration inside that block:
+   `orchestrator_tier3` 5.06 s, `help_tree` 1.25 s, `help_tree_embed_guard`
+   0.02 s, `build_context_tier3` 0.46 s, `cli_differential` 361.58 s.
+9. SPA — **not applicable**; this lane touches no `apps/web/**` file.
+10. **Ownership** — `git diff --stat main...HEAD` is 13 files, every one in
+    the lane's Owns column, every MUST-NOT-TOUCH path absent; and
+    `git diff main...HEAD -- crates/quilltap-core/src/api/types.rs
+    crates/quilltap-core/src/api/engine.rs
+    crates/quilltap-web/tests/dispatch_wrong_type_census.rs` is **EMPTY**
+    (§R.10(c)).
+11. Per commit: `.claude/commands/commit.md` in full. Three commits, all on
+    the lane branch; no merge to `main`, no `git stash`, no nested worktree.
+12. **The committed recipe is still runnable** after the header insertion —
+    `recipe_sweep.py --show orchestrator_tier3_equivalence` extracts both
+    stages cleanly (the new paragraph is prose, and the driver classifies by
+    indentation). No `/tmp` pin appears in any committed recipe.
+
+**Versions:** core 0.0.943, harness 0.0.836. No host bump (`help/` moves the
+embedded table but no host source — §R.8 / the P4.D194 rule); no web, cli,
+tauri or SPA bump. ⚠ The unifier RECOUNTS: all four lanes bump `harness`, and
+identical bumps auto-merge as ONE.
