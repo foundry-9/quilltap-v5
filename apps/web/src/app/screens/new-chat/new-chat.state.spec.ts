@@ -513,7 +513,7 @@ describe('NewChatState system-prompt seed (v4 baa85e19b, bug 154)', () => {
     return char('c1', 'Aria', { systemPrompts: prompts, defaultSystemPromptId });
   }
 
-  async function seededPromptId(c: CharacterListItem): Promise<string | null> {
+  async function seededPromptId(c: CharacterListItem): Promise<string | null | undefined> {
     const { core } = recordingCore({ character: c });
     const state = new NewChatState(core, { initialCharacterId: 'c1' });
     await state.load();

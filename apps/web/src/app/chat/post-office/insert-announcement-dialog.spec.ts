@@ -399,6 +399,82 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     expect(fixture.nativeElement.querySelector('#announce-prompt')).toBeNull();
   });
 
+  /**
+   * v4 `baa85e19b` (bug 154) folded this dialog's copy onto the shared
+   * `resolveDefaultSystemPromptId`. Unlike the two New-Chat seeds, the copy
+   * here was ALREADY the correct three-arm order — the commit message's "five
+   * hand-rolled copies" says nothing about which were broken, the hunks do.
+   * So this is a NEUTRAL fold, and these three arms are its pin: they were
+   * green before it and are green after. Nothing pinned them before (the
+   * spec's one fixture value was `null`).
+   */
+  describe('the resolved system prompt (v4 baa85e19b — a NEUTRAL fold)', () => {
+    async function previewedPromptId(
+      systemPrompts: CharacterListItem['systemPrompts'],
+      defaultSystemPromptId: string | null,
+    ): Promise<unknown> {
+      const s = stub({
+        characters: [character({ id: 'c-bram', name: 'Bram', systemPrompts, defaultSystemPromptId })],
+        profiles: [{ id: 'p1', name: 'Cheap', provider: 'openai', modelName: 'm', isDefault: true }],
+      });
+      const fixture = await mount(s);
+      tab(fixture, 'Off-scene character').click();
+      fixture.detectChanges();
+      await settle(fixture);
+      (fixture.nativeElement.querySelector('.max-h-40 button') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await setEditor(fixture, 'The ridge is clear.');
+      fixture.detectChanges();
+      await settle(fixture);
+      primary(fixture).click();
+      await settle(fixture);
+      return s.calls.find((c) => c['type'] === 'chatAnnouncementPreview')!['systemPromptId'];
+    }
+
+    it('prefers the column when it names a prompt the character has', async () => {
+      expect(
+        await previewedPromptId(
+          [
+            { id: 's1', name: 'One', isDefault: true },
+            { id: 's2', name: 'Two', isDefault: false },
+          ],
+          's2',
+        ),
+      ).toBe('s2');
+    });
+
+    it('falls through to the flag when the column names a prompt that is gone', async () => {
+      expect(
+        await previewedPromptId(
+          [
+            { id: 's1', name: 'One', isDefault: false },
+            { id: 's2', name: 'Two', isDefault: true },
+          ],
+          'deleted-long-ago',
+        ),
+      ).toBe('s2');
+    });
+
+    it('falls through to the first prompt when nothing is flagged', async () => {
+      expect(
+        await previewedPromptId(
+          [
+            { id: 's1', name: 'One', isDefault: false },
+            { id: 's2', name: 'Two', isDefault: false },
+          ],
+          null,
+        ),
+      ).toBe('s1');
+    });
+
+    it('OMITS the key when the character has no prompts at all', async () => {
+      // The resolver answers `null`, and `previewAnnouncement` spreads the key
+      // in only when it is truthy (`post-office.api.ts:161`) — so a promptless
+      // character sends no `systemPromptId` at all, not an explicit null.
+      expect(await previewedPromptId([], 'gone')).toBeUndefined();
+    });
+  });
+
   describe('the "Who hears it" audience (v4 `a163862c`)', () => {
     function checkbox(fixture: ComponentFixture<unknown>, name: string): HTMLInputElement {
       const labels = [

@@ -23,6 +23,7 @@ import {
   previewAnnouncement,
   type AudienceCandidate,
 } from './post-office.api';
+import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import { ToastService } from '../../ui/toast.service';
 
 type Mode = 'staff' | 'character' | 'custom';
@@ -482,15 +483,21 @@ export class InsertAnnouncementDialog {
     return profiles.find((p) => p.isDefault)?.id ?? AS_IS;
   });
 
-  /** v4 `defaultSystemPromptId` (`:160-170`): explicit → isDefault → first. */
+  /**
+   * v4 `defaultSystemPromptId` (`:177-181` post-`baa85e19b`): explicit →
+   * isDefault → first, through the one shared resolver.
+   *
+   * ⚠ A NEUTRAL fold. v4's bug-154 message says the resolver replaces "five
+   * hand-rolled copies — two of which seeded a chat with no system prompt at
+   * all"; the hunks show this dialog's copy was never one of the two. It
+   * already guarded the column with `prompts.some(...)`, and v5's mirror
+   * copied it faithfully. The fold moves no behaviour here — the four arms
+   * pinned in the spec were green before it and are green after.
+   */
   private readonly defaultSystemPromptId = computed<string | null>(() => {
     const sel = this.selectedCharacter();
     if (this.mode() !== 'character' || !sel) return null;
-    const prompts = sel.systemPrompts ?? [];
-    if (sel.defaultSystemPromptId && prompts.some((p) => p.id === sel.defaultSystemPromptId)) {
-      return sel.defaultSystemPromptId;
-    }
-    return prompts.find((p) => p.isDefault)?.id ?? prompts[0]?.id ?? null;
+    return resolveDefaultSystemPromptId(sel);
   });
 
   protected readonly profileId = computed(() => this.profileOverride() ?? this.defaultProfileId());

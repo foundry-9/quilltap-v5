@@ -113,6 +113,29 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — refactor(post-office): the announcement dialog's prompt resolution folds onto the shared resolver (P4.D202 unit 3)
+
+_Versions: SPA 0.5.734._
+
+A NEUTRAL fold, and the reason to read the hunks instead of the commit
+message: v4's bug-154 message says the resolver replaces "five hand-rolled
+copies — two of which seeded a chat with no system prompt at all", which
+reads as an indictment of all five. The hunks say otherwise —
+`InsertAnnouncementDialog.tsx`'s copy already guarded the column with
+`prompts.some(...)` and was never one of the two, and v5's mirror had
+copied it faithfully. So this fold moves no behaviour; it removes a
+duplicate.
+
+The pin is the point. Nothing had ever exercised the three arms here (the
+spec's one `defaultSystemPromptId` fixture value was `null`), so four
+specs went in first and ran GREEN against the pre-fold code — valid column
+→ that prompt, stale column → the flagged prompt, nothing flagged →
+`prompts[0]`, and no prompts at all → the key OMITTED from the preview
+request (the resolver answers null and `previewAnnouncement` spreads the
+key in only when it is truthy, so a promptless character sends no
+`systemPromptId`, not an explicit one). All four are green after the fold
+as well; the whole dialog spec is 29/29 either side.
+
 #### 2026-09-18 — fix(new-chat): a stale default-prompt column no longer opens a chat with no system prompt (P4.D202 unit 2)
 
 _Versions: SPA 0.5.733._
