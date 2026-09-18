@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): record `baa85e19b` (bug 154) as a third drift row — and that it STOPs the in-flight round's probe
+
+_Docs-only change._
+
+v4's default-system-prompt fix, which the morning's `/setupphase` recorded as
+uncommitted work in flight, landed at 07:04 as `baa85e19b`. The drift verdict
+goes to three commits past the baseline, in two independent families: the
+doc-edit opacity covenant (bugs 152 and 153, already ORDERED as P4.D200) and
+this one, UNPROCESSED. None is a convergence — all three are v4-side finds.
+
+The consequence is loud and belongs in the ledger: the in-flight round wrote
+its freshness probe to treat a moved HEAD as a STOP, naming this exact case,
+and three lane worktrees are live. The STOP is procedural rather than
+substantive — every regen in the round is pinned, a pinned worktree cannot see
+a later commit, the round's target stays `89fcc3c0d`, and the new commit's
+code paths are disjoint from all three lanes' surfaces — so §1 now carries
+that measurement for the waiver decision, which only the human or a
+`/setupphase` may make.
+
+The row itself is measured against v5 rather than predicted. v5 reproduces the
+server half whole: none of the four system-prompt writers in
+`vault_character_arrays.rs` writes `defaultSystemPromptId`, and
+`set_default_system_prompt` has no null arm. The impersonation voice preview
+carries v4's pre-fix unconditional chain, comment and all, and two of the
+three SPA read copies reproduce the fallback-less ternary that seeds a chat
+with no system prompt when the column goes stale. v5 never had the dead-route
+half — its star posts a dispatch verb, not v4's unserved action — so only the
+optimistic-write and dialog-width halves port there.
+
 #### 2026-09-18 — docs(porting): order the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99)
 
 _Docs-only change._
