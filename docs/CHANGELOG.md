@@ -218,6 +218,28 @@ New family `doc_opacity_equivalence` arrives with it, red-first: 21 of its 44 op
 diverge from v4 at `89fcc3c0d` before any fix, including both `flatten` rows
 (v5 had no way to express the option). Those two are the rows this commit turns
 green.
+#### 2026-09-18 — refactor(images): the fourth hand-copy of v4's `util.parsedType` retires onto the shared one
+
+_Versions: core 0.0.952._
+
+`api/image_profiles.rs`'s `generate_parsed_type` was
+`api/settings.rs`'s `zod_parsed_type` byte for byte — the `bcd7e4852`
+review's §3 note on P4.96. Proven identical before the edit
+(`diff` of the two function bodies: no output), then retired to an import
+alias, so the received-type word in every `invalid_type` message has one
+home.
+
+Behaviour-neutral, and measured rather than asserted:
+`image_generate_route_equivalence` re-ran at the `bcd7e4852` pin with zero
+row change, over an oracle whose refusal rows exercise six of the renderer's
+seven arms (`received null` ×2, `number` ×5, `boolean`, `object`, `string`)
+— so the leg is not vacuous.
+
+The `zod_issue` / `zod_error_message` ISSUE renderers beside it
+(`run_sql.rs:219`, `settings.rs:680`, the `generators_wizard.rs` twin) are a
+different layer and a cross-module refactor; they stay separate and are
+recorded as the remaining DRY candidate.
+
 #### 2026-09-18 — fix(images): an explicit `null` on the collection generate route stops arriving as an absent key
 
 _Versions: core 0.0.951, web 0.0.153._

@@ -673,17 +673,16 @@ struct ParsedGenerate {
 const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 
 /// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
-fn generate_parsed_type(v: Option<&Value>) -> &'static str {
-    match v {
-        None => "undefined",
-        Some(Value::Null) => "null",
-        Some(Value::Bool(_)) => "boolean",
-        Some(Value::Number(_)) => "number",
-        Some(Value::String(_)) => "string",
-        Some(Value::Array(_)) => "array",
-        Some(Value::Object(_)) => "object",
-    }
-}
+///
+/// P4.98 (the `bcd7e4852` review's §3 note on P4.96): this was a fourth
+/// hand-copy of [`crate::api::settings::zod_parsed_type`], byte-identical to
+/// it, and now IS it. The retirement is behaviour-neutral by construction —
+/// the two bodies were `diff`-proven identical before the edit — and
+/// `image_generate_route_equivalence` re-ran at the baseline pin with zero row
+/// change. The `zod_issue` / `zod_error_message` ISSUE renderers beside it are
+/// a different layer and stay separate (recorded as the remaining DRY
+/// candidate).
+use crate::api::settings::zod_parsed_type as generate_parsed_type;
 
 /// One Zod 4.5 issue of `generateImageSchema`, rendered as v4's
 /// `validationError(err)` body carries it (`details: zodError.issues`).
