@@ -132920,3 +132920,101 @@ QT_ORACLE_OUT=/tmp/p4.d199/oracle-help-tree.ndjson \
 
 No host bump: `help/` changes the embedded table but no `quilltap-host` source
 (the P4.D194 rule, §R.8).
+
+---
+
+## P4.D199 unit 3 — the `bcd7e4852` non-lib ratifications, on the file list
+
+The P4.D194 idiom: every path in `git show --stat bcd7e4852` named with its
+disposition, so the unifier can write the ledger's
+`ABSORBED(P4.D198, P4.D199)` row from this table rather than from a subject
+line.
+
+| path | Δ | disposition |
+|---|---|---|
+| `lib/services/chat-message/context-builder.service.ts` | +50/−3 | **PORTED — P4.D199 unit 1** (`services/message_context.rs` section K + `spend_lantern_image_budget`). |
+| `help/connection-profiles.md` | +12 | **PORTED — P4.D199 unit 2** (byte copy; 124 stays 124). |
+| `lib/files/llm-image-budget.ts` | NEW, 191 | **P4.D198's** (the loader half). P4.D199 consumes only `LANTERN_IMAGE_BASE64_BUDGET`, through the §R.10(a) marked private twin. |
+| `lib/chat-files-v2.ts` | +48/−6 | **P4.D198's** (both attachment loaders). Read-only here. |
+| `__tests__/unit/lib/files/llm-image-budget.test.ts` | NEW, 211 | **P4.D198's corpus source.** Not read by this lane. |
+| `CLAUDE.md` | +1 | **NO-PORT.** v4's own agent guidance ("What an image costs a model is not what it costs the gallery" — the rule that image bytes bound for an LLM go through `shrinkImageForLlmTransport`, that stored files are never touched, and that a walk collecting several images must also spend an aggregate budget because a per-image cap cannot answer an aggregate question). Our `CLAUDE.md` is not a mirror of v4's; the port's own statement of this rule lives in this work order, in P4.D198's module doc and in `spend_lantern_image_budget`'s. |
+| `README.md` | 2 ± | **NO-PORT.** The version badge `4.10.0-dev.44` → `dev.45` and the bugs.md index line's "Last updated" date. |
+| `package.json` | 1 ± | **NO-PORT** — the `4.10.0-dev.45` stamp. |
+| `package-lock.json` | 2 ± | **NO-PORT** — the same stamp, twice. |
+| `packages/quilltap/package.json` | 1 ± | **NO-PORT** — the same stamp. **Tier R run once at the target pin to prove it moves nothing** (below). |
+| `.claude/commands/update-documentation.md` | 1 ± | **NO-PORT.** One "Last updated: 2026-09-16 → 2026-09-17" date inside v4's own doc-maintenance command. |
+| `docs/CHANGELOG.md` | +18 | **NO-PORT (mirrored).** `docs/v4/CHANGELOG.md` — the unifier's, §R.9. |
+| `docs/developer/bugs.md` | +17/−3 | **NO-PORT (mirrored).** `docs/v4/developer/bugs.md`. |
+| `docs/developer/bugs/fixed/bug-151-unbudgeted-image-bytes-on-the-wire.md` | NEW, 194 | **NO-PORT (mirrored).** `docs/v4/developer/bugs/fixed/…` — a NEW file in the mirror. |
+
+### Tier R at the target pin (the `packages/quilltap/package.json` stamp)
+
+`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d199-bcd7e4852 QT_NODE=…/v24.13.1/bin/node
+cargo test -p quilltap-cli --test cli_differential` — **223 cases, 0 failures** (560.7 s; the memory note `tier-r-case-count-hidden-on-pass` is why `--nocapture` is on — the count is an `eprintln!`). The
+version stamp moves no `--version` arm, so nothing is ported and no case is
+regenerated.
+
+### A measurement the order asked for, answered in full
+
+**"The `help_*` content families that read `connection-profiles.md`": there are
+none.** `grep -l connection-profiles crates/quilltap-harness/tests/help_*`
+returns only `help_tree_embed_guard.rs`; every other `connection-profiles` hit
+in the harness (`salon_reads`, `system_export`, `connection_profiles_tier2`, …)
+is the `connection_profiles` TABLE. Of the sixteen `help_*` families, exactly
+two read the vendored tree — `help_tree_equivalence` (the embedded table vs
+v4's `help/` at the pin) and `help_tree_embed_guard` (the embedded table vs
+this repo's disk). The three that call `load_help_source_files`
+(`help_doc_sync`, `help_doc_sync_guards`, `help_doc_ensure`) each hand it their
+OWN synthetic tree root (`fixture_root` / `scenario_root` / `tree_root`), never
+the vendored one. Both real readers were run at the target pin and are green.
+
+### §R.9 — the `docs/v4/` mirror pre-list (the unifier copies these; this lane
+copies nothing)
+
+Byte counts and md5s taken at `/tmp/qt-v4-pin-p4d199-bcd7e4852`:
+
+| v4 path → v5 mirror path | bytes at the pin | md5 at the pin | v5 now |
+|---|---|---|---|
+| `docs/CHANGELOG.md` → `docs/v4/CHANGELOG.md` | 80,642 | `a4af5bfd9c1e3f1792ef6a64effb7e37` | 79,413 bytes (lags) |
+| `docs/developer/bugs.md` → `docs/v4/developer/bugs.md` | 277,275 | `f9267e64ae9708c19633e839acd003b3` | 273,262 bytes (lags) |
+| `docs/developer/bugs/fixed/bug-151-unbudgeted-image-bytes-on-the-wire.md` → `docs/v4/developer/bugs/fixed/…` | 10,378 | `8dba7117c457840c14e19a3680e386bc` | **ABSENT** (new file) |
+
+(v4's `README.md`, `CLAUDE.md` and `.claude/**` are not mirrored, so the three
+non-lib edits in those files leave the mirror untouched.)
+
+### Tier 2 items
+
+* **Item 8 — the debug-level companion: there is none.** Confirmed by reading
+  the hunk, not the prose: `bcd7e4852`'s `context-builder.service.ts` diff adds
+  exactly one logging statement, the `logger.warn`. (The DEBUG line the commit
+  ships, `Image shrunk for LLM transport`, is in `llm-image-budget.ts` —
+  P4.D198's.) Nothing was invented.
+* **Item 9 — the `combined.log` rendering, for the dogfood queue's acceptance
+  grep.** Through P4.49's file layer (`quilltap-web/src/log_file.rs`:
+  `render_line` writes the envelope `{timestamp, level, message, context}` in
+  that key order; the `FieldVisitor` puts every non-`message`/`error` field
+  into `context` under its own name, numbers as JSON numbers via `record_u64`,
+  the bare `&str` as a JSON string via `record_str`), the warn lands as:
+
+  ```json
+  {"timestamp":"<iso>","level":"warn","message":"Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent","context":{…,"dropped_for_budget":1,"kept":2,"budget":2097152,"budget_used":786432,"character_participant_id":"<participant uuid>"}}
+  ```
+
+  No field carries an array, so the `…Json` convention does not apply. Grep for
+  `exceeded the per-turn byte budget`.
+
+### Tier 3 — the deferrals, loud
+
+* **The post-SHRINK interplay is NOT measurable in this worktree** and is not
+  claimed: a real avatar shrunk by P4.D198's loaders and then budgeted here
+  cannot be posed with `NotConfiguredTranscoder` on one side and junk bytes on
+  both. It composes by construction — `data` is whatever the loader returned,
+  and this lane reads its length and nothing else — and §R.10(b) puts the
+  proof at the unifier's re-run of `orchestrator_tier3` and
+  `file_attachment_tier3` over the union.
+* **💸 The live proof is a dogfood item:** a turn carrying several fresh
+  Lantern portraits on a vision seat, with the warn visible in `combined.log`
+  and the dropped portrait absent from the wire.
+* **The USER-side re-hydration budget was not touched.** v4 kept it
+  OLDEST-first and CHAR-counted and says so in its own comment; harmonizing
+  the two would be an invention.

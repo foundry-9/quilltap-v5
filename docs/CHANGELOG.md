@@ -184,6 +184,26 @@ resized it — down to 342,376 bytes (456,502 base64) at quality 78 and 242,366
 (323,155) at 45. v4's sharp reached ~98 KB of base64 on its own gaussian-noise
 fixture, so an LCG is the less compressible of the two fixtures; the ceiling is
 cleared either way.
+#### 2026-09-17 — docs(porting): ratify `bcd7e4852`'s non-lib files and close the P4.D199 lane
+
+_Docs-only change._
+
+The P4.D194 idiom: every path in `git show --stat bcd7e4852` named with its
+disposition — the two ported files (the Lantern walk, the help page), the three
+that are P4.D198's, v4's own `CLAUDE.md` rule line and `.claude/commands/`
+date as NO-PORT, the README badge and the three `4.10.0-dev.45` version stamps
+as NO-PORT with Tier R run once at the target pin (223 cases, 0 failures — the
+stamp moves no `--version` arm), and the three mirrored docs paths pre-listed
+with byte counts and md5s for the unifier to copy.
+
+Also recorded: v4 adds no debug-level companion to the walk (read from the
+hunk, not the prose — the DEBUG line the commit ships belongs to the loader
+half); the exact `combined.log` line the new warn produces, for the dogfood
+acceptance grep; and the three Tier-3 deferrals, loud — the post-shrink
+interplay is not measurable in this lane's worktree and is left to the
+unifier's re-run over the union, the live proof joins the dogfood queue, and
+the USER-side re-hydration budget was deliberately not harmonized.
+
 #### 2026-09-17 — chore(help): re-vendor `help/connection-profiles.md` at v4 `bcd7e4852` (bug 151)
 
 _Versions: harness 0.0.836._
