@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(help): re-vendor character-system-prompts.md at `baa85e19b`
+
+_Versions: harness 0.0.853._
+
+`baa85e19b` adds the "Keeping Several Prompts, and Choosing Among Them" section
+(+27) on the one read order and the star that now writes both faces of the
+default. Byte-copied from the pinned worktree; the tree stays at 124 files and
+`help_tree_embed_guard`'s history comment gains the P4.D201 line.
+
 #### 2026-09-18 — port(characters): the default prompt's flag and column move together, everywhere (v4 `baa85e19b`, bug 154)
 
 _Versions: core 0.0.962, harness 0.0.852._

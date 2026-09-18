@@ -135356,3 +135356,19 @@ in_scene_voiced_tier3_equivalence,default_system_prompt_equivalence,help_tree_eq
 # and the baseline batch at /tmp/qt-v4-pin-p4d201-89fcc3c0d for the neutrality
 # legs + the eight neighbours that read the widened pair.
 ```
+
+## P4.D201 unit 3 — `help/character-system-prompts.md` re-vendored at `baa85e19b`
+
+Byte-copied from the target-pinned worktree and `cmp`-verified against
+`git show baa85e19b:help/character-system-prompts.md`: +27, the "Keeping Several
+Prompts, and Choosing Among Them" section on the one read order and the star
+that now writes both faces of the default. The tree stays at **124 files**
+(modified one, added none), and `help_tree_embed_guard`'s history comment gains
+the P4.D201 line with `VENDORED_FILE_COUNT` unchanged.
+
+`help_tree_equivalence` regenerated at the TARGET pin: the marker appears
+exactly once. The same regen at the BASELINE pin carries it zero times — the
+order's named pin verification, run in both directions.
+
+Per the P4.D194 rule, **no host bump for help alone**: the re-vendor moves the
+embedded table but no host SOURCE.

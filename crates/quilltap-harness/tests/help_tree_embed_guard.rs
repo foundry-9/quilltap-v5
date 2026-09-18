@@ -22,7 +22,11 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `89fcc3c0d`: still 124 — the
+/// The shipped tree at the vendored pin (v4 `baa85e19b`: still 124 — the
+/// P4.D201 re-vendor MODIFIED `help/character-system-prompts.md` alone (bug 154,
+/// `baa85e19b` — the "Keeping Several Prompts, and Choosing Among Them" section
+/// on the one read order and the star that now writes both faces of the default)
+/// and added none; v4 `89fcc3c0d`: still 124 — the
 /// P4.D200 re-vendor MODIFIED `help/character-system-transparency.md` alone
 /// (bugs 152 + 153, `1065a1f53` + `89fcc3c0d` — the vault-covenant paragraph's
 /// "Vaults, and nothing besides" and "Nor are they so much as named" additions)
