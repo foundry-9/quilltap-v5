@@ -246,6 +246,67 @@ const EXPECTED_REFUSALS: &[(&str, &str, &str)] = &[
 // User-Agent and the auth secret.
 use provider_header_common::{normalize_header, v5_headers};
 
+/// P4.97 — where each provider writes the per-character prompt-cache key, at
+/// DIFFERENTIAL tier over v4's OWN recorded bytes. The sibling
+/// `chat_completions::cache_key_wire_pins` table states the same contract
+/// against v5's builders alone; this one states it against the corpus, so that
+/// a re-record which quietly dropped a cache-key vector fails BY NAME instead
+/// of merely shrinking the row count.
+///
+/// `(registry provider, mode, the wire key it writes, the case that carries
+/// one)`. Measured from the recorded corpus at `5f0a57dc4`, and agreeing with
+/// the unit table's reading of v4's plugin sources.
+///
+/// The case NAME is part of the pin on purpose. A first cut recorded coverage
+/// from any row that happened to carry (or omit) a key, and a mutation deleting
+/// DeepSeek's `cache-key-absent` twin SURVIVED — a dozen unrelated keyless rows
+/// kept the claim true. Naming the pair is what makes "a re-record that drops a
+/// cache-key case fails by name" the actual behaviour rather than the intent.
+///
+/// OPENROUTER appears for `send` ONLY. Its streaming half of a TOOL-bearing
+/// request takes v4's raw-fetch escape hatch (`provider.ts:745-755`), whose
+/// body literal has no `user` at all — the recorded divergence
+/// `chat_completions.rs:2146-2157` documents, pinned below by name rather than
+/// by silence.
+const CACHE_KEY_WIRE: &[(&str, &str, &str, &str)] = &[
+    ("OPENAI", "stream", "prompt_cache_key", "cache-key"),
+    ("OPENAI", "send", "prompt_cache_key", "cache-key"),
+    ("GROK", "stream", "prompt_cache_key", "tools-stop-cache"),
+    ("GROK", "send", "prompt_cache_key", "tools-stop-cache"),
+    ("DEEPSEEK", "stream", "user_id", "cache-key"),
+    ("DEEPSEEK", "send", "user_id", "cache-key"),
+    ("Z_AI", "stream", "user", "tools-cache"),
+    ("Z_AI", "send", "user", "tools-cache"),
+    ("OPENAI_COMPATIBLE", "stream", "user", "stop-cache"),
+    ("OPENAI_COMPATIBLE", "send", "user", "stop-cache"),
+    ("NANOGPT", "stream", "user", "cache-key"),
+    ("NANOGPT", "send", "user", "cache-key"),
+    ("OPENROUTER", "send", "user", "cache-key"),
+];
+
+/// The named twins: a case that omits the key entirely, and (where v4's
+/// falsy guard is worth its own row) one that passes the empty string. At least
+/// one of these must exist per emitting provider and mode.
+const CACHE_KEY_ABSENT_CASES: [&str; 2] = ["cache-key-absent", "cache-key-empty"];
+
+/// The providers whose plugins IGNORE the key, each with a comment in v4 saying
+/// so (`anthropic provider.ts:76`, `ollama :64`). Their contract is the
+/// stronger one: a request carrying a key must build the SAME BYTES as the one
+/// without it. (GOOGLE is the third ignorer; it lives in the separate
+/// `google-request.recorded.ndjson` corpus, whose differential is not this
+/// lane's to assert — it stays covered by the unit table.)
+const CACHE_KEY_IGNORED: &[(&str, &str)] = &[
+    ("ANTHROPIC", "stream"),
+    ("ANTHROPIC", "send"),
+    ("OLLAMA", "stream"),
+    ("OLLAMA", "send"),
+];
+
+/// Every spelling any v4 plugin uses for the key. An "absent" claim must clear
+/// all three, not just the one this provider would have written — a builder
+/// that wrote the WRONG key would otherwise pass the absence leg.
+const CACHE_KEY_SPELLINGS: [&str; 3] = ["prompt_cache_key", "user", "user_id"];
+
 #[test]
 fn request_builder_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed request-envelope NDJSON");
@@ -267,6 +328,19 @@ fn request_builder_matches_v4() {
     // The OpenRouter SDK-send path where v4's UA/X-Title legitimately diverge —
     // asserted exercised so a corpus that lost those rows cannot pass silently.
     let mut openrouter_sdk_rows = 0usize;
+    // P4.97 — the cache-key pin's bookkeeping. Each set records a (provider,
+    // mode) pair that has at least one row making the claim; the named tables
+    // below turn "some row happened to cover it" into "this pair is covered".
+    let mut ck_present: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    let mut ck_absent: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    let mut ck_ignored: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    let mut ck_openrouter_stream_divergence = 0usize;
+    // The ignoring providers' bodies, keyed by (provider, mode, case), so the
+    // `cache-key` row can be compared byte-for-byte against `plain`'s.
+    let mut ignorer_bodies: HashMap<(String, String, String), String> = HashMap::new();
     // P4.D78 Ollama thinking-wire shape: `think` is now on EVERY ollama body,
     // and `options.num_ctx` appears only for a bag that coerces to a finite
     // positive number. Assert the SHAPE (a `think:true` arm, a `think:false`
@@ -413,6 +487,80 @@ fn request_builder_matches_v4() {
                     ),
                     None => {}
                 }
+            }
+        }
+
+        // P4.97 — the cache-key bookkeeping, read off v4's RECORDED body (the
+        // oracle side), so a v5 regression cannot make the coverage claim true.
+        // The whole-body byte compare below still runs on every row; what this
+        // adds is a NAME for each claim.
+        if let Some(body) = row
+            .get("body")
+            .and_then(Value::as_str)
+            .and_then(|b| serde_json::from_str::<Value>(b).ok())
+        {
+            let pair = (provider.clone(), mode.to_string());
+            let input_key = row["input"].get("cacheKey").and_then(Value::as_str);
+            let row_of_table = CACHE_KEY_WIRE
+                .iter()
+                .find(|(p, m, _, _)| *p == provider && *m == mode);
+            let emits = row_of_table.map(|(_, _, k, _)| *k);
+            let named_present_case = row_of_table.map(|(_, _, _, c)| *c);
+            let ignores = CACHE_KEY_IGNORED.contains(&(provider.as_str(), mode));
+            if ignores {
+                ignorer_bodies.insert(
+                    (provider.clone(), mode.to_string(), case.to_string()),
+                    row["body"].as_str().unwrap().to_string(),
+                );
+            }
+            let absent_everywhere = |what: &str| {
+                for spelling in CACHE_KEY_SPELLINGS {
+                    assert!(
+                        body.get(spelling).is_none(),
+                        "{provider}/{case}[{mode}]: {what}, but v4's recorded body \
+                         carries `{spelling}`"
+                    );
+                }
+            };
+            match (input_key.filter(|k| !k.is_empty()), emits) {
+                (Some(key), Some(wire)) => {
+                    assert_eq!(
+                        body.get(wire).and_then(Value::as_str),
+                        Some(key),
+                        "{provider}/{case}[{mode}]: the cache key must reach the wire \
+                         under `{wire}`"
+                    );
+                    // Coverage is credited only to the NAMED case: an
+                    // unrelated row that happens to carry a key keeps the
+                    // assertion honest but must not keep the pin alive.
+                    if named_present_case == Some(case) {
+                        ck_present.insert(pair);
+                    }
+                }
+                (None, Some(_)) => {
+                    absent_everywhere("no cache key on the input");
+                    if CACHE_KEY_ABSENT_CASES.contains(&case) {
+                        ck_absent.insert(pair);
+                    }
+                }
+                (Some(_), None) => {
+                    absent_everywhere("this provider/mode writes no cache key");
+                    if ignores {
+                        ck_ignored.insert(pair);
+                    } else {
+                        assert_eq!(
+                            (provider.as_str(), mode),
+                            ("OPENROUTER", "stream"),
+                            "{provider}/{case}[{mode}] carries a cache key but is in \
+                             neither table — add it, or the corpus grew a provider \
+                             nothing pins"
+                        );
+                        if case == "cache-key" {
+                            ck_openrouter_stream_divergence += 1;
+                        }
+                    }
+                }
+                (None, None) => {}
             }
         }
 
@@ -573,7 +721,11 @@ fn request_builder_matches_v4() {
         }
     }
 
-    assert!(rows >= 25, "expected a substantial corpus, got {rows}");
+    // The floor moved 25 -> 360 with P4.97. The old number said only "some rows
+    // exist"; the corpus is 367 rows, and the point of the cache-key tables
+    // below is that a vanished vector must FAIL rather than shrink a count
+    // nobody reads. A deliberate future removal moves this line with it.
+    assert!(rows >= 360, "expected a substantial corpus, got {rows}");
     assert_eq!(
         refusals,
         EXPECTED_REFUSALS.len(),
@@ -716,6 +868,51 @@ fn request_builder_matches_v4() {
         openrouter_sdk_rows > 0,
         "the OpenRouter SDK-send divergence (speakeasy UA / no X-Title) is no longer \
          exercised — a lost vector, or the SDK stopped overriding the UA"
+    );
+
+    // P4.97 — the cache-key pin, by NAME. Two claims per emitting (provider,
+    // mode): a row that WRITES the key under the right spelling, and a row with
+    // no key whose body carries none of the three spellings. Plus, for each
+    // ignoring provider, a row that carries a key and builds the same bytes as
+    // the keyless request — the stronger statement, which is what "ignores"
+    // means.
+    for (p, m, wire, present_case) in CACHE_KEY_WIRE {
+        assert!(
+            ck_present.contains(&(p.to_string(), m.to_string())),
+            "the corpus lost {p}[{m}]'s `{present_case}` row — nothing now pins that \
+             it WRITES the prompt-cache key under `{wire}`"
+        );
+        assert!(
+            ck_absent.contains(&(p.to_string(), m.to_string())),
+            "the corpus lost {p}[{m}]'s named absent twin ({}) — nothing now pins \
+             that a keyless request leaves all three cache-key spellings off the body",
+            CACHE_KEY_ABSENT_CASES.join(" / ")
+        );
+    }
+    for (p, m) in CACHE_KEY_IGNORED {
+        assert!(
+            ck_ignored.contains(&(p.to_string(), m.to_string())),
+            "no corpus row pins {p}[{m}] IGNORING a cache key it was handed — \
+             regenerate with a `cache-key` case for it"
+        );
+        let keyed = ignorer_bodies.get(&(p.to_string(), m.to_string(), "cache-key".into()));
+        let plain = ignorer_bodies.get(&(p.to_string(), m.to_string(), "plain".into()));
+        assert_eq!(
+            keyed, plain,
+            "{p}[{m}]: a request carrying a cache key must build the SAME BYTES as \
+             the one without it — v4's plugin ignores the key outright"
+        );
+        assert!(
+            keyed.is_some(),
+            "{p}[{m}]: the `cache-key`/`plain` pair went missing"
+        );
+    }
+    assert!(
+        ck_openrouter_stream_divergence > 0,
+        "the OPENROUTER streaming cache-key divergence is no longer exercised: v4's \
+         raw-fetch escape hatch (provider.ts:745-755) writes no `user`, and v5 models \
+         only that shape (chat_completions.rs:2146-2157). A lost vector here would \
+         let the two silently disagree."
     );
 
     eprintln!(

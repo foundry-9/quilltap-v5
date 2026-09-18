@@ -369,6 +369,33 @@ the pre-P4.96 handler.
 
 Also: the `['vivid','natural']` style pair, spelled out at three v5 sites, now
 has one home in `image_gen::style` on the `image_gen::quality` precedent.
+#### 2026-09-17 — test(request-envelopes): name the prompt-cache-key pin, per provider and per mode
+
+_Versions: harness 0.0.836._
+
+`request_builder_equivalence` compares whole request bodies byte-for-byte, so
+the per-character prompt-cache key was already asserted on every row — but only
+implicitly, and no row was NAMED as the pin. A re-record that dropped a
+cache-key vector would have shrunk a row count nobody reads.
+
+The corpus gains 20 rows (347 → 367, every pre-existing row byte-identical at
+the pin): a `cache-key` case for ANTHROPIC and OLLAMA, which had none at all
+even though "ignores the key" is their whole contract, and a named
+`cache-key-absent` twin for each of the seven emitting providers, plus an
+empty-string arm for OPENAI to sit beside NanoGPT's.
+
+The differential gains a named table — `(provider, mode, wire key, the case
+that carries one)` — asserting per emitting pair that the named present row
+writes the key under the right spelling and the named absent twin leaves all
+three spellings off the body; that ANTHROPIC and OLLAMA build the SAME BYTES
+with and without a key; and that the OPENROUTER streaming divergence (v4's
+raw-fetch escape hatch writes no `user`) is still exercised. The `rows >= 25`
+floor moves to 360.
+
+Naming the case is what makes the pin work: a first cut credited coverage to
+any row that happened to carry or omit a key, and a mutation deleting DeepSeek's
+absent twin survived it.
+
 #### 2026-09-17 — fix(primary-stream): the tool-unsupported retry sends v4's whole option bag, and says so
 
 _Versions: core 0.0.943, harness 0.0.835._

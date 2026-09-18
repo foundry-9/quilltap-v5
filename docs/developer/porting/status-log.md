@@ -133613,3 +133613,93 @@ committed recipe's unanchored spelling is unchanged.)
   v5 — grep returns nothing. It sits outside the retry block this lane owns
   (`:1311+`), so it is recorded rather than landed: the same #103/#110 class,
   one line, wants a small order or a rider on whoever next opens that branch.
+
+---
+
+## P4.97 unit 2 — the request-envelopes cache-key pin, by name (2026-09-17)
+
+**Lane:** `claude/p4-97-retry-option-bag-cache-2b2887`. Baseline `5f0a57dc4`;
+the §2 probe re-run and PASSED before this regen batch. The corpus was
+re-recorded from the SAME lane pin (`/tmp/qt-v4-pin-p4-97-5f0a57dc4`,
+`rev-parse` verified) via `V4=$PIN V5=<worktree> bash
+harness/oracle/providers/regenerate-request-envelopes.sh` — which runs from the
+pinned tree's `plugins/dist/*`, so v4's REAL plugins built every body.
+
+### The re-record
+
+**347 → 367 rows, and every one of the 347 pre-existing rows came back
+BYTE-IDENTICAL** (classified by `(provider, case, mode)` against the old key
+set, then `==` on the kept lines — the P4.D196 precedent). The 20 additions:
+
+| provider | case | why |
+|---|---|---|
+| anthropic | `cache-key` (both modes) | the corpus had NO cache-key vector for either ignoring provider — "ignores the key" was unmeasured at differential tier |
+| ollama | `cache-key` (both modes) | ditto |
+| deepseek / z-ai / openrouter / openai-compatible / nanogpt / openai / grok | `cache-key-absent` (both modes) | the NAMED twin of each emitter's present row |
+| openai | `cache-key-empty` (both modes) | the Responses-API twin of nanogpt's empty arm |
+
+v4's recorded bytes agree with the unit table (`chat_completions.rs`'s
+`cache_key_wire_pins`) provider for provider: OPENAI/GROK write
+`prompt_cache_key`, OPENAI_COMPATIBLE/Z_AI/NANOGPT/OPENROUTER-send write `user`,
+DEEPSEEK writes `user_id`, ANTHROPIC/OLLAMA write nothing — and their
+`cache-key` bodies are byte-identical to their `plain` ones in BOTH modes.
+**OPENROUTER stream carries a key on the input and nothing on the wire**: a
+tool-bearing stream takes v4's raw-fetch escape hatch (`provider.ts:745-755`),
+which is the shape v5 models — the recorded divergence, now pinned by name.
+
+**No builder red.** The 20 new rows passed the whole-body byte compare against
+v5's untouched builders on their first run, so there was no finding to record
+under the order's "a builder red is a finding, not a fix" rule.
+
+### The named table
+
+`CACHE_KEY_WIRE` is `(provider, mode, wire key, the case that carries one)`;
+`CACHE_KEY_ABSENT_CASES` is the twin set; `CACHE_KEY_IGNORED` is the
+byte-identity pair. Per emitting (provider, mode) the test now asserts the
+named present row WRITES the key under the right spelling and the named absent
+twin leaves all three spellings off the body; per ignoring provider, that the
+keyed request builds the SAME BYTES as the keyless one; and that the OPENROUTER
+stream divergence is still exercised. The universal assertions (every keyed row
+writes it, every keyless row omits all three) run on every row regardless — the
+table is what turns them into claims that can go MISSING loudly.
+
+**`rows >= 25` → `rows >= 360`.** The old floor said only "some rows exist".
+
+### Mutation proofs (reverts by file backup)
+
+| # | order | mutation | result |
+|---|---|---|---|
+| M10 | M6 | delete the anthropic `cache-key` rows | RED — "no corpus row pins ANTHROPIC[stream] IGNORING a cache key" |
+| M11 | — | delete deepseek's `cache-key-absent` rows | **SURVIVED as first written** — see below; RED after the fix |
+| M12 | M7 | splice `"user":"char-9"` into an ANTHROPIC body | RED — the ignoring leg names the spelling |
+| M13 | — | delete grok's `tools-stop-cache` rows (its named present case) | RED |
+| M14 | — | delete the openrouter `cache-key` STREAM row | RED — the divergence pin |
+| M15 | M8 | scratch-drop DEEPSEEK's `user_id` emission in the BUILDER (reverted; `request_builder/**` is read-only for this lane's commits) | RED — `DEEPSEEK/cache-key[stream] BODY diverged` |
+
+**M11 is the round's methodological find, and it is fixed, not deleted.** The
+first cut credited "this pair has an absent row" to ANY row whose input carried
+no key — and deepseek has a dozen. So the named twin the re-record had just
+added was not load-bearing at all: deleting it left the suite green. Coverage
+is now credited only to the NAMED cases on both legs (`CACHE_KEY_WIRE`'s fourth
+column for the present row, `CACHE_KEY_ABSENT_CASES` for the twin), which is
+what the order actually asked for — "a future re-record that drops a cache-key
+case fails the table". M13 exists because the same doubt applies to the present
+leg, and it is now red too.
+
+### Deferred, loudly
+
+- **GOOGLE's cache-key row: NOT recorded — an OWNERSHIP decision, not a
+  capability one.** Measured: `record-google-request.mjs` drives
+  `inst.streamMessage(params, key)` with the same `LLMParams` shape, so it CAN
+  carry `cacheKey`, and v4's Google plugin would ignore it (`provider.ts:108`).
+  But that corpus is `google-request.recorded.ndjson`, consumed by
+  `request_builder_google_equivalence` — a family outside this lane's Owns
+  column. Adding a row no assertion reads would be corpus noise and would
+  invalidate that family's fixture for whoever owns it next. GOOGLE therefore
+  stays covered by the UNIT table alone (`cache_key_wire_pins` names it), and
+  the differential-tier row is a one-line follow-up for a lane that owns the
+  google family.
+- **Widening the canned key** to see the three option-bag fields: NOT this
+  order's, as its Tier 3 says. The side-channel is the instrument.
+- **`modelParams` on the retry:** nothing to do — v4 passes the same bag and so
+  does v5. Recorded in `primary_stream.rs`'s own comment.

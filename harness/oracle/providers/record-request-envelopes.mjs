@@ -301,11 +301,23 @@ function casesFor(provider) {
     add('multi-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'Compare these.', attachments: [IMG_ATT, PDF_ATT] }] });
     add('image-attachment-caching', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG], profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });
     add('unsupported-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, { role: 'user', content: 'What is this?', attachments: [TIFF_ATT] }] });
+    // P4.97 — the cache-key corpus pin. The differential's named table asserts,
+    // per provider and per mode, that a set key reaches the wire under the right
+    // key AND that an absent one leaves all three spellings off the body. Until
+    // these arms existed the absent half was only ever asserted implicitly (by
+    // whatever unrelated row happened to omit a key), so a builder that started
+    // emitting `user` unconditionally would have been caught by a byte diff on
+    // some row nobody could name.
+    // Anthropic IGNORES the key (provider.ts:76 says so in a comment): the body
+    // must be byte-identical to `plain`'s.
+    add('cache-key', { ...base, model: 'claude-opus-4-6', cacheKey: 'char-9' });
   } else if (provider === 'deepseek') {
     add('plain', { ...base, model: 'deepseek-chat' });
     add('tools', { ...base, model: 'deepseek-chat', tools: [TOOL], toolChoice: 'auto' });
     add('reasoning-echo', { ...base, model: 'deepseek-chat', messages: [SYS, USER, ASSISTANT_TOOLCALL, TOOL_RESULT] });
     add('cache-key', { ...base, model: 'deepseek-chat', cacheKey: 'char-42' });
+    // P4.97 — the named absent twin of the row above (DeepSeek's key is `user_id`).
+    add('cache-key-absent', { ...base, model: 'deepseek-chat' });
     add('thinking-strip', { ...base, model: 'deepseek-chat', profileParameters: { thinking: 'enabled' } });
     add('profile-params', { ...base, model: 'deepseek-chat', profileParameters: { frequency_penalty: 0.5, presence_penalty: 0.2, reasoning_effort: 'high' } });
     // P4.D83 (v4 `93ed8abf`): the NEUTRALITY gate for the collapse onto the
@@ -339,6 +351,8 @@ function casesFor(provider) {
     add('plain', { ...base, model: 'glm-4.6' });
     add('web-search', { ...base, model: 'glm-4.6', webSearchEnabled: true });
     add('tools-cache', { ...base, model: 'glm-4.6', tools: [TOOL], toolChoice: 'auto', cacheKey: 'char-7' });
+    // P4.97 — the same request without the key (Z.AI's key is `user`).
+    add('cache-key-absent', { ...base, model: 'glm-4.6', tools: [TOOL], toolChoice: 'auto' });
     add('reasoning-default', { ...base, model: 'glm-5.2', tools: [TOOL] });
     // P4.D83: the `reasoning_effort` MODEL GATE — v4 refuses to forward the key
     // to a model that does not honour it (glm-4.6), and forwards it on one that
@@ -381,6 +395,14 @@ function casesFor(provider) {
     // `sendMessage` can take, so the non-streaming builder is BUILT to the
     // recording rather than reasoned out of the SDK source.
     add('cache-key', { ...base, model: 'openai/gpt-4o', tools: [TOOL], cacheKey: 'char-5' });
+    // P4.97 — the same request without the key. NOTE the asymmetry this pair
+    // pins: the SEND half goes through the @openrouter/sdk and writes `user`,
+    // while the STREAM half of a tool-bearing request takes v4's raw-fetch
+    // escape hatch (`provider.ts:745-755`), whose body literal has no `user` at
+    // all — so the `cache-key` stream row is the recorded divergence, not a
+    // present row. Keep the tools: a plain no-tools stream takes the SDK branch
+    // and WOULD write `user`, which v5's single raw-fetch shape does not model.
+    add('cache-key-absent', { ...base, model: 'openai/gpt-4o', tools: [TOOL] });
     // Two SEPARATE tool shapes, because the SDK treats them differently:
     // an assistant turn's `tool_calls` are SILENTLY STRIPPED (the message ships
     // as {content, role}), while a `tool`-role result fails the SDK's input
@@ -497,9 +519,14 @@ function casesFor(provider) {
     add('think-effort-unknown-level', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'extreme' } });
     add('think-effort-without-thinking', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: false, thinking_effort: 'high' } });
     add('control-params-off-the-wire', { ...base, model: 'qwen3:8b', profileParameters: { enable_thinking: true, thinking_effort: 'low', request_timeout_seconds: 900, num_ctx: 8192, keep_alive: -1 } });
+    // P4.97 — Ollama IGNORES the key (provider.ts:64 says so): the body must be
+    // byte-identical to `plain`'s.
+    add('cache-key', { ...base, model: 'llama3', cacheKey: 'char-9' });
   } else if (provider === 'openai-compatible') {
     add('plain', { ...base, model: 'local-model' });
     add('stop-cache', { ...base, model: 'local-model', stop: ['END'], cacheKey: 'char-1' });
+    // P4.97 — the same request without the key (the shared OAC base writes `user`).
+    add('cache-key-absent', { ...base, model: 'local-model', stop: ['END'] });
     // P4.D93 (bug 82): the local-endpoint OAC plugin is the ONE
     // `acceptsRepeatedSystemMessages = false` override in v4's tree, so it folds.
     add('three-leading-system', { ...base, model: 'qwen3.5-9b-q6', messages: THREE_LEADING_SYSTEM });
@@ -553,6 +580,9 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'openai/gpt-5-mini', cacheKey: 'char-42' });
     // …and an empty cacheKey never reaches the body at all.
     add('cache-key-empty', { ...base, model: 'openai/gpt-5-mini', cacheKey: '' });
+    // P4.97 — …and the ABSENT arm, which is a different input shape from the
+    // empty one even though the body must come out the same.
+    add('cache-key-absent', { ...base, model: 'openai/gpt-5-mini' });
     // tool_choice defaults to 'auto' whenever tools are present…
     add('tools-default-choice', { ...base, model: 'openai/gpt-5-mini', tools: [TOOL] });
     // …and the caller's own choice wins when supplied.
@@ -636,6 +666,12 @@ function casesFor(provider) {
     add('cache-key', { ...base, model: 'gpt-4o', cacheKey: 'char-9' });
     add('reasoning-model', { ...base, model: 'gpt-5', profileParameters: { reasoningEffort: 'medium', reasoningSummary: true } });
     add('reasoning-cache-retention', { ...base, model: 'gpt-5.1', cacheKey: 'char-11' });
+    // P4.97 — the absent and EMPTY arms of `cache-key` above. The empty arm is
+    // the Responses-API twin of nanogpt's: v4's guard is
+    // `typeof cacheKey === 'string' && cacheKey.length > 0`, so `''` must leave
+    // `prompt_cache_key` off the body rather than write an empty string.
+    add('cache-key-absent', { ...base, model: 'gpt-4o' });
+    add('cache-key-empty', { ...base, model: 'gpt-4o', cacheKey: '' });
     // P4.21 — Responses-API input_image vectors + the failure arms + the
     // empty-content asymmetry (image only, no empty text part) + chaining
     // (extractLastUserMessage keeps the image parts).
@@ -649,6 +685,8 @@ function casesFor(provider) {
     add('plain', { ...base, model: 'grok-4' });
     add('web-search', { ...base, model: 'grok-4', webSearchEnabled: true });
     add('tools-stop-cache', { ...base, model: 'grok-4', tools: [TOOL], stop: ['S'], cacheKey: 'char-3' });
+    // P4.97 — the same request without the key (Grok's key is `prompt_cache_key`).
+    add('cache-key-absent', { ...base, model: 'grok-4', tools: [TOOL], stop: ['S'] });
     // P4.21 — Grok input_image.
     add('image-attachment', { ...base, model: 'grok-4', messages: [SYS, USER_IMG] });
     // v4 bug 33: the gate is now isHandledMimeType, so text/* is SENT inline
