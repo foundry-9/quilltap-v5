@@ -113,6 +113,26 @@ An empty-content default is UNREACHABLE in v4 and the three guards were run, not
 assumed: the schema's `.min(1)` refuses it on create, `parsePromptFile` skips an
 empty body on read, and `findById` re-validates so a planted vault-less row makes
 the whole character unreadable. The `??` is pinned by unit test instead.
+#### 2026-09-18 — fix(characters): the Edit Prompt dialog is wide enough for its own markdown toolbar (P4.D202 unit 5)
+
+_Versions: SPA 0.5.736._
+
+v4 `PromptModal.tsx` went 2xl → 4xl at `baa85e19b` because the content box
+could not hold the markdown editor's toolbar — the right half of it ran off
+the dialog with nothing to scroll. v5's mirror had faithfully copied the
+2xl, so it had the same overhang.
+
+No change to the shared `qt-modal`: its `MAX_WIDTHS` map already carried
+`4xl` at 56rem (the Library file picker is its first consumer), which is
+the measurement the order asked for. v4 carries its rationale as an inline
+comment beside the prop; an Angular tag has no room for one, so it moved
+into the component's file doc with the sha.
+
+A new `prompt-modal.spec.ts` pins the RENDERED width (`56rem` on the
+`.qt-dialog` element) rather than the attribute, so it survives a token
+rename and reddens if the token's own value moves. Mutation M5 (`2xl`
+restored) reddens it.
+
 #### 2026-09-18 — fix(characters): the star moves the default badge before the round trip, and puts it back if the write fails (P4.D202 unit 4)
 
 _Versions: SPA 0.5.735._

@@ -33,6 +33,11 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
  * Content's header is the shared `qt-prompt-field-label` (v4 `a6870c5a`):
  * `label="Content"` `required` over the systemPrompt hint, with this surface's
  * Markdown/placeholder sentence appended to the shared helper.
+ *
+ * The dialog is `4xl`, not `2xl` (v4 `PromptModal.tsx:55-57` at `baa85e19b`,
+ * which carries the reason as an inline comment an Angular tag has no room
+ * for): wide enough for the markdown editor's full toolbar — at `2xl` the
+ * right half of it ran off the edge of the dialog with nothing to scroll.
  */
 @Component({
   selector: 'qt-prompt-modal',
@@ -41,7 +46,7 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
   template: `
     <qt-modal
       [title]="editing() ? 'Edit Prompt' : 'Create Prompt'"
-      maxWidth="2xl"
+      maxWidth="4xl"
       (close)="close.emit()"
     >
       <div class="space-y-4">
