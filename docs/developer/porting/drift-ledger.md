@@ -24,22 +24,31 @@ probe verifies against._
   adopted at the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups
   round unification (P4.D200 ∥ P4.98 ∥ P4.99, 2026-09-18). CLAUDE.md's Status
   bullet agrees.
-- **Checked:** 2026-09-18 (at that round's `/unify` — the opening probe, the
-  pre-gate probe and the closing probe all agreed with the previous
-  `/driftcheck`: nothing moved during the unification). Previously checked
-  2026-09-18 (evening `/driftcheck`, which recorded `baa85e19b` landing) and
-  2026-09-18 midday (the measurement of the two opacity rows against v5).
+- **Checked:** 2026-09-18 (a standalone `/driftcheck` from the main checkout,
+  after the `89fcc3c0d` round's unification — **nothing moved**: both branch
+  tips, the checkout's branch and the tree state all re-verified identical to
+  the previous record, and the `bugfix` CONTENT probe was re-run rather than
+  assumed. No new §3 rows; the single UNPROCESSED row and the regen rule are
+  unchanged. Previously checked 2026-09-18 (at that round's `/unify` — its
+  opening, pre-gate and closing probes all agreed), 2026-09-18 (evening
+  `/driftcheck`, which recorded `baa85e19b` landing) and 2026-09-18 midday
+  (the measurement of the two opacity rows against v5).
 - **v4 `main` HEAD at check:** `baa85e19b` ("fix(aurora): the star that sets
   a default prompt calls a route that exists (bug 154)", `4.10.0-dev.48`,
-  2026-09-18 07:04) — **ONE commit past the baseline.**
+  2026-09-18 07:04) — **ONE commit past the baseline. UNMOVED** since the
+  previous check (`git log baa85e19b..main` empty).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — UNMOVED. Content probe clean (`git log main..bugfix` over
-  `lib/ app/ packages/ components/ plugins/` lists only pre-absorbed lineage;
-  `git diff --stat main bugfix` over those paths is main far ahead). No
-  unabsorbed bugfix work.
+  branch") — UNMOVED. Content probe re-run and clean (`git log main..bugfix`
+  over `lib/ app/ packages/ components/ plugins/` lists only pre-absorbed
+  lineage — bugs 123/124/125, 64/65, 62, 61, 58–60, all ABSORBED in earlier
+  rounds; `git diff --stat main bugfix` over those paths is 296 files /
+  +4,340 / −33,805, i.e. main far ahead). No unabsorbed bugfix work.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
-  Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**. No fetch was run.
+  Still no `release: 4.10.0` squash; `git log main..release` over the code
+  paths is empty (nothing unabsorbed there either).
+- **Checkout at check:** branch **`main`**, tree **CLEAN** (`git status
+  --short` empty). No fetch was run — the oracle imports the local checkout,
+  so local HEAD is what the regen rule is about.
 - **Verdict: DRIFT PENDING — 1 commit.** The one §3 row is `baa85e19b` (bug
   154, the default system prompt) — **PORT** on ported surfaces, not a
   convergence (a v4-side find from live use), UNPROCESSED and the next

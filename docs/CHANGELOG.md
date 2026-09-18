@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-18 — docs(porting): record the post-unification drift check — v4 UNMOVED at `baa85e19b`, one row still pending
+
+_Docs-only change._
+
+A standalone `/driftcheck` from the main checkout, run after the
+`89fcc3c0d` round's unification. **Nothing moved.** v4 `main` is still at
+`baa85e19b` (bug 154, `4.10.0-dev.48`), `bugfix` is still at `1a2b2164c`
+and `release` at `8fbf2afe0`; the checkout is on `main` with a clean tree.
+The `bugfix` CONTENT probe was re-run rather than assumed — every commit it
+lists ahead of main (bugs 123/124/125, 64/65, 62, 61, 58–60) belongs to
+lineage already absorbed in earlier rounds, and the diff over the code paths
+is main far ahead by 296 files. `git log main..release` over those paths is
+empty.
+
+So §1's verdict and regen rule stand unchanged: **DRIFT PENDING — 1 commit**
+(`baa85e19b`, the default-system-prompt lockstep, PORT, UNPROCESSED) and
+**PIN REQUIRED** at `89fcc3c0d` for every oracle regeneration until that
+catch-up moves the baseline. No new §3 rows, no disposition changes, and the
+existing row's 2026-09-18 measurement against v5 needed no amendment.
+CLAUDE.md's Status bullet and this ledger agree on the baseline.
+
 #### 2026-09-18 — docs(porting): unify the `89fcc3c0d` opacity-covenant drift catch-up + follow-ups round (P4.D200 ∥ P4.98 ∥ P4.99) — the baseline moves to `89fcc3c0d`; bug 154 stays the next catch-up's row
 
 _Docs-only change (the code landed in the seventeen lane commits, the wires and the review-fixes commit)._
