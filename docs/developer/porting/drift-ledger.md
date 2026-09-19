@@ -25,42 +25,75 @@ probe verifies against._
   default-system-prompt drift catch-up + maintenance round unification
   (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102, 2026-09-18). CLAUDE.md's
   Status bullet agrees.
-- **Checked:** 2026-09-18 (at that round's `/unify` — the opening probe
-  PASSED against the previous §1 and the closing probe, re-run after the
-  gate, agreed: both branch tips, the checkout's branch and the tree state
-  unmoved). Previously checked 2026-09-18 (the standalone post-`89fcc3c0d`
-  `/driftcheck`), 2026-09-18 (the `89fcc3c0d` round's `/unify`), 2026-09-18
-  (the evening `/driftcheck` that recorded `baa85e19b` landing).
-- **v4 `main` HEAD at check:** `baa85e19b` — **AT the baseline. ZERO commits
-  past it** (`git log baa85e19b..main` empty).
+- **Checked:** 2026-09-19 (a standalone `/driftcheck` — v4 landed the
+  **Inform** feature in two commits that afternoon). Previously checked
+  2026-09-18 (the `baa85e19b` round's `/unify`, opening and closing probes
+  both PASSED), 2026-09-18 (the standalone post-`89fcc3c0d` `/driftcheck`),
+  2026-09-18 (the `89fcc3c0d` round's `/unify`).
+- **v4 `main` HEAD at check:** `e7d77bb60` ("feat(salon): Inform —
+  out-of-character word handed to the cast", 2026-09-19 15:07,
+  `4.10.0-dev.50`) — **TWO commits past the baseline**
+  (`git log baa85e19b..main` = `781e3b499`, `e7d77bb60`).
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — UNMOVED (the content probe stood from the previous check: only
-  pre-absorbed lineage; main far ahead). No unabsorbed bugfix work.
+  branch") — **UNMOVED** since the previous check, so the content probe from
+  then stands: only pre-absorbed lineage, main far ahead. No unabsorbed
+  bugfix work.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN** (`git status
   --short` empty). No fetch was run — the oracle imports the local checkout,
   so local HEAD is what the regen rule is about.
-- **Verdict: NO DRIFT — v4 is AT the baseline and §3 is EMPTY.** The one
-  row the previous state carried (`baa85e19b`, bug 154) was ABSORBED whole
-  by P4.D201 (the server half) ∥ P4.D202 (the SPA half) at this round's
-  unification — see §6.
-- **Regen rule: NO PIN REQUIRED.** v4's HEAD is the baseline and the tree is
-  clean, so a regen from the checkout itself imports exactly the baseline's
-  code. (A detached pin at `baa85e19b` remains the belt-and-braces path a
-  lane may still take — the unification's own regens all ran from
-  `/tmp/qt-v4-pin-unify-baa85e19b`, removed at its cleanup.) The moment the
-  §2 probe shows a commit past `baa85e19b` or a dirty `lib/`/`app/`/
-  `packages/`/`plugins/`, this flips back to PIN REQUIRED at `baa85e19b`.
-- **The workspace gate is unaffected** — `public/schemas/` did not move, so
-  `qtap_schema_embed_guard` stays green at 93,384 bytes.
-- **Schema state: CLEAR.** `baa85e19b` touched no `generateDDL` or DDL
-  source; no D23 re-dump was owed and none was made. **`help/**` is
-  md5-identical to v4 at `baa85e19b`, all 124 files** (P4.D201 re-vendored
-  `help/character-system-prompts.md`, +27, `cmp`-verified). **The v4
-  checkout's four SDK-bundling plugin dirs still have `openai` 7.10.0
-  installed** against a declared `^7.15.0` — a human `npm install` item,
-  recorded in phase-4.md.
+- **Verdict: DRIFT PENDING — 2 commits**, one of them a **large PORT-NEW
+  feature** (Inform: 79 files, +4,758/−38, a new table, a new prompt-path
+  system block, three API actions, two new SPA components, and export /
+  import / backup / realtime / migration reach). The other is its plan doc.
+  Both rows are UNPROCESSED in §3.
+- **Regen rule: PIN REQUIRED at `baa85e19b`.** v4's HEAD is two commits past
+  the baseline, so a regen run from the checkout itself would import Inform's
+  code. Every oracle regen until the baseline moves runs from a detached
+  worktree pinned at `baa85e19b` (§5.1's recipe, lane-unique path). ⚠ Inform
+  is *empty-is-absent* on the prompt path (v4's own commit message: with
+  nothing pending the builder pushes nothing, and neither builder-version
+  constant moves), so an **unpinned** regen of a context/orchestrator family
+  would very likely still come back byte-identical — the pin's protection
+  here is against the parts that are NOT conditional (`extractVisibleConversation`
+  now skips by KIND as well as role; `buildMessageContext`'s Commonplace strip
+  moved behind a named `isRecordOnlyMessage` predicate; the Courier transport
+  gained a strip). Do not reason about which families "could" be affected —
+  pin, per §5.1.
+- **⚠ The workspace gate MOVES: `qtap_schema_embed_guard` goes RED against
+  the live checkout, by design.** `public/schemas/qtap-export.schema.json`
+  grew **93,384 → 95,266 bytes** and `qtap-export-ndjson.schema.json`
+  **10,890 → 10,989** (Inform's export rows). v5's vendored copy
+  (`crates/quilltap-core/src/generators/qtap-export.schema.json`) is still
+  the baseline's 93,384 — that redness IS the re-vendor obligation, and it
+  belongs to the Inform port, not to a gate fix. The **SPA-served** pair
+  guarded by `public_schemas_vendor_guard`
+  (`qtap-custom-tool` / `qtap-progression`) did **NOT** move — that guard
+  stays green.
+- **Schema state: DRIFTED — a D23 re-dump is OWED.** `e7d77bb60` adds the
+  **`chat_informs`** table to the **main** partition via a standard
+  `AbstractBaseRepository` over a Zod schema (`lib/schemas/chat-inform.types.ts`,
+  `lib/database/repositories/chat-informs.repository.ts`, registered in the
+  repository container), so v4's live `generateDDL` now emits it and
+  `crates/quilltap-core/src/services/provisioning/fresh_schema.json` must be
+  re-dumped from v4 (D23 — never by hand). v4's `docs/developer/DDL.md`
+  records the shape: ten columns (`id`, `chatId`, `batchId`, `participantId`,
+  `contentMarkdown`, `recordMessageId`, `createdAt`, `updatedAt`,
+  `consumedAt`, `consumedByMessageId`), `FOREIGN KEY (chatId) REFERENCES
+  chats(id) ON DELETE CASCADE`, and three indexes
+  (`idx_chat_informs_pending` / `_batch` / `_consumedBy`). The migration is
+  `add-chat-informs-table-v1` with a `lib/startup/prettify.ts` loading label
+  ("Laying out a tray for the notes you slip the cast"); v5's migration
+  runner stays deferred, so the port must decide the boot/ensure path the way
+  earlier new tables did.
+- **`help/**` is now BEHIND v4: 124 files here, 125 there.** `e7d77bb60` adds
+  `help/inform.md` (+89) and edits `help/insert-announcement.md` (+4) —
+  measured 2026-09-19: those are the only two differences, every other shared
+  file still `cmp`-identical. A re-vendor obligation for the Inform round.
+- **The v4 checkout's four SDK-bundling plugin dirs still have `openai`
+  7.10.0** installed against a declared `^7.15.0` — a human `npm install`
+  item, recorded in phase-4.md. Unchanged by this drift.
 
 ## §2 The freshness probe
 
@@ -99,8 +132,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-
-_(empty — v4 AT the baseline as of the 2026-09-18 `baa85e19b` round unification probe; the bug-154 row retired to §6.)_
+| `781e3b499` | 2026-09-19 | docs: plan for Inform, out-of-character information delivered before a character's next turn | **NO-PORT?** | **Docs-only — two files, `docs/CHANGELOG.md` (+13) and the NEW `docs/developer/features/salon-inform.md` (+314). No `lib/`, `app/`, `components/`, `packages/`, `help/`, `public/schemas/` or `migrations/` hunk; the commit body says "No code changes yet" and the file list agrees.** Ratification should be trivial, but the spec itself is **the single most useful reference the Inform port has** and v5 already mirrors this tree (`docs/v4/developer/features/`, 21 files) — so the disposition to expect is NO-PORT-RATIFIED *with a mirror*: copy `salon-inform.md` in at the version `e7d77bb60` leaves it (that commit edits it again, +14/−1, to add a status header recording that it is **implemented in 4.10-dev with live verification outstanding**, that the DDL gained an `updatedAt` the draft omitted, that the dialog width was derived from the toolbar's CSS rather than measured, and that `extractVisibleConversation` needed a record-only strip the spec never named — mirror the POST-`e7d77bb60` file, not this one). `docs/CHANGELOG.md` is v4's own changelog: NO-PORT, as every round has ratified it. | UNPROCESSED |
+| `e7d77bb60` | 2026-09-19 | feat(salon): Inform — out-of-character word handed to the cast | **PORT-NEW** | **The largest single drift this port has faced: 79 files, +4,758/−38, `4.10.0-dev.50`.** A new Salon composer action (the *i* in the gutter, beside Pascal): the operator picks one, several, or every LLM-controlled seat, writes a short second-person passage, and each target receives it **verbatim** as its own system block on its next generation, then it is consumed. Nothing is added to what the operator types — no preamble, no Host voice, no rider — for transparent and opaque characters alike. **Not a convergence** (`docs/developer/bugs.md` did not move; no bug number; a v4-side feature, planned in `781e3b499` three hours earlier). **⚠ Classify the port from the hunks, not this summary or v4's commit body (§5.3).** The shape, by seam, with the v5 home each lands on — every one of them already ported: <br><br>**(1) Storage — a NEW TABLE, so D23 fires.** `lib/schemas/chat-inform.types.ts` (+72, `ChatInformSchema` + `ChatInformInputSchema` + the `PendingInformBatch` read shape) and `lib/database/repositories/chat-informs.repository.ts` (+311) over the standard `AbstractBaseRepository`, registered in `lib/database/repositories/index.ts` (four hunks: export, import, `RepositoryContainer` field, `createRepositories`). **One row per (batch × target) — the body is duplicated per target on purpose, so consumption is a single-row write with no shared array for a buffered job-child write to clobber.** Method names are chosen so the background-job child proxy classifies them without an override (reads `find*`, writes `create`/`mark`/`delete`). `migrations/scripts/add-chat-informs-table.ts` (+107) + `index.ts` (+6) + the `lib/startup/prettify.ts` label. **v5:** a new `crates/quilltap-core/src/db/chat_informs.rs` alongside its direct analogue `db/chat_documents.rs`; **`services/provisioning/fresh_schema.json` must be re-dumped from v4's live `generateDDL` (D23 — never by hand)** into the `main` partition; the migration runner stays deferred, so the existing-instance path needs the same decision earlier new tables got (`ensure_table`, cf. `db/doc_mount_blobs.rs:150`). <br><br>**(2) The prompt path.** NEW `lib/chat/context/inform-block.ts` (+117) — `buildInformBlock`, **the only reader of `chat_informs` on the prompt path, and it never writes.** The block sits **between system blocks 2 and 3** (keeps the cacheable prefix contiguous) and is **empty-is-absent**: with nothing pending it pushes nothing, so an ordinary turn assembles byte-for-byte as before, and **neither builder-version constant moves**. `lib/services/chat-message/context-builder.service.ts` (+65) wires it. **v5:** `services/build_context.rs` — the block-3 seam is at `:2204` ("Compressed-history block (system block 3)"), so the Inform block slots immediately above it; v5 has **no** `context_builder.rs` — `services/build_context.rs` and `services/message_context.rs` are the two homes v4's `context-builder.service.ts` maps onto; `services/orchestrator.rs` takes v4's `orchestrator.service.ts` (+3). <br><br>**(3) Consumption, tied to a persisted assistant message.** `message-finalizer.service.ts` (+17) and `primary-stream.service.ts` (+21, the preserved-partial path). A provider failure that saves nothing, or a "nothing to add" pass, **leaves the passage pending**. `regenerate-swipe.service.ts` (+21): a swipe passes its **whole swipe group**, re-applies exactly what that line's generation saw, is deliberately **not** given pending rows, and **never consumes**. **v5:** `services/message_finalizer.rs`, `services/primary_stream.rs`, `services/regenerate_swipe.rs`. <br><br>**(4) The record never reaches a model — three strips, one of them a genuine v4 hole.** Each post leaves a **Host** message carrying exactly what was typed: **public when every eligible seat was covered, whispered to the targets otherwise** (coverage decides, not how the operator clicked), chip reading "out of character" — `lib/services/announcer/writer.ts` (+98). Stripped in `buildMessageContext` via a named `isRecordOnlyMessage` predicate **which also absorbs the existing Commonplace strip**; in `courier-transport.service.ts` (+9, which builds its own transcript from raw events); and in `extractVisibleConversation` (`lib/chat/context-manager.ts`, +72) — **that last was the hole: it filters by ROLE, the record wears `role=ASSISTANT`, so the async pre-compression would have folded it into a summary returning as system block 3 on every later turn, permanently. It now skips by KIND, which closes the same gap for titles, story backgrounds and the rolling summary.** `buildTurnTranscript` already skipped Staff messages, so an inform never becomes memory; v4 added a test holding that. `lib/memory/cheap-llm-tasks/chat-tasks.ts` (+15/−…). **v5:** `services/announcer/writer.rs`; `services/message_context.rs` (the Commonplace strip is at `:1187`, `system_sender == Some("commonplaceBook")` — this becomes the `is_record_only_message` predicate); `services/courier_transport.rs`; **`chat_tasks.rs:73 extract_visible_conversation`** (the kind-skip — measure whether v5 reproduces the hole; it almost certainly does, and the fix widens beyond Inform); `services/turn_transcript.rs`. <br><br>**(5) The API.** `POST ?action=inform` / `GET ?action=informs` / `POST ?action=cancel-inform` under the existing dispatch — `app/api/v1/chats/[id]/actions/inform.ts` (+242), `actions/index.ts`, `handlers/get.ts` (+8/−…), `handlers/post.ts` (+6), `schemas.ts` (+16). **Cancelling before anyone has collected removes the record too; cancelling after some have collected KEEPS it and drops only the seats still waiting.** `actions/participants.ts` (+18): **removing a participant drops what it was owed.** **v5:** the chats dispatch verbs in `api/` + the census rows that count them; `db/chats_participants.rs:207 remove_participant`. <br><br>**(6) Export / import / backup — rows survive a round trip, consumed ones included, "so swipes stay honest".** `lib/export/ndjson-writer.ts` (+19), `lib/export/types.ts` (+24), `lib/import/quilltap-import-stream.ts` (+13), `quilltap-import/execute.ts` (+93), `reconcile.ts` (+80), `types.ts`; `lib/backup/backup-service.ts` (+14), `restore/{archive,delete-service,preview,restore,uuid-remap}.ts`, `backup/types.ts` (+11). **v5:** `services/backup/**` (incl. `uuid_remap.rs`/`uuid_remapper.rs`, `restore/`), `services/quilltap_import/{execute,reconcile,preview,...}.rs`, the export marshal. **Plus the vendored `public/schemas/qtap-export.schema.json` (93,384 → 95,266) and `qtap-export-ndjson.schema.json` (10,890 → 10,989) — see §1's gate note; `qtap_schema_embed_guard` goes red until re-vendored.** <br><br>**(7) Realtime + the SPA.** `lib/realtime/topic-map.ts` (+5) — pending informs ride the **existing `chats` topic**, no new polling site (`queryKeys.chats.informs(id)`); `lib/query/keys.ts` (+7). NEW `components/chat/InformDialog.tsx` (+290) and `components/chat/PendingInformChips.tsx` (+123, names who is still owed, body's first line on hover, a cross to cancel); `components/chat/ComposerGutterTools.tsx` (+22/−…); `app/salon/[id]/{SalonView.tsx,components/ChatComposer.tsx,components/ChatModals.tsx,components/system-message-labels.ts,hooks/useModalState.ts}`. **v5:** `apps/web/src/app/chat/chat-composer.ts` (the gutter, beside the Pascal/custom-tools popup), `apps/web/src/app/screens/salon/`, the realtime topic map + query-key twins. <br><br>**(8) Autonomous rooms deliver on their next chained turn; Carina does NOT** (it builds its own minimal call) — `lib/chat/__tests__/dynamic-head-distill-latency.test.ts` (+5) and the chat-tasks hunk. **Pending informs do not travel through a merge** — noted in the help. <br><br>**(9) Docs + help.** NEW `help/inform.md` (+89), `help/insert-announcement.md` (+4) → **v5's `help/` is 124 vs v4's 125; those two files are the ONLY differences (measured 2026-09-19), every other shared file `cmp`-identical.** `docs/developer/{API.md,DDL.md,PROMPT_ARCHITECTURE.md}` and `docs/developer/features/salon-inform.md` → the `docs/v4/` mirror. `docs/CHANGELOG.md`, `README.md`, `CLAUDE.md`, `.claude/commands/update-documentation.md`, `package.json`/`package-lock.json`/`packages/quilltap/package.json` stamps → NO-PORT candidates (Tier R at the pin for the CLI stamp, as every round has done). <br><br>**(10) The 21 test files (+2,500-odd lines) are the corpus sources**, per the standing rule — `inform.test.ts` (392), `chat-informs-backup.test.ts` (335), `inform-block.test.ts` (159), the import/export round-trips (272 + 245), the migration test (149), `context-management.test.ts` (+127), `InformDialog`/`PendingInformChips` specs (220 + 141), and the six `services/chat-message/*` additions. <br><br>**⚠ v4's own status header records that LIVE VERIFICATION AGAINST A REAL INSTANCE HAS NOT BEEN RUN**, and that the dialog width was derived from the toolbar's CSS rather than measured. The port inherits an oracle that is itself unproven on real data — worth a 💸 dogfood row of its own, and worth expecting v4 follow-up commits. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

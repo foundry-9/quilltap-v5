@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-19 — docs(porting): record the Inform drift — v4 is TWO commits past the baseline, with a new table, a new system block, and a re-vendor obligation
+
+_Docs-only change._
+
+A standalone `/driftcheck`. v4 landed the **Inform** feature on `main` this
+afternoon in two commits, so the drift ledger's verdict moves from NO DRIFT to
+**DRIFT PENDING — 2 commits**, and the regen rule flips back to **PIN REQUIRED
+at `baa85e19b`**.
+
+`781e3b499` (14:12) is the plan doc — `docs/CHANGELOG.md` plus the new
+314-line `docs/developer/features/salon-inform.md`, no code. Classified
+**NO-PORT?**, with a mirror obligation under `docs/v4/developer/features/`
+(mirror the file as `e7d77bb60` leaves it, not as this commit wrote it).
+
+`e7d77bb60` (15:07, `4.10.0-dev.50`) is the feature: 79 files, +4,758/−38 —
+the largest single drift this port has faced. Classified **PORT-NEW**, not a
+convergence (`docs/developer/bugs.md` did not move). The row in §3 breaks it
+down by seam with the already-ported v5 home each lands on: the new
+`chat_informs` table in the main partition, `buildInformBlock` sitting between
+system blocks 2 and 3 on the prompt path, consumption tied to a persisted
+assistant message in the finalizer and the preserved-partial path, the three
+record-only strips (one of which closed a real hole in
+`extractVisibleConversation` that also covers titles, story backgrounds and the
+rolling summary), the three dispatch actions, export/import/backup, the
+realtime topic, and the two new SPA components.
+
+Three obligations recorded in §1 because they change what "green" means:
+
+- **A D23 re-dump is owed.** `chat_informs` is a standard repository over a Zod
+  schema, so v4's live `generateDDL` now emits it and
+  `services/provisioning/fresh_schema.json` must be re-dumped from v4 — never
+  by hand.
+- **`qtap_schema_embed_guard` goes RED against the live checkout, by design.**
+  `public/schemas/qtap-export.schema.json` grew 93,384 → 95,266 bytes and the
+  NDJSON schema 10,890 → 10,989. That redness is the re-vendor obligation, not
+  a gate bug. The SPA-served pair guarded by `public_schemas_vendor_guard` did
+  not move.
+- **`help/` is one file behind**: 124 here, 125 there. Measured — `help/inform.md`
+  (new) and `help/insert-announcement.md` (edited) are the only two differences.
+
+Also noted for whoever plans the round: v4's own spec header records that
+**live verification against a real instance has not been run**, so the port
+inherits an oracle unproven on real data, and follow-up v4 commits are likely.
+
 #### 2026-09-19 — docs: trim CLAUDE.md — archive the 2026-07-30 → 2026-09-15 round bullets to claude-md-status-history.md §3 (verbatim, diff-verified)
 
 _Docs-only change._
