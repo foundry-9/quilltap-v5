@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-19 — docs(porting): a third drift commit — the swipe's generation becomes a watched stream, closing v5's own tracked deferral
+
+_Docs-only change._
+
+A second standalone `/driftcheck` the same evening: v4 added `f564b0de3`
+("feat(salon): a regeneration says so while it happens", 17:00,
+`4.10.0-dev.51`) two hours after Inform. The verdict moves to **DRIFT
+PENDING — 3 commits**; the regen rule stays PIN REQUIRED at `baa85e19b`.
+
+Classified **PORT**, not a convergence (`bugs.md` did not move). 26 files,
++1,226/−81. The narration is the visible half; the load-bearing half is that
+the swipe's single no-tools provider call stops being blocking and
+non-streaming — it now reads as a stream behind `withStallWatchdog`, which
+v4 states is not optional on any `streamMessage` consumer (bug 141), and
+reports progress through an optional `onProgress` (`content` is a delta,
+`reasoning` is cumulative — the send path's contract). A new
+`?action=swipe&stream=1` SSE mode wraps it; without the flag the endpoint
+still answers 201 with JSON.
+
+Three things the §3 row records because they change what the port has to do:
+
+- **It closes v5's own tracked deferral.** `services/regenerate_swipe.rs`
+  writes `rawResponse` / `reasoningContent` / `thoughtSignature` as NULL at
+  `:529-531` and says in its header that forwarding them awaits a richer
+  wire-decoded response. v4 has now moved the persist onto the chunks, which
+  carry exactly those fields. Porting this retires the deferral rather than
+  working around it — and moves a tier-2 comparand, so the regenerate/swipe
+  DB-diff families will redden at the baseline move by design.
+- **The stall-watchdog census moves.** `watch_stream` is wrapped at 27 sites
+  across 11 files, counted by `stream_watchdog_wrap_census`; making
+  `regenerate_swipe.rs` a twelfth home is a deliberate, red-first bump.
+- **Two of v4's three found-on-the-way defects need measuring against v5** —
+  the post-regeneration variant selection (v5 has its own
+  `transcript-reconcile.ts`) and the composer's dead `disabled` prop.
+
+Also: `help/` is now behind in three files across the two features, and six
+new `qt-chat-regenerating*` classes have no counterpart in v5's `_chat.css`.
+
 #### 2026-09-19 — docs(porting): the Inform spec's dialog-width caveat is discharged — the CSS was tested
 
 _Docs-only change._
