@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-19 — docs: trim CLAUDE.md — archive the 2026-07-30 → 2026-09-15 round bullets to claude-md-status-history.md §3 (verbatim, diff-verified)
+
+_Docs-only change._
+
+The first run of `/trimclaudemd`. CLAUDE.md had grown back to 3,975 lines /
+291 KB — it loads on every turn of every session and every lane agent, against
+its own "stays short" rule — and 3,142 of those lines were Status round
+bullets older than two weeks.
+
+Seventy-eight bullets moved VERBATIM into
+`docs/developer/porting/claude-md-status-history.md` as a new §3: the drift +
+standing-red + dogfood round (P4.D29 ∥ P4.20 ∥ P4.21 ∥ P4.9P, 2026-07-30)
+through the `31436bae4` drift catch-up round (2026-09-15). The cut keeps nine
+bullets rather than the default eight, so the `ffb6b3119` round stays beside
+the 2026-09-15 dogfood pass that proves its stream watchdog.
+
+In their place, one compressed arc bullet: the baseline's travel from
+`dcd9440a` to `31436bae4` across orders P4.D29–P4.D188 and P4.20–P4.88, v4's
+bug fixes 8 through 142 absorbed, the verticals that landed whole (the
+Almanack, Taboo, the character archive, `p4.9i2` help/HelpChat, `p4.9k`
+character generators, subprompts, progressions, the wardrobe container/group
+tiers, the Concierge's four states, realtime invalidation, the chat gallery,
+Avatar Rolls, NanoGPT, the LoRA train, GPT-Image-2.5 and the rest), dogfood
+findings #37–#117, the nine v4 bugs this port filed upstream, and the four
+rulings made. Nothing live was lost: every OPEN order in the span had been
+closed inside it, and the remaining pointers (the `name`-field turn-path
+measurement, the shared-fixture title-checkpoint hazard, the #39 and P4.D40
+rulings) already live in `phase-4.md`, `status-log.md` and
+`dogfood-findings.md`.
+
+Verified byte-exact: the lines removed from CLAUDE.md diff clean against the
+extracted span (md5 `65c7ea778acb8d9fce7c4d89538e7e9d`), the lines added to the
+history file are that span plus only the new header, preface and contents
+lines, and the spelling guard is clean. CLAUDE.md: 3,975 → 865 lines,
+291 KB → 62 KB.
+
 #### 2026-09-19 — docs(commands): `/trimclaudemd` — archive CLAUDE.md's older Status round bullets verbatim into claude-md-status-history.md, diff-verified
 
 _Docs-only change._
