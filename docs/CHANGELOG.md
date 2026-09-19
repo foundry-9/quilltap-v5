@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-19 — docs(commands): `/trimclaudemd` — archive CLAUDE.md's older Status round bullets verbatim into claude-md-status-history.md, diff-verified
+
+_Docs-only change._
+
+A new slash command, `.claude/commands/trimclaudemd.md`, that repeats what the
+2026-07-10 (`d04b6dc5`) and 2026-08-13 (`595fb678`) splits did by hand: CLAUDE.md
+loads every turn and its Status section grows back to hundreds of KB (3,975 lines
+/ 291 KB at the time of writing). The command maps the Status section, keeps the
+structural bullets (the Phase bullets, existing ARCHIVED arcs, the current Oracle
+baseline paragraph, Standing deferrals) and the most recent N round bullets
+(default 8; an integer or `through YYYY-MM-DD` overrides), extracts the older span
+by line number, appends it verbatim to `claude-md-status-history.md` as a new
+numbered section, and replaces it in CLAUDE.md with one compressed arc bullet that
+keeps every order id, bug number, finding number and v4 pin. Verification is
+byte-exact via `git diff -U0` (removed lines == the span file; history additions
+== the span plus header lines; md5 unchanged) plus the spelling guard. The diff
+filter excludes only the `--- a/` file header, because a removed bullet line reads
+`-- **…` and a `^-[^-]` filter would drop it — proven on a scratch git copy with a
+real one-bullet span. Commits per `/commit` as docs-only.
+
 #### 2026-09-18 — docs(porting): unify the `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — the baseline moves to `baa85e19b`; the ledger's §3 is EMPTY
 
 _Versions: core 0.0.966, harness 0.0.857, web 0.0.157, SPA 0.5.741 (final; this commit is docs-only)._
