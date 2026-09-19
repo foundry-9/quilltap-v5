@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-19 — docs(porting): the Inform spec's dialog-width caveat is discharged — the CSS was tested
+
+_Docs-only change._
+
+v4's `salon-inform.md` status header carries two caveats, and the drift
+ledger's `e7d77bb60` row repeated both. The human confirms the second one is
+stale: the dialog's width CSS was tested and is fine. Marked DISCHARGED in
+both places the row states it, so no lane plans work around it.
+
+The first caveat — that the ten-step live-verification walkthrough has not
+been run against a real instance — stands unchanged.
+
 #### 2026-09-19 — docs(porting): record the Inform drift — v4 is TWO commits past the baseline, with a new table, a new system block, and a re-vendor obligation
 
 _Docs-only change._
