@@ -12,6 +12,57 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): the FTS5 escalation — v5 cannot write a chat message to a v4 4.10 instance
+
+_Docs-only change._
+
+The second `/driftcheck` of the day. An hour after the first one closed, v4
+landed `f45a517a9` ("feat(search): index chat messages with FTS5, compress
+the transcript"), taking `main` to `4.10.0-dev.61` — **thirteen** commits
+past the baseline, ten of them on 2026-09-21 alone. `bugfix` and `release`
+are unmoved.
+
+The commit registers `chat_messages.content`, `opaqueContent`, `description`
+and `context` as compressed columns, and puts three FTS5 triggers over
+`chat_messages`. **Two of the three call `qt_text()`** — the insert
+trigger's body, and the update trigger's `WHEN` clause. v5 registers no UDF
+anywhere, and the workspace pins `rusqlite` without the `functions` feature,
+so `qt_text` is not merely unported but not currently compilable.
+
+Measured on a read-only copy of the live Friday instance, opened with the
+UDF deliberately unregistered, every write wrapped in a transaction that was
+always rolled back (0 rows left behind; the copy and its `.dbkey` deleted
+after): **every INSERT into `chat_messages` fails with `no such function:
+qt_text`** — USER, ASSISTANT, SYSTEM, staff, and content-NULL alike — and so
+does every `UPDATE OF content`. Non-content updates and deletes succeed. The
+inserts the trigger's own `WHEN` clause would have excluded fail too,
+because SQLite resolves functions when it compiles the trigger program,
+before any row is tested. So a v5 binary on a migrated instance can delete
+messages but not create them.
+
+Friday is already in that state: all five FTS objects and three triggers
+present, 142,697 messages with 78,562 in the index map, `content` 62,913
+BLOB / 25,729 text, and `quilltap.db` down 835 MB → 615 MB, last written
+after the commit landed. Together with the previous check's `llm_logs` and
+`conversation_chunks` census, the whole instance is on the new format. The
+dogfood copy must be treated as hostile to v5.
+
+D23 does **not** fire: v4 creates the FTS objects in the migration rather
+than in `ensureCollection`, so `generateDDL` emits none of it, and the D23
+dumper filters triggers out by construction. The consequence runs the other
+way — a v5-provisioned fresh instance is missing all five objects, and no
+D23 mechanism can supply them. One piece of good news removes a feared
+blocker: `SQLITE_ENABLE_FTS5` is already compiled into v5's amalgamation, so
+the FTS half needs no build change.
+
+Also recorded: the commit fixes an un-numbered v4 defect — a search query
+containing `.`, `+` or `(` returned nothing — that **v5 reproduces and pins
+with a passing test**, so the port's red-first proof is retiring that test;
+the help gap is now ten files; and the search rewrite changes user-visible
+behaviour to whole words and prefixes with accent folding.
+
+Regen rule unchanged: **PIN REQUIRED at `baa85e19b`**.
+
 #### 2026-09-21 — docs(porting): nine more drift commits in one day, and one of them changed the bytes v5 reads
 
 _Docs-only change._
