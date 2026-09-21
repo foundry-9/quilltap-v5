@@ -12,6 +12,65 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): nine more drift commits in one day, and one of them changed the bytes v5 reads
+
+_Docs-only change._
+
+A standalone `/driftcheck`. v4 shipped **nine** commits on 2026-09-21
+between 10:14 and 16:47, taking `main` to `80a05a4c8` (`4.10.0-dev.59`) —
+**twelve past the baseline `baa85e19b`**. `bugfix` and `release` are
+unmoved, so there is no unabsorbed bugfix work. All twelve rows are
+UNPROCESSED in the ledger's §3.
+
+The blocking one is `186eb09cb`. v4 now stores `llm_logs.request`,
+`llm_logs.response` and `conversation_chunks.content` brotli-compressed
+behind a three-byte header (`0x51 0x01 0x01`, quality 5, values under 512
+bytes left as plaintext so a column holds a mix forever), and decodes raw
+SQL through a new `qt_text()` UDF. Measured on a read-only copy of the
+human's live Friday instance (deleted after the measurement, `.dbkey` with
+it): `llm_logs.request` is 5,627 BLOB / 10 text, every blob carrying that
+header; `response` 4,475 / 1,162; `conversation_chunks.content` 14,962 /
+177. v5 binds `String`/`Option<String>` at every read site of all three —
+`db/llm_logs.rs:1187-1188` among them — which rejects a BLOB, and at the
+two `llm_logs` sites the error is deliberately swallowed as v4's Zod-drop,
+so the LLM Inspector returns an empty list and 404s every log with nothing
+anywhere to say why, and `services/backup/collect.rs:627`'s
+`.unwrap_or_default()` means a v5-taken backup silently omits every
+llm_logs row. v5 has no UDF machinery at all: the workspace pins `rusqlite`
+without the `functions` feature, so `qt_text` is not currently compilable.
+There is no migration to gate on — new writes already compress. The
+dogfood Friday copy is untrustworthy for those reads as of now.
+
+Two more defects measured as reproduced in v5: bug 158 (`chat_create.rs:1419`
+writes the scenario into `contextSummary` eight lines above `scenarioText`,
+and `build_recent_conversations_block` at `:2977` is v4's pre-fix shape
+verbatim) and bug 157 (`doc_mount_blobs.rs:419`/`:471`, the `LIMIT 1`
+fallback), plus bugs 155 and 156 in the mount-index write path. §5.5 fired
+on bug 158: v4's banked 186-chat population is **gone** — 971 chats, 526
+with summaries, zero seeded — because v4's migration has already run, so
+that proof must now come from rows v5 itself mints.
+
+Two designed tripwires confirmed red by running them: `zod_version_guard`
+(`4.5.4 → 4.6.5` from `6b0615807`, exactly the event P4.77 built it for)
+and `qtap_schema_embed_guard` (still Inform's re-vendor debt).
+`public_schemas_vendor_guard` and `help_tree_embed_guard` are green, the
+latter only because it compares embedded against v5's own disk rather than
+against v4.
+
+Also recorded: the `help/` gap is now nine files (v5 124, v4 126 — two
+missing, seven differing); the standing `openai 7.10.0` item is resolved by
+`6b0615807`, and its count was wrong (six plugin dirs bundle openai, not
+four, and they sat at two different versions); `23da0b322` adds a whole new
+`quilltap sync` CLI verb with no v5 analogue, which will turn four existing
+Tier R cases red; and no commit in the nine moves any DDL, so the D23
+re-dump owed from `e7d77bb60` is still the only one.
+
+Regen rule: **PIN REQUIRED at `baa85e19b`**, absolutely. The human confirmed
+live work in flight in the v4 repo, and a parallel read during the check saw
+the tree dirty with FTS5 files whose own module doc says they unblock
+compressing `chat_messages.content`. This check classifies committed history
+only.
+
 #### 2026-09-19 — docs(porting): a third drift commit — the swipe's generation becomes a watched stream, closing v5's own tracked deferral
 
 _Docs-only change._
