@@ -14,6 +14,10 @@
 //! asymmetry that matters — an empty sheet fails every `availableWhen` and
 //! satisfies no `withheldWhen` — is invisible from there.
 //!
+//! Re-recorded unchanged at v4 `f45a517a9` under `zod` 4.6.5, and under a 4.5.4
+//! control against that same v4 source — byte-identical both ways (P4.D211's
+//! discharge of `zod_version_guard` for the `6b0615807` bump).
+//!
 //! Generate the oracle output (v4 @ 231be14c, Node 24
 //! `~/.nvm/versions/node/v24.13.1/bin`; the pinned detached worktree):
 //!   cd ~/source/quilltap-server

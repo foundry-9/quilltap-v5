@@ -774,7 +774,7 @@ fn parse_optional_enum(
 /// its keys backwards).
 ///
 /// `z.string().min(1).max(4000)` measures CODE POINTS since Zod 4.5 (v4
-/// `6e1a64ea6`; `zod_version_guard` pins 4.5.4), so `prompt` goes through the
+/// `6e1a64ea6`; `zod_version_guard` pins 4.6.5), so `prompt` goes through the
 /// [`crate::jsstr`] helpers its sibling `images_generate` route already used —
 /// P4.85 item 5.
 fn parse_generate_body(body: &ImageProfileGenerateBody) -> Result<ParsedGenerate, Value> {

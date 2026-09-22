@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — chore(deps): the Zod 4.5.4 -> 4.6.5 re-measurement, and the six version claims it made false
+
+_Versions: core 0.0.967, harness 0.0.858, web 0.0.158, SPA 0.5.742._
+
+v4's `6b0615807` moved its installed `zod` from 4.5.4 to 4.6.5, which reddened
+`zod_version_guard` by design. This repeats the measurement that guard's failure
+text prescribes and moves `RECORDED_ZOD_VERSION` to `4.6.5`.
+
+The result is wholly neutral for v5: not one sentence, regex or issue shape this
+port transcribes moved. `v4/locales/en.js` changed by 12 lines, all of them two
+NEW format-name nouns (`currency_code`, `iban`) for validators v4 never calls.
+`v4/core/regexes.js` rewrote `email`, `_emoji` and `base64url` and added
+`currencyCode`, `iban` and `anyString`; only `email` is reachable in v4, and its
+rewrite is semantically neutral over a 1,014-row corpus recorded from v4's real
+validator at both versions. `z.property()`, `fromJSONSchema` and the new opt-in
+`abortEarly`/`reportInput` parse flags measure zero hits in v4's source.
+
+Four homes outside the two the procedure names were read as well, because they
+shape issue BYTES rather than sentences. `core/errors.js` and `core/core.js`
+moved only property-descriptor plumbing. `core/util.js`'s `finalizeIssue`
+swapped object-rest for an own-key loop that additionally drops an own
+`__proto__` — key order is identical, which is what `api/zod_issues.rs` pins.
+`core/to-json-schema.js` changed by a function rename only, which matters
+because v4 derives all ~57 tool `parameters` through `z.toJSONSchema()`: the
+emitted schema for a 15-field probe object is byte-identical across the two
+versions except for `email`'s `pattern`, and no tool schema uses `z.email()`.
+
+The regenerations the measurement gates came back byte-identical: the two
+hand-rolled engines' shared 362-row corpus, re-recorded at v4 `f45a517a9` under
+4.6.5 and, as a control, under 4.5.4 against that same v4 source. The control
+was proven live first — mutating one sentence in its zod moved 53 rows.
+
+Six prose claims were false at 4.6.5 and are retired: `zod_version_guard`'s own
+constant and doc comment, `api/image_profiles.rs`'s cross-reference to it,
+`image_gen/lora_validation.rs`, `api/zod_issues.rs`'s assert message,
+`quilltap-web`'s `characters_routes.rs` and `avatar_rolls_routes.rs`, and
+`progressions_engine_equivalence.rs`. Claims of the form "Zod >= 4.5.4" and
+"measured at 4.5.4 on <pin>" are left alone — a lower bound and a dated
+provenance record are both still true.
+
+The guard's failure text now also carries the trap this lane measured: a pinned
+v4 worktree cannot reproduce a past dependency state, because its
+`node_modules` are symlinks into the live checkout.
+
 #### 2026-09-21 — fix(spec): stub scrollTo for every Salon-mounting spec, so a stray timer cannot fail the run (P4.D206)
 
 _No crate versions bumped._

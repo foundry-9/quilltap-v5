@@ -12,7 +12,11 @@
  * `d883a5ee1` unification: thirteen unrecognized-key rows moved when Zod made
  * `unrecognized_keys` continuable, and two astral-title rows were added for
  * its code-point length rule — v4 `6e1a64ea6`; first captured at `c4d4b0de`; see
- * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
+ * `src/testing/fixtures/README.md` for provenance and the regen recipe;
+ * RE-RECORDED unchanged at v4 `f45a517a9` under Zod 4.6.5 and, as a control,
+ * under 4.5.4 against that same v4 source — byte-identical both ways, which is
+ * how P4.D211 discharged `zod_version_guard`'s regen obligation for the
+ * `6b0615807` bump without editing a row) — and
  * byte-compares four things per row:
  *
  *   1. the accept/reject verdict,

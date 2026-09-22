@@ -140819,3 +140819,179 @@ unhandled errors.**
 green and still exit non-zero, and the reason will be below the summary line
 under `Unhandled Errors`. **Read the exit code, not the counts** — and when they
 disagree, the counts are the ones lying by omission.
+
+## Lane record — P4.D211 unit 1: the Zod 4.5.4 → 4.6.5 re-measurement (2026-09-21)
+
+`6b0615807` moved v4's installed `zod` 4.5.4 → 4.6.5 and `zod_version_guard`
+reddened by design (`left: "4.6.5" / right: "4.5.4"`). This is the P4.D158 unit 2
+item 4 procedure repeated, and — as that record's own habit predicts — it is
+wider than the two files the procedure names.
+
+**Lane setup.** Worktree `claude/p4-d211-zod-4-6-move-6b0615807` from `main`
+`c3a615da`. §2 freshness probe at lane start: **PASS** (branch `main`, tree
+CLEAN, HEAD `f45a517a9`, both logs empty). Pins per §R.3:
+`/tmp/qt-v4-pin-p4d211-f45a517a9` (target) and
+`/tmp/qt-v4-pin-p4d211-baa85e19b` (baseline), all THREE symlink classes wired
+(root, `packages/quilltap`, all 15 `plugins/dist/*`). Pin verified two ways:
+`rev-parse HEAD` on each, and the `help/search.md` marker (`How the Message
+Search Reads Your Words` — 2 hits at the target, the file absent at the
+baseline). Installed-vs-declared measured before trusting any recording:
+`openai@7.20.0` against `^7.20.0` in all six openai-bundling dirs,
+`@anthropic-ai/sdk@0.115.0`, `@google/genai@1.52.0`, `@openrouter/sdk@1.3.11` —
+all matching.
+
+### ⚠ The methodological finding, which reshapes this lane's whole comparison
+
+**A pinned v4 worktree CANNOT reproduce a past dependency state.** Ledger §5.1's
+three symlink classes all point into the LIVE checkout, so a regen "at the
+baseline pin" runs the baseline's SOURCE against the CURRENT `node_modules`.
+Measured, not reasoned: the nine recorders run at `baa85e19b` emit
+`x-stainless-package-version: 7.20.0` — the NEW SDK stamp — because
+`record-request-envelopes.mjs` and its siblings import the plugin's TypeScript
+`provider.ts` (`plugins/dist/<dir>/provider.ts`), whose `import OpenAI from
+'openai'` resolves through `plugins/dist/<dir>/node_modules`. **The committed
+`plugins/dist/*/index.js` bundles — the ones `6b0615807` rebuilt, and the ones
+the ledger's item (4) reasons about — are never loaded by any recorder.**
+
+So the honest A/B for a dependency bump is not baseline-pin-vs-target-pin. It is
+**a purpose-built control whose `node_modules` is a directory of per-entry
+symlinks with the one package swapped**, and the control must be proven LIVE by
+mutation before any "byte-identical" is believed. Both controls this lane built
+are recorded below; the first `zod` control was DEAD on its first attempt (a sed
+that never matched — 0 mutation hits — so its "IDENTICAL" proved nothing), and
+the first SDK control was DEAD twice over (Node resolves a symlinked
+`@quilltap/plugin-utils` by REALPATH, walking back into the live install; and the
+loaded entry is the CJS `core/streaming.js`, not the `.mjs` the mutation
+patched).
+
+### The measurement table
+
+`node_modules/zod/package.json` = `4.6.5` at the checkout; `package-lock.json`
+says `4.5.4` at the baseline pin and `4.6.5` at the target. 4.5.4 obtained by
+`npm pack zod@4.5.4`.
+
+| axis | 4.5.4 → 4.6.5 | reachable in v4? | v5 site |
+|---|---|---|---|
+| `v4/locales/en.js` | **ZERO existing sentences changed.** 12-line diff: two NEW format-name nouns, `currency_code: "currency code"` and `iban: "IBAN"` | **NO** — 0 hits for `z.currencyCode()`/`z.iban()` over `lib/ app/ packages/ plugins/` | none |
+| `regexes.js` `email` | **CHANGED** — `^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@…` → `^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@…` | **YES** — 7 sites (`plugin-manifest.ts` ×2, `auth.types.ts:23`, `env.ts:38`, `themes/types.ts` ×2, `user/profile/route.ts:32`). **NONE in `lib/tools/`** | `api/user_profile.rs::is_zod_email` → unit 3 |
+| `regexes.js` `_emoji` | **CHANGED** — a leading anchor lookahead added | **NO** — 0 `.emoji(` | none |
+| `regexes.js` `base64url` | **CHANGED** — `^[A-Za-z0-9_-]*$` → `^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$`, a real semantic change | **NO** — 0 `.base64url(` | none |
+| `regexes.js` `currencyCode`, `iban` | **NEW** | **NO** | none |
+| `regexes.js` `anyString` | **NEW** (`^[\s\S]{0,}$`), now `$ZodString`'s `_zod.pattern` default | internal | none — **proven not to leak**: a plain `z.string()` still emits NO `pattern` key through `toJSONSchema` |
+| `core/errors.js` | property-descriptor plumbing only (7 lines) | — | none |
+| `core/core.js` | `if` → `else if` in trait registration (2 lines) | — | none |
+| `core/util.js` `finalizeIssue` | object-rest → own-key loop, additionally dropping an own `__proto__`. **Key order IDENTICAL** (`Object.keys` order == rest order) | — | none — this is exactly what `api/zod_issues.rs` pins |
+| `core/checks.js` `$ZodCheckProperties` | **NEW** check (`z.property()`) | **NO** — 0 hits | none |
+| `core/parse.js` + `schemas.js` `abortEarly` | **NEW** opt-in `ctx` flag threaded through every container | **NO** — 0 hits for `abortEarly`/`reportInput` | none |
+| `classic/from-json-schema.js` | **NEW** module; carries ALL the release's new prose (`Array items must be unique: …`, `Too small: expected object to have >=N properties`, …) | **NO** — 0 `fromJSONSchema` | none |
+| `core/schemas.js:1337` | **NEW** developer throw `Ambiguous discriminator value "…"` | construction-time; v4's DUs are well-formed (the app boots) | none |
+| `core/to-json-schema.js` | function RENAME only (`process` → `processSchema`, for a bundler-polyfill collision) + one dead `continue` removed | **YES** — v4 derives all ~57 tool `parameters` through `z.toJSONSchema()` (`lib/tools/zod-to-openai-schema.ts`) | none — see below |
+| `classic/iso.js` | **byte-identical** | — | none — the `datetime()` rewrite the 4.4.3→4.5.4 read had to record did not move again |
+| 5 developer throws | interpolated-variable renames, same bytes | — | none |
+
+**Two arms the procedure does not name, added here for the next lane.**
+
+1. **`to-json-schema` must be measured empirically, not read.** v4's tool
+   `parameters` are generated, so a change there reaches the provider wire.
+   Probe: `z.toJSONSchema(<15-field object>, { target: 'draft-7' })` under both
+   versions — **byte-identical except `email`'s `pattern` string**. Since no tool
+   schema uses `z.email()` (0 hits in `lib/tools/`), `tool-wire.recorded.ndjson`
+   is insulated, and the re-recording confirmed it.
+2. **Issue KEY ORDER is a separate question from issue SENTENCES**, and
+   `core/util.js` is its home. The 4.6 rewrite preserves it; had it not, the ONE
+   `api/zod_issues.rs` home (P4.101) would be the single site to move.
+
+### The regenerations the table forces
+
+The table forces none, so the proof is that the regenerations are byte-identical
+— per family, recorded rather than asserted.
+
+- **`pascal-custom-tool-definition.oracle.ndjson`** (362 rows; the ONE file both
+  hand-rolled engines' differentials read — the Rust
+  `pascal_custom_tool_definition_equivalence` and the SPA's
+  `custom-tool-types.corpus.spec.ts`, via
+  `apps/web/src/testing/fixtures/`). Recorded at the target pin: **byte-identical
+  to the committed fixture** (181,502 bytes, 362 lines). Recorded at the
+  purpose-built 4.5.4 control against that SAME v4 source: **byte-identical
+  again**. So the engines need no regeneration, and the claim is a `cmp`, not an
+  inference.
+- **Control liveness, proven before the comparison was believed.** Mutating
+  `Invalid input: expected ${expected}, received ${received}` → `MUTATED-SENTINEL:
+  …` in BOTH `v4/locales/en.js` and `en.cjs` of the control's zod moved **53
+  rows**; reverted by file backup, and the re-run returned byte-identical. The
+  FIRST attempt at this proof mutated only `en.js` with a pattern that did not
+  match (0 hits) and reported a meaningless "UNCHANGED" — recorded because it is
+  the `heredoc-env-var-makes-a-mutation-vacuous` class and it fired here.
+
+### Mutation proof
+
+| proof | target | result |
+|---|---|---|
+| `RECORDED_ZOD_VERSION` → `"4.6.6"` | `zod_version_guard::v4s_installed_zod_matches_the_recorded_version` | **FAILED** `left: "4.6.5" / right: "4.6.6"` — reverted by file backup, green again |
+| one `en.js`/`en.cjs` sentence in the 4.5.4 control | `pascal-custom-tool-definition` corpus | **53 rows moved** — the control is LIVE |
+
+### What landed
+
+`RECORDED_ZOD_VERSION = "4.6.5"` with the table above repeated verbatim in its
+doc comment, and the guard's failure text grown by the two missing arms plus the
+pinned-worktree trap. Six prose claims retired because they were FALSE at 4.6.5
+(the principle applied throughout: edit a claim only if 4.6.5 makes it false;
+leave `Zod >= 4.5.4` lower bounds and `measured at 4.5.4 on <pin>` provenance
+alone) —
+
+| site | was | now |
+|---|---|---|
+| `zod_version_guard.rs:46` + its doc | `4.5.4` | `4.6.5` + the measurement table |
+| `api/image_profiles.rs:777` | "`zod_version_guard` pins 4.5.4" | pins 4.6.5 |
+| `image_gen/lora_validation.rs:33` | "the checkout's real `zod` 4.5.4" | 4.5.4 then, 4.6.5 since |
+| `api/zod_issues.rs:575` | assert: "must match real zod 4.5.4" | version-free + the `finalizeIssue` note |
+| `quilltap-web/src/characters_routes.rs:305` | "The messages are Zod 4.5.4's own" | "Zod's own (recorded at 4.5.4, unmoved at 4.6.5)" |
+| `quilltap-web/tests/avatar_rolls_routes.rs:8` | "they are Zod 4.5.4's" | "they are Zod's own" |
+| `progressions_engine_equivalence.rs:20` | "Zod 4.5.4's issue sentences" | "Zod's issue sentences" |
+
+Provenance added (no claim changed) in `pascal/custom_tool_types.rs`,
+`pascal_custom_tool_definition_equivalence.rs` and
+`custom-tool-types.corpus.spec.ts`: the corpus is now verified across the 4.5.4 →
+4.6.5 range, not only at the version installed when it was written.
+
+**ONE pre-declared out-of-mandate spill, listed for the unifier:**
+`apps/web/src/app/progressions/schema.ts:18` (**P4.D206's file** — one line,
+marked in prose, no behaviour). Its claim "v4 validates with Zod 4.5.4." is
+flatly false at 4.6.5; every other `4.5.4` in `apps/web/src` outside this lane's
+own `pascal/custom-tool-types.*` was LEFT deliberately, because each is either a
+`>= 4.5.4` lower bound or a dated measurement — `pascal/zod-shim.ts:2,17,150,182,
+205,206`, `pascal/zod-shim.spec.ts:9,13`, `pascal/zod-length.ts:2`,
+`pascal/zod-length.spec.ts:5,8`, `progressions/schema.ts:29`,
+`progressions/schema.oracle.spec.ts:4`. **Listed so the unifier can decide** —
+this lane judged them true as written and left them to their owner.
+
+**ONE deliberate non-edit inside a sibling's fence:** `tools/run_sql.rs:143`
+("Real zod 4.5.4 answers …") is **P4.D203's file** (§R.10(f)). The claim is TRUE
+of 4.5.4 and the sentence is unmoved at 4.6.5, so it is not in the
+false-at-4.6.5 set and the spill was not taken. Named here so it is a decision
+rather than an oversight.
+
+### Regen recipes, as run
+
+```bash
+# the two v4 pins (ledger §5.1, all three symlink classes)
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p4d211-f45a517a9 f45a517a9
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p4d211-baa85e19b baa85e19b
+# then, for each pin: ln -sfn the checkout's root node_modules, packages/quilltap/node_modules,
+# and every plugins/dist/*/node_modules
+
+# the zod 4.5.4 CONTROL — same v4 source as the target, one package swapped
+cd /tmp/p4d211/zod && npm pack zod@4.5.4 && tar xzf zod-4.5.4.tgz && mv package zod-4.5.4
+git -C ~/source/quilltap-server worktree add --detach /tmp/p4d211/ctl-zod454 f45a517a9
+# node_modules/ is a REAL directory of per-entry symlinks into the live install,
+# with `zod` pointing at /tmp/p4d211/zod/zod-4.5.4 (742 entries)
+
+# the engines' shared corpus, at BOTH
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+cd <PIN-or-CONTROL> && TZ=UTC npx tsx \
+  <V5W>/harness/oracle/cases/pascal-custom-tool-definition.ts \
+  > /tmp/p4d211/oracles/pascal-definition-<label>.ndjson
+# the Rust side
+QT_ORACLE_PASCAL_DEFINITION=/tmp/p4d211/oracles/pascal-definition-f45a517a9.ndjson \
+  cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
+```

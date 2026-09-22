@@ -572,8 +572,10 @@ mod tests {
             assert_eq!(
                 serde_json::to_string(&issue).unwrap(),
                 want,
-                "{label}: the serialized issue must match real zod 4.5.4 byte \
-                 for byte, key order included"
+                "{label}: the serialized issue must match real zod byte for byte, key \
+                 order included (recorded at 4.5.4; re-verified unchanged at 4.6.5 by \
+                 P4.D211, whose read found `core/util.js`'s `finalizeIssue` rewritten \
+                 from object-rest to an own-key loop with the SAME key order)"
             );
         }
     }

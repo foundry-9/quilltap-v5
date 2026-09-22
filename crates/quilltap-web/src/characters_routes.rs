@@ -302,7 +302,8 @@ where
 /// v4's `listQuerySchema` — `z.number().int().min(1).max(200).optional()` for
 /// `limit`, `.min(0)` for `offset` — over `has(k) ? Number(get(k)) : undefined`.
 ///
-/// The messages are Zod 4.5.4's own and are pinned by `avatar_rolls_routes`
+/// The messages are Zod's own (recorded at 4.5.4, unmoved at 4.6.5) and are
+/// pinned by `avatar_rolls_routes`
 /// against v4's REAL handler, not transcribed: `Number('')` is 0 (so `?limit=`
 /// trips the minimum, it does not read as absent) and `Number('abc')` is NaN,
 /// which `z.number()` refuses before any refinement runs.

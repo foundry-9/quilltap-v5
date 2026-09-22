@@ -28,7 +28,11 @@
 //! 1. An issue is **aborting** unless it came from a check (a `refine` /
 //!    `superRefine`), which marks its issues `continue: true`.
 //!    Since Zod 4.5.4 (v4 `6e1a64ea6`) a strict object's `unrecognized_keys` issue
-//!    is ALSO continuable — see [`unrecognized_keys`].
+//!    is ALSO continuable — see [`unrecognized_keys`]. Still true at 4.6.5 (v4
+//!    `6b0615807`): P4.D211 re-recorded the shared 362-row corpus from v4's real
+//!    schema under BOTH versions and got byte-identical output, so every rule and
+//!    sentence below is verified across the range, not just at the version that
+//!    happened to be installed when it was written.
 //! 2. **Checks are skipped when the value already has an aborting issue** — that
 //!    is what stops the top-level `superRefine` from walking an `outcomes` that
 //!    failed to parse. When only continuable issues exist, the value still

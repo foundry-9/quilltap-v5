@@ -17,7 +17,7 @@
 //! last-ULP difference appears, this family reds and the tolerance path is
 //! the fix — until then the claim is "exact", stated honestly.
 //!
-//! What only a differential can answer here: Zod 4.5.4's issue sentences AND
+//! What only a differential can answer here: Zod's issue sentences AND
 //! their order, its code-point string lengths on astral text, `Date.parse`'s V8
 //! subset behind v4's stricter regex, `toFixed`'s decimal half-up rounding
 //! (`0.125` → `0.13`, where a Rust `{:.2}` gives `0.12`), and

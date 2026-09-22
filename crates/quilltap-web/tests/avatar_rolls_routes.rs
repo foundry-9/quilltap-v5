@@ -5,7 +5,7 @@
 //!
 //! The service differential (`quilltap-harness/tests/
 //! avatar_rolls_tier2_equivalence.rs`) cannot see any of what this pins: the
-//! Zod query gate's exact sentences (they are Zod 4.5.4's, measured, never
+//! Zod query gate's exact sentences (they are Zod's own, measured, never
 //! transcribed), `withActionDispatch`'s two refusal envelopes with their
 //! `availableActions` array, the error ladder's status mapping, and v4's
 //! measured GUARD ORDER — a save for a character that does not exist answers

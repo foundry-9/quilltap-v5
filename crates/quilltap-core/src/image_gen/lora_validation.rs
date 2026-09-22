@@ -30,7 +30,8 @@ pub const IMAGE_PROFILE_LORAS_KEY: &str = "loras";
 /// P4.101).
 ///
 /// This module rendered its own three variants until P4.101 measured them
-/// against the home's (and against the checkout's real `zod` 4.5.4): the key
+/// against the home's (and against the checkout's real `zod`, 4.5.4 then and
+/// 4.6.5 since P4.D211, whose re-measurement moved no issue byte): the key
 /// order is IDENTICAL, which it must be — v4's LoRA envelope is
 /// `loraSchema.safeParse`'s own issues, the same Zod as every other route's, so
 /// a difference would have been a finding. The alias keeps the local spelling

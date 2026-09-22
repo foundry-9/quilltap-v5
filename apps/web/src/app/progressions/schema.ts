@@ -15,7 +15,9 @@
  *
  * ## Why this reimplements Zod rather than importing it
  *
- * v4 validates with Zod 4.5.4. The SPA has **no `zod` dependency** (measured
+ * v4 validates with Zod (4.5.4 when this was written; 4.6.5 since v4
+ * `6b0615807`, whose re-measurement moved no sentence this file reproduces —
+ * P4.D211). The SPA has **no `zod` dependency** (measured
  * 2026-09-08: absent from `apps/web/package.json`, imported nowhere; the 4.3.6
  * under `node_modules` is transitive to the Angular builder) — the work order's
  * "the SPA HAS zod" premise is refuted, and this file is the deviation. It is a
