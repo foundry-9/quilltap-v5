@@ -113,13 +113,32 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
     await regenerateButton(page).click();
 
     // 1. The plate is up, over the dimmed original, and it says what is
-    //    happening to a reader who cannot see the dimming.
+    //    happening to a reader who cannot see the dimming. The mock answers
+    //    its first token within milliseconds and the plate withdraws on that
+    //    token (rule 2 below), so four sequential assertions would race the
+    //    withdrawal — the first live runs passed by luck and then did not.
+    //    Read every fact in ONE DOM tick, the tick the plate first appears.
+    const plateSnapshot = await page.waitForFunction(
+      () => {
+        const plate = document.querySelector('.qt-chat-regenerating-plate');
+        if (!plate) return null;
+        return {
+          role: plate.getAttribute('role'),
+          text: plate.querySelector('.qt-chat-regenerating-plate-text')?.textContent?.trim() ?? null,
+          original: document.querySelector('.qt-chat-regenerating-original') !== null,
+          busy: document.querySelectorAll('.qt-chat-message[aria-busy="true"]').length,
+        };
+      },
+      undefined,
+      { timeout: 15_000 },
+    );
+    expect(await plateSnapshot.jsonValue()).toEqual({
+      role: 'status',
+      text: 'Regenerating...',
+      original: true,
+      busy: 1,
+    });
     const plate = page.locator('.qt-chat-regenerating-plate');
-    await expect(plate).toBeVisible({ timeout: 15_000 });
-    await expect(plate).toHaveAttribute('role', 'status');
-    await expect(page.locator('.qt-chat-regenerating-plate-text')).toHaveText('Regenerating...');
-    await expect(page.locator('.qt-chat-regenerating-original')).toBeVisible();
-    await expect(page.locator('.qt-chat-message[aria-busy="true"]')).toHaveCount(1);
 
     // 2. The plate WITHDRAWS the moment there is prose — no blank gap. The
     //    original goes with it, because the new line is now in its place.
@@ -151,7 +170,7 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
     //    exists in the previous swipe map, so the reconcile's id-carry has a
     //    previous selection to keep. The counter must read the newest variant.
     await regenerateButton(page).click();
-    await expect(page.locator('.qt-chat-regenerating-plate')).toBeVisible({ timeout: 15_000 });
+    // (No plate assertion here — the same race as above; the counter is the proof.)
     await expect(page.locator('.qt-chat-regenerating')).toHaveCount(0, { timeout: 30_000 });
     await expect(counter).toHaveText('3/3', { timeout: 15_000 });
   });
