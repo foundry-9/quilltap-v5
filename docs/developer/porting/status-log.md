@@ -139387,3 +139387,58 @@ wholesale:** `PreservePartialOnError::new`'s eighth argument takes a NARROW
 closure variables, one for one, and grouping them into a struct would be tidier
 Rust and a worse port), and `ChatInformRemap::Ok`'s payload is BOXED (~240 bytes
 against `Dropped`'s one `String`).
+
+### The P4.D205 gate — one authoritative run, on the committed tree
+
+⚠ **A process error worth recording, because it produced a log that looked like
+evidence and was not.** Two gate runs were launched in this lane while a third
+was still in flight, and all three appended to the SAME `/tmp` log path. The
+later run's `rm -f` + truncate interleaved with the earlier run's appends, so the
+`fmt=0 clippy=0 clippy_nt=0` read partway through belonged to no single tree.
+This is `a-gate-log-is-evidence-only-for-the-tree-it-names` in a NEW shape — not
+a scratchpad shared between sessions, but two runs of one session sharing a path.
+The fix is the same: **a unique log directory per run, the tree committed first,
+and never two gates in flight.** The numbers below come from ONE run, on a tree
+with zero dirty files, whose hash is the log's first line.
+
+**Gate (tree `6a38c30f`, `CARGO_INCREMENTAL=0 TZ=UTC`):**
+
+| step | result |
+|---|---|
+| `cargo fmt --all --check` | **clean** |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **clean** |
+| …`--features quilltap-core/native-transport` | **clean** |
+| `cargo build --workspace --release` | **clean** |
+| `cargo test --workspace --no-fail-fast` | **588 binaries / 3,496 passed / 2 failed / 3 ignored** |
+
+**Zero `SKIP:` lines** — every family whose var was in the block actually ran.
+
+**Both failures are the §R.5 designed set, and NEITHER is a P4.D205 defect:**
+- `shipped_help_tree_matches_oracle` — 125 vs the target pin's 126. This lane
+  adds `help/inform.md` (124 → 125); the one remaining file is
+  `help/cli-sync.md`, which **P4.D210 adds in the same round**. At unification
+  both are present and it is 126 = 126. The assert now carries that explanation,
+  so a red naming any OTHER file is a real failure.
+- `v4s_installed_zod_matches_the_recorded_version` — **P4.D211's**, named in
+  §R.5 (4.5.4 → 4.6.5). Untouched here.
+
+**This lane's families, each confirmed RUN by name and green:**
+`chat_informs_tier2_matches_oracle`, `inform_block_matches_oracle`,
+`chat_informs_routes_match_oracle`, `chat_informs_remap_matches_oracle`,
+`chat_informs_remap`'s corpus guards, `census_covers_every_typed_request_field`
+(441 → 444), `typed_only_hand_built_construction_count_matches_the_recorded_table`
+(14 → 15, total 109 → 110), `unserved_known_actions_are_pinned_v5_side` (the
+four-action refusal sentence), `provisioning_matches_v4_fresh_instance` (the D23
+re-dump), `the_embedded_schema_equals_the_v4_checkouts` +
+`the_embedded_schema_is_self_consistent` (both at 95,266 against the target pin).
+
+**Two censuses moved and were recounted with the arithmetic in the comment**, in
+addition to the two help-count literals: the dispatch wrong-type census (the
+three verbs' `chatId` is a URL path segment, so the route-identifier rule drops
+it — no census row is owed, because the body keys are tri-states the census never
+sees) and the tri-state decoder census (the GET hand-builds a typed-only variant;
+**both POST arms go through `request_envelope`, which is the rule that census
+exists to enforce, and it confirmed the port obeyed it**).
+
+**§R.2 probe at lane close:** branch `main`, HEAD `a2db63da7`, tree CLEAN, both
+logs EMPTY — PASS, unchanged from the resumption probe.
