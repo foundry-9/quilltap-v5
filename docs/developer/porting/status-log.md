@@ -138144,3 +138144,33 @@ alternative was to hand the unifier a red guard over a file this lane has just
 fixed, with the fix's own author being the only one who knows why the second
 row is exempt. P4.D203's exemption text is an explicit handoff in everything
 but the §R.10(e) label. The arithmetic moves **11 → 12** across six files.
+
+#### ⚠ An ELEVENTH standing fixture-vintage red, surfaced not caused
+
+`search_replace_equivalence` — one of this order's named dependent families —
+fails with **`no such column: cycleOrderParticipantIds`**, a SQL error rather
+than a diff. It is the P4.D171 column class on the committed
+`chat-dialogs-{main,mount}` pair: the fixture predates the column,
+`chats_read::find_by_id` names it, and the test never calls
+`test_support::ensure_p4d171_columns`.
+
+**Proven pre-existing, not measured by assertion:**
+
+- `git diff --stat 7903d46f..HEAD` over every file on the failing path —
+  `chats_read.rs`, `chats_messages_read.rs`, `memories_read.rs`, the test
+  itself, and both halves of the committed pair — is **EMPTY**. This lane
+  touched none of it.
+- The commit that put `cycleOrderParticipantIds` into `chats_read.rs` (P4.D171)
+  is an **ancestor of this lane's branch point** (`git merge-base
+  --is-ancestor` → yes).
+
+**Why nobody had seen it:** the family's oracle var is withheld from every
+workspace gate's env block, so it SKIPs — which is exactly how a
+fixture-vintage red hides. This lane regenerated its oracle (at the BASELINE
+pin, per §R.3) and ran it, and the red surfaced.
+
+**NOT healed**, per §R.5 ("no lane heals them") and §R.12 (the fixture-vintage
+heal is deferred by name to the round after this one). It belongs on that
+order's list as an ELEVENTH family — it is not among the four §R.5 names.
+The heal is one line: `ensure_p4d171_columns` on the opened fixture, the same
+repaired-at-boot idiom the other readers of that vintage use.

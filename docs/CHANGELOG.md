@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): the P4.D204 gate, the census handoff, and an eleventh fixture-vintage red proven pre-existing
+
+_Docs-only change._
+
+The lane's gate: fmt clean, clippy clean in both feature sets, release build
+clean, 584 test binaries / 3,521 passed / 4 failed. Three of the four reds are
+not this lane's — `help_tree_equivalence` (six help pages other lanes still
+owe at the target pin), `qtap_schema_embed_guard` and `zod_version_guard`
+(both red by design in the drift ledger until P4.D205 and P4.D211 land). The
+fourth was this lane's and is fixed.
+
+`search_replace_equivalence` fails with `no such column:
+cycleOrderParticipantIds` — a SQL error, not a diff, and an ELEVENTH member of
+the standing fixture-vintage class rather than a regression. Proven: `git diff`
+over every file on the failing path between this lane's branch point and its
+tip is empty, and the commit that introduced the column is an ancestor of that
+branch point. Nobody had seen it because the family's oracle var is withheld
+from every workspace gate, so it skips; this lane regenerated its oracle and
+ran it. Not healed, per the round's rule that no lane heals them.
+
 #### 2026-09-22 — fix(search): the snippet folds diacritics and measures the match in the ORIGINAL string, and `help/search.md` is re-vendored (P4.D204)
 
 _Versions: core 0.0.973, harness 0.0.866._
