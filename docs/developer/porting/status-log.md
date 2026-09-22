@@ -137370,3 +137370,115 @@ against `f45a517a9`); and the CLI's `db log` / `db messages` / `db message`
 verbs, which stay "recognized but not yet available" (`db_cmd.rs:274-285`,
 pre-existing — and the reason `nodefmt.rs` needed no change, since those are
 precisely v4's three decoding verbs).
+
+### The lane's gate — and the two traps it walked into
+
+**⚠⚠ THE §R.2 PROBE FAILED AT LANE CLOSE. v4 MOVED MID-LANE.**
+
+At the final probe (before what would have been the last regen batch):
+
+| field | §1 / lane start | at lane close |
+|---|---|---|
+| v4 `main` HEAD | `f45a517a9` | **`4e1a8e061`** — "docs: plan the summarizer name fix, file bugs 161 and 162" |
+| checkout tree | CLEAN | **DIRTY**, the summarizer name fix in flight |
+| `log 1a2b2164c..bugfix` | empty | empty (unmoved) |
+
+The dirty paths are substantive, not infra: `lib/chat/context-summary.ts`,
+`lib/memory/fold-episode-pass.ts`,
+`lib/memory/cheap-llm-tasks/chat-tasks.ts`,
+`app/api/v1/chats/[id]/actions/index.ts`,
+`app/api/v1/chats/[id]/handlers/post.ts`,
+`app/salon/[id]/SalonView.tsx`, `app/salon/[id]/hooks/index.ts`,
+`components/chat/ChatSidebar.tsx`, `help/chats.md`, two docs renamed into
+`fixed/` and `complete/`, plus SIX new untracked files
+(`lib/chat/speaker-names.ts`,
+`app/api/v1/chats/[id]/actions/rebuild-summary.ts`,
+`app/salon/[id]/hooks/useSummaryActions.ts`, three tests). **v4 bugs 161 and
+162 are filed.**
+
+**Per the ground rules the lane STOPPED regenerating and reported. It did not
+run `/driftcheck` and did not touch the ledger.**
+
+**Nothing in this lane needs re-running, and that is a measurement, not an
+argument.** Every oracle and every fixture came from the lane-unique pinned
+worktree `/tmp/qt-v4-pin-p4d203-f45a517a9`, verified at close BOTH ways per
+ledger §5.1 — `rev-parse` → `f45a517a992bf94fdc6ae34b96791ef1d3538870`, and
+`git status --short` → CLEAN. The baseline pin
+`/tmp/qt-v4-pin-p4d203-baa85e19b` likewise sits at
+`baa85e19b9d904354b999924e3aa8c12f8130811`. This is §R.3's PIN REQUIRED rule
+and ledger §5.1's mid-lane-dirt scenario working exactly as written: the
+human's checkout went dirty two units into the lane and it cost the lane
+nothing. **The unifier re-probes and decides; a lane never writes the ledger.**
+
+#### Gate results
+
+| step | result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **clean (exit 0)** — and see the pre-existing red S had to clear, above |
+| same with `--features quilltap-core/native-transport` | **clean (exit 0)** |
+| `cargo build --workspace --release` | see the round record |
+| `cargo test --workspace --no-fail-fast` with the lane env block | see the round record |
+| the lane's differentials by name | all green; every one confirmed RUN (non-zero duration), zero `SKIP:` among them |
+| Tier R at the target pin | **223 cases / 4 failures, all four DESIGNED (P4.D210's) — see below** |
+| `help_tree_equivalence` at the target | **RED by DESIGN, 124 vs 126** — the two missing files are other lanes' (§R.10(d)) |
+
+The env block deliberately INCLUDES `QT_ORACLE_HELP_TREE`, so that designed
+red SHOWS rather than hiding behind a false `SKIP:` — the same choice the
+`baa85e19b` round made for its fixture-vintage reds.
+
+#### Tier R at the target pin: **223 cases, 4 failures — all four DESIGNED, all four P4.D210's**
+
+`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d203-f45a517a9`, run SERIALLY. 477.96 s.
+
+The four: **`[main help]`**, **`[completion bash]`**, **`[completion zsh]`**,
+**`[completion fish]`** — exactly the set §R.5 predicts ("**P4.D210** — Tier R
+RED on four cases at the target by design (`main help`, the three `completion`
+templates) until the verb lands"). **Attribution CONFIRMED, not assumed:** the
+`main help` diff's only v4-side line is
+
+```
+  sync <store> <path>           Mirror a database-backed store to a directory
+```
+
+and `sync` appears 33 times across the four diffs. Nothing in the raw-SQL path
+this lane touched failed. **P4.D203's own Tier R expectation — "the raw-SQL
+path now decodes" — is met, and the four reds go green when P4.D210 lands its
+verb, its `main_help.txt` line and its three completion templates.**
+
+#### ⚠ Trap 1 (CORRECTED): `pgrep -x <testname>` never matches a cargo test binary
+
+An earlier version of this record claimed the workspace gate had killed Tier R
+by rebuilding `CARGO_BIN_EXE_quilltap` underneath it. **That was WRONG, and the
+error is worth more than the claim was.** Tier R ran to completion in 477.96 s
+and reported its 223 cases.
+
+The mis-diagnosis came from the liveness probe: `pgrep -x cli_differential`
+returned nothing, which was read as "the process is gone". But a cargo test
+binary's process name carries its metadata hash —
+`cli_differential-a8c44055fea9bda7` — so `pgrep -x`, which matches the name
+EXACTLY, can never match one. The job was alive the whole time; only the probe
+was blind.
+
+This sharpens CLAUDE.md's standing rule. That rule says prefer `pgrep -x
+quilltap-web` over a `pgrep -f` substring that could match the watcher itself —
+correct for a NAMED binary, and silently wrong for a cargo TEST binary, where
+`-x` reports every running test as dead. For a test binary use the sentinel
+file (which is what finally settled this: the log's own `test result:` line),
+never `pgrep -x`.
+
+Two real lessons stand regardless: a long job's log going quiet is not evidence
+it died (Tier R prints nothing for eight minutes by design), and **the
+completion notification is the only honest signal** — it carried
+`EXIT=101 / 223 cases, 4 failures` the moment the job exited, while every
+hand-rolled probe in between was either uninformative or wrong.
+
+#### ⚠ Trap 2: a stale recipe header can make a family SKIP and print "ok"
+
+Recorded above under unit 6, but it belongs in the gate record too, because
+it is the gate step that catches it: **`--nocapture` plus a grep for `SKIP:`
+is not optional.** A family whose env var name has drifted from its header
+prints `SKIP: …` on stdout and then `test result: ok`, and a lane that greps
+only `test result` sees a pass. `conversation_chunks_tier2` survived a real
+codec mutation that way. The tell is the DURATION: `finished in 0.00s` for a
+family that reads a fixture and runs ops is never real.
