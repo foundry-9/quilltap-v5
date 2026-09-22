@@ -982,3 +982,95 @@ describe('MessageRow — the route trail badge (P4.D177)', () => {
     expect(list.textContent).not.toContain('🚫');
   });
 });
+
+/**
+ * The re-roll in place (v4 `MessageRow.tsx:359-405` + `MessageActionBar.tsx`,
+ * `f564b0de3`).
+ *
+ * Two states, one bubble: before the first token the old line is still there
+ * but out of service under a plate that says so; from the first token the plate
+ * and the old line are both gone and the new prose is in their place, with no
+ * blank gap between. The action bar goes inert for the duration, because every
+ * button on it acts on content that is about to be different.
+ */
+describe('MessageRow — a line being regenerated (v4 f564b0de3)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const regen = (over: Record<string, unknown> = {}) => ({
+    messageId: 'm',
+    stage: 'preparing' as const,
+    content: '',
+    reasoning: '',
+    ...over,
+  });
+
+  it('paints the bubble and marks it busy while a re-roll is running', () => {
+    const fixture = render(message({ content: 'the old line' }), { regeneration: regen() });
+    const bubble = fixture.nativeElement.querySelector('.qt-chat-message');
+    expect(bubble.classList.contains('qt-chat-message-regenerating')).toBe(true);
+    expect(bubble.getAttribute('aria-busy')).toBe('true');
+  });
+
+  it('claims neither while no re-roll is running', () => {
+    const fixture = render(message({ content: 'the old line' }));
+    const bubble = fixture.nativeElement.querySelector('.qt-chat-message');
+    expect(bubble.classList.contains('qt-chat-message-regenerating')).toBe(false);
+    expect(bubble.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('shows the plate over the DIMMED original while preparing', () => {
+    const fixture = render(message({ content: 'the old line' }), { regeneration: regen() });
+    const plate = fixture.nativeElement.querySelector('.qt-chat-regenerating-plate');
+    expect(plate).toBeTruthy();
+    expect(plate.getAttribute('role')).toBe('status');
+    expect(plate.getAttribute('aria-live')).toBe('polite');
+    expect(
+      fixture.nativeElement.querySelector('.qt-chat-regenerating-plate-text').textContent.trim(),
+    ).toBe('Regenerating...');
+
+    const original = fixture.nativeElement.querySelector('.qt-chat-regenerating-original');
+    expect(original).toBeTruthy();
+    // Hidden from the reader the plate is already talking to.
+    expect(original.getAttribute('aria-hidden')).toBe('true');
+    expect(original.textContent).toContain('the old line');
+  });
+
+  it('WITHDRAWS the plate on the first token and shows the new prose instead', () => {
+    const fixture = render(message({ content: 'the old line' }), {
+      regeneration: regen({ stage: 'streaming', content: 'the new line' }),
+    });
+    expect(fixture.nativeElement.querySelector('.qt-chat-regenerating-plate')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.qt-chat-regenerating-original')).toBeNull();
+    const body = fixture.nativeElement.querySelector('.qt-chat-regenerating');
+    expect(body.textContent).toContain('the new line');
+    expect(body.textContent).not.toContain('the old line');
+  });
+
+  it('carries the live reasoning, open, once there is any', () => {
+    const fixture = render(message({ content: 'the old line' }), {
+      regeneration: regen({ stage: 'streaming', content: 'x', reasoning: 'weighing it up' }),
+    });
+    expect(fixture.nativeElement.textContent).toContain('weighing it up');
+  });
+
+  it('renders no thinking block for blank reasoning', () => {
+    const fixture = render(message({ content: 'the old line' }), {
+      regeneration: regen({ stage: 'streaming', content: 'x', reasoning: '   \n  ' }),
+    });
+    expect(fixture.nativeElement.querySelector('qt-thinking-block')).toBeNull();
+  });
+
+  // The harness's `render` configures the TestBed, so it may be called ONCE per
+  // test; the pair below is what a single "and only then" case would have been.
+  it('makes the action bar inert for the duration', () => {
+    const fixture = render(message({}), { regeneration: regen() });
+    const bar = fixture.nativeElement.querySelector('.qt-chat-message-action-bar') as HTMLElement;
+    expect(bar.classList.contains('qt-chat-message-action-bar-disabled')).toBe(true);
+  });
+
+  it('leaves the action bar alone when nothing is re-rolling', () => {
+    const fixture = render(message({}));
+    const bar = fixture.nativeElement.querySelector('.qt-chat-message-action-bar') as HTMLElement;
+    expect(bar.classList.contains('qt-chat-message-action-bar-disabled')).toBe(false);
+  });
+});

@@ -7,6 +7,7 @@ import { normalizeAvatarSrc } from '../ui/avatar-stack';
 import { Icon } from '../ui/icon';
 import { MessageContent } from './message-content';
 import { QuillAnimation } from './quill-animation';
+import { ResponseStatusStrip } from './response-status-strip';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import { ThinkingBlock } from './thinking-block';
 
@@ -33,26 +34,13 @@ import { ThinkingBlock } from './thinking-block';
 @Component({
   selector: 'qt-streaming-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MessageContent, QuillAnimation, ThinkingBlock],
+  imports: [Avatar, Icon, MessageContent, QuillAnimation, ResponseStatusStrip, ThinkingBlock],
   template: `
-    @if (state().status; as status) {
-      <div class="qt-chat-response-status" [attr.data-stage]="status.stage" role="status" aria-live="polite">
-        <div class="qt-chat-response-status-icon">
-          <!--
-            v4 ChatComposer:241 — the status strip carries the quill only while
-            tokens are actually streaming; every other stage keeps the pulsing
-            dot. label={null}: the strip is already a labelled live region, and
-            the indicator was otherwise announced twice.
-          -->
-          @if (status.stage === 'streaming') {
-            <qt-quill-animation size="sm" [label]="null" />
-          } @else {
-            <span class="inline-block w-2 h-2 rounded-full bg-current animate-pulse"></span>
-          }
-        </div>
-        <span class="qt-chat-response-status-text">{{ status.message }}</span>
-      </div>
-    }
+    <!-- The strip moved into its own component at P4.D206 so a regeneration,
+         which sets no stream state, can drive the same one line (v4 keeps ONE
+         strip in the composer and feeds it from either source). The markup and
+         every class are unchanged. -->
+    <qt-response-status-strip [status]="state().status" />
 
     <!--
       v4 StreamingMessage:100 — the awaiting state is the bare large quill in a

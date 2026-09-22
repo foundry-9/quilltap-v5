@@ -61,6 +61,7 @@ import {
 } from '../../chat/impersonation-voice/impersonation-voice.state';
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
 import { InformDialog, type InformAudienceCandidate } from '../../chat/inform-dialog';
+import { RegenerationController } from '../../chat/regeneration.state';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import type { AudienceCandidate } from '../../chat/post-office/post-office.api';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
@@ -89,6 +90,7 @@ import { fetchChatTranscript } from '../../chat/chat-transcript.api';
 import {
   isProvisionalMessage,
   reconcileTranscript,
+  selectSwipeVariant,
 } from '../../chat/transcript-reconcile';
 import { isMessageVisibleToOperator } from '../../chat/whisper-visibility';
 import { TurnControls } from '../../chat/turn-controls';
@@ -247,6 +249,8 @@ interface CascadePrompt {
     // In Their Own Words holds ONE chat's in-flight submit — component-scoped,
     // never `providedIn: 'root'` (the dogfood-#105 NG0201 lesson).
     ImpersonationVoiceState,
+    // …and so does the re-roll: ONE chat's in-flight regeneration.
+    RegenerationController,
   ],
   imports: [
     RouterLink,
@@ -411,6 +415,8 @@ interface CascadePrompt {
           [messagesWithLogs]="messagesWithLogs()"
           [userParticipantIds]="userParticipantIdSet()"
           [isDangerousChat]="isDangerousChat()"
+          [regeneration]="regeneration.regeneration()"
+          [regenerationStatus]="regeneration.regenerationStatus()"
           (viewLlmLogs)="onViewLlmLogs($event)"
           (copyMessage)="onCopy($event)"
           (edit)="onEdit($event)"
@@ -444,6 +450,7 @@ interface CascadePrompt {
 
       <qt-chat-composer
         [busy]="busy()"
+        [disabled]="regeneration.isRegenerating()"
         [chatId]="chatId()!"
         [speakingAs]="speakingAsSeat()"
         [voiceRehearsalArmed]="impersonationVoiceArmed()"
@@ -1741,6 +1748,15 @@ export class SalonConversation {
   /** The Compose Mail dialog (v4 `ChatModals.tsx:332`). */
   protected readonly showComposeMail = signal(false);
   protected readonly showInform = signal(false);
+
+  /**
+   * The re-roll of an already-spoken line (v4 `useRegeneration`,
+   * `f564b0de3`). It runs on its own transport, not the turn stream, so it
+   * keeps its own state: the composer is shut for its duration, the line being
+   * replaced narrates itself, and the strip above the transcript carries the
+   * stage.
+   */
+  protected readonly regeneration = inject(RegenerationController);
   /** The whisper target (v4 `SalonView.tsx:150` `whisperTarget`). */
   protected readonly whisperTarget = signal<{ participantId: string; name: string } | null>(null);
 
@@ -4180,17 +4196,30 @@ export class SalonConversation {
     this.transcriptSwipeStates.update((prev) => ({ ...prev, [gid]: { ...st, current: next } }));
   }
 
-  /** v4 `generateSwipe` (`useMessageActions.ts:318-332`). */
-  protected async onRegenerate(message: MessageDto): Promise<void> {
-    const resp = await this.core.dispatch({ type: 'messageSwipe', messageId: message.id });
-    if (resp.type === 'error') {
-      this.toasts.showError(resp.data.message || 'Failed to generate alternative response');
-      return;
-    }
-    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
-    // v4 `useMessageActions.generateSwipe` (:327) wakes the queue badges after
-    // the swipe lands (the regeneration enqueues post-turn jobs).
-    notifyQueueChange();
+  /**
+   * Re-roll a line (v4 `SalonView.handleRegenerate`, `f564b0de3`).
+   *
+   * Was v4's `useMessageActions.generateSwipe`: one blocking dispatch, a
+   * refetch, a queue kick, and nothing whatever on screen in between. v4
+   * DELETED that function in `f564b0de3` and replaced it with the watched
+   * stream below; the refetch and the queue kick now live at the end of
+   * {@link RegenerationController.regenerate}, in v4's own order.
+   *
+   * The third argument is v4's bug (b): reconciliation carries the operator's
+   * previous swipe selection by id, which is right for every refetch except
+   * this one, so the regeneration names the variant it just made.
+   */
+  protected onRegenerate(message: MessageDto): void {
+    void this.regeneration.regenerate(
+      message.id,
+      async () => {
+        await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+      },
+      (newSwipeId) => {
+        const next = selectSwipeVariant(this.transcriptSwipeStates(), newSwipeId);
+        if (next) this.transcriptSwipeStates.set(next);
+      },
+    );
   }
 
   protected async onDelete(message: MessageDto): Promise<void> {

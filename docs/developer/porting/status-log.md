@@ -140591,3 +140591,93 @@ ever executed and "3 failed" would have been read off a tree that never
 compiled. The standing note holds — a mutation proof must COMPILE before its
 reds mean anything; read the log for `Application bundle generation failed`
 before believing any count.
+
+### Units 6–7 — the streamed swipe, client side (v4 `f564b0de3`); v4 bug (c)
+
+v4 sources read at `f45a517a9`: `app/salon/[id]/hooks/useRegeneration.ts` (204,
+NEW), and the hunks of `MessageRow.tsx`, `MessageActionBar.tsx`,
+`VirtualizedMessageList.tsx`, `ChatComposer.tsx`, `SalonView.tsx`,
+`useMessageActions.ts` and `app/styles/qt-components/_chat.css`.
+
+Landed: NEW `chat/regeneration.state.ts` (+ spec, 11 cases) — an `@Injectable()`
+provided at the Salon component, the `ImpersonationVoiceState` precedent; the
+plate / dimmed original / live content / `aria-busy` / inert action bar in
+`chat/message-row.ts` (+ 7 spec cases); `regeneration` +
+`regenerationStatus` through `chat/message-list.ts` (+ 4 spec cases); NEW
+`chat/response-status-strip.ts`; the six classes + the `data-stage` pair in
+`styles/qt-components/_chat.css`, v4's bodies verbatim; `composerLocked` in
+`chat/chat-composer.ts` (+ 4 spec cases, red-first); the controller, the
+`[disabled]` binding and the rewritten `onRegenerate` in
+`screens/salon/salon-conversation.ts`.
+
+**v4's bug (c), and v5 had it INVERTED — measured, red-first.** v4: "`disabled`
+was declared and destructured but wired to nothing — every control was gated on
+`sending` alone." v5's `disabled` input is fully wired through the template; it
+is v4's `sending` (v5's `busy`) that had no counterpart at those sites — every
+gutter button, the formatting toolbar, the source textarea and the rich editor
+read `disabled()` ALONE, **and the salon passed `[busy]` and never
+`[disabled]`**, so `disabled()` was constantly false and the whole gutter stayed
+live through an ordinary streaming turn, where v4 shuts it. Same defect,
+opposite half. The red-first run measured it precisely: of the four new cases,
+`shuts every gutter control while a turn is STREAMING` FAILED
+(`Insert announcement must be shut while busy: expected false to be true`) and
+`shuts them just the same while a REGENERATION holds the floor` PASSED — the
+`disabled` half already worked. One `composerLocked = disabled() || busy()`
+computed closes both, and `canSend`/`canType` now read it rather than restating
+the pair.
+
+**The status strip had to move, and that is a real structural divergence.** v4
+keeps ONE strip, in `ChatComposer`, and feeds it
+`regenerationStatus ?? sseStreaming.responseStatus`. v5's strip grew up INSIDE
+`streaming-message.ts`, which mounts only while `stream()` is non-null — and a
+regeneration sets no stream state at all, so it had nowhere to say anything.
+The markup is lifted unchanged into NEW `chat/response-status-strip.ts` and
+given two hosts (the streaming bubble; the list, when there is a regeneration
+and no stream). The two sites are exclusive by construction — a send during a
+regeneration is refused by `composerLocked` — which is the same reason v4's
+`??` has no contested case. Pinned by a list spec case asserting the list
+renders NO strip while a stream is live.
+
+**v4's bug (a) is N/A here, and this is the record the order asked for.** v4's
+`MessageRow` memo comparator is exhaustive, so its new prop was invisible to it
+and the row sat untouched while the strip updated; `f564b0de3` teaches the
+comparator to compare `regeneration.stage/.content/.reasoning`. v5 has no
+comparator to teach: the row is `OnPush` over SIGNAL inputs, so reading
+`regeneration()` in the template IS the subscription. The spec that would have
+caught it if v5 had one is
+`WITHDRAWS the plate on the first token and shows the new prose instead` — it
+renders two different `stage`/`content` pairs and asserts the DOM differs, which
+is exactly the assertion an untaught comparator fails. Noted in the input's own
+doc comment.
+
+**Two more measured divergences, both in the live thinking block.** v4 gates it
+on a `showThinking` prop and passes `streaming` + `collapsedByDefault`. v5's
+`ThinkingBlock` has NO `streaming` input (an OPEN block is the live affordance —
+`streaming-message.ts:100-107` renders exactly that), and **no v5 renderer gates
+reasoning on `thinkingDisplay.defaultVisible` at all** — not this row's settled
+blocks, not the streaming bubble; the settings tab writes the flag and nothing
+reads it. That gap is PRE-EXISTING and outside this lane, so the live block
+follows the row it lives in rather than inventing a gate for one branch.
+Recorded in the template's own comment, not silently normalized.
+
+**Transport divergence (forced).** v4 `fetch`es `?action=swipe&stream=1` and
+hand-parses `data: ` lines, keeping a partial tail across network chunks. v5
+dispatches and reads `swipeProgress` frames off the ONE Event channel scoped by
+`progressId` — which §S.2 fixes as the target message's own id, so nothing is
+minted (the `streamGenerator` precedent). Everything downstream of the parse is
+v4's own handling, because §S.2 makes the frames v4's SSE payloads verbatim.
+v4's two error arms (a non-ok response before the stream opened; an `{ error }`
+frame inside it) become a rejected dispatch and the same frame.
+
+**The rAF coalescing is KEPT**, deliberately. v4's reason (React's update-depth
+limit) does not apply, but the row it feeds re-renders the whole markdown
+pipeline per flush, which is the cost the coalescing was actually avoiding.
+
+Gate: `npm test` 440 files / **7,465 passed** / 0 failed; `npm run build`
+clean; `npm run lint` clean (the six new qt-* classes guard-clean). SPA 0.5.745.
+
+⚠ **A spec-harness trap worth the note:** `message-row.spec.ts`'s `render()`
+calls `TestBed.configureTestingModule`, so it may be called ONCE per test — a
+single "and only then" case that rendered twice died with
+`Cannot configure the test module when the test module has already been
+instantiated`, which reads like a DI problem and is not. Split into a pair.

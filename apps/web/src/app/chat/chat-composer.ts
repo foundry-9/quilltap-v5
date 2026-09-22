@@ -253,7 +253,7 @@ export interface PendingToolResultChip extends RngPendingResult {
            buttons and the pickers alone. -->
       @if (compositionMode()) {
         <qt-formatting-toolbar
-          [disabled]="disabled() || !hasActiveCharacters()"
+          [disabled]="composerLocked() || !hasActiveCharacters()"
           [inCodeBlock]="inCodeBlock()"
           [showSource]="showSource()"
           [showSourceToggle]="true"
@@ -304,7 +304,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Insert announcement"
                 aria-label="Insert announcement"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 (click)="openAnnouncement.emit()"
               >
                 <qt-icon name="megaphone" class="w-5 h-5" />
@@ -317,7 +317,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Post a letter"
                 aria-label="Post a letter"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 (click)="openMail.emit()"
               >
                 <qt-icon name="mail" class="w-5 h-5" />
@@ -329,7 +329,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Attach file from library"
                 aria-label="Attach file from library"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 (click)="openLibrary.emit()"
               >
                 <qt-icon name="file-plus" class="w-5 h-5" />
@@ -342,7 +342,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Generate image"
                 aria-label="Generate image"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 (click)="openGenerate.emit()"
               >
                 <qt-icon name="camera" class="w-5 h-5" />
@@ -354,7 +354,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Attach file"
                 aria-label="Attach file"
-                [disabled]="disabled() || uploading()"
+                [disabled]="composerLocked() || uploading()"
                 (click)="fileInput.click()"
               >
                 <qt-icon name="paperclip" class="w-5 h-5" />
@@ -365,7 +365,7 @@ export interface PendingToolResultChip extends RngPendingResult {
               <div class="qt-composer-gutter-rng">
                 <qt-rng-dropdown
                   [chatId]="chatId()"
-                  [disabled]="disabled()"
+                  [disabled]="composerLocked()"
                   variant="gutter"
                   (pendingResult)="pendingToolResult.emit($event)"
                 />
@@ -376,7 +376,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                    than on a chat-payload flag). -->
               <qt-custom-tools-popup
                 [chatId]="chatId()"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 variant="gutter"
                 (ran)="customToolRan.emit()"
               />
@@ -390,7 +390,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button qt-composer-gutter-continue"
                 title="Continue — let the next character respond"
                 aria-label="Continue"
-                [disabled]="disabled() || busy() || !hasActiveCharacters()"
+                [disabled]="composerLocked() || !hasActiveCharacters()"
                 (click)="continue.emit()"
               >
                 <qt-icon name="arrow-right" class="w-5 h-5" />
@@ -408,7 +408,7 @@ export interface PendingToolResultChip extends RngPendingResult {
                 class="qt-composer-gutter-button"
                 title="Inform the cast"
                 aria-label="Inform the cast"
-                [disabled]="disabled()"
+                [disabled]="composerLocked()"
                 (click)="openInform.emit()"
               >
                 <qt-icon name="info" class="w-5 h-5" />
@@ -461,7 +461,7 @@ export interface PendingToolResultChip extends RngPendingResult {
             #sourceArea
             class="qt-chat-composer-input qt-source-mode-textarea"
             [value]="sourceText()"
-            [disabled]="disabled() || !hasActiveCharacters()"
+            [disabled]="composerLocked() || !hasActiveCharacters()"
             aria-label="Message (markdown source)"
             spellcheck="false"
             style="line-height: 1.5"
@@ -474,7 +474,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           [style.display]="showSource() ? 'none' : null"
           [value]="restoredDraft()"
           [placeholder]="placeholder()"
-          [disabled]="disabled()"
+          [disabled]="composerLocked()"
           [submitOnEnter]="!compositionMode()"
           [submitOnModEnter]="compositionMode()"
           [textReplacementRules]="effectiveTextReplacementRules()"
@@ -693,9 +693,23 @@ export class ChatComposer implements OnInit {
       this.pendingToolResults().length > 0,
   );
 
+  /**
+   * Every input surface in here is shut by either flag, so ask the question
+   * once rather than at each control (v4 `composerLocked = disabled || sending`,
+   * `f564b0de3`).
+   *
+   * v4's bug (c) was that its `disabled` prop was declared and destructured and
+   * then wired to NOTHING, leaving every control on `sending` alone. v5 had the
+   * same defect inverted: `disabled` was wired everywhere and `busy` — v5's
+   * name for v4's `sending` — reached only the send button and Continue, while
+   * the salon passed `busy` and never `disabled`. So the gutter, the toolbar,
+   * the source textarea and the editor all stayed live through an ordinary
+   * streaming turn. One computed closes both halves.
+   */
+  protected readonly composerLocked = computed(() => this.disabled() || this.busy());
+
   protected readonly canSend = computed(
-    () =>
-      !this.disabled() && !this.busy() && this.hasContentToSend() && this.hasActiveCharacters(),
+    () => !this.composerLocked() && this.hasContentToSend() && this.hasActiveCharacters(),
   );
 
   /**
@@ -704,7 +718,7 @@ export class ChatComposer implements OnInit {
    * v5's `busy` already folds streaming + waiting).
    */
   protected readonly canType = computed(
-    () => this.hasActiveCharacters() && !this.busy() && !this.disabled(),
+    () => this.hasActiveCharacters() && !this.composerLocked(),
   );
 
   protected readonly placeholder = computed(() => {

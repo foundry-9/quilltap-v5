@@ -715,3 +715,79 @@ describe('MessageList — scrollToMessage (P4.D176 Jump-to-message)', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The regeneration's two list-level jobs (v4 `VirtualizedMessageList.tsx:334`
+ * + `SalonView.tsx:1648`, `f564b0de3`):
+ *
+ *   1. the in-flight state reaches EXACTLY the row it names and no other;
+ *   2. the stage line gets a strip to appear in — v4 keeps ONE strip in the
+ *      composer and feeds it `regenerationStatus ?? responseStatus`; v5's
+ *      strip lives inside the streaming bubble, which does not mount for a
+ *      re-roll, so the list carries the regeneration's own.
+ */
+describe('MessageList — the regeneration (v4 f564b0de3)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function renderList(inputs: Record<string, unknown>): ComponentFixture<MessageList> {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', [
+      message({ id: 'm-1', content: 'first line' }),
+      message({ id: 'm-2', content: 'second line' }),
+    ]);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('stream', null);
+    for (const [name, value] of Object.entries(inputs)) {
+      fixture.componentRef.setInput(name, value);
+    }
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('hands the state to the NAMED row alone', () => {
+    const fixture = renderList({
+      regeneration: { messageId: 'm-2', stage: 'preparing', content: '', reasoning: '' },
+    });
+    const busy = [...fixture.nativeElement.querySelectorAll('.qt-chat-message[aria-busy="true"]')];
+    expect(busy).toHaveLength(1);
+    // The one that is busy is the one whose own text is under the plate.
+    expect(
+      fixture.nativeElement.querySelector('.qt-chat-regenerating-original').textContent,
+    ).toContain('second line');
+  });
+
+  it('touches no row at all when nothing is re-rolling', () => {
+    const fixture = renderList({});
+    expect(fixture.nativeElement.querySelector('.qt-chat-message[aria-busy="true"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.qt-chat-regenerating')).toBeNull();
+  });
+
+  it('carries the regeneration stage line in the status strip', () => {
+    const fixture = renderList({
+      regenerationStatus: { stage: 'regenerating', message: 'Regenerating Cleo’s reply...' },
+    });
+    const strip = fixture.nativeElement.querySelector('.qt-chat-response-status');
+    expect(strip).toBeTruthy();
+    expect(strip.getAttribute('data-stage')).toBe('regenerating');
+    expect(strip.textContent).toContain('Regenerating Cleo’s reply...');
+  });
+
+  it('renders no strip of its own while a turn is streaming (the bubble owns it)', () => {
+    // The two sites are exclusive by construction: a send during a regeneration
+    // is refused by the composer's lock, so there is never a contest.
+    const fixture = renderList({
+      stream: initialChatStreamState(),
+      regenerationStatus: { stage: 'regenerating', message: 'Regenerating...' },
+    });
+    expect(fixture.nativeElement.querySelectorAll('.qt-chat-response-status')).toHaveLength(0);
+  });
+});

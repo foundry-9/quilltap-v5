@@ -304,6 +304,103 @@ describe('ChatComposer — text-replacement gating (v4 textReplacementsEnabled)'
   });
 });
 
+/**
+ * v4 bug (c), `f564b0de3`: "Also fixes ChatComposer's `disabled` prop, which
+ * was declared and destructured but wired to nothing — every control was gated
+ * on `sending` alone." v4's fix introduces
+ * `composerLocked = disabled || sending` and puts it on every previously
+ * `sending`-gated control.
+ *
+ * **v5 reproduced the bug INVERTED, and measurably.** v5's `disabled` input is
+ * fully wired through the template — it is v4's `sending` that had no
+ * counterpart at these sites. Every gutter button, the formatting toolbar, the
+ * source textarea and the rich editor were gated on `disabled()` ALONE, and the
+ * salon passed `[busy]` and never `[disabled]`, so `disabled()` was constantly
+ * false: the whole gutter stayed live through an ordinary streaming turn, where
+ * v4 shuts it. Same defect, opposite half.
+ *
+ * These cases were written RED against that state — every assertion below
+ * failed before `composerLocked` landed — and the send button, whose `canSend`
+ * already read both flags, is asserted alongside them as the control that was
+ * always right.
+ */
+describe('ChatComposer — composerLocked (v4 bug (c), f564b0de3)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /** Every control v4 moves onto `composerLocked`, by accessible name. */
+  const LOCKED_BUTTONS = [
+    'Insert announcement',
+    'Post a letter',
+    'Attach file from library',
+    'Generate image',
+    'Attach file',
+    'Inform the cast',
+  ];
+
+  function lockedStates(fixture: ComponentFixture<ChatComposer>): Record<string, boolean> {
+    const out: Record<string, boolean> = {};
+    for (const name of LOCKED_BUTTONS) {
+      const el = fixture.nativeElement.querySelector(
+        `button[aria-label="${name}"]`,
+      ) as HTMLButtonElement | null;
+      out[name] = el ? el.disabled : false;
+    }
+    out['editor'] = richEditor(fixture).disabled();
+    return out;
+  }
+
+  it('shuts every gutter control while a turn is STREAMING (v4 gates these on sending)', () => {
+    const fixture = render();
+    fixture.componentRef.setInput('busy', true);
+    fixture.detectChanges();
+    for (const [name, isDisabled] of Object.entries(lockedStates(fixture))) {
+      expect(isDisabled, `${name} must be shut while busy`).toBe(true);
+    }
+  });
+
+  it('shuts them just the same while a REGENERATION holds the floor', () => {
+    // The `disabled` half — what the salon now raises for a re-roll. It was
+    // already wired here; the point of the pair is that BOTH flags reach every
+    // control, which is exactly what `composerLocked` is.
+    const fixture = render();
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    for (const [name, isDisabled] of Object.entries(lockedStates(fixture))) {
+      expect(isDisabled, `${name} must be shut while disabled`).toBe(true);
+    }
+  });
+
+  it('leaves them open when neither flag is raised', () => {
+    const fixture = render();
+    for (const [name, isDisabled] of Object.entries(lockedStates(fixture))) {
+      expect(isDisabled, `${name} must be open when idle`).toBe(false);
+    }
+  });
+
+  it('shuts Send while a regeneration holds the floor, with text in the box', async () => {
+    // The send button was already right — `canSend` reads both flags — so this
+    // is the control the red-first cases above are measured AGAINST: it proves
+    // the fixture really is in a locked state, and that the gutter's openness
+    // was the defect rather than the test's setup. (While `busy` the button is
+    // swapped for Stop, which is why this arm raises `disabled` instead.)
+    const fixture = render();
+    richEditor(fixture).setMarkdown('a remark');
+    // The settle is load-bearing: `RichEditor.replaceContent` defers its emit
+    // by a microtask, so a synchronous read here sees an empty composer and a
+    // Send that is disabled for the wrong reason.
+    await settle(fixture);
+    const send = () =>
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Send message"]',
+      ) as HTMLButtonElement;
+    expect(send().disabled).toBe(false);
+
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    expect(send().disabled).toBe(true);
+  });
+});
+
 describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTools)', () => {
   afterEach(() => TestBed.resetTestingModule());
 

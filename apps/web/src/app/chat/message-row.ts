@@ -18,6 +18,8 @@ import { resolveWhisperTargetLabel } from './whisper-visibility';
 import { ConfirmationBadge } from './confirmation-badge';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
+import { QuillAnimation } from './quill-animation';
+import type { RegenerationState } from './regeneration.state';
 import { RouteTrailBadge } from './route-trail-badge';
 import { ProviderModelBadge } from './sidebar/provider-model-badge';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
@@ -60,6 +62,7 @@ export interface ImageClickEvent {
     CourierBubble,
     MessageContent,
     ProviderModelBadge,
+    QuillAnimation,
     RouteTrailBadge,
     ThinkingBlock,
     TokenBadge,
@@ -174,6 +177,8 @@ export interface ImageClickEvent {
           class="qt-chat-message"
           [class]="bubbleClass()"
           [class.qt-chat-message-whisper-overheard]="isOverheardWhisper()"
+          [class.qt-chat-message-regenerating]="!!regeneration()"
+          [attr.aria-busy]="regeneration() ? true : null"
         >
           @if (variant() === 'whisper') {
             <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}</div>
@@ -213,6 +218,56 @@ export interface ImageClickEvent {
               >
                 Save
               </button>
+            </div>
+          } @else if (regeneration(); as regen) {
+            <!-- A line being re-rolled shows the regeneration in place of its
+                 own settled content: the old text dimmed under a plate that
+                 says so, and — from the first token — the new text instead. The
+                 rest of the bubble (attachments, folded tool blocks) is left
+                 standing; it belongs to the line and the post-stream refetch
+                 reconciles it (v4 MessageRow.tsx:359-405). -->
+            <div class="qt-chat-regenerating">
+              @if (regen.stage === 'preparing') {
+                <div class="qt-chat-regenerating-original" aria-hidden="true">
+                  <qt-message-content
+                    [content]="message().content"
+                    [blobMountPointId]="blobMountPointId()"
+                    [renderingPatterns]="renderingPatterns()"
+                    [dialogueDetection]="dialogueDetection()"
+                  />
+                </div>
+                <div class="qt-chat-regenerating-plate" role="status" aria-live="polite">
+                  <qt-quill-animation size="sm" [label]="null" />
+                  <span class="qt-chat-regenerating-plate-text">Regenerating...</span>
+                </div>
+              } @else {
+                <!-- The live thinking block, rendered exactly as the streaming
+                     bubble renders its own (streaming-message.ts:100-107):
+                     present when there is reasoning, and OPEN while it arrives.
+                     v4 gates this on its showThinking prop and passes streaming
+                     + collapsedByDefault; v5's ThinkingBlock has no streaming
+                     input (an open block IS the live affordance here) and NO v5
+                     renderer gates reasoning on thinkingDisplay.defaultVisible
+                     — not this row's settled blocks above, not the streaming
+                     bubble. That gap is pre-existing and outside this lane; the
+                     live block follows the row it lives in rather than
+                     inventing a gate for one branch. -->
+                @if (regen.reasoning.trim().length > 0) {
+                  <qt-thinking-block
+                    [content]="regen.reasoning"
+                    [collapsed]="false"
+                    [renderingPatterns]="renderingPatterns()"
+                    [dialogueDetection]="dialogueDetection()"
+                  />
+                }
+                <qt-message-content
+                  [content]="regen.content"
+                  [blobMountPointId]="blobMountPointId()"
+                  [renderingPatterns]="renderingPatterns()"
+                  [dialogueDetection]="dialogueDetection()"
+                />
+                <qt-quill-animation size="sm" class="inline-block ml-2 qt-text-secondary" />
+              }
             </div>
           } @else {
             <qt-message-content
@@ -268,7 +323,10 @@ export interface ImageClickEvent {
                v4 orders …Edit · Delete · Regenerate · Re-attribute · LLM
                logs · badge · Resend · swipes; v5 has carried Delete AFTER
                the LLM-logs entry since the bar landed. -->
-          <div class="qt-chat-message-action-bar">
+          <div
+            class="qt-chat-message-action-bar"
+            [class.qt-chat-message-action-bar-disabled]="!!regeneration()"
+          >
             <div class="qt-chat-message-action-bar-icons">
               <qt-tooltip content="Copy message">
                 <button
@@ -465,6 +523,19 @@ export class MessageRow {
    * badge, so v5's user site stays unpainted too.
    */
   readonly isDangerousChat = input(false);
+  /**
+   * Set only on the one message currently being re-rolled (v4 MessageRow's
+   * `regeneration` prop, `f564b0de3`). While it is here the row shows the
+   * regeneration instead of its own settled content: the old line dimmed under
+   * a "Regenerating..." plate, then the new one as it streams.
+   *
+   * v4 also has to teach its `memo` comparator to SEE this prop — its comparator
+   * is exhaustive, so a new prop is invisible to it by default and the row sat
+   * untouched while the strip updated (its bug (a)). v5 has no comparator to
+   * teach: the row is `OnPush` over signal inputs, so reading `regeneration()`
+   * in the template IS the subscription. Recorded rather than ported.
+   */
+  readonly regeneration = input<RegenerationState | null>(null);
 
   readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();

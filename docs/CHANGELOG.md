@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(salon): a regeneration says so while it happens (P4.D206 units 6–7)
+
+_Versions: SPA 0.5.745._
+
+The client half of v4's `f564b0de3`. Pressing a character line's refresh icon
+used to do nothing visible until the new line appeared: no way to tell a slow
+model from a dead one, and nothing stopping a second press — or a fresh message
+typed into the composer — from landing on a turn already in flight.
+
+`chat/regeneration.state.ts` dispatches `messageSwipe { stream: true }` and
+reads `swipeProgress` frames off the Event channel, scoped by the target
+message's own id. It runs one at a time through a synchronous guard, coalesces
+content deltas to a frame, flips `preparing` to `streaming` on the first token,
+and on `done` shows the persisted line before refetching, selecting the new
+variant and waking the queue badges — v4's order exactly.
+
+The row dims its old content under a `Regenerating...` plate that withdraws the
+moment there is prose to read, marks itself `aria-busy`, and puts its action bar
+beyond reach. The list hands the state to the named row alone.
+
+The status strip moved into `chat/response-status-strip.ts`, unchanged, so it
+has two hosts: v4 keeps ONE strip in the composer and feeds it from either
+source, but v5's grew up inside the streaming bubble, which does not mount for a
+re-roll — so a regeneration had nowhere to say anything. It also gains v4's
+quill for the `regenerating` stage.
+
+Also fixes v5's own half of v4's bug (c). v4's `disabled` prop was declared and
+wired to nothing, leaving every control on `sending`; v5 had it inverted —
+`disabled` was wired everywhere and `busy` reached only the send button, while
+the salon passed `busy` and never `disabled`. So the gutter, the toolbar, the
+source textarea and the editor all stayed live through an ordinary streaming
+turn. One `composerLocked` computed closes both halves, red-first.
+
 #### 2026-09-21 — fix(salon): after a regeneration, show the variant it just made (P4.D206 unit 5, v4 bug (b))
 
 _Versions: SPA 0.5.744._

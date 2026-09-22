@@ -15,11 +15,19 @@ import {
 import { injectVirtualizer } from '@tanstack/angular-virtual';
 
 import type { ChatStreamState, StreamMessage } from '../core/chat-stream.reducer';
-import type { ChatDetail, ChatSettingsDto, DetailCharacter, MessageDto } from '../core/core-contract';
+import type {
+  ChatDetail,
+  ChatSettingsDto,
+  DetailCharacter,
+  MessageDto,
+  ResponseStatus,
+} from '../core/core-contract';
 import { AnnouncementGroup } from './announcement-group';
 import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-model';
 import { MessageRow, type ImageClickEvent } from './message-row';
+import type { RegenerationState } from './regeneration.state';
+import { ResponseStatusStrip } from './response-status-strip';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import { StreamingMessage } from './streaming-message';
 import { ToolMessage } from './tool-message';
@@ -50,7 +58,15 @@ import { VirtualRow } from './virtual-row';
   // scroll container.
   host: { class: 'flex flex-col flex-1 min-h-0' },
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MessageRow, AnnouncementGroup, StreamingMessage, ToolMessage, VirtualRow, Icon],
+  imports: [
+    MessageRow,
+    AnnouncementGroup,
+    ResponseStatusStrip,
+    StreamingMessage,
+    ToolMessage,
+    VirtualRow,
+    Icon,
+  ],
   template: `
     <div #scroll class="qt-chat-messages">
       <div class="qt-chat-messages-list">
@@ -80,6 +96,7 @@ import { VirtualRow } from './virtual-row';
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
                     [isOverheardWhisper]="overheard(item.message)"
                     [isDangerousChat]="isDangerousChat()"
+                    [regeneration]="regenerationFor(item.message)"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
                     (viewLlmLogs)="viewLlmLogs.emit($event)"
@@ -149,6 +166,13 @@ import { VirtualRow } from './virtual-row';
           }
         }
 
+        <!-- The regeneration's own strip. Mounted only when there is no stream
+             to carry it, so the two sites are exclusive (see the input's own
+             note); the bubble owns the strip during an ordinary turn. -->
+        @if (!stream() && regenerationStatus()) {
+          <qt-response-status-strip [status]="regenerationStatus()" />
+        }
+
         @if (stream(); as s) {
           <qt-streaming-message
             [state]="s"
@@ -216,6 +240,28 @@ export class MessageList {
    * site, exactly as v4 applies it in `SalonView.tsx:1489`.
    */
   readonly isDangerousChat = input(false);
+  /**
+   * The in-flight regeneration, if any (v4 `VirtualizedMessageList`'s
+   * `regeneration` prop, `f564b0de3`). It reaches EXACTLY the row whose id it
+   * names; every other row is handed null and is untouched.
+   *
+   * v4 also threads an `onRegenerate` prop here, because its list wires the
+   * action bar's refresh icon straight to it. v5's rows already emit a
+   * `regenerate` output the list re-emits to the salon, so the door is the one
+   * that was always there and only the state is new.
+   */
+  readonly regeneration = input<RegenerationState | null>(null);
+  /**
+   * The regeneration's stage line for the status strip (v4 feeds its ONE strip
+   * `regenerationStatus ?? sseStreaming.responseStatus`, `SalonView.tsx:1648`).
+   *
+   * v5's strip lives inside the streaming bubble, which mounts only while a
+   * turn is streaming — so the list renders the strip itself when there is a
+   * regeneration and no stream. The two can never both be live: a send during
+   * a regeneration is refused by the composer's lock, which is why v4's `??`
+   * has no contested case and v5's two mount sites cannot both appear.
+   */
+  readonly regenerationStatus = input<ResponseStatus | null>(null);
 
   readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();
@@ -385,6 +431,16 @@ export class MessageList {
 
   protected swipeFor(message: MessageDto): SwipeState | null {
     return message.swipeGroupId ? (this.swipeStates()[message.swipeGroupId] ?? null) : null;
+  }
+
+  /**
+   * The regeneration state for one row: the in-flight one when it names THIS
+   * message, null otherwise (v4 `VirtualizedMessageList.tsx:334` —
+   * `regeneration?.messageId === message.id ? regeneration : null`).
+   */
+  protected regenerationFor(message: MessageDto): RegenerationState | null {
+    const regen = this.regeneration();
+    return regen && regen.messageId === message.id ? regen : null;
   }
 
   protected overheard(message: MessageDto): boolean {
