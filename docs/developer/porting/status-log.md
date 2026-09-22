@@ -143141,3 +143141,49 @@ PATH=$N:$PATH $N/npx jest --silent --watchman=false --testTimeout=120000
 Mutation: `SEEDED_WHERE` without `AND "scenarioText" <> ''` → red at
 `[empty-scenario-pair] v4 skipped; v5 must too` (the first scenario it
 reaches). Reverted by file backup.
+
+### Unit 4 — item 5: `chat_informs_dispatch_wire` + the `salon_mutations` participant-removal rows
+
+NEW `crates/quilltap-web/tests/chat_informs_dispatch_wire.rs` (3 tests,
+the salon pair per-run copy, the `chat_informs_rest_routes` boot). Envelopes
+measured by a probe first: success is `200 {type, data}` over dispatch
+(`chatInform` / `chatInforms` / `chatInformCancelled`; the REST edge's 201
+is a REST-only status), data key order `success, batchId,
+targetParticipantIds, message`; a validation refusal is `400 {type:"error",
+data:{kind:"bad-request", message:"Validation error", details:[…]}}`; a
+wrong-typed `chatId` is `Invalid request: invalid type: integer \`42\`,
+expected a string` with no `details`. No verb added —
+`dispatch_wrong_type_census` unmoved.
+
+**The P4.D205 premise corrected:** its header said the REST test covers
+the tri-state only "at the edge" and the dispatch serde "stays argued from
+precedent". Measured: stripping `double_option` from `ChatInform.
+content_markdown` + `ChatInformCancel.batch_id` reddens BOTH this file's
+`the_tri_state_survives_the_dispatch_decode` AND `chat_informs_rest_routes::
+an_explicit_null_reads_received_null_not_undefined` — the REST route builds
+its `Request` through the same serde. The dispatch file's own contribution
+is the transport envelope, `details` on the dispatch error envelope, and
+the serde-typed `chatId` arm.
+
+`salon_mutations`: two cases, 26 → 28 — `remove_participant_action_drops_
+informs` (`POST ?action=remove-participant {participantId: Aria}` vs
+`chat_cast::chat_remove_participant`) and `remove_participant_bag_keeps_
+informs` (`PUT {removeParticipantId: Aria}` vs `salon::chat_update(…,
+Some(Aria))`), each over three rows PLANTED on the per-run copy (v4 through
+its REAL `ChatInformsRepository.create` with pinned ids/stamps after
+`ensureCollection`; v5 through `ensure_chat_informs_table` +
+`ChatInformsRepository::create`): pending Aria `aaa1`, consumed Aria `aaa2`,
+pending seat-2 `aaa3`. `chat_informs` is dumped and diffed for those two
+cases only (the order said "in `TABLES`" — kept per-case so the 26 existing
+rows' comparand is byte-unchanged). v4 measured: action → `aaa2`, `aaa3`
+remain; bag → all three remain. Both green. Regen AS RUN: the .ts header
+recipe with `TMPO=/tmp/p4106/qt-salon-mutations-oracle`, the pair copied to
+`/tmp/p4106/fx/`, cwd the pin, `-- "salon-mutations\.test\.ts$"` → 28 rows,
+`grep -c chatInforms` = 2.
+
+Mutations: `double_option` stripped → the dispatch tri-state arm red (and
+the REST arm, above); v5's `delete_pending_for_participant` call replaced by
+`Ok(0)` → exactly `remove_participant_action_drops_informs/chat_informs`
+red. Red-first availability: none (ported behaviour); the mutations are the
+proofs. The inverse (a drop sited in the bag) is `inform_drop_lives_on_the_
+action.rs`'s, unchanged.

@@ -19,8 +19,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use quilltap_core::api::salon;
 use quilltap_core::api::types::Response;
+use quilltap_core::api::{chat_cast, salon};
+use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::weighted_random::DrawSource;
@@ -182,6 +183,53 @@ fn response_data(r: &Response) -> Value {
     v.get("data").cloned().unwrap_or(Value::Null)
 }
 
+/// P4.106 item 5 — the cases that plant `chat_informs` rows on the copy and
+/// diff the table. v4 drops a removed seat's PENDING informs in the
+/// `?action=remove-participant` ROUTE only (`participants.ts:566-582`); the
+/// chat-PUT bag's `removeParticipantId` carries no drop. The plant is the same
+/// cells both sides (the oracle writes them through v4's REAL repository).
+const PLANT_CASES: [&str; 2] = [
+    "remove_participant_action_drops_informs",
+    "remove_participant_bag_keeps_informs",
+];
+
+fn inform_plant() -> Vec<ChatInformCreate> {
+    [
+        (
+            "11110000-0000-4000-8000-00000000aaa1",
+            "b2000000-0000-4000-8000-000000000001",
+            None,
+        ),
+        (
+            "11110000-0000-4000-8000-00000000aaa2",
+            "b2000000-0000-4000-8000-000000000001",
+            Some((
+                "2026-02-02T00:00:00.000Z",
+                "d2000000-0000-4000-8000-000000000002",
+            )),
+        ),
+        (
+            "11110000-0000-4000-8000-00000000aaa3",
+            "b2000000-0000-4000-8000-000000000002",
+            None,
+        ),
+    ]
+    .into_iter()
+    .map(|(id, participant, consumed)| ChatInformCreate {
+        id: id.to_string(),
+        chat_id: "c1000000-0000-4000-8000-000000000002".to_string(),
+        batch_id: "bbbbbbbb-0000-4000-8000-000000000001".to_string(),
+        participant_id: participant.to_string(),
+        content_markdown: "The clock in the hall has stopped.".to_string(),
+        record_message_id: None,
+        created_at: SEED_TS.to_string(),
+        updated_at: SEED_TS.to_string(),
+        consumed_at: consumed.map(|(at, _)| at.to_string()),
+        consumed_by_message_id: consumed.map(|(_, m)| m.to_string()),
+    })
+    .collect()
+}
+
 #[test]
 fn salon_mutations_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_SALON_MUTATIONS") else {
@@ -211,8 +259,10 @@ fn salon_mutations_match_oracle() {
     const EDIT_MSG: &str = "d2000000-0000-4000-8000-000000000002";
     const SWIPE_MSG: &str = "d2000000-0000-4000-8000-000000000005";
 
-    // Run one case over a fresh fixture copy; return (body, chats_rows, msgs_rows).
-    let run = |case: &str, f: &dyn Fn(&Db) -> Response| -> (Value, Value, Value) {
+    // Run one case over a fresh fixture copy; return (body, chats_rows, msgs_rows,
+    // chat_informs rows — only for the P4.106 plant cases).
+    let run = |case: &str, f: &dyn Fn(&Db) -> Response| -> (Value, Value, Value, Option<Value>) {
+        let plant = PLANT_CASES.contains(&case);
         let scratch =
             std::env::temp_dir().join(format!("qt-salon-mut-{}-{}", std::process::id(), case));
         let _ = std::fs::remove_dir_all(&scratch);
@@ -248,6 +298,18 @@ fn salon_mutations_match_oracle() {
             Ok(())
         })
         .expect("heal the fixture copy");
+        if plant {
+            db.write_blocking(|w| {
+                let conn = w.main().connection();
+                quilltap_core::db::chat_informs::ensure_chat_informs_table(conn)?;
+                let repo = ChatInformsRepository::new(conn);
+                for row in inform_plant() {
+                    repo.create(&row)?;
+                }
+                Ok(())
+            })
+            .expect("plant chat_informs on the fixture copy");
+        }
         let body = response_data(&f(&db));
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
@@ -255,9 +317,13 @@ fn salon_mutations_match_oracle() {
         let msgs = db
             .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
             .unwrap();
+        let informs = plant.then(|| {
+            db.read_main(|conn| dump_table_json_conn(conn, "chat_informs", "id"))
+                .unwrap()
+        });
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
-        (body, chats, msgs)
+        (body, chats, msgs, informs)
     };
 
     // (name, run closure)
@@ -602,12 +668,33 @@ fn salon_mutations_match_oracle() {
                 ))
             }),
         ),
+        // ── P4.106 item 5: the two participant-removal entrances over PLANTED
+        //    informs (see `PLANT_CASES`).
+        (
+            "remove_participant_action_drops_informs",
+            Box::new(|db: &Db| rt.block_on(chat_cast::chat_remove_participant(db, GROUP, LLM_P))),
+        ),
+        (
+            "remove_participant_bag_keeps_informs",
+            Box::new(|db: &Db| {
+                rt.block_on(salon::chat_update(
+                    db,
+                    &uid,
+                    GROUP,
+                    &serde_json::json!({}),
+                    None,
+                    None,
+                    None,
+                    Some(LLM_P),
+                ))
+            }),
+        ),
     ];
 
     let mut failed = Vec::new();
     for (name, f) in &cases {
         let want = &oracle[*name];
-        let (got_body, got_chats, got_msgs) = run(name, f.as_ref());
+        let (got_body, got_chats, got_msgs, got_informs) = run(name, f.as_ref());
         // Body: v4 error responses are `{ error: msg }`; the v5 typed shape is
         // `{ kind, message }`. Compare the copy when the oracle body is an error.
         if let Some(err) = want["body"].get("error").and_then(Value::as_str) {
@@ -639,6 +726,22 @@ fn salon_mutations_match_oracle() {
                 table_rows(&want["tables"]["chatMessages"]),
             ),
         ];
+        if let Some(got_informs) = &got_informs {
+            let w = &want["tables"]["chatInforms"];
+            assert!(
+                w.is_object(),
+                "[{name}] the oracle carries no chatInforms dump — regenerate it"
+            );
+            let g = norm(&table_rows(got_informs));
+            let w = norm(&table_rows(w));
+            if g != w {
+                eprintln!(
+                    "[{name}] section `chat_informs` MISMATCH:\n{}",
+                    first_diff(&g, &w)
+                );
+                failed.push(format!("{name}/chat_informs"));
+            }
+        }
         for (section, got, want_v) in &sections {
             let g = norm(got);
             let w = norm(want_v);

@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(web,harness): the Inform dispatch wire test + the salon participant-removal rows (P4.106 item 5)
+
+_Versions: harness 0.0.894, web 0.0.171._
+
+P4.106 item 5. New `chat_informs_dispatch_wire.rs` drives the three Inform
+verbs over `POST /api/dispatch`: a posted inform's four keys (Everyone and
+single-seat), the list, the cancel, the absent-key and explicit-null Zod
+envelopes on both body-taking verbs, wrong-typed body keys, a malformed
+`batchId`, and a wrong-typed `chatId` (the dispatch decode refusal).
+Stripping `double_option` from the two keys fails the tri-state arm here and,
+as measured, the REST family's explicit-null arm too — the REST route builds
+`Request` through the same serde.
+
+`salon_mutations` gains two participant-removal rows over three planted
+`chat_informs` rows (written through v4's real repository and v5's own):
+`?action=remove-participant` drops the removed seat's pending row only, and
+the chat-PUT `removeParticipantId` bag drops nothing. The family now diffs
+`chat_informs` for those two cases. Removing v5's drop from
+`chat_remove_participant` fails exactly the action row.
+
 #### 2026-09-22 — test(harness): the bug-158 heal differential against v4's real migration (P4.106 item 8)
 
 _Versions: harness 0.0.893._

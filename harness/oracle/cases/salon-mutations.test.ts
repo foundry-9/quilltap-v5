@@ -48,7 +48,22 @@ interface CaseSpec {
   paramId: string;
   body?: Record<string, unknown>;
   random01?: number;
+  /** P4.106 item 5: plant the three `chat_informs` rows below on the copy
+   * (through v4's REAL repository) and dump the table. */
+  plantInforms?: boolean;
 }
+
+/**
+ * P4.106 item 5 — the participant-removal rows' plant: a PENDING and a
+ * CONSUMED inform for the seat being removed (Aria) and a PENDING one for the
+ * other LLM seat. Ids and stamps pinned; v5 plants the same cells through its
+ * own `ChatInformsRepository::create`.
+ */
+const INFORM_PLANT = [
+  { id: '11110000-0000-4000-8000-00000000aaa1', participantId: 'b2000000-0000-4000-8000-000000000001', consumedAt: null, consumedByMessageId: null },
+  { id: '11110000-0000-4000-8000-00000000aaa2', participantId: 'b2000000-0000-4000-8000-000000000001', consumedAt: '2026-02-02T00:00:00.000Z', consumedByMessageId: 'd2000000-0000-4000-8000-000000000002' },
+  { id: '11110000-0000-4000-8000-00000000aaa3', participantId: 'b2000000-0000-4000-8000-000000000002', consumedAt: null, consumedByMessageId: null },
+];
 
 const TABLES = [
   { key: 'chats', table: 'chats' },
@@ -144,6 +159,30 @@ async function runCase(
   // P4.D172: heal the fixture copy — see the helper's own note.
   ensureP4D171Columns(getRawDatabase() as never);
 
+  if (c.plantInforms) {
+    const { ensureCollection } = await import('@/lib/database/manager');
+    const { ChatInformsRepository } = await import(
+      '@/lib/database/repositories/chat-informs.repository'
+    );
+    const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+    await ensureCollection('chat_informs', ChatInformSchema);
+    const informs = new ChatInformsRepository();
+    for (const row of INFORM_PLANT) {
+      await informs.create(
+        {
+          chatId: 'c1000000-0000-4000-8000-000000000002',
+          batchId: 'bbbbbbbb-0000-4000-8000-000000000001',
+          participantId: row.participantId,
+          contentMarkdown: 'The clock in the hall has stopped.',
+          recordMessageId: null,
+          consumedAt: row.consumedAt,
+          consumedByMessageId: row.consumedByMessageId,
+        } as never,
+        { id: row.id, createdAt: '2026-02-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' },
+      );
+    }
+  }
+
   try {
     const params = { params: Promise.resolve({ id: c.paramId }) };
     let response: { status: number; json: () => Promise<unknown> };
@@ -173,7 +212,10 @@ async function runCase(
     const mdb = getRawDatabase();
     if (!mdb) throw new Error('main DB handle unavailable');
     const tables: Record<string, unknown> = {};
-    for (const t of TABLES) {
+    const tableList = c.plantInforms
+      ? [...TABLES, { key: 'chatInforms', table: 'chat_informs' }]
+      : TABLES;
+    for (const t of tableList) {
       const columns = (
         mdb.prepare(`PRAGMA table_info(${t.table})`).all() as Array<{ name: string }>
       ).map((col) => col.name);
@@ -305,6 +347,14 @@ async function main(): Promise<void> {
     // the flip (after the bag write) would rename the chat and then 400.
     { name: 'chat_update_concierge_invalid_with_bag', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { title: 'Should Not Land' }, conciergeState: 'off' } },
     { name: 'message_delete_cascade', method: 'messageDelete', url: `${mbase(EDIT_MSG)}?memoryAction=DELETE_MEMORIES`, paramId: EDIT_MSG },
+    // P4.106 item 5 (the P4.D205 gap): the two participant-removal entrances,
+    // over PLANTED informs. v4 drops the departing seat's PENDING rows in the
+    // `?action=remove-participant` ROUTE only (`participants.ts:566-582`) —
+    // the consumed row stays (a later swipe must still re-apply it) and the
+    // other seat's row is untouched. The chat-PUT bag's `removeParticipantId`
+    // reaches `helpers.ts::handleRemoveParticipant`, which carries NO drop.
+    { name: 'remove_participant_action_drops_informs', method: 'chatPost', url: `${cbase}?action=remove-participant`, paramId: GROUP, body: { participantId: LLM_P }, plantInforms: true },
+    { name: 'remove_participant_bag_keeps_informs', method: 'chatPut', url: cbase, paramId: GROUP, body: { removeParticipantId: LLM_P }, plantInforms: true },
   ];
 
   const outLines: string[] = [];
