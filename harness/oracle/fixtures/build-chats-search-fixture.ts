@@ -11,10 +11,29 @@
  * so both the oracle and the Rust test READ/RUN over the SAME baked fixture and
  * the differential needs ZERO normalization.
  *
- * Run (Node 24, from the v4 checkout):
+ * ## The two venues (P4.D204)
+ *
+ * `f45a517a9` gives global search an FTS5 index, and `initializeDatabase()`
+ * does NOT run the migration runner — so a fixture built this way has no FTS
+ * objects unless the builder creates them itself. Both states are real and both
+ * are tested, so this builder makes EITHER, chosen by `QT_FIXTURE_FTS`:
+ *
+ * - unset — the fixture has no index, and every query goes down v4's `LIKE`
+ *   fallback (including the runtime fallback v4 takes when an FTS query throws
+ *   `no such table`). This is the state a v4 instance is in before its
+ *   migration runs, and the state a v5 instance is in before its boot
+ *   reconciler runs.
+ * - `1` — the builder calls v4's REAL `ensureChatMessageFtsSchema` and
+ *   `rebuildChatMessageFtsIndex` after seeding, so the index is populated and
+ *   the token-semantics queries (`walk` vs `sidewalk`, `cafe` vs `café`) take
+ *   the indexed path.
+ *
+ * Run (Node 24, from the v4 checkout) — BOTH fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_OUT=/tmp/qt-chsearch-fixture.db \
+ *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-chats-search-fixture.ts
+ *   QT_FIXTURE_FTS=1 QT_FIXTURE_OUT=/tmp/qt-chsearch-fixture-fts.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-chats-search-fixture.ts
  */
 
@@ -66,8 +85,27 @@ async function main(): Promise<void> {
     await repo.addMessages(seed.chatId, seed.messages as never);
   }
 
+  // P4.D204: the FTS venue. v4's REAL ensure + rebuild, run AFTER seeding so
+  // the index is built from the rows the repository actually wrote (including
+  // the compressed ones — the rebuild reads through `qt_text`).
+  let indexed: number | null = null;
+  if (process.env.QT_FIXTURE_FTS === '1') {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { ensureChatMessageFtsSchema, rebuildChatMessageFtsIndex } = await import(
+      '@/lib/database/backends/sqlite/chat-message-fts'
+    );
+    const db = getRawDatabase();
+    if (!db) throw new Error('QT_FIXTURE_FTS=1 but there is no raw SQLite database');
+    ensureChatMessageFtsSchema(db);
+    indexed = rebuildChatMessageFtsIndex(db).indexed;
+  }
+
   await closeDatabase();
-  process.stderr.write(`built chats search seed fixture: ${out} (${spec.chats.length} chats)\n`);
+  process.stderr.write(
+    `built chats search seed fixture: ${out} (${spec.chats.length} chats` +
+      (indexed === null ? ', no FTS index' : `, ${indexed} messages indexed`) +
+      ')\n',
+  );
   process.exit(0);
 }
 

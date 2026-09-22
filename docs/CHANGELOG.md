@@ -12,6 +12,55 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(search): global message search runs v4's two SQL shapes, and the `.`-defect that returned nothing is retired (P4.D204)
+
+_Versions: core 0.0.972, harness 0.0.865._
+
+`searchMessagesGlobal` is rewritten over v4 `f45a517a9`'s two SQL shapes: the
+FTS5 index probe joined back through the id map, and the exact-scan fallback
+with `qt_text(mm."content") LIKE ? ESCAPE '\'`. Both are wrapped by
+`defer_text_decode`, which is load-bearing rather than tidy — SQLite puts a
+query's output columns into the sorter record, so a `qt_text` in the outer
+select would decompress every match before the limit applied (v4 measured
+1.2 s against 86 ms on 142,000 rows, identical results). The plan comes from
+`fts_query`; the fallback runs for a fallback plan and also when the FTS query
+THROWS, which is what an instance whose boot reconciler has not reached it yet
+does. Ordering stays `createdAt DESC`, not rank; the cap stays 100.
+
+**A pre-existing v5 defect is closed by this.** v5 reproduced v4's pre-index
+`$regex` → `LIKE` conversion byte-for-byte, including its bug: the translator
+mangled the regex SOURCE (`.replace(/\.\*/g,'%').replace(/\./g,'_')`), wrapped
+it `%…%` and emitted no `ESCAPE` clause, so `escapeRegex`'s backslashes
+survived as literals and a user's `.` became a wildcard. A v5 user searching
+`Mr. Smith`, `C++`, `foo(bar)` or `$500` got nothing, confidently. Found by
+`/driftcheck` on the dogfood copy rather than by a dogfood walk, so it carries
+no finding number. `like_pattern` and `regex_source_escaped` are deleted and
+the pin that froze the mangling is retired, not repaired.
+
+Three v4 log lines that v5 never had now land with capture pins: the
+`Global message search plan` debug with its four fields, the
+`FTS message search failed; falling back to an exact scan` warn, and the
+over-length refusals on all three ops (v5 already refused over 1,000 UTF-16
+units — measured — but said nothing about it).
+
+`chats_search_equivalence` now runs in TWO VENUES against two fixtures the
+builder makes from one spec: one with no FTS objects, where every query falls
+back and the throw arm is exercised for real, and one indexed by v4's own
+ensure + rebuild. The contrast is the proof: `walk` finds the *sidewalk* row
+on the fallback and not through the index; `cafe` finds only the unaccented
+row on the fallback and both spellings through the index; `café` the mirror
+image. A second test asserts those disagreements directly, so a green
+differential cannot come from v5 copying whichever path it happens to take.
+The corpus grew a chat of token-semantics rows, a message over the compression
+floor, and a replace whose result crosses that floor — so the replace UPDATE
+now goes through the codec, and on the indexed venue fires the `_au` trigger,
+which the post-replace reads and the map dump both see.
+
+Red-first, measured at both pins before any source moved: on the old corpus
+exactly two reads moved between `baa85e19b` and `f45a517a9` — `1.5` and
+`f(x)`, both `[]` → the row — with the replace counts and the whole
+`chat_messages` dump byte-identical.
+
 #### 2026-09-22 — feat(db): the five FTS5 objects carried verbatim, and the boot reconciler that gives every instance its message index (P4.D204)
 
 _Versions: core 0.0.971, harness 0.0.864, host 0.0.140._

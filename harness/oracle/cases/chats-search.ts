@@ -15,11 +15,33 @@
  * `TOOLONGSEARCHTEXT_REPLACE_AT_RUNTIME`, expanded to 1001 chars (> the v4
  * MAX_SEARCH_QUERY_LENGTH of 1000) on BOTH sides identically.
  *
- * Run (Node 24, from the v4 checkout), AFTER building the fixture:
+ * ## The two venues (P4.D204)
+ *
+ * `f45a517a9` rewrote `searchMessagesGlobal` over an FTS5 index with a `LIKE`
+ * fallback, and WHICH PATH a query takes changes what it finds — `walk` stops
+ * matching *sidewalk*, `cafe` starts matching *café*. So every read runs TWICE,
+ * against two fixtures the builder makes from the same spec: one WITHOUT the
+ * FTS objects (every query falls back, including the runtime fallback v4 takes
+ * when the FTS query throws `no such table`) and one WITH them, built by v4's
+ * own `ensureChatMessageFtsSchema` + `rebuildChatMessageFtsIndex`.
+ *
+ * Each venue gets its own copy of its fixture, its own replaces and its own
+ * post-replace dump — and, on the FTS venue, the `chat_messages_fts_map` dump
+ * plus a post-replace search, so the `_au` trigger firing on v5's own UPDATE is
+ * in the comparand too.
+ *
+ * ONE VENUE PER INVOCATION, deliberately: `@/lib/database/manager` holds the
+ * open database in module state, so a second `initializeDatabase()` in the same
+ * process would go on reading the FIRST venue's file. Two processes, two lines,
+ * appended.
+ *
+ * Run (Node 24, from the v4 checkout), AFTER building BOTH fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
+ *   QT_VENUE=plain QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture.db \
  *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/chats-search.ts > /tmp/oracle-chsearch.ndjson
+ *   QT_VENUE=fts QT_FIXTURE_CHSEARCH=/tmp/qt-chsearch-fixture-fts.db \
+ *     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/chats-search.ts >> /tmp/oracle-chsearch.ndjson
  */
 
 import { fileURLToPath } from 'node:url';
@@ -52,14 +74,19 @@ interface Spec {
   testPepperBase64: string;
   reads: ReadOp[];
   replace: ReplaceOp[];
+  postReplaceReads: ReadOp[];
 }
 
-async function dumpTable(rawQuery: (sql: string) => Promise<unknown>, table: string) {
+async function dumpTable(
+  rawQuery: (sql: string) => Promise<unknown>,
+  table: string,
+  orderBy = 'id',
+) {
   const columns = (
     (await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>
   ).map((c) => c.name);
   const rawRows = (await rawQuery(`SELECT * FROM ${table}`)) as Array<Record<string, unknown>>;
-  return canonicalizeRows({ table, columns, rawRows, orderBy: 'id' });
+  return canonicalizeRows({ table, columns, rawRows, orderBy });
 }
 
 async function main(): Promise<void> {
@@ -67,66 +94,96 @@ async function main(): Promise<void> {
   const specPath = join(here, '..', 'fixtures', 'chats-search.json');
   const spec = JSON.parse(readFileSync(specPath, 'utf8')) as Spec;
 
+  const venue = process.env.QT_VENUE ?? 'plain';
+  if (venue !== 'plain' && venue !== 'fts') {
+    throw new Error(`QT_VENUE must be 'plain' or 'fts', got ${venue}`);
+  }
   const fixture = process.env.QT_FIXTURE_CHSEARCH;
   if (!fixture || !existsSync(fixture)) {
-    throw new Error('QT_FIXTURE_CHSEARCH must point at the seed fixture from build-chats-search-fixture.ts');
+    throw new Error(
+      'QT_FIXTURE_CHSEARCH must point at this venue\'s fixture from build-chats-search-fixture.ts',
+    );
   }
 
-  const scratch = mkdtempSync(join(tmpdir(), 'qt-chsearch-oracle-'));
-  mkdirSync(join(scratch, 'data'), { recursive: true });
-  const work = join(scratch, 'chsearch-work.db');
-  copyFileSync(fixture, work);
+  {
+    const scratch = mkdtempSync(join(tmpdir(), `qt-chsearch-oracle-${venue}-`));
+    mkdirSync(join(scratch, 'data'), { recursive: true });
+    const work = join(scratch, 'chsearch-work.db');
+    copyFileSync(fixture, work);
 
-  process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
-  process.env.SQLITE_PATH = work;
-  process.env.QUILLTAP_DATA_DIR = scratch;
-  delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+    process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
+    process.env.SQLITE_PATH = work;
+    process.env.QUILLTAP_DATA_DIR = scratch;
+    delete process.env.SQLITE_WAL_MODE;
+    process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
-  const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
+    const { initializeDatabase, closeDatabase, rawQuery } = await import(
+      '@/lib/database/manager'
+    );
+    const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
 
-  await initializeDatabase();
-  const repo = new ChatsRepository();
+    await initializeDatabase();
+    const repo = new ChatsRepository();
 
-  // 1) The read methods (reads happen before any mutation).
-  const reads: Array<{ kind: string; result: unknown }> = [];
-  for (const op of spec.reads) {
-    const searchText = expandSearchText(op.searchText);
-    let result: unknown;
-    switch (op.kind) {
-      case 'countMessagesWithText':
-        result = await repo.countMessagesWithText(op.chatId as string, searchText);
-        break;
-      case 'findMessagesWithText':
-        result = await repo.findMessagesWithText(op.chatId as string, searchText);
-        break;
-      case 'searchMessagesGlobal':
-        result = await repo.searchMessagesGlobal(
-          op.chatIds as string[],
-          searchText,
-          op.limit as number
-        );
-        break;
-      default:
-        throw new Error(`unknown read kind: ${(op as { kind: string }).kind}`);
+    const runRead = async (op: ReadOp): Promise<unknown> => {
+      const searchText = expandSearchText(op.searchText);
+      switch (op.kind) {
+        case 'countMessagesWithText':
+          return repo.countMessagesWithText(op.chatId as string, searchText);
+        case 'findMessagesWithText':
+          return repo.findMessagesWithText(op.chatId as string, searchText);
+        case 'searchMessagesGlobal':
+          return repo.searchMessagesGlobal(
+            op.chatIds as string[],
+            searchText,
+            op.limit as number,
+          );
+        default:
+          throw new Error(`unknown read kind: ${(op as { kind: string }).kind}`);
+      }
+    };
+
+    // 1) The read methods (reads happen before any mutation).
+    const reads: Array<{ kind: string; result: unknown }> = [];
+    for (const op of spec.reads) {
+      reads.push({ kind: op.kind, result: await runRead(op) });
     }
-    reads.push({ kind: op.kind, result });
+
+    // 2) The replace ops (mutate chat_messages; no timestamp touched). On the
+    //    FTS venue these fire the `_au` trigger, and one of them pushes its row
+    //    over the 512-byte floor so the UPDATE stores a compressed BLOB.
+    const replace: Array<{ kind: string; count: number }> = [];
+    for (const op of spec.replace) {
+      const count = await repo.replaceInMessages(op.chatId, op.searchText, op.replaceText);
+      replace.push({ kind: op.kind, count });
+    }
+
+    // 3) Reads that can only answer AFTER the replace — the trigger's own proof.
+    const postReplaceReads: Array<{ kind: string; result: unknown }> = [];
+    for (const op of spec.postReplaceReads) {
+      postReplaceReads.push({ kind: op.kind, result: await runRead(op) });
+    }
+
+    // 4) Dump the post-replace chat_messages table, and (FTS venue) the map.
+    const messages = await dumpTable(rawQuery, 'chat_messages');
+    const ftsMap =
+      venue === 'fts' ? await dumpTable(rawQuery, 'chat_messages_fts_map', 'ftsId') : null;
+
+    await closeDatabase();
+
+    process.stdout.write(
+      JSON.stringify({
+        case: 'chats-search',
+        venue,
+        reads,
+        replace,
+        postReplaceReads,
+        messages,
+        ftsMap,
+      }) + '\n',
+    );
   }
 
-  // 2) The replace ops (mutate chat_messages; no timestamp touched).
-  const replace: Array<{ kind: string; count: number }> = [];
-  for (const op of spec.replace) {
-    const count = await repo.replaceInMessages(op.chatId, op.searchText, op.replaceText);
-    replace.push({ kind: op.kind, count });
-  }
-
-  // 3) Dump the post-replace chat_messages table.
-  const messages = await dumpTable(rawQuery, 'chat_messages');
-
-  await closeDatabase();
-
-  process.stdout.write(JSON.stringify({ case: 'chats-search', reads, replace, messages }) + '\n');
   process.exit(0);
 }
 

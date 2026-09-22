@@ -137855,3 +137855,87 @@ harmless (only this case writes `QT_ORACLE_OUT`, and v4's own tests passing at
 the pin is free corroboration) but it is not the anchored single-suite filter
 the memory note asks for; the anchor `…\.test\.ts$` cannot exclude v4's file
 because the basenames are identical. Recorded rather than papered over.
+
+### Unit 4 — `chats_search.rs` rewritten, and the `.`-defect retired
+
+**RED-FIRST, before a line of source moved.** The order asked which rows move
+at the target; measured by regenerating the SAME corpus with the SAME builder
+from BOTH pins and diffing the two NDJSONs — a better instrument than the
+first-panic message, which shows one row and stops:
+
+| read | `baa85e19b` | `f45a517a9` |
+|---|---|---|
+| `searchMessagesGlobal` `1.5` | `[]` | the row |
+| `searchMessagesGlobal` `f(x)` | `[]` | the row |
+
+**Everything else was byte-identical** — the other nine reads, both replace
+counts, and the whole `chat_messages` dump. The `quick` reads do NOT move,
+because at BOTH pins the fixture has no FTS objects (v4's
+`initializeDatabase()` does not run the migration runner, as §R.3 measured) and
+every query goes down the `LIKE` fallback. That is exactly why the corpus had
+to grow: two rows of movement is not coverage of a semantics change.
+
+Then the port, and the pre-existing v5 defect it closes: **a v5 user searching
+`Mr. Smith`, `C++`, `foo(bar)` or `$500` got NOTHING, confidently.** v5
+reproduced v4's pre-index `$regex` → `LIKE` conversion byte-for-byte, defect
+included — the translator mangled the regex SOURCE (`.replace(/\.\*/g,'%')
+.replace(/\./g,'_')`), wrapped `%…%`, and emitted no `ESCAPE`, so
+`escapeRegex`'s backslashes survived as literals and a user's `.` became a
+wildcard. Found by `/driftcheck` on the dogfood copy, so it carries **no
+finding number**. `like_pattern` and `regex_source_escaped` are DELETED;
+`like_pattern_reproduces_v4_mangling` is RETIRED (not repaired) and
+`the_retired_regex_mangling_is_gone_from_both_shapes` replaces it, recording
+the three old outputs in a comment so the defect stays legible.
+
+`:243-246`'s UPDATE now binds `text_to_blob(&new_content)`: v4 registers
+`chat_messages.content` as compressed at the repository layer, so a
+replacement that crosses the 512-byte floor is a BLOB on v4's side and must be
+one here. The corpus grows a replace whose result is 644 bytes to prove it.
+
+#### The two-venue differential
+
+`chats_search_equivalence` runs the whole spec TWICE against two fixtures the
+builder makes from one spec (`QT_FIXTURE_FTS=1` calls v4's real
+`ensureChatMessageFtsSchema` + `rebuildChatMessageFtsIndex` after seeding):
+
+- **`plain`** — no FTS objects. Every `fallback` plan falls back by decision
+  and every `fts` plan falls back at RUNTIME, through v4's throw arm. This is
+  the only way to exercise that arm without faking a failure, and it is a real
+  state: a v4 instance before its migration, a v5 instance before its boot
+  reconciler.
+- **`fts`** — indexed, where the token semantics bite.
+
+ONE VENUE PER INVOCATION, deliberately: `@/lib/database/manager` holds the open
+database in module state, so a second `initializeDatabase()` in the same
+process would go on reading the first venue's file. Two processes, two NDJSON
+lines, appended.
+
+**The measured contrast, which IS the port's proof** (message id suffixes):
+
+| query | `plain` (LIKE) | `fts` (index) |
+|---|---|---|
+| `walk` | `0002`, `0001` — *sidewalk* too | `0001` only |
+| `cafe` | `0004` (unaccented only) | `0004`, `0003` — folded |
+| `café` | `0003` (accented only) | `0004`, `0003` — folded |
+| `Mr. Smith` / `$500` / `foo(bar)` / `C++` | the row | the row |
+| `%_` | `0008` — the literal `50%_off` row | `0008` |
+| `bosphorus` (a 644-byte compressed cell) | `0009` | `0009` |
+
+A second test, `the_two_venues_disagree_where_token_semantics_bite`, asserts
+those disagreements from the oracle alone — so a green differential cannot come
+from v5 copying whichever path it happens to take. **Both venues green on the
+first run after the rewrite** (26 reads, 2 replaces, 2 post-replace reads each,
+plus the `chat_messages` dump and, on `fts`, the 20-row map dump).
+
+#### Three v4 log lines v5 never had, now pinned
+
+`Global message search plan` (DEBUG, four fields, `reason` spread ONLY on a
+fallback plan), `FTS message search failed; falling back to an exact scan`
+(WARN, carrying the error), and the over-length refusals — which is the order's
+Tier-3 item, MEASURED: **v5 already refused** over 1,000 UTF-16 units on all
+three ops (it returned `0`/`[]`/`[]`), but said nothing about it, where v4
+warns `Search text exceeds maximum length` with `{chatId, queryLength,
+maxLength}` on count/find and `Global search text exceeds maximum length`
+WITHOUT a `chatId` on the global op. All three sentences now land with capture
+pins and silence legs, over an in-memory connection carrying the same reduced
+DDL the FTS corpus uses — no fixture needed.

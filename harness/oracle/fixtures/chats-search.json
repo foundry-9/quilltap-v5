@@ -48,6 +48,22 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000040-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Token Chat D",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fd000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "dddd4444-4444-4444-8444-444444444444",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "seedMessages": [
@@ -150,6 +166,107 @@
           "id": "e0000030-0000-4000-8000-000000000003",
           "context": "color appears in a summary too",
           "createdAt": "2026-02-02T00:02:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000030-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "pad ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ZZ ",
+          "createdAt": "2026-02-02T00:02:04.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "she went for a walk along the promenade",
+          "createdAt": "2026-02-02T00:03:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "the sidewalk was crowded that evening",
+          "createdAt": "2026-02-02T00:03:02.000Z",
+          "participantId": "fd000001-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000003",
+          "role": "USER",
+          "content": "we met at the café on the corner",
+          "createdAt": "2026-02-02T00:03:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000004",
+          "role": "ASSISTANT",
+          "content": "the cafe near the station was closed",
+          "createdAt": "2026-02-02T00:03:04.000Z",
+          "participantId": "fd000001-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "Mr. Smith arrived at half past four",
+          "createdAt": "2026-02-02T00:03:05.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000006",
+          "role": "ASSISTANT",
+          "content": "he charged $500 for the trouble",
+          "createdAt": "2026-02-02T00:03:06.000Z",
+          "participantId": "fd000001-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000007",
+          "role": "USER",
+          "content": "please call foo(bar) twice before tea",
+          "createdAt": "2026-02-02T00:03:07.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000008",
+          "role": "ASSISTANT",
+          "content": "a literal 50%_off sign hung outside",
+          "createdAt": "2026-02-02T00:03:08.000Z",
+          "participantId": "fd000001-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000009",
+          "role": "USER",
+          "content": "The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. The djinn of the bosphorus kept a ledger of every tide, and read it aloud each evening to nobody in particular. ",
+          "createdAt": "2026-02-02T00:03:09.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000010",
+          "role": "ASSISTANT",
+          "content": "the C++ standard is long and unforgiving",
+          "createdAt": "2026-02-02T00:03:10.000Z",
+          "participantId": "fd000001-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000011",
+          "role": "SYSTEM",
+          "content": "walking the dog past the cafe",
+          "createdAt": "2026-02-02T00:03:11.000Z"
+        },
+        {
+          "type": "system",
+          "id": "e0000040-0000-4000-8000-000000000012",
+          "systemEventType": "SUMMARIZATION",
+          "description": "a walk to the cafe",
+          "createdAt": "2026-02-02T00:03:12.000Z"
         }
       ]
     }
@@ -224,6 +341,126 @@
       ],
       "searchText": "f(x)",
       "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "walk",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "sidewalk",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "cafe",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "café",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "Mr. Smith",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "$500",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "foo(bar)",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "50%_off",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "%_",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "C++",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "bosphorus",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "djinn of the bosphorus",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "---",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "walk",
+      "limit": 1
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000040-0000-4000-8000-000000000001"
+      ],
+      "searchText": "the estate",
+      "limit": 100
     }
   ],
   "replace": [
@@ -232,6 +469,30 @@
       "chatId": "c0000030-0000-4000-8000-000000000001",
       "searchText": "color",
       "replaceText": "colour"
+    },
+    {
+      "kind": "replaceInMessages",
+      "chatId": "c0000030-0000-4000-8000-000000000001",
+      "searchText": "ZZ",
+      "replaceText": "ZZZZZZZZZZZZZZZ"
+    }
+  ],
+  "postReplaceReads": [
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000030-0000-4000-8000-000000000001"
+      ],
+      "searchText": "ZZZZZZZZZZZZZZZ",
+      "limit": 100
+    },
+    {
+      "kind": "searchMessagesGlobal",
+      "chatIds": [
+        "c0000030-0000-4000-8000-000000000001"
+      ],
+      "searchText": "colour",
+      "limit": 100
     }
   ]
 }
