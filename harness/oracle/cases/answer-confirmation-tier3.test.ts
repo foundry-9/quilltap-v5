@@ -357,7 +357,11 @@ async function main(): Promise<void> {
     const compression = {
       existingMessages: [],
       content: '',
-      builtContext: { originalSystemPrompt: undefined },
+      // `informRowIds` is what v4's real `buildContext` always returns (an array,
+      // empty when nothing is pending — `lib/chat/context/inform-block.ts` at
+      // `f45a517a9`); the finalizer reads its `.length` unguarded, so the hand-built
+      // context must carry it or the v4 side throws before any comparand exists.
+      builtContext: { originalSystemPrompt: undefined, informRowIds: [] },
       compressionEnabled: false,
       cheapLLMSelection: spec.cheapSelection,
       contextCompressionSettings: { enabled: false },

@@ -382,6 +382,12 @@ async function main(): Promise<void> {
       content: '',
       builtContext: {
         originalSystemPrompt: call.compression.systemPrompt ? 'the original system prompt' : undefined,
+        // v4's real `buildContext` always returns `informRowIds` (an array, empty
+        // when nothing is pending — `lib/chat/context/inform-block.ts` at
+        // `f45a517a9`) and the finalizer reads its `.length` unguarded; a
+        // hand-built context without it throws on the v4 side before any
+        // comparand exists. This corpus carries no informs.
+        informRowIds: [],
       },
       compressionEnabled: call.compression.enabled,
       cheapLLMSelection: call.compression.selection
