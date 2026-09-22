@@ -137578,3 +137578,71 @@ cheap future check: dump `typeof(<col>)` across those pairs and assert
 **Net: item 12 is CLOSED as proven-neutral-by-construction, not deferred.**
 What remains open is the Class 3 expiry above, and it belongs to the
 fixture-vintage heal order rather than to this round.
+
+---
+
+## P4.D204 — FTS5 message search (lane record)
+
+Lane branch `claude/fts5-message-search-port-f2fe4c`, cut from **P4.D203's
+lane tip `7903d46f`** rather than from S (`144a0e80`) alone — the worktree was
+created that way before the lane opened. That is a superset of S: every commit
+of P4.D203 is present, so the codec substrate and the `qt_text` registration
+this lane depends on are all there, and the unifier's `P4.D203 → P4.D204` pick
+order is unaffected. Recorded because §R.10(a) says "from S".
+
+**§R.2 probe at lane start: the FIRST reading FAILED** — v4 `main` had moved
+two commits past `f45a517a9` (`4e1a8e061` docs + `e7821606f` bug 161) with no
+waiver recorded, so the lane STOPped and reported per the ground rules. The
+human then ran `/driftcheck`; the ledger's §1 now records HEAD `a2db63da7`
+(three new rows: `4e1a8e061`, `e7821606f`, `a2db63da7` — bugs 161/162 and the
+docs commit that filed them) and states explicitly that **the three new rows
+are OUTSIDE this round's scope and must not be added to a running lane**. The
+probe was re-run against the updated §1 and PASSED (branch `main`, tree CLEAN,
+both logs empty). Measured for the record: `git diff --stat
+f45a517a9..a2db63da7` over every path this order ports —
+`chat-message-fts.ts`, `reconcile-chat-message-fts.ts`, `fts-query.ts`,
+`chats-search.ops.ts`, `app/api/v1/ui/search/**`, `help/search.md`,
+`lib/database/migrations`, `lib/tools/handlers/search*`,
+`lib/mount-index/document-text-search*` — is **EMPTY**, and `help/**` is 126
+files at both shas. So the new drift is neutral for this lane, and the round's
+pins stand.
+
+**Pins (§R.3).** Target `/tmp/qt-v4-pin-p4d204-f45a517a9`
+(`f45a517a992bf94fdc6ae34b96791ef1d3538870`), baseline
+`/tmp/qt-v4-pin-p4d204-baa85e19b` (`baa85e19b9d904354b999924e3aa8c12f8130811`),
+both verified by `rev-parse` + `ls -ld`, both with the three symlink classes.
+Lane-private staging under `/tmp/p4d204/`.
+
+### Unit 1 — `db/fts_query.rs` + `fts_query_equivalence` (tier 1)
+
+A whole port of v4's `fts-query.ts`. The new family drives v4's REAL module
+over a committed 48-query corpus (`harness/oracle/fixtures/fts-query.json`)
+and compares, per query: the token list, **each token's JS `.length`**, the
+`escapeLikePattern` output, and the whole plan (`kind` plus `match` or
+`likePattern` + `reason`). **48/48 green on the first run** — the `\p{L}\p{N}`
+tables agree (`regex` 1.12.4 / `regex-syntax` 0.8.11, generated from
+`ucd-16.0.0`, against Node 24.13.1's V8/ICU) on Greek, Arabic-Indic digits, a
+Roman numeral (`Nl`), a vulgar fraction (`No`), CJK, emoji, an astral Fraktur
+letter, and `école` both precomposed (one token) and decomposed (TWO tokens —
+a combining mark is `Mn`, not a letter).
+
+`escape_like_pattern` **folds onto `db/like_escape.rs`'s
+`escape_like_literal`**, which the order asked to be measured: v4 has the same
+function in two homes (`fts-query.ts`'s `escapeLikePattern` and
+`like-escape.ts`'s `escapeLikeLiteral` — same regex `[\\%_]`, same
+backslash-first replacement) and only `likeContainsPattern` adds the
+`toLowerCase` this path must NOT have. v5 keeps ONE implementation, with
+`escape_set_matches_v4_fts_query_home` pinning v4's `escapeLikePattern`
+vectors against it, the regex-metacharacter row included.
+
+Regen (from the worktree; the pin is the driver's `--v4`):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd /tmp/qt-v4-pin-p4d204-f45a517a9
+$N/npx tsx <V5W>/harness/oracle/cases/fts-query.ts \
+  <V5W>/harness/oracle/fixtures/fts-query.json > /tmp/p4d204/oracle-fts-query.ndjson
+cd <V5W>
+QT_ORACLE_FTS_QUERY=/tmp/p4d204/oracle-fts-query.ndjson \
+  cargo test -p quilltap-harness --test fts_query_equivalence -- --nocapture
+```

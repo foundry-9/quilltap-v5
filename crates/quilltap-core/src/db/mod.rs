@@ -82,6 +82,7 @@ pub mod files_generation_key_repair;
 pub mod files_sha256_realign_heal;
 pub mod folders;
 pub mod folders_unique_path_repair;
+pub mod fts_query;
 // === P4.D175 ===
 pub mod generated_image_placeholder_heal;
 // === end P4.D175 ===

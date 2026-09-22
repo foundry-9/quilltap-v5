@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(db): the FTS5 query translator — token semantics, the prefix phrase and the LIKE fallback (P4.D204)
+
+_Versions: core 0.0.970, harness 0.0.863._
+
+`db/fts_query.rs` ports v4's `lib/database/repositories/fts-query.ts`
+(`f45a517a9`) whole: `tokenize_like_unicode61`, `escape_like_pattern` and
+`build_fts_match_expression` with its two-arm plan. This is the module that
+decides what the search bar finds — an index path taken where v4 takes the
+fallback is a different answer, not a slower one, because token-prefix and
+substring semantics disagree about `sidewalk`, `café` and `C++`.
+
+Two fidelity seams, both measured rather than argued. The tokenizer splits on
+`[^\p{L}\p{N}]+` under the `regex` crate's Unicode 16.0.0 tables where v4
+uses V8's ICU; the new tier-1 family `fts_query_equivalence` runs 48 queries
+through v4's REAL module and compares tokens, per-token UTF-16 lengths, the
+escape and the whole plan, and they agree on every row — Greek, Arabic-Indic
+digits, a Roman numeral, a vulgar fraction, CJK, emoji, an astral Fraktur
+letter, and the same word precomposed and decomposed (which tokenizes as TWO
+tokens, because a combining mark is not a letter). And
+`MIN_USEFUL_TOKEN_LENGTH` is counted in UTF-16 code units, because v4 reads
+`t.length`; the corpus carries a token whose UTF-16 length differs from its
+char count so a `chars().count()` port cannot pass.
+
+`escape_like_pattern` folds onto `db/like_escape.rs`'s existing
+`escape_like_literal`, which is v4's other home for the identical function
+(`like-escape.ts`'s `escapeLikeLiteral` — same regex, same replacement; only
+`likeContainsPattern`'s extra `toLowerCase` differs, and this path must not
+lowercase). v4 keeps two copies; v5 keeps one, with an in-module pin on v4's
+`escapeLikePattern` vectors including the regex-metacharacter row.
+
 #### 2026-09-21 — docs(porting): item 12's seven neutrality legs are proven neutral BY CONSTRUCTION, not deferred (P4.D203)
 
 _Docs-only change._
