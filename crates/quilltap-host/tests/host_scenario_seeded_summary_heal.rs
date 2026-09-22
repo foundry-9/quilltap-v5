@@ -16,6 +16,9 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::Db;
+use quilltap_core::db::scenario_seeded_summary_heal::{
+    clear_scenario_seeded_chat_summaries, SeededSummaryHealOutcome, NO_DRIFT_MESSAGE,
+};
 use quilltap_core::db::Writer;
 use quilltap_host::{Host, HostConfig};
 
@@ -276,8 +279,11 @@ async fn a_clean_boot_stamps_nothing() {
     let host = Host::start(quiet_config(dir.path())).unwrap();
     let db = host.core().db().unwrap();
     // The boot-repair thread has no observable effect to wait on here, which is
-    // the point — wait for a SIBLING pass's ledger row, so the window is proven
-    // to have been long enough for this one to have stamped had it wanted to.
+    // the point. So wait only until `migrations_state` is READABLE — the
+    // predicate is `COUNT(*) >= 0`, which an empty table satisfies, so this
+    // proves the ledger exists and can be queried, not that any pass has
+    // written to it. The fixed sleep below is what gives the boot-repair
+    // thread its window to have stamped, had it wanted to.
     wait_until(
         || {
             db.read_main(|c| {
@@ -291,7 +297,7 @@ async fn a_clean_boot_stamps_nothing() {
             .unwrap()
                 >= 0
         },
-        "the boot-repair thread to reach the ledger",
+        "the ledger table to become readable",
     )
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -300,5 +306,34 @@ async fn a_clean_boot_stamps_nothing() {
         ledger(&db),
         None,
         "a boot that clears nothing must record nothing"
+    );
+    // …and no OTHER pass smuggled v4's no-drift sentence into the ledger
+    // either: v4's runner is gated by `shouldRun()`, so that message is
+    // carried by both implementations and written by neither.
+    let messages: Vec<String> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare("SELECT \"message\" FROM migrations_state")?;
+            let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+            Ok(rows
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .flatten()
+                .collect())
+        })
+        .unwrap();
+    assert!(
+        !messages.iter().any(|m| m == NO_DRIFT_MESSAGE),
+        "the no-drift sentence must never reach the ledger: {messages:?}"
+    );
+
+    // The outcome itself, on a pristine copy of the same fixture and with no
+    // host in the way: v4's `shouldRun()` is false, so the pass is NoDrift and
+    // nothing is stamped.
+    let clean = tempfile::tempdir().unwrap();
+    make_instance(clean.path());
+    let w = Writer::open_writable(&clean.path().join("data/quilltap.db"), PEPPER).unwrap();
+    assert_eq!(
+        clear_scenario_seeded_chat_summaries(w.connection(), "2026-01-01T00:00:00.000Z").unwrap(),
+        SeededSummaryHealOutcome::NoDrift,
     );
 }

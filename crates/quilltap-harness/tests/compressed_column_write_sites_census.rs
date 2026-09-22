@@ -30,11 +30,13 @@ use std::path::{Path, PathBuf};
 /// `(path under `crates/quilltap-core/src`, production `text_to_blob(` calls,
 /// why — naming every statement the count covers)`.
 ///
-/// **The arithmetic: 4 + 2 + 2 + 2 + 1 + 1 = 12 production `text_to_blob`
+/// **The arithmetic: 4 + 2 + 4 + 2 + 1 + 1 = 14 production `text_to_blob`
 /// calls across six files** (the sixth being the definition itself). The
 /// `db/chats_search.rs` row is P4.D204's: P4.D203 left that file EXEMPT with a
 /// note saying P4.D204 owned the rewrite and would land the codec there, which
 /// it has — so the file moves from EXEMPT to CENSUS and the count goes 11 → 12.
+/// The `db/llm_logs.rs` row then goes 2 → 4 (and the total 12 → 14) when the
+/// dynamic `update` patch's `request`/`response` arms join `create_inner`'s.
 const CENSUS: &[(&str, usize, &str)] = &[
     (
         "db/chats_messages.rs",
@@ -53,10 +55,15 @@ const CENSUS: &[(&str, usize, &str)] = &[
     ),
     (
         "db/llm_logs.rs",
-        2,
-        "`create_inner`'s `request` and `response`. JSON FIRST, then the codec \
-         — v4's `documentToRow` runs its compressed branch before its JSON \
-         branch for exactly these two columns, which are both.",
+        4,
+        "`create_inner`'s `request` and `response`, PLUS the dynamic `update` \
+         patch's two arms for the same columns. JSON FIRST, then the codec — \
+         v4's `documentToRow` runs its compressed branch before its JSON \
+         branch for exactly these two columns, which are both; and \
+         `translateUpdate` runs `documentToRow` over the patch just as \
+         `translateInsert` runs it over a new document, so an update that \
+         crosses the floor stores a BLOB rather than laundering the cell back \
+         to plaintext.",
     ),
     (
         "db/avatar_rolls_collapse_heal.rs",
@@ -568,11 +575,13 @@ fn every_production_write_to_a_registered_column_goes_through_the_codec() {
     // P4.D204 OUT-OF-MANDATE — 11 → 12, the arithmetic being
     // 4 + 2 + 2 + 2 + 1 (P4.D203's five files) + 1 (`db/chats_search.rs`'s
     // search-and-replace UPDATE, which P4.D203's own EXEMPT note handed to
-    // this lane to land).
+    // this lane to land). Then 12 → 14 when `db/llm_logs.rs`'s dynamic
+    // `update` patch routes its `request`/`response` arms through the codec
+    // as v4's `translateUpdate` does.
     assert_eq!(
-        total, 12,
-        "the census totals 12 production `text_to_blob` occurrences \
-         (11 call sites + the definition); got {total}"
+        total, 14,
+        "the census totals 14 production `text_to_blob` occurrences \
+         (13 call sites + the definition); got {total}"
     );
 }
 

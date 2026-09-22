@@ -404,6 +404,16 @@ impl<'c> ChatSearchRepository<'c> {
         }
         super::chats_messages::ChatMessagesRepository::new(self.conn)
             .announce_transcript_change(chat_id);
+        // v4 `chats-search.ops.ts:349` — the one INFO line this op emits, and
+        // it sits AFTER the announce and BEHIND the zero guard above, so a
+        // replace that matched nothing says nothing at all.
+        tracing::info!(
+            target: "quilltap::db",
+            context = LOG_CONTEXT,
+            chatId = chat_id,
+            updatedCount = updated_count,
+            "Replaced text in messages",
+        );
         Ok(updated_count)
     }
 }
@@ -678,6 +688,105 @@ mod tests {
         // Both shapes bind the cap rather than truncating after the fact.
         assert!(like.contains("LIMIT ?"));
         assert!(build_fts_search_sql(1).contains("LIMIT ?"));
+    }
+
+    // ── the search-and-replace INFO line (v4 `chats-search.ops.ts:349`) ─────
+
+    /// A provisioned instance with one chat and one message — the full
+    /// `chat_messages` schema, because `replace_in_messages` reads through
+    /// `get_messages`, which projects all 45 columns.
+    fn replace_venue(tag: &str, content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data = dir.path().join(tag);
+        std::fs::create_dir_all(&data).expect("mkdir");
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).expect("provision");
+        let path = data.join("quilltap.db");
+        {
+            let w = crate::db::Writer::open_writable(&path, PEPPER).expect("open");
+            w.connection()
+                .execute(
+                    "INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
+                     VALUES ('c1', 'u-1', 'T', ?1, ?1)",
+                    rusqlite::params!["2020-01-01T00:00:00.000Z"],
+                )
+                .expect("seed chat");
+            w.chat_messages()
+                .add_message(
+                    "c1",
+                    &serde_json::from_value(serde_json::json!({
+                        "type": "message",
+                        "id": "m-1",
+                        "role": "USER",
+                        "content": content,
+                        "createdAt": "2020-01-01T00:00:01.000Z",
+                    }))
+                    .expect("event"),
+                )
+                .expect("add_message");
+        }
+        (dir, path)
+    }
+
+    /// v4 closes a successful replace with `logger.info('Replaced text in
+    /// messages', { chatId, updatedCount })` (`chats-search.ops.ts:349`),
+    /// AFTER the transcript announce.
+    #[test]
+    fn a_replace_that_changed_rows_logs_v4s_info_line() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let (_dir, path) = replace_venue("repinfo", "hello world");
+        let w = crate::db::Writer::open_writable(&path, PEPPER).expect("open");
+        let (n, lines) = crate::test_support::captured_with(|| {
+            ChatSearchRepository::new(w.connection())
+                .replace_in_messages("c1", "world", "there")
+                .expect("replace")
+        });
+        assert_eq!(n, 1);
+        let info: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Replaced text in messages"))
+            .collect();
+        assert_eq!(info.len(), 1, "one line per replace: {lines:?}");
+        assert!(
+            info[0].starts_with("INFO quilltap::db"),
+            "v4 logs this at INFO: {}",
+            info[0]
+        );
+        assert!(info[0].contains("context=db.chats-search"), "{}", info[0]);
+        assert!(info[0].contains("chatId=c1"), "{}", info[0]);
+        assert!(info[0].contains("updatedCount=1"), "{}", info[0]);
+        // ORDER: v4 announces first, then logs. The announce's own debug line
+        // must therefore precede this one.
+        let announce = lines
+            .iter()
+            .position(|l| l.contains("Transcript change announced"))
+            .expect("the announce line");
+        let logged = lines
+            .iter()
+            .position(|l| l.contains("Replaced text in messages"))
+            .expect("the info line");
+        assert!(announce < logged, "v4 announces BEFORE it logs: {lines:?}");
+    }
+
+    /// The silence leg: the zero guard returns before the announce, so a
+    /// replace that matched nothing says nothing.
+    #[test]
+    fn a_replace_that_matched_nothing_says_nothing() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let (_dir, path) = replace_venue("repquiet", "hello world");
+        let w = crate::db::Writer::open_writable(&path, PEPPER).expect("open");
+        let (n, lines) = crate::test_support::captured_with(|| {
+            ChatSearchRepository::new(w.connection())
+                .replace_in_messages("c1", "absent", "x")
+                .expect("replace")
+        });
+        assert_eq!(n, 0);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Replaced text in messages")),
+            "nothing changed, so nothing is logged: {lines:?}"
+        );
     }
 
     /// The deferred decode is the reason both shapes are built the way they

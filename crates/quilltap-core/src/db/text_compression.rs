@@ -36,14 +36,24 @@
 //!
 //! v5 is a PEER WRITER of the same synced database, so the compressed bytes
 //! must match what v4 would have written. **Measured 2026-09-21 (P4.D203 tier-1
-//! item 1), 35 rows, byte-identical on every one** (decision, compressed
-//! length and sha256 of the payload): the `brotli` crate 8.0.4's
-//! `CompressorWriter` at `quality: 5`, `size_hint: raw.len()` and the default
-//! `lgwin` produces exactly what Node 24.13.1's bundled brotli 1.2.0
+//! item 1) and re-measured 2026-09-22 with the two large-prose rows below: 35
+//! encode rows, byte-identical on every one** (decision, stored length and the
+//! stored bytes): the `brotli` crate 8.0.4's `CompressorWriter` at
+//! `quality: 5`, `size_hint: raw.len()` and the default `lgwin` produces
+//! exactly what Node 24.13.1's bundled brotli 1.2.0
 //! `brotliCompressSync(raw, { BROTLI_PARAM_QUALITY: 5, BROTLI_PARAM_SIZE_HINT:
 //! raw.length })` produces. The corpus is committed at
 //! `harness/oracle/fixtures/text-compression.json` and the pin is the tier-1
 //! family `text_compression_equivalence`.
+//!
+//! **The measured parity ceiling is 262,293 raw bytes** — the corpus row
+//! `real-shaped prose ~256 KiB`, which stores as 51,589 bytes on both sides;
+//! `real-shaped prose ~64 KiB` (65,551 → 13,224) sits below it. Until those
+//! two rows landed the largest input ever measured was 5,464 bytes, so parity
+//! was pinned only over inputs the encoder handles in one go. Both rows are
+//! deliberately *compressible* prose rather than random bytes: an
+//! incompressible input takes the `total >= raw.len()` arm and is stored as
+//! plain text, so it never exercises the encoder at all.
 //!
 //! ⚠ **Never call `flush()` on the `CompressorWriter` before dropping it.** A
 //! flush emits an empty meta-block, which adds 1–3 bytes to every payload and

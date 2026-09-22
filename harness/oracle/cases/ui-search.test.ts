@@ -228,8 +228,12 @@ function buildCases(): CaseSpec[] {
     // A case fold that CHANGES LENGTH (`İ` → `i` + U+0307), so an index into
     // the lowercased string no longer lines up with the original.
     { name: 'snippet_length_changing_fold', run: () => search('?q=istanbul&types=messages') },
-    // Astral characters before the match: the fold map counts UTF-16 units,
-    // and a `chars()` port puts the window in the wrong place.
+    // Astral characters before the match. `ankara` hits LITERALLY — the
+    // content holds "Ankara" — so this row exercises the LITERAL arm, not the
+    // fold map: `indexOf` on the lowercased string and the `slice` window, both
+    // counted in UTF-16 units, which a `chars()` port puts in the wrong place.
+    // The fold map's own astral coverage is `snippet_diacritic_fold`, whose
+    // needle (`cafe`) is absent literally and must go through the map.
     { name: 'snippet_astral_offsets', run: () => search('?q=ankara&types=messages') },
   ];
 }

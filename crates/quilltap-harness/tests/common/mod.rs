@@ -189,7 +189,10 @@ pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
                                 None => Value::Null,
                             }
                         } else {
-                            // P4.D208: `llm_logs.request`/`response` are
+                            // === P4.D208 OUT-OF-MANDATE — shared harness
+                            // helper; every llm-logs-carrying family
+                            // preserves ===
+                            // `llm_logs.request`/`response` are
                             // compressed columns since v4 `f45a517a9`, and
                             // P4.D203's write-side codec means v5 now STORES
                             // the brotli BLOB — so an `Option<String>` bind
@@ -214,6 +217,7 @@ pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
                                 rusqlite::types::ValueRef::Blob(b) => Value::String(hex::encode(b)),
                                 other => panic!("unexpected llm_logs cell kind: {other:?}"),
                             }
+                            // === end P4.D208 OUT-OF-MANDATE ===
                         };
                         m.insert((*col).to_string(), v);
                     }

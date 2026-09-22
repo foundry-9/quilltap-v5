@@ -83,11 +83,16 @@ pub async fn messages_post(
     State(state): State<SharedState>,
     Path(message_id): Path<String>,
     Query(query): Query<crate::query::QueryPairs>,
-    body: Option<axum::Json<Value>>,
+    body: axum::body::Bytes,
 ) -> AxumResponse {
-    // v4 does `await req.json().catch(() => ({}))` — a missing or unparseable
-    // body is `{}`, never a 400.
-    let body = body.map(|axum::Json(v)| v).unwrap_or(Value::Null);
+    // v4 does `await req.json().catch(() => ({}))`
+    // (`app/api/v1/messages/[id]/route.ts:257`) — a missing, non-JSON or
+    // unparseable body is `{}`, never a 400 and never a 415. Taken as raw
+    // `Bytes` and parsed here, which is the tree's idiom
+    // (`chats_routes::chat_delete`): `Option<Json<Value>>` would let axum's own
+    // rejection answer 415 on a non-JSON content-type and 400 on malformed
+    // JSON, where v4 falls straight through to the GENERATE branch.
+    let body = serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null);
 
     match crate::query::action(&query) {
         Some("swipe") => {}

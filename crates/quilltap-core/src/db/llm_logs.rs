@@ -910,13 +910,21 @@ impl<'c> LLMLogsRepository<'c> {
             let json = serde_json::to_string(request)
                 .map_err(|e| DbError::Internal(format!("request serialize: {e}")))?;
             assignments.push(format!("request = ?{}", values.len() + 1));
-            values.push(Box::new(json));
+            // REGISTERED COMPRESSED COLUMN — the UPDATE path too. v4 compresses
+            // in `documentToRow`, which `translateUpdate` runs over the patch
+            // exactly as `translateInsert` runs it over a new document
+            // (`lib/database/backends/sqlite/query-translator.ts`,
+            // `translateUpdate` → `encodeCompressed`), so an update that
+            // crosses the floor stores a BLOB. JSON FIRST, then the codec —
+            // the same order `create_inner` uses.
+            values.push(Box::new(text_to_blob(&json)));
         }
         if let Some(response) = &patch.response {
             let json = serde_json::to_string(response)
                 .map_err(|e| DbError::Internal(format!("response serialize: {e}")))?;
             assignments.push(format!("response = ?{}", values.len() + 1));
-            values.push(Box::new(json));
+            // REGISTERED COMPRESSED COLUMN — see the `request` arm above.
+            values.push(Box::new(text_to_blob(&json)));
         }
         if let Some(usage) = &patch.usage {
             let json = serde_json::to_string(usage)

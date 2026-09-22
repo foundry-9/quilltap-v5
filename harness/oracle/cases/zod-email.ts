@@ -20,8 +20,11 @@
  * Both sides read the SAME `input` strings, so the Rust side does not
  * re-derive them: it replays the recorded rows.
  *
- * Run (Node 24, from the PINNED v4 worktree):
- *   cd /tmp/qt-v4-pin-<order>-<sha>
+ * Run (Node 24). Regenerate from the CHECKOUT: a `/tmp` pin never survives the
+ * round that made it, which is the sweep driver's `stale_v4_pin_path` refusal —
+ * when the round's baseline is behind v4 HEAD the pin comes from the driver's
+ * `--v4 <pin>` instead, not from this header.
+ *   cd ~/source/quilltap-server
  *   TZ=UTC npx tsx <V5>/harness/oracle/cases/zod-email.ts \
  *     > /tmp/oracle-zod-email.ndjson
  * Rust side:

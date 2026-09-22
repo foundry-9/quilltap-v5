@@ -28,21 +28,25 @@
 //! rewritten by the `#[ignore]`d regenerator in this file, which must run
 //! BEFORE the oracle:
 //!
+//! When the CORPUS changes, run the `#[ignore]`d regenerator first (it rewrites
+//! the committed `v5Blobs`, so it is deliberately outside the sweep's block):
+//! `cargo test -p quilltap-harness --test text_compression_equivalence --
+//! --ignored regenerate_v5_blobs --nocapture`, from the v5 checkout.
+//!
+//! Regenerate the oracle from the v4 CHECKOUT (Node 24): a `/tmp` pin never
+//! survives the round that made it (the sweep driver's `stale_v4_pin_path`
+//! refusal) — when the baseline is behind v4 HEAD the driver's `--v4 <pin>`
+//! supplies the pin, not this header. `@/lib` resolves through the cwd's
+//! tsconfig, so the `cd` is load-bearing.
+//!
 //! ```bash
-//! cd ~/source/quilltap-v5    # or the lane worktree
-//! cargo test -p quilltap-harness --test text_compression_equivalence \
-//!   -- --ignored regenerate_v5_blobs --nocapture
-//!
-//! mkdir -p /tmp/p4.d203
-//! cd /tmp/qt-v4-pin-p4d203-f45a517a9
-//! QT_ORACLE=~/source/quilltap-v5/harness/oracle \
-//!   npx tsx "$QT_ORACLE/cases/text-compression.ts" \
-//!     "$QT_ORACLE/fixtures/text-compression.json" \
-//!     > /tmp/p4.d203/oracle-text-compression.ndjson
-//!
-//! cd ~/source/quilltap-v5
-//! QT_ORACLE_TEXT_COMPRESSION=/tmp/p4.d203/oracle-text-compression.ndjson \
-//!   cargo test -p quilltap-harness --test text_compression_equivalence -- --nocapture
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   cd ~/source/quilltap-server
+//!   npx tsx "$V5W/harness/oracle/cases/text-compression.ts" \
+//!     "$V5W/harness/oracle/fixtures/text-compression.json" \
+//!     > /tmp/oracle-text-compression.ndjson
+//!   QT_ORACLE_TEXT_COMPRESSION=/tmp/oracle-text-compression.ndjson \
+//!     cargo test -p quilltap-harness --test text_compression_equivalence -- --nocapture
 //! ```
 //!
 //! With `QT_ORACLE_TEXT_COMPRESSION` unset the differential SKIPs (and says

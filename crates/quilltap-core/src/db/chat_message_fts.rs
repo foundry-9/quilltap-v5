@@ -337,7 +337,10 @@ pub fn rebuild_chat_message_fts_index(
         scanned,
         indexed,
         total,
-        duration_ms,
+        // v4 logs this key as `durationMs`
+        // (`lib/database/backends/sqlite/chat-message-fts.ts:293`), as every
+        // other v5 site does (`chat_message_fts_reconcile.rs:158`).
+        durationMs = duration_ms,
         "Chat message FTS index rebuilt",
     );
     Ok(ChatMessageFtsRebuildResult {
@@ -346,4 +349,168 @@ pub fn rebuild_chat_message_fts_index(
         total,
         duration_ms,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::text_compression::register_qt_text;
+    use crate::test_support::captured_with;
+
+    /// The reduced `chat_messages` the rebuild's SELECT and the triggers name —
+    /// the same columns `chat-message-fts.json` carries, so these log pins need
+    /// no fixture.
+    const REDUCED_DDL: &str = r#"CREATE TABLE "chat_messages" (
+        "id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "type" TEXT DEFAULT 'message',
+        "role" TEXT, "content" TEXT, "createdAt" TEXT NOT NULL)"#;
+
+    /// An in-memory db with `qt_text` registered and the five FTS objects
+    /// present, holding `eligible` indexable messages.
+    fn db(eligible: usize) -> Connection {
+        let conn = Connection::open_in_memory().expect("open");
+        register_qt_text(&conn).expect("register qt_text");
+        conn.execute_batch(REDUCED_DDL).expect("ddl");
+        ensure_chat_message_fts_schema(&conn).expect("ensure fts");
+        for i in 0..eligible {
+            conn.execute(
+                r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","createdAt")
+                   VALUES (?,?,'message','USER',?,?)"#,
+                rusqlite::params![
+                    format!("m{i}"),
+                    "c1",
+                    format!("the lantern hissed {i}"),
+                    format!("2026-01-01T00:00:0{i}.000Z")
+                ],
+            )
+            .expect("seed");
+        }
+        conn
+    }
+
+    fn find<'a>(lines: &'a [String], needle: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(needle)).collect()
+    }
+
+    /// v4 logs three debug lines per rebuild — the opening `total`, one per
+    /// batch, and the closing tally
+    /// (`lib/database/backends/sqlite/chat-message-fts.ts:246,288,293`). Pin
+    /// all three, their level/target, v5's `context` field, and — on the
+    /// closing line only, as v4 has it — the `durationMs` key.
+    #[test]
+    fn a_rebuild_logs_v4s_three_debug_lines() {
+        let conn = db(2);
+        let (result, lines) =
+            captured_with(|| rebuild_chat_message_fts_index(&conn, None).expect("rebuild"));
+        assert_eq!((result.scanned, result.indexed, result.total), (2, 2, 2));
+
+        let opening = find(&lines, "Rebuilding chat message FTS index");
+        assert_eq!(opening.len(), 1, "one opening line: {lines:?}");
+        assert!(
+            opening[0].starts_with("DEBUG quilltap::db"),
+            "level/target: {}",
+            opening[0]
+        );
+        assert!(
+            opening[0].contains("context=db.chat-message-fts"),
+            "{}",
+            opening[0]
+        );
+        assert!(opening[0].contains("total=2"), "{}", opening[0]);
+        // v4's opening line carries `total` and nothing else.
+        assert!(
+            !opening[0].contains("durationMs"),
+            "v4's opening line has no duration: {}",
+            opening[0]
+        );
+
+        // One batch line per batch — two rows fit in one REBUILD_BATCH_SIZE.
+        let batch = find(&lines, "Chat message FTS rebuild batch");
+        assert_eq!(batch.len(), 1, "one batch line: {lines:?}");
+        assert!(
+            batch[0].starts_with("DEBUG quilltap::db"),
+            "level/target: {}",
+            batch[0]
+        );
+        assert!(
+            batch[0].contains("context=db.chat-message-fts"),
+            "{}",
+            batch[0]
+        );
+        assert!(batch[0].contains("scanned=2"), "{}", batch[0]);
+        assert!(batch[0].contains("total=2"), "{}", batch[0]);
+        assert!(
+            !batch[0].contains("durationMs"),
+            "v4's batch line has no duration: {}",
+            batch[0]
+        );
+
+        let done = find(&lines, "Chat message FTS index rebuilt");
+        assert_eq!(done.len(), 1, "one closing line: {lines:?}");
+        assert!(
+            done[0].starts_with("DEBUG quilltap::db"),
+            "level/target: {}",
+            done[0]
+        );
+        assert!(
+            done[0].contains("context=db.chat-message-fts"),
+            "{}",
+            done[0]
+        );
+        assert!(done[0].contains("scanned=2"), "{}", done[0]);
+        assert!(done[0].contains("indexed=2"), "{}", done[0]);
+        assert!(done[0].contains("total=2"), "{}", done[0]);
+        // The key is v4's camelCase `durationMs`, not `duration_ms`.
+        assert!(done[0].contains("durationMs="), "{}", done[0]);
+        assert!(
+            !done[0].contains("duration_ms"),
+            "snake_case would diverge from v4 and from every other v5 site: {}",
+            done[0]
+        );
+    }
+
+    /// An EMPTY base table still opens and closes the rebuild — v4 logs both
+    /// unconditionally — but the per-batch line never fires, because the first
+    /// `select.all()` returns nothing and the loop breaks before it.
+    #[test]
+    fn an_empty_rebuild_logs_the_two_unconditional_lines_and_no_batch() {
+        let conn = db(0);
+        let (result, lines) =
+            captured_with(|| rebuild_chat_message_fts_index(&conn, None).expect("rebuild"));
+        assert_eq!((result.scanned, result.indexed, result.total), (0, 0, 0));
+        assert_eq!(find(&lines, "Rebuilding chat message FTS index").len(), 1);
+        assert_eq!(find(&lines, "Chat message FTS index rebuilt").len(), 1);
+        assert!(
+            find(&lines, "Chat message FTS rebuild batch").is_empty(),
+            "no batch ran, so no batch line: {lines:?}"
+        );
+    }
+
+    /// The silence leg: standing the schema up and writing messages through the
+    /// triggers is not a rebuild, and says NONE of the three.
+    #[test]
+    fn writing_messages_without_a_rebuild_says_none_of_the_three() {
+        let (_, lines) = captured_with(|| {
+            let conn = db(3);
+            // The triggers really did index them — the silence is not the
+            // silence of nothing happening.
+            let n: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM \"{CHAT_MESSAGE_FTS_MAP_TABLE}\""),
+                    [],
+                    |r| r.get(0),
+                )
+                .expect("count");
+            assert_eq!(n, 3);
+        });
+        for needle in [
+            "Rebuilding chat message FTS index",
+            "Chat message FTS rebuild batch",
+            "Chat message FTS index rebuilt",
+        ] {
+            assert!(
+                find(&lines, needle).is_empty(),
+                "no rebuild ran, so {needle:?} must not fire: {lines:?}"
+            );
+        }
+    }
 }

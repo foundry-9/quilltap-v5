@@ -68,6 +68,53 @@ push('llm_logs response shape', JSON.stringify({
   usage: { prompt_tokens: 812, completion_tokens: 344, total_tokens: 1156 },
 }));
 
+// --- LARGE real-shaped prose: the multi-metablock encodes.
+// Brotli emits a fresh meta-block roughly every 16 MiB of input at q5, but the
+// encoder's *window* fills long before that: past ~64 KiB the back-reference
+// distances stop being representable in the short-distance codes and the
+// stream starts switching Huffman contexts mid-file. Everything measured
+// before these two rows was <= 5,464 bytes, so parity was pinned only over a
+// single small block. These two rows carry the measurement up to a quarter of
+// a megabyte of genuinely compressible text — random bytes would prove nothing
+// here, because an incompressible input takes the `total >= raw.length` arm and
+// never reaches the encoder's block machinery at all.
+let proseSeed = 0x2f6d1c07;
+const prnd = () => {
+  proseSeed ^= proseSeed << 13; proseSeed >>>= 0;
+  proseSeed ^= proseSeed >>> 17;
+  proseSeed ^= proseSeed << 5; proseSeed >>>= 0;
+  return proseSeed;
+};
+const WORDS = [
+  'brass', 'lantern', 'ledger', 'airship', 'sherry', 'gaslight', 'orrery',
+  'trifle', 'spectacles', 'rooftop', 'shadow', 'appetite', 'proposition',
+  'afternoon', 'arithmetic', 'supervision', 'scriptorium', 'commonplace',
+  'interchange', 'cradle', 'coin', 'dust', 'metal', 'tea', 'theory',
+  'trouble', 'page', 'room', 'weight', 'principle', 'reluctant', 'particular',
+  'unread', 'hissed', 'settled', 'considered', 'adjusted', 'counted',
+  'grumbled', 'dragged', 'remembered', 'believed', 'disbelieved', 'quoted',
+];
+/** Deterministic prose of at least `bytes` UTF-8 bytes, in sentences. */
+const prose = (bytes) => {
+  const out = [];
+  let size = 0;
+  let sentences = 0;
+  while (size < bytes) {
+    const n = 6 + (prnd() % 14);
+    const words = [];
+    for (let i = 0; i < n; i++) words.push(WORDS[prnd() % WORDS.length]);
+    let s = words.join(' ');
+    s = s[0].toUpperCase() + s.slice(1) + (prnd() % 8 === 0 ? '?' : '.');
+    sentences += 1;
+    if (sentences % 9 === 0) s += '\n\n';
+    out.push(s);
+    size += s.length + 1;
+  }
+  return out.join(' ');
+};
+push('real-shaped prose ~64 KiB', prose(64 * 1024));
+push('real-shaped prose ~256 KiB', prose(256 * 1024));
+
 // --- the decode-only shapes blobToText must tolerate (kind drives the oracle)
 const decodeShapes = [
   { label: 'null', kind: 'null' },

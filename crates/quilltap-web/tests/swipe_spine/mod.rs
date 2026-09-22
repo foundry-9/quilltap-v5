@@ -21,7 +21,8 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
-    StreamChunk, StreamChunkResult, StreamParams, StreamUsage, StreamingCompletionProvider,
+    StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
+    StreamingCompletionProvider,
 };
 use quilltap_core::services::file_storage::ProductionFileBytes;
 use quilltap_core::services::pricing_fetcher::{PricingFetch, PricingFetcher};
@@ -70,6 +71,32 @@ impl StreamingCompletionProvider for AnyStream {
         }
     }
 }
+
+/// The failure twin of [`AnyStream`]: the provider takes the request and then
+/// errors before a single chunk. This is the ONE leg a canned success stream
+/// cannot reach — v4's `route.ts:356-364` turns a throw INSIDE `start()` into
+/// an `error` FRAME rather than a status, because the SSE headers are long
+/// gone by then.
+pub struct FailingStream;
+impl StreamingCompletionProvider for FailingStream {
+    #[allow(clippy::manual_async_fn)]
+    fn stream_message(
+        &self,
+        _provider: &str,
+        _base_url: Option<&str>,
+        _params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        async move {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let _ = tx.send(Err(StreamError::new(FAILING_STREAM_MESSAGE))).await;
+            rx
+        }
+    }
+}
+
+/// The text [`FailingStream`] fails with — asserted verbatim as the error
+/// frame's `details`, which v4 fills from the raw `error.message`.
+pub const FAILING_STREAM_MESSAGE: &str = "the understudy never came on";
 
 /// `{}` for every cheap-LLM call (the ported parsers resolve it to
 /// nothing-found and the paths degrade gracefully).
@@ -125,6 +152,9 @@ pub fn test_env() -> SelfInventoryEnv {
 /// `swipe_generate` is wired.
 pub struct SwipeSpineFactory {
     pub base_dir: std::path::PathBuf,
+    /// `true` swaps [`AnyStream`] for [`FailingStream`], so the generation
+    /// throws where v4's would and the `error` frame is exercised.
+    pub fail_stream: bool,
 }
 
 impl SpineFactory for SwipeSpineFactory {
@@ -137,9 +167,50 @@ impl SpineFactory for SwipeSpineFactory {
         data_dir: &std::path::Path,
         bus: &Arc<quilltap_core::services::creation_progress::CreationProgressBus>,
     ) -> SpineBundle {
+        // `StreamingCompletionProvider` returns `impl Future`, so it is not
+        // object-safe and the choice cannot be an `Arc<dyn …>` — the bundle is
+        // built by a GENERIC helper instead, instantiated once per provider.
+        if self.fail_stream {
+            bundle(
+                &self.base_dir,
+                Arc::new(FailingStream),
+                db,
+                events,
+                pepper,
+                data_dir,
+                bus,
+            )
+        } else {
+            bundle(
+                &self.base_dir,
+                Arc::new(AnyStream),
+                db,
+                events,
+                pepper,
+                data_dir,
+                bus,
+            )
+        }
+    }
+}
+
+/// The bundle both families boot with, generic over the streaming provider.
+#[allow(clippy::too_many_arguments)]
+fn bundle<S>(
+    base_dir: &std::path::Path,
+    streaming: Arc<S>,
+    db: &Db,
+    events: &tokio::sync::broadcast::Sender<Event>,
+    pepper: &str,
+    data_dir: &std::path::Path,
+    bus: &Arc<quilltap_core::services::creation_progress::CreationProgressBus>,
+) -> SpineBundle
+where
+    S: StreamingCompletionProvider + Send + Sync + 'static,
+{
+    {
         let embedding = Arc::new(CannedEmbeddingProvider::new());
         let completion = Arc::new(AnyCompletion);
-        let streaming = Arc::new(AnyStream);
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
@@ -151,7 +222,7 @@ impl SpineFactory for SwipeSpineFactory {
             env: test_env(),
             file_bytes: Arc::new(ProductionFileBytes {
                 db: db.clone(),
-                backend: Arc::new(LocalStorageBackend::new(self.base_dir.join("files"))),
+                backend: Arc::new(LocalStorageBackend::new(base_dir.join("files"))),
                 codec: Arc::new(HostImageCodec),
             }),
             image_transcoder: Arc::new(HostImageCodec),

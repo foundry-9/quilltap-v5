@@ -206,6 +206,10 @@ fn case_params(name: &str) -> UiSearchParams<'static> {
         // before the handler sees it, so the Rust side passes the decoded text.
         "snippet_token_needle" => p(Some("caf\u{e9}."), Some("messages"), None, None),
         "snippet_length_changing_fold" => p(Some("istanbul"), Some("messages"), None, None),
+        // `ankara` hits LITERALLY (the content holds "Ankara"), so this row
+        // pins the LITERAL arm — `js_index_of` + `utf16_substring` over content
+        // whose prefix is astral. The fold map's astral coverage is
+        // `snippet_diacritic_fold`, whose needle is absent literally.
         "snippet_astral_offsets" => p(Some("ankara"), Some("messages"), None, None),
         other => panic!("unknown oracle case {other:?} — regenerate both sides together"),
     }

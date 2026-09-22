@@ -57,6 +57,12 @@ use super::DbError;
 /// v4's migration id — the ledger key both apps honour.
 const MIGRATION_ID: &str = "clear-scenario-seeded-chat-summaries-v1";
 
+/// v4's `LOG_CONTEXT = \`migration.${MIGRATION_ID}\`` — both of this pass's
+/// lines carry it (`migrations/scripts/clear-scenario-seeded-chat-summaries.ts:
+/// 37,82,99`), as the sibling heal
+/// ([`super::avatar_rolls_collapse_heal`]) already does here.
+const LOG_CONTEXT: &str = "migration.clear-scenario-seeded-chat-summaries-v1";
+
 /// The seeded shape, in SQL. **ONE string**, exactly as v4 keeps it, "so the
 /// count and the UPDATE can never disagree about what they are addressing".
 ///
@@ -131,6 +137,7 @@ pub fn clear_scenario_seeded_chat_summaries(
     let to_clear = count_seeded(main)?;
     tracing::debug!(
         target: "quilltap::db",
+        context = LOG_CONTEXT,
         chats = to_clear,
         "Scanning chats for scenario-seeded summaries"
     );
@@ -149,6 +156,7 @@ pub fn clear_scenario_seeded_chat_summaries(
 
     tracing::info!(
         target: "quilltap::db",
+        context = LOG_CONTEXT,
         cleared,
         "Cleared scenario-seeded chat summaries"
     );
@@ -208,6 +216,120 @@ mod tests {
         let update_pred = update.split_once(" WHERE ").unwrap().1;
         assert_eq!(count_pred, update_pred);
         assert_eq!(count_pred, SEEDED_WHERE);
+    }
+
+    /// A `chats` table carrying `seeded` rows that match the predicate, plus
+    /// two that do not.
+    fn heal_db(seeded: usize) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE \"chats\" (\"id\" TEXT PRIMARY KEY, \"contextSummary\" TEXT, \
+             \"scenarioText\" TEXT, \"updatedAt\" TEXT);",
+        )
+        .unwrap();
+        for i in 0..seeded {
+            conn.execute(
+                "INSERT INTO \"chats\" VALUES (?1, ?2, ?2, 't0')",
+                rusqlite::params![format!("seeded-{i}"), format!("a scene {i}")],
+            )
+            .unwrap();
+        }
+        // Never seeded, whatever `seeded` is — so a pass that cleared these
+        // would show up in `cleared`.
+        conn.execute(
+            "INSERT INTO \"chats\" VALUES ('real', 'a scene and then some', 'a scene', 't0')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO \"chats\" VALUES ('null', NULL, 'a scene', 't0')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    /// v4 logs two lines on this pass, both carrying its
+    /// `migration.clear-scenario-seeded-chat-summaries-v1` context
+    /// (`migrations/scripts/clear-scenario-seeded-chat-summaries.ts:82,99`):
+    /// the scan's `chats` count, then the clear's `cleared` count.
+    #[test]
+    fn a_pass_that_clears_rows_logs_both_of_v4s_lines() {
+        let conn = heal_db(2);
+        let (outcome, lines) = crate::test_support::captured_with(|| {
+            clear_scenario_seeded_chat_summaries(&conn, "2026-01-01T00:00:00.000Z").expect("heal")
+        });
+        assert_eq!(outcome, SeededSummaryHealOutcome::Ran { cleared: 2 });
+
+        let scan: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Scanning chats for scenario-seeded summaries"))
+            .collect();
+        assert_eq!(scan.len(), 1, "one scan line: {lines:?}");
+        assert!(
+            scan[0].starts_with("DEBUG quilltap::db"),
+            "v4 logs the scan at DEBUG: {}",
+            scan[0]
+        );
+        assert!(
+            scan[0].contains("context=migration.clear-scenario-seeded-chat-summaries-v1"),
+            "{}",
+            scan[0]
+        );
+        assert!(
+            scan[0].contains("chats=2"),
+            "the scan reports what it FOUND, not what it cleared: {}",
+            scan[0]
+        );
+
+        let done: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Cleared scenario-seeded chat summaries"))
+            .collect();
+        assert_eq!(done.len(), 1, "one clear line: {lines:?}");
+        assert!(
+            done[0].starts_with("INFO quilltap::db"),
+            "v4 logs the clear at INFO: {}",
+            done[0]
+        );
+        assert!(
+            done[0].contains("context=migration.clear-scenario-seeded-chat-summaries-v1"),
+            "{}",
+            done[0]
+        );
+        assert!(done[0].contains("cleared=2"), "{}", done[0]);
+        // The two rows that are not seeds were not counted.
+        assert!(!done[0].contains("cleared=4"), "{}", done[0]);
+    }
+
+    /// The silence leg. With nothing to clear v4's `shouldRun()` is false and
+    /// `run()` — which owns the INFO line — is never entered, so only the scan
+    /// speaks. v5's scan sits above its own zero check and says the same thing.
+    #[test]
+    fn a_clean_instance_scans_aloud_and_clears_in_silence() {
+        let conn = heal_db(0);
+        let (outcome, lines) = crate::test_support::captured_with(|| {
+            clear_scenario_seeded_chat_summaries(&conn, "2026-01-01T00:00:00.000Z").expect("heal")
+        });
+        assert_eq!(outcome, SeededSummaryHealOutcome::NoDrift);
+
+        let scan: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Scanning chats for scenario-seeded summaries"))
+            .collect();
+        assert_eq!(scan.len(), 1, "the scan still runs: {lines:?}");
+        assert!(scan[0].contains("chats=0"), "{}", scan[0]);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Cleared scenario-seeded chat summaries")),
+            "nothing was cleared, so v4's `run()` line must not fire: {lines:?}"
+        );
+        // …and v4's no-drift sentence is carried, never written.
+        assert!(
+            !lines.iter().any(|l| l.contains(NO_DRIFT_MESSAGE)),
+            "the no-drift sentence is a ledger message neither runner records: {lines:?}"
+        );
     }
 
     /// The SQL and the Rust predicate are two statements of one rule, and v4

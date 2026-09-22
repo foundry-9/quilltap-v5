@@ -379,8 +379,11 @@ fn stat_from_metadata(meta: &std::fs::Metadata) -> Stat {
 /// succeed. The manifest carries the real value in those cases.
 fn birthtime_of(stat: &Stat) -> Option<String> {
     let birth = stat.birthtime_ms;
-    // v4 `if (!birth || birth <= 0)` — 0 and negative both fall out.
-    if birth <= 0.0 {
+    // v4 `if (!birth || birth <= 0)` (`walk-disk.ts:200`) — 0 and negative both
+    // fall out, and the `!birth` half ALSO catches NaN, which is falsy in JS
+    // while `NaN <= 0` is false. `is_finite` is the Rust spelling of that half
+    // (it also drops ±∞, which `<= 0` would let through as a positive).
+    if !birth.is_finite() || birth <= 0.0 {
         return None;
     }
     // The comparison is between the two FLOATS, as Node's is.

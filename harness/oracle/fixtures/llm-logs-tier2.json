@@ -366,6 +366,34 @@
         "rawProviderUsage": {},
         "durationMs": 567
       }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D203: an UPDATE whose serialized `request` and `response` both clear the 512-byte floor, over seed row 1a\u2026a1 whose cells currently hold SHORT PLAINTEXT. v4 compresses on the UPDATE path too (`documentToRow` runs inside `translateUpdate`, query-translator.ts), so both sides must store brotli BLOBs and the dump compares the bytes. Without this op the family is blind to the UPDATE half: the only long payloads it carried arrived through `create`.",
+      "id": "1a000000-0000-4000-8000-0000000000a1",
+      "data": {
+        "request": {
+          "messageCount": 1,
+          "messages": [
+            {
+              "role": "system",
+              "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a ",
+              "contentLength": 1400,
+              "hasAttachments": false
+            }
+          ],
+          "temperature": 0.7,
+          "maxTokens": 1024,
+          "toolCount": 0
+        },
+        "response": {
+          "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a",
+          "contentLength": 1000,
+          "finishReason": "end_turn"
+        },
+        "durationMs": 4321,
+        "updatedAt": "2026-03-02T00:00:00.000Z"
+      }
     }
   ]
 }

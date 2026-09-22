@@ -5195,7 +5195,10 @@ pub struct GeneratorProgressPayload {
 // === P4.D207 ===
 /// The `swipeProgress` payload (§S.2). An internally-tagged struct, so it
 /// flattens into the [`Event`] envelope as
-/// `{"type":"swipeProgress","progressId":…,"frame":{…}}`.
+/// `{"progressId":…,"type":"swipeProgress","frame":{…}}` — the envelope's own
+/// fields are declared first, so the flattened `type` follows `progressId`
+/// rather than leading. Those are the pinned bytes
+/// (`services::regenerate_swipe.rs`'s frame tests).
 ///
 /// `frame` is passed through UNTOUCHED — it is v4's own SSE payload object
 /// (`{"status":{…}}` / `{"content":…}` / `{"reasoning":…}` /

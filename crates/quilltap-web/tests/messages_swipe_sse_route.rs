@@ -143,7 +143,10 @@ async fn the_sse_edge_matches_v4s_real_route() {
         let base_dir = base.path().to_path_buf();
         let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
             c.terminal = false;
-            c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+            c.spine = Some(Arc::new(SwipeSpineFactory {
+                base_dir,
+                fail_stream: false,
+            }));
             c
         })
         .await;
@@ -191,7 +194,10 @@ async fn the_sse_edge_matches_v4s_real_route() {
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
         c
     })
     .await;
@@ -331,7 +337,10 @@ async fn without_the_flag_the_edge_answers_201_json() {
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
         c
     })
     .await;
@@ -361,7 +370,10 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
         c
     })
     .await;
@@ -439,4 +451,70 @@ async fn the_post_dispatcher_serves_swipe_defers_reattribute_and_refuses_the_res
             "v4's sentence, verbatim: {url}"
         );
     }
+}
+
+/// v4 reads the body as `await req.json().catch(() => ({}))`
+/// (`app/api/v1/messages/[id]/route.ts:257`), so a body that is not JSON at
+/// all — a form post, or malformed JSON — is `{}` and falls straight through
+/// to the GENERATE branch. It is NOT a 415 and NOT a 400, which is what an
+/// `Option<axum::Json<Value>>` extractor would have answered (its rejection
+/// fires on the content-type before the handler runs, and on a parse error
+/// after).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_body_that_is_not_json_takes_the_generate_path() {
+    let base = materialize_salon_instance();
+    let base_dir = base.path().to_path_buf();
+    let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
+        c.terminal = false;
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/api/v1/messages/{GROUP_ASSISTANT}?action=swipe");
+
+    // (a) a form-encoded body: `application/x-www-form-urlencoded`, which the
+    //     JSON extractor rejects with 415 before the handler is ever called.
+    let resp = client
+        .post(&url)
+        .header("content-type", "application/x-www-form-urlencoded")
+        .body("swipeIndex=0")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        201,
+        "v4 generates here; a 415 would be axum's extractor talking, not v4"
+    );
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body.pointer("/message/content").and_then(Value::as_str),
+        Some(SWIPE_DELTAS.concat().as_str()),
+        "…and it really generated, rather than switching to the form's \
+         `swipeIndex`: {body}"
+    );
+
+    // (b) malformed JSON under the JSON content-type: the extractor's 400.
+    let resp = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .body("{\"swipeIndex\": ")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        201,
+        "v4's `.catch(() => ({{}}))` swallows the parse error and generates"
+    );
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body.pointer("/message/content").and_then(Value::as_str),
+        Some(SWIPE_DELTAS.concat().as_str()),
+        "{body}"
+    );
 }

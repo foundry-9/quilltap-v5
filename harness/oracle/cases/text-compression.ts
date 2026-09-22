@@ -10,14 +10,16 @@
  * `quilltap_core::db::text_compression` and asserts byte-equal results.
  *
  * IMPORTANT — this imports the actual app code; it does not reimplement it.
- * Run it from inside the server checkout (or a pinned worktree) so `@/`
- * resolves:
+ * Run it from inside the server CHECKOUT so `@/` resolves (a `/tmp` pin never
+ * survives the round that made it — the sweep driver's `stale_v4_pin_path`
+ * refusal; when the baseline is behind v4 HEAD the driver's `--v4 <pin>`
+ * supplies the pin, not this header):
  *
- *   cd /tmp/qt-v4-pin-p4d203-f45a517a9
- *   QT_ORACLE=~/source/quilltap-v5/harness/oracle \
- *     npx tsx "$QT_ORACLE/cases/text-compression.ts" \
- *       "$QT_ORACLE/fixtures/text-compression.json" \
- *       > /tmp/p4.d203/oracle-text-compression.ndjson
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   cd ~/source/quilltap-server
+ *   npx tsx "$V5W/harness/oracle/cases/text-compression.ts" \
+ *     "$V5W/harness/oracle/fixtures/text-compression.json" \
+ *     > /tmp/oracle-text-compression.ndjson
  *
  * Three row kinds, in this order:
  *

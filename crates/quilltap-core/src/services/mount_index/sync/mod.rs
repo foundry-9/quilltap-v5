@@ -189,12 +189,30 @@ pub fn sync_mount_point(
         }
         set.insert(mount_point.id.clone());
     }
-    let result = run_sync(conn, mount_point, options, deps, started);
-    in_flight()
-        .lock()
-        .expect("sync in-flight set")
-        .remove(&mount_point.id);
-    result
+    // v4 releases the slot in a `finally` (`lib/mount-index/sync/index.ts:
+    // 72-77`), so a throw inside `runSync` cannot leave the id behind. A plain
+    // `remove` after the call has no such guarantee: a panic in `run_sync`
+    // would unwind past it and the store would refuse every later sync with
+    // "already running" for the life of the process. The guard is the `finally`.
+    let _slot = InFlightSlot(mount_point.id.clone());
+    run_sync(conn, mount_point, options, deps, started)
+}
+
+/// Removes its id from [`in_flight`] on drop — v4's `finally`, including on an
+/// unwind.
+struct InFlightSlot(String);
+
+impl Drop for InFlightSlot {
+    fn drop(&mut self) {
+        // A poisoned mutex here must not panic-in-panic: recover the set either
+        // way, because leaving the id behind is the failure this guard exists
+        // to prevent.
+        let mut set = match in_flight().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        set.remove(&self.0);
+    }
 }
 
 // ============================================================================
@@ -613,4 +631,44 @@ fn node_io_message(e: &std::io::Error, syscall: &str, path: &Path) -> String {
         _ => ("EIO", "i/o error"),
     };
     format!("{code}: {text}, {syscall} '{}'", path.display())
+}
+
+#[cfg(test)]
+mod in_flight_tests {
+    use super::*;
+
+    /// v4's slot release is a `finally`, so a THROW inside `runSync` frees the
+    /// store. The Rust equivalent is a `Drop` guard, and an unwind is the only
+    /// thing that tells the two apart: with a plain `remove` after the call,
+    /// the id below would still be in the set and every later sync of that
+    /// store would refuse with "already running" for the life of the process.
+    #[test]
+    fn a_panicking_run_still_releases_the_slot() {
+        // A dedicated id, because the set is process-global and other tests
+        // share it.
+        let id = "in-flight-guard-panic-probe".to_string();
+        in_flight().lock().unwrap().insert(id.clone());
+
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _slot = InFlightSlot(id.clone());
+            panic!("run_sync blew up");
+        }));
+        assert!(caught.is_err(), "the probe must actually have panicked");
+
+        assert!(
+            !in_flight().lock().unwrap().contains(&id),
+            "the guard must free the slot on an unwind, as v4's `finally` does"
+        );
+    }
+
+    /// And on the ordinary path.
+    #[test]
+    fn a_normal_return_releases_the_slot() {
+        let id = "in-flight-guard-normal-probe".to_string();
+        in_flight().lock().unwrap().insert(id.clone());
+        {
+            let _slot = InFlightSlot(id.clone());
+        }
+        assert!(!in_flight().lock().unwrap().contains(&id));
+    }
 }

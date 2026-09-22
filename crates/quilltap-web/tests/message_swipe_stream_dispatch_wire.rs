@@ -16,11 +16,15 @@
 //!    plus `stream: true` must narrate NOTHING. That ordering is a fact about
 //!    v4's route, and the engine arm is where v5 keeps it.
 //!
-//! **The generation is expected to FAIL here, and that is the point.** The test
-//! venue has no reachable provider, so the run gets as far as `gathering` and
-//! `sending` and then the provider call fails — which exercises the `error`
-//! frame end to end over the real transport, the one leg no canned stream can
-//! reach. The frames before it are v4's bytes either way.
+//! 4. **Does a failure AFTER the stream opened become an `error` FRAME?** v4's
+//!    `route.ts:356-364` cannot answer a status by then — the SSE headers are
+//!    gone — so the throw is encoded as
+//!    `{error, errorType: 'regenerate_failed', details}` on the channel while
+//!    the dispatch reply carries the error envelope. The venue's default spine
+//!    answers every call successfully, so that leg has its OWN arm
+//!    (`a_failure_after_the_stream_opened_is_an_error_frame`) booted with
+//!    `SwipeSpineFactory { fail_stream: true }`, whose `stream_message` yields
+//!    a single `Err`.
 //!
 //! Run:
 //!   cargo test -p quilltap-web --test message_swipe_stream_dispatch_wire
@@ -34,7 +38,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
-use swipe_spine::{SwipeSpineFactory, SWIPE_DELTAS};
+use swipe_spine::{SwipeSpineFactory, FAILING_STREAM_MESSAGE, SWIPE_DELTAS};
 
 /// The chat-send fixture's populated chat. ⚠ NOT the smoke chat
 /// `9fe3f87b-…` that `chat_send_smoke` uses: that one is EMPTY until the smoke
@@ -133,7 +137,10 @@ async fn the_stream_flag_narrates_a_generate_and_is_ignored_by_a_switch() {
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
         c
     })
     .await;
@@ -299,7 +306,10 @@ async fn the_flag_is_optional_and_a_refusal_never_narrates() {
     let base_dir = base.path().to_path_buf();
     let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
         c.terminal = false;
-        c.spine = Some(Arc::new(SwipeSpineFactory { base_dir }));
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: false,
+        }));
         c
     })
     .await;
@@ -371,5 +381,126 @@ async fn the_flag_is_optional_and_a_refusal_never_narrates() {
         any_swipe.is_empty(),
         "a REFUSAL narrated: {any_swipe:?} — v4's rule is that a refusal before \
          the stream opens stays an ordinary JSON error"
+    );
+}
+
+/// The `error` frame, end to end over the real transport — the one leg the
+/// canned success spine cannot reach.
+///
+/// v4 `app/api/v1/messages/[id]/route.ts:356-364`: a throw INSIDE `start()`
+/// is `encodeErrorEvent(encoder, 'Failed to generate alternative response',
+/// 'regenerate_failed', error.message)`, because the SSE headers left the
+/// building before the generation began. v5 publishes the same frame on the
+/// Event channel (`api::salon::message_swipe_generate`'s `Err` arm) and the
+/// dispatch reply carries the error envelope — BOTH halves, since a frame with
+/// a 200 reply, or a reply with no frame, is the failure this arm exists to
+/// catch.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failure_after_the_stream_opened_is_an_error_frame() {
+    let base = common::materialize_fixture_instance();
+    let base_dir = base.path().to_path_buf();
+    let (addr, _state) = common::serve_instance(base.path(), move |mut c| {
+        c.terminal = false;
+        c.spine = Some(Arc::new(SwipeSpineFactory {
+            base_dir,
+            fail_stream: true,
+        }));
+        c
+    })
+    .await;
+    let wire = Wire {
+        client: reqwest::Client::new(),
+        url: format!("http://{addr}/api/dispatch"),
+    };
+
+    let all = messages(&wire).await;
+    let target_id = all
+        .iter()
+        .find(|m| {
+            m.get("role").and_then(Value::as_str) == Some("ASSISTANT")
+                && m.get("systemSender")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+        })
+        .and_then(|m| m["id"].as_str())
+        .expect("a swipe-able ASSISTANT message")
+        .to_string();
+
+    let events = wire
+        .client
+        .get(format!("http://{addr}/api/events"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(events.status(), 200);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let dispatch = {
+        let client = wire.client.clone();
+        let url = wire.url.clone();
+        let id = target_id.clone();
+        tokio::spawn(async move {
+            let r = client
+                .post(&url)
+                .json(&json!({ "type": "messageSwipe", "messageId": id, "stream": true }))
+                .send()
+                .await
+                .unwrap();
+            let status = r.status().as_u16();
+            (status, r.json::<Value>().await.unwrap_or(Value::Null))
+        })
+    };
+
+    let frames = collect_frames(events, Duration::from_secs(20)).await;
+    let (status, body) = dispatch.await.unwrap();
+    let mine = swipe_frames(&frames, &target_id);
+    assert!(
+        !mine.is_empty(),
+        "no `swipeProgress` frame reached /api/events at all (all frames: {})",
+        frames.len()
+    );
+
+    // The beats BEFORE the failure are v4's bytes either way — the provider is
+    // only reached after `gathering` and `sending`.
+    let stages: Vec<&str> = mine
+        .iter()
+        .filter_map(|f| f.get("status"))
+        .filter_map(|s| s.get("stage").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        stages,
+        vec!["gathering", "sending"],
+        "the run reached the provider and stopped there: {mine:?}"
+    );
+
+    // The TERMINAL frame is v4's error encoding, all three keys.
+    let last = mine.last().expect("a terminal frame");
+    assert_eq!(
+        last.get("error").and_then(Value::as_str),
+        Some("Failed to generate alternative response"),
+        "v4's hardcoded sentence: {last:?}"
+    );
+    assert_eq!(
+        last.get("errorType").and_then(Value::as_str),
+        Some("regenerate_failed"),
+        "{last:?}"
+    );
+    assert!(
+        last.get("details")
+            .and_then(Value::as_str)
+            .is_some_and(|d| d.contains(FAILING_STREAM_MESSAGE)),
+        "`details` carries the raw provider message: {last:?}"
+    );
+    // No `done` frame, and no persisted swipe to carry one.
+    assert!(
+        !mine.iter().any(|f| f.get("done").is_some()),
+        "a failed generation must not emit v4's terminal `done`: {mine:?}"
+    );
+
+    // The other half: the dispatch answers the error, not a 200.
+    assert_ne!(status, 200, "the dispatch reply: {body}");
+    assert!(
+        err_message(&body).contains(FAILING_STREAM_MESSAGE),
+        "the reply envelope carries the same failure: {body}"
     );
 }

@@ -32,7 +32,11 @@
  * disagreeing with the server about the same file.
  *
  * Three of Zod 4.4.3's rules are therefore load-bearing here, and are why this
- * is a small engine rather than a pile of `if`s:
+ * is a small engine rather than a pile of `if`s. (Still true at 4.6.5 — v4
+ * `6b0615807`: P4.D211 re-recorded the shared 362-row corpus from v4's real
+ * schema under BOTH versions and got byte-identical output, so the rules below
+ * are verified across the range. The Rust twin
+ * `crates/quilltap-core/src/pascal/custom_tool_types.rs` carries the same note.)
  *
  * 1. An issue is **aborting** unless it came from a check (a `refine` /
  *    `superRefine`), which marks its issues `continue: true`.
