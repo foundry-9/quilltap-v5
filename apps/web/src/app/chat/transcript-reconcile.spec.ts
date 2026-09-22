@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { MessageDto } from '../core/core-contract';
 import type { SwipeState } from './chat-view-model';
-import { isProvisionalMessage, reconcileTranscript } from './transcript-reconcile';
+import {
+  isProvisionalMessage,
+  reconcileTranscript,
+  selectSwipeVariant,
+} from './transcript-reconcile';
 
 /**
  * Transcript reconciliation — the merge that replaced "replace the array".
@@ -228,5 +232,98 @@ describe('reconcileTranscript — provisional bubbles', () => {
     const existing = row({ id: 'abigail', createdAt: T2 });
     const { messages } = reconcileTranscript([existing], [existing, provisional], {});
     expect(messages.map((m) => m.id)).toEqual(['abigail', provisional.id]);
+  });
+});
+
+/**
+ * `selectSwipeVariant` — v4 bug (b), `f564b0de3`.
+ *
+ * Reconciliation carries the operator's swipe selection across a refetch BY ID,
+ * which is right everywhere except immediately after a regeneration: the
+ * operator watched that line arrive and must not be shown a different one.
+ * `selectSwipeVariant` is how the regeneration names what it made.
+ *
+ * v4's own two cases (`__tests__/unit/app/salon/hooks/useChatData.test.ts` at
+ * `f45a517a9`, `describe('selectSwipeVariant')`) are the last two below, under
+ * v4's own names. The first is the RED-FIRST measurement they exist for: v5's
+ * reconcile reproduces v4's bug exactly, and this pins the wrong-for-this-case
+ * behavior that the function has to correct — the carry itself is CORRECT and
+ * stays, which is why the fix is a separate deliberate call and not an edit to
+ * `collapseSwipeGroups`.
+ */
+describe('selectSwipeVariant (v4 useChatData.selectSwipeVariant, f564b0de3)', () => {
+  const GROUP = 'swipe-abc';
+  const OLD_SWIPE = '47a3a91d-0000-4000-8000-00000000000a';
+  const NEW_SWIPE = '47a3a91d-0000-4000-8000-00000000000b';
+
+  const first = row({
+    id: OLD_SWIPE,
+    content: 'the first attempt',
+    createdAt: T1,
+    swipeGroupId: GROUP,
+    swipeIndex: 0,
+  } as Partial<MessageDto> & { id: string });
+  const reroll = row({
+    id: NEW_SWIPE,
+    content: 'the re-roll',
+    createdAt: T1,
+    swipeGroupId: GROUP,
+    swipeIndex: 1,
+  } as Partial<MessageDto> & { id: string });
+
+  it('RED-FIRST: after a regeneration the reconcile alone leaves the OLD variant on display', () => {
+    // Before the re-roll the group holds one variant, and it is what shows.
+    const before = reconcileTranscript([first], [], {});
+    expect(before.swipeStates[GROUP]!.current).toBe(0);
+
+    // The regeneration appends a variant and the refetch lands. The carry keeps
+    // the operator on the reply they were reading — correct for every OTHER
+    // refetch, and here it means they watched a line stream in and were then
+    // shown the previous one.
+    const after = reconcileTranscript([first, reroll], before.messages, before.swipeStates);
+    expect(after.swipeStates[GROUP]!.current).toBe(0);
+    expect(after.messages.map((m) => m.content)).toContain('the first attempt');
+    expect(after.messages.map((m) => m.content)).not.toContain('the re-roll');
+
+    // …which is exactly what the regeneration's own call corrects.
+    const fixed = selectSwipeVariant(after.swipeStates, NEW_SWIPE);
+    expect(fixed![GROUP]!.current).toBe(1);
+  });
+
+  it('puts the named variant on display and moves the counter to it', () => {
+    const states: Record<string, SwipeState> = {
+      [GROUP]: { current: 0, total: 2, messages: [first, reroll] },
+    };
+    const next = selectSwipeVariant(states, NEW_SWIPE)!;
+    expect(next[GROUP]!.current).toBe(1);
+    expect(next[GROUP]!.messages[next[GROUP]!.current]!.content).toBe('the re-roll');
+    // Swiping back to the original, as the operator would, works the same way.
+    expect(selectSwipeVariant(next, OLD_SWIPE)![GROUP]!.current).toBe(0);
+  });
+
+  it('leaves everything alone for an id in no group', () => {
+    const states: Record<string, SwipeState> = {
+      [GROUP]: { current: 0, total: 2, messages: [first, reroll] },
+    };
+    expect(selectSwipeVariant(states, 'not-a-message')).toBeNull();
+    // …and for the variant that is already on display, so the caller writes
+    // nothing and the render bails out rather than rebuilding an equal map.
+    expect(selectSwipeVariant(states, OLD_SWIPE)).toBeNull();
+  });
+
+  it('touches no other group', () => {
+    const other = row({
+      id: 'other-1',
+      content: 'elsewhere',
+      swipeGroupId: 'swipe-other',
+      swipeIndex: 0,
+    } as Partial<MessageDto> & { id: string });
+    const states: Record<string, SwipeState> = {
+      'swipe-other': { current: 0, total: 1, messages: [other] },
+      [GROUP]: { current: 0, total: 2, messages: [first, reroll] },
+    };
+    const next = selectSwipeVariant(states, NEW_SWIPE)!;
+    expect(next['swipe-other']).toBe(states['swipe-other']);
+    expect(next[GROUP]).not.toBe(states[GROUP]);
   });
 });

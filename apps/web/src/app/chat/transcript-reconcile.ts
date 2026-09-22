@@ -275,3 +275,40 @@ export function reconcileTranscript(
     swipeStates: sameSwipeStates(previousSwipeStates, swipeStates) ? previousSwipeStates : swipeStates,
   };
 }
+
+/**
+ * Show a particular variant of a swipe group — the one whose id is given.
+ *
+ * Reconciliation deliberately carries the operator's swipe selection across a
+ * refetch *by id* ({@link reconcileTranscript}'s `collapseSwipeGroups`), so an
+ * appended variant does not yank the view off the reply they were reading. That
+ * is right for every other refetch and wrong for the one that follows a
+ * regeneration: the operator just watched that line arrive, and leaving them on
+ * the previous variant would answer their re-roll by showing them something
+ * else. So the regeneration says, in as many words, which variant it made — and
+ * this selects it, exactly as a swipe of the arrows would (v4
+ * `useChatData.selectSwipeVariant`, `f564b0de3`).
+ *
+ * v4 does TWO things here: it writes `current` into its swipe map AND it
+ * rewrites its `messages` array, because v4's `messages` holds the collapsed
+ * display row. v5's display row is DERIVED — `salon-conversation.ts`'s
+ * `displayMessages` reads the swipe map on every render — so moving `current` is
+ * the whole of it, and there is no second array to keep in step.
+ *
+ * @returns The new swipe map, or `null` when nothing moves: an id in no group,
+ *   or one that is already the variant on display. A null answer means the
+ *   caller must not write, which is what preserves object identity (and so the
+ *   render bail-out) on the no-op path.
+ */
+export function selectSwipeVariant(
+  swipeStates: Record<string, SwipeState>,
+  messageId: string,
+): Record<string, SwipeState> | null {
+  for (const [groupId, state] of Object.entries(swipeStates)) {
+    const index = state.messages.findIndex((m) => m.id === messageId);
+    if (index < 0) continue;
+    if (index === state.current) return null;
+    return { ...swipeStates, [groupId]: { ...state, current: index } };
+  }
+  return null;
+}

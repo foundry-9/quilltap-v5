@@ -140543,3 +140543,51 @@ re-verified 9/9.
 
 Gate: `npm test` 439 files / **7,438 passed** / 0 failed; `npm run build`
 clean; `npm run lint` clean. SPA 0.5.743.
+
+### Unit 5 — `selectSwipeVariant`: after a re-roll, show the line it made (v4 bug (b))
+
+v4 source: `app/salon/[id]/hooks/useChatData.ts:115-140` + its two spec cases
+in `__tests__/unit/app/salon/hooks/useChatData.test.ts` at `f45a517a9`.
+
+**MEASURED FIRST, and v5 reproduces the bug exactly.**
+`transcript-reconcile.ts`'s `collapseSwipeGroups` carries the operator's
+selection across a refetch by the SELECTED VARIANT'S ID, falling back to
+"newest" only when that variant is gone. After a regeneration the previously
+selected id is still present, so `carried >= 0` and `current` stays on the OLD
+variant — the operator watches a line stream in and is then shown the previous
+one. The red-first spec case (`RED-FIRST: after a regeneration the reconcile
+alone leaves the OLD variant on display`) drives a real
+reconcile-append-reconcile and pins that pre-fix behavior, then shows the new
+function correcting it, so the bug is recorded rather than merely fixed.
+
+**The carry is CORRECT and unchanged.** The fix is a separate deliberate call
+the regeneration makes, not an edit to `collapseSwipeGroups` — v4's own shape,
+and the reason its comment insists the carry "is right for every other
+refetch".
+
+**A shape divergence, measured:** v4's `selectSwipeVariant` does TWO writes —
+`setSwipeStates` AND `setMessages`, remapping every row of the group — because
+v4's `messages` array holds the collapsed display row. v5's display row is
+DERIVED (`salon-conversation.ts`'s `displayMessages` reads the swipe map on
+every render), so moving `current` is the whole of it and there is no second
+array to keep in step. v5's function is therefore pure and returns the new map
+or `null`; a `null` answer means "do not write", which is what preserves object
+identity and the render bail-out on the no-op path (v4 returns early for the
+same reason).
+
+Specs: 4 cases in `transcript-reconcile.spec.ts` — the red-first measurement,
+v4's two verbatim (`puts the named variant on display and moves the counter to
+it`, `leaves everything alone for an id in no group`), and one v5 adds because
+its return value makes it cheap to ask (`touches no other group`, asserting the
+untouched group keeps its OBJECT identity).
+
+Mutation proof (by file backup): dropping the write — `return null` in place of
+the new map — reddens 3 of the 4 cases, exactly the three that assert the move;
+`leaves everything alone for an id in no group` correctly survives, because it
+asserts a null. ⚠ **The first two attempts at this proof were worthless**: the
+run failed at the ANGULAR BUILD (unrelated in-progress edits in `message-row.ts`
+the first time, a backtick inside a template comment the second), so no test
+ever executed and "3 failed" would have been read off a tree that never
+compiled. The standing note holds — a mutation proof must COMPILE before its
+reds mean anything; read the log for `Application bundle generation failed`
+before believing any count.

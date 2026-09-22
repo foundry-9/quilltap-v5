@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(salon): after a regeneration, show the variant it just made (P4.D206 unit 5, v4 bug (b))
+
+_Versions: SPA 0.5.744._
+
+`reconcileTranscript` carries the operator's swipe selection across a refetch
+BY ID, so an appended variant does not yank the view off the reply they were
+reading. That is right for every refetch except the one that follows a
+regeneration: the operator just watched that line arrive, and leaving them on
+the previous variant answers their re-roll by showing them something else. v5
+reproduced v4's bug exactly, and the new `selectSwipeVariant` is how the
+regeneration names what it made.
+
+The carry itself is correct and unchanged — the fix is a separate deliberate
+call, not an edit to the collapse. The spec's first case is the red-first
+measurement: it drives a real regenerate-then-refetch and pins that the
+reconcile alone leaves the OLD variant on display, then shows the function
+correcting it.
+
+v4 does two things in its version: it writes `current` into its swipe map AND
+rewrites its messages array, because v4's array holds the collapsed display
+row. v5's display row is derived from the map on every render, so moving
+`current` is the whole of it. A null answer (an id in no group, or one already
+on display) means the caller must not write, which is what preserves object
+identity — and the render bail-out — on the no-op path.
+
 #### 2026-09-21 — feat(salon): Inform — the dialog, the pending chips, the gutter i and the salon wiring (P4.D206 units 2–4)
 
 _Versions: SPA 0.5.743._
