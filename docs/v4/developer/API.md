@@ -4,7 +4,7 @@ API reference for Quilltap v4.3 and later.
 
 > **Freshness note (v4.3-dev):** The Scriptorium / Document Mode work, the Salon Staff (Librarian, Host, Concierge, Aurora, Lantern, Prospero) announcement system, and the Ariel terminal subsystem landed during 4.3-dev. The chat-actions list, the LLM-tools list, the terminals endpoints, and the message schema below reflect those changes; older subsections may still describe earlier shapes verbatim. When in doubt, the source of truth is `app/api/v1/`, `lib/schemas/`, and `lib/tools/`. Notable additions since v4.2:
 >
-> - **Mount Points** (`/api/v1/mount-points`) — Scriptorium document-store CRUD, files/folders/blobs operations, scan/convert/deconvert actions, and per-project linking
+> - **Mount Points** (`/api/v1/mount-points`) — Scriptorium document-store CRUD, files/folders/blobs operations, scan/convert/deconvert/sync actions, and per-project linking
 > - **Terminals** (`/api/v1/terminals`) — Ariel PTY session spawn, list, signal, write, and ring-buffer access
 > - **Chat actions overhaul** — handlers under `app/api/v1/chats/[id]/actions/` were consolidated; current action set: `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `danger-classification`, `documents`, `mailbox`, `memories`, `merge`, `outfit`, `participants`, `photo-albums`, `regenerate-avatar`, `render-conversation`, `rng`, `run-tool`, `send-mail`, `state`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`
 > - **New built-in LLM tools** — `doc_*` family (read/write/grep/list/move/copy/str_replace/focus/open/close/insert_text/update_heading/read_heading/read_frontmatter/update_frontmatter/create_folder/delete_folder/delete_file, plus blob variants), `self_inventory`, `state`, `whisper`, `read_conversation`, `submit_final_response`, `upsert_annotation`, `delete_annotation`, and the `wardrobe_*` family (`wardrobe_list`/`wardrobe_read`/`wardrobe_wear`/`wardrobe_take_off`/`wardrobe_create`/`wardrobe_update`/`wardrobe_archive`). The unified search tool is now named `search` (was `search_memories`).
@@ -3302,6 +3302,70 @@ Unlike the off-scene rehearsal, the character is given their full per-turn syste
 
 ---
 
+### Chat Informs
+
+An **Inform** is an out-of-character passage the operator hands to one or more LLM-controlled seats. Each target receives it verbatim as its own system block immediately after their system prompt on their next generation, and it is then consumed for them. The transcript keeps a *record* — a Host message (`systemSender: "host"`, `systemKind: "inform"`) carrying exactly what was typed, public when every eligible seat was targeted and whispered to the targets otherwise. **The record never reaches a model**; it is stripped from every character's context.
+
+#### `POST /api/v1/chats/[id]?action=inform`
+
+**Request Body**:
+
+```json
+{
+  "contentMarkdown": "You notice the clock has stopped.",
+  "targetParticipantIds": ["participant-uuid"]
+}
+```
+
+`targetParticipantIds` carries **chat participant ids, not character ids**. `null` means every eligible seat at post time. An eligible seat is a `CHARACTER` participant with `controlledBy: "llm"` that has not been removed — silent and absent seats are valid targets (they receive the inform whenever they next generate); user-controlled seats are never targets. When an explicit list covers every eligible seat it is treated as `null`, so the public/whisper distinction follows actual coverage rather than how the operator clicked.
+
+**Response**: `201 Created`
+
+```json
+{
+  "success": true,
+  "batchId": "batch-uuid",
+  "targetParticipantIds": null,
+  "message": { "id": "message-uuid", "systemKind": "inform", "...": "..." }
+}
+```
+
+`targetParticipantIds` in the response is the *resolved* audience: `null` for a public record, the target list for a whisper. A record-write failure does not fail the post — `message` is then `null` and the batch is created regardless.
+
+`400` when an id is not a current participant of this chat, when an id names a seat that is not LLM-controlled, or when the chat has no LLM-controlled seat at all. `404` when the chat is unknown.
+
+#### `GET /api/v1/chats/[id]?action=informs`
+
+The batches still owed to somebody, for the composer's pending chip.
+
+**Response**: `200 OK`
+
+```json
+{
+  "batches": [
+    {
+      "batchId": "batch-uuid",
+      "contentMarkdown": "You notice the clock has stopped.",
+      "createdAt": "2026-01-01T21:14:00.000Z",
+      "recordMessageId": "message-uuid",
+      "pendingParticipantIds": ["participant-uuid"]
+    }
+  ]
+}
+```
+
+Rows whose seat is no longer in the chat are omitted, and a batch left with no pending seat is dropped entirely.
+
+#### `POST /api/v1/chats/[id]?action=cancel-inform`
+
+**Request Body**: `{ "batchId": "batch-uuid" }`
+
+Deletes only the batch's *pending* rows. A seat that already read the passage keeps its consumed row, so a later swipe of that turn still re-applies it. When nothing in the batch was consumed the record message is deleted too — it would otherwise document something that never happened; when anything was consumed the record stays and only the remaining targets are dropped. Publishes the `chats` realtime hint explicitly, since deleting pending rows touches no message row.
+
+**Response**: `200 OK` — `{ "success": true, "removed": 2, "recordDeleted": true }`. `404` when the batch is unknown; `400` when it belongs to another conversation.
+
+---
+
 ### Chat Photo Albums
 
 #### `GET /api/v1/chats/[id]?action=photo-albums`
@@ -3798,6 +3862,35 @@ Delete a message.
 #### `POST /api/v1/messages/[id]?action=swipe`
 
 Generate alternative response (swipe).
+
+**Request Body** (optional):
+
+```json
+{ "swipeIndex": 2 }
+```
+
+With `swipeIndex`, switches the group to that existing variant instead of
+generating. Without it, generates a new one.
+
+**Query Parameters**:
+- `stream=1` — narrate the regeneration as `text/event-stream` instead of
+  waiting for it. Only meaningful when generating (no `swipeIndex`).
+
+**Response** (default): `201 Created` — `{ "message": <the new swipe> }`
+
+**Response** (`stream=1`): `200 OK`, `text/event-stream`. Frames, in order:
+
+| Frame | Meaning |
+|---|---|
+| `{"status":{"stage","message",…}}` | A step of the regeneration. Stages: `gathering`, `sending`, `regenerating`, `saving`. |
+| `{"content":"…"}` | A **delta** of the new line — append it. |
+| `{"reasoning":"…"}` | **Cumulative** reasoning so far — replace it. DISPLAY ONLY. |
+| `{"done":true,"message":{…}}` | The persisted swipe. Always last on success. |
+| `{"error","errorType","details"}` | The generation failed *after* the stream opened. |
+
+A failure *before* the stream opens (unknown message, non-assistant message,
+staff message) is an ordinary JSON error response, so callers should check
+`res.ok` before reading the body as a stream.
 
 #### `POST /api/v1/messages/[id]?action=reattribute`
 
@@ -4773,6 +4866,62 @@ Convert a `database` mount back to `filesystem`-backed storage at a chosen `targ
 ```
 
 **Response**: `200 OK` — `{ success: true, mountPoint: {...}, deconvertResult: { filesWritten, blobsWritten, bytesWritten, errors } }`.
+
+#### `POST /api/v1/mount-points/[id]?action=sync`
+
+Mirror a `database`-backed store and a **server-local** directory in both
+directions. Compares by SHA-256 first and `lastModified` second; copies
+whichever side changed; reports a `conflict` (and changes nothing) when the
+manifest shows both sides changed since the last run. Creates the directory
+when absent; never creates a store. Engine: `lib/mount-index/sync/`.
+
+Refused for a non-`database` `mountType`, for an archived character's vault,
+while `conversionStatus !== 'idle'` or `scanStatus === 'scanning'` (409), and
+while another sync of the same store is running (409). A
+`.quilltap-sync.json` belonging to a different store is a 409.
+
+This schema is the **single source of truth** for `quilltap sync`'s flags —
+the CLI does not re-validate.
+
+**Request Body**:
+
+```json
+{
+  "targetPath": "/Users/me/Documents/lore",
+  "dryRun": false,
+  "direction": "both",
+  "prefer": "newer",
+  "propagateDeletes": true,
+  "useManifest": true
+}
+```
+
+- `direction` — `both` (default) | `to-disk` | `to-store`; filtered-out work is reported as `skip`.
+- `prefer` — `newer` (default) | `store` | `disk`; `store`/`disk` resolve every difference in that direction without consulting a clock.
+- `propagateDeletes` — false suppresses every `delete` / `rmdir`.
+- `useManifest` — false ignores (and does not write) `.quilltap-sync.json`; first-run rules then apply every time, so nothing is ever deleted.
+
+**Response**: `200 OK` — a `SyncReport`:
+
+```json
+{
+  "storeId": "…", "storeName": "Lore", "targetPath": "/Users/me/Documents/lore",
+  "dryRun": false,
+  "actions": [
+    { "kind": "modify", "side": "store", "relativePath": "chapters/03.md",
+      "entryKind": "file", "reason": "disk newer by 2h 14m", "outcome": "applied" }
+  ],
+  "summary": { "created": 3, "modified": 1, "deleted": 1, "touched": 1,
+               "described": 0, "conflicts": 1, "skipped": 0, "failed": 0 },
+  "warnings": [], "elapsedMs": 812
+}
+```
+
+`kind` is one of `create` | `modify` | `delete` | `touch` | `describe` |
+`mkdir` | `rmdir` | `conflict` | `skip`; `side` is the side that **changes**
+(`null` for `conflict` / `skip`). Chunks and embedding vectors are never read
+or written by the sync — the store's own post-write hooks re-index, because
+the sync writes through the same chokepoints as every other writer.
 
 #### `GET /api/v1/mount-points/[id]/files`
 

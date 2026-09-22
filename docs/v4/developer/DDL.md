@@ -168,6 +168,59 @@ dispatches on the header. Raw SQL that infers dimensions from
 `length(embedding)` must branch on the prefix (see `EMBEDDING_DIM_SQL` in
 `lib/embedding/reapply-profile.ts`).
 
+### Compressed text BLOB format (large text columns)
+
+Some large text columns hold a **brotli-compressed BLOB** rather than TEXT,
+since v4.10.0. The single-source-of-truth codec is
+`lib/database/text-compression.ts`; repositories hydrate them back to strings
+(or, for JSON columns, to parsed objects) so application code never sees the
+bytes. Columns currently registered:
+
+| Database | Table | Columns |
+|---|---|---|
+| llm-logs | `llm_logs` | `request`, `response` (also JSON columns — object → JSON → brotli) |
+| main | `conversation_chunks` | `content` |
+| main | `chat_messages` | `content`, `opaqueContent`, `description`, `context` |
+
+```
+Byte layout:
+  [0]      magic   = 0x51   ('Q'; distinct from 0xEB, the embedding magic)
+  [1]      version = 0x01
+  [2]      codec   = 0x01   (brotli)
+  [3..]    payload
+```
+
+**The column type stays `TEXT`.** SQLite is dynamically typed, so a BLOB lives
+in a TEXT column without any DDL change — registering a column needs no
+migration, and the backfill migrations (`compress-llm-log-payloads-v1`,
+`compress-conversation-chunk-content-v1`, `compress-chat-message-text-v1`)
+only reclaim bytes.
+
+`chat_messages.content` was the last of these to be compressed because it is
+the one large text column that is SEARCHED in SQL. It only became safe once
+`create-chat-message-fts-v1` replaced the `LIKE` scan with an FTS5 index whose
+triggers tokenize through `qt_text()` — see
+[chat_messages search index](#chat_messages-search-index-fts5) below.
+
+Values below 512 bytes stay plain TEXT (compression is a net loss there), and
+any value **without** the magic prefix is read as plaintext, so a column
+holds a mix of both indefinitely.
+
+**Raw SQL that reads INSIDE one of these columns must wrap it in the
+`qt_text()` SQL function** — registered on every connection by
+`lib/database/backends/sqlite/text-codec-function.ts`:
+
+```sql
+SELECT json_extract(qt_text("response"), '$.error') FROM llm_logs;
+SELECT LENGTH(qt_text("content")) FROM conversation_chunks;  -- characters, not blob bytes
+SELECT qt_text("content") FROM chat_messages WHERE id = ?;   -- prose, not brotli
+```
+
+A statement that forgets it fails loudly (`malformed JSON`, or a length in
+compressed bytes), which is the intended failure mode. `qt_text` accepts
+compressed blobs, plain strings and NULL, so it is safe on a partially
+migrated column.
+
 ### users
 
 ```sql
@@ -453,7 +506,7 @@ CREATE TABLE "chats" (
   "userId" TEXT NOT NULL,
   "participants" TEXT DEFAULT '[]',  -- JSON array of ChatParticipantBase (lib/schemas/chat.types.ts); per-seat prompt choice in selectedSystemPromptId, subprompts in play in selectedSubpromptIds (vault file names sans .md) since 4.10
   "title" TEXT NOT NULL,
-  "contextSummary" TEXT,
+  "contextSummary" TEXT,             -- the folded summary of what was SAID; written only by lib/chat/context-summary.ts. Not the scenario: creation seeded this with scenarioText until 4.10 (bug 158), cleared by clear-scenario-seeded-chat-summaries-v1 and stripped on import/restore
   "sillyTavernMetadata" TEXT,
   "tags" TEXT DEFAULT '[]',
   "roleplayTemplateId" TEXT,
@@ -591,6 +644,48 @@ once** — each open document surfaces as its own tab in the tabbed workspace
 retained as quick-reopen history. (Before 4.8 only one row per chat could be
 active.)
 
+### chat_informs
+
+```sql
+CREATE TABLE "chat_informs" (
+  "id" TEXT PRIMARY KEY,
+  "chatId" TEXT NOT NULL,
+  "batchId" TEXT NOT NULL,
+  "participantId" TEXT NOT NULL,
+  "contentMarkdown" TEXT NOT NULL,
+  "recordMessageId" TEXT,
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL,
+  "consumedAt" TEXT,
+  "consumedByMessageId" TEXT,
+  FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE
+);
+
+CREATE INDEX "idx_chat_informs_pending" ON "chat_informs" ("chatId", "participantId", "consumedAt");
+CREATE INDEX "idx_chat_informs_batch" ON "chat_informs" ("batchId");
+CREATE INDEX "idx_chat_informs_consumedBy" ON "chat_informs" ("consumedByMessageId");
+```
+
+Backs the Salon's **Inform** action: an out-of-character passage the operator
+hands to one or more LLM-controlled seats, delivered verbatim as its own system
+block on that seat's next generation.
+
+One row per (batch x target) — every row a single post produced shares a
+`batchId`, and the body is **duplicated per target on purpose**: consumption is
+then a single-row write, with no read-modify-write of a shared array that a
+buffered job-child write could clobber.
+
+- `participantId` is a **chat participant id**, never a character id — the same
+  rule `chat_messages.targetParticipantIds` follows.
+- `recordMessageId` links every row of a batch to the Host record message that
+  documents the post. Nullable, so a record-write failure cannot orphan the
+  batch.
+- `consumedAt` null means pending. `consumedByMessageId` is the assistant
+  message whose generation delivered the row; it is what makes a
+  regenerate/swipe of that message re-apply the same inform.
+- Consumed rows are **kept**. They are tiny, they are what makes a swipe honest,
+  and the chat's cascade removes them. There is no sweep.
+
 ### terminal_sessions
 
 ```sql
@@ -681,6 +776,7 @@ CREATE INDEX "idx_conversation_chunks_chatId" ON "conversation_chunks"("chatId")
 | content | TEXT | Rendered Markdown for this interchange |
 | participantNames | TEXT (JSON array) | Names of participants in this interchange |
 | messageIds | TEXT (JSON array) | Message UUIDs included in this interchange |
+| content | TEXT | The rendered interchange markdown. Stored **brotli-compressed** since 4.10 (see "Compressed text BLOB format" above) — raw SQL must read it through `qt_text()`, and `LENGTH(qt_text(content))` counts characters where a bare `LENGTH()` would count blob bytes. Wholly derived: a CONVERSATION_RENDER job rebuilds it from the chat's messages |
 | embedding | BLOB (nullable) | Quantized vector embedding (see "Embedding BLOB format" above; same codec as memories.embedding). NULL when cold-tiered by the stale-chat maintenance sweep — content stays for keyword search and the chat re-embeds on next open |
 | createdAt | TEXT (ISO 8601) | Creation timestamp |
 | updatedAt | TEXT (ISO 8601) | Last update timestamp |
@@ -742,6 +838,64 @@ CREATE INDEX "idx_chat_messages_chatId" ON "chat_messages" ("chatId");
 CREATE INDEX "idx_chat_messages_createdAt" ON "chat_messages" ("createdAt" DESC);
 CREATE INDEX "idx_chat_messages_swipeGroupId" ON "chat_messages" ("swipeGroupId");
 ```
+
+`content`, `opaqueContent`, `description` and `context` are
+[compressed text BLOB columns](#compressed-text-blob-format-large-text-columns).
+Raw SQL that reads inside any of them must wrap it in `qt_text()`.
+
+### chat_messages search index (FTS5)
+
+Global message search (`GET /api/v1/ui/search?types=messages`) is an FTS5 index
+probe, not a table scan. Created by `create-chat-message-fts-v1`; the DDL is
+single-sourced in
+[`lib/database/backends/sqlite/chat-message-fts.ts`](../../lib/database/backends/sqlite/chat-message-fts.ts)
+and **nothing else may spell it**.
+
+```sql
+-- Stable integer identity for the index. `chat_messages` is "id" TEXT PRIMARY
+-- KEY, so its rowid is IMPLICIT — VACUUM may renumber it and a table rebuild
+-- certainly does, either of which would silently corrupt an index keyed on it.
+-- An explicit INTEGER PRIMARY KEY is never renumbered.
+CREATE TABLE "chat_messages_fts_map" (
+  "ftsId"     INTEGER PRIMARY KEY,
+  "messageId" TEXT NOT NULL UNIQUE
+);
+
+-- Contentless: the index stores the inverted index only and never reads the
+-- base table, so it is correct no matter how `content` is encoded. An
+-- external-content table would tokenize the brotli bytes.
+CREATE VIRTUAL TABLE "chat_messages_fts" USING fts5(
+  content,
+  content='',
+  contentless_delete=1,
+  tokenize='unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER "chat_messages_fts_ai" AFTER INSERT ON "chat_messages" ...;
+CREATE TRIGGER "chat_messages_fts_ad" AFTER DELETE ON "chat_messages" ...;
+CREATE TRIGGER "chat_messages_fts_au" AFTER UPDATE OF "content" ON "chat_messages" ...;
+```
+
+Facts that constrain anything touching this:
+
+- **Only eligible rows are indexed** — `type='message'`,
+  `role IN ('USER','ASSISTANT')`, non-null `content`. That is the filter global
+  search has always applied. Eligibility is decided at INSERT time only.
+- **The triggers call `qt_text()`.** A connection that opens without the
+  function fails any write to `chat_messages` with "no such function" — a loud
+  failure instead of silent index drift.
+- **The update trigger compares DECODED TEXT**, so `compress-chat-message-text-v1`
+  re-encodes 140k rows without retokenizing one index entry. No migration needs
+  to drop these triggers.
+- **A table rebuild of `chat_messages` drops the triggers silently.**
+  `reconcileChatMessageFts()` (`lib/startup/reconcile-chat-message-fts.ts`)
+  replays the `IF NOT EXISTS` DDL every boot and rebuilds when the map count
+  disagrees with the eligible-row count.
+- **`'rebuild'` is refused on a contentless table**, so a rebuild is a
+  `DELETE FROM` on both tables followed by a batched re-insert
+  (`rebuildChatMessageFtsIndex`).
+- Contentless also means `snippet()` / `highlight()` are unavailable; the
+  search route builds snippets in JavaScript.
 
 ### chat_settings
 
@@ -1435,7 +1589,7 @@ Known keys (others may be present from migrations / startup hooks):
 - `memoryExtractionConcurrency` (4.4+) — integer 1–32. **DEPRECATED in 4.7**: the dispatcher unified to the global `maxConcurrentJobs` cap above; this key is no longer read at runtime (the `/api/v1/memories?action=extraction-concurrency` route still persists it for the `memory-diff` CLI). Was a per-instance MEMORY_EXTRACTION concurrency cap.
 - `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}`. Per-instance memory extraction rate limits. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
 - `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean, perTurnConversationSummaries: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. `perTurnConversationSummaries` (default `false`, added in 4.9) makes every turn's consolidated Commonplace Book whisper carry a freshly-searched relevant-past-conversations list from the character's vault `Conversation Summaries/` folder, reusing the vector the turn's memory search already embedded (no extra embedding call); off, that list refreshes only at chat start / character join, on each summary fold, and on retrospective turns. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
-- `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`renderedMarkdown`, the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`), and cold-tiered `conversation_chunks.embedding`. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`renderedMarkdown`/`compiledIdentityStacks`, the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`), and cold-tiered `conversation_chunks.embedding`. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `taboo` (4.8+) — JSON: `{phrases: string[]}` (each 1–200 chars after trim, at most 500 entries, default `[]`). Per-instance list of phrases characters must never say. Normalized on write (trim, drop empties, case-insensitive dedupe, **user order preserved** — the rendering sits in the cacheable system-prompt prefix, so order is deliberately not sorted). Read once per turn by `buildContext()` (`lib/chat/context-manager.ts`) via `getTabooSettings` and rendered by `renderTabooSection` (`lib/chat/context/system-prompt-builder.ts`) between the universal math-formatting note and the per-turn tool instructions; an empty list renders no section at all. Updated by `PUT /api/v1/settings/taboo` (Settings → Chat → Taboo). Accessors in `lib/instance-settings`. Schema: `TabooSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `lastMaintenanceSweepAt` (4.7+) — ISO 8601 timestamp of the last completed scheduled-maintenance pass. Written/read by `lib/background-jobs/scheduled-maintenance.ts` to skip the startup tick when a sweep ran within the last 20 h (dev-restart friendliness). Internal; not exported.
 - `lanternBackgroundsMountPointId` (4.3+) — UUID of the global "Lantern Backgrounds" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/lantern-store-bridge.ts`; written by `provision-lantern-backgrounds-mount-v1`. Used to land story-background job output and generic `generate_image` tool output when no project context is available.
@@ -1533,6 +1687,8 @@ CREATE INDEX "idx_llm_logs_autonomousRunId" ON "llm_logs" ("autonomousRunId");
 CREATE INDEX "idx_llm_logs_connectionProfileId" ON "llm_logs" ("connectionProfileId");
 CREATE INDEX "idx_llm_logs_imageProfileId" ON "llm_logs" ("imageProfileId");
 ```
+
+`request` and `response` are JSON columns stored **brotli-compressed** since 4.10 (`compress-llm-log-payloads-v1`; see "Compressed text BLOB format" above). They are the single largest thing in any Quilltap instance — `request` re-serializes the whole prompt payload on every call, so the same system blocks and character sheets repeat across every row, and on the reference instance the table was 318 MB for *seven days* of logs. Nothing text-searches them. **Raw SQL that reads inside either column must wrap it in `qt_text()`** — as `USAGE_AGGREGATE_COLUMNS` does for its `failures` count — or SQLite's JSON functions fail with "malformed JSON".
 
 `connectionProfileId` / `imageProfileId` are the profile-attribution columns added by `add-llm-logs-profile-columns-v1` (4.9). `provider` and `modelName` are flattened copies taken from the serving profile at call time — they *look* like profile attribution but cannot distinguish two profiles that share a provider/model pair, which is exactly what The Almanack's per-profile statistics need. Both are nullable: rows written before the columns landed carry NULL and are attributed by joining on `(provider, modelName)`, which the report labels "approximate". `connectionProfileId` is populated by the streaming path, the shared cheap-LLM path, auto-configure, the gatekeeper's LLM classifier, and the character optimizer; `imageProfileId` by the three image-generation call sites (tool handler, story background, character avatar), including the Concierge reroute's fallback profile.
 
@@ -1679,6 +1835,12 @@ Whenever a write repoints a link, the content row it abandoned is collected if n
 
 The UNIQUE index on `(mountPointId, relativePath COLLATE NOCASE)` enforces "one file per location" **case-insensitively** — `Notes.md` and `notes.md` are the same location, matching the `LOWER()`-based path lookups. Upserts are case-preserving: a database-store write addressed in a different casing updates the existing row and keeps its stored `relativePath`/`fileName`; filesystem-scan writes (`linkFilesystemFile`) instead adopt the on-disk casing, since disk is the source of truth there. `ensureLinkNocaseUniqueIndex` (`lib/database/repositories/mount-index-case-repair.ts`) runs on every table init — effectively every startup — as a double-check against out-of-band edits: it scans for case-colliding rows unconditionally (the newer is renamed `stem (N).ext`) and recreates the index unless a genuine `UNIQUE … NOCASE` definition is already present under that name; the legacy case-sensitive `idx_doc_mount_file_links_mp_path` is dropped on the way. Same ASCII-only NOCASE caveat as the folders index: non-ASCII case-variants are caught by the JS scan at startup and by the write chokepoints, not by the index. Deleting a link via `DocMountFileLinksRepository.deleteWithGC` cascades to chunks (FK), and if it was the last link for its file the file row and its payload get dropped. `sweepOrphanedFiles()` is the defense-in-depth GC for writers that bypass the helper.
 
+**`lastModified` and `createdAt` are per-location and may be caller-supplied.** `LinkDocumentInput` / `LinkBlobInput` take optional `lastModified` (honoured on INSERT and UPDATE) and `createdAt` (INSERT only); `setLinkTimestamps(linkId, …)` moves them without touching bytes. Every ordinary writer omits both and gets `now` — the one caller that supplies them is the document-store sync (`lib/mount-index/sync/`), which must be able to make a link carry the mtime of the file on disk, or the two sides never stop copying to each other. `updatedAt` is the row's own audit column and always moves to `now`; it is not the file's mtime. `descriptionUpdatedAt` is the caption's clock, and the sync uses it as the `<file>.description.md` sidecar's mtime.
+
+**An omitted metadata field on `linkBlobContent`'s UPDATE branch means "keep", not "blank" (bug 155).** `description`/`descriptionUpdatedAt`, `extractedText`/`extractedTextSha256`, and `extractionStatus` join the SET clause only when their input field is present, so a byte-only overwrite — `file-ops.writeDestBytes`, `docs write --force`, the sync's store-side applier — leaves the caption alone. An explicit `description: ''` still clears it. The INSERT branch keeps its blank defaults.
+
+**A repoint zeroes `chunkCount` and deletes the link's chunks (bug 156).** Chunks are keyed by `linkId` and cascade only on link *deletion*, so an overwrite used to orphan the previous revision's rows in place while the link went on claiming `chunkCount > 0, conversionStatus = 'converted'` — exactly the predicate `rescanDatabaseMountPoint` uses to decide a link needs nothing done. `linkDocumentContent` now drops them whenever `fileId` actually changes (and `fanOutGroupFileId` does the same for the group members whose content moved), so writers that re-chunk immediately set the real count back moments later and writers that do not are collected by the next rescan.
+
 The three `allow*` columns are the per-document policy, derived from a markdown document's YAML frontmatter at index time (positive sense: `1` == permissive == the frontmatter default of `true`). `allowEmbed` (frontmatter `embed`) gates inclusion in the embedding pipeline — `0` skips embedding and NULLs any existing chunk vectors. `allowCharacterRead` (`character_read`) gates whether LLM characters may read/list/grep/RAG the document — `0` makes it invisible to them (the human operator is unaffected). `allowCharacterWrite` (`character_write`) gates character-initiated mutation. `character_read` is the master gate: the coercion in `lib/doc-edit/document-policy.ts` forces `allowEmbed` and `allowCharacterWrite` to `0` whenever `allowCharacterRead` is `0`, so the stored columns are the *effective* policy (a row with `allowCharacterRead = 0, allowEmbed = 1` should never be written by the normal path). Non-markdown links keep the permissive defaults (no frontmatter to parse). The columns are re-derived on every reindex, so editing the frontmatter (operator or on-disk) is the control surface. See `lib/doc-edit/document-policy.ts` and the `add-doc-mount-file-policy-flags-v1` migration.
 
 ### doc_mount_chunks
@@ -1798,7 +1960,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_blobs_fileId"
   ON "doc_mount_blobs" ("fileId");
 ```
 
-Binary assets for **any** mount point type. Content-addressable: one blob row per `doc_mount_files` row (UNIQUE on `fileId`). Per-link metadata (relativePath, originalFileName, originalMimeType, description, extractedText) lives on `doc_mount_file_links` so a hard-linked image can carry different descriptions or extraction results in two different mounts without disturbing the bytes themselves. Bitmap images are transcoded to WebP on upload using `sharp`; already-WebP uploads, SVG, and other MIME types are stored as-is. `storedMimeType` is what `data` actually contains.
+**Image bytes are normalized on write (4.10+).** Every insert goes through
+`DocMountFileLinksRepository.linkBlobContent`, which calls
+`normalizeLinkBlobImage` (`lib/mount-index/normalize-blob-image.ts`) before
+hashing: bitmaps (PNG/JPEG/GIF/TIFF/HEIC/AVIF) and **large lossless WebP**
+are transcoded to lossy WebP, and `storedMimeType`, `relativePath` and
+`fileName` are rewritten to match. Lossy WebP and non-images pass through
+untouched. This is a chokepoint, not a courtesy — it replaced per-call-site
+transcoding that eight write paths skipped. The only opt-out is
+`normalizeImages: false`, used solely by `.qtap` import and archive rehydrate,
+where bytes must round-trip exactly.
+
+`sha256` is always recomputed from the stored bytes, so it describes what is
+actually in `data`. The `recompress-oversized-mount-blobs-v1` migration
+re-encoded rows written before the chokepoint existed; it deliberately leaves
+`relativePath` alone (a `.png` may hold WebP bytes), because stored Markdown
+references the path and the serving routes take `Content-Type` from
+`storedMimeType`.
+
+Binary assets for **any** mount point type. Content-addressable: one blob row per `doc_mount_files` row (UNIQUE on `fileId`). Per-link metadata (relativePath, originalFileName, originalMimeType, description, extractedText) lives on `doc_mount_file_links` so a hard-linked image can carry different descriptions or extraction results in two different mounts without disturbing the bytes themselves. Bitmap images and oversized lossless WebP are transcoded to lossy WebP on write using `sharp` (see the normalization note above); lossy WebP, SVG and other MIME types are stored as-is. `storedMimeType` is what `data` actually contains.
 
 Cascade off `doc_mount_files` reaps the blob row (and its bytes) when the last link goes away. The extraction lifecycle (`extractedText`, `extractedTextSha256`, `extractionStatus`, `extractionError`) is no longer on this table — it moved to `doc_mount_file_links` so each consumer can override.
 
