@@ -63,6 +63,11 @@ pub struct RawMessage {
     pub type_: Option<String>,
     pub role: Option<String>,
     pub content: Option<String>,
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    /// v4 widened the input shape to read `systemKind` so the Host's `inform`
+    /// record can be skipped. See [`extract_visible_conversation`].
+    pub system_kind: Option<String>,
+    // === end P4.D205 ===
 }
 
 /// Extract only the visible user/assistant conversational messages from a
@@ -79,6 +84,23 @@ pub fn extract_visible_conversation(messages: &[RawMessage]) -> Vec<ChatMessage>
                 continue;
             }
         }
+        // === P4.D205 (v4 `e7d77bb60`, `chat-tasks.ts:254`) ===
+        // Record-only: documents a delivery, is not part of the conversation.
+        //
+        // This is the back door, and it was open on both sides until v4 closed
+        // it. The filter below selects by ROLE, and the Host's inform record
+        // wears `ASSISTANT` — so without this guard the record would be folded
+        // into a rolling summary by the async pre-compression and handed back to
+        // the model as system block 3 on every turn thereafter. v5 reproduced
+        // the hole exactly (`RawMessage` did not even carry the field);
+        // measured red-first against v4's post-fix oracle.
+        //
+        // The guard is deliberately narrow: every OTHER Staff announcement stays,
+        // because that is deliberate context.
+        if m.system_kind.as_deref() == Some("inform") {
+            continue;
+        }
+        // === end P4.D205 ===
         // Skip entries without content (falsy: absent or empty).
         let content = match &m.content {
             Some(c) if !c.is_empty() => c,

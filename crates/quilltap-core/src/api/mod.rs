@@ -103,6 +103,9 @@ pub mod help_docs;
 // === end P4.9P ===
 // === P4.80: the chat DELETE handler (dogfood finding #117) ===
 pub mod chat_delete;
+// === P4.D205 ===
+pub mod chat_informs;
+// === end P4.D205 ===
 // === end P4.80 ===
 // === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) ===
 pub mod subprompts;

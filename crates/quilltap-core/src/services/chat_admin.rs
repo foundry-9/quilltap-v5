@@ -869,6 +869,12 @@ fn raw_messages(events: &[Value]) -> Vec<crate::chat_tasks::RawMessage> {
             type_: e.get("type").and_then(Value::as_str).map(str::to_string),
             role: e.get("role").and_then(Value::as_str).map(str::to_string),
             content: e.get("content").and_then(Value::as_str).map(str::to_string),
+            // === P4.D205 (v4 `e7d77bb60`) — required-field spill ===
+            system_kind: e
+                .get("systemKind")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            // === end P4.D205 ===
         })
         .collect()
 }

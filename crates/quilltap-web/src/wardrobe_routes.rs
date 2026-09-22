@@ -284,6 +284,16 @@ pub async fn chat_action_get(
                 Err(r) => r,
             }
         }
+        // === P4.D205 (v4 `e7d77bb60`) ===
+        // `GET ?action=informs` — the pending batches for the composer's chip.
+        Some("informs") => {
+            let req = CoreRequest::ChatInformsList { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // === end P4.D205 ===
         // The SillyTavern-JSONL byte download (P4.9E3B — v4 get.ts:46–127).
         // Headers live at this edge: `application/x-ndjson` + v4's exact
         // attachment filename (the characters_routes.rs byte-leg precedent).
@@ -364,14 +374,57 @@ pub async fn chat_action_post(
             };
             CoreRequest::ChatRegenerateAvatar { chat_id, body }
         }
-        // Only these two POST actions are served on this REST edge; the other
+        // === P4.D205 (v4 `e7d77bb60`) ===
+        // The two Inform POST actions. Both bodies carry tri-state keys, so
+        // they go through the SHARED envelope decoder rather than a hand-built
+        // variant — the `tri_state_edges_share_the_decoder` census forbids the
+        // second spelling, and P4.98's measured drift (an explicit `null`
+        // answering two different things on the two transports) is why.
+        Some("inform") => {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+            match crate::request_envelope::request_envelope(
+                "chatInform",
+                &parsed,
+                &["contentMarkdown", "targetParticipantIds"],
+                &[("chatId", serde_json::Value::String(chat_id))],
+            ) {
+                Some(r) => {
+                    // v4 answers 201 for a posted inform.
+                    return match dispatch_core(&state, r).await {
+                        Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+                        Err(r) => r,
+                    };
+                }
+                None => {
+                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                }
+            }
+        }
+        Some("cancel-inform") => {
+            let parsed: serde_json::Value =
+                serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+            match crate::request_envelope::request_envelope(
+                "chatInformCancel",
+                &parsed,
+                &["batchId"],
+                &[("chatId", serde_json::Value::String(chat_id))],
+            ) {
+                Some(r) => r,
+                None => {
+                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                }
+            }
+        }
+        // === end P4.D205 ===
+        // Only these POST actions are served on this REST edge; the other
         // chat actions ride POST /api/dispatch (a loud pointer, not a silent
         // 404 — the mount-point-action precedent).
         _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,
-                "Only the equip and regenerate-avatar actions are served on this route; \
-                 the other chat actions ride POST /api/dispatch",
+                "Only the equip, regenerate-avatar, inform and cancel-inform actions are \
+                 served on this route; the other chat actions ride POST /api/dispatch",
             )
         }
     };

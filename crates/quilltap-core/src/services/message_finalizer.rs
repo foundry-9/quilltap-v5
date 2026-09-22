@@ -606,6 +606,12 @@ pub struct FinalizeOptions {
     pub tool_messages: Vec<ToolMessage>,
     /// v4 `preGeneratedAssistantMessageId` — pins the message id when set.
     pub pre_generated_assistant_message_id: Option<String>,
+    // === P4.D205 (v4 `e7d77bb60`, `message-finalizer.service.ts:290-305`) ===
+    /// v4 `builtContext.informRowIds` — the `chat_informs` rows this turn's
+    /// inform block carried. Consumed against the PERSISTED assistant message,
+    /// below. Empty on a swipe and on a turn that carried nothing.
+    pub inform_row_ids: Vec<String>,
+    // === end P4.D205 ===
     pub profile: FinalizerProfile,
     pub streaming: FinalizerStreaming,
     pub compression: FinalizerCompression,
@@ -700,6 +706,7 @@ where
         generated_image_paths,
         mut tool_messages,
         pre_generated_assistant_message_id,
+        inform_row_ids,
         profile,
         streaming,
         compression,
@@ -1036,6 +1043,40 @@ where
         .map(|_| ())
     })
     .await?;
+
+    // === P4.D205 (v4 `e7d77bb60`, `message-finalizer.service.ts:290-305`) ===
+    // Consume this turn's informs. Tied to the *persisted* assistant message,
+    // never to context building: a provider failure that saved nothing must
+    // leave the rows pending for the seat's next attempt, and a turn-skip
+    // ([NOTHING TO ADD]) persists no message at all, so the passage waits until
+    // the character actually speaks. `inform_row_ids` is empty on a swipe — a
+    // swipe re-applies but never consumes.
+    //
+    // It sits AFTER the save's `?` on purpose: a save that fails propagates and
+    // this line is never reached, which is exactly the "left pending when the
+    // save throws" rule.
+    if !inform_row_ids.is_empty() {
+        let ids = inform_row_ids.clone();
+        let consume_message_id = assistant_message_id.clone();
+        let consumed = db
+            .write(move |writers| {
+                writers
+                    .main()
+                    .chat_informs()
+                    .mark_consumed(&ids, &consume_message_id)
+            })
+            .await?;
+        tracing::debug!(
+            target: "quilltap::inform",
+            chat_id = %chat_id,
+            message_id = %assistant_message_id,
+            participant_id = %character_participant.id,
+            requested = inform_row_ids.len(),
+            consumed,
+            "Consumed informs for turn",
+        );
+    }
+    // === end P4.D205 ===
 
     // v4 emits a `confirmationResult` event whenever `confirmed !== undefined` —
     // which INCLUDES the user-driven skip path (`confirmed = null`), so the event

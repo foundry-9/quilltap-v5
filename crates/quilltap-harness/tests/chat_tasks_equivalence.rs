@@ -22,6 +22,10 @@ struct WRawMsg {
     role: Option<String>,
     #[serde(default)]
     content: Option<String>,
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    #[serde(rename = "systemKind", default)]
+    system_kind: Option<String>,
+    // === end P4.D205 ===
 }
 
 #[derive(Deserialize, PartialEq, Eq, Debug)]
@@ -77,6 +81,7 @@ fn chat_tasks_match_oracle() {
                         type_: m.type_,
                         role: m.role,
                         content: m.content,
+                        system_kind: m.system_kind,
                     })
                     .collect();
                 let got = extract_visible_conversation(&raw);

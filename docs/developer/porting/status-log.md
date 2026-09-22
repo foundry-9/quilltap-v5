@@ -138991,3 +138991,162 @@ QT_SCHEMA_OUT=/tmp/p4d205/fresh-schema.json QT_SEED_OUT=/tmp/p4d205/chat-setting
 QT_ORACLE_PROVISION=/tmp/p4d205/oracle-provision.json QT_V4_FRESH_OUT=/tmp/p4d205/qt-v4-fresh \
   $N/npx tsx "$W/harness/oracle/provision/build-provision-oracle.ts"
 ```
+
+### Units 2–5 + 7 — the prompt block, consumption, the record + strips, the verbs, help
+
+**Unit 2 — the prompt path.** NEW `services/inform_block.rs`, split at the seam
+v4's own tests already draw: v4's `buildInformBlock` takes `repos` as a
+parameter, so its behaviour is separable from its query by construction. The
+port mirrors that — `is_swipe_request` (v4's `Array.isArray(ids) && ids.length
+> 0`, so an EMPTY list falls back to PENDING), `assemble_inform_block` (trim,
+drop the empties, join), and `build_inform_block` = the two plus the read. A
+read failure answers EMPTY, not an error: v4 wraps every read in
+`safeQuery(…, [])`, so a broken table costs the passage, not the turn.
+
+`build_context` reads it BEFORE the history budget (v4 `:1972-1983`), gated on
+the responding participant exactly as v4 gates it — **a turn with no responding
+seat performs no `chat_informs` read at all** — and `inform_tokens =
+estimate + 4` joins `used_tokens`. The push is ONE injected system message
+between block 2 and block 3 (v4 `:2127-2133`), conditional, so a turn without
+informs is byte-identical and no builder-version constant moves. `BuiltContext`
+gains `inform_row_ids`; `BuildContextInput` gains
+`regeneration_of_message_ids: Option<Vec<String>>`.
+
+**The order's "prove the other construction sites compile untouched" was
+answered by the compiler:** making the field required surfaced EXACTLY ONE
+construction site (`orchestrator.rs`'s `build_context_input`), because every
+other caller goes through it. The two `BuildContextArgs` sites are the ordinary
+turn (`None`) and the swipe handle.
+
+Family: NEW `inform_block_equivalence` — 11 cases over v4's REAL module through
+a recording stub, four comparands each: `content`, `rowIds`, WHICH read v4
+performed (the `isSwipe` predicate, pinned against v4's own choice rather than
+asserted of v5 alone), and **`writeCalls` over all five of v4's write methods —
+zero on every row**, which is the order's "never writes — selection is not
+delivery" row-count assert, checked against v4's answer. The separator is pinned
+from v4's exported `INFORM_BLOCK_SEPARATOR`, not transcribed.
+
+**Unit 3 — consumption.** The finalizer consumes after the assistant save, and
+the line sits AFTER that save's `?` on purpose: a save that fails propagates and
+the consume is never reached, which IS the "left pending when the save throws"
+rule. `PreservePartialOnError` carries `inform_row_ids` and consumes against the
+PRESERVED id, only after its write succeeded (the swallow-and-log arm now
+`return`s rather than falling through). The orchestrator threads
+`built_context.inform_row_ids` to both.
+
+**The swipe handle** (`services/regenerate_swipe.rs`, the §R.10(e) pre-declared
+out-of-mandate edit, marked `// P4.D205 OUT-OF-MANDATE — P4.D207 preserves`):
+v4's `[...new Set([target.id, ...group])]` — first-seen dedupe over the target
+plus every `type === 'message'` row sharing its `swipeGroupId` — passed as
+`regeneration_of_message_ids`. **P4.D207 must preserve this when it rewrites the
+generation as a watched stream.**
+
+**Unit 4 — the record and the three strips.**
+`announcer/writer.rs::post_inform_record` on the ad-hoc announcer's idiom: the
+trim, the empty-to-null audience normalization ("public" has exactly one
+representation on the row), `opaqueContent` mirroring `content`, and the
+never-propagate contract with v4's warn/error lines.
+
+The strips: `message_context`'s Commonplace pass widened to v4's
+`isRecordOnlyMessage` (plus v4's `[Context] Stripped record-only messages from
+LLM history` debug line, which v5 did not carry); `courier_transport`'s skip at
+v4's position, with v4's reasoning kept — the Courier builds its transcript from
+the RAW events, so the context builder's strip does not reach it and without the
+guard it would be the one transport that hands the record to a model.
+
+⭐ **`extract_visible_conversation` — the hole, MEASURED before the fix as the
+order required.** v5 reproduced it exactly: `RawMessage` carried no
+`system_kind` field at all, so a record row (type `message`, role `ASSISTANT`,
+content set) was necessarily folded in. The corpus grew v4's two new cases, the
+family ran **RED on `inform-record-dropped`**, and only then did the skip land at
+v4's own position (after the type check, before the content check). The widened
+struct spilled one line into four other `RawMessage` construction sites
+(`orchestrator`, `title_update_job`, `story_background_job`, `chat_admin` — each
+passing the real `systemKind` through) and `ExistingMessage` in
+`build_context`/`message_context`; all marked.
+
+**Unit 5 — the three verbs.** NEW `api/chat_informs.rs` with v4's guard ORDER
+intact (404 → eligibility → membership-before-eligibility on an explicit list,
+so an id naming a real seat the operator may not inform is reported as such
+rather than as unknown). The three `Request` variants and three `Response`
+variants live in the `// === P4.D205 ===` fences at the END of their enums
+(§R.10(b)); both bodies are `double_option` tri-states.
+
+⚠ **The REST arms are in `crates/quilltap-web/src/wardrobe_routes.rs`, not
+`chats_routes.rs` as the order predicted** — that file holds
+`chat_action_get`/`chat_action_post`, i.e. the actual `/api/v1/chats/{id}`
+`?action=` edge (the order says "say which file"). `wardrobe_routes.rs` is in no
+lane's fence. Both POST arms go through `request_envelope::request_envelope`
+rather than hand-building a variant, because the `tri_state_edges_share_the_
+decoder` census forbids the second spelling and P4.98's measured drift (an
+explicit `null` answering differently on the two transports) is why.
+
+Participant removal drops the seat's pending rows in a block that warns but can
+never break the removal (v4's try/catch, reproduced as the `Err` arm after the
+removal has already committed).
+
+Family: NEW `chat_informs_routes_equivalence`, 12 cases against an oracle that
+drives v4's REAL handlers. **Two comparands**: status + body, and the EFFECTS —
+v4's mocked-collaborator calls mapped onto the state v5 actually leaves behind
+(the record row's `targetParticipantIds` and `content`, the created rows'
+participants and body). The effects comparand is the one that can see the
+coverage rule, which no response body shows.
+
+⚠ **Three mock artefacts, each recorded rather than papered over** — v4's own
+test mocks these collaborators, so the oracle cannot speak to them:
+1. `postInformRecord` is mocked to a stub `{id, type}`, so the response body's
+   `message` is collapsed to its identity on both sides. The record's real shape
+   is pinned by the EFFECTS comparand (the persisted row's content + audience).
+2. v4 passes `contentMarkdown` UNTRIMMED to the writer, which trims as its first
+   statement — so the oracle's argument is `js_trim`ed before comparison, to
+   compare like with like.
+3. **A REMOVED seat is deliberately NOT a case.** Through v4's mocked audience
+   resolver a departed seat reaches the eligibility gate and answers "Not an
+   LLM-controlled seat"; v4's REAL resolver reports it as an UNKNOWN target,
+   which is what v5 answers. Measuring it would pin the MOCK. Recorded in both
+   the oracle and the Rust family; the audience resolver has its own
+   differential, and the eligibility gate is pinned by the user-controlled-seat
+   case, whose seat is live on both sides.
+
+**Unit 7 — help.** `help/inform.md` (NEW, 6,934 bytes) and
+`help/insert-announcement.md` (9,937) byte-copied at the target pin and `cmp`-
+verified. Both count literals 124 → **125** with the arithmetic in the comment;
+**the unifier recounts to 126** once P4.D210's `help/cli-sync.md` lands.
+
+**Mutation proofs (file-backup revert; every one reddened its target):**
+
+| # | mutation | reddened |
+|---|---|---|
+| M1 | drop the `id.localeCompare` tiebreak | `findPendingForParticipant` ordering |
+| M2 | let `deletePendingByBatch` take consumed rows | the survive-cancel row |
+| M3 | return row ids on the swipe arm | "a swipe reads the rows that generation consumed" |
+| M4 | drop the trim before the join | "a whitespace-only passage is nothing to deliver" |
+| M5 | coverage compares `participantIds` to itself (always public) | "a subset whispers" |
+| M6 | coverage can never hold (`eligible + 1`) | "null targets … public record" |
+
+M5/M6 are the two directions of the order's named coverage proof: M5 makes every
+post public, M6 makes every post a whisper, and each reddens the case that
+asserts the opposite.
+
+**Regen recipes as run** (target pin; `$W` is this worktree, `$N` is Node 24):
+
+```bash
+# tier-1 block
+cd /tmp/qt-v4-pin-p4d205-f45a517a9
+$N/npx tsx "$W/harness/oracle/cases/inform-block.ts" > /tmp/p4d205/oracle-inform-block.ndjson
+# chat-tasks (grown with v4's two visible-conversation cases)
+$N/npx tsx "$W/harness/oracle/cases/chat-tasks.ts" > /tmp/p4d205/oracle-chat-tasks.ndjson
+# the route surface (jest; the case is copied to a /tmp mirror — jest ignores .claude/)
+TMPO=/tmp/qt-informs-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$W/harness/oracle/cases/chat-informs-routes.test.ts" "$TMPO/cases/"
+QT_ORACLE_OUT=/tmp/p4d205/oracle-chat-informs-routes.ndjson TZ=UTC \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "chat-informs-routes\.test\.ts$"
+```
+
+⚠ **The fixture `qt-chat-informs-fixture.db` was widened twice** (the route room,
+then the room's own pending rows), and **`chat_informs_tier2` reads it** — its
+oracle was regenerated after each widening and re-verified green. Anyone
+rebuilding the fixture must regenerate BOTH `chat-informs-tier2.ts` and leave the
+routes oracle alone (the routes oracle is mock-driven and does not read the
+fixture at all).

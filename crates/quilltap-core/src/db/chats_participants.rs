@@ -239,6 +239,33 @@ impl<'c> ChatParticipantsRepository<'c> {
             ..Default::default()
         };
         ChatsRepository::new(self.conn).update(chat_id, &update)?;
+
+        // === P4.D205 (v4 `e7d77bb60`, `participants.ts:566-582`) ===
+        // A seat that has left can never collect what it was handed out of
+        // character, and a pending row would keep its name on the composer's
+        // chip forever.
+        //
+        // **Never allowed to break the removal itself** — the seat is already
+        // gone, and v4 wraps this in a try/catch that only warns. The `if let
+        // Err` here is that catch: the removal above has already committed and
+        // this returns `Ok(true)` either way.
+        match super::chat_informs::ChatInformsRepository::new(self.conn)
+            .delete_pending_for_participant(chat_id, participant_id)
+        {
+            Ok(dropped_informs) => tracing::debug!(
+                chat_id = %chat_id,
+                participant_id = %participant_id,
+                dropped_informs,
+                "[Chats v1] Pending informs dropped with removed seat",
+            ),
+            Err(e) => tracing::warn!(
+                chat_id = %chat_id,
+                participant_id = %participant_id,
+                error = %e,
+                "[Chats v1] Could not drop pending informs for removed seat",
+            ),
+        }
+        // === end P4.D205 ===
         Ok(true)
     }
 

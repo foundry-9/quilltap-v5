@@ -2248,6 +2248,12 @@ where
                     type_: m.get("type").and_then(Value::as_str).map(str::to_string),
                     role: m.get("role").and_then(Value::as_str).map(str::to_string),
                     content: m.get("content").and_then(Value::as_str).map(str::to_string),
+                    // === P4.D205 (v4 `e7d77bb60`) — required-field spill ===
+                    system_kind: m
+                        .get("systemKind")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    // === end P4.D205 ===
                 })
                 .collect();
             let actual_message_count =
@@ -2363,6 +2369,11 @@ where
     let build_input = build_context_input(BuildContextArgs {
         user_id: &user_id,
         model_context_limit: input.model_context_limit,
+        // === P4.D205 ===
+        // The ordinary turn is never a swipe re-apply: the inform block reads
+        // this seat's PENDING rows and returns their ids for the finalizer.
+        regeneration_of_message_ids: None,
+        // === end P4.D205 ===
         // Room held back for the tool schemas and the system messages spliced in
         // after the context is built (v4 `f933ba9c`).
         reserved_outgoing_tokens: Some(turn_extras.reserved_tokens),
@@ -2724,6 +2735,11 @@ where
         character_participant_id.clone(),
         participant_status.clone(),
         pre_generated_assistant_message_id.clone(),
+        // === P4.D205 (v4 `e7d77bb60`) ===
+        // v4 `makePreservePartialOnError({…, informRowIds})`: a preserved
+        // partial IS a persisted turn, so the rows it carried are spent.
+        built_context.inform_row_ids.clone(),
+        // === end P4.D205 ===
     );
 
     let previous_response_id =
@@ -3451,6 +3467,11 @@ where
             FinalizeOptions {
                 chat_id: chat_id.clone(),
                 user_id: user_id.clone(),
+                // === P4.D205 (v4 `e7d77bb60`) ===
+                // `builtContext.informRowIds` — this turn's delivered rows, for
+                // the finalizer to consume against the persisted message.
+                inform_row_ids: built_context.inform_row_ids.clone(),
+                // === end P4.D205 ===
                 chat: finalizer_chat,
                 character: finalizer_character,
                 character_participant: finalizer_participant,
@@ -4374,6 +4395,13 @@ pub(crate) struct BuildContextArgs<'a> {
     /// the per-turn conversation-summary list when the pre-searched memories are
     /// the ones this turn uses. `None` for the sibling entry points.
     pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    /// Swipe re-apply (v4 `regenerate-swipe.service.ts:146-155`). `None` on
+    /// every ordinary turn; the swipe path supplies the target message plus its
+    /// whole swipe group. Threaded straight through to
+    /// [`build_context::BuildContextInput::regeneration_of_message_ids`].
+    pub regeneration_of_message_ids: Option<Vec<String>>,
+    // === end P4.D205 ===
 }
 
 /// Convert a connection-profile net-read `Value` into a [`CheapLlmProfile`] (v4's
@@ -4454,6 +4482,9 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
     BuildContextInput {
         model_context_limit: args.model_context_limit,
         reserved_outgoing_tokens: args.reserved_outgoing_tokens,
+        // === P4.D205 ===
+        regeneration_of_message_ids: args.regeneration_of_message_ids,
+        // === end P4.D205 ===
         user_id: args.user_id.to_string(),
         character,
         user_character: args.user_character,

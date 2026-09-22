@@ -1,0 +1,333 @@
+{
+  "_comment": "P4.D205 \u2014 the buildInformBlock corpus (v4 e7d77bb60). v4's module takes its repos as a parameter, so these rows are injected, not stored. `writeCalls` must be empty on every row: selection is not delivery.",
+  "cases": [
+    {
+      "label": "the pending passage, verbatim, with no framing of any kind",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You notice the clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "several pending passages join in order with a rule between them",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "The clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-2",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "A letter arrived.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-3",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "It is raining.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "absent, not empty, when the seat is owed nothing",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [],
+      "consumed": []
+    },
+    {
+      "label": "a whitespace-only passage is nothing to deliver",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "   \n\t  ",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "one whitespace-only passage among real ones is dropped, not joined as empty",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "The clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-2",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "    ",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-3",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "A letter arrived.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "bodies are TRIMMED before the join",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "  The clock has stopped.  \n",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-2",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "\n A letter arrived. ",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "a swipe reads the rows that generation consumed, not the pending ones",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target",
+        "msg-sibling"
+      ],
+      "pending": [
+        {
+          "id": "row-9",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "A BRAND NEW passage that must not land in a re-roll.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You notice the clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T11:00:00.000Z",
+          "consumedByMessageId": "msg-target"
+        }
+      ]
+    },
+    {
+      "label": "a swipe never hands back row ids, so it cannot consume",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target"
+      ],
+      "pending": [],
+      "consumed": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "First.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T11:00:00.000Z",
+          "consumedByMessageId": "msg-target"
+        },
+        {
+          "id": "row-2",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "Second.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": "2026-09-19T11:00:00.000Z",
+          "consumedByMessageId": "msg-target"
+        }
+      ]
+    },
+    {
+      "label": "an EMPTY regeneration list falls back to the pending set",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [],
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "You notice the clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": [
+        {
+          "id": "row-5",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "A consumed row that must NOT be read here.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ]
+    },
+    {
+      "label": "a swipe whose group consumed nothing is absent",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "regenerationOfMessageIds": [
+        "msg-target"
+      ],
+      "pending": [
+        {
+          "id": "row-9",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "Pending, and not for this re-roll.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    },
+    {
+      "label": "never writes \u2014 selection is not delivery",
+      "chatId": "chat-1",
+      "participantId": "participant-a",
+      "pending": [
+        {
+          "id": "row-1",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "The clock has stopped.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        },
+        {
+          "id": "row-2",
+          "chatId": "chat-1",
+          "batchId": "batch-1",
+          "participantId": "participant-a",
+          "contentMarkdown": "A letter arrived.",
+          "recordMessageId": "msg-record",
+          "createdAt": "2026-09-19T10:00:00.000Z",
+          "updatedAt": "2026-09-19T10:00:00.000Z",
+          "consumedAt": null,
+          "consumedByMessageId": null
+        }
+      ],
+      "consumed": []
+    }
+  ]
+}

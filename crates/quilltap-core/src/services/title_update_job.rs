@@ -276,6 +276,12 @@ where
             type_: m.get("type").and_then(Value::as_str).map(str::to_string),
             role: m.get("role").and_then(Value::as_str).map(str::to_string),
             content: m.get("content").and_then(Value::as_str).map(str::to_string),
+            // === P4.D205 (v4 `e7d77bb60`) — required-field spill ===
+            system_kind: m
+                .get("systemKind")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            // === end P4.D205 ===
         })
         .collect();
     let visible = crate::chat_tasks::extract_visible_conversation(&raw);

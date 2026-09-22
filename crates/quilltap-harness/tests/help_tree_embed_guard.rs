@@ -54,13 +54,14 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// `help/character-progressions.md`; 121 at `2f4254b42` after P4.D163's
 /// `help/character-subprompts.md`; 120 at `d883a5ee1`).
 ///
-/// **125 on this lane's branch (124 + 1).** P4.D210's re-vendor at v4
-/// `f45a517a9` ADDS `help/cli-sync.md` (`23da0b322`, the new verb's page) and
-/// MODIFIES three (`help/cli-docs.md`, `help/mount-points.md`,
-/// `help/scriptorium.md` — same commit), so the count moves by exactly +1.
-/// ⚠ **The round's other new page is P4.D205's `help/inform.md`** (v4
-/// `e7d77bb60`), which bumps this same literal by another +1 on ITS branch —
-/// so the unifier RECOUNTS to **126**, rather than taking either lane's number.
+/// **126 after the `f45a517a9` round's unification (124 + 1 + 1).** Two lanes
+/// each added ONE new page at v4 `f45a517a9`: P4.D205's `help/inform.md`
+/// (`e7d77bb60`) and P4.D210's `help/cli-sync.md` (`23da0b322`). Each lane
+/// carried 125 on its own branch; the unifier recounted to 126 rather than
+/// taking either lane's number (the silent-auto-merge trap). The round's six
+/// re-vendored pages (`data-retention`, `search`, `insert-announcement`,
+/// `chat-message-actions`, `dangerous-content`, `cli-docs`, `mount-points`,
+/// `scriptorium`) move no count.
 const VENDORED_FILE_COUNT: usize = 125;
 
 fn repo_root() -> PathBuf {

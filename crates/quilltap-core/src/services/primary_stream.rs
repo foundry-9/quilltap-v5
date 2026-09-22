@@ -671,6 +671,11 @@ pub struct PreservePartialOnError {
     character_id: String,
     pre_generated_assistant_message_id: String,
     partial_preserved: bool,
+    // === P4.D205 (v4 `e7d77bb60`, `primary-stream.service.ts:121-129`) ===
+    /// v4 `makePreservePartialOnError({…, informRowIds})`. Consumed against the
+    /// PRESERVED message id once that row is saved.
+    inform_row_ids: Vec<String>,
+    // === end P4.D205 ===
 }
 
 impl PreservePartialOnError {
@@ -683,8 +688,14 @@ impl PreservePartialOnError {
         participant_id: impl Into<String>,
         participant_status: Option<String>,
         pre_generated_assistant_message_id: impl Into<String>,
+        // === P4.D205 ===
+        inform_row_ids: Vec<String>,
+        // === end P4.D205 ===
     ) -> Self {
         Self {
+            // === P4.D205 ===
+            inform_row_ids,
+            // === end P4.D205 ===
             chat_id: chat_id.into(),
             character_id: character_id.into(),
             character_name: character_name.into(),
@@ -793,7 +804,41 @@ impl PreservePartialOnError {
         if let Err(_e) = write {
             // A structured logger lands with the transport layer; the differential
             // asserts DB state, so a swallowed failure surfaces as an absent row.
+            return;
         }
+
+        // === P4.D205 (v4 `e7d77bb60`, `primary-stream.service.ts:121-129`) ===
+        // The content reached the model, and it is now a persisted turn — so the
+        // informs it carried are spent. Failing to consume here would deliver
+        // the same passage again on the seat's next turn.
+        //
+        // The consume is tied to the PRESERVED message id, which on this path is
+        // the pre-generated id the partial was written under, and it runs only
+        // after the write above succeeded.
+        if !self.inform_row_ids.is_empty() {
+            let ids = self.inform_row_ids.clone();
+            let preserved_message_id = self.pre_generated_assistant_message_id.clone();
+            let log_message_id = preserved_message_id.clone();
+            let log_chat_id = self.chat_id.clone();
+            let consumed = db
+                .write(move |writers| {
+                    writers
+                        .main()
+                        .chat_informs()
+                        .mark_consumed(&ids, &preserved_message_id)
+                })
+                .await
+                .unwrap_or(0);
+            tracing::debug!(
+                target: "quilltap::inform",
+                chat_id = %log_chat_id,
+                message_id = %log_message_id,
+                requested = self.inform_row_ids.len(),
+                consumed,
+                "Consumed informs on preserved partial response",
+            );
+        }
+        // === end P4.D205 ===
     }
 
     /// Test / caller accessor: whether a partial has already been preserved.

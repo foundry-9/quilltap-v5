@@ -423,6 +423,19 @@ fn build_courier_delta_events(
         {
             continue;
         }
+        // === P4.D205 (v4 `e7d77bb60`, `courier-transport.service.ts:294-301`) ===
+        // The `inform` record is record-only: it documents, for the operator, an
+        // out-of-character passage that was delivered to the seat as its own
+        // system block. The Courier builds its own transcript from the RAW
+        // events rather than from the context builder's output, so the strip
+        // that keeps the record out of every model's history
+        // (`message_context`'s record-only pass) does not reach here — without
+        // this guard the Courier would be the one transport that hands the
+        // record to a model.
+        if event.get("systemKind").and_then(Value::as_str) == Some("inform") {
+            continue;
+        }
+        // === end P4.D205 ===
         // Filter targeted whispers: surface only when the responding character is
         // sender OR a target.
         if let Some(targets) = event.get("targetParticipantIds").and_then(Value::as_array) {

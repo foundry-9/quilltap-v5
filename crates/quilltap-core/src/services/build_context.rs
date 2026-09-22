@@ -347,6 +347,14 @@ pub struct BuiltContext {
     pub compression_applied: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compression_details: Option<CompressionDetailsOut>,
+    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:359`/`:2748`) ===
+    /// The `chat_informs` rows this context's inform block carried, for the
+    /// finalizer to mark consumed against the PERSISTED assistant message.
+    /// Empty when nothing was delivered **and on every swipe** — a swipe reads
+    /// consumed rows and must never consume again.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub inform_row_ids: Vec<String>,
+    // === end P4.D205 ===
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +374,15 @@ pub struct ExistingMessage {
     /// v4 reads `(msg as {type?}).type` for the visibility check; `None` = a
     /// plain message.
     pub message_type: Option<String>,
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    /// `systemKind`, read by [`crate::chat_tasks::extract_visible_conversation`]
+    /// so the Host's `inform` record can never be folded into a cheap-LLM
+    /// summary. In production the record is already gone by the time this
+    /// struct is built (`message_context` strips record-only rows first), but
+    /// the field is carried so a caller that reaches the estimator with raw
+    /// rows behaves as v4 does.
+    pub system_kind: Option<String>,
+    // === end P4.D205 ===
 }
 
 /// v4's `TimestampConfig` subset buildContext reads (mode / autoPrepend), plus
@@ -550,6 +567,17 @@ pub struct BuildContextInput {
     /// measures them in one place so the reservation and the text it pays for
     /// can't drift apart.
     pub reserved_outgoing_tokens: Option<i64>,
+    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:548`) ===
+    /// Swipe re-apply: the message being re-rolled plus every id in its swipe
+    /// group. When present and non-empty, the inform block carries the rows
+    /// those generations consumed and **no pending row at all**, and returns no
+    /// row ids — a swipe never consumes.
+    ///
+    /// An `Option`, so the swipe path is the only construction site that has to
+    /// change: every other caller keeps `..Default::default()` or its explicit
+    /// `None` and is byte-identical.
+    pub regeneration_of_message_ids: Option<Vec<String>>,
+    // === end P4.D205 ===
     /// "Nothing to add" turn-skipping — per-turn ephemeral instruction control
     /// (v4 `options.turnSkip`, b90cd1f5). When `offer_skip` is true, a Turn note
     /// is appended to (or pushed after) the outgoing messages inviting the
@@ -2086,6 +2114,9 @@ where
             type_: m.message_type.clone(),
             role: Some(m.role.clone()),
             content: Some(m.content.clone()),
+            // === P4.D205 ===
+            system_kind: m.system_kind.clone(),
+            // === end P4.D205 ===
         })
         .collect();
     let visible_conversation = extract_visible_conversation(&existing_raw);
@@ -2959,11 +2990,41 @@ where
     // `reserved_outgoing_tokens` is the caller's declaration of what it will add
     // afterwards (tool schemas, agent-mode instructions, tool-change notice);
     // history must not be packed into space those will occupy.
+    //
+    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:1972-1983`) ===
+    // The inform block is the one sanctioned turn-variable system block. It is
+    // read HERE rather than at assembly so its tokens are spoken for before the
+    // history selection spends what is left: an operator's passage is short, but
+    // a budget that cannot see it is how bytes get onto the wire under a clean
+    // log line. Empty-is-absent, so a turn with no informs costs exactly nothing
+    // and assembles byte-for-byte as it did before the feature existed.
+    //
+    // The read is gated on the responding participant, exactly as v4 gates it:
+    // a turn with no responding seat performs NO `chat_informs` read at all.
+    let inform_block_result = match &input.responding_participant {
+        Some(rp) => crate::services::inform_block::build_inform_block(
+            db,
+            &input.chat.id,
+            &rp.id,
+            input.regeneration_of_message_ids.as_deref(),
+        ),
+        None => crate::services::inform_block::InformBlock::default(),
+    };
+    let inform_block = inform_block_result.content.clone();
+    // v4's `estimateTokens(informBlock, provider) + 4` — the same +4 per-block
+    // envelope every other system block pays.
+    let inform_tokens = inform_block
+        .as_deref()
+        .map(|b| estimate_tokens(b, cpt) + 4)
+        .unwrap_or(0);
+    // === end P4.D205 ===
+
     let used_tokens = effective_system_prompt_tokens
         + memory_recap_tokens
         + memory_tokens
         + inter_character_memory_tokens
-        + summary_tokens;
+        + summary_tokens
+        + inform_tokens;
     let reserved_outgoing_tokens = input.reserved_outgoing_tokens.unwrap_or(0);
     let remaining_budget = budget.safe_input_limit - used_tokens - reserved_outgoing_tokens;
 
@@ -3166,6 +3227,36 @@ where
         name: None,
         cache_control: None,
     });
+    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:2127-2133`) ===
+    // The inform block, between system block 2 (identity reinforcement) and
+    // system block 3 (compressed history).
+    //
+    // It sits here, after the static prefix (blocks 1 and 2) and before the
+    // compressed history, because blocks 1 and 2 are the cacheable region: the
+    // Anthropic plugin puts its `cache_control` breakpoint on the FIRST system
+    // block only, OpenAI-style prefix caching is unaffected by anything after an
+    // unchanged prefix, and local providers fold the leading system run into one
+    // message. To the model, that is exactly "after the system prompt".
+    //
+    // Nothing is pushed when there is nothing to deliver — the conditional, not
+    // an empty string, is what keeps a turn without informs byte-identical and
+    // the cache-determinism golden intact. Neither the identity-stack builder
+    // version nor the prompt-cache structure version moves: the block is
+    // conditional, not structural.
+    if let Some(block) = &inform_block {
+        context_messages.push(ContextMessage {
+            role: "system",
+            content: block.clone(),
+            metadata: Some(ContextMessageMetadata {
+                is_injected: Some(true),
+                ..Default::default()
+            }),
+            thought_signature: None,
+            name: None,
+            cache_control: None,
+        });
+    }
+    // === end P4.D205 ===
     // Block 3.
     if let Some(block) = &compressed_history_block {
         context_messages.push(ContextMessage {
@@ -3665,6 +3756,9 @@ where
     };
 
     Ok(BuiltContext {
+        // === P4.D205 ===
+        inform_row_ids: inform_block_result.row_ids,
+        // === end P4.D205 ===
         messages: context_messages,
         token_usage: TokenUsage {
             system_prompt: effective_system_prompt_tokens,

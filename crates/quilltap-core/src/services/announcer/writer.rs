@@ -168,6 +168,111 @@ pub async fn post_adhoc_announcement(db: &Db, params: &AdhocAnnouncementParams) 
     }
 }
 
+// === P4.D205 (v4 `e7d77bb60`, `announcer/writer.ts:190-211`) ===
+
+/// Parameters for [`post_inform_record`].
+pub struct InformRecordParams {
+    pub chat_id: String,
+    pub content_markdown: String,
+    /// `None` (or empty) = the record is PUBLIC. The API decides this by
+    /// COVERAGE, not by how the operator clicked: a list naming every eligible
+    /// seat is public.
+    pub target_participant_ids: Option<Vec<String>>,
+}
+
+/// Post the Host's transcript record for an inform (v4 `postInformRecord`).
+///
+/// The record documents, for the operator, that an out-of-character passage was
+/// handed to a seat. It is NOT how the passage reaches the model — that is the
+/// inform block — and every context path strips it
+/// ([`crate::services::message_context`]'s record-only pass, the Courier's own
+/// skip, and `extract_visible_conversation`'s).
+///
+/// `opaqueContent` mirrors `content` on purpose: the dual-body convention is
+/// honoured, and there is simply no persona to strip.
+///
+/// Returns the persisted message, or `None` on empty content / unknown chat /
+/// any failure. **Errors never propagate** — the established Staff-announcer
+/// convention, and a lost record must not cost the operator the batch itself.
+pub async fn post_inform_record(db: &Db, params: &InformRecordParams) -> Option<Value> {
+    let trimmed = js_trim(&params.content_markdown).to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let cid = params.chat_id.clone();
+    match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
+        Ok(Some(_)) => {}
+        _ => {
+            tracing::warn!(
+                target: "quilltap::announcer",
+                context = "announcer",
+                chat_id = %params.chat_id,
+                "[Announcer] Inform record skipped — unknown chat",
+            );
+            return None;
+        }
+    }
+
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let now = crate::clock::now_iso();
+
+    // Same normalization as the ad-hoc announcer: "public" has exactly one
+    // representation on the row, because a stored `[]` reads as "whispered to
+    // nobody" to every downstream whisper check.
+    let targets: Value = match &params.target_participant_ids {
+        Some(ids) if !ids.is_empty() => json!(ids),
+        _ => Value::Null,
+    };
+
+    let message = json!({
+        "type": "message",
+        "id": message_id,
+        "role": "ASSISTANT",
+        "content": trimmed,
+        "opaqueContent": trimmed,
+        "attachments": [],
+        "createdAt": now,
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": "inform",
+        "targetParticipantIds": targets,
+        "customAnnouncer": null,
+    });
+    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
+
+    let chat_id = params.chat_id.clone();
+    match db
+        .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
+        .await
+    {
+        Ok(()) => {
+            tracing::debug!(
+                target: "quilltap::announcer",
+                context = "announcer",
+                chat_id = %params.chat_id,
+                message_id = %message_id,
+                audience = if targets.is_null() { "public" } else { "whisper" },
+                target_count = targets.as_array().map(Vec::len).unwrap_or(0),
+                "[Announcer] Inform record posted",
+            );
+            Some(message)
+        }
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::announcer",
+                context = "announcer",
+                chat_id = %params.chat_id,
+                error = %e,
+                "[Announcer] Failed to post inform record",
+            );
+            None
+        }
+    }
+}
+
+// === end P4.D205 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -242,11 +242,56 @@ where
         .cloned()
         .collect();
 
+    // === P4.D205 OUT-OF-MANDATE — P4.D207 preserves ===
+    // The swipe's inform re-apply handle (v4 `regenerate-swipe.service.ts:
+    // 146-155`). A swipe re-rolls the line this message was, so its generation
+    // must see exactly the informs that generation saw: the target plus every
+    // id in its swipe group, deduplicated, first-seen order (v4's
+    // `[...new Set([...])]`). Pending rows are deliberately excluded — it would
+    // be surprising for a brand-new passage to land in a re-roll of an old line
+    // and be spent there — and NOTHING here consumes: `build_inform_block`
+    // returns no row ids for a regeneration, and this path never calls
+    // `mark_consumed`.
+    //
+    // P4.D207 owns this file and rewrites the generation below as a watched
+    // stream; this handle must survive that rewrite. `chat_informs_swipe_handle`
+    // in the harness is the source census that fails if it does not.
+    let existing_swipe_group_id =
+        json_str(&target_message, "swipeGroupId").filter(|s| !s.is_empty());
+    let regeneration_of_message_ids: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        let target_id = json_str(&target_message, "id").unwrap_or_default();
+        if seen.insert(target_id.clone()) {
+            out.push(target_id);
+        }
+        if let Some(group) = &existing_swipe_group_id {
+            for m in &all_messages {
+                if m.get("type").and_then(Value::as_str) != Some("message") {
+                    continue;
+                }
+                if json_str(m, "swipeGroupId").as_deref() != Some(group.as_str()) {
+                    continue;
+                }
+                if let Some(id) = json_str(m, "id") {
+                    if seen.insert(id.clone()) {
+                        out.push(id);
+                    }
+                }
+            }
+        }
+        out
+    };
+    // === end P4.D205 OUT-OF-MANDATE ===
+
     // --- Build the full provider-ready context (continue mode, no new user msg) ---
     let cp_input: ConnectionProfileInput = effective_profile_profile(&connection_profile);
     let build_input = build_context_input(BuildContextArgs {
         user_id: &user_id,
         model_context_limit,
+        // === P4.D205 OUT-OF-MANDATE — P4.D207 preserves ===
+        regeneration_of_message_ids: Some(regeneration_of_message_ids),
+        // === end P4.D205 OUT-OF-MANDATE ===
         // v4's `f933ba9c` reserves the turn extras on the orchestrator path only;
         // the regenerate/swipe path builds no tool schemas and splices nothing,
         // so it reserves nothing here either.

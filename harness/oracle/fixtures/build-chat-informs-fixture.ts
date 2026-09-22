@@ -44,9 +44,17 @@ interface SeedRow {
   consumedByMessageId: string | null;
 }
 
+interface RoutesSeed {
+  userId: string;
+  chatId: string;
+  ts: string;
+  participants: Record<string, unknown>[];
+}
+
 interface Spec {
   testPepperBase64: string;
   seed: SeedRow[];
+  routes: RoutesSeed;
 }
 
 async function main(): Promise<void> {
@@ -102,10 +110,32 @@ async function main(): Promise<void> {
     );
   }
 
+  // The ROUTE family's room. The oracle side is entirely mocked (v4's own test
+  // seam mocks the repos), so this exists only so v5's handlers — which take a
+  // real `Db` — can be driven against an equivalent state. Built through v4's
+  // real `ChatsRepository.create` so the participants column is v4's own bytes.
+  const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
+  const chats = new ChatsRepository();
+  await chats.create(
+    {
+      userId: spec.routes.userId,
+      title: 'The Inform Route Room',
+      chatType: 'salon',
+      participants: spec.routes.participants,
+    } as never,
+    { id: spec.routes.chatId, createdAt: spec.routes.ts, updatedAt: spec.routes.ts } as never
+  );
+
+  // `chat_messages` is a SECONDARY table of the chats repo — `create` does not
+  // materialize it, and without it the Inform record write (and therefore the
+  // whole record half of the route family) fails silently through the
+  // announcer's never-propagate contract. A benign count is v4's own trigger.
+  await chats.getMessageCount(spec.routes.chatId);
+
   await closeDatabase();
 
   process.stderr.write(
-    `built chat_informs fixture: ${spec.seed.length} seed rows → ${out}\n`
+    `built chat_informs fixture: ${spec.seed.length} seed rows + the route room → ${out}\n`
   );
   process.exit(0);
 }

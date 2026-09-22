@@ -1182,20 +1182,40 @@ where
         .map(WhisperMessage::from_value)
         .collect();
 
-    // --- A. Drop persisted Commonplace-Book whispers (except relevant-conversations). ---
-    let is_strippable_cmpb = |m: &WhisperMessage| {
+    // --- A. Drop record-only rows before anything else touches the history. ---
+    //
+    // === P4.D205 (v4 `e7d77bb60`, `context-builder.service.ts:848-894`) ===
+    // v4 widened this strip from "Commonplace-Book whispers" to
+    // `isRecordOnlyMessage`, which now also covers the Host's `inform` record.
+    // Both kinds DOCUMENT a delivery rather than being part of the
+    // conversation: the Commonplace whisper records a recall, and the inform
+    // record records that a passage was handed to a seat — the passage itself
+    // reaches the model as its own system block, never as transcript.
+    //
+    // This is the single call site for the predicate, so there is no dimension
+    // along which a record could slip through on one path and not another.
+    let record_only = |m: &WhisperMessage| {
+        if m.system_kind.as_deref() == Some("inform") {
+            return true;
+        }
         m.system_sender.as_deref() == Some("commonplaceBook")
             && m.system_kind.as_deref() != Some("relevant-conversations")
     };
-    let cmpb_stripped = parsed.iter().filter(|m| is_strippable_cmpb(m)).count();
+    let cmpb_stripped = parsed.iter().filter(|m| record_only(m)).count();
     let messages_without_cmpb: Vec<WhisperMessage> = if cmpb_stripped > 0 {
-        parsed
-            .into_iter()
-            .filter(|m| !is_strippable_cmpb(m))
-            .collect()
+        parsed.into_iter().filter(|m| !record_only(m)).collect()
     } else {
         parsed
     };
+    if cmpb_stripped > 0 {
+        tracing::debug!(
+            target: "quilltap::context",
+            chat_id = %build_input.chat.id,
+            stripped_count = cmpb_stripped,
+            "[Context] Stripped record-only messages from LLM history",
+        );
+    }
+    // === end P4.D205 ===
 
     // --- A2. Name the speaker on ad-hoc announcements (P4.D37 / v4 `424a7381`). ---
     // `customAnnouncer` is a rendering field — the Salon paints the name and
@@ -1379,6 +1399,13 @@ where
             id: m.id.clone(),
             thought_signature: m.thought_signature.clone(),
             message_type: Some("message".to_string()),
+            // === P4.D205 ===
+            // Always `None` on this path: the record-only strip in section A
+            // above has already removed every `inform` row, so nothing reaching
+            // here can carry the kind. Carried explicitly rather than defaulted
+            // so the reason is on the record.
+            system_kind: None,
+            // === end P4.D205 ===
         })
         .collect();
     build_input.messages_with_participants = if is_multi { mwp } else { None };

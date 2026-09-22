@@ -41,7 +41,7 @@ for (const [id, content] of stripCases) {
 }
 
 // ---- extractVisibleConversation -------------------------------------------
-type RawMsg = { type?: string; role?: string; content?: string };
+type RawMsg = { type?: string; role?: string; content?: string; systemKind?: string | null };
 const visibleCases: Array<[string, RawMsg[]]> = [
   ['basic', [
     { role: 'USER', content: 'Hi' },
@@ -74,6 +74,20 @@ const visibleCases: Array<[string, RawMsg[]]> = [
   ['no-role-skipped', [{ content: 'no role here' }]],
   ['no-type-field-kept', [{ role: 'USER', content: 'no type field' }]],
   ['assistant-short-no-artifact-kept', [{ role: 'ASSISTANT', content: 'Hi' }]],
+  // P4.D205 (v4 `e7d77bb60`, `visible-conversation-inform.test.ts`): the inform
+  // record must never reach a model, and THIS is the back door. The filter is
+  // by ROLE and the record wears `ASSISTANT`, so without an explicit guard the
+  // record would be folded into a rolling summary and handed to the model on
+  // every turn thereafter.
+  ['inform-record-dropped', [
+    { type: 'message', role: 'USER', content: 'What happens next?' },
+    { type: 'message', role: 'ASSISTANT', content: 'You notice the clock has stopped.', systemKind: 'inform' },
+    { type: 'message', role: 'ASSISTANT', content: 'She crosses the room.' },
+  ]],
+  // Every OTHER Staff announcement stays: that is deliberate context.
+  ['other-staff-kinds-kept', [
+    { type: 'message', role: 'ASSISTANT', content: 'The Host welcomes Beatrice to the salon.', systemKind: 'add' },
+  ]],
 ];
 for (const [id, messages] of visibleCases) {
   rows.push({ kind: 'visible', id, messages, out: extractVisibleConversation(messages) });

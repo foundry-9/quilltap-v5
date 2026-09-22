@@ -5649,6 +5649,19 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.83 ===
+            // === P4.D205 (v4 `e7d77bb60`) ===
+            Request::ChatInform {
+                chat_id,
+                content_markdown,
+                target_participant_ids,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_informs::chat_inform(
+                        &db,
+                        &chat_id,
+                        &content_markdown,
+                        &target_participant_ids,
+
 
             // === P4.D210 ===
             Request::MountSync {
@@ -5676,6 +5689,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::ChatInformsList { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_informs::chat_informs_list(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::ChatInformCancel { chat_id, batch_id } => match self.ready_db() {
+                Ok(db) => super::chat_informs::chat_inform_cancel(&db, &chat_id, &batch_id).await,
+                Err(r) => r,
+            },
+            // === end P4.D205 ===
+
             // === end P4.D210 ===
         }
     }

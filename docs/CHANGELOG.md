@@ -12,6 +12,57 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(salon): Inform — the prompt block, its consumption, the record, the three strips and the three verbs (P4.D205)
+
+_Versions: core 0.0.971, harness 0.0.864, web 0.0.159, host 0.0.141._
+
+The behavioural half of v4 `e7d77bb60`. An inform is an out-of-character passage
+the operator hands to one or more LLM-controlled seats: delivered verbatim as its
+own system block on each target's next generation, and consumed once that turn
+produces a persisted assistant message.
+
+`services/inform_block.rs` builds the block and never writes. Selection and
+consumption are deliberately separate — building a context is not evidence that
+anything was delivered, so a provider failure that saves nothing leaves the rows
+pending for the seat's next attempt. `build_context` reads it BEFORE the history
+budget (its tokens join `used_tokens`, so an operator's passage cannot be spent
+twice) and pushes one injected system message between block 2 and block 3, only
+when there is something to deliver. Nothing is pushed otherwise, which is what
+keeps a turn without informs byte-identical to one built before the feature
+existed; no builder-version constant moves.
+
+Consumption is tied to a persisted assistant message in both places it can
+happen: the finalizer after the save, and the preserved-partial closure against
+the preserved id. A swipe re-applies but never consumes — it reads the rows its
+target's generation consumed, and the block returns no row ids at all.
+
+The Host's transcript record is for the operator and never reaches a model, which
+takes three strips. Two were ports; the third was a hole v5 measurably
+reproduced: `extract_visible_conversation` filters by ROLE and the record wears
+ASSISTANT, so the async pre-compression would have folded it into a summary that
+came back as system block 3 on every later turn. `RawMessage` did not even carry
+`systemKind`. Red-first against v4's post-fix oracle, then fixed at v4's own
+position.
+
+The three verbs answer v4's bytes, including the two 400 sentences with the
+offending ids joined and the coverage rule that decides public-versus-whisper by
+what the batch covers rather than by how the operator clicked. Both bodies cross
+the wire as `double_option` tri-states, so absent, explicit-null and wrong-typed
+each reach v4's own refusal on both transports; the REST arms go through the
+shared request-envelope decoder rather than a second hand-rolled spelling.
+Removing a participant now drops its pending rows, in a block that can warn but
+never break the removal.
+
+Two new differentials. `inform_block_equivalence` drives v4's real module over
+eleven cases through the same injected-repo seam v4's own tests use, and checks
+all five of v4's write methods went uncalled. `chat_informs_routes_equivalence`
+drives v4's real handlers and compares status, body, and the effects v5 actually
+leaves behind — the record row's audience and content, and the created rows'
+targets — because the response body cannot show which audience the coverage rule
+chose. Two cases in v4's file are deliberately not ported: they can only pin
+v4's mocks, not v4.
+
+
 #### 2026-09-21 — feat(db): the `chat_informs` table, its repository, the D23 re-dump and the chat-delete cascade (P4.D205)
 
 _Versions: core 0.0.970, harness 0.0.863, host 0.0.140._

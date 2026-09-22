@@ -3879,6 +3879,45 @@ pub enum Request {
         id: String,
     },
     // === end P4.83 ===
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    /// `POST /api/v1/chats/{id}?action=inform` — an out-of-character passage
+    /// handed to one or more LLM-controlled seats, delivered verbatim as its own
+    /// system block on each target's next generation.
+    ///
+    /// v4's `informSchema` is `{ contentMarkdown: z.string().min(1),
+    /// targetParticipantIds: z.array(z.uuid()).min(1).nullable() }` — both keys
+    /// REQUIRED, and `null` on the second means Everyone. So BOTH carry the
+    /// `double_option` tri-state: absent / `null` / wrong-typed must each reach
+    /// v4's flat `Validation error` 400 with the right `parsedType` word, and a
+    /// serde-typed field would turn that into a dispatch DECODE error at the web
+    /// edge and a different sentence over Tauri IPC (the P4.96/P4.98 rule; a
+    /// plain `Option<Value>` is not enough, because serde collapses an explicit
+    /// `null` into `None`).
+    #[serde(rename_all = "camelCase")]
+    ChatInform {
+        chat_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        content_markdown: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        target_participant_ids: Option<Option<serde_json::Value>>,
+    },
+    /// `GET /api/v1/chats/{id}?action=informs` — the pending batches, for the
+    /// composer's chip. No body, so nothing to tri-state.
+    #[serde(rename_all = "camelCase")]
+    ChatInformsList {
+        chat_id: String,
+    },
+    /// `POST /api/v1/chats/{id}?action=cancel-inform` — withdraw a batch's
+    /// still-pending targets. v4's `cancelInformSchema` is
+    /// `{ batchId: z.uuid() }`, required, so the same tri-state rule applies.
+    #[serde(rename_all = "camelCase")]
+    ChatInformCancel {
+        chat_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        batch_id: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D205 ===
+
 
     // === P4.D210 ===
     /// v4 `POST /api/v1/mount-points/[id]?action=sync` (`23da0b322`) — mirror a
@@ -4428,6 +4467,17 @@ pub enum Response {
     /// v4 `DELETE /api/v1/prompt-templates/[id]` → `{ success: true }`.
     PromptTemplateDeleted(serde_json::Value),
     // === end P4.83 ===
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    /// `POST ?action=inform` → **201** `{ success, batchId, targetParticipantIds,
+    /// message }`. `message` is the persisted Host record, or `null` when the
+    /// record could not be written (the batch still lands).
+    ChatInform(serde_json::Value),
+    /// `GET ?action=informs` → **200** `{ batches }`. v4 answers this one with a
+    /// plain `NextResponse.json`, not its `success` envelope.
+    ChatInforms(serde_json::Value),
+    /// `POST ?action=cancel-inform` → **200** `{ success, removed, recordDeleted }`.
+    ChatInformCancelled(serde_json::Value),
+    // === end P4.D205 ===
     Error(CoreError),
 
     // === P4.D210 ===
