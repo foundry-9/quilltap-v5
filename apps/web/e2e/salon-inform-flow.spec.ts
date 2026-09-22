@@ -31,7 +31,9 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * offered. Nothing here asserts a chat-wide total, so it perturbs no other
  * spec reading that chat (the `salon-token-cost-flow` caution).
  */
-const P4D205_SERVER_LANDED = false;
+// Flipped to `true` at the `f45a517a9` round unification (2026-09-22): P4.D205
+// is picked; the beat's first fully-live run is the unified gate's own step.
+const P4D205_SERVER_LANDED = true;
 
 test.describe('P4.D206 — Inform, the word out of character', () => {
   let mock: MockLlm;

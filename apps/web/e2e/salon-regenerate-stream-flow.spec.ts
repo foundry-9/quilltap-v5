@@ -33,7 +33,9 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
  * them. Sends land in "Group Expedition", never "Solo Voyage", whose
  * hardcoded token baseline another spec asserts.
  */
-const P4D207_SERVER_LANDED = false;
+// Flipped to `true` at the `f45a517a9` round unification (2026-09-22): P4.D207
+// is picked; the beat's first fully-live run is the unified gate's own step.
+const P4D207_SERVER_LANDED = true;
 
 /** Long enough that the in-flight window is genuinely observable. */
 const SLOW_STREAM_MS = 400;
