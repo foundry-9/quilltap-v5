@@ -137646,3 +137646,212 @@ cd <V5W>
 QT_ORACLE_FTS_QUERY=/tmp/p4d204/oracle-fts-query.ndjson \
   cargo test -p quilltap-harness --test fts_query_equivalence -- --nocapture
 ```
+
+### Units 2 + 3 — the five FTS objects, the boot reconciler, and their two families
+
+**`db/chat_message_fts.rs`** carries v4's five statements as
+`CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS: [&str; 5]`, **generated from a recording
+of v4's REAL module** rather than transcribed: a tsx snippet at the pin
+imported `CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS` (plus the object names and the
+eligibility fragment at three aliases) and wrote
+`harness/oracle/fixtures/chat-message-fts-ddl.json`, and the Rust literals were
+emitted from that JSON. The continuation lines sit at column 0 on purpose —
+the indents inside each statement are v4's bytes, not Rust formatting. Plus
+the eligibility helper, `ensure_*`, `*_object_names`, `missing_*`,
+`count_eligible_*`, `count_indexed_*`, and `rebuild_*` with the keyset walk at
+500 and v4's three debug lines.
+
+**`db/chat_message_fts_reconcile.rs`** is a THIRD new core file, not the two
+the order's ownership names. The order says the boot reconciler's body lives
+"in their own core modules" and v4 keeps it in its own module
+(`lib/startup/reconcile-chat-message-fts.ts`), so the split follows v4 and
+v5's own `db/*_repair.rs` precedent. Named here because it is outside the
+literal file list.
+
+**`host.rs::seed_built_ins`** gains ONE fenced `// === P4.D204 === … // === end
+P4.D204 ===` block at the END of the main-partition section, immediately before
+`if let Some(mi) = ws.mount_index()`. NOT ledger-guarded (v4's PHASE 3.65 runs
+on every start, and the failure it heals is silent).
+
+#### `chat_message_fts_equivalence` — 21 scenarios, 114 comparisons, GREEN
+
+A scripted-operations differential: the corpus
+(`harness/oracle/fixtures/chat-message-fts.json`) carries the reduced
+`chat_messages` DDL, so **neither side spells the base table**, and v4's own
+twelve test cases are rebuilt AS DATA. After every observed step both sides
+record `missing`, `eligible`, `indexed`, the whole `chat_messages_fts_map`, per
+message the STORAGE FORM (`text`/`blob`/`null`) and `qt_text()` of the cell,
+every corpus `MATCH` expression's hit list, `COUNT(*)` of the FTS5 shadow table
+`chat_messages_fts_data`, the step's own thrown message, and the rebuild result
++ its per-batch progress callbacks. Plus `sqlite_master.sql` for the five
+objects per scenario (the ON-DISK text, not two transcriptions) and the `ddl`
+row's byte pin.
+
+Five scenarios this port ADDED to v4's twelve, each for a measured reason:
+
+1. **the whole schema absent** — the `missing` list at full length, and the
+   resilient-observation arms (`indexed: null`, `no such table` per search).
+2. **an identical-text rewrite** — the `_au` `WHEN`'s left conjunct with the
+   right one open.
+3. **an INELIGIBLE row's content update** — the `EXISTS` conjunct with the left
+   one open (the `a-guard-whose-other-conjuncts-are-false-is-untested` rule).
+4. **a rebuild crossing the 500-row batch boundary** (511 rows) — the keyset
+   walk's second page and a progress callback that fires twice
+   (`[[500,511],[511,511]]`). Without it `REBUILD_BATCH_SIZE` is untested.
+5. **"retokenizes THROUGH the codec when an edit also compresses the text"** —
+   added BECAUSE a mutation survived; see the table below.
+
+Plus the `TOOL`, `ASSISTANT` and NULL-role eligibility arms v4's test does not
+carry, and `corpus_covers_every_behaviour`, which fails if the corpus stops
+reaching any op, the no-UDF arm, the 500-row boundary or any eligibility arm.
+
+⭐ **The no-UDF arm reproduces the drift ledger's whole escalation from the v5
+side**: on a connection that never registered `qt_text`, EVERY insert fails
+with byte-identical `no such function: qt_text` — including the SYSTEM, staff
+and content-NULL rows the trigger's `WHEN` would have excluded, because SQLite
+resolves a trigger's functions when it COMPILES the trigger program — while the
+DELETE succeeds. That asymmetry (a v5 binary can destroy messages but not
+create them) is now a test, not a measurement in a doc.
+
+#### `chat_message_fts_reconcile_equivalence` — 7 scenarios, GREEN
+
+v4's `reconcileChatMessageFts` driven with `getRawDatabase` mocked to the
+scenario's connection and `createServiceLogger` captured, over v4's own five
+damaged states plus two: an index AHEAD of the transcript (a stale map row the
+delete trigger never saw — the count comparison firing in the other direction)
+and an eligibility mix so `eligible` is not simply the row count. Compared: the
+whole result, **every log line in order with its level and context values**,
+and the post-pass state. `durationMs` is excluded (v4's own rows show it
+flipping 0/1). `corpus_reaches_and_silences_every_reachable_line` asserts each
+of the five reachable lines both fires somewhere and is SILENT somewhere.
+
+**v4's sixth line has no v5 twin, by construction and not by omission**:
+`debug('No SQLite database available; skipping chat message FTS
+reconciliation')` guards `getRawDatabase()` returning null, and v5's reconciler
+takes its connection as an argument from the writer task, which always has one.
+Recorded in the module doc and the family header rather than left to inference.
+
+#### `host_boot_chat_message_fts` — the structural difference, proven
+
+Two beats on a REAL fresh-provisioned instance: after `Host::start` all five
+objects exist and the two counts agree at zero; and the damage v4's module doc
+names (a table rebuild dropping the triggers) is put in by hand and the NEXT
+boot restores it. The first beat ALSO asserts, before booting, that
+provisioning created NONE of them — the premise of the whole unit, so it is
+measured rather than assumed. **`provisioning_equivalence` is untouched and
+`fresh_schema.json` unchanged**: v4 creates these objects in the migration, not
+in `ensureCollection`, and the D23 dumper keeps only `table`/`index` rows, so
+D23 does not fire (the memory note's rule, measured and recorded).
+
+#### Mutation table (revert by file backup, never `git checkout`)
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | `_au` INSERT body indexes RAW `content` | the `ddl` byte pin (statement 4) |
+| M2 | drop `_au`'s `EXISTS` conjunct | the `ddl` byte pin (statement 4) |
+| M3 | `_au` `WHEN` compares RAW content (the order's named proof) | the `ddl` byte pin (statement 4) |
+| M4 | `REBUILD_BATCH_SIZE` 500 → 1000 | `ftsDataRows`, batch-boundary scenario — behavioural |
+| M5 | eligibility SQL drops the role filter | the eligibility-SQL pin |
+
+The byte pin fires FIRST on any DDL edit, which is the strongest guard
+available (v4's recorded bytes) but also masks the behavioural layer. So each
+DDL mutation was re-run with the pins **silenced** — the same edit applied to
+the source AND to that statement in a copy of the oracle NDJSON — to measure
+whether the corpus itself sees it:
+
+| # | with the byte pins silenced | result |
+|---|---|---|
+| M3 | `_au` `WHEN` on raw content | **REDDENS** — `ftsDataRows` in "leaves the index alone when only the ENCODING changes" (3 → 5). The order's proof fires exactly as written. |
+| M1 | `_au` body indexes raw `content` | **SURVIVED at first** — a finding, not a line to delete. |
+
+⚠ **M1's survival was a real corpus gap.** No scenario updated a row's content
+to a COMPRESSED cell whose decoded text DIFFERS: the encoding-only case has the
+`WHEN` false (the body never runs), and every other update was text→text (where
+raw and decoded are the same string). The `_ai` body's `qt_text` was covered
+("indexes a message written straight in as a compressed BLOB"); `_au`'s was
+not. Scenario 5 above closes it — insert `"about zebras"`, then update to the
+compressed LONG blob — and M1 now reddens on `searches` (`"zebra"*` empties,
+`"istanbul"*` fills, `ftsDataRows` 3 → 5).
+
+⚠ **A claim this lane made before measuring and then corrected**: the harness
+header first recorded that the `_au` `WHEN` guard had NO observable consequence
+and that the order's mutation could not fire. That was wrong — it was written
+from reasoning about `contentless_delete=1` being idempotent, before the bypass
+run. The bypass measured otherwise and the header now records the measurement.
+The lesson is the standing one: a negative result about an oracle is a
+measurement, not a deduction.
+
+#### Three instrument findings, and one named divergence
+
+1. **`quilltap_host::Host` has no `shutdown()`** — the host test was written
+   against one and did not compile. The tree's idiom is `drop(host)`
+   (`host_headshoulders_backfill.rs` boots three times that way), and Drop
+   releases the instance lock, which is what lets the second beat re-open the
+   file with a `Writer` and boot again.
+2. **The capture layer renders a format-args message UNQUOTED.**
+   `FieldVisitor::record_debug` special-cases the `message` field and pushes
+   `{value:?}` — and `format_args!`'s own `Debug` prints the formatted text
+   with no quotes. An assertion built as `line.contains(&format!("{:?}",
+   msg))` therefore never matches. The needle is the bare message.
+3. **⚠ One named divergence, in a PRODUCTION string.** The reconciler's
+   swallow-warn carries `error = %err` on a `DbError`, and `DbError::Sqlite`'s
+   documented `Display` prefixes `sqlite error: `. v4 logs `err.message` —
+   SQLite's bare sentence. So on the "swallows a broken database" scenario v4
+   writes `error: "no such table: main.chat_messages"` and v5 writes
+   `error: "sqlite error: no such table: main.chat_messages"`. This was NOT
+   changed at the callsite: `error = %e` on a `DbError` is the convention at
+   every other v5 log site (eight in `db/` alone), and making this one line
+   the exception would be the worse inconsistency. The family asserts v4's
+   sentence appears **verbatim as the field's suffix** — the envelope may
+   prefix it, nothing may follow it — rather than hardcoding the prefix, and
+   the divergence is recorded here because it is visible in `combined.log`.
+
+#### One harness-side normalization, named
+
+v5's `DbError::Sqlite` renders as `"sqlite error: <message>"` where
+better-sqlite3 throws SQLite's message bare, so the family strips that ONE
+wrapper prefix when recording an observation's error text (`sqlite_message()`).
+It is the only normalization in either family; the comparand is which
+observation failed and what SQLite said, not either side's error envelope.
+
+#### Regen recipes as run (units 2 + 3)
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+# the FTS family
+TMPO=/tmp/qt-chat-message-fts-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/chat-message-fts.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/chat-message-fts.json" "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d204-f45a517a9
+QT_ORACLE_OUT=/tmp/p4d204/oracle-chat-message-fts.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "chat-message-fts\.test\.ts$"
+# the reconcile family
+TMPO=/tmp/qt-chat-message-fts-reconcile-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/chat-message-fts-reconcile.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/chat-message-fts-reconcile.json" "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d204-f45a517a9
+QT_ORACLE_OUT=/tmp/p4d204/oracle-chat-message-fts-reconcile.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "chat-message-fts-reconcile\.test\.ts$"
+# the DDL recording that the byte pin compares against
+cd /tmp/qt-v4-pin-p4d204-f45a517a9 && $N/npx tsx /tmp/p4d204/record-ddl.ts \
+  > "$V5W/harness/oracle/fixtures/chat-message-fts-ddl.json"
+# the Rust side
+cd "$V5W"
+QT_ORACLE_CHAT_MESSAGE_FTS=/tmp/p4d204/oracle-chat-message-fts.ndjson \
+QT_ORACLE_CHAT_MESSAGE_FTS_RECONCILE=/tmp/p4d204/oracle-chat-message-fts-reconcile.ndjson \
+  cargo test -p quilltap-harness --test chat_message_fts_equivalence \
+    --test chat_message_fts_reconcile_equivalence -- --nocapture
+cargo test -p quilltap-host --test host_boot_chat_message_fts -- --nocapture
+```
+
+⚠ **The jest filter matches THREE suites, not one** — v4's own
+`chat-message-fts.test.ts` and its migration test share the stem. That is
+harmless (only this case writes `QT_ORACLE_OUT`, and v4's own tests passing at
+the pin is free corroboration) but it is not the anchored single-suite filter
+the memory note asks for; the anchor `…\.test\.ts$` cannot exclude v4's file
+because the basenames are identical. Recorded rather than papered over.

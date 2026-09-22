@@ -1,0 +1,28 @@
+{
+  "table": "chat_messages_fts",
+  "mapTable": "chat_messages_fts_map",
+  "triggers": [
+    "chat_messages_fts_ai",
+    "chat_messages_fts_ad",
+    "chat_messages_fts_au"
+  ],
+  "objectNames": [
+    "chat_messages_fts_map",
+    "chat_messages_fts",
+    "chat_messages_fts_ai",
+    "chat_messages_fts_ad",
+    "chat_messages_fts_au"
+  ],
+  "eligibilitySql": {
+    "": "\"type\" = 'message' AND \"role\" IN ('USER','ASSISTANT') AND \"content\" IS NOT NULL",
+    "m": "m.\"type\" = 'message' AND m.\"role\" IN ('USER','ASSISTANT') AND m.\"content\" IS NOT NULL",
+    "mm": "mm.\"type\" = 'message' AND mm.\"role\" IN ('USER','ASSISTANT') AND mm.\"content\" IS NOT NULL"
+  },
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS \"chat_messages_fts_map\" (\n  \"ftsId\"     INTEGER PRIMARY KEY,\n  \"messageId\" TEXT NOT NULL UNIQUE\n)",
+    "CREATE VIRTUAL TABLE IF NOT EXISTS \"chat_messages_fts\" USING fts5(\n  content,\n  content='',\n  contentless_delete=1,\n  tokenize='unicode61 remove_diacritics 2'\n)",
+    "CREATE TRIGGER IF NOT EXISTS \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND",
+    "CREATE TRIGGER IF NOT EXISTS \"chat_messages_fts_ad\" AFTER DELETE ON \"chat_messages\"\n  WHEN EXISTS (SELECT 1 FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\")\nBEGIN\n  DELETE FROM \"chat_messages_fts\"\n    WHERE rowid = (SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\");\n  DELETE FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\";\nEND",
+    "CREATE TRIGGER IF NOT EXISTS \"chat_messages_fts_au\" AFTER UPDATE OF \"content\" ON \"chat_messages\"\n  WHEN qt_text(new.\"content\") IS NOT qt_text(old.\"content\")\n   AND EXISTS (SELECT 1 FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\")\nBEGIN\n  DELETE FROM \"chat_messages_fts\"\n    WHERE rowid = (SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+  ]
+}

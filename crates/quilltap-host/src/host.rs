@@ -1410,6 +1410,38 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.d27 ===
+            // === P4.D204 (v4 `f45a517a9`, `lib/startup/reconcile-chat-
+            // message-fts.ts` PHASE 3.65 + the migration
+            // `create-chat-message-fts-v1`) ===
+            // The message search index: the map table, the contentless FTS5
+            // virtual table and the three sync triggers, ensured and brought
+            // into step with the transcript on every boot.
+            //
+            // NOT ledger-guarded, unlike the two heals below it — this is v4's
+            // PHASE 3.65, which runs unconditionally on every start. It is
+            // cheap by construction (five `IF NOT EXISTS` statements plus two
+            // counts on indexed columns) and it has to be unconditional,
+            // because the failure it heals is SILENT: any table rebuild of
+            // `chat_messages` drops the triggers with the old table and raises
+            // nothing, after which search quietly goes stale.
+            //
+            // It is also the ONLY place a v5 instance can get these objects at
+            // all. v4 creates them in the migration, not in `ensureCollection`,
+            // so the D23 schema dump cannot carry them: the dumper keeps only
+            // `table` and `index` rows from v4's `generateDDL`, filtering
+            // triggers and virtual tables out by construction (measured —
+            // `fresh_schema.json` has 0 TRIGGER / 0 VIRTUAL / 0 fts, and
+            // `provisioning_equivalence` stays green BECAUSE of that).
+            // Without this call a freshly provisioned v5 instance would search
+            // through the exact-scan fallback forever.
+            //
+            // Total by design: a broken index must never keep the instance
+            // from starting, so the pass swallows its own failures with a warn
+            // and search degrades to the fallback.
+            let _ = quilltap_core::db::chat_message_fts_reconcile::reconcile_chat_message_fts(
+                main,
+            );
+            // === end P4.D204 ===
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
                 // === P4.D152 (v4 `0b0617fee`, migration

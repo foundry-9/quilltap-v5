@@ -12,6 +12,58 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(db): the five FTS5 objects carried verbatim, and the boot reconciler that gives every instance its message index (P4.D204)
+
+_Versions: core 0.0.971, harness 0.0.864, host 0.0.140._
+
+`db/chat_message_fts.rs` is v4's `lib/database/backends/sqlite/
+chat-message-fts.ts` (`f45a517a9`) whole: the id-map table, the contentless
+FTS5 virtual table and the three sync triggers as
+`CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS`, byte-identical to v4's array — generated
+from a recording of v4's real module, not transcribed — plus the eligibility
+fragment, the two counts, the object-name list and the hand rebuild with its
+keyset walk at 500 rows and v4's three debug lines. The contentless choice,
+the `VALUES('rebuild')` refusal, the rowid/VACUUM reason for the map table and
+v4's deliberate fail-the-write-loudly design are carried as comments because
+each is an invariant the port depends on.
+
+`db/chat_message_fts_reconcile.rs` is v4's startup self-heal, and
+`host.rs::seed_built_ins` now calls it in a fenced block on every boot — not
+ledger-guarded, because v4's PHASE 3.65 is unconditional and the failure it
+heals is silent (a table rebuild of `chat_messages` drops the triggers with the
+old table and raises nothing). It is also the only place a v5 instance can get
+these objects at all: v4 creates them in a migration rather than in
+`ensureCollection`, and the D23 schema dumper keeps only `table` and `index`
+rows, so `fresh_schema.json` cannot carry a trigger or a virtual table.
+`provisioning_equivalence` and `fresh_schema.json` are untouched, which is the
+correct outcome rather than an omission. v4's migration
+`create-chat-message-fts-v1` is the same work, so it needs no separate port;
+its operator-facing strings are recorded beside the reconciler.
+
+Three new families. `chat_message_fts_equivalence` drives both sides through a
+committed operations script — 21 scenarios, 112 comparisons — carrying the
+reduced `chat_messages` DDL so neither side spells the base table, and
+comparing after every step the missing-object list, both counts, the whole id
+map, each message's storage form and decoded text, every `MATCH` expression's
+hit list, the FTS5 shadow-table row count, the step's own thrown message, and
+the rebuild result with its per-batch progress calls — plus `sqlite_master.sql`
+for the five objects, so the comparand is the on-disk DDL text. Five scenarios
+go beyond v4's own tests: the whole schema absent, an identical-text rewrite,
+an ineligible row's content update, a rebuild crossing the 500-row batch
+boundary, and an edit that both changes the words and compresses the cell.
+`chat_message_fts_reconcile_equivalence` drives v4's real reconciler over seven
+damaged states and compares the result, the post-pass state and every log line
+in order with its level and context. `host_boot_chat_message_fts` proves a real
+fresh-provisioned instance has all five objects after `Host::start` — having
+first asserted that provisioning created none of them — and that a boot puts
+back triggers dropped by hand.
+
+The no-UDF arm reproduces the drift ledger's escalation from the v5 side: on a
+connection without `qt_text`, every `chat_messages` INSERT fails with
+byte-identical `no such function: qt_text` — including the rows the trigger's
+`WHEN` clause would have excluded, because SQLite resolves a trigger's
+functions when it compiles the trigger program — while DELETE still succeeds.
+
 #### 2026-09-22 — feat(db): the FTS5 query translator — token semantics, the prefix phrase and the LIKE fallback (P4.D204)
 
 _Versions: core 0.0.970, harness 0.0.863._

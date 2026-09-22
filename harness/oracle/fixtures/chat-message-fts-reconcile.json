@@ -1,0 +1,249 @@
+{
+  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"createdAt\" TEXT NOT NULL\n  )",
+  "long": {
+    "unit": "The djinn walked to the café in Istanbul, and said so at length. ",
+    "times": 20
+  },
+  "searches": [
+    "\"interchange\"*",
+    "\"estate\"*",
+    "\"istanbul\"*",
+    "\"event\"*",
+    "\"aside\"*"
+  ],
+  "scenarios": [
+    {
+      "name": "healthy instance - a no-op",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 3 concerning the estate"
+          }
+        }
+      ],
+      "damage": []
+    },
+    {
+      "name": "triggers a table rebuild dropped, and refills what they missed",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "DROP TRIGGER \"chat_messages_fts_ad\"",
+        "DROP TRIGGER \"chat_messages_fts_au\""
+      ],
+      "afterDamage": [
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 3 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-04",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 4 concerning the estate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the whole schema is absent",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 3 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "DROP TRIGGER \"chat_messages_fts_ad\"",
+        "DROP TRIGGER \"chat_messages_fts_au\"",
+        "DROP TABLE \"chat_messages_fts\"",
+        "DROP TABLE \"chat_messages_fts_map\""
+      ]
+    },
+    {
+      "name": "short of the transcript",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 3 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DELETE FROM \"chat_messages_fts\" WHERE rowid = (SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = 'msg-02')",
+        "DELETE FROM \"chat_messages_fts_map\" WHERE \"messageId\" = 'msg-02'"
+      ]
+    },
+    {
+      "name": "ahead of the transcript - a stale map row the delete trigger never saw",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ad\"",
+        "DELETE FROM \"chat_messages\" WHERE \"id\" = 'msg-02'"
+      ]
+    },
+    {
+      "name": "swallows a broken database",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DROP TABLE \"chat_messages\""
+      ]
+    },
+    {
+      "name": "counts only the eligible rows",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 2 concerning the estate"
+          },
+          "type": "system"
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 3 concerning the estate"
+          },
+          "role": "SYSTEM"
+        },
+        {
+          "op": "insert",
+          "id": "msg-04",
+          "content": {
+            "kind": "null"
+          }
+        },
+        {
+          "op": "insert",
+          "id": "msg-05",
+          "content": {
+            "kind": "longBlob"
+          }
+        }
+      ],
+      "damage": [
+        "DELETE FROM \"chat_messages_fts\"",
+        "DELETE FROM \"chat_messages_fts_map\""
+      ]
+    }
+  ]
+}
