@@ -181,6 +181,26 @@
         { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Quill nods", "participantId": "pc000000-0000-4000-8000-00000000000c", "createdAt": "2026-07-02T00:00:01.000Z" }
       ],
       "options": { "turnOpenerMessageId": "m1", "userCharacterName": "Charlie", "userCharacterPronouns": { "subject": "they", "object": "them", "possessive": "their" } }
+    },
+    {
+      "id": "inform_record_skipped",
+      "_comment": "P4.106 item 4 — v4's Staff-skip test (turn-transcript.test.ts:179): the inform record wears systemSender, so an out-of-character note never becomes a memory.",
+      "messages": [
+        { "type": "message", "id": "u-1", "role": "USER", "content": "hello", "createdAt": "2026-07-03T00:00:00.000Z" },
+        { "type": "message", "id": "a-inform", "role": "ASSISTANT", "content": "You notice the clock has stopped.", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemSender": "host", "systemKind": "inform", "createdAt": "2026-07-03T00:00:01.000Z" },
+        { "type": "message", "id": "a-real", "role": "ASSISTANT", "content": "real reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-03T00:00:02.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "u-1" }
+    },
+    {
+      "id": "inform_record_without_sender",
+      "_comment": "P4.106 item 4 — the same record with the sender omitted: the transcript skips by systemSender ONLY (unlike isRecordOnlyMessage), so v4 records what it does here.",
+      "messages": [
+        { "type": "message", "id": "u-1", "role": "USER", "content": "hello", "createdAt": "2026-07-03T00:00:00.000Z" },
+        { "type": "message", "id": "a-inform", "role": "ASSISTANT", "content": "You notice the clock has stopped.", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemKind": "inform", "createdAt": "2026-07-03T00:00:01.000Z" },
+        { "type": "message", "id": "a-real", "role": "ASSISTANT", "content": "real reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-03T00:00:02.000Z" }
+      ],
+      "options": { "turnOpenerMessageId": "u-1" }
     }
   ]
 }

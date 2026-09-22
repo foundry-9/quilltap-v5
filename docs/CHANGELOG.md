@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the tier-1 isRecordOnlyMessage family + the turn-transcript Staff-skip row (P4.106 item 4)
+
+_Versions: core 0.0.993, harness 0.0.892._
+
+P4.106 item 4. New tier-1 family `is_record_only_message_equivalence` drives
+v4's real `isRecordOnlyMessage` export over a 22-row corpus: the ten inputs
+from v4's six shipped cases plus eleven edge rows (case sensitivity, empty
+string vs null, the `relevant-conversations` exemption under another sender,
+`inform` under the Commonplace sender). To make the predicate callable, the
+inline closure in `build_message_context` became
+`pub fn is_record_only_message` in `services/message_context.rs`; behavior is
+unchanged and the strip is still its only production caller.
+
+`turn_transcript` gains v4's Staff-skip row (`inform_record_skipped`) and a
+sender-less variant that records v4 keeping the record, since the transcript
+skips by `systemSender` only. The family now reports every diverging case
+instead of stopping at the first.
+
+Mutation proofs: removing the `inform` arm fails 5 of 22 tier-1 rows;
+removing the transcript's `systemSender` skip fails exactly `skip_classes`
+and `inform_record_skipped`.
+
 #### 2026-09-22 — test(harness): the provider-SDK version guard (P4.106 item 9)
 
 _Versions: harness 0.0.891._

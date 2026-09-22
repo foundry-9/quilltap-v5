@@ -1,0 +1,27 @@
+{
+  "_comment": "P4.106 item 4 — the tier-1 corpus for v4's isRecordOnlyMessage (lib/services/chat-message/context-builder.service.ts:847, e7d77bb60). Rows 'v4-*' are the ten expectations of v4's six shipped cases (__tests__/unit/lib/services/chat-message/context-builder.service.test.ts:29-56), as INPUTS only — the outputs are recorded from the real export, never transcribed. Rows 'edge-*' probe the predicate's axes v4's tests do not name: exact-match case sensitivity, an empty string vs null, the relevant-conversations exemption under a non-Commonplace sender, and the inform kind outranking the relevant-conversations exemption's sender.",
+  "cases": [
+    { "id": "v4-inform-host", "input": { "systemSender": "host", "systemKind": "inform" } },
+    { "id": "v4-inform-no-sender", "input": { "systemKind": "inform" } },
+    { "id": "v4-host-announcement", "input": { "systemSender": "host", "systemKind": "announcement" } },
+    { "id": "v4-host-roster", "input": { "systemSender": "host", "systemKind": "roster" } },
+    { "id": "v4-host-nudge", "input": { "systemSender": "host", "systemKind": "nudge" } },
+    { "id": "v4-cmpb-relevant-memories", "input": { "systemSender": "commonplaceBook", "systemKind": "relevant-memories" } },
+    { "id": "v4-cmpb-memory-recap", "input": { "systemSender": "commonplaceBook", "systemKind": "memory-recap" } },
+    { "id": "v4-cmpb-no-kind", "input": { "systemSender": "commonplaceBook" } },
+    { "id": "v4-cmpb-relevant-conversations", "input": { "systemSender": "commonplaceBook", "systemKind": "relevant-conversations" } },
+    { "id": "v4-ordinary-empty", "input": {} },
+    { "id": "v4-ordinary-nulls", "input": { "systemSender": null, "systemKind": null } },
+    { "id": "edge-inform-under-cmpb", "input": { "systemSender": "commonplaceBook", "systemKind": "inform" } },
+    { "id": "edge-inform-null-sender", "input": { "systemSender": null, "systemKind": "inform" } },
+    { "id": "edge-inform-case", "input": { "systemSender": "host", "systemKind": "Inform" } },
+    { "id": "edge-cmpb-case", "input": { "systemSender": "CommonplaceBook", "systemKind": "relevant-memories" } },
+    { "id": "edge-cmpb-empty-kind", "input": { "systemSender": "commonplaceBook", "systemKind": "" } },
+    { "id": "edge-cmpb-null-kind", "input": { "systemSender": "commonplaceBook", "systemKind": null } },
+    { "id": "edge-empty-sender-inform", "input": { "systemSender": "", "systemKind": "inform" } },
+    { "id": "edge-host-relevant-conversations", "input": { "systemSender": "host", "systemKind": "relevant-conversations" } },
+    { "id": "edge-lantern-sender", "input": { "systemSender": "lantern", "systemKind": "relevant-memories" } },
+    { "id": "edge-kind-only-relevant-memories", "input": { "systemKind": "relevant-memories" } },
+    { "id": "edge-inform-with-content", "input": { "type": "message", "role": "ASSISTANT", "content": "The Host handed Leilani a note.", "systemSender": "host", "systemKind": "inform" } }
+  ]
+}

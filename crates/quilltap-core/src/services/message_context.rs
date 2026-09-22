@@ -82,6 +82,24 @@ pub struct WhisperMessage {
     pub custom_announcer: Option<CustomAnnouncer>,
 }
 
+/// v4 `isRecordOnlyMessage` (`context-builder.service.ts:847`, `e7d77bb60`):
+/// true for a row that DOCUMENTS a delivery rather than being part of the
+/// conversation — the Host's `inform` record (whatever its sender) and every
+/// Commonplace Book whisper bar `relevant-conversations`. Exact, case-sensitive
+/// string matches, as v4's `===`.
+///
+/// P4.106 OUT-OF-MANDATE (§R.10(j)) — lifted from the inline closure in
+/// [`build_message_context`] so the tier-1 `is_record_only_message_equivalence`
+/// family can drive it; behaviour unchanged, and the record-only
+/// strip there (section A) is still its ONLY production caller.
+pub fn is_record_only_message(m: &WhisperMessage) -> bool {
+    if m.system_kind.as_deref() == Some("inform") {
+        return true;
+    }
+    m.system_sender.as_deref() == Some("commonplaceBook")
+        && m.system_kind.as_deref() != Some("relevant-conversations")
+}
+
 /// Row ids of the *human's* own turns, captured from the PRE-normalization
 /// list — staff whispers are re-roled to USER by `normalize_whisper_roles`, so
 /// after that pass "role === 'user'" no longer means "the user said it", and
@@ -1194,16 +1212,12 @@ where
     //
     // This is the single call site for the predicate, so there is no dimension
     // along which a record could slip through on one path and not another.
-    let record_only = |m: &WhisperMessage| {
-        if m.system_kind.as_deref() == Some("inform") {
-            return true;
-        }
-        m.system_sender.as_deref() == Some("commonplaceBook")
-            && m.system_kind.as_deref() != Some("relevant-conversations")
-    };
-    let cmpb_stripped = parsed.iter().filter(|m| record_only(m)).count();
+    let cmpb_stripped = parsed.iter().filter(|m| is_record_only_message(m)).count();
     let messages_without_cmpb: Vec<WhisperMessage> = if cmpb_stripped > 0 {
-        parsed.into_iter().filter(|m| !record_only(m)).collect()
+        parsed
+            .into_iter()
+            .filter(|m| !is_record_only_message(m))
+            .collect()
     } else {
         parsed
     };

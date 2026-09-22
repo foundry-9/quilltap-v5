@@ -165,6 +165,9 @@ fn turn_transcript_matches_oracle() {
         "corpus/oracle case-count mismatch — regenerate the oracle"
     );
 
+    // Collect EVERY divergence rather than stopping at the first, so a
+    // mutation proof can name exactly the rows it reddens (P4.106).
+    let mut failures: Vec<String> = Vec::new();
     for case in cases {
         let id = case["id"].as_str().expect("case id");
         let messages: Vec<Value> = case["messages"].as_array().expect("messages").clone();
@@ -198,19 +201,27 @@ fn turn_transcript_matches_oracle() {
             .unwrap_or_else(|| panic!("{id}: missing from oracle — regenerate"));
 
         let got_opener = find_turn_opener_message_id(&messages);
-        assert_eq!(
-            opt_str(got_opener.as_ref()),
-            want["opener"],
-            "{id}: findTurnOpenerMessageId diverges"
-        );
+        if opt_str(got_opener.as_ref()) != want["opener"] {
+            failures.push(format!(
+                "{id}: findTurnOpenerMessageId diverges\n got: {:?}\nwant: {}",
+                got_opener, want["opener"]
+            ));
+        }
 
         let transcript = build_turn_transcript(&messages, &participants, &characters, &options);
         let got = transcript_to_value(&transcript, options_json);
-        assert_eq!(
-            got, want["transcript"],
-            "{id}: transcript diverges\n got: {got:#}\nwant: {:#}",
-            want["transcript"]
-        );
+        if got != want["transcript"] {
+            failures.push(format!(
+                "{id}: transcript diverges\n got: {got:#}\nwant: {:#}",
+                want["transcript"]
+            ));
+        }
     }
+    assert!(
+        failures.is_empty(),
+        "{} divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
     println!("turn_transcript: {} cases OK", cases.len());
 }

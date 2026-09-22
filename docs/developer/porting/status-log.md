@@ -143070,3 +143070,43 @@ reddens (every stamp must equal the constant).
 Green: 2/2. Mutation: `RECORDED_OPENAI_SDK = "7.21.0"` → BOTH tests red
 (`:156` installed mismatch, `:244` corpus stamp) — as the order predicted.
 Reverted by file backup.
+
+### Unit 2 — item 4: the tier-1 `is_record_only_message` family + the `turn_transcript` Staff-skip row
+
+**The order's premise was wrong:** it named `is_record_only_message` in
+`services/message_context.rs` as an existing function needing at most a
+`pub(crate)` → `pub` widening. It was an inline CLOSURE (`record_only`)
+inside `build_message_context`. Lifted to `pub fn is_record_only_message(m:
+&WhisperMessage) -> bool` under §R.10(j), marked `P4.106 OUT-OF-MANDATE`,
+behaviour unchanged (the strip calls it twice, as the closure was called).
+This is the ONE core source change of the lane (core 0.0.993).
+
+NEW `is_record_only_message_equivalence.rs` + `cases/is-record-only-
+message.ts` (tsx, imports the REAL export) + `fixtures/is-record-only-
+message.json` (22 rows: v4's ten inputs from its six cases, `context-
+builder.service.test.ts:29-56`, plus eleven edges). Regen AS RUN:
+`cd /tmp/qt-v4-pin-p4106-f45a517a9 && PATH=~/.nvm/versions/node/v24.13.1/bin:
+$PATH npx tsx <v5w>/harness/oracle/cases/is-record-only-message.ts >
+/tmp/p4106/oracle-is-record-only-message.ndjson` → 22 rows. Green 22/22.
+Measured v4 answers of note: `systemKind: 'Inform'` is NOT record-only
+(exact match); `commonplaceBook` + `systemKind: ''` IS; `inform` under the
+Commonplace sender IS.
+
+`turn-transcript.json` 17 → 19 cases: `inform_record_skipped` (v4's
+`turn-transcript.test.ts:179`) and `inform_record_without_sender` — **a v4
+edge recorded, not a v5 finding:** with the sender omitted, v4's transcript
+KEEPS the record (`"You notice the clock has stopped.\n\nreal reply"`,
+`contributingMessageIds: ["a-inform","a-real"]`) because `turn-transcript.
+ts:188` skips by `systemSender` only, unlike `isRecordOnlyMessage`. v5
+matches. Regen AS RUN: the same tsx line with `turn-transcript.ts` →
+19 rows, `grep -c "clock has stopped"` = 1. The family now COLLECTS every
+divergence (it asserted on the first).
+
+Mutations (file-backup reverts): drop the `inform` arm → **5 of 22** rows
+red (`v4-inform-host`, `v4-inform-no-sender`, `edge-inform-null-sender`,
+`edge-empty-sender-inform`, `edge-inform-with-content`; the order predicted
+"two" — v4's own six cases carry two inform expectations, the corpus
+three more). Drop the transcript's `systemSender` skip → exactly
+`skip_classes` + `inform_record_skipped` red.
+Red-first availability: none — both are neutrality arms over ported code;
+the mutations are the proofs.
