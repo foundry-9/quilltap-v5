@@ -137498,3 +137498,83 @@ prints `SKIP: …` on stdout and then `test result: ok`, and a lane that greps
 only `test result` sees a pass. `conversation_chunks_tier2` survived a real
 codec mutation that way. The tell is the DURATION: `finished in 0.00s` for a
 family that reads a fixture and runs ops is never real.
+
+### Tier-2 item 12 — RECLASSIFIED: proven neutral BY CONSTRUCTION, regen not required
+
+The lane first recorded item 12's seven families as UNMEASURED, because the
+§R.2 probe failed before their regen batch and a lane may not regen against
+unrecorded drift. **That classification was too weak.** Measured afterwards
+from v5's own committed corpora — no v4 access, so the failed probe does not
+bear on it — **all seven are provably unable to move**, by three arguments in
+descending strength. 2 + 1 + 4 = 7.
+
+**First, confirming the gap was real:** in the lane's workspace gate all seven
+printed a `SKIP:` line and finished in **0.00 s**. Zero signal — the same
+false-"ok" shape that let `conversation_chunks_tier2` survive a codec mutation
+earlier in this lane.
+
+#### Class 1 — no database at all (2 families)
+
+`markdown_transcript_equivalence` and `turn_transcript_equivalence` are
+**tier-1 pure-function** differentials: `grep -cE "Db::open|Writer::open|
+Connection::open"` returns **0** for both. They render from in-memory
+structures and never read a column, so no cell — compressed or otherwise — is
+in reach. Immune for the simplest possible reason, and the corpus measurement
+below is redundant for them (`markdown_transcript`'s 69 inline
+`content`/`opaqueContent` literals top out at **56 bytes**, with no
+`.repeat(` / `padEnd(` to inflate anything at run time;
+`turn-transcript.json` at **31 bytes**).
+
+#### Class 2 — builds its own fixture, but the corpus never reaches the floor (1)
+
+`chats_messages_ops_tier2_equivalence` builds from
+`harness/oracle/fixtures/chats-messages-ops-tier2.json` at the target pin, so
+v4 *would* compress — but the largest cell on any of the seven registered
+columns across that whole spec is **37 bytes**. `text_to_blob` returns the
+ORIGINAL STRING below 512 bytes, so the codec is never invoked on either side
+and both store plain TEXT.
+
+#### Class 3 — reads a COMMITTED pair, frozen at pre-compression vintage (4)
+
+`transcript_route_equivalence` and `salon_reads_equivalence` read
+`salon-{main,mount}.db`; `system_export_equivalence` reads
+`system-data-{main,mount}.db`; `chat_export_equivalence` reads
+`chat-dialogs-{main,mount}.db`. **§R.12 forbids rebuilding any of them**, so
+their cells stay at their pre-compression vintage — all plain TEXT — and
+`blob_to_text` on a `ValueRef::Text` returns it verbatim (unit-tested in
+`db/text_compression.rs`). Two of the three also have specs whose own maxima
+are under the floor (`salon.json` **132 B**, `chat-dialogs-web.json`
+**212 B**); `system_export` rests on the frozen-fixture argument alone.
+
+**Why this is better than the regen it replaces.** A regen would have shown
+"they did not move this time". These arguments show *why they cannot* — and
+they survive re-reading, which an empirical pass does not.
+
+#### ⚠ The dependency, and the handoff it creates
+
+**Class 3's proof is CONTINGENT on §R.12 holding, and it expires the moment
+the deferred fixture-vintage heal order rebuilds those pairs.** A rebuild at
+any post-compression pin gives `salon-*`, `system-data-*` and
+`chat-dialogs-*` genuinely compressed cells, at which point
+`transcript_route`, `salon_reads`, `system_export` and `chat_export` become
+able to move and **MUST get real neutrality legs**. That order already owns
+this pair list for other reasons (P4.D203's own
+`chat-compressed-*` triple and its `transcriptVersion` gap; the
+`inspector-{main,mount,llm}.db` compressed `llm_logs` row) — these four
+families join it.
+
+#### ⚠ One behaviour delta on plaintext, stated because it is NOT proven absent
+
+`CompressedText`'s `FromSql` accepts an INTEGER or REAL cell and renders it
+through JS `String(value)`, where a plain `String` bind raised
+`InvalidColumnType`. That is **v4-faithful** (v4's `blobToText` has the same
+`String(value)` arm, ported and unit-tested), so it is a correctness
+improvement rather than a divergence — but on a TEXT-affinity column a numeric
+cell is unlikely, and **this lane did not prove none exists** in the Class 2
+and Class 3 fixtures. It cannot affect Class 1 at all (no cell is read). A
+cheap future check: dump `typeof(<col>)` across those pairs and assert
+`text`/`null` only.
+
+**Net: item 12 is CLOSED as proven-neutral-by-construction, not deferred.**
+What remains open is the Class 3 expiry above, and it belongs to the
+fixture-vintage heal order rather than to this round.

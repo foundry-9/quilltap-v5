@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): item 12's seven neutrality legs are proven neutral BY CONSTRUCTION, not deferred (P4.D203)
+
+_Docs-only change._
+
+The P4.D203 lane first recorded tier-2 item 12's seven families as UNMEASURED,
+because the §R.2 probe failed before their regen batch. That classification was
+too weak. Measured afterwards from v5's own committed corpora — no v4 access, so
+the failed probe does not bear on it — all seven are provably unable to move, in
+three classes (2 + 1 + 4 = 7).
+
+`markdown_transcript` and `turn_transcript` are tier-1 PURE-FUNCTION
+differentials with zero `Db::open` / `Writer::open` / `Connection::open`: they
+render from in-memory structures and never read a column, so no cell is in
+reach. `chats_messages_ops_tier2` builds its fixture at the target pin, so v4
+would compress — but the largest cell on any registered column in its whole
+spec is 37 bytes against a 512-byte floor, and `text_to_blob` returns the
+original string below the floor. `transcript_route`, `salon_reads`,
+`system_export` and `chat_export` read committed pairs (`salon-*`,
+`system-data-*`, `chat-dialogs-*`) that §R.12 forbids rebuilding, so their cells
+stay at pre-compression vintage — all plain TEXT, which the total decoder passes
+through verbatim.
+
+This is stronger than the regen it replaces: a regen shows "they did not move
+this time", these arguments show why they cannot.
+
+Two caveats recorded rather than glossed. The third class's proof is contingent
+on §R.12 and expires the moment those pairs are rebuilt at any post-compression
+pin, at which point those four families need real legs — handed to the
+fixture-vintage heal order alongside `inspector-*`'s compressed `llm_logs` row
+and `chat-compressed-*`'s `transcriptVersion` gap. And `CompressedText`'s
+`FromSql` accepts a numeric cell where a plain `String` bind errored — v4-faithful,
+but this lane did not prove no such cell exists in the class-2 and class-3
+fixtures.
+
+Also recorded: all seven printed a `SKIP:` and finished in 0.00 s in the lane's
+workspace gate, so the gate gave zero signal on them — the same false-"ok" shape
+that let another family survive a codec mutation earlier in the lane.
+
 #### 2026-09-21 — docs(porting): the P4.D203 lane record — the codec keystone, its measurements, and the three instrument findings
 
 _Docs-only change._
