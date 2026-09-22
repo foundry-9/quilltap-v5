@@ -1,0 +1,49 @@
+
+Quilltap Document Store Sync
+
+Usage: quilltap sync <store|qtap://store/> <path> [options]
+
+Mirrors a database-backed document store and a directory on disk in both
+directions. The two sides are compared by SHA-256 first and by modification
+time second: equal bytes with unequal clocks are re-stamped, not re-copied.
+Whichever side changed is copied to the other; when both changed since the
+last run it is reported as a conflict and left alone.
+
+The directory is created if it is missing. A document store is never created.
+
+Options:
+  --dry-run                 Plan and print; change nothing on either side
+  --direction <which>       both (default), to-disk, or to-store
+  --prefer <which>          newer (default), store, or disk — resolves conflicts
+  --no-delete               Never propagate a deletion to the other side
+  --no-manifest             Ignore .quilltap-sync.json (first-run rules every time)
+  --json                    Machine-readable plan and results on stdout
+  -p, --port <number>       Server port (default: 3000)
+  -d, --data-dir <path>     Override data directory
+  -i, --instance <name>     Use a registered instance
+  --passphrase <pass>       Decrypt .dbkey if peppered
+  -h, --help                Show this help
+
+Exit codes: 0 clean, 1 an error or a failed action, 2 an unresolved conflict.
+--dry-run uses the same codes, so a script can gate on a clean plan.
+
+Files and folders whose names begin with a dot are INVISIBLE to the sync in
+both directions — never copied, never deleted, on either side. The one
+exception is .quilltap-sync.json, the record the verb keeps of what the last
+run left; it lives in the directory and never enters the store.
+
+A binary's description travels beside it as <file>.description.md. Editing
+that file changes the caption in the store; deleting it clears the caption.
+A text document's description is not synced.
+
+The server must be running: a database-backed store's writes go through it,
+as they already do for 'quilltap docs write'. <path> is resolved on the
+server — under Docker it must sit inside a bind mount (see
+'quilltap docs docker-mounts').
+
+Examples:
+  quilltap sync Lore ~/Documents/lore --dry-run
+  quilltap sync Lore ~/Documents/lore
+  quilltap sync Lore ~/Documents/lore --prefer disk
+  quilltap sync qtap://Lore/ ~/Documents/lore --direction to-disk
+

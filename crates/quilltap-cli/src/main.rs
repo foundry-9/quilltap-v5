@@ -29,15 +29,26 @@ mod out;
 mod recall_replay_cmd;
 mod resolve;
 mod restore_key;
+mod sync_cmd;
+mod sync_report;
 mod vtable;
 
 const MAIN_HELP: &str = include_str!("help/main_help.txt");
 
 /// v4 `SUBCOMMANDS`.
+///
+/// ⚠ NO comments inside the array. `tests/completion_behavior.rs::subcommands()`
+/// parses this literal by splitting on `,` and trimming quotes, so a comment
+/// line becomes a bogus entry AND swallows the name after it — which is exactly
+/// how `sync` went missing from the dispatch-coverage guard when it was first
+/// added with its rationale inline. v4 `23da0b322` seats `sync` between `docs`
+/// and `memories`, and the order is load-bearing: `locate_subcommand` scans this
+/// list in order.
 const SUBCOMMANDS: &[&str] = &[
     "db",
     "themes",
     "docs",
+    "sync",
     "memories",
     "instances",
     "memory-diff",
@@ -234,6 +245,7 @@ fn main() {
 
             match sub_name.as_str() {
                 "db" => out::exit(db_cmd::run(&sub_args)),
+                "sync" => out::exit(sync_cmd::run(&sub_args)),
                 "docs" => docs_cmd::run(&sub_args),
                 "instances" => instances_cmd::run(&sub_args),
                 "completion" => completion_cmd::run(&sub_args),

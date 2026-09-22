@@ -302,6 +302,7 @@ const DB_HELP: &str = include_str!("../src/help/db_help.txt");
 const DOCS_HELP: &str = include_str!("../src/help/docs_help.txt");
 const INSTANCES_HELP: &str = include_str!("../src/help/instances_help.txt");
 const COMPLETION_HELP: &str = include_str!("../src/help/completion_help.txt");
+const SYNC_HELP: &str = include_str!("../src/help/sync_help.txt");
 
 /// Each entry names the text one subcommand's `--help` prints.
 fn help_sources() -> Vec<(&'static str, String)> {
@@ -310,6 +311,9 @@ fn help_sources() -> Vec<(&'static str, String)> {
         ("docs", DOCS_HELP.to_string()),
         ("instances", INSTANCES_HELP.to_string()),
         ("completion", COMPLETION_HELP.to_string()),
+        // v4 `23da0b322`. The help text is CAPTURED from v4's `printSyncHelp`
+        // at the pin, so the flags this guard reads off it are v4's own.
+        ("sync", SYNC_HELP.to_string()),
         ("recall-replay", recall_replay_help()),
     ]
 }

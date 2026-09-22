@@ -138754,3 +138754,74 @@ transports) and that absent and explicit-`null` stay apart.
 
 Versions: core 0.0.975, harness 0.0.869, web 0.0.160.
 
+
+### Unit 5 — the CLI verb, the renderer, the completion hunks, Tier R
+
+`sync_cmd.rs` (the flag parser, `resolve_store_spec`'s three refusals,
+`require_mount` UUID-first, the POST through `http.rs`, the render, the exit
+codes) and `sync_report.rs` (the pure renderer), both built on captures rather
+than transcriptions.
+
+**Everything user-facing is CAPTURED.** `sync_help.txt` is v4's `printSyncHelp`
+output run at the pin (2,340 bytes); `main_help.txt` is v4's whole `--help`
+re-taken (2,096 → 2,174, the diff exactly the one `sync` line in v4's own
+position after `docs`); the three completion templates are v4's files
+byte-copied (bash 13,862 → 14,667, zsh 22,226 → 23,305, fish 24,645 → 26,328).
+The bug-144 / dogfood-#119 lesson — run the oracle BEFORE writing a user-facing
+string — applies with unusual force to a verb whose whole surface is text.
+
+**Two crate-shape decisions, both forced:**
+
+- `sync_report.rs` reads `serde_json::Value` by hand rather than deriving, since
+  `quilltap-cli` links `serde_json` and not `serde` and §R.8 forbids a lane
+  adding a dependency. That is also the crate's own idiom (`db_characters.rs`)
+  and a closer match to v4, whose renderer reads untyped JSON and simply takes
+  no colour for a kind it does not know.
+- `sync_report_equivalence` lives under `crates/quilltap-cli/tests/` and pulls
+  the module in by `#[path]` (the `mount_common` idiom), because `quilltap-cli`
+  is bin-only and the harness cannot depend on it.
+
+**Measured, as the order asked:** v4's `sync-report.js` `formatBytes` is
+body-identical to `docs-commands.js`'s, which `nodefmt::format_bytes` already
+ports — the same four branches, the same `toFixed` digits, the same division
+spellings. The only difference is the absent-value guard, so the port wraps the
+existing kernel rather than minting a fourth copy.
+
+**Tier R: 223 → 244, 0 failures at the target pin**, and the FOUR designed reds
+are closed — `main help` and the three `completion` templates went red the
+moment the pin moved onto `23da0b322`, which is the tripwire working as
+designed. The twenty-one new cases are the verb's whole offline surface. Every
+arm that would reach the network names port 45677, so the two-line connection
+refusal is deterministic rather than a hostage to whatever the dev machine
+happens to be running; the one exception is the `parseInt(x, 10) || 3000`
+fallback case, which is included because the fallback is v4's and worth pinning,
+and which agrees on both sides either way.
+
+`completion_behavior.rs::help_sources_cover_every_dispatched_subcommand` fails
+the instant a dispatched verb has no help source, and it did. ⚠ **A trap worth
+the note:** it parses `SUBCOMMANDS` by splitting the literal on `,` and trimming
+quotes, so a COMMENT inside the array becomes a bogus entry AND swallows the
+name after it. `sync` was invisible to the guard until its rationale moved above
+the const; the doc comment there now says so.
+
+Versions: cli 0.0.25, harness 0.0.870.
+
+### §R.9 — the mirror pre-list for the unifier (byte counts at `f45a517a9`)
+
+This lane ratifies `0ecc6067c` (docs-only). The mirror paths its rows move, with
+the counts as measured at the target pin:
+
+| mirror path | bytes at the pin | note |
+|---|---|---|
+| `docs/v4/developer/bugs/fixed/bug-155-byte-write-blanks-caption.md` | 7,393 | the `fixed/` path `23da0b322` RENAMES it to, never the birth path |
+| `docs/v4/developer/bugs/fixed/bug-156-overwrite-leaves-stale-chunks.md` | 8,975 | likewise |
+| `docs/v4/developer/features/complete/cli-document-store-sync.md` | 39,694 | `23da0b322` moves it under `complete/`; mirror at the final path |
+| `docs/v4/developer/API.md` | 219,745 | v5's mirror is 212,970 — the sync action's hunk |
+| `docs/v4/developer/DDL.md` | 125,326 | v5's mirror is 114,051 |
+
+⚠ Two further rows are **P4.D211's**, not this lane's, and are restated only
+because they bear on the same tree: `docs/developer/CLI.md` is **6,542** at the
+pin (gutted from 28,099 by `e11a51f44`) against v5's mirrored 24,663, and
+`packages/quilltap/README.md` (**34,707**) has no v5 mirror at all — a straight
+re-mirror of the first without adding the second silently shrinks the port's CLI
+reference by 21.5 KB, which is what §R.9 warns about.

@@ -7,6 +7,7 @@ Subcommands:
   db                            Query encrypted databases
   themes                        Manage theme bundles
   docs                          Inspect, read, and export document mounts
+  sync <store> <path>           Mirror a database-backed store to a directory
   memories                      Search, browse, and graph memories
   instances                     Register / inspect named Quilltap instances
   logs                          Tail or print an instance log file

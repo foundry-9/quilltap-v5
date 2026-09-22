@@ -3766,6 +3766,144 @@ fn cli_differential() {
     ctx.case("completion fish", &["completion", "fish"]);
     ctx.case("completion unknown shell", &["completion", "tcsh"]);
 
+    // ---------------- sync (P4.D210) ----------------
+    //
+    // v4 `23da0b322`. The verb is a thin HTTP client, so its offline surface —
+    // the help, the flag parse, the store resolution, and the two refusals it
+    // makes BEFORE it ever posts — is the whole of what two launchers can be
+    // diffed on without a server. Every arm that would reach the network names
+    // a port nothing listens on (45677, not 3000), so the connection refusal is
+    // deterministic rather than a hostage to whatever the dev machine happens
+    // to be running.
+    //
+    // ⚠ The four cases this commit turns from RED to green — `main help` and
+    // the three `completion` templates — are above; they went red the moment
+    // the oracle pin moved onto `23da0b322`, which is the tripwire working.
+    let sy = |rest: &[&str]| -> Vec<String> {
+        let mut v = vec!["sync".to_string(), "--data-dir".to_string(), inst_a.clone()];
+        v.extend(rest.iter().map(|s| s.to_string()));
+        v
+    };
+    // The help, byte for byte — CAPTURED from v4 at the pin into
+    // `src/help/sync_help.txt`, never typed (the bug-144 lesson).
+    ctx.case("sync help", &["sync", "--help"]);
+    ctx.case("sync help short flag", &["sync", "-h"]);
+    // No positionals: the same help, exit 1.
+    ctx.case("sync no args", &["sync"]);
+    ctx.case_with("sync only a store", &sy(&["notes"]), CaseOpts::default());
+    ctx.case_with(
+        "sync too many positionals",
+        &sy(&["notes", "/tmp/qt-sync-r", "/tmp/extra"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync unknown option",
+        &sy(&["--wibble"]),
+        CaseOpts::default(),
+    );
+
+    // The three `qtap://` refusals, all before any database open.
+    ctx.case_with(
+        "sync qtap wrong scope",
+        &sy(&["qtap://project/Anything/", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync qtap with a path inside",
+        &sy(&["qtap://notes/chapters/01.md", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync qtap self",
+        &sy(&["qtap://self/", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+
+    // The store resolution: absent by name, absent by id, ambiguous by name.
+    ctx.case_with(
+        "sync unknown store name",
+        &sy(&["nosuch", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync unknown store id",
+        &sy(&["99999999-9999-4999-8999-999999999999", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync ambiguous store name",
+        &sy(&["twin", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+
+    // A filesystem store: refused locally, with its own base path in the
+    // sentence, and the server never contacted.
+    ctx.case_with(
+        "sync a filesystem store",
+        &sy(&["attic", "/tmp/qt-sync-r"]),
+        CaseOpts::default(),
+    );
+
+    // Everything past the local gates reaches the network. Nothing listens on
+    // 45677, so both launchers print the two-line connection refusal.
+    ctx.case_with(
+        "sync no server",
+        &sy(&["notes", "/tmp/qt-sync-r", "--port", "45677"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync no server json",
+        &sy(&["notes", "/tmp/qt-sync-r", "--port", "45677", "--json"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync no server dry run",
+        &sy(&["notes", "/tmp/qt-sync-r", "--port", "45677", "--dry-run"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync no server by uuid",
+        &sy(&[N1, "/tmp/qt-sync-r", "--port", "45677"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "sync no server via a qtap uri",
+        &sy(&["qtap://notes/", "/tmp/qt-sync-r", "--port", "45677"]),
+        CaseOpts::default(),
+    );
+    // A `~`-relative target: both sides expand it against HOME (which the
+    // venue pins to the live tree) before it ever leaves the process.
+    ctx.case_with(
+        "sync tilde target",
+        &sy(&["notes", "~/qt-sync-r", "--port", "45677"]),
+        CaseOpts::default(),
+    );
+    // The flags the server judges rather than the client: a bad `--direction`
+    // still has to get past the CLI unchallenged, so this reaches the same
+    // connection refusal rather than a local complaint.
+    ctx.case_with(
+        "sync a bad direction is the servers business",
+        &sy(&[
+            "notes",
+            "/tmp/qt-sync-r",
+            "--port",
+            "45677",
+            "--direction",
+            "sideways",
+        ]),
+        CaseOpts::default(),
+    );
+    // `parseInt(x, 10) || 3000` — a non-numeric port falls back to 3000, so
+    // this one DOES touch the default port. It is the one arm where the two
+    // launchers' behaviour depends on the port being closed, and it is included
+    // because the fallback is v4's and worth pinning; if a server is running
+    // locally both sides would still agree, having both reached it.
+    ctx.case_with(
+        "sync a non numeric port falls back",
+        &sy(&["attic", "/tmp/qt-sync-r", "--port", "wibble"]),
+        CaseOpts::default(),
+    );
+
     // ---------------- recall-replay (P4.d13) ----------------
     ctx.case("recall-replay help", &["recall-replay", "--help"]);
     ctx.case("recall-replay no chat", &["recall-replay"]);

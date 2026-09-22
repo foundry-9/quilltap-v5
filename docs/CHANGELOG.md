@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(cli): the `quilltap sync` verb — the thin client, the report renderer, the completion hunks and Tier R (P4.D210)
+
+_Versions: cli 0.0.25, harness 0.0.870._
+
+v4's `sync` is a thin HTTP client: it resolves the store name to a UUID (the one
+thing it opens the database for, read-only), posts to
+`/api/v1/mount-points/{id}?action=sync`, renders what came back, and exits 0, 1
+or 2. This is that, plus the renderer as its own pure module.
+
+Everything user-facing here is CAPTURED, not typed. `src/help/sync_help.txt` is
+v4's `printSyncHelp` output (2,340 bytes) taken from the launcher at the pin;
+`src/help/main_help.txt` is v4's whole `--help` re-taken (2,096 → 2,174, the one
+`sync` line in v4's own position after `docs`); the three completion templates
+are v4's files byte for byte (bash 13,862 → 14,667, zsh 22,226 → 23,305, fish
+24,645 → 26,328). The dogfood-#119 lesson applies with force to a verb whose
+entire surface is text.
+
+The renderer is a port of `sync-report.js` and is deliberately LOOSE about its
+input, as v4's plain JS is: an action kind it does not recognize takes no colour
+rather than failing to decode. `pad` counts UTF-16 code units and pads INSIDE
+the ANSI escapes, which is why the coloured form is not the plain form with
+escapes wrapped round it — `sync_report_equivalence` compares 176 rows both
+ways, 102 of them coloured.
+
+Tier R grows 223 → 244 and the four cases that went red the moment the oracle
+pin moved onto `23da0b322` — `main help` and the three `completion` templates —
+are closed. The twenty-one new cases cover the whole offline surface: the help,
+the flag parse, the three `qtap://` refusals, the store resolution (absent by
+name, absent by id, ambiguous), the filesystem-store refusal with its own base
+path, and the two-line connection refusal. Every arm that would reach the
+network names a port nothing listens on, so the refusal is deterministic rather
+than a hostage to whatever the dev machine is running.
+
 #### 2026-09-22 — feat(scriptorium): `Request::MountSync` — the sync action, its Zod-faithful schema half and its refusal ladder (P4.D210)
 
 _Versions: core 0.0.975, harness 0.0.869, web 0.0.160._
