@@ -272,12 +272,42 @@
     "99000099-0000-4000-8000-000000000099"
   ],
   "completion": {
+    "_note": "P4.D207 (v4 f564b0de3): the generation is READ AS A STREAM, so the canned completion is a chunk sequence. The prose arrives as two deltas (so `content` must be the CONCATENATION and the `regenerating` beat must fire exactly ONCE); the terminal chunk carries all four record fields, so `usage`/`rawResponse`/`reasoningContent`/`thoughtSignature` are a real comparand rather than four NULLs that agree by accident. `rawResponse` is a NON-EMPTY object on purpose: an empty one is JS-truthy too, so it would not distinguish a truthiness bug from a stored-verbatim bug. The MIDDLE chunk carries a stale `rawResponse`/`reasoningContent` so last-wins is measurable in both fields.",
     "response": "A freshly regenerated line.",
     "usage": {
       "promptTokens": 40,
       "completionTokens": 6,
       "totalTokens": 46
-    }
+    },
+    "stream": [
+      {
+        "content": "A freshly ",
+        "done": false
+      },
+      {
+        "content": "regenerated line.",
+        "done": false,
+        "rawResponse": {
+          "stopReason": "not-the-last-one"
+        },
+        "reasoningContent": "half a thought"
+      },
+      {
+        "content": "",
+        "done": true,
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 6,
+          "totalTokens": 46
+        },
+        "rawResponse": {
+          "id": "resp-abc",
+          "stopReason": "end_turn"
+        },
+        "reasoningContent": "a whole thought, cumulative",
+        "thoughtSignature": "sig-xyz"
+      }
+    ]
   },
   "calls": [
     {

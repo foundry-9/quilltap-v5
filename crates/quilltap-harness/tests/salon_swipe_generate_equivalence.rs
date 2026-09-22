@@ -10,6 +10,27 @@
 //! composing the ported `regenerate_message_as_swipe` over canned providers +
 //! `NoopSeams` (matching the oracle's mocked feeders + K-loader).
 //!
+//! ## P4.D207 (v4 `f564b0de3`): the two TERMINAL frames, and the refusal order
+//!
+//! The generation is a STREAM now, so the always-respond provider has a
+//! streaming twin ([`AlwaysStream`], the same three chunks the oracle's mocked
+//! `streamMessage` yields). Every case runs with an ACTIVE
+//! [`SwipeProgressEmitter`] — v4's `?stream=1` leg — which puts two rules that
+//! live in the ROUTE rather than the service under proof here, where the
+//! service-level family (`regenerate_swipe_tier3`) structurally cannot see them:
+//!
+//! * **The terminal `{done:true,message}`** must be the LAST frame and must
+//!   carry the very object the 201 body carries (v4 builds it inline from the
+//!   service's return value — never a re-read of the row).
+//! * **A refusal publishes NOTHING.** v4's rule: a refusal before the stream
+//!   opens stays an ordinary JSON error, and only a throw inside `start()`
+//!   becomes an `error` frame. So the 404 and both guards must emit no frame at
+//!   all even with a live emitter — the mutation that moves a guard below the
+//!   narration reddens all three refusal cases at once.
+//!
+//! The `error` frame's own bytes are pinned in `services::regenerate_swipe`'s
+//! unit tests and exercised end-to-end by the SSE route family.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … TZ=UTC QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson npx jest -- salon-swipe-generate
 //!   (TZ=UTC REQUIRED since P4.d26 — the distill TODAY line is server-local;
@@ -25,19 +46,36 @@ use quilltap_core::api::chat_send::{
     SwipeGenerateDriver, SwipeGenerateFuture, SwipeGenerateRequest,
 };
 use quilltap_core::api::salon;
-use quilltap_core::api::types::{CoreError, ErrorKind, Response};
+use quilltap_core::api::types::{CoreError, ErrorKind, Event, EventPayload, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{dump_table_json_conn, DbError};
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse, CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::stream::{
+    StreamChunk, StreamChunkResult, StreamParams, StreamUsage, StreamingCompletionProvider,
+};
 use quilltap_core::services::build_context::NoopSeams as BcNoopSeams;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::message_context::NoopMessageContextSeams;
 use quilltap_core::services::regenerate_swipe::{
-    regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
+    regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions, SwipeProgressEmitter,
 };
+
+/// Drain every swipe frame published for `progress_id`, in order.
+fn drain_frames(rx: &mut tokio::sync::broadcast::Receiver<Event>, progress_id: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        if ev.progress_id.as_deref() != Some(progress_id) {
+            continue;
+        }
+        if let EventPayload::SwipeProgress(p) = &ev.payload {
+            out.push(p.frame.clone());
+        }
+    }
+    out
+}
 use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::Value;
@@ -78,6 +116,45 @@ impl CompletionProvider for AlwaysCompletion {
         }
     }
 }
+/// The streaming twin of [`AlwaysCompletion`] (P4.D207, v4 `f564b0de3`): the
+/// swipe's one generation is a STREAM now, so the always-respond provider yields
+/// the canned prose as TWO deltas plus a terminal `usage` chunk — the same three
+/// chunks the oracle's mocked `streamMessage` yields, so the accumulated content
+/// and the three token columns are comparable on both sides.
+///
+/// Deliberately NOT a `CannedStreamingProvider`: this family proves the ROUTE
+/// layer, and an always-respond provider is what makes the 404 / guard cases
+/// independent of the prompt bytes (see [`AlwaysCompletion`]'s doc).
+struct AlwaysStream;
+impl StreamingCompletionProvider for AlwaysStream {
+    #[allow(clippy::manual_async_fn)]
+    fn stream_message(
+        &self,
+        _provider: &str,
+        _base_url: Option<&str>,
+        _params: &StreamParams,
+    ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+    {
+        async {
+            let (tx, rx) = tokio::sync::mpsc::channel::<StreamChunkResult>(8);
+            for chunk in [
+                StreamChunk::content("A fresh retort, "),
+                StreamChunk::content("reconsidered."),
+                StreamChunk::done(Some(StreamUsage {
+                    prompt_tokens: 40,
+                    completion_tokens: 12,
+                    total_tokens: 52,
+                })),
+            ] {
+                // The channel has room for all three and no consumer can have
+                // dropped it yet, so `send` cannot fail here.
+                tx.send(Ok(chunk)).await.expect("canned chunk queued");
+            }
+            rx
+        }
+    }
+}
+
 /// The salon fixture's OPENAI_COMPATIBLE profile has a null model → the group chat
 /// is tiny, so any limit above its context is identical (no truncation); pinned
 /// large to match v4's no-truncation build.
@@ -117,6 +194,7 @@ fn fixtures_dir() -> PathBuf {
 struct TestSwipeDriver<'a> {
     db: &'a Db,
     completion: &'a AlwaysCompletion,
+    streaming: &'a AlwaysStream,
     embedding: &'a CannedEmbeddingProvider,
     executor: &'a CheapLlmTaskExecutor,
 }
@@ -124,6 +202,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
     fn generate_swipe(&self, req: SwipeGenerateRequest) -> SwipeGenerateFuture<'_> {
         let db = self.db;
         let completion = self.completion;
+        let streaming = self.streaming;
         let embedding = self.embedding;
         let executor = self.executor;
         Box::pin(async move {
@@ -142,33 +221,39 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                 now_ms: FROZEN_NOW_MS,
                 local_offset_minutes: 0,
                 random01: DrawSource::sequence(vec![0.0]),
+                // P4.D207: the driver forwards whatever the ROUTE built — that
+                // is the seam this family proves, so it must not substitute one
+                // of its own.
+                progress: req.progress,
             };
-            regenerate_message_as_swipe(db, embedding, completion, executor, &bc, &mc, opts)
-                .await
-                .map_err(|e| match e {
-                    RegenError::NotAssistant | RegenError::StaffMessage => CoreError {
-                        kind: ErrorKind::BadRequest,
-                        message: e.to_string(),
-                        pepper_state: None,
-                        code: None,
-                        associations: None,
-                        character_id: None,
-                        entity: None,
-                        details: None,
-                        already_saved: None,
-                    },
-                    RegenError::Db(_) => CoreError {
-                        kind: ErrorKind::Internal,
-                        message: e.to_string(),
-                        pepper_state: None,
-                        code: None,
-                        associations: None,
-                        character_id: None,
-                        entity: None,
-                        details: None,
-                        already_saved: None,
-                    },
-                })
+            regenerate_message_as_swipe(
+                db, embedding, completion, streaming, executor, &bc, &mc, opts,
+            )
+            .await
+            .map_err(|e| match e {
+                RegenError::NotAssistant | RegenError::StaffMessage => CoreError {
+                    kind: ErrorKind::BadRequest,
+                    message: e.to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                    already_saved: None,
+                },
+                RegenError::Db(_) | RegenError::Generation(_) => CoreError {
+                    kind: ErrorKind::Internal,
+                    message: e.to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                    already_saved: None,
+                },
+            })
         })
     }
 }
@@ -322,6 +407,7 @@ fn salon_swipe_generate_matches_oracle() {
     for (name, message_id) in cases {
         let want = &oracle[name];
         let completion = AlwaysCompletion;
+        let streaming = AlwaysStream;
         let embedding = CannedEmbeddingProvider::new();
         let executor = CheapLlmTaskExecutor::new();
 
@@ -365,16 +451,24 @@ fn salon_swipe_generate_matches_oracle() {
         let driver = TestSwipeDriver {
             db: &db,
             completion: &completion,
+            streaming: &streaming,
             embedding: &embedding,
             executor: &executor,
         };
+        // P4.D207: run every case with an ACTIVE emitter (v4's `stream=1` leg).
+        // The refusals must publish NOTHING — "a refusal BEFORE the stream
+        // opens stays an ordinary JSON error" — and the happy case must end with
+        // the terminal `done` frame the route builds.
+        let (events_tx, mut events_rx) = tokio::sync::broadcast::channel::<Event>(256);
         let got = rt.block_on(salon::message_swipe_generate(
             &db,
             &driver,
             &spec.user_id,
             message_id,
+            SwipeProgressEmitter::active(message_id, events_tx.clone()),
         ));
         let got_body = response_data(&got);
+        let frames = drain_frames(&mut events_rx, message_id);
 
         let chats = db
             .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
@@ -398,6 +492,20 @@ fn salon_swipe_generate_matches_oracle() {
                 eprintln!("[{name}] body error-copy MISMATCH:\n  GOT : {got_msg}\n  WANT: {err}");
                 failed.push(format!("{name}/body"));
             }
+            // P4.D207: **a refusal happens BEFORE any frame.** v4's rule is
+            // that a refusal before the stream opens stays an ordinary JSON
+            // error and only a throw INSIDE `start()` becomes an `error`
+            // frame — so these cases (404, the ASSISTANT-only guard, the
+            // `systemSender` guard) must publish NOTHING even with an active
+            // emitter. Moving the guards below the driver call reddens this.
+            if !frames.is_empty() {
+                eprintln!(
+                    "[{name}] a REFUSAL published {} frame(s):\n{}",
+                    frames.len(),
+                    serde_json::to_string_pretty(&frames).unwrap()
+                );
+                failed.push(format!("{name}/frames"));
+            }
         } else {
             // Happy: compare the persisted new swipe row (via the tables) — the body's
             // minted id/group ride the same normalization, so assert the message
@@ -417,6 +525,38 @@ fn salon_swipe_generate_matches_oracle() {
                     "[{name}] body content MISMATCH:\n  GOT : {got_content}\n  WANT: {want_content}"
                 );
                 failed.push(format!("{name}/body"));
+            }
+            // P4.D207: the happy case's TERMINAL frame. v4 builds
+            // `{done:true,message:newSwipe}` inline in the route
+            // (`route.ts:347-350`), so it must be LAST and must carry the very
+            // object the 201 body carries — not a re-read of the row.
+            match frames.last() {
+                Some(last) => {
+                    let done_msg = last.get("done").and_then(Value::as_bool) == Some(true);
+                    let same = last.get("message") == got_body.get("message");
+                    if !done_msg || !same {
+                        eprintln!(
+                            "[{name}] terminal frame MISMATCH (done={done_msg}, \
+                             message==body: {same}):\n{}",
+                            serde_json::to_string_pretty(last).unwrap()
+                        );
+                        failed.push(format!("{name}/frames"));
+                    }
+                }
+                None => {
+                    eprintln!("[{name}] the happy case published NO frames at all");
+                    failed.push(format!("{name}/frames"));
+                }
+            }
+            // …and the four beats arrived, in v4's order, ahead of it.
+            let stages: Vec<&str> = frames
+                .iter()
+                .filter_map(|f| f.get("status"))
+                .filter_map(|s| s.get("stage").and_then(Value::as_str))
+                .collect();
+            if stages != ["gathering", "sending", "regenerating", "saving"] {
+                eprintln!("[{name}] beat order MISMATCH: {stages:?}");
+                failed.push(format!("{name}/frames"));
             }
         }
 

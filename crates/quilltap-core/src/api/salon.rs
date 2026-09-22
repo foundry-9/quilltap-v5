@@ -1200,18 +1200,36 @@ pub async fn message_delete(
     Response::MessageDelete(json!({ "success": true, "memoriesDeleted": memories_deleted }))
 }
 
-/// v4 `handleGenerateSwipe` (POST `/messages/{id}?action=swipe`, no `swipeIndex`):
-/// the ownership gate + the ASSISTANT-only / non-`systemSender` guards, then the
-/// injected [`SwipeGenerateDriver`] (the model boundaries stay host-side; the driver
+/// v4 `handleGenerateSwipe` / `handleGenerateSwipeStreaming` (POST
+/// `/messages/{id}?action=swipe[&stream=1]`, no `swipeIndex`): the ownership
+/// gate, then the ASSISTANT-only / non-`systemSender` guards, then the injected
+/// [`SwipeGenerateDriver`] (the model boundaries stay host-side; the driver
 /// composes the ported [`regenerate_message_as_swipe`](crate::services::regenerate_swipe)
 /// over the spine's providers). Returns v4's `{ message: newSwipe }` (201 at the
-/// transport). The engine-arm swap (its current "swipe generation not yet
-/// assembled" refusal → this call) is a unification wire.
+/// transport) — **the same response either way**, after the generation completes.
+///
+/// ## The two legs are ONE function here, and that is v4's own shape
+///
+/// v4 has two handlers, `handleGenerateSwipe` and
+/// `handleGenerateSwipeStreaming`, sharing a `resolveSwipeTarget` so both
+/// *"refuse the same things for the same reasons"* (`f564b0de3`). v5's boundary
+/// streams only on the `Event` channel, so the streaming leg is not a different
+/// response — it is the same call with a live [`SwipeProgressEmitter`]. The
+/// three refusals below therefore cannot drift between the legs by
+/// construction, and each happens **before any frame**: v4's rule is that a
+/// refusal before the stream opens stays an ordinary JSON error, and one after
+/// it is an `error` frame, because the headers are long gone.
+///
+/// The two TERMINAL frames are emitted here rather than in the service, which
+/// is v4's placement: `{done: true, message}` is built inline by the route
+/// (`route.ts:347-350`) and the `error` frame by its `catch` (`:356-364`),
+/// while `onProgress` carries only the four beats and the deltas.
 pub async fn message_swipe_generate(
     db: &Db,
     driver: &dyn super::chat_send::SwipeGenerateDriver,
     user_id: &str,
     message_id: &str,
+    progress: crate::services::regenerate_swipe::SwipeProgressEmitter,
 ) -> Response {
     let (chat, messages, message) = match resolve_message(db, user_id, message_id) {
         Ok(Some(v)) => v,
@@ -1246,10 +1264,23 @@ pub async fn message_swipe_generate(
         target_message: message,
         all_messages,
         active_user_participant_id,
+        progress: progress.clone(),
     };
     match driver.generate_swipe(req).await {
-        Ok(new_swipe) => Response::Message(json!({ "message": new_swipe })),
-        Err(e) => Response::Error(e),
+        Ok(new_swipe) => {
+            // v4 `route.ts:347-350` — the terminal frame carries the persisted
+            // swipe, the same object the 201 body carries.
+            progress.emit_done(&new_swipe);
+            Response::Message(json!({ "message": new_swipe }))
+        }
+        Err(e) => {
+            // v4 `route.ts:356-364`: a failure AFTER the stream opened is an
+            // `error` FRAME whose `details` is the raw `error.message`; the
+            // response envelope is unchanged (v4's JSON leg answers
+            // `serverError(error.message)` from the same catch).
+            progress.emit_error(&e.message);
+            Response::Error(e)
+        }
     }
 }
 

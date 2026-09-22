@@ -59,10 +59,19 @@ interface CaseSpec {
 }
 
 const FROZEN_NOW_MS = 1_770_000_000_000;
+// P4.D207 (v4 `f564b0de3`): the generation is READ AS A STREAM. The prose
+// arrives as TWO deltas so the route family exercises the accumulation too, and
+// the terminal chunk carries the usage the persisted row's three token columns
+// come from.
 const COMPLETION = {
   response: 'A fresh retort, reconsidered.',
   usage: { promptTokens: 40, completionTokens: 12, totalTokens: 52 },
 };
+const STREAM_CHUNKS: Array<Record<string, unknown>> = [
+  { content: 'A fresh retort, ', done: false },
+  { content: 'reconsidered.', done: false },
+  { content: '', done: true, usage: COMPLETION.usage },
+];
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -162,17 +171,18 @@ async function main(): Promise<void> {
       };
     });
 
-    // The single non-streaming generation — record the canned key.
+    // The single generation, READ AS A STREAM (P4.D207, v4 `f564b0de3`) —
+    // record the canned key.
     jest.doMock('@/lib/llm', () => {
       const actual = jest.requireActual('@/lib/llm');
       return {
         __esModule: true,
         ...actual,
         createLLMProvider: async (provider: string) => ({
-          sendMessage: async (
+          streamMessage: async function* (
             params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
             _apiKey: string,
-          ) => {
+          ) {
             const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
             const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
             if (!cannedCompletions.has(key)) {
@@ -185,7 +195,7 @@ async function main(): Promise<void> {
                 usage: COMPLETION.usage,
               });
             }
-            return { content: COMPLETION.response, finishReason: 'stop', usage: COMPLETION.usage };
+            for (const chunk of STREAM_CHUNKS) yield chunk;
           },
         }),
       };

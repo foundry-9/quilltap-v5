@@ -229,17 +229,24 @@ mod tests {
             .unwrap(),
             r#"{"progressId":"p1","kind":"done","ts":7}"#
         );
-        // And the payload enum still has exactly the five families. (P4.9K0
+        // And the payload enum still has exactly the six families. (P4.9K0
         // added the fifth — `generatorProgress`, whose own wire bytes are
-        // pinned in `services::generator_progress`; this tripwire fired as
-        // designed and is acknowledged here, not widened to a wildcard.)
+        // pinned in `services::generator_progress`; P4.D207 the sixth —
+        // `swipeProgress`, pinned in `services::regenerate_swipe`. This
+        // tripwire fired as designed BOTH times and is acknowledged here, not
+        // widened to a wildcard.)
+        //
+        // P4.D207 OUT-OF-MANDATE — one line, in a tripwire whose own comment
+        // prescribes this edit; no lane in the `f45a517a9` round owns
+        // `realtime/types.rs`. Recorded for the unifier in the lane record.
         fn _exhaustive(p: &EventPayload) {
             match p {
                 EventPayload::Chat(_)
                 | EventPayload::ChatError(_)
                 | EventPayload::CreationProgress(_)
                 | EventPayload::Realtime(_)
-                | EventPayload::GeneratorProgress(_) => {}
+                | EventPayload::GeneratorProgress(_)
+                | EventPayload::SwipeProgress(_) => {}
             }
         }
     }

@@ -4,10 +4,12 @@
 //! `regenerate_message_as_swipe` is the sibling entry point to
 //! [`super::orchestrator::process_message`]: it generates an alternative
 //! ("swipe") for an existing ASSISTANT message and persists it as a
-//! properly-attributed variant of that message, grouped in place. Unlike the
-//! live send path it runs a **single non-streaming** provider call (no tools, no
-//! turn chain) — a swipe is one alternative line — so the streaming path stays
-//! untouched.
+//! properly-attributed variant of that message, grouped in place. It runs a
+//! **single provider call with no tools** (no turn chain) — a swipe is one
+//! alternative line — so it stays off the streaming/turn-chain path and the
+//! live send path is untouched. It *is* READ as a stream (v4 `f564b0de3`): the
+//! caller can hand in a [`SwipeProgressEmitter`] and watch the re-roll arrive
+//! token by token. With no emitter the generation is identical, just silent.
 //!
 //! It composes the already-ported services: [`super::participant_resolver`]
 //! (responder resolution + participant data + roleplay template),
@@ -17,21 +19,54 @@
 //! ported [`super::memory_service::delete_memories_by_source_message_with_vectors`]
 //! cascade.
 //!
-//! **Tracked deferral:** the new swipe's `rawResponse` / `reasoningContent` /
-//! `thoughtSignature` are set to `null`. The ported [`CompletionResponse`] is the
-//! cheap-LLM subset (`content` + `usage`) and does not carry the provider's raw
-//! payload / reasoning / thought signature; forwarding them awaits the richer
-//! wire-decoded response the provider manifest lands (W4.7). The corpus's canned
-//! completion returns none of them, so `null` is byte-faithful there.
+//! ## The tracked deferral is CLOSED (v4 `f564b0de3`, P4.D207)
+//!
+//! This module used to say: *"the new swipe's `rawResponse` /
+//! `reasoningContent` / `thoughtSignature` are set to `null` — the ported
+//! `CompletionResponse` is the cheap-LLM subset (`content` + `usage`) and does
+//! not carry the provider's raw payload / reasoning / thought signature;
+//! forwarding them awaits the richer wire-decoded response."* v4 has now moved
+//! the persist onto the CHUNKS, and says so itself: *every field the swipe
+//! persists — usage, raw response, thought signature, reasoning — rides the
+//! chunks, so reading the response as a stream costs the record nothing.*
+//!
+//! So the deferral is retired rather than worked around: the generation goes
+//! through the STREAMING seam
+//! ([`StreamingCompletionProvider`](crate::model::stream::StreamingCompletionProvider)),
+//! whose [`StreamChunk`](crate::model::stream::StreamChunk) already carries all
+//! six fields, and the swipe row takes them last-wins off the chunks. **That
+//! moves a tier-2 comparand BY DESIGN** — three columns v5 wrote `null` now
+//! carry real values, so `regenerate_swipe_tier3` is re-recorded at the target
+//! pin rather than "fixed" back.
+//!
+//! Two other things ride the seam change, both improvements v4 already had:
+//!
+//! * **The stall watchdog is not optional on any `stream_message` consumer**
+//!   (bug 141). An SDK timeout stops at the response headers, so a provider
+//!   that answers and then goes quiet would hold this call — and with it the
+//!   operator's disabled composer — open indefinitely. This is the TWELFTH
+//!   wrap site (`stream_watchdog_wrap_census`), and the SECOND outside v4's
+//!   one funnel: it takes the Salon's default 240 s/120 s budgets but v4's own
+//!   `context: 'regenerate-swipe.service'`, which is a third class the census
+//!   did not have (the greeting is the first, on its own 90 s/60 s).
+//! * **Attachments now ride their own messages.** The old completion funnel
+//!   narrowed each bag to four fields (dropping `url`) and re-anchored them by
+//!   index; [`StreamMessage::User`](crate::model::stream::StreamMessage) carries
+//!   the VERBATIM JSON bags per message, exactly as v4's
+//!   `attachments: m.attachments` does. The named `url`-drop divergence this
+//!   module recorded is therefore CLOSED, not carried.
 
 use serde_json::{json, Map, Value};
 
+use crate::api::types::Event;
 use crate::db::runtime::Db;
 use crate::db::{memories_read, DbError};
-use crate::model::completion::{
-    CompletionAttachment, CompletionMessage, CompletionParams, CompletionProvider, CompletionRole,
-};
+use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
+use crate::model::stream::{
+    StreamMessage, StreamParams, StreamUsage, StreamingCompletionProvider, ToolCallPayload,
+};
+use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::build_context::{BuildContextSeams, ConnectionProfileInput};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::memory_service::delete_memories_by_source_message_with_vectors;
@@ -42,6 +77,207 @@ use crate::services::orchestrator::{
     build_context_input, effective_profile_profile, json_f64, json_str, BuildContextArgs,
 };
 use crate::weighted_random::DrawSource;
+
+/// A step of a regeneration, reported live so the Salon can narrate it exactly
+/// the way it narrates a first-time turn (v4 `RegenerateSwipeProgress`,
+/// `regenerate-swipe.service.ts:51-56`).
+///
+/// `Delta` is a DELTA (append it); `Reasoning` is CUMULATIVE (replace it) — the
+/// same contract the send path's stream frames use, so the client-side handling
+/// is identical in both places. Never concatenate reasoning.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RegenerateSwipeProgress {
+    /// One of v4's FOUR status beats (`gathering` / `sending` / `regenerating`
+    /// / `saving`). The swipe always carries both character fields.
+    Status {
+        stage: &'static str,
+        message: String,
+        character_name: String,
+        character_id: String,
+    },
+    /// A content DELTA — append.
+    Delta { content: String },
+    /// The CUMULATIVE reasoning so far — replace.
+    Reasoning { reasoning: String },
+}
+
+impl RegenerateSwipeProgress {
+    /// v4's SSE payload object for this step, VERBATIM — the bytes
+    /// `app/api/v1/messages/[id]/route.ts` puts on the wire through
+    /// `encodeStatusEvent` / `encodeContentChunk` / `encodeReasoningChunk`.
+    ///
+    /// ⚠ **The `status` object carries `kind` too**, and that is measured, not
+    /// assumed: the route passes the WHOLE progress event to
+    /// `encodeStatusEvent(encoder, event)`, which does
+    /// `JSON.stringify({ status })` — so v4's `{kind, stage, message,
+    /// characterName, characterId}` literal reaches the client with its `kind`
+    /// intact and in first position. (`encodeStatusEvent`'s TypeScript
+    /// parameter type does not declare `kind`, but `event` is a variable, not
+    /// an object literal, so TS's excess-property check never applies and
+    /// nothing strips it at runtime. The P4.D207 order's §S.2 paragraph omits
+    /// `kind`; the hunks win — §R.4.)
+    pub fn to_v4_frame(&self) -> Value {
+        match self {
+            RegenerateSwipeProgress::Status {
+                stage,
+                message,
+                character_name,
+                character_id,
+            } => json!({
+                "status": {
+                    "kind": "status",
+                    "stage": stage,
+                    "message": message,
+                    "characterName": character_name,
+                    "characterId": character_id,
+                }
+            }),
+            RegenerateSwipeProgress::Delta { content } => json!({ "content": content }),
+            RegenerateSwipeProgress::Reasoning { reasoning } => json!({ "reasoning": reasoning }),
+        }
+    }
+}
+
+/// v4's optional `onProgress` callback, as a per-call emitter onto the engine's
+/// Event channel (the
+/// [`GeneratorProgressEmitter`](crate::services::generator_progress) precedent,
+/// same shape and the same empty-string rule).
+///
+/// Inert when the caller asked for no narration (`stream` absent/false), so the
+/// service never branches on whether anyone is watching — which is v4's own
+/// invariant: *with no callback the generation is identical, just silent.*
+///
+/// Frames ride [`Event::swipe_progress`] scope-tagged by the TARGET message id.
+/// Unlike [`crate::services::creation_progress`] there is no replay buffer and
+/// none is needed: the client dispatches `messageSwipe { stream: true }` and is
+/// already subscribed, and the REST SSE edge subscribes before it polls the
+/// dispatch future at all.
+#[derive(Clone, Default)]
+pub struct SwipeProgressEmitter {
+    inner: Option<SwipeProgressActive>,
+}
+
+#[derive(Clone)]
+struct SwipeProgressActive {
+    /// v4 has no such id (its frames ride the request's own HTTP response);
+    /// v5's ONE Event channel needs a scope tag, and §S.2 fixes it as the
+    /// swiped message's id.
+    progress_id: String,
+    events: tokio::sync::broadcast::Sender<Event>,
+}
+
+impl std::fmt::Debug for SwipeProgressEmitter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SwipeProgressEmitter")
+            .field(
+                "progress_id",
+                &self.inner.as_ref().map(|a| a.progress_id.as_str()),
+            )
+            .finish()
+    }
+}
+
+impl SwipeProgressEmitter {
+    /// The no-op emitter — nobody asked for narration.
+    pub fn inert() -> Self {
+        SwipeProgressEmitter { inner: None }
+    }
+
+    /// An active emitter tagged with the target message id.
+    pub fn active(
+        progress_id: impl Into<String>,
+        events: tokio::sync::broadcast::Sender<Event>,
+    ) -> Self {
+        SwipeProgressEmitter {
+            inner: Some(SwipeProgressActive {
+                progress_id: progress_id.into(),
+                events,
+            }),
+        }
+    }
+
+    /// Build from the `stream` flag: `false` is inert, and so is an empty
+    /// target id (the `GeneratorProgressEmitter::from_id` emptiness rule).
+    pub fn from_flag(
+        stream: bool,
+        progress_id: &str,
+        events: tokio::sync::broadcast::Sender<Event>,
+    ) -> Self {
+        if stream && !progress_id.is_empty() {
+            Self::active(progress_id, events)
+        } else {
+            Self::inert()
+        }
+    }
+
+    /// Whether anyone is being narrated to.
+    pub fn is_active(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Publish one v4 frame VERBATIM. Best-effort: a lagging or absent
+    /// subscriber is fine (a frame is a narration, never the outcome — the
+    /// dispatch response still carries the persisted row).
+    pub fn emit_frame(&self, frame: Value) {
+        let Some(active) = &self.inner else {
+            return;
+        };
+        let _ = active
+            .events
+            .send(Event::swipe_progress(active.progress_id.clone(), frame));
+    }
+
+    /// One [`RegenerateSwipeProgress`] step (v4's `onProgress(event)`).
+    pub fn emit(&self, event: RegenerateSwipeProgress) {
+        if self.inner.is_none() {
+            return;
+        }
+        self.emit_frame(event.to_v4_frame());
+    }
+
+    /// v4's terminal `{done: true, message: newSwipe}`, built INLINE by the
+    /// route (`route.ts:347-350`) rather than by the service — so v5 emits it
+    /// from [`crate::api::salon::message_swipe_generate`], v4's own placement.
+    pub fn emit_done(&self, message: &Value) {
+        self.emit_frame(json!({ "done": true, "message": message }));
+    }
+
+    /// v4's `encodeErrorEvent(encoder, 'Failed to generate alternative
+    /// response', 'regenerate_failed', <message>)` (`route.ts:356-364`) — a
+    /// failure AFTER the stream opened, because the headers are long gone.
+    pub fn emit_error(&self, details: &str) {
+        self.emit_frame(json!({
+            "error": "Failed to generate alternative response",
+            "errorType": "regenerate_failed",
+            "details": details,
+        }));
+    }
+
+    /// The four status beats, each with v4's sentence and both character
+    /// fields. Spelled here so the bytes have ONE home.
+    fn status(&self, stage: &'static str, message: String, name: &str, id: &str) {
+        self.emit(RegenerateSwipeProgress::Status {
+            stage,
+            message,
+            character_name: name.to_string(),
+            character_id: id.to_string(),
+        });
+    }
+}
+
+/// JS truthiness for a `serde_json::Value` (v4's `if (chunk.rawResponse)`):
+/// `''`, `0`, `false`, `null` and an absent key are falsy; every other value —
+/// **including an empty object**, which is what v4's own canned stream sends —
+/// is truthy.
+fn js_truthy(v: Option<&Value>) -> bool {
+    match v {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0 && !f.is_nan()).unwrap_or(true),
+        Some(Value::Array(_)) | Some(Value::Object(_)) => true,
+    }
+}
 
 /// The inputs `regenerate_message_as_swipe` consumes (v4 `RegenerateSwipeOptions`
 /// + the injected wall-clock / model-limit the differential freezes).
@@ -76,6 +312,11 @@ pub struct RegenerateSwipeOptions {
     /// `Math.random()`'s value for the weighted responder fallback (only read when
     /// the target message carries no participant id — a legacy single-char row).
     pub random01: DrawSource,
+    /// v4 `onProgress?` — live narration for a caller showing the re-roll as it
+    /// happens. [`SwipeProgressEmitter::inert()`] (the `Default`) is v4's
+    /// absent callback: *with no callback the generation is identical, just
+    /// silent.*
+    pub progress: SwipeProgressEmitter,
 }
 
 /// Error from a regenerate-swipe (v4 throws for a non-regenerable target).
@@ -89,6 +330,15 @@ pub enum RegenError {
     StaffMessage,
     /// A DB / resolution / stream error surfaced.
     Db(DbError),
+    /// The generation itself failed — a provider error, or the stall watchdog
+    /// abandoning a silent stream (bug 141). Carries the provider/watchdog
+    /// message VERBATIM, because that is what v4 puts on the wire: the JSON leg
+    /// answers `serverError(error.message)` and the SSE leg's `error` frame
+    /// carries `details: error.message` (`route.ts:356-364,405`). v5 used to
+    /// wrap this as `"swipe generation failed: {…}"` inside a
+    /// `DbError::Internal`, which no v4 byte matches — a pre-existing
+    /// divergence, closed here because the error frame made it visible.
+    Generation(String),
 }
 
 impl std::fmt::Display for RegenError {
@@ -99,6 +349,8 @@ impl std::fmt::Display for RegenError {
                 write!(f, "Staff and system messages cannot be regenerated")
             }
             RegenError::Db(e) => write!(f, "regenerate-swipe failed: {e:?}"),
+            // v4's raw `error.message`, unadorned — see the variant's doc.
+            RegenError::Generation(m) => write!(f, "{m}"),
         }
     }
 }
@@ -112,10 +364,11 @@ impl From<DbError> for RegenError {
 /// ASSISTANT message and persist it as a swipe variant. Returns the new swipe
 /// message event.
 #[allow(clippy::too_many_arguments)]
-pub async fn regenerate_message_as_swipe<EMB, CMP, BCS, MCS>(
+pub async fn regenerate_message_as_swipe<EMB, CMP, STR, BCS, MCS>(
     db: &Db,
     embedding: &EMB,
     completion: &CMP,
+    streaming: &STR,
     executor: &CheapLlmTaskExecutor,
     bc_seams: &BCS,
     mc_seams: &MCS,
@@ -123,7 +376,11 @@ pub async fn regenerate_message_as_swipe<EMB, CMP, BCS, MCS>(
 ) -> Result<Value, RegenError>
 where
     EMB: EmbeddingProvider,
+    // `completion` stays: the context build's own cheap-LLM feeders (recall
+    // extraction, the distill) go through the COMPLETION half on both sides.
+    // Only the one visible generation moved to the stream.
     CMP: CompletionProvider,
+    STR: StreamingCompletionProvider,
     BCS: BuildContextSeams,
     MCS: MessageContextSeams,
 {
@@ -140,6 +397,7 @@ where
         now_ms,
         local_offset_minutes,
         random01,
+        progress,
     } = opts;
 
     // --- Guards (v4 lines 60–67) ---
@@ -284,6 +542,17 @@ where
     };
     // === end P4.D205 OUT-OF-MANDATE ===
 
+    // --- Beat 1 of 4: `gathering` (v4 `regenerate-swipe.service.ts:156-162`) ---
+    // v4 emits this after the inform re-apply ids are computed and BEFORE
+    // `buildMessageContext`. Everything between `previous_messages` and the call
+    // below is pure computation on v5's side, so this is v4's position exactly.
+    progress.status(
+        "gathering",
+        format!("Regenerating — gathering {character_name}'s memories and context..."),
+        &character_name,
+        &character_id,
+    );
+
     // --- Build the full provider-ready context (continue mode, no new user msg) ---
     let cp_input: ConnectionProfileInput = effective_profile_profile(&connection_profile);
     let build_input = build_context_input(BuildContextArgs {
@@ -421,7 +690,7 @@ where
     .await
     .map_err(|e| DbError::Internal(format!("buildMessageContext failed: {e:?}")))?;
 
-    // --- Single non-streaming generation (v4 132–153) ---
+    // --- The single generation, READ AS A STREAM (v4 `f564b0de3`, :193-262) ---
     // v4 `d9c5a1c7`: `const params = profileParams(connectionProfile) ?? {}`,
     // which REPLACED `(connectionProfile.parameters || {})`. Two behaviour
     // changes ride the conversion, both v4's: a non-object `parameters` cell
@@ -429,53 +698,37 @@ where
     // verbatim, and an Ollama profile's Max Context is injected as `num_ctx`.
     let params_value =
         crate::cheap_llm::profile_params_value(&connection_profile).unwrap_or_else(|| json!({}));
-    let messages: Vec<CompletionMessage> = mc_result
+    // v4 maps each formatted message into the stream request with
+    // `{role: lowercased, content, name, attachments, toolCallId, toolCalls}`
+    // (`regenerate-swipe.service.ts:216-223`) — the SAME map
+    // `streaming.service.ts:370-379` applies on the send path. This is a copy of
+    // the orchestrator's port of that line, so the two entrances cannot drift.
+    //
+    // Two shape notes, both pre-existing and both v4-wide rather than
+    // swipe-specific: `name` has no `StreamMessage` home for a user/assistant
+    // message (no v5 request builder reads one), and a continue-mode swipe
+    // builds no tool schemas, so `toolCallId`/`toolCalls` are always absent
+    // here. `attachments` DO ride their own message now, verbatim — see the
+    // module header's second bullet.
+    let messages: Vec<StreamMessage> = mc_result
         .formatted_messages
         .iter()
-        .map(|m: &FormattedMsg| CompletionMessage {
-            role: match m.role.as_str() {
-                "system" => CompletionRole::System,
-                "assistant" => CompletionRole::Assistant,
-                _ => CompletionRole::User,
+        .map(|m: &FormattedMsg| match m.role.as_str() {
+            "system" => StreamMessage::system(m.content.clone()),
+            "assistant" => StreamMessage::Assistant {
+                content: m.content.clone(),
+                tool_calls: Vec::<ToolCallPayload>::new(),
+                reasoning_content: None,
+                thought_signature: m.thought_signature.clone(),
+                cache_control: None,
             },
-            content: m.content.clone(),
+            _ => StreamMessage::User {
+                content: m.content.clone(),
+                cache_control: None,
+                attachments: m.attachments.clone().unwrap_or_default(),
+            },
         })
         .collect();
-    // The stamped attachments thread into `CompletionParams.attachments`, and
-    // since P4.D106 the CARRIER'S POSITION rides alongside: the anchor selector
-    // (bug 95) may place attachments on a message BEFORE trailing staff
-    // whispers wearing role=user, and the wire layer's old last-user re-stamp
-    // would have moved them right back onto a whisper. `formatted_messages`
-    // maps 1:1 into `messages` above, so the carrier's index is the anchor
-    // index. (P4.21 drop site 3 — v4 forwards `attachments: m.attachments`
-    // into `provider.sendMessage` message-for-message, so placement is
-    // inherent there.)
-    //
-    // NAMED DIVERGENCE (§3 review, recorded not fixed): this funnel narrows the
-    // bag to 4 fields and so drops `url`. A mount-file bag carries BOTH `url`
-    // and `data`, and Z.AI/OpenRouter prefer `url` — so a regenerate with a
-    // mount-file attachment on those providers sends the data URL where v4
-    // sends its relative `/api/v1/mount-points/…` url (itself a v4 bug: the
-    // provider cannot fetch it). Widening `CompletionAttachment` would disturb
-    // the frozen canned-key serialization the tier-3 oracles record, so the
-    // narrowing stays until that key is versioned.
-    let attachment_anchor_index: Option<usize> = mc_result
-        .formatted_messages
-        .iter()
-        .position(|m| m.attachments.is_some());
-    let attachments: Vec<CompletionAttachment> = attachment_anchor_index
-        .and_then(|i| mc_result.formatted_messages[i].attachments.as_ref())
-        .map(|bags| {
-            bags.iter()
-                .map(|a| CompletionAttachment {
-                    id: json_str(a, "id").unwrap_or_default(),
-                    filename: json_str(a, "filename").unwrap_or_default(),
-                    mime_type: json_str(a, "mimeType").unwrap_or_default(),
-                    data: json_str(a, "data").unwrap_or_default(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
     // P4.D83 (v4 `d89babc4`): `...resolveSamplingParams(params)` replaced three
     // hand-rolled casts here. Two changes ride the conversion, both v4's: `top_p`
     // is now read at all (it never was on this path), and a knob the profile
@@ -483,34 +736,145 @@ where
     // arm also stops lying — v5 collapsed it to `0`, which reached the wire as a
     // literal `max_tokens: 0` where v4 leaves the key to the provider's default.
     let sampling = crate::sampling_params::resolve_sampling_params(Some(&params_value));
-    let temperature = sampling.temperature;
-    let max_tokens = sampling.max_tokens.map(|f| f as i64);
-    let top_p = sampling.top_p;
     let provider = json_str(&connection_profile, "provider").unwrap_or_default();
     let base_url = json_str(&connection_profile, "baseUrl");
     let model = json_str(&connection_profile, "modelName").unwrap_or_default();
-    let response = completion
-        .send_message_with_anchor(
-            &provider,
-            base_url.as_deref(),
-            &CompletionParams {
-                messages,
-                model,
-                temperature,
-                max_tokens,
-                strict_max_tokens: false,
-                top_p,
-                cache_key: Some(character_id.clone()),
-                profile_parameters: Some(params_value),
-                attachments,
-                // A visible regeneration, not cheap-LLM work: v4 sets no
-                // `requestTimeoutMs` here.
-                request_timeout_ms: None,
-            },
-            attachment_anchor_index,
-        )
-        .await
-        .map_err(|e| DbError::Internal(format!("swipe generation failed: {}", e.message)))?;
+
+    // --- Beat 2 of 4: `sending` (v4 :195-201) ---
+    // v4 emits this BEFORE `createLLMProvider`, i.e. before the stream opens.
+    progress.status(
+        "sending",
+        format!("Regenerating — sending to {character_name}..."),
+        &character_name,
+        &character_id,
+    );
+
+    let params = StreamParams {
+        messages,
+        model: model.clone(),
+        temperature: sampling.temperature,
+        max_tokens: sampling.max_tokens.map(|f| f as i64),
+        top_p: sampling.top_p,
+        // A swipe is one alternative line: no tools, no native web search, no
+        // Responses-API chaining, no stop sequences. v4's request object carries
+        // none of those keys (:213-231).
+        tools: None,
+        web_search_enabled: false,
+        profile_parameters: Some(params_value),
+        // The P4.95 per-character prompt-cache key — v4 `cacheKey: character.id`.
+        cache_key: Some(character_id.clone()),
+        previous_response_id: None,
+        stop: Vec::new(),
+        // A visible regeneration, not cheap-LLM work: v4 sets no
+        // `requestTimeoutMs` here (and sets none on any streaming call).
+        request_timeout_ms: None,
+    };
+
+    let rx = streaming
+        .stream_message(&provider, base_url.as_deref(), &params)
+        .await;
+    // The stall watchdog is NOT optional on any `stream_message` consumer (bug
+    // 141) — v4 says so in this very function. The budgets are the Salon's
+    // defaults (240 s / 120 s); the `context` is v4's own
+    // `'regenerate-swipe.service'`, NOT the funnel's `'streaming.service'`,
+    // because v4's swipe passes its own `logContext` (:233-241). That pairing —
+    // default budgets, own context — is a third class in
+    // `stream_watchdog_wrap_census`; the greeting is the first (its own 90/60).
+    let mut rx = watch_stream(
+        rx,
+        StallBudgets::default(),
+        StallWatchdogContext {
+            provider: &provider,
+            model_name: &model,
+            context: "regenerate-swipe.service",
+            // v4's five `logContext` fields, all present on this call.
+            user_id: Some(&user_id),
+            chat_id: Some(&chat_id),
+            character_id: Some(&character_id),
+            message_id: Some(&target_message_id),
+        },
+    );
+
+    let mut content = String::new();
+    let mut usage: Option<StreamUsage> = None;
+    let mut raw_response: Option<Value> = None;
+    let mut reasoning_content: Option<String> = None;
+    let mut thought_signature: Option<String> = None;
+    let mut announced_streaming = false;
+    let mut stream_error: Option<String> = None;
+
+    while let Some(item) = rx.recv().await {
+        match item {
+            Ok(chunk) => {
+                // v4 `if (chunk.content)` — JS truthiness, so an empty delta
+                // neither announces nor appends nor reports.
+                if !chunk.content.is_empty() {
+                    // --- Beat 3 of 4: `regenerating`, ONCE (v4 :246-253) ---
+                    // Guarded by `announcedStreaming`, and fired on the FIRST
+                    // chunk carrying content — not on every content chunk, and
+                    // not on a reasoning-only or usage-only chunk.
+                    if !announced_streaming {
+                        announced_streaming = true;
+                        progress.status(
+                            "regenerating",
+                            format!("Regenerating {character_name}'s reply..."),
+                            &character_name,
+                            &character_id,
+                        );
+                    }
+                    content.push_str(&chunk.content);
+                    progress.emit(RegenerateSwipeProgress::Delta {
+                        content: chunk.content.clone(),
+                    });
+                }
+                // Reasoning arrives CUMULATIVELY — keep the latest, never
+                // concatenate (v4 :254-257). v4's `if (chunk.reasoningContent)`
+                // is JS-truthy, so an empty string does NOT clear what came
+                // before.
+                if let Some(r) = chunk.reasoning_content.as_deref().filter(|r| !r.is_empty()) {
+                    reasoning_content = Some(r.to_string());
+                    progress.emit(RegenerateSwipeProgress::Reasoning {
+                        reasoning: r.to_string(),
+                    });
+                }
+                // The three record fields, last-wins (v4 :258-260). Each is a
+                // JS-truthy test, which matters for `rawResponse`: v4's own
+                // canned stream sends `{}`, and an EMPTY OBJECT IS TRUTHY, so it
+                // is stored.
+                if let Some(u) = chunk.usage {
+                    usage = Some(u);
+                }
+                if js_truthy(chunk.raw_response.as_ref()) {
+                    raw_response = chunk.raw_response.clone();
+                }
+                if let Some(ts) = chunk.thought_signature.as_deref().filter(|s| !s.is_empty()) {
+                    thought_signature = Some(ts.to_string());
+                }
+            }
+            Err(e) => {
+                // v4's `for await` THROWS here, which unwinds the whole function
+                // — so the swipe is all-or-nothing: no partial row is persisted,
+                // no swipe-group write happens, and the memory cascade never
+                // runs. A stall (bug 141) arrives as exactly this, carrying the
+                // watchdog's own sentence.
+                stream_error = Some(e.message);
+                break;
+            }
+        }
+    }
+    if let Some(message) = stream_error {
+        return Err(RegenError::Generation(message));
+    }
+
+    // --- Beat 4 of 4: `saving` (v4 :267-273) ---
+    // After the loop, before any persistence. The one beat whose sentence names
+    // no character.
+    progress.status(
+        "saving",
+        "Regenerating — filing the new line...".to_string(),
+        &character_name,
+        &character_id,
+    );
 
     // --- Persist the grouping (v4 155–194) ---
     let target_swipe_group_id = json_str(&target_message, "swipeGroupId");
@@ -547,33 +911,50 @@ where
         + 1;
 
     let new_swipe_id = uuid::Uuid::new_v4().to_string();
-    let usage = response.usage;
     let mut swipe = Map::new();
     swipe.insert("type".into(), json!("message"));
     swipe.insert("id".into(), json!(new_swipe_id));
     swipe.insert("role".into(), json!("ASSISTANT"));
-    swipe.insert("content".into(), json!(response.content));
+    // The accumulated deltas (v4's `content` local), not a response field.
+    swipe.insert("content".into(), json!(content));
     // Attribute to the same participant that authored the original (the fix for
     // the regenerated-message-shows-the-wrong-character bug).
     swipe.insert("participantId".into(), json!(character_participant_id));
     swipe.insert("swipeGroupId".into(), json!(swipe_group_id));
     swipe.insert("swipeIndex".into(), json!(new_swipe_index));
+    // All six fields ride the CHUNKS now (v4 `f564b0de3`, :304-311): the usage
+    // triple off the last chunk that carried a `usage`, and the three below
+    // last-wins off their own JS-truthy tests. `?? null` on each, so a stream
+    // that carried none writes NULL exactly as before.
     swipe.insert(
         "tokenCount".into(),
-        usage.map_or(Value::Null, |u| json!(u.total_tokens)),
+        usage
+            .as_ref()
+            .map_or(Value::Null, |u| json!(u.total_tokens)),
     );
     swipe.insert(
         "promptTokens".into(),
-        usage.map_or(Value::Null, |u| json!(u.prompt_tokens)),
+        usage
+            .as_ref()
+            .map_or(Value::Null, |u| json!(u.prompt_tokens)),
     );
     swipe.insert(
         "completionTokens".into(),
-        usage.map_or(Value::Null, |u| json!(u.completion_tokens)),
+        usage
+            .as_ref()
+            .map_or(Value::Null, |u| json!(u.completion_tokens)),
     );
-    // Tracked deferral: the cheap-LLM CompletionResponse carries none of these.
-    swipe.insert("rawResponse".into(), Value::Null);
-    swipe.insert("reasoningContent".into(), Value::Null);
-    swipe.insert("thoughtSignature".into(), Value::Null);
+    // v4 stores the LAST chunk's `rawResponse` VERBATIM — not a synthesized
+    // value, and not the first chunk's.
+    swipe.insert("rawResponse".into(), raw_response.unwrap_or(Value::Null));
+    swipe.insert(
+        "reasoningContent".into(),
+        reasoning_content.map_or(Value::Null, Value::from),
+    );
+    swipe.insert(
+        "thoughtSignature".into(),
+        thought_signature.map_or(Value::Null, Value::from),
+    );
     swipe.insert("provider".into(), json!(provider));
     swipe.insert(
         "modelName".into(),
@@ -630,4 +1011,245 @@ where
     }
 
     Ok(new_swipe)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::types::EventPayload;
+
+    fn channel() -> (
+        tokio::sync::broadcast::Sender<Event>,
+        tokio::sync::broadcast::Receiver<Event>,
+    ) {
+        tokio::sync::broadcast::channel(64)
+    }
+
+    /// **The `status` frame carries `kind`, and that is the measured shape.**
+    ///
+    /// v4's route passes the WHOLE progress event to `encodeStatusEvent(encoder,
+    /// event)`, which does `JSON.stringify({ status })` — so the service's
+    /// `{kind, stage, message, characterName, characterId}` literal reaches the
+    /// client with `kind` first and intact. The P4.D207 order's §S.2 paragraph
+    /// spells the frame WITHOUT `kind`; the hunks win (§R.4), and this is the
+    /// pin that says so. Dropping `"kind": "status"` from `to_v4_frame` reddens
+    /// this, and so does re-ordering any of the five keys.
+    #[test]
+    fn the_status_frame_is_v4s_bytes_including_kind() {
+        let f = RegenerateSwipeProgress::Status {
+            stage: "gathering",
+            message: "Regenerating — gathering Bertie's memories and context...".to_string(),
+            character_name: "Bertie".to_string(),
+            character_id: "bb-1".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_string(&f.to_v4_frame()).unwrap(),
+            r#"{"status":{"kind":"status","stage":"gathering","message":"Regenerating — gathering Bertie's memories and context...","characterName":"Bertie","characterId":"bb-1"}}"#
+        );
+    }
+
+    /// The two content frames, v4's `encodeContentChunk` / `encodeReasoningChunk`
+    /// exactly — one key each, and NOT wrapped in anything.
+    #[test]
+    fn the_delta_and_reasoning_frames_are_single_key_objects() {
+        assert_eq!(
+            serde_json::to_string(
+                &RegenerateSwipeProgress::Delta {
+                    content: "the new ".to_string()
+                }
+                .to_v4_frame()
+            )
+            .unwrap(),
+            r#"{"content":"the new "}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &RegenerateSwipeProgress::Reasoning {
+                    reasoning: "thinking about it".to_string()
+                }
+                .to_v4_frame()
+            )
+            .unwrap(),
+            r#"{"reasoning":"thinking about it"}"#
+        );
+    }
+
+    /// The two TERMINAL frames the route owns (`route.ts:347-350` and
+    /// `:356-364`), byte-exact including v4's two fixed sentences.
+    #[test]
+    fn the_terminal_frames_are_v4s_bytes() {
+        let (tx, mut rx) = channel();
+        let e = SwipeProgressEmitter::active("msg-1", tx);
+        e.emit_done(&json!({ "id": "swipe-1", "content": "the new line" }));
+        e.emit_error("provider went quiet");
+        let done = rx.try_recv().expect("a done frame");
+        let err = rx.try_recv().expect("an error frame");
+        assert_eq!(
+            serde_json::to_string(&done).unwrap(),
+            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"done":true,"message":{"id":"swipe-1","content":"the new line"}}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&err).unwrap(),
+            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"error":"Failed to generate alternative response","errorType":"regenerate_failed","details":"provider went quiet"}}"#
+        );
+    }
+
+    /// The envelope: `progressId` is the TARGET message id (§S.2), and the
+    /// payload is recognisable as its own family.
+    #[test]
+    fn a_frame_is_scope_tagged_by_the_target_message_id() {
+        let (tx, mut rx) = channel();
+        SwipeProgressEmitter::active("target-msg", tx).emit(RegenerateSwipeProgress::Delta {
+            content: "x".to_string(),
+        });
+        let ev = rx.try_recv().expect("a frame");
+        assert_eq!(ev.progress_id.as_deref(), Some("target-msg"));
+        assert!(ev.chat_id.is_none() && ev.room_id.is_none());
+        assert!(matches!(ev.payload, EventPayload::SwipeProgress(_)));
+    }
+
+    /// v4's own invariant: *with no callback the generation is identical, just
+    /// silent.* An inert emitter publishes NOTHING — not a beat, not a delta,
+    /// not the terminal frames. Dropping either `let Some(active) = … else {
+    /// return }` guard reddens this.
+    #[test]
+    fn an_inert_emitter_publishes_nothing_at_all() {
+        let (tx, mut rx) = channel();
+        // The three ways to end up inert: the flag off, an empty target id, and
+        // the `Default`.
+        for e in [
+            SwipeProgressEmitter::from_flag(false, "msg-1", tx.clone()),
+            SwipeProgressEmitter::from_flag(true, "", tx.clone()),
+            SwipeProgressEmitter::default(),
+        ] {
+            assert!(!e.is_active());
+            e.status("gathering", "hi".to_string(), "Bertie", "bb-1");
+            e.emit(RegenerateSwipeProgress::Delta {
+                content: "x".to_string(),
+            });
+            e.emit(RegenerateSwipeProgress::Reasoning {
+                reasoning: "r".to_string(),
+            });
+            e.emit_done(&json!({}));
+            e.emit_error("boom");
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "an inert emitter published a frame — v4's absent `onProgress` emits nothing"
+        );
+        // …and the positive control, so the test cannot pass by a dead channel.
+        SwipeProgressEmitter::from_flag(true, "msg-1", tx).emit_error("boom");
+        assert!(
+            rx.try_recv().is_ok(),
+            "the active control published nothing"
+        );
+    }
+
+    /// The four beats' sentences, byte-exact, in v4's order — the strings the
+    /// Salon's status strip renders. `saving` is the one beat whose sentence
+    /// names no character.
+    #[test]
+    fn the_four_beats_are_v4s_sentences_in_v4s_order() {
+        let (tx, mut rx) = channel();
+        let e = SwipeProgressEmitter::active("m", tx);
+        let name = "Bertie";
+        e.status(
+            "gathering",
+            format!("Regenerating — gathering {name}'s memories and context..."),
+            name,
+            "bb-1",
+        );
+        e.status(
+            "sending",
+            format!("Regenerating — sending to {name}..."),
+            name,
+            "bb-1",
+        );
+        e.status(
+            "regenerating",
+            format!("Regenerating {name}'s reply..."),
+            name,
+            "bb-1",
+        );
+        e.status(
+            "saving",
+            "Regenerating — filing the new line...".to_string(),
+            name,
+            "bb-1",
+        );
+        let mut got = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let EventPayload::SwipeProgress(p) = &ev.payload {
+                let s = p.frame.get("status").expect("a status frame");
+                got.push((
+                    s.get("stage").and_then(Value::as_str).unwrap().to_string(),
+                    s.get("message")
+                        .and_then(Value::as_str)
+                        .unwrap()
+                        .to_string(),
+                ));
+            }
+        }
+        assert_eq!(
+            got,
+            vec![
+                (
+                    "gathering".to_string(),
+                    "Regenerating — gathering Bertie's memories and context...".to_string()
+                ),
+                (
+                    "sending".to_string(),
+                    "Regenerating — sending to Bertie...".to_string()
+                ),
+                (
+                    "regenerating".to_string(),
+                    "Regenerating Bertie's reply...".to_string()
+                ),
+                (
+                    "saving".to_string(),
+                    "Regenerating — filing the new line...".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// v4's `if (chunk.rawResponse)` is a JS-truthy test, and its own canned
+    /// stream sends `{}` — **an empty object is TRUTHY**, so it IS stored. The
+    /// `null` / `false` / `0` / `""` arms are what make `?? null` reachable.
+    #[test]
+    fn raw_response_uses_js_truthiness_so_an_empty_object_is_kept() {
+        assert!(js_truthy(Some(&json!({}))));
+        assert!(js_truthy(Some(&json!([]))));
+        assert!(js_truthy(Some(&json!({"id": "x"}))));
+        assert!(!js_truthy(Some(&Value::Null)));
+        assert!(!js_truthy(None));
+        assert!(!js_truthy(Some(&json!(false))));
+        assert!(!js_truthy(Some(&json!(0))));
+        assert!(!js_truthy(Some(&json!(""))));
+        assert!(js_truthy(Some(&json!("x"))));
+    }
+
+    /// `RegenError::Generation`'s `Display` is v4's RAW `error.message` — the
+    /// bytes the SSE `error` frame's `details` and the JSON leg's 500 both
+    /// carry. A wrapper like `"swipe generation failed: {…}"` (which v5 had)
+    /// matches no v4 byte; this pins that it is gone.
+    #[test]
+    fn a_generation_failure_renders_v4s_raw_message() {
+        let e = RegenError::Generation(
+            "Provider stream went quiet for 120000ms after 2 chunk(s)".to_string(),
+        );
+        assert_eq!(
+            e.to_string(),
+            "Provider stream went quiet for 120000ms after 2 chunk(s)"
+        );
+        // The two refusal sentences are unchanged.
+        assert_eq!(
+            RegenError::NotAssistant.to_string(),
+            "Only assistant messages can be regenerated"
+        );
+        assert_eq!(
+            RegenError::StaffMessage.to_string(),
+            "Staff and system messages cannot be regenerated"
+        );
+    }
 }

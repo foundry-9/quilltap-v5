@@ -280,6 +280,21 @@ pub enum Request {
         message_id: String,
         #[serde(default)]
         swipe_index: Option<i64>,
+        // === P4.D207 ===
+        /// v4 `?stream=1` (`messages/[id]/route.ts:267`): narrate the
+        /// regeneration while it happens. Meaningful only on the GENERATE
+        /// branch — v4 reads the flag AFTER the switch branch has returned, so
+        /// a switch ignores it entirely.
+        ///
+        /// A plain `bool`, deliberately NOT the `Option<Option<Value>>`
+        /// tri-state the P4.60 convention uses for body keys: v4 reads this
+        /// from the QUERY STRING and compares `=== '1'`, so every non-`'1'`
+        /// spelling — absent, empty, `"true"`, `"0"` — is simply false and no
+        /// wrong-type refusal exists to reproduce. On the dispatch wire it is a
+        /// JSON boolean; the REST edge maps `stream=1` → `true`.
+        #[serde(default)]
+        stream: bool,
+        // === end P4.D207 ===
     },
     /// The general chat edit (v4 `PUT /api/v1/chats/{id}` → `processChatUpdates`):
     /// the Salon pause/resume + title path. `chat` is the partial field bag
@@ -5117,6 +5132,19 @@ pub enum EventPayload {
     /// lets `quilltap-web::generator_sse` re-frame it into v4's exact stream.
     GeneratorProgress(GeneratorProgressPayload),
     // === end P4.9K0 ===
+    // === P4.D207 ===
+    /// One frame of a streamed SWIPE regeneration (v4 `f564b0de3`), scope-tagged
+    /// by `progress_id` = the TARGET message id (the message being regenerated).
+    ///
+    /// v4 streams the regeneration as its own HTTP SSE response from
+    /// `app/api/v1/messages/[id]/route.ts`'s `handleGenerateSwipeStreaming`.
+    /// v5's boundary streams only on the Event channel, so every v4 frame
+    /// becomes ONE of these, carrying v4's SSE payload object VERBATIM in
+    /// `frame` — key order and bytes untouched, which is what lets
+    /// `quilltap-web::messages_swipe_routes` re-frame it into v4's exact stream
+    /// (the [`EventPayload::GeneratorProgress`] precedent, same discipline).
+    SwipeProgress(SwipeProgressPayload),
+    // === end P4.D207 ===
 }
 
 // === P4.9K0 ===
@@ -5164,6 +5192,23 @@ pub struct GeneratorProgressPayload {
     pub event: serde_json::Value,
 }
 // === end P4.9K0 ===
+
+// === P4.D207 ===
+/// The `swipeProgress` payload (§S.2). An internally-tagged struct, so it
+/// flattens into the [`Event`] envelope as
+/// `{"type":"swipeProgress","progressId":…,"frame":{…}}`.
+///
+/// `frame` is passed through UNTOUCHED — it is v4's own SSE payload object
+/// (`{"status":{…}}` / `{"content":…}` / `{"reasoning":…}` /
+/// `{"done":true,"message":…}` / `{"error":…,"errorType":…,"details":…}`), and
+/// `serde_json`'s `preserve_order` keeps the key order v4 built (the
+/// `json-column-key-order` rule).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type", rename = "swipeProgress", rename_all = "camelCase")]
+pub struct SwipeProgressPayload {
+    pub frame: serde_json::Value,
+}
+// === end P4.D207 ===
 
 /// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -5238,6 +5283,19 @@ impl Event {
         }
     }
     // === end P4.9K0 ===
+
+    // === P4.D207 ===
+    /// One frame of a streamed swipe regeneration, scope-tagged by the TARGET
+    /// message id. `frame` is v4's SSE payload object verbatim.
+    pub fn swipe_progress(progress_id: impl Into<String>, frame: serde_json::Value) -> Event {
+        Event {
+            chat_id: None,
+            room_id: None,
+            progress_id: Some(progress_id.into()),
+            payload: EventPayload::SwipeProgress(SwipeProgressPayload { frame }),
+        }
+    }
+    // === end P4.D207 ===
 }
 
 #[cfg(test)]

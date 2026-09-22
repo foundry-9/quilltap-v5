@@ -7,7 +7,7 @@
 //! which wraps the provider ONCE. v5 has no funnel: each consumer drives the
 //! [`StreamingCompletionProvider`](quilltap_core::model::stream::StreamingCompletionProvider)
 //! seam itself, so v4's two wrapped `provider.streamMessage(` call sites are
-//! ELEVEN wrap sites here.
+//! TWELVE wrap sites here (ELEVEN before P4.D207 added the swipe).
 //!
 //! An unwrapped twelfth is invisible to every differential in the repo: a
 //! canned sequence is pre-pushed into its channel and CLOSES, so `recv()` never
@@ -16,13 +16,24 @@
 //! over the production zone, plus the assertion that the census file list IS
 //! the set of files reaching the seam.
 //!
-//! **The one site that is NOT on the Salon's budgets:** `services/initial_
-//! greeting.rs` (P4.D190) wraps on the greeting's own 90 s/60 s constants with
-//! `context: "initial-greeting"`, exactly as v4's `initial-greeting.ts` passes
-//! `withStallWatchdog` its own options. The count census treats it like any
-//! other consumer; the budget census below pins it to ITS constants instead of
-//! `StallBudgets::default()`. (P4.D189 listed it at zero wraps; the `ffb6b3119`
-//! round's unification moved the row when P4.D190 landed beside it.)
+//! **The two sites OUTSIDE v4's funnel, and their two different reasons.**
+//! v4's funnel stamps `context: 'streaming.service'` on every Salon-side log
+//! line; two consumers pass their own `logContext` instead, and the budgets are
+//! a SEPARATE question from the context:
+//!
+//! * `services/initial_greeting.rs` (P4.D190, v4 `f90144ac4`) — own context
+//!   (`"initial-greeting"`) AND own budgets (90 s/60 s), exactly as v4's
+//!   `initial-greeting.ts` passes `withStallWatchdog` its own options. (P4.D189
+//!   listed it at zero wraps; the `ffb6b3119` round's unification moved the row
+//!   when P4.D190 landed beside it.)
+//! * `services/regenerate_swipe.rs` (P4.D207, v4 `f564b0de3`) — own context
+//!   (`"regenerate-swipe.service"`) but the SALON's default 240 s/120 s. This
+//!   pairing is a THIRD class the census could not express before: it had a
+//!   `GREETING_SITE` special case, so "own context, default budgets" would
+//!   have had to fail one check or the other. `OWN_CONTEXT_SITES` below is that
+//!   fix — a table of (site, context, budgets-are-default).
+//!
+//! The count census treats both like any other consumer.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test stream_watchdog_wrap_census
@@ -101,6 +112,16 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "`generate_greeting_message` — v4 lib/chat/initial-greeting.ts:174, the \
          one consumer OUTSIDE v4's funnel, on the greeting's own 90 s/60 s \
          budgets (P4.D190; the count moved from zero at the round's unification)",
+    ),
+    (
+        "services/regenerate_swipe.rs",
+        1,
+        1,
+        "`regenerate_message_as_swipe` — v4 regenerate-swipe.service.ts:213, the \
+         TWELFTH site and the SECOND consumer outside v4's funnel (P4.D207, v4 \
+         `f564b0de3`): the swipe's one generation stopped being a blocking \
+         non-streaming call. Salon budgets, but its OWN `context` — see \
+         `every_salon_side_wrap_uses_the_default_budgets`",
     ),
 ];
 
@@ -258,10 +279,28 @@ fn every_production_stream_message_call_wears_the_watchdog() {
     );
 }
 
-/// The greeting is v4's ONE consumer outside the funnel, and the one site whose
-/// budgets are NOT the defaults (`initial-greeting.ts:10-20`: 90 s to the first
-/// chunk, 60 s between chunks, `context: 'initial-greeting'`).
+/// The greeting is the first consumer outside v4's funnel, and the one site
+/// whose BUDGETS are not the defaults either (`initial-greeting.ts:10-20`:
+/// 90 s to the first chunk, 60 s between chunks, `context:
+/// 'initial-greeting'`).
 const GREETING_SITE: &str = "services/initial_greeting.rs";
+
+/// The swipe is the SECOND consumer outside the funnel (P4.D207, v4
+/// `f564b0de3`) — and the first of a THIRD class the census did not have:
+/// v4's `regenerate-swipe.service.ts:233-241` passes the Salon's DEFAULT
+/// budgets with its OWN `logContext.context`. Before this row the budget
+/// census had exactly two shapes ("the funnel" and "the greeting"), and a
+/// Salon-budgeted site with its own context could not be expressed.
+const SWIPE_SITE: &str = "services/regenerate_swipe.rs";
+
+/// Every site that does NOT stamp the funnel's `context: 'streaming.service'`,
+/// with the exact `context:` line it stamps instead and whether its budgets are
+/// [`StallBudgets::default()`]. v4's own `logContext` decides both columns
+/// independently, which is the whole reason this is a table and not a flag.
+const OWN_CONTEXT_SITES: &[(&str, &str, bool)] = &[
+    (GREETING_SITE, "context: \"initial-greeting\"", false),
+    (SWIPE_SITE, "context: \"regenerate-swipe.service\"", true),
+];
 
 /// The wrap is only a wrap if the budgets are v4's. A site that passed its own
 /// `StallBudgets { … }` would satisfy the count census above while quietly
@@ -280,24 +319,56 @@ fn every_salon_side_wrap_uses_the_default_budgets() {
         let text =
             std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         let zone = production_zone(&text);
-        if *rel == GREETING_SITE {
-            for needle in [
-                "first_chunk_ms: GREETING_FIRST_CHUNK_TIMEOUT_MS",
-                "idle_ms: GREETING_IDLE_TIMEOUT_MS",
-                "context: \"initial-greeting\"",
-            ] {
-                if zone.matches(needle).count() != *want_wraps {
+        if let Some((_, context_needle, default_budgets)) =
+            OWN_CONTEXT_SITES.iter().find(|(p, ..)| p == rel)
+        {
+            // The context this site stamps instead of the funnel's.
+            //
+            // ⚠ The count is REPORTED, not just compared. The first version of
+            // this arm said only "expected 1" and the swipe site came back at
+            // TWO — its module doc quoted the needle verbatim in prose. A
+            // census message that hides the number it measured turns a
+            // one-line prose collision into a hunt (`a-source-census-needs-a-
+            // lexer-and-must-keep-literals`); the doc now uses v4's own
+            // single-quoted JS spelling, and this message would have said so.
+            let contexts = zone.matches(context_needle).count();
+            if contexts != *want_wraps {
+                failures.push(format!(
+                    "{rel}: {contexts} `{context_needle}` against {want_wraps} wrap(s) — \
+                     this consumer sits OUTSIDE v4's funnel and stamps its own \
+                     `logContext.context`, never `streaming.service`. A count ABOVE the \
+                     wrap count is usually prose: this needle is matched as a plain \
+                     substring, doc comments included."
+                ));
+            }
+            // …and its budgets, which are an INDEPENDENT question.
+            if *default_budgets {
+                let defaults = zone.matches("StallBudgets::default()").count();
+                if defaults != *want_wraps {
                     failures.push(format!(
-                        "{rel}: expected {want_wraps} `{needle}` — the greeting wraps on its \
-                         OWN 90 s/60 s constants and its own context, never the Salon's"
+                        "{rel}: {defaults} `StallBudgets::default()` against {want_wraps} \
+                         wrap(s) — v4 passes this site its own context but the SALON's \
+                         240 s/120 s, so a budget of its own would be v5's invention"
                     ));
                 }
-            }
-            if zone.contains("StallBudgets::default()") {
-                failures.push(format!(
-                    "{rel}: `StallBudgets::default()` present — the greeting must not take \
-                     the Salon's 240 s/120 s"
-                ));
+            } else {
+                for needle in [
+                    "first_chunk_ms: GREETING_FIRST_CHUNK_TIMEOUT_MS",
+                    "idle_ms: GREETING_IDLE_TIMEOUT_MS",
+                ] {
+                    if zone.matches(needle).count() != *want_wraps {
+                        failures.push(format!(
+                            "{rel}: expected {want_wraps} `{needle}` — the greeting wraps on \
+                             its OWN 90 s/60 s constants, never the Salon's"
+                        ));
+                    }
+                }
+                if zone.contains("StallBudgets::default()") {
+                    failures.push(format!(
+                        "{rel}: `StallBudgets::default()` present — the greeting must not \
+                         take the Salon's 240 s/120 s"
+                    ));
+                }
             }
             continue;
         }

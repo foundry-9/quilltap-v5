@@ -1230,6 +1230,12 @@ where
         )
     }
 
+    // P4.D207 OUT-OF-MANDATE — no lane in the `f45a517a9` round owns
+    // `quilltap-host/src/spine.rs`, and the streamed swipe cannot land without
+    // it: `regenerate_message_as_swipe` now drives the STREAMING seam, and this
+    // is its only production caller. Confined to `run_swipe`'s two hunks (the
+    // streaming provider and the progress emitter). Recorded for the unifier in
+    // the P4.D207 lane record.
     /// One swipe generation (the non-`Send` inner the dedicated thread runs):
     /// v4 `handleGenerateSwipe` → `regenerateMessageAsSwipe`. The route handler
     /// (`api::salon::message_swipe_generate`) already loaded the chat + passed the
@@ -1302,12 +1308,20 @@ where
             now_ms,
             local_offset_minutes: self.local_offset_minutes(now_ms),
             random01: random01.clone(),
+            // P4.D207: v4's `onProgress`, built by the engine from the request's
+            // `stream` flag and carried through the driver seam. Inert unless
+            // the caller asked to be narrated to.
+            progress: req.progress.clone(),
         };
 
         regenerate_message_as_swipe(
             &db,
             &*self.embedding,
             &*self.completion,
+            // P4.D207: the one visible generation is a watched STREAM now
+            // (v4 `f564b0de3`); the context build's cheap-LLM feeders still go
+            // through the completion half above.
+            &*self.streaming,
             &executor,
             &bc_seams,
             &mc_seams,
@@ -1326,7 +1340,11 @@ where
                 details: None,
                 already_saved: None,
             },
-            RegenError::Db(_) => CoreError {
+            // P4.D207: a generation failure (a provider error, or the stall
+            // watchdog abandoning a silent stream) answers v4's
+            // `serverError(error.message)` — and `RegenError::Generation`'s
+            // `Display` is that raw message, unadorned.
+            RegenError::Db(_) | RegenError::Generation(_) => CoreError {
                 kind: ErrorKind::Internal,
                 message: e.to_string(),
                 pepper_state: None,

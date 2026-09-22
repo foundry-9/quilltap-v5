@@ -1814,8 +1814,14 @@ impl CoreEngine {
             Request::MessageSwipe {
                 message_id,
                 swipe_index,
+                // === P4.D207 ===
+                stream,
+                // === end P4.D207 ===
             } => match self.ready_db() {
                 Ok(db) => match swipe_index {
+                    // v4 reads `?stream=1` only AFTER the switch branch has
+                    // returned (`route.ts:260-270`), so a switch ignores the
+                    // flag entirely — `stream` is deliberately unused here.
                     Some(idx) => {
                         super::salon::message_swipe_switch(&db, SINGLE_USER_ID, &message_id, idx)
                     }
@@ -1828,6 +1834,17 @@ impl CoreEngine {
                                 driver.as_ref(),
                                 SINGLE_USER_ID,
                                 &message_id,
+                                // === P4.D207 ===
+                                // The narration rides the engine's ONE
+                                // broadcast, scope-tagged by the swiped
+                                // message's id (§S.2). `stream: false` is
+                                // inert: v4's absent `onProgress`.
+                                crate::services::regenerate_swipe::SwipeProgressEmitter::from_flag(
+                                    stream,
+                                    &message_id,
+                                    self.event_sender().clone(),
+                                ),
+                                // === end P4.D207 ===
                             )
                             .await
                         }

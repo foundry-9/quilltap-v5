@@ -8,11 +8,13 @@
  * Drives v4's REAL `regenerateMessageAsSwipe` over the committed corpus against
  * the REAL two-DB fixture, mocking ONLY the model boundaries + the out-of-scope
  * subsystems the Rust port injects as seams (each matching the Rust seam):
- *   - `createLLMProvider().sendMessage` — the single non-streaming generation:
- *     returns the corpus canned completion + RECORDS the exact
- *     `provider|model|temperature|messages` key (so the Rust
- *     `CannedCompletionProvider` replays it — the rebuilt continue-mode prompt
- *     bytes are proven);
+ *   - `createLLMProvider().streamMessage` — the single generation, now READ AS A
+ *     STREAM (v4 `f564b0de3`): yields the corpus canned CHUNKS + RECORDS the
+ *     exact `provider|model|temperature|messages` key (so the Rust
+ *     `CannedStreamingProvider` replays it — the rebuilt continue-mode prompt
+ *     bytes are proven). The canned terminal chunk deliberately carries
+ *     `usage` + `rawResponse` + `reasoningContent` + `thoughtSignature`, so the
+ *     three columns v5 used to write NULL are a REAL comparand;
  *   - `generateEmbeddingForUser` — canned (buildContext memory search is
  *     memory-free here: the memories sit on a "ghost" characterId, not Bertie);
  *   - buildContext's unported feeders + the buildMessageContext K file-loader →
@@ -20,6 +22,19 @@
  *     produce.
  * The memory cascade (`deleteMemoriesBySourceMessageWithVectors`) touches no LLM
  * — it runs against the REAL DB + vector store.
+ *
+ * **The progress frames are a comparand (P4.D207).** Each call is driven with
+ * an `onProgress` that runs every event through v4's OWN SSE encoders
+ * (`encodeStatusEvent` / `encodeContentChunk` / `encodeReasoningChunk`,
+ * imported for real, never transcribed) and records the decoded frame objects
+ * in order. So the ordered sequence of WIRE frames — the bytes the Salon
+ * consumes — is diffed, not a paraphrase of it. That is also what settles
+ * whether the `status` frame carries `kind` (it does: the route hands the whole
+ * event to `encodeStatusEvent`, which stringifies `{ status }`).
+ *
+ * The terminal `{done:true,message}` and the `error` frame are NOT here: v4
+ * builds both in the ROUTE, not the service, and this oracle drives the
+ * service. They are proven by the route family + the dispatch wire test.
  *
  * The wall clock ADVANCES +1ms per read (frozen base = `frozenNowMs`) so
  * buildContext's timestamp-in-prompt matches the Rust injected `now_ms` while the
@@ -104,9 +119,16 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const cannedCompletions = new Map<
+  const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; sampling: Record<string, number>; response: string; usage: unknown }
+    {
+      provider: string;
+      model: string;
+      temperature: number | null;
+      messages: unknown[];
+      sampling: Record<string, number>;
+      chunks: unknown[];
+    }
   >();
 
   jest.resetModules();
@@ -126,14 +148,18 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/embedding/vector-store')
   );
 
-  // ---- createLLMProvider (the single non-streaming generation) ----
+  // ---- createLLMProvider (the single generation, READ AS A STREAM) ----
+  // v4 `f564b0de3` swapped `sendMessage` for `streamMessage`; the corpus's
+  // canned stream is `spec.completion.stream`, and its terminal chunk carries
+  // the four record fields so the persisted row's columns are non-NULL on both
+  // sides. The generator is ASYNC because v4 consumes it with `for await`.
   jest.doMock('@/lib/llm', () => {
     const actual = jest.requireActual('@/lib/llm');
     return {
       __esModule: true,
       ...actual,
       createLLMProvider: async (provider: string) => ({
-        sendMessage: async (
+        streamMessage: async function* (
           params: {
             messages: Array<{ role: string; content: string }>;
             model: string;
@@ -142,11 +168,11 @@ async function main(): Promise<void> {
             topP?: number;
           },
           _apiKey: string
-        ) => {
+        ) {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
           const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
-          if (!cannedCompletions.has(key)) {
-            cannedCompletions.set(key, {
+          if (!cannedStreams.has(key)) {
+            cannedStreams.set(key, {
               provider,
               model: params.model,
               temperature: params.temperature ?? null,
@@ -161,11 +187,10 @@ async function main(): Promise<void> {
                 ...(params.maxTokens !== undefined ? { maxTokens: params.maxTokens } : {}),
                 ...(params.topP !== undefined ? { topP: params.topP } : {}),
               },
-              response: spec.completion.response,
-              usage: spec.completion.usage,
+              chunks: spec.completion.stream,
             });
           }
-          return { content: spec.completion.response, finishReason: 'stop', usage: spec.completion.usage };
+          for (const chunk of spec.completion.stream) yield chunk;
         },
       }),
     };
@@ -268,6 +293,13 @@ async function main(): Promise<void> {
   const { regenerateMessageAsSwipe } = await import(
     '@/lib/services/chat-message/regenerate-swipe.service'
   );
+  // v4's OWN SSE encoders, imported for real from the same module
+  // `app/api/v1/messages/[id]/route.ts` imports them from (`f564b0de3` added
+  // the three to the index's re-exports). Never transcribed — the frame bytes
+  // this oracle records ARE v4's.
+  const { encodeStatusEvent, encodeContentChunk, encodeReasoningChunk } = await import(
+    '@/lib/services/chat-message'
+  );
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -296,9 +328,29 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
 
+  // The ordered WIRE frames per call (P4.D207). Each `onProgress` event goes
+  // through v4's real encoder, then the `data: <json>\n\n` line is decoded back
+  // to an object — so what is recorded is exactly what the client would parse.
+  const frameEncoder = new TextEncoder();
+  const frameDecoder = new TextDecoder();
+  const encodeFrame = (event: { kind: string; content?: string; reasoning?: string }): unknown => {
+    const bytes =
+      event.kind === 'status'
+        ? encodeStatusEvent(frameEncoder, event as never)
+        : event.kind === 'delta'
+          ? encodeContentChunk(frameEncoder, event.content as string)
+          : encodeReasoningChunk(frameEncoder, event.reasoning as string);
+    const text = frameDecoder.decode(bytes);
+    if (!text.startsWith('data: ') || !text.endsWith('\n\n')) {
+      throw new Error(`unexpected SSE framing from v4's encoder: ${JSON.stringify(text)}`);
+    }
+    return JSON.parse(text.slice(6, -2));
+  };
+
   for (const call of spec.calls) {
     let threw = false;
     let message = '';
+    const frames: unknown[] = [];
     try {
       const chat = await repos.chats.findById(call.chatId);
       if (!chat) throw new Error(`chat not found: ${call.chatId}`);
@@ -312,12 +364,16 @@ async function main(): Promise<void> {
         targetMessage,
         allMessages,
         activeUserParticipantId: null,
+        onProgress: (event: { kind: string; content?: string; reasoning?: string }) => {
+          frames.push(encodeFrame(event));
+        },
       } as never);
     } catch (err) {
       threw = true;
       message = err instanceof Error ? err.message : String(err);
     }
     lines.push(JSON.stringify({ kind: 'call', call: call.name, threw, message }));
+    lines.push(JSON.stringify({ kind: 'progress', call: call.name, frames }));
     // Let any fire-and-forget settle.
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -325,7 +381,7 @@ async function main(): Promise<void> {
   (global as { Date: DateConstructor }).Date = RealDate;
   pinned.restore();
 
-  for (const c of cannedCompletions.values()) lines.push(JSON.stringify({ kind: 'cannedCompletion', ...c }));
+  for (const c of cannedStreams.values()) lines.push(JSON.stringify({ kind: 'cannedStream', ...c }));
 
   const dumpTable = async (table: string) => {
     const columns = ((await rawQuery(`PRAGMA table_info(${table})`)) as Array<{ name: string }>).map(

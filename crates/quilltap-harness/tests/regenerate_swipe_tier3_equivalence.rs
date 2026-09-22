@@ -7,7 +7,7 @@
 //! sequence. The oracle drives v4's REAL `regenerateMessageAsSwipe` with ONLY the
 //! model boundaries + buildContext feeders mocked to match the Rust seams; this
 //! test composes the ported services through `regenerate_message_as_swipe`,
-//! replaying the recorded canned completion. Then the five touched tables (`chats`
+//! replaying the recorded canned STREAM. Then the five touched tables (`chats`
 //! / `chat_messages` / `memories` / `vector_indices` / `vector_entries`) are
 //! diffed:
 //!   - `chat_messages` — the new swipe's minted id is remapped to a first-appearance
@@ -22,12 +22,44 @@
 //!
 //! Each call's throw/no-throw is also asserted (the `not_assistant` error path).
 //!
+//! ## P4.D207 (v4 `f564b0de3`): the generation is a STREAM, and the frames are
+//! a comparand
+//!
+//! Two things moved with `f564b0de3`, and both are measured here:
+//!
+//! 1. **The persisted row grew three columns.** v5 wrote `rawResponse` /
+//!    `reasoningContent` / `thoughtSignature` as NULL under a tracked deferral;
+//!    they now ride the chunks. The corpus's canned stream carries all four
+//!    chunk fields on purpose — with a STALE `rawResponse` + `reasoningContent`
+//!    on the middle chunk, so last-wins is measurable in both, and a NON-EMPTY
+//!    terminal `rawResponse`, because an empty object is JS-truthy too and so
+//!    could not tell a truthiness bug from a stored-verbatim bug. **This was a
+//!    DESIGNED red at the target pin** (three NULLs vs v4's values); it is
+//!    re-recorded, never "fixed" back.
+//! 2. **An ordered `progress` comparand.** The oracle runs every v4
+//!    `onProgress` event through v4's OWN SSE encoders (imported, never
+//!    transcribed) and records the decoded frame objects per call; the port's
+//!    frames are drained off a real `Event` subscription. So the diff is over
+//!    the WIRE bytes the Salon consumes — which is what settles that the
+//!    `status` frame carries `kind` (it does).
+//!
+//! The terminal `{done:true,message}` and `error` frames are deliberately NOT
+//! in this family: v4 builds both in the ROUTE, and this oracle drives the
+//! SERVICE. They belong to `salon_swipe_generate` and the dispatch wire test.
+//!
+//! [`a_silent_regeneration_writes_exactly_what_a_narrated_one_writes`] is v4's
+//! own invariant as a pin: the same corpus with an INERT emitter writes what
+//! v4's narrated run wrote, byte for byte.
+//!
 //! **TZ=UTC is REQUIRED since P4.d26** (the distill TODAY line renders in the
 //! SERVER-LOCAL zone, and the harness pins `server_tz` to "UTC"), so the pin below
 //! is load-bearing, not decoration.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
-//! `.claude/` paths, so the case is staged in a /tmp mirror):
+//! `.claude/` paths, so the case is staged in a /tmp mirror). ⚠ The FIXTURE and
+//! the ORACLE must come from the SAME tree: the fixture builder runs v4's real
+//! repos, so at a pin whose repo layer registers compressed columns the fixture
+//! carries brotli cells, and a v5 tree without the codec cannot read them.
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-regen-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
@@ -41,25 +73,31 @@
 //!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-regenerate-swipe.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- regenerate-swipe-tier3
-//! Run:
+//! Run (`TZ=UTC` is load-bearing — see above; `--test-threads=1` because the
+//! neutrality test runs the corpus twice):
 //!   QT_ORACLE_REGEN=/tmp/oracle-regenerate-swipe.ndjson \
 //!   QT_FIXTURE_REGEN_MAIN=/tmp/qt-regen-main.db QT_FIXTURE_REGEN_MOUNT=/tmp/qt-regen-mount.db \
-//!     cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence
+//!   TZ=UTC cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence \
+//!     -- --test-threads=1
 
 mod sampling_capture;
 
 use std::collections::HashMap;
 
+use quilltap_core::api::types::{Event, EventPayload};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{chats_messages_read, chats_read, dump_table_json_conn};
 use quilltap_core::model::completion::{
     canned_completion_key, CannedCompletionProvider, CompletionMessage, CompletionRole,
-    CompletionUsage,
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::stream::{
+    CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamUsage,
+};
 use quilltap_core::services::build_context::NoopSeams as BcNoopSeams;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::message_context::NoopMessageContextSeams;
+use quilltap_core::services::regenerate_swipe::SwipeProgressEmitter;
 use quilltap_core::services::regenerate_swipe::{
     regenerate_message_as_swipe, RegenError, RegenerateSwipeOptions,
 };
@@ -101,19 +139,71 @@ struct UsageW {
     completion_tokens: i64,
     total_tokens: i64,
 }
+/// One canned CHUNK, as v4's own generator yields it (P4.D207). Every field
+/// bar `content` is optional, exactly as [`StreamChunk`]'s are.
 #[derive(Deserialize)]
-struct CannedCompletionW {
+#[serde(rename_all = "camelCase")]
+struct CannedChunkW {
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    done: bool,
+    #[serde(default)]
+    usage: Option<UsageW>,
+    #[serde(default)]
+    raw_response: Option<Value>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    thought_signature: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CannedStreamW {
     provider: String,
     model: String,
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
-    response: String,
     /// P4.D83: the sampling knobs v4's REAL `regenerateMessageAsSwipe` resolved
     /// off the profile bag for this call (absent keys = knobs v4 left undefined).
     #[serde(default)]
     sampling: Value,
-    #[serde(default)]
-    usage: Option<UsageW>,
+    /// The chunk sequence v4's mocked `streamMessage` yielded.
+    chunks: Vec<CannedChunkW>,
+}
+
+/// The oracle's ordered per-call WIRE frames (P4.D207) — v4's own encoders'
+/// output, decoded back to objects. `call` → the frame list.
+fn oracle_progress(oracle_text: &str) -> HashMap<String, Vec<Value>> {
+    let mut out = HashMap::new();
+    for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
+        let v: Value = serde_json::from_str(line).expect("parse oracle line");
+        if v.get("kind").and_then(Value::as_str) == Some("progress") {
+            out.insert(
+                v.get("call").and_then(Value::as_str).unwrap().to_string(),
+                v.get("frames")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
+    }
+    out
+}
+
+/// Drain every [`EventPayload::SwipeProgress`] frame the port published for
+/// `progress_id`, in order.
+fn drain_frames(rx: &mut tokio::sync::broadcast::Receiver<Event>, progress_id: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    while let Ok(ev) = rx.try_recv() {
+        if ev.progress_id.as_deref() != Some(progress_id) {
+            continue;
+        }
+        if let EventPayload::SwipeProgress(p) = &ev.payload {
+            out.push(p.frame.clone());
+        }
+    }
+    out
 }
 
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
@@ -234,19 +324,24 @@ fn assert_rows_eq(name: &str, got: &Value, want: &Value) {
     }
 }
 
-#[test]
-fn regenerate_swipe_tier3_matches_oracle() {
+/// The whole corpus, once. `emit_progress` chooses v4's narrated leg (an ACTIVE
+/// [`SwipeProgressEmitter`], the default `stream: true` shape) or its silent one
+/// (an inert emitter — v4's absent `onProgress`).
+///
+/// Returns the five normalized dumps, so the two legs can be compared to each
+/// other as well as to the oracle.
+fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_REGEN") else {
-        eprintln!("QT_ORACLE_REGEN not set; skipping");
-        return;
+        eprintln!("SKIP: QT_ORACLE_REGEN not set");
+        return None;
     };
     let Ok(fixture_main) = std::env::var("QT_FIXTURE_REGEN_MAIN") else {
-        eprintln!("QT_FIXTURE_REGEN_MAIN not set; skipping");
-        return;
+        eprintln!("SKIP: QT_FIXTURE_REGEN_MAIN not set");
+        return None;
     };
     let Ok(fixture_mount) = std::env::var("QT_FIXTURE_REGEN_MOUNT") else {
-        eprintln!("QT_FIXTURE_REGEN_MOUNT not set; skipping");
-        return;
+        eprintln!("SKIP: QT_FIXTURE_REGEN_MOUNT not set");
+        return None;
     };
 
     let spec: Spec =
@@ -255,16 +350,24 @@ fn regenerate_swipe_tier3_matches_oracle() {
     let oracle_text = std::fs::read_to_string(&oracle_path).expect("oracle readable");
     let want_calls = oracle_calls(&oracle_text);
 
-    // Canned completions.
-    let mut canned_completions: Vec<CannedCompletionW> = Vec::new();
+    let want_progress = oracle_progress(&oracle_text);
+
+    // Canned streams (P4.D207 — the generation is read as a stream).
+    let mut canned_streams: Vec<CannedStreamW> = Vec::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).unwrap();
-        if v.get("kind").and_then(Value::as_str) == Some("cannedCompletion") {
-            canned_completions.push(serde_json::from_value(v).expect("cannedCompletion"));
+        if v.get("kind").and_then(Value::as_str) == Some("cannedStream") {
+            canned_streams.push(serde_json::from_value(v).expect("cannedStream"));
         }
     }
+    assert!(
+        !canned_streams.is_empty(),
+        "the oracle recorded no `cannedStream` line — it is stale (pre-P4.D207) \
+         or the mocked provider was never called; re-record it"
+    );
 
-    let scratch = std::env::temp_dir().join(format!("qt-regen-harness-{}", std::process::id()));
+    let scratch =
+        std::env::temp_dir().join(format!("qt-regen-harness-{}-{label}", std::process::id()));
     std::fs::create_dir_all(&scratch).expect("scratch dir");
     let work_main = scratch.join("regen-main.db");
     let work_mount = scratch.join("regen-mount.db");
@@ -289,21 +392,34 @@ fn regenerate_swipe_tier3_matches_oracle() {
         .expect("tokio runtime");
 
     let mut expected_sampling: HashMap<String, Value> = HashMap::new();
-    let mut completion = CannedCompletionProvider::new();
-    for row in &canned_completions {
+    let mut streaming = CannedStreamingProvider::new();
+    for row in &canned_streams {
         let messages = to_completion_messages(&row.messages);
-        let usage = row.usage.as_ref().map(|u| CompletionUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-        });
-        completion = completion.with_response(
+        let chunks: Vec<StreamChunkResult> = row
+            .chunks
+            .iter()
+            .map(|c| {
+                Ok(StreamChunk {
+                    content: c.content.clone(),
+                    done: c.done,
+                    usage: c.usage.as_ref().map(|u| StreamUsage {
+                        prompt_tokens: u.prompt_tokens,
+                        completion_tokens: u.completion_tokens,
+                        total_tokens: u.total_tokens,
+                    }),
+                    raw_response: c.raw_response.clone(),
+                    reasoning_content: c.reasoning_content.clone(),
+                    thought_signature: c.thought_signature.clone(),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        streaming = streaming.with_stream(
             &row.provider,
             &row.model,
             row.temperature,
             &messages,
-            &row.response,
-            usage,
+            chunks,
         );
         expected_sampling.insert(
             canned_completion_key(&row.provider, &row.model, row.temperature, &messages),
@@ -315,19 +431,30 @@ fn regenerate_swipe_tier3_matches_oracle() {
         );
     }
     // P4.D83: record what the PORT put on each call, so the three knobs are a
-    // comparand rather than an unmeasured field.
-    let completion = sampling_capture::SamplingCapture::new(completion, |provider, params| {
-        canned_completion_key(
+    // comparand rather than an unmeasured field. The STREAM twin now — the one
+    // visible generation moved to the streaming seam (P4.D207).
+    let streaming = sampling_capture::SamplingStreamCapture::new(streaming, |provider, params| {
+        quilltap_core::model::stream::canned_stream_key(
             provider,
             &params.model,
             params.temperature,
             &params.messages,
         )
     });
+    // The completion half stays wired for the context build's cheap-LLM feeders
+    // (recall extraction, the distill). This corpus reaches none of them — the
+    // oracle mocks them to no-ops and the Rust seams are the `Noop*` pair — so
+    // an EMPTY canned provider is the honest instrument: a v5 path that started
+    // calling it would answer a corpus-omission `Err` rather than pass quietly.
+    let completion = CannedCompletionProvider::new();
     let embedding = CannedEmbeddingProvider::new();
     let executor = CheapLlmTaskExecutor::new();
     let bc_seams = BcNoopSeams;
     let mc_seams = NoopMessageContextSeams;
+
+    // P4.D207: the port's frames ride the Event channel, so the comparand is
+    // read off a real subscription — the same bytes a client sees.
+    let (events_tx, mut events_rx) = tokio::sync::broadcast::channel::<Event>(512);
 
     for call in &spec.calls {
         let chat_id = call.chat_id.clone();
@@ -349,6 +476,7 @@ fn regenerate_swipe_tier3_matches_oracle() {
             &db,
             &embedding,
             &completion,
+            &streaming,
             &executor,
             &bc_seams,
             &mc_seams,
@@ -366,6 +494,16 @@ fn regenerate_swipe_tier3_matches_oracle() {
                 local_offset_minutes: spec.local_offset_minutes,
                 // P4.D172: `[0]` reproduces the frozen-zero pin.
                 random01: DrawSource::sequence(vec![0.0]),
+                // P4.D207: ACTIVE on the narrated leg, so the frame sequence
+                // is a comparand on every call — including `not_assistant`,
+                // where v4's guard throws before any beat and the list must be
+                // EMPTY on both sides. INERT on the silent leg (v4's absent
+                // `onProgress`).
+                progress: if emit_progress {
+                    SwipeProgressEmitter::active(call.target_message_id.clone(), events_tx.clone())
+                } else {
+                    SwipeProgressEmitter::inert()
+                },
             },
         ));
 
@@ -385,7 +523,42 @@ fn regenerate_swipe_tier3_matches_oracle() {
             call.name
         );
         assert_eq!(threw, want, "call {} throw mismatch", call.name);
+
+        // P4.D207: the ORDERED wire frames, diffed against v4's own encoders'
+        // output. This is the arm the mutation proofs target — firing
+        // `regenerating` on every content chunk changes this list.
+        let got_frames = drain_frames(&mut events_rx, &call.target_message_id);
+        let want_frames = want_progress.get(&call.name).unwrap_or_else(|| {
+            panic!(
+                "oracle missing a `progress` line for call {} — re-record it",
+                call.name
+            )
+        });
+        if emit_progress {
+            assert_eq!(
+                &got_frames,
+                want_frames,
+                "call {} progress frames mismatch\n--- got ---\n{}\n--- want ---\n{}",
+                call.name,
+                serde_json::to_string_pretty(&got_frames).unwrap(),
+                serde_json::to_string_pretty(want_frames).unwrap()
+            );
+        } else {
+            // The silent leg: v4's absent `onProgress` emits NOTHING.
+            assert!(
+                got_frames.is_empty(),
+                "call {} published {} frame(s) with an INERT emitter",
+                call.name,
+                got_frames.len()
+            );
+        }
     }
+    // A floor, so a silent emitter (or a drained-too-early subscription) cannot
+    // pass the whole family vacuously.
+    assert!(
+        want_progress.values().any(|f| !f.is_empty()),
+        "no call recorded a single progress frame — the comparand is vacuous"
+    );
 
     // Dump + diff.
     let dump = |t: &str| -> Value {
@@ -423,7 +596,7 @@ fn regenerate_swipe_tier3_matches_oracle() {
     }
 
     // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
-    completion.assert_matches(&expected_sampling, "regenerate-swipe");
+    streaming.assert_matches(&expected_sampling, "regenerate-swipe");
 
     assert_rows_eq("chats", &got_chats, &want_chats);
     assert_rows_eq("chat_messages", &got_msgs, &want_msgs);
@@ -443,5 +616,57 @@ fn regenerate_swipe_tier3_matches_oracle() {
         "vector survivors"
     );
 
-    eprintln!("OK: regenerate-swipe tier-3 matched oracle (5 tables + call throws).");
+    eprintln!(
+        "OK: regenerate-swipe tier-3 [{label}] matched oracle (5 tables + call throws + \
+         {} progress frame set(s)).",
+        want_progress.len()
+    );
+    Some([got_chats, got_msgs, got_mem, got_vi, got_ve])
+}
+
+/// The narrated leg — v4's `stream: true`, every frame a comparand.
+#[test]
+fn regenerate_swipe_tier3_matches_oracle() {
+    run_corpus("streamed", true);
+}
+
+/// **v4's own invariant: "with no callback the generation is identical, just
+/// silent."** (P4.D207 Tier-1 item 2's neutrality pin.)
+///
+/// This is not a paraphrase of the narrated leg — it is the same corpus run
+/// with an INERT emitter against a FRESH copy of the fixture, and its five
+/// dumps are diffed against **v4's own NARRATED record**. So a match proves
+/// two things at once: that the silent v5 run writes what v4's streamed run
+/// wrote, and that switching the narration on changes nothing but the frames.
+///
+/// The negative half rides inside `run_corpus`: on this leg every call must
+/// publish ZERO frames, so an emitter that ignored its inert state would redden
+/// here rather than passing quietly.
+#[test]
+fn a_silent_regeneration_writes_exactly_what_a_narrated_one_writes() {
+    let Some(silent) = run_corpus("silent", false) else {
+        return;
+    };
+    let Some(streamed) = run_corpus("streamed-twin", true) else {
+        return;
+    };
+    // Both legs already matched the oracle table-by-table inside `run_corpus`;
+    // this is the direct leg-to-leg diff, which is what "identical" means.
+    for (name, (a, b)) in [
+        "chats",
+        "chat_messages",
+        "memories",
+        "vector_indices",
+        "vector_entries",
+    ]
+    .into_iter()
+    .zip(silent.iter().zip(streamed.iter()))
+    {
+        assert_eq!(
+            a.get("rows"),
+            b.get("rows"),
+            "table {name}: a SILENT regeneration wrote something a narrated one did not"
+        );
+    }
+    eprintln!("OK: regenerate-swipe silent/narrated neutrality (5 tables, both legs).");
 }

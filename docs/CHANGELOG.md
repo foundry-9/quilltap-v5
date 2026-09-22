@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(salon): the swipe's generation is a watched stream, and it says so while it happens (P4.D207)
+
+_Versions: core 0.0.970, harness 0.0.863, host 0.0.140._
+
+Ports the server half of v4 `f564b0de3`. The swipe's single provider call stops
+being a blocking non-streaming call: it goes through the streaming seam wrapped
+in `watch_stream`, and each step is reported as it happens.
+
+**v5's tracked deferral is retired, not worked around.** `rawResponse`,
+`reasoningContent` and `thoughtSignature` were written NULL because the ported
+`CompletionResponse` is the cheap-LLM subset. `StreamChunk` already carries all
+six fields, so the persisted swipe now takes them off the chunks last-wins,
+exactly as v4 does — `rawResponse` verbatim from the last chunk that had one,
+reasoning cumulative (never concatenated). This moves a tier-2 comparand by
+design; `regenerate_swipe_tier3` is re-recorded at the target pin.
+
+**The narration.** A new `RegenerateSwipeProgress` union and a
+`SwipeProgressEmitter` (the `GeneratorProgressEmitter` shape) publish v4's SSE
+payload objects verbatim as `EventPayload::SwipeProgress`, scope-tagged by the
+swiped message's id. Four status beats in v4's order with v4's sentences
+(`gathering`, `sending`, `regenerating` once on the first chunk carrying
+content, `saving`), content deltas, cumulative reasoning, and the two terminal
+frames the route owns — `{done,message}` and the `error` frame. `messageSwipe`
+gains a `stream` flag; with it off the emitter is inert and the generation is
+identical, just silent.
+
+**Measured corrections.** The `status` frame carries `kind` — v4's route hands
+the whole progress event to `encodeStatusEvent`, which stringifies `{ status }`,
+so `kind` reaches the client in first position. The work order's shared contract
+omits it; v4's own encoders, driven in the oracle, settle it. A generation
+failure now renders v4's raw `error.message` rather than v5's
+`"swipe generation failed: …"` wrapper, which matched no v4 byte and became
+visible once the `error` frame carried it. The stream path also carries
+attachment bags per message verbatim, closing the recorded `url`-drop divergence
+the completion funnel had.
+
+The stall-watchdog wrap census gains its twelfth site — the second consumer
+outside v4's funnel, and the first to pair the Salon's default budgets with its
+own `logContext.context`, which the budget census could not express before.
+`help/chat-message-actions.md` is re-vendored at the target pin (16,155 bytes;
+the file count is unchanged).
+
 #### 2026-09-22 — test(web): the two route-surface censuses the Inform arms move (P4.D205)
 
 _Versions: harness 0.0.867, web 0.0.161._

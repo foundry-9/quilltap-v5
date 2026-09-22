@@ -65,6 +65,17 @@ pub struct SwipeGenerateRequest {
     /// The user-controlled participant the human is "Speaking As" (v4
     /// `chat.activeTypingParticipantId ?? null`).
     pub active_user_participant_id: Option<String>,
+    // P4.D207 OUT-OF-MANDATE — no lane in the `f45a517a9` round owns
+    // `api/chat_send.rs`, and the streamed swipe cannot reach its driver
+    // without this field: v4's `onProgress` is an argument to the service, and
+    // the composing host is the only thing that can build the provider bundle
+    // the service runs on. Additive, `Default`-inert, and confined to this
+    // hunk. Recorded for the unifier in the P4.D207 lane record.
+    /// v4 `onProgress?` — the live narration the SSE leg hands the service
+    /// (`route.ts:321-337`). Inert unless the caller asked for `stream: true`,
+    /// which is v4's absent callback: *with no callback the generation is
+    /// identical, just silent.*
+    pub progress: crate::services::regenerate_swipe::SwipeProgressEmitter,
 }
 
 /// The boxed future a [`SwipeGenerateDriver`] returns (the new swipe `chat_messages`
