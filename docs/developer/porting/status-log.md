@@ -140234,22 +140234,62 @@ new danger-trigger case names (3 hits), the scan's new chat id (1), the
 gatekeeper's `scenario-only` (2), `restore_bug158_replace` (1), the help page's
 new sentence (1), and the help pin marker (1, target-only).
 
-### Tier 2 — the incidental-movement checks
+### Tier 2 — the incidental-movement checks, and what they turned up
 
-The five `contextSummary`-carrying families the order names (`salon_mutations`,
-`courier_images_routes`, `context_summary_service_tier3`, `orchestrator_tier3`,
-`salon_reads`) are regenerated at the BASELINE pin and recorded in the gate
-section below. Expected NO movement from this commit: none of the five creates
-a chat or builds a greeting, which are the only two behaviours this lane moved
-in production code.
+RUN at the BASELINE pin as the order specifies
+(`recipe_sweep.py --run-all --families … --v4 /tmp/qt-v4-pin-p4d208-baa85e19b`):
 
-⚠ **One caveat the order did not anticipate:** `orchestrator_tier3` and
-`context_summary_service_tier3` DO route through `common::dump_llm_logs`, whose
-bind this lane changed (the P4.D203-class fix above). That change is
-behaviour-neutral for a payload under 512 bytes (plain TEXT passes through the
-same arm) and turns a hard `InvalidColumnType` into a hex comparand above it —
-so where it moves anything at all, it moves a family from RED to comparable.
-Recorded rather than assumed.
+| family | at the baseline pin |
+|---|---|
+| `salon_mutations_equivalence` | **ok** |
+| `salon_reads_equivalence` | **ok** |
+| `courier_images_routes_equivalence` | run_failed |
+| `orchestrator_tier3_equivalence` | run_failed |
+| `context_summary_service_tier3_equivalence` | regen_failed (v4-side; a regen failure cannot be this lane's) |
+
+The two `ok`s are the answer the order wanted: neither moved, and neither can —
+neither creates a chat nor builds a greeting, the only two production
+behaviours this lane changed.
+
+**⛔ The other three are NOT this lane's, and two of them expose a round-wide
+problem the order did not anticipate. At the BASELINE pin, every
+`llm_logs`-carrying tier-3 family is now STRUCTURALLY INCOMPARABLE.** v4 at
+`baa85e19b` does not compress `llm_logs`; v5 WITH P4.D203's codec does. So the
+baseline-pinned oracle emits plain text (verified: the orchestrator oracle's
+`request` begins `{"messageCount":2,…`) while v5 stores a brotli BLOB. Whatever
+the harness bind does — a `String` bind CRASHES with `InvalidColumnType`, a hex
+render DIFFERS, a decode would differ from the stored form — the two sides
+cannot agree. **These families can only be compared at the TARGET pin, where v4
+compresses too and P4.D203 measured byte parity on all 35 probe rows.** They
+are re-measured there, and the re-measurement SETTLES it:
+
+| family | at the TARGET pin |
+|---|---|
+| `orchestrator_tier3_equivalence` | **ok** |
+| `courier_images_routes_equivalence` | run_failed — its OWN bind, below |
+
+`orchestrator_tier3` passing at the target pin is the neutrality answer for the
+whole `llm_logs` group, and it passes THROUGH this lane's `dump_llm_logs`
+change: the hex render is correct where both sides compress, which is exactly
+the condition a target-pinned oracle creates. So the change moved nothing, and
+the baseline-pin red was the pin, not the port.
+
+**The standing rule this yields, for the round and after it: a tier-3 family
+that dumps `llm_logs` can only be regenerated at a pin where v4 compresses —
+`f45a517a9` or later. Running one at `baa85e19b` produces a red that says
+nothing about the port.**
+
+`courier_images_routes_equivalence` also carries its OWN copy of the defect at
+`:406-407`, binding `request`/`response` as `Option<String>` — a THIRD
+P4.D203-class site, in a file this lane never touched, alongside the
+`common::dump_llm_logs` one this lane did fix and the
+`chat_create_capstone` one it fixed for its own family. **Left unfixed
+deliberately**: it blocks only a Tier-2 measurement, not a named Tier-1 family,
+and it belongs with the codec keystone rather than here (§R.5). The three
+together are one class and should be swept for in one pass —
+`grep -rn 'Option<String>' ` over every harness read of a registered compressed
+column (`chat_messages.content/opaqueContent/context/description`,
+`conversation_chunks.content`, `llm_logs.request/response`).
 
 ### What this lane did NOT do — deferred loudly
 
@@ -140294,3 +140334,69 @@ PASS, unchanged: branch `main`, HEAD `a2db63da7`, tree CLEAN, `a2db63da7..main`
 and `1a2b2164c..bugfix` both empty. Both pins re-verified by `rev-parse` at the
 same moment (`f45a517a992bf94fdc6ae34b96791ef1d3538870` and
 `baa85e19b9d904354b999924e3aa8c12f8130811`).
+
+⚠ **Cross-lane hazard observed, for the unifier and for the next round's
+orders: TWO SWEEPS RAN CONCURRENTLY.** While this lane's neutrality sweep was
+running, `pgrep -fl recipe_sweep` showed a second sweep alive in the
+`scriptorium-repo-layer-port-e5cc63` worktree (P4.D209's). §R.3's "never run two
+sweeps concurrently" is stated per-lane, but the constraint is REPO-WIDE — the
+driver's scratch and `/tmp` fixture paths are not lane-scoped the way the v4
+pins are. The two lanes' family sets do not overlap here, so this run's outcome
+is reported as measured; but nine parallel lanes each free to start a sweep is a
+collision waiting to happen, and the rule should be restated repo-wide (with a
+lock, or a lane-scoped scratch root) in the next round's §R.3.
+
+### The gate
+
+| step | result |
+|---|---|
+| §R.2 probe, at open and again before the regen batch | PASS both times |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean (exit 0) |
+| the same with `--features quilltap-core/native-transport` | clean (exit 0) |
+| `cargo build --workspace` | clean |
+| `cargo build --workspace --release` | clean (7m 25s) |
+| `cargo test --workspace --no-fail-fast`, the lane's env block | **587 binaries / 3,502 passed / 4 failed / 3 ignored** |
+
+**All four failures are documented DESIGNED reds belonging to sibling lanes.
+ZERO are this lane's**, and each is attributed by its own message rather than by
+subject line:
+
+| red | whose | evidence |
+|---|---|---|
+| `shipped_help_tree_matches_oracle` | P4.D205 + P4.D210 | `embedded file count vs the oracle's synced count` — 124 vs 126, the two files being `inform.md` and `cli-sync.md`. P4.D203's record predicted this exact red. |
+| `the_embedded_schema_equals_the_v4_checkouts` | P4.D205 | drift-ledger §1 names it red until Inform's `public/schemas/` re-vendor. |
+| `system_restore_equivalence` | P4.D205 | `chatInforms` the ONLY differing key across the four `preview_*` cases, diffed key-by-key. |
+| `v4s_installed_zod_matches_the_recorded_version` | P4.D211 | drift-ledger §1 names it red from `6b0615807` (`4.5.4 → 4.6.5`). |
+
+⚠ **The run was made WITHOUT `-- --nocapture`, so its own log cannot evidence
+the "zero SKIP / families confirmed RUN" half of gate step 8** — cargo swallows
+a passing test's stderr, and a family that SKIPs still reports `ok`. Reported as
+the limitation it is rather than as a green: the 0 `SKIP:` count in that log
+means the lines were not captured, NOT that nothing skipped. The claim is
+carried instead by a separate consolidated `--nocapture` run of every family
+this lane owns, recorded below.
+
+⚠ **Disk pressure is the round's real constraint, not compute.** Nine lane
+worktrees means nine `target/` dirs: free space fell from 134 GB at this lane's
+open to 34 GB by its release build, on a 460 GB volume. Every long step here ran
+with `CARGO_INCREMENTAL=0` (this worktree's `target/debug/incremental` stayed at
+0 B), and the lane cleans its whole `target/` at close. A round this wide should
+budget the disk explicitly in §R.3 rather than per-lane, and lanes should be
+told to clean as they finish rather than all at the end.
+
+**The consolidated `--nocapture` confirmation** — every family this lane owns,
+run by name with its oracle var set, **ZERO `SKIP:` lines**:
+
+| family | witness |
+|---|---|
+| `scenario_seeded_summary_equivalence` | `OK: scenario-seeded-summary matched oracle (27 rows; 25 through ChatCreate).` |
+| `recent_conversations_block_equivalence` | `OK: recent-conversations block matched oracle (8 calls).` + the limit-0 silence pin |
+| `chat_create_capstone_equivalence` | every case `matched oracle (all sections)` / `(reject arm + wrote nothing)`, 3 passed |
+| `danger_trigger_equivalence` | `OK: danger trigger gate chain matched oracle (14 compared, 1 no-counterpart).` — 12 → 15 corpus rows, 14 comparable |
+| `danger_scan_tier2_equivalence` | `OK: danger scan matched v4 (2 users, 5 enqueued, 5 job rows).` — 4 → 5 |
+| `danger_gatekeeper_tier3_equivalence` | `OK: danger gatekeeper chats + chat_messages matched oracle.` + the four-leg log pin |
+| `qtap_import_equivalence` | `OK: … + bug-117 sha join + bug-158 strip.` |
+| `system_restore_state` | 2 passed (19 restore cases incl. `restore_bug158_replace`) |
+| `host_scenario_seeded_summary_heal` | 3 passed |
+| `scenario_seeded_summary_heal` + `scenario_seeded_summary` unit tests | 6 passed |
