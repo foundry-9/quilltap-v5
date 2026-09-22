@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(scriptorium): the document-store sync engine — the pure planner, the manifest, the sidecar, the two walks and the two appliers (P4.D210)
+
+_Versions: core 0.0.973, harness 0.0.866._
+
+`quilltap sync` keeps a database-backed document store and a directory on disk
+in step. This is its engine: nine modules under
+`services/mount_index/sync/`, mirroring v4 `lib/mount-index/sync/`
+(`23da0b322`) file for file. The API action and the CLI verb follow.
+
+The planner is PURE — two entry maps, a base (the manifest), the options and two
+booleans in; actions and warnings out — which is what makes the decision table
+testable row by row rather than by running a sync and inspecting a directory
+afterwards. SHA-256 decides first and clocks second, so equal bytes with unequal
+clocks is a `touch` and never a copy; a deletion propagates only where the base
+proves it, so a first run creates rather than deletes; `createdAt` takes the
+older of the two sides, and a side that cannot report one never wins it.
+
+Three things the port had to spell out rather than inherit. The plan's ORDER is
+a promise (parents before children, store before disk, folders before files at a
+depth, deletions children-first and last), and it rests on a STABLE sort over
+insertion-ordered maps — so `OrderedMap` carries JS `Map`/`Set` iteration order
+explicitly instead of delegating to a hash map. The disk walk sorts each
+directory by name bytes, because libuv's `scandir` sorts and Rust's `read_dir`
+does not, and that order is the disk map's insertion order. And the sidecar's
+trailing-whitespace strip is ECMAScript's `\s`, not Rust's
+`char::is_whitespace`: the two disagree on U+FEFF and U+0085, and the stripped
+text is what the description hash is taken over, so one character would have
+made a caption read as permanently edited.
+
+Two tier-1 differentials, both against v4's real modules:
+`sync_planner_equivalence` (75 cases — every group of v4's own `planner.test.ts`
+plus the shapes it leaves implicit: the stable-sort ties, the `localeCompare`
+tie-break, a hard-link group whose written member is not its first) and
+`sync_manifest_sidecar_equivalence` (74 rows — the manifest's bytes, the
+degrade-to-null warnings with their Zod wording, and the whitespace table).
+
+Also fixed on the way: `Option<Option<_>>` fields need `deserialize_with =
+"double_option"` or serde collapses an explicit `null` into an absent key. The
+manifest writes `createdAt: null` for a file neither side can date and OMITS the
+key for a disk `touch` where birthtime is unsettable, and the two mean different
+things to the next run.
+
 #### 2026-09-22 — test(scriptorium): the two-link blob that makes bug 157 visible, at the route and at the attach (P4.D209)
 
 _Versions: core 0.0.972, harness 0.0.865._

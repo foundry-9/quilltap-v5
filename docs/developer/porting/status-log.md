@@ -138446,3 +138446,172 @@ except for one row, deferred loudly:**
   be NULL. It is the same instrument `mount_write`'s `blob_patch_twin_pair` and
   the attach arm now carry, on the third of the three repointed callers.
   Everything needed is in place; only the bundle row is missing.
+
+---
+
+## P4.D210 — `quilltap sync`: the engine, the API action, the CLI verb, completion, help
+
+_Lane branch `claude/p4-d210-quilltap-sync-0f5a99`, cut from **P4.D209's tip**
+(`60dc4df1`), which carries S (`144a0e80`, P4.D203's codec) and T (`c91aa240`,
+P4.D209's repo-layer contract). Work order
+`docs/developer/porting/work-orders/p4.d210-quilltap-sync.md`._
+
+### §0 — the probe, the base, and one deviation recorded up front
+
+**The §R.2 probe FAILED against the order's §R.1 and PASSED against the ledger
+as it stands.** At lane open v4 `main` was at `a2db63da7`, three commits past
+the order's `f45a517a9`. The ledger on `main` (v5 `f05cb56a`) had already been
+re-pinned there by the human's `/driftcheck`, and §1 rules in terms that the
+three new rows "are OUTSIDE that round's scope and must not be added to a
+running lane" — the same reading P4.D209 recorded. Re-probed against that:
+branch `main`, tree CLEAN, `a2db63da7..main` EMPTY, `1a2b2164c..bugfix` EMPTY,
+HEAD `a2db63da7`. **PASS.** The lane wrote nothing to the ledger.
+
+⚠ **Deviation from §R.10(a), recorded loudly for the unifier: this lane branches
+from P4.D209's TIP (`60dc4df1`), not from T (`c91aa240`).** The order says T; the
+tip is a strict superset (T plus `14f8f705` — bug 159's image half — plus
+`93db395b`'s corpus growth and two docs commits). The reason is measurable
+rather than convenient: §R.4(b) asks whether the sync applier opts out of image
+normalization, and the answer (below) is that it does NOT, so a synced image IS
+normalized at the target pin. On a T-only base the `normalize_images` flag
+exists but the normalization call does not, and the engine's store-side byte
+comparand would have been proven against behaviour the unified tree will not
+have. The unifier picks P4.D209 whole before P4.D210 regardless, so nothing is
+duplicated; but `git diff S...<lane>` over P4.D209's files is non-empty by
+D209's OWN commits, and the fence audit should expect that.
+
+Pins, both verified by `rev-parse` AND `ls -ld` per ledger §5.1:
+
+| pin | sha | used for |
+|---|---|---|
+| `/tmp/qt-v4-pin-p4d210-f45a517a9` | `f45a517a992bf94fdc6ae34b96791ef1d3538870` | every family this port authors |
+| `/tmp/qt-v4-pin-p4d210-baa85e19b` | `baa85e19b9d904354b999924e3aa8c12f8130811` | the neutrality legs |
+
+### §R.4(b) — MEASURED: the applier does NOT opt out, and v4's own test passes for a different reason than it claims
+
+The order asked which of two explanations held for v4's engine test "stores a
+`.png` as a `.png`, byte for byte — no WebP transcode". **It is the second.**
+
+1. `sync/apply-store.ts`'s `linkBlobContent` call passes **no** `normalizeImages`
+   key (measured: the only `false` in v4's whole tree is
+   `import-document-stores.ts:326`). Since `186eb09cb` the flag defaults TRUE and
+   normalization happens INSIDE the writer, so **at `f45a517a9` a synced image
+   IS transcoded to WebP.** The module's own header comment — "No transcoding. …
+   a `.png` pushed from disk must stay a `.png` with the same sha" — is STALE
+   PROSE, and the port follows the hunks: `normalize_images: true`.
+2. v4's test passes anyway because its fixture is
+   `Buffer.from('\x89PNG\r\n\x1a\n and then some bytes that are not really a
+   PNG')` — bytes `sharp` cannot decode. `transcodeToWebP` hands the original
+   back, `normalizeLinkBlobImage` returns its input unchanged, and the assertion
+   holds over a payload the normalizer never touches. It is not evidence about
+   real image bytes in either direction.
+
+The measurement is carried as a v5-side comment in `apply_store.rs`'s header,
+naming both shas.
+
+### Unit 1 — the engine's nine modules + two tier-1 differentials
+
+`services/mount_index/sync/{mod,types,planner,manifest,sidecar,walk_disk,walk_store,apply_disk,apply_store}.rs`,
+mirroring v4's nine files.
+
+**Three fidelity points the port had to spell out rather than inherit:**
+
+- **Insertion order is load-bearing.** v4's planner builds its key set as
+  `new Set([...store.keys(), ...disk.keys(), ...base.keys()])` and its final
+  sort is `Array.prototype.sort` — stable in V8. Two actions can tie on the
+  WHOLE comparator (side, depth, entry kind, `localeCompare(path)`): a `create
+  disk` and the `describe disk` pushed immediately after it share all four. A
+  `HashMap` would have reordered the plan with every run and no single-case
+  assertion could have seen it. `OrderedMap` in `types.rs` carries the order
+  explicitly; `Vec::sort_by` is stable, as V8's is.
+- **`readdir` sorts and `read_dir` does not** (the standing memory note). The
+  disk walk sorts each directory by name bytes, because that order IS the disk
+  map's insertion order, which is the planner's key order, which breaks the ties
+  above.
+- **`/\s+$/` is not `char::is_whitespace`.** They disagree on exactly two
+  characters — U+FEFF (JS strips, Rust does not) and U+0085 (Rust strips, JS
+  does not) — and `descriptionSha256` is taken over the STRIPPED text. A caption
+  ending in either would have compared unequal for ever, i.e. read as a
+  permanent false "edited". `is_js_whitespace` spells the ECMAScript class out,
+  with a unit test that pins both directions.
+
+**Two structural divergences, both forced and both recorded in the source:**
+
+- `walk_store` issues two scoped SELECTs rather than calling the shared repo
+  methods: v5's `LinkRow` does not carry `descriptionUpdatedAt` and its
+  `FolderRow` does not carry `updatedAt`, and both are load-bearing (the first
+  decides which caption is newer, the second is the folder's `lastModified`).
+  The link SELECT keeps v5's `join_query` access path — same tables, same join,
+  same `WHERE`, no `ORDER BY` — so the scan order is the one every other reader
+  of that join sees, which is the order the manifest's keys record.
+- `write_store_file` does NOT pre-resolve `folderId`. v4 calls `ensureFolderPath`
+  on the POSIX dirname and hands the id to the writer; v5's writers derive it
+  themselves through `ensure_link_folder_id`, and neither `LinkDocumentInput`
+  nor `LinkBlobInput` has a field to pass it through. Same folder chain, same
+  rows, one call instead of two.
+
+**`sync_planner_equivalence` — 75 cases, GREEN on the first run**, every one
+recorded from v4's REAL `planSync` through `harness/oracle/cases/sync-planner.ts`
+(the corpus is data, so each row carries its own INPUT and this side replays
+exactly what v4 was handed rather than re-stating the table in Rust). All nine
+action kinds appear; the family asserts that, so a whole arm of the decision
+table cannot go unmeasured. Beyond v4's own eleven describe groups the corpus
+adds: the stale-base arm where neither side matches (`chooseWinner`'s final
+`return 'conflict'`, which v4's suite never reaches), the three no-base caption
+arms, the `d.createdAt !== null` guard on a disk touch, a `--direction` on a
+describe, a hard-link group whose WRITTEN member is not its first, a group
+sibling absent from disk, four names at one depth that only `localeCompare`
+orders, mixed-depth deletions, and a base-only key among live work.
+
+| mutation | proof |
+|---|---|
+| treat a first run as a base (`b.is_none()` → `false`) | **11 of 75 red** |
+| tolerate a 1,001 ms gap (`MTIME_TOLERANCE_MS + 1001`) | **1 of 75 red** |
+| drop the keystone check (`is_character_vault` → `false`) | **3 of 75 red** |
+| order files before folders at a depth (sign flipped) | **2 of 75 red** |
+
+Each reverted by file backup, and the family re-confirmed green after.
+
+**`sync_manifest_sidecar_equivalence` — 74 rows, RED-FIRST on seven.** The
+manifest's degrade-to-null warnings quote a Zod issue MESSAGE, which reaches the
+operator, so the port reproduces the wording. The first draft GUESSED at it and
+the corpus caught three of four shapes wrong, which is the `cli-help-text-
+capture-not-extraction` lesson in a new place:
+
+| shape | guessed | v4, measured |
+|---|---|---|
+| `z.literal(1)` miss | `Invalid input: expected 1, received 2` | `Invalid input: expected 1` (no received clause, and it fires for an ABSENT key too) |
+| an absent key | `… received null` | `… received undefined` |
+| a bad entry `kind` | `Invalid input: expected object` | `Invalid option: expected one of "file"\|"folder"` |
+| an empty `storeId` | `Too small: expected string to have >=1 characters` | ✓ (the one guess that held) |
+
+The other four reds were ONE defect: `Option<Option<_>>` deserializes an
+explicit `null` to the OUTER `None` unless the field carries
+`deserialize_with = "double_option"`. The manifest writes `createdAt: null` for
+a file neither side can date and OMITS the key for a disk `touch` on a platform
+that cannot set a birthtime, and the two mean different things to the next run;
+`SyncAction::created_at` and both `ManifestEntry` nullable fields now carry the
+helper. (`api::types` keeps a private twin, not exported, so the sync family has
+its own.)
+
+The corpus grew mid-unit by eight rows once the wordings were visible —
+`version-missing`, `version-as-a-string`, `storeName-not-a-string`,
+`entry-kind-missing`, `entry-sha256-not-a-string`,
+`entry-createdAt-not-a-string`, `entry-createdAt-null-is-valid` (the one that
+PROVES the tri-state rather than the error), and a two-issue row that pins which
+issue `issues[0]` is.
+
+Gate for this commit (the whole workspace, `CARGO_INCREMENTAL=0`, `TZ=UTC`):
+fmt clean; clippy clean in BOTH feature sets; `cargo build --workspace` clean;
+`cargo test --workspace --no-fail-fast` **3,510 passed / 2 failed** over 589 test
+binaries, 495 honest `SKIP:` lines (families whose vars this lane withheld).
+**Both failures are OTHER LANES' designed reds, named as such in the drift
+ledger's §1 and in §R.5, and both were measured red on 2026-09-21 before this
+lane existed:** `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_
+checkouts` (the `.qtap` schema grew at `e7d77bb60` — **P4.D205's** re-vendor
+obligation) and `zod_version_guard::v4s_installed_zod_matches_the_recorded_
+version` (`4.5.4 → 4.6.5` at `6b0615807` — **P4.D211's**). Both compare against
+the LIVE v4 checkout rather than a pin, so no lane can make them green from its
+own branch. Both of this lane's families confirmed RUN by name.
+
+Versions: core 0.0.973, harness 0.0.866.
