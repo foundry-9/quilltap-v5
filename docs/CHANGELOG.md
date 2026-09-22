@@ -12,6 +12,59 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(scriptorium): one post-write re-chunk block, and image normalization moves inside the blob writer (v4 bug 159's image half) (P4.D209)
+
+_Versions: core 0.0.971, harness 0.0.864._
+
+**The post-write re-chunk, hoisted.** v4 `23da0b322` factors the chunk pass and
+the hard-link-group pass into one `reindexAfterDatabaseWrite`; v5 had the pair
+spelled out at both database-store writers and `file_ops::write_dest_bytes`
+carried neither, which is the other half of bug 156. One block now, called from
+all three. `write_dest_bytes`'s native-text branch is where v4 adds the call —
+measured from the commit's hunks, which are one import and one call, not the
+"both branches" the work order's prose expected; the binary arm has no
+counterpart.
+
+Two divergences re-recorded at the hoist. v4's two outer try/catch warn
+sentences have **no v5 counterpart by construction**: both halves are infallible
+by signature, and v4's own arms are unreachable except on a dynamic-import
+failure a statically linked binary cannot have. And v4's `QUILLTAP_JOB_CHILD`
+skip still does not port — v5's job runner is in-process, so the buffered-write
+condition it dodges cannot occur.
+
+**Bug 159's image half.** `is_lossless_webp` walks the RIFF chunk list verbatim
+(`VP8L` true, `VP8 ` false, the whole list walked so an extended container can
+hide the verdict behind `VP8X`/`ICCP`/`ALPH`, the odd-size pad byte, the
+over-length guard), with `LOSSLESS_WEBP_REENCODE_MIN_BYTES` at 512 KiB; a large
+lossless WebP now re-encodes to lossy where a lossy one never does.
+`transcode_to_webp` also gained v4's mime normalization (trim, lowercase, drop
+parameters) before the set lookup — v5 lowercased only, so a mime with
+parameters fell through to passthrough.
+
+`normalize_link_blob_image` is the new write-side chokepoint, called from
+`link_blob_content` BEFORE the sha, so the stored hash describes the bytes that
+actually land in the row; it rewrites `storedMimeType`, `relativePath` and
+`fileName` together, so a row can never claim to hold a PNG while holding WebP.
+The encoder is injected: a repository built without one stores the original
+bytes, which is byte-for-byte v4's behaviour when sharp throws.
+
+**No fifth host seam was needed** — measured, not assumed. `HostImageCodec`'s
+existing `WebpTranscoder::encode_webp` decodes through the `image` crate's
+format sniffer and `image-webp` handles a VP8L bitstream, so a lossless WebP
+already reaches the same lossy encoder every bitmap does.
+
+The five hand-written copies of `normalise_blob_relative_path` are now one, in
+v4's own home, with a census guarding the count: since `186eb09cb` that function
+is part of the write chokepoint, so a copy that drifts is a row whose path
+disagrees with its bytes.
+
+Three new families: `blob_transcode_lossless_webp_equivalence` (tier 1, a
+committed corpus of hand-built RIFF buffers against v4's real predicate),
+`normalize_blob_image_equivalence` (D19-shaped — the decision, mime, path, name,
+size direction and decoded dimensions, never the encoded bytes) and
+`blob_path_normaliser_census`.
+
+
 #### 2026-09-21 — fix(scriptorium): a caption survives an overwrite, a repoint retires its chunks, and a caption belongs to a path (v4 bugs 155, 156, 157) (P4.D209 T)
 
 _Versions: core 0.0.970, harness 0.0.863, web 0.0.159._

@@ -89,6 +89,13 @@ use crate::services::llm_logging::{
     log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
     LogResponse,
 };
+// P4.D209 OUT-OF-MANDATE — the one-home fold. v4 has a SINGLE
+// `normaliseBlobRelativePath` (`lib/mount-index/blob-transcode.ts`); v5 had
+// five copies, and `186eb09cb` makes this function part of the write-side
+// chokepoint, so a copy that drifts is a row whose path disagrees with its
+// bytes. The other four are deleted; this is the canonical one. Owner of this
+// file: preserve the import (a census guards the count).
+use crate::services::mount_index::blob_transcode::normalise_blob_relative_path;
 
 /// The tool output (v4 `ImageGenerationToolOutput`).
 #[derive(Clone, Debug, PartialEq)]
@@ -1134,25 +1141,6 @@ fn get_inherited_tags(
         // is never an embedding profile, so no tags are missed for saveGeneratedImage).
     }
     all
-}
-
-/// v4 `normaliseBlobRelativePath`: force a `.webp` extension when the stored mime
-/// is `image/webp` (the Lantern store's transcode path).
-fn normalise_blob_relative_path(relative_path: &str, stored_mime_type: &str) -> String {
-    if stored_mime_type != "image/webp" {
-        return relative_path.to_string();
-    }
-    if relative_path.to_lowercase().ends_with(".webp") {
-        return relative_path.to_string();
-    }
-    let last_dot = relative_path.rfind('.');
-    let last_slash = relative_path.rfind('/');
-    match last_dot {
-        Some(dot) if last_slash.map(|s| dot > s).unwrap_or(true) => {
-            format!("{}.webp", &relative_path[..dot])
-        }
-        _ => format!("{relative_path}.webp"),
-    }
 }
 
 /// v4 `sanitizeLeafName`: strip path components, replace unsafe chars with `_`,

@@ -336,8 +336,8 @@ fn doc_mount_write_metadata_matches_oracle() {
         }
     };
 
-    let spec_text = std::fs::read_to_string(spec_path())
-        .unwrap_or_else(|e| panic!("cannot read corpus: {e}"));
+    let spec_text =
+        std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("cannot read corpus: {e}"));
     let spec: Spec = serde_json::from_str(&spec_text).expect("parse corpus");
     let pinned: HashSet<String> = spec.pinned_timestamps.iter().cloned().collect();
 
@@ -485,8 +485,7 @@ fn doc_mount_write_metadata_matches_oracle() {
                 }
                 Op::ResolveLinks { paths } => {
                     let ids: Vec<String> = paths.iter().map(|p| blob_at(p).link_id).collect();
-                    let distinct =
-                        ids.iter().collect::<HashSet<_>>().len() == ids.len();
+                    let distinct = ids.iter().collect::<HashSet<_>>().len() == ids.len();
                     results.push(json!({
                         "op": i, "kind": "resolve-links",
                         "paths": paths, "linkIds": ids, "distinct": distinct,

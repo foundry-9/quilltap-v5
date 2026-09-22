@@ -423,6 +423,17 @@ fn write_dest_bytes(
             last_modified: None,
             created_at: None,
         })?;
+        // Bug 156 (v4 `23da0b322`): this writer is byte-preserving and has no
+        // chunking step of its own, so without the shared re-chunk an overwrite
+        // left the previous revision's chunks answering every semantic search.
+        // `emitDocumentWritten` alone only schedules EMBEDDING of chunks that
+        // already exist.
+        //
+        // v4 adds the call to THIS branch and to this branch only — the binary
+        // arm below has no counterpart, which is measured from the hunks, not
+        // inferred (the work order's "both branches" is prose; `23da0b322`'s
+        // `file-ops.ts` diff is one import plus one call at `:725`).
+        super::reindex_file::reindex_after_database_write(conn, &dest_mount.id, dest_rel);
         // v4 emitDocumentWritten — the watcher deferral (see module header).
         return Ok(content_sha);
     }

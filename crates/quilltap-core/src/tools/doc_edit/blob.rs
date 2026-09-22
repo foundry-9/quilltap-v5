@@ -46,6 +46,13 @@ use crate::doc_edit::DocEditScope;
 use crate::services::librarian_notifications::{
     LibrarianBlobWriteAnnouncement, LibrarianDeleteAnnouncement, LibrarianScope,
 };
+// P4.D209 OUT-OF-MANDATE — the one-home fold. v4 has a SINGLE
+// `normaliseBlobRelativePath` (`lib/mount-index/blob-transcode.ts`); v5 had
+// five copies, and `186eb09cb` makes this function part of the write-side
+// chokepoint, so a copy that drifts is a row whose path disagrees with its
+// bytes. The other four are deleted; this is the canonical one. Owner of this
+// file: preserve the import (a census guards the count).
+use crate::services::mount_index::blob_transcode::normalise_blob_relative_path;
 
 /// A resolved `{ mountPoint, path }` pair after projecting an optional `uri`.
 struct BlobTarget {
@@ -163,31 +170,6 @@ fn resolve_blob_mount_point_for_write(
             id: mp.id,
             name: mp.name,
         }))
-}
-
-/// v4 `normaliseBlobRelativePath` (`blob-transcode.ts`): rewrite a blob's
-/// relativePath so the extension matches the storedMimeType. Only rewrites when
-/// the stored type is `image/webp` and the path doesn't already end `.webp`. For
-/// the transcode PASSTHROUGH (stored mime == input mime, never `image/webp` unless
-/// the input already was) this is a no-op except for a genuine WebP upload.
-pub fn normalise_blob_relative_path(relative_path: &str, stored_mime_type: &str) -> String {
-    if stored_mime_type != "image/webp" {
-        return relative_path.to_string();
-    }
-    if relative_path.to_lowercase().ends_with(".webp") {
-        return relative_path.to_string();
-    }
-    // JS lastIndexOf over UTF-16 units; ASCII '.'/'/' are single-unit, so byte
-    // indices coincide with UTF-16 indices for these characters.
-    let last_dot = relative_path.rfind('.');
-    let last_slash = relative_path.rfind('/');
-    match last_dot {
-        None => format!("{relative_path}.webp"),
-        Some(dot) if last_slash.map(|s| dot < s).unwrap_or(false) => {
-            format!("{relative_path}.webp")
-        }
-        Some(dot) => format!("{}.webp", &relative_path[..dot]),
-    }
 }
 
 pub fn handle_write_blob(

@@ -1,0 +1,85 @@
+{
+  "_comment": "P4.D209 / v4 bug 159 (`186eb09cb`) \u2014 the RIFF chunk walk behind `isLosslessWebP`. A lossless WebP (a VP8L chunk) is worth re-encoding to lossy at quality 85 once it passes the 512 KiB floor; a lossy one never is. Everything here is hand-built so each arm of the walk has a case of its own: the fourcc verdicts, the extended container that hides the verdict behind other chunks, RIFF's odd-size pad byte, the over-length guard, and every shape that is not a WebP at all. Byte-for-byte the same buffers reach v4's real function and the Rust port, and the verdicts are compared exactly.",
+  "cases": [
+    {
+      "name": "vp8l_first",
+      "dataHex": "5249464610000000574542505650384c0400000061626364",
+      "why": "the plain lossless shape: VP8L is the first chunk"
+    },
+    {
+      "name": "vp8x_iccp_alph_vp8l",
+      "dataHex": "524946463a00000057454250565038580a00000010000000000000000000494343500400000069636321414c504803000000616263005650384c040000007778797a",
+      "why": "an extended file hiding VP8L behind VP8X/ICCP/ALPH \u2014 the reason the WHOLE chunk list is walked instead of only the first fourcc, and the ALPH payload is odd so the RIFF pad byte is on the path"
+    },
+    {
+      "name": "vp8_lossy",
+      "dataHex": "524946461600000057454250565038200a0000006c6f7373796279746573",
+      "why": "a lossy WebP: `VP8 ` ends the walk with false, it is never re-encoded"
+    },
+    {
+      "name": "vp8x_then_vp8_lossy",
+      "dataHex": "524946462800000057454250565038580a00000010000000000000000000565038200a0000006c6f7373796279746573",
+      "why": "the extended lossy shape \u2014 VP8X must not be mistaken for a verdict"
+    },
+    {
+      "name": "png",
+      "dataHex": "89504e470d0a1a0a00000000000000000000000000000000",
+      "why": "a PNG is not a RIFF container at all"
+    },
+    {
+      "name": "empty",
+      "dataHex": "",
+      "why": "no bytes"
+    },
+    {
+      "name": "too_short",
+      "dataHex": "524946460400000057454250",
+      "why": "twelve bytes \u2014 under the 16-byte floor, so the walk never starts"
+    },
+    {
+      "name": "riff_but_not_webp",
+      "dataHex": "5249464610000000415649206d6f76690400000061626364",
+      "why": "a RIFF container that is not a WebP"
+    },
+    {
+      "name": "not_riff",
+      "dataHex": "5249465808000000574542500000000000000000",
+      "why": "the magic is wrong"
+    },
+    {
+      "name": "truncated_mid_chunk",
+      "dataHex": "5249464610000000574542505650384c",
+      "why": "cut inside the first chunk header \u2014 `offset + 8 <= len` ends the walk"
+    },
+    {
+      "name": "size_past_end",
+      "dataHex": "524946460e0000005745425049434350ffff00006162",
+      "why": "a chunk whose declared length overruns the buffer: malformed, so false rather than a guess"
+    },
+    {
+      "name": "size_max_u32",
+      "dataHex": "524946460e0000005745425049434350ffffffff6162",
+      "why": "the same at u32::MAX \u2014 the arm that would wrap a Rust usize cursor back into the buffer if the addition were not saturating (JS doubles cannot)"
+    },
+    {
+      "name": "odd_chunk_then_vp8l",
+      "dataHex": "524946461e0000005745425049434350050000006162636465005650384c040000007778797a",
+      "why": "an odd-length chunk followed by VP8L: only the `size % 2` pad byte keeps the cursor on the next fourcc"
+    },
+    {
+      "name": "odd_chunk_missing_pad",
+      "dataHex": "524946461d00000057454250494343500500000061626364655650384c040000007778797a",
+      "why": "the same bytes with the pad byte ABSENT \u2014 the walk lands mid-fourcc and must terminate false rather than find VP8L by luck"
+    },
+    {
+      "name": "vp8l_after_two_extras",
+      "dataHex": "524946462c00000057454250565038580a00000010000000000000000000414e494d04000000616e696d5650384c010000007a00",
+      "why": "VP8L third, after a one-byte payload of its own (odd, padded)"
+    },
+    {
+      "name": "zero_length_chunk_then_vp8l",
+      "dataHex": "52494646180000005745425049434350000000005650384c0400000061626364",
+      "why": "a zero-length chunk advances the cursor by exactly eight"
+    }
+  ]
+}

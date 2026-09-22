@@ -68,33 +68,79 @@ pub(crate) fn insert_chunks(
     Ok(())
 }
 
-/// v4 `writeDatabaseDocument`'s post-write chunk pass (P4.6BK) — the call
-/// `reindexSingleFile(mountPointId, rel, '')` at `database-store.ts:148`,
-/// wrapped so the two `db` write sites need no extractor: a database-backed
-/// store chunks from `doc_mount_documents.content` (or a blob's already-
-/// extracted text), so the pdf/docx extractor seam is never consulted. Should
-/// the mount somehow not be database-backed, the fs branch fails on the empty
-/// `absolute_path` and warns — the same outcome as v4's `fs.stat('')` throw
-/// landing in its catch-all.
+/// v4's post-write chunk pass for a database-backed store — the single-file
+/// half (P4.6BK): `reindexSingleFile(mountPointId, rel, '')`, wrapped so the
+/// `db` write sites need no extractor. A database-backed store chunks from
+/// `doc_mount_documents.content` (or a blob's already-extracted text), so the
+/// pdf/docx extractor seam is never consulted. Should the mount somehow not be
+/// database-backed, the fs branch fails on the empty `absolute_path` and warns
+/// — the same outcome as v4's `fs.stat('')` throw landing in its catch-all.
 ///
-/// Best-effort like v4: chunk failure never fails the write, only warns.
-///
-/// v4 guards this pass with `process.env.QUILLTAP_JOB_CHILD !== '1'` because
-/// its forked job child buffers writes (read-your-writes does not hold, so the
-/// content this would read back isn't committed yet). v5's job runner is
-/// in-process by locked decision (no fork, no buffered writes), so the guard's
-/// precondition cannot occur and v5 always chunks. Deliberate divergence: where
-/// v4 runs `doc_write_file` inside a forked child (autonomous turns) it defers
-/// chunking to the next database rescan; v5 chunks immediately — the same rows
-/// the rescan would build, just sooner. This matches the enclave-step oracle,
-/// which runs v4 UNFORKED.
-pub fn reindex_after_database_write(conn: &Connection, mount_point_id: &str, relative_path: &str) {
+/// Callers want [`reindex_after_database_write`], which runs this AND the
+/// hard-link group pass; this is the half, exposed for the group pass's own
+/// per-sibling use.
+fn reindex_single_file_after_database_write(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) {
     reindex_single_file(
         conn,
         mount_point_id,
         relative_path,
         "",
         &super::converters::RefusingTextExtractor,
+    );
+}
+
+/// v4 `reindexAfterDatabaseWrite` (`lib/mount-index/post-write-reindex.ts`,
+/// `23da0b322`) — the ONE post-write block every database-store writer calls.
+///
+/// A write to a database store records the document row and repoints the link;
+/// it does not build the chunks that semantic search, `doc_grep`'s fallback and
+/// every character's RAG context read. Each writer used to carry its own copy of
+/// the follow-up — and `file_ops::write_dest_bytes` carried none at all, which
+/// is half of bug 156. This is the one block they all call:
+///
+///   1. chunk the just-written content, so it is immediately searchable;
+///   2. re-chunk every member of its hard-link group — the write has already
+///      repointed them at the new content row, but chunks are per LINK, so
+///      without this a sibling path keeps serving the previous revision's
+///      chunks to search and to character context.
+///
+/// **Never throws**, and in v5 it cannot: both halves are infallible by
+/// signature, logging their own failures and returning. That is worth stating
+/// because v4 wraps each call in its own try/catch with a warn sentence
+/// (`Failed to chunk database document after write` / `Failed to re-index
+/// hard-link group after database write`) — and those two arms are **measured
+/// unreachable in v4 too**: `reindexSingleFile` swallows everything in its own
+/// catch (`Failed to re-index file after edit`, which v5 emits from
+/// [`reindex_single_file`]), and `reindexLinkGroupSiblings` swallows per
+/// sibling. v4's outer catches can fire only if the dynamic `await import(...)`
+/// of the helper module fails, which a statically linked v5 has no analogue
+/// for. So the two sentences have no v5 counterpart by construction, not by
+/// omission.
+///
+/// **The `QUILLTAP_JOB_CHILD` divergence, re-recorded at the hoist.** v4 opens
+/// this helper with `if (process.env.QUILLTAP_JOB_CHILD === '1') return;`
+/// because inside its forked job child a repository write is buffered until the
+/// batch ships home, so `reindexSingleFile` would read back content that is not
+/// committed yet; in-child writers leave chunking to the next database rescan,
+/// which now finds them because `link_document_content` zeroes `chunk_count`
+/// whenever it repoints a link. **v5's job runner is in-process by locked
+/// decision** — no fork, no buffered writes, read-your-writes holds — so the
+/// guard's precondition cannot occur and v5 always chunks. Measured on the one
+/// path that matters: the chunk-on-write job runs on the same connection as the
+/// writer it follows, so what it reads back IS committed. The net effect where
+/// v4 runs `doc_write_file` inside a forked child (autonomous turns) is that v5
+/// builds the same rows the rescan would have built, just sooner. This matches
+/// the enclave-step oracle, which runs v4 UNFORKED.
+pub fn reindex_after_database_write(conn: &Connection, mount_point_id: &str, relative_path: &str) {
+    reindex_single_file_after_database_write(conn, mount_point_id, relative_path);
+    super::link_groups::reindex_link_group_siblings_after_database_write(
+        conn,
+        mount_point_id,
+        relative_path,
     );
 }
 

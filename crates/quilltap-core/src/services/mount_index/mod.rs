@@ -18,6 +18,7 @@ pub mod folder_ops;
 pub mod general_state;
 pub mod link_groups;
 pub mod list;
+pub mod normalize_blob_image;
 pub mod path_utils;
 pub mod read_file;
 pub mod refresh;

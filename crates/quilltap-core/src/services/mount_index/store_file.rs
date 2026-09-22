@@ -362,6 +362,7 @@ pub fn store_mount_file(
             stored_mime_type: original_mime_type.clone(),
             size_bytes: input.data.len() as i64,
             sha256: sha256_hex(&input.data),
+            transcoded: false,
         }
     };
 

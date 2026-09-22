@@ -213,33 +213,13 @@ pub fn write_database_document(
         created_at: None,
     })?;
 
-    // Chunk the just-written content so it is immediately searchable (v4
-    // `database-store.ts:133-155`). The write above only records the document +
-    // link row (chunkCount 0); without this the embedding scheduler would find
-    // no chunks, and the document would stay unsearchable until a manual
-    // rescan. reindexSingleFile reads the content back from doc_mount_documents
-    // and (re)builds the link's chunks, so an overwrite re-chunks too.
-    // Best-effort: a chunk failure never fails the write, only warns. v4's
-    // `QUILLTAP_JOB_CHILD` skip does not port — v5's job runner is in-process,
-    // so the buffered-write condition it dodges cannot occur (see
-    // `reindex_after_database_write`).
+    // The ONE post-write block (v4 `database-store.ts:164` → `reindexAfterData
+    // baseWrite`, `23da0b322`): chunk the just-written content so it is
+    // immediately searchable, then re-chunk every hard-link sibling the write
+    // repointed. Both halves were spelled out here and in the repo-method twin
+    // until the hoist; the P4.D41 unification review had already found the group
+    // pass reaching only one of the two, which is the shape the hoist retires.
     crate::services::mount_index::reindex_file::reindex_after_database_write(
-        conn,
-        mount_point_id,
-        &rel,
-    );
-
-    // `link_document_content` above has already repointed every member of this
-    // file's hard-link group at the new content row, but chunks are per-link:
-    // without this pass a sibling path would keep serving the previous
-    // revision's chunks to search and to character context (v4
-    // `database-store.ts:158`, its own try/log after the chunk pass). This
-    // free-function twin of the repo's `write_database_document` is the path
-    // the doc-edit tools, Document Mode, scenarios and the characters API land
-    // on — the P4.D41 unification review found the group pass had reached only
-    // the repo-method twin, exactly the courier fold-episode "twin write
-    // paths, one got the fix" shape.
-    crate::services::mount_index::link_groups::reindex_link_group_siblings_after_database_write(
         conn,
         mount_point_id,
         &rel,

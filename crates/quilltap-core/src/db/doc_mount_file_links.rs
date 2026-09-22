@@ -568,11 +568,34 @@ pub struct DocMountLinkTextMatch {
 
 pub struct DocMountFileLinksRepository<'c> {
     conn: &'c Connection,
+    /// The WebP encoder [`Self::link_blob_content`] normalizes images through
+    /// (v4 `186eb09cb`'s chokepoint). v4 imports `sharp` at module scope; v5
+    /// injects it, and `None` — the default every existing construction site
+    /// keeps — means this host has no encoder, so the write stores the original
+    /// bytes. That is byte-for-byte v4's own behaviour when `sharp` throws, so
+    /// the un-wired default is a faithful arm rather than a hole; see
+    /// [`crate::services::mount_index::normalize_blob_image`].
+    blob_codec: Option<&'c dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
 }
 
 impl<'c> DocMountFileLinksRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
-        Self { conn }
+        Self {
+            conn,
+            blob_codec: None,
+        }
+    }
+
+    /// [`Self::new`] with the host's WebP encoder wired, so `link_blob_content`
+    /// can normalize image bytes before hashing them (v4 `186eb09cb`).
+    pub fn with_blob_codec(
+        conn: &'c Connection,
+        codec: &'c dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
+    ) -> Self {
+        Self {
+            conn,
+            blob_codec: Some(codec),
+        }
     }
 
     /// The plain base-repository `create(data, {id})` this table never needed
@@ -652,13 +675,11 @@ impl<'c> DocMountFileLinksRepository<'c> {
 
     /// v4 `writeDatabaseDocument` (`database-store.ts:102`): normalize the path,
     /// detect the (text-only) file type, compute the content sha + lengths,
-    /// land the bytes via [`Self::link_document_content`], then run v4's
-    /// post-write chunk pass (P4.6BK) so the document is immediately
-    /// searchable — best-effort, an overwrite re-chunks. The mtime-conflict
-    /// guard (`expectedMtime`) remains out of scope (a standing deferral of its
-    /// own). v4's `QUILLTAP_JOB_CHILD` skip does not port — v5's job runner is
-    /// in-process, so the buffered-write condition it dodges cannot occur (see
-    /// `reindex_after_database_write`).
+    /// land the bytes via [`Self::link_document_content`], then run v4's one
+    /// post-write block (`reindex_after_database_write`) so the document — and
+    /// every hard-link sibling the write repointed — is immediately searchable.
+    /// Best-effort, and an overwrite re-chunks. The mtime-conflict guard
+    /// (`expectedMtime`) remains out of scope (a standing deferral of its own).
     pub fn write_database_document(
         &self,
         mount_point_id: &str,
@@ -691,21 +712,12 @@ impl<'c> DocMountFileLinksRepository<'c> {
             created_at: None,
         })?;
 
-        // Chunk the just-written content (v4 `database-store.ts:133-155`) — the
-        // link lands with chunkCount 0 and stays semantically unsearchable
-        // until chunked. Best-effort: a failure warns, never fails the write.
+        // The ONE post-write block (v4 `database-store.ts:164`, `23da0b322`):
+        // chunk the just-written content — the link lands with `chunkCount = 0`
+        // and stays semantically unsearchable until chunked — then re-chunk
+        // every hard-link sibling the write repointed. Best-effort: a failure
+        // warns, never fails the write.
         crate::services::mount_index::reindex_file::reindex_after_database_write(
-            self.conn,
-            mount_point_id,
-            &rel,
-        );
-
-        // `link_document_content` has already repointed every member of this
-        // file's hard-link group at the new content row, but chunks are
-        // per-link: without this pass a sibling path would keep serving the
-        // previous revision's chunks to search and to character context (v4
-        // `database-store.ts:158`, its own try/log after the chunk pass).
-        crate::services::mount_index::link_groups::reindex_link_group_siblings_after_database_write(
             self.conn,
             mount_point_id,
             &rel,
@@ -1014,12 +1026,39 @@ impl<'c> DocMountFileLinksRepository<'c> {
         // v4 lazily creates the blob table on first repo access (P4.6y parity
         // for stores minted at runtime).
         crate::db::doc_mount_blobs::DocMountBlobsRepository::ensure_table(self.conn)?;
+
+        // Normalize image bytes BEFORE the hash is computed, so the stored
+        // sha256 describes the bytes that actually land in the row (v4
+        // `186eb09cb`, `doc-mount-file-links.repository.ts:934`). This is the
+        // chokepoint: `relative_path`, `file_name` and `stored_mime_type` are
+        // rewritten with the bytes, so the row can never claim to hold a PNG
+        // while holding WebP.
+        let normalized =
+            crate::services::mount_index::normalize_blob_image::normalize_link_blob_image(
+                &crate::services::mount_index::normalize_blob_image::NormalizableBlob {
+                    relative_path: input.relative_path.clone(),
+                    file_name: input.file_name.clone(),
+                    stored_mime_type: input.stored_mime_type.clone(),
+                    sha256: input.sha256.clone(),
+                    data: input.data.clone(),
+                },
+                input.normalize_images,
+                self.blob_codec,
+            );
+        // Every read below goes through these five, never through `input`'s.
+        let (relative_path, file_name, stored_mime_type, data) = (
+            normalized.relative_path,
+            normalized.file_name,
+            normalized.stored_mime_type,
+            normalized.data,
+        );
+
         let now = now_iso();
-        let size_bytes = input.data.len() as i64;
+        let size_bytes = data.len() as i64;
         // The content-addressed store is authoritative about its own hashes:
         // recompute sha256 from the actual bytes rather than trusting the caller
         // (v4 lines 577-598 — warns on disagreement, uses the computed value).
-        let computed = hex::encode(Sha256::digest(&input.data));
+        let computed = hex::encode(Sha256::digest(&data));
 
         let file_type = input.file_type.as_deref().unwrap_or("blob");
         // Default per-link conversion lifecycle: a `blob` fileType has no
@@ -1065,11 +1104,11 @@ impl<'c> DocMountFileLinksRepository<'c> {
         //    carries the stored folder casing so the link's path never disagrees
         //    with the folder rows except in the leaf name.
         let (folder_id, canonical_dir) =
-            ensure_link_folder_id(&tx, &input.mount_point_id, &input.relative_path, &now)?;
+            ensure_link_folder_id(&tx, &input.mount_point_id, &relative_path, &now)?;
         let canonical_rel = if canonical_dir.is_empty() {
-            input.file_name.clone()
+            file_name.clone()
         } else {
-            format!("{canonical_dir}/{}", input.file_name)
+            format!("{canonical_dir}/{}", file_name)
         };
 
         // 2. upsert doc_mount_blobs by fileId (the bytes land here, once). A
@@ -1097,8 +1136,8 @@ impl<'c> DocMountFileLinksRepository<'c> {
                         file_id,
                         computed,
                         size_bytes,
-                        input.stored_mime_type,
-                        input.data,
+                        stored_mime_type,
+                        data,
                         now,
                         now
                     ],
@@ -1228,7 +1267,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     file_id,
                     input.mount_point_id,
                     canonical_rel,
-                    input.file_name,
+                    file_name,
                     folder_id,
                     input.original_file_name,
                     input.original_mime_type,
@@ -3510,5 +3549,179 @@ mod find_by_ids_with_content_tests {
             vec!["l1".to_string(), "l2".to_string(), "l3".to_string()],
             "every chunk's rows are concatenated into one result"
         );
+    }
+}
+
+#[cfg(test)]
+mod normalize_before_the_sha_tests {
+    use super::*;
+    use crate::services::mount_index::blob_transcode::WebpTranscoder;
+
+    /// A deterministic stand-in for the host encoder: it "transcodes" any input
+    /// to a fixed, recognisably different payload. Byte parity with sharp is
+    /// neither possible nor the point (D19) — what this pins is the ORDER of
+    /// the write's own steps.
+    struct ScriptedCodec;
+    impl WebpTranscoder for ScriptedCodec {
+        fn encode_webp(&self, _bytes: &[u8], _quality: u8) -> Result<Vec<u8>, String> {
+            Ok(b"SCRIPTED-WEBP-PAYLOAD".to_vec())
+        }
+    }
+
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, sha256 TEXT NOT NULL,
+                fileSizeBytes REAL, fileType TEXT NOT NULL, source TEXT NOT NULL,
+                createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_folders (
+                id TEXT PRIMARY KEY NOT NULL, mountPointId TEXT NOT NULL, path TEXT NOT NULL,
+                name TEXT NOT NULL, parentId TEXT, createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_file_links (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, linkGroupId TEXT,
+                mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL, fileName TEXT NOT NULL,
+                folderId TEXT, originalFileName TEXT, originalMimeType TEXT,
+                description TEXT, descriptionUpdatedAt TEXT, conversionStatus TEXT NOT NULL,
+                conversionError TEXT, plainTextLength REAL, extractedText TEXT,
+                extractedTextSha256 TEXT, extractionStatus TEXT NOT NULL, extractionError TEXT,
+                chunkCount REAL NOT NULL DEFAULT 0, allowEmbed REAL NOT NULL DEFAULT 1,
+                allowCharacterRead REAL NOT NULL DEFAULT 1,
+                allowCharacterWrite REAL NOT NULL DEFAULT 1,
+                lastModified TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_blobs (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, sha256 TEXT NOT NULL,
+                sizeBytes REAL NOT NULL, storedMimeType TEXT NOT NULL, data BLOB NOT NULL,
+                createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn png_input() -> LinkBlobInput {
+        LinkBlobInput {
+            mount_point_id: "mp-1".to_string(),
+            relative_path: "art/plate.png".to_string(),
+            file_name: "plate.png".to_string(),
+            file_type: None,
+            original_file_name: Some("plate.png".to_string()),
+            original_mime_type: Some("image/png".to_string()),
+            stored_mime_type: "image/png".to_string(),
+            sha256: "0".repeat(64),
+            data: b"pretend-png-bytes".to_vec(),
+            normalize_images: true,
+            description: None,
+            conversion_status: None,
+            extracted_text: None,
+            extracted_text_sha256: None,
+            extraction_status: None,
+            last_modified: None,
+            created_at: None,
+        }
+    }
+
+    /// v4 `186eb09cb` normalizes INSIDE `linkBlobContent` and BEFORE the hash,
+    /// "so the stored sha256 describes the bytes that actually land in the row".
+    /// Every consequence of that ordering is asserted here at once: the file
+    /// row's sha, the blob row's sha, the stored bytes, the stored mime, and the
+    /// link's rewritten path and name. Hashing first would leave the row
+    /// advertising a hash of bytes it does not hold — the defect the
+    /// content-addressed store cannot survive, since dedup is keyed on it.
+    #[test]
+    fn the_stored_sha_describes_the_normalized_bytes() {
+        let conn = scratch();
+        let codec = ScriptedCodec;
+        let repo = DocMountFileLinksRepository::with_blob_codec(&conn, &codec);
+        let result = repo.link_blob_content(&png_input()).unwrap();
+
+        let expected = hex::encode(Sha256::digest(b"SCRIPTED-WEBP-PAYLOAD"));
+
+        let (file_sha,): (String,) = conn
+            .query_row(
+                "SELECT sha256 FROM doc_mount_files WHERE id = ?1",
+                params![result.file_id],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        assert_eq!(
+            file_sha, expected,
+            "doc_mount_files.sha256 must hash the STORED bytes"
+        );
+
+        let (blob_sha, blob_mime, blob_data, blob_size): (String, String, Vec<u8>, i64) = conn
+            .query_row(
+                "SELECT sha256, storedMimeType, data, sizeBytes FROM doc_mount_blobs WHERE id = ?1",
+                params![result.blob_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, f64>(3)? as i64)),
+            )
+            .unwrap();
+        assert_eq!(blob_sha, expected);
+        assert_eq!(blob_mime, "image/webp");
+        assert_eq!(blob_data, b"SCRIPTED-WEBP-PAYLOAD");
+        assert_eq!(blob_size, b"SCRIPTED-WEBP-PAYLOAD".len() as i64);
+
+        let (rel, name): (String, String) = conn
+            .query_row(
+                "SELECT relativePath, fileName FROM doc_mount_file_links WHERE id = ?1",
+                params![result.link_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            rel, "art/plate.webp",
+            "the path must track the stored bytes"
+        );
+        assert_eq!(name, "plate.webp", "the name must track the path");
+    }
+
+    /// The other half of the same guard, and the one that makes the first
+    /// meaningful: with no encoder wired the write is byte-preserving, so a
+    /// green assertion above cannot come from the row simply never moving.
+    #[test]
+    fn without_a_codec_the_write_is_byte_preserving() {
+        let conn = scratch();
+        let repo = DocMountFileLinksRepository::new(&conn);
+        let result = repo.link_blob_content(&png_input()).unwrap();
+
+        let expected = hex::encode(Sha256::digest(b"pretend-png-bytes"));
+        let (blob_sha, blob_mime): (String, String) = conn
+            .query_row(
+                "SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?1",
+                params![result.blob_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(blob_sha, expected);
+        assert_eq!(blob_mime, "image/png");
+        let (rel,): (String,) = conn
+            .query_row(
+                "SELECT relativePath FROM doc_mount_file_links WHERE id = ?1",
+                params![result.link_id],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        assert_eq!(rel, "art/plate.png");
+    }
+
+    /// `normalize_images: false` reaches the repository, not just the helper —
+    /// the `.qtap` import's byte-fidelity guarantee rides on this exact path.
+    #[test]
+    fn the_flag_is_honoured_through_the_repository() {
+        let conn = scratch();
+        let codec = ScriptedCodec;
+        let repo = DocMountFileLinksRepository::with_blob_codec(&conn, &codec);
+        let mut input = png_input();
+        input.normalize_images = false;
+        let result = repo.link_blob_content(&input).unwrap();
+
+        let (blob_sha, blob_mime): (String, String) = conn
+            .query_row(
+                "SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?1",
+                params![result.blob_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(blob_sha, hex::encode(Sha256::digest(b"pretend-png-bytes")));
+        assert_eq!(blob_mime, "image/png");
     }
 }
