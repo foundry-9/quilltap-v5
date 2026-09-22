@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(web): the streamed swipe's dispatch wire, end to end over /api/events (P4.D207)
+
+_Versions: web 0.0.159._
+
+The `stream` flag's serde envelope, the frames' transport, and v4's
+switch-branch ordering are all invisible to a core-side family. This drives
+`POST /api/dispatch` against a canned spine and reads `/api/events`.
+
+The happy path proves the whole §S.2 contract on the real wire: four beats in
+v4's order (`regenerating` once and only once), each content chunk its own delta
+frame, and the route's terminal `{done, message}` carrying the persisted swipe —
+whose content is the concatenation of the deltas and whose token triple came off
+the terminal chunk. The `status` object carries `kind`, as v4's encoder does.
+
+A SWITCH (`swipeIndex` present) with `stream: true` narrates nothing: v4 reads
+the flag only after the switch branch has returned. The three refusals answer
+their ordinary JSON errors and publish no frame, and an absent `stream` key
+decodes as false and reaches the same guard with the same sentence rather than a
+serde complaint.
+
+⚠ The bundle wires `swipe_generate` — unlike the `chat_send_smoke` factory this
+is modelled on. With it `None` the readiness gate answers "swipe generation not
+assembled" before the handler runs at all, which is what the first run of this
+test measured; every assertion would have been reading that refusal. The target
+message is discovered from the fixture rather than hard-coded, and the chat is
+the populated `c860cf74…`, not the smoke chat, which is empty until
+`chat_send_smoke` sends into it.
+
+`dispatch_wrong_type_census` gains its `MessageSwipe.stream` row (`V4::Query`,
+like `MessageDelete.skip_confirmation` from the same route's `searchParams`).
+The excluded-count constant does not move: a `bool` named `stream` is not an
+`*_id`, so the route-identifier rule never saw it — 441 → 441.
+
 #### 2026-09-21 — feat(salon): the swipe's generation is a watched stream, and it says so while it happens (P4.D207)
 
 _Versions: core 0.0.970, harness 0.0.863, host 0.0.140._

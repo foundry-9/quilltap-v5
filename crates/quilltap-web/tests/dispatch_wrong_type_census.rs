@@ -334,6 +334,21 @@ const CENSUS: &[Row] = &[
             "silently reroutes to `handleGenerateSwipe`"
         ),
     },
+    // P4.D207 (v4 `f564b0de3`): the streamed swipe's flag. `V4::Query`, not a
+    // body key — v4 reads `req.nextUrl.searchParams.get('stream') === '1'`
+    // (`route.ts:267`), so every non-`'1'` spelling is simply false and there is
+    // no wrong-JSON-type behaviour to adjudicate. The `MessageDelete`
+    // `skip_confirmation` row two above is the same shape, from the same route's
+    // same `searchParams`. The excluded-count constant does NOT move: a `bool`
+    // named `stream` is not an `*_id`, so `is_route_identifier` never saw it and
+    // this is a census ROW, not an exclusion (441 → 441).
+    Row {
+        variant: "MessageSwipe",
+        field: "stream",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: "`messages/[id]/route.ts:267` `searchParams.get('stream') === '1'`",
+    },
     Row {
         variant: "ChatSend",
         field: "content",
