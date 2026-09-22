@@ -142946,3 +142946,20 @@ compresses `chat_messages.content` (P4.D203), so the raw read returned a
 Buffer and the WHOLE family failed to parse (`invalid type: map, expected a
 string`) — every case, not only the new one. It now reads `qt_text(content)`;
 the text comparison is unchanged.
+
+### Unit 7 — Tier 2 item 6: the repository path (harness 0.0.896)
+
+`normalize_blob_image_equivalence::the_repository_path_matches_the_oracle_png_row`:
+the `photo.png` seed through `DocMountBlobsRepository::with_blob_codec(conn,
+&HostImageCodec).create(…)` (→ `link_blob_content`) over an in-memory
+connection; the row it READS BACK (the facade's readback — unit 1's fix)
+compared with v4's `png_drags_mime_path_name_hash` row (decision, mime,
+`art/photo.webp`, `photo.webp`, sha changed, smaller, 240×170), then
+`doc_mount_blobs.sha256` and `doc_mount_files.sha256` both asserted equal to
+sha256(stored bytes). Oracle regenerated from the pin AS RUN:
+`cd /tmp/qt-v4-pin-p4104-f45a517a9 && QT_FIXTURE_NORMALIZE_BLOB_IMAGE=$V5W/harness/oracle/fixtures/normalize-blob-image
+$N/npx tsx $V5W/harness/oracle/cases/normalize-blob-image.ts > /tmp/p4104/oracle-normalize-blob-image.ndjson`
+(1,951 bytes); both tests green. The oracle case itself is unchanged (the
+repository case reuses the function row — a repository-level oracle would
+need a real-DB v4 case, and the function row is already the v4 answer for
+the same bytes).

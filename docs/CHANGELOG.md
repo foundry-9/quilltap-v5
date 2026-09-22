@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the blob-normalization differential through the repository (P4.104 unit 7)
+
+_Versions: harness 0.0.896._
+
+`normalize_blob_image_equivalence` gains a case that writes the decodable PNG
+through `DocMountBlobsRepository::with_blob_codec(…).create(…)` over a real
+connection and compares the row it reads back with v4's function row, then
+checks that the normalized sha lands in both `doc_mount_files` and
+`doc_mount_blobs` and hashes the stored bytes.
+
 #### 2026-09-22 — fix(images): the vault, Lantern and generate-image writers transcode for real, and decodable rows for the generated-image sites (P4.104 unit 6)
 
 _Versions: core 0.0.996, harness 0.0.895._

@@ -266,3 +266,124 @@ fn normalize_link_blob_image_matches_oracle() {
         CASES.len() - changed
     );
 }
+
+/// P4.104 (Tier 2 item 6) — the REPOSITORY path, not the function. The same
+/// decodable PNG goes through `DocMountBlobsRepository::with_blob_codec(…)
+/// .create(…)` → `DocMountFileLinksRepository::link_blob_content` over a real
+/// connection, and what the row reads back as must equal v4's
+/// `png_drags_mime_path_name_hash` row. This is what proves the facade's
+/// readback (it answers the `.webp` row normalization moved the write to — the
+/// P4.104 unit 1 fix) and that the normalized sha reaches BOTH
+/// `doc_mount_files.sha256` and `doc_mount_blobs.sha256`, describing the stored
+/// bytes.
+#[test]
+fn the_repository_path_matches_the_oracle_png_row() {
+    use quilltap_core::db::doc_mount_blobs::{CreateBlobInput, DocMountBlobsRepository};
+
+    let oracle_path = match std::env::var("QT_ORACLE_NORMALIZE_BLOB_IMAGE") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!(
+                "SKIP: set QT_ORACLE_NORMALIZE_BLOB_IMAGE to the oracle NDJSON (see header)."
+            );
+            return;
+        }
+    };
+    let oracle: Oracle = serde_json::from_str(
+        std::fs::read_to_string(&oracle_path)
+            .unwrap_or_else(|e| panic!("read oracle: {e}"))
+            .trim(),
+    )
+    .expect("parse oracle");
+    let want = oracle
+        .results
+        .iter()
+        .find(|r| r.name == "png_drags_mime_path_name_hash")
+        .expect("the oracle carries the PNG row");
+
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, sha256 TEXT NOT NULL,
+            fileSizeBytes REAL, fileType TEXT NOT NULL, source TEXT NOT NULL,
+            createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
+         CREATE TABLE doc_mount_folders (
+            id TEXT PRIMARY KEY NOT NULL, mountPointId TEXT NOT NULL, path TEXT NOT NULL,
+            name TEXT NOT NULL, parentId TEXT, createdAt TEXT NOT NULL,
+            updatedAt TEXT NOT NULL);
+         CREATE TABLE doc_mount_file_links (
+            id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, linkGroupId TEXT,
+            mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL, fileName TEXT NOT NULL,
+            folderId TEXT, originalFileName TEXT, originalMimeType TEXT,
+            description TEXT, descriptionUpdatedAt TEXT, conversionStatus TEXT NOT NULL,
+            conversionError TEXT, plainTextLength REAL, extractedText TEXT,
+            extractedTextSha256 TEXT, extractionStatus TEXT NOT NULL, extractionError TEXT,
+            chunkCount REAL NOT NULL DEFAULT 0, allowEmbed REAL NOT NULL DEFAULT 1,
+            allowCharacterRead REAL NOT NULL DEFAULT 1,
+            allowCharacterWrite REAL NOT NULL DEFAULT 1,
+            lastModified TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+    )
+    .unwrap();
+
+    let data = std::fs::read(fixtures_dir().join("photo.png")).unwrap();
+    let sha = hex::encode(Sha256::digest(&data));
+    let codec = HostImageCodec;
+    let found = DocMountBlobsRepository::with_blob_codec(&conn, &codec)
+        .create(&CreateBlobInput {
+            mount_point_id: "mp-1".to_string(),
+            relative_path: "art/photo.png".to_string(),
+            original_file_name: Some("photo.png".to_string()),
+            original_mime_type: Some("image/png".to_string()),
+            stored_mime_type: "image/png".to_string(),
+            sha256: sha.clone(),
+            data: data.clone(),
+            description: None,
+            file_name: Some("photo.png".to_string()),
+            file_type: None,
+            normalize_images: true,
+        })
+        .expect("the normalized write reads back through the facade");
+
+    let stored = DocMountBlobsRepository::new(&conn)
+        .read_data_by_file_id(&found.file_id)
+        .unwrap()
+        .expect("the stored bytes");
+    let (width, height) = codec.measure(&stored);
+    let ours = Row {
+        name: want.name.clone(),
+        changed: found.sha256 != sha,
+        stored_mime_type: found.stored_mime_type.clone(),
+        relative_path: found.relative_path.clone(),
+        file_name: found.file_name.clone(),
+        sha_changed: found.sha256 != sha,
+        bytes_grew_or_shrank: match stored.len().cmp(&data.len()) {
+            std::cmp::Ordering::Equal => "same",
+            std::cmp::Ordering::Less => "smaller",
+            std::cmp::Ordering::Greater => "larger",
+        }
+        .to_string(),
+        width,
+        height,
+    };
+    assert_eq!(
+        &ours, want,
+        "the repository path diverged from v4's function row"
+    );
+
+    let stored_sha = hex::encode(Sha256::digest(&stored));
+    let file_sha: String = conn
+        .query_row(
+            "SELECT sha256 FROM doc_mount_files WHERE id = ?1",
+            [&found.file_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        found.sha256, stored_sha,
+        "doc_mount_blobs.sha256 hashes the stored bytes"
+    );
+    assert_eq!(
+        file_sha, stored_sha,
+        "doc_mount_files.sha256 hashes the stored bytes"
+    );
+    println!("OK: the repository path matched v4's PNG row and propagated the stored sha.");
+}
