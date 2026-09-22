@@ -147,6 +147,51 @@ interface CaseSpec {
   seedFileBytes: boolean;
   /** [P4.D46] v4 `createBackup(userId, {compact: true})` (`7189a968`). */
   compact?: boolean;
+  /** P4.106 item 6: plant `chat_informs` rows on the copy before the backup. */
+  plantInforms?: boolean;
+}
+
+/**
+ * P4.106 item 6 — the inform plant, on the per-run COPY (the committed
+ * `system-data-*` triple is never touched): a PENDING and a CONSUMED row on
+ * each of the user's first two chats (sorted by id), written through v4's REAL
+ * `ChatInformsRepository.create` with ids + stamps pinned. The Rust family
+ * writes the same cells through `ChatInformsRepository::create`.
+ */
+async function plantInforms(userId: string): Promise<void> {
+  const { ensureCollection, rawQuery } = await import('@/lib/database/manager');
+  const { ChatInformsRepository } = await import(
+    '@/lib/database/repositories/chat-informs.repository'
+  );
+  const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+  await ensureCollection('chat_informs', ChatInformSchema);
+  const chats = (await rawQuery('SELECT id FROM chats WHERE userId = ? ORDER BY id', [
+    userId,
+  ])) as Array<{ id: string }>;
+  if (chats.length < 2) throw new Error(`inform plant needs two chats, found ${chats.length}`);
+  const repo = new ChatInformsRepository();
+  for (const [i, chat] of chats.slice(0, 2).entries()) {
+    const n = i + 1;
+    for (const consumed of [false, true]) {
+      const k = consumed ? 2 : 1;
+      await repo.create(
+        {
+          chatId: chat.id,
+          batchId: `1c0000${n}${k}-0000-4000-8000-0000000000b${k}`,
+          participantId: `1c0000${n}0-0000-4000-8000-0000000000a${n}`,
+          contentMarkdown: consumed ? `Consumed passage ${n}.` : `Pending passage ${n}.`,
+          recordMessageId: null,
+          consumedAt: consumed ? '2026-01-03T00:00:00.000Z' : null,
+          consumedByMessageId: consumed ? `1c0000${n}${k}-0000-4000-8000-0000000000d${k}` : null,
+        } as never,
+        {
+          id: `1c0000${n}${k}-0000-4000-8000-00000000000${k}`,
+          createdAt: '2026-01-02T00:00:00.000Z',
+          updatedAt: consumed ? '2026-01-03T00:00:00.000Z' : '2026-01-02T00:00:00.000Z',
+        },
+      );
+    }
+  }
 }
 
 const CASES: CaseSpec[] = [
@@ -155,6 +200,10 @@ const CASES: CaseSpec[] = [
   // The compact arm: memory embeddings nulled, the six derived embedding
   // data files ABSENT from the tree (not empty), manifest.compact stamped.
   { name: 'backup_compact', seedFileBytes: true, compact: true },
+  // P4.106 item 6: the backup's `data/chat-informs.json` over PLANTED rows —
+  // pending and consumed alike (v4 `backup-service.ts:233-236` reads every
+  // row of every chat) — and the manifest's `chatInforms` count.
+  { name: 'backup_with_informs', seedFileBytes: true, plantInforms: true },
 ];
 
 async function runCase(
@@ -193,6 +242,7 @@ async function runCase(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  if (c.plantInforms) await plantInforms(spec.userId);
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {

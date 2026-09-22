@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): planted informs in the backup archive + the pre-4.10 restore arm (P4.106 item 6, part 1)
+
+_Versions: harness 0.0.898._
+
+P4.106 item 6 (part 1). `system_backup` gains `backup_with_informs`: four
+`chat_informs` rows (a pending and a consumed row on each of the user's first
+two chats) planted on the per-run copy of the `system-data` triple, through
+v4's real repository on the oracle side and v5's on this side. The archive
+tree diff now covers a non-empty `data/chat-informs.json` and the manifest's
+`chatInforms` count; dropping the collector's `chat_informs` read fails it.
+
+`system_restore_state` pins the pre-4.10-archive arm by name: every committed
+restore archive predates Inform, and each restore must succeed, leave the
+target's `chat_informs` table present and empty on both sides, and report
+`chatInforms: 0` in both summaries. Reading the file as required instead of
+optional fails the first restore.
+
 #### 2026-09-22 — test(harness): regenerate_swipe_tier3's Inform re-apply rows (P4.106 item 3)
 
 _Versions: harness 0.0.897._

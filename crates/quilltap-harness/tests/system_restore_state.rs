@@ -1239,6 +1239,16 @@ fn system_restore_state_equivalence() {
         // [P4.D158] v4 `2edd823c0`'s four bag-key arms, within-tree.
         assert_bag_keys_survive(name, &got_state, &mut failures);
 
+        // [P4.106 item 6] the pre-4.10-archive arm.
+        assert_pre_410_archive_restores_no_informs(
+            name,
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
+
         let literals = archive_literals(&zip, &host.temp_dir());
         compare_case(
             name,
@@ -1268,6 +1278,51 @@ fn system_restore_state_equivalence() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// [P4.106 item 6] **The pre-4.10-archive arm.** Every committed restore
+/// archive predates Inform (`e7d77bb60`): none carries `data/chat-informs.json`
+/// (measured over all fifteen zips). A restore of one must succeed (the loop's
+/// `expect` is the no-error half), leave the target's `chat_informs` table
+/// PRESENT (both apps provision it) and EMPTY on both sides, and report
+/// `chatInforms: 0` in both summaries. The whole-table diff already compares
+/// the empty table; this pins it by name so the arm cannot be vacuous — an
+/// absent table on either side reddens here rather than passing as "no rows".
+fn assert_pre_410_archive_restores_no_informs(
+    name: &str,
+    summary: &RestoreSummary,
+    want_summary: &Value,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    match got.get("main").and_then(|t| t.get("chat_informs")) {
+        None => failures.push(format!(
+            "[{name}] v5's restored target has no chat_informs table"
+        )),
+        Some(rows) if !rows.is_empty() => failures.push(format!(
+            "[{name}] a pre-4.10 archive restored {} chat_informs row(s) on v5",
+            rows.len()
+        )),
+        Some(_) => {}
+    }
+    match want["main"]["chat_informs"].as_array() {
+        None => failures.push(format!(
+            "[{name}] v4's restored target has no chat_informs table"
+        )),
+        Some(rows) if !rows.is_empty() => failures.push(format!(
+            "[{name}] a pre-4.10 archive restored {} chat_informs row(s) on v4",
+            rows.len()
+        )),
+        Some(_) => {}
+    }
+    let got_n = serde_json::to_value(summary).expect("summary")["chatInforms"].clone();
+    if got_n != Value::from(0) || want_summary["chatInforms"] != Value::from(0) {
+        failures.push(format!(
+            "[{name}] summary chatInforms: v5 {got_n}, v4 {} (both must be 0)",
+            want_summary["chatInforms"]
+        ));
+    }
 }
 
 /// Reopen an already-provisioned instance (the baseline dump closes it first, so

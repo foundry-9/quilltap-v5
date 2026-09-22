@@ -143350,3 +143350,41 @@ disabled → both tests red (`no canned stream registered`); a consume of the
 re-applied rows BEFORE the context build → `inform_reapply_whole_group`
 request miss; a consume of the chat's consumed rows AFTER the swipe is saved
 → `table chat_informs mismatch` (the order's "consume informs on a swipe").
+
+### Unit 8 — item 6 part 1: `system_backup` + the pre-4.10 restore arm
+
+**`system_backup`** — NEW case `backup_with_informs` (3 → 4 cases, files
+seeded as `backup_full`): `plantInforms` in `system-backup.test.ts` + the
+Rust `plant_informs` write the same cells on the per-run COPY (the
+committed triple is copied first, and was `cmp`-verified untouched after the
+regen): per the user's first two chats sorted by id, a pending
+(`1c0000n1-…`) and a consumed (`1c0000n2-…`, `consumedAt`/`updatedAt`
+2026-01-03) row, through v4's REAL `ensureCollection` +
+`ChatInformsRepository.create` and v5's `ensure_chat_informs_table` +
+`ChatInformsRepository::create`. v4 measured: `data/chat-informs.json`
+carries all four (pending AND consumed — `backup-service.ts:233-236` reads
+every row of every chat), `manifest.counts.chatInforms: 4`; the three older
+cases carry `[]` / 0. v5 byte-identical (the archive tree diff) + a named
+non-vacuity assert. Regen AS RUN: `TMPO=/tmp/p4106/qt-sysbackup-oracle`,
+the triple copied to `/tmp/p4106/fx/`, cwd the pin, `-- "system-backup\.
+test\.ts$"` → 4 rows. Mutation: the collector's `if table_exists(main,
+"chat_informs")` → `false && …` → `[backup_with_informs] the four planted
+informs: []` red (this is the order's "omit `chatInforms` from the export
+marshal" — see the `system_export` note below).
+
+**`system_restore_state`** — `assert_pre_410_archive_restores_no_informs`
+on all 19 cases: measured first that NONE of the fifteen committed zips
+carries `data/chat-informs.json` (`unzip -l | grep -c` = 0 each); then each
+restore must succeed (the loop's `expect`), leave `main.chat_informs`
+PRESENT (both apps provision it) and EMPTY on both sides, and report
+`chatInforms: 0` in both summaries. Regen AS RUN: `TMPO=/tmp/p4106/
+qt-sysrestore-oracle`, the zips copied to `/tmp/p4106/restore-archives`,
+`QT_RESTORE_ARCHIVES` at the copy, `-- "system-restore\.test\.ts$"` → 25
+rows; `system_restore_state` (2), `system_restore_equivalence`,
+`system_restore_guards_equivalence` all green, zero SKIP. Mutation:
+`opt("data/chat-informs.json")` → `req(…)` → `restore succeeded: "data/
+chat-informs.json: No such file or directory"` red at the first case.
+A restore of an archive WITH informs is not in this arm — every restore
+fixture is a committed zip and §R.12 allows one new committed artifact this
+round (the `.qtap` bundle); `backup_uuid_remap` already carries the
+with-informs remap.

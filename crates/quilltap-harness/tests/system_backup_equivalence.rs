@@ -227,6 +227,52 @@ fn open_fixture(scratch: &Path) -> Db {
     .expect("open fixture db")
 }
 
+/// P4.106 item 6 — the oracle's `plantInforms`, cell for cell: a PENDING and a
+/// CONSUMED row on each of the user's first two chats (sorted by id), on the
+/// per-run COPY only.
+fn plant_informs(db: &Db) {
+    use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
+    db.write_blocking(|w| {
+        let conn = w.main().connection();
+        quilltap_core::db::chat_informs::ensure_chat_informs_table(conn)?;
+        let mut stmt = conn.prepare("SELECT id FROM chats WHERE userId = ?1 ORDER BY id")?;
+        let chats: Vec<String> = stmt
+            .query_map([USER], |r| r.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+        assert!(chats.len() >= 2, "inform plant needs two chats");
+        let repo = ChatInformsRepository::new(conn);
+        for (i, chat) in chats.iter().take(2).enumerate() {
+            let n = i + 1;
+            for consumed in [false, true] {
+                let k = if consumed { 2 } else { 1 };
+                repo.create(&ChatInformCreate {
+                    id: format!("1c0000{n}{k}-0000-4000-8000-00000000000{k}"),
+                    chat_id: chat.clone(),
+                    batch_id: format!("1c0000{n}{k}-0000-4000-8000-0000000000b{k}"),
+                    participant_id: format!("1c0000{n}0-0000-4000-8000-0000000000a{n}"),
+                    content_markdown: if consumed {
+                        format!("Consumed passage {n}.")
+                    } else {
+                        format!("Pending passage {n}.")
+                    },
+                    record_message_id: None,
+                    created_at: "2026-01-02T00:00:00.000Z".into(),
+                    updated_at: if consumed {
+                        "2026-01-03T00:00:00.000Z".into()
+                    } else {
+                        "2026-01-02T00:00:00.000Z".into()
+                    },
+                    consumed_at: consumed.then(|| "2026-01-03T00:00:00.000Z".to_string()),
+                    consumed_by_message_id: consumed
+                        .then(|| format!("1c0000{n}{k}-0000-4000-8000-0000000000d{k}")),
+                })?;
+            }
+        }
+        Ok(())
+    })
+    .expect("plant chat_informs on the fixture copy");
+}
+
 /// Every regular file under `root`, `/`-joined and relative.
 fn walk(root: &Path) -> Vec<String> {
     fn rec(root: &Path, dir: &Path, out: &mut Vec<String>) {
@@ -434,7 +480,8 @@ fn system_backup_equivalence() {
     let mut failures = Vec::new();
     for case in &cases {
         let name = case["name"].as_str().unwrap();
-        let seed_file_bytes = name == "backup_full" || name == "backup_compact";
+        let seed_file_bytes =
+            name == "backup_full" || name == "backup_compact" || name == "backup_with_informs";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the six derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -443,6 +490,9 @@ fn system_backup_equivalence() {
 
         let scratch = fresh_scratch(name);
         let db = open_fixture(&scratch.root);
+        if name == "backup_with_informs" {
+            plant_informs(&db);
+        }
 
         // The oracle seeds the user file's bytes into its data dir for the
         // `backup_full` case only; the other case proves warn-and-continue.
@@ -530,6 +580,22 @@ fn system_backup_equivalence() {
                 staged.skipped_files,
                 vec!["portrait.png".to_string()],
                 "[{name}] the file whose bytes are gone must be named"
+            );
+        }
+
+        // P4.106 item 6 — non-vacuity for the plant: the staged
+        // `data/chat-informs.json` carries all four planted rows (pending AND
+        // consumed), and the manifest counts them. The tree diff below is what
+        // compares the bytes to v4's.
+        if name == "backup_with_informs" {
+            let text = std::fs::read_to_string(staging.join("data/chat-informs.json"))
+                .expect("data/chat-informs.json staged");
+            let rows: Vec<Value> = serde_json::from_str(&text).expect("chat-informs.json");
+            assert_eq!(rows.len(), 4, "[{name}] the four planted informs: {text}");
+            assert_eq!(
+                manifest["counts"]["chatInforms"],
+                Value::from(4),
+                "[{name}] the manifest's chatInforms count"
             );
         }
 
