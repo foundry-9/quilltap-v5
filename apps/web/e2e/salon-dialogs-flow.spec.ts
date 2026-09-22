@@ -162,6 +162,13 @@ const SEARCH_REPLACE_LANDED = true;
  */
 const P4D60_CHAT_GET_PROJECTION_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY. `chatRebuildSummary` (§S.1, P4.D212's server half — bug
+ * 161, `e7821606f`) does not exist on this lane's branch. FLIPPED at the
+ * round's unification (the `a2db63da7` bug-161/162 catch-up round).
+ */
+const P4D212_SERVER_LANDED = false;
+
 test.describe('P4.9E3C — Rename Chat', () => {
   test('renames through the real chat update, and reverts the automatic-naming tick when the title cannot be generated', async ({
     page,
@@ -772,5 +779,124 @@ test.describe('P4.42 — Web search', () => {
     await expect(card).toBeVisible({ timeout: 10_000 });
     await expect(card.locator('.qt-badge-success').first()).toHaveText('Success');
     await expect(page.getByText('Found 4 search results:')).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+/** The three summary columns `chatRebuildSummary` clears, straight off the chat read. */
+async function readSummaryState(
+  page: Page,
+  chatId: string,
+): Promise<{
+  contextSummary: string | null;
+  summaryAnchorMessageIds: unknown;
+  lastSummaryTurn: number | null;
+}> {
+  const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
+  expect(resp.ok(), `chatGet → ${resp.status()}`).toBe(true);
+  const body = (await resp.json()) as {
+    data?: {
+      chat?: {
+        contextSummary?: string | null;
+        summaryAnchorMessageIds?: unknown;
+        lastSummaryTurn?: number | null;
+      };
+    };
+  };
+  return {
+    contextSummary: body.data?.chat?.contextSummary ?? null,
+    summaryAnchorMessageIds: body.data?.chat?.summaryAnchorMessageIds,
+    lastSummaryTurn: body.data?.chat?.lastSummaryTurn ?? null,
+  };
+}
+
+test.describe('P4.D213 — Rebuild Summary', () => {
+  // ACTIVATE-AT-UNIFY over P4.D212's `chatRebuildSummary` verb.
+  test.skip(!P4D212_SERVER_LANDED, 'chatRebuildSummary lands with P4.D212');
+
+  test('the Organize entry clears the summary and enqueues a rebuild job; a dismissed dialog changes nothing', async ({
+    page,
+  }) => {
+    const chatId = await openChat(page, 'Solo Voyage');
+
+    // Plant a stale summary so the beat proves it CLEARS one rather than
+    // merely reading a chat that already has none.
+    const planted = await page.request.post('/api/dispatch', {
+      data: {
+        type: 'chatUpdate',
+        chatId,
+        chat: {
+          contextSummary: 'Stale summary text from a prior fold.',
+          summaryAnchorMessageIds: ['some-message-id'],
+          lastSummaryTurn: 4,
+        },
+      },
+    });
+    expect(planted.ok(), `plant → ${planted.status()}`).toBe(true);
+    expect((await readSummaryState(page, chatId)).contextSummary).toBe(
+      'Stale summary text from a prior fold.',
+    );
+
+    await openSidebarSection(page, 'Organize');
+    const entry = page.getByRole('button', { name: 'Rebuild Summary…' });
+    await expect(entry).toBeVisible({ timeout: 10_000 });
+    await expect(entry).toHaveAttribute(
+      'title',
+      'Discard the running summary and rebuild it from the start of the conversation',
+    );
+
+    // Dismissed first — asserted before a confirm can ever succeed, so the
+    // beat cannot pass by never having been able to rebuild at all.
+    page.once('dialog', (d) => void d.dismiss());
+    await entry.click();
+    expect((await readSummaryState(page, chatId)).contextSummary).toBe(
+      'Stale summary text from a prior fold.',
+    );
+
+    // Confirmed: v4's sentence, the dispatch's own jobId, the success toast,
+    // and the cleared columns — read IMMEDIATELY after the toast, before the
+    // mock LLM's fold cadence can refill anything (the corpus's `CONTEXT_
+    // SUMMARY` job runs on the host pump once enqueued).
+    let asked = '';
+    page.once('dialog', (d) => {
+      asked = d.message();
+      void d.accept();
+    });
+    const rebuilding = page.waitForResponse(
+      async (r) => {
+        if (!r.url().includes('/api/dispatch')) return false;
+        return (r.request().postData() ?? '').includes('"chatRebuildSummary"');
+      },
+      { timeout: 15_000 },
+    );
+    await entry.click();
+    const resp = await rebuilding;
+    const body = (await resp.json()) as { data?: { jobId?: string } };
+    const jobId = body.data?.jobId;
+    expect(jobId, 'the dispatch returns a jobId').toBeTruthy();
+    expect(asked).toBe(
+      'Discard this chat’s running summary and rebuild it from the beginning? The summary will be empty until the next few folds refill it.',
+    );
+
+    await expect(
+      page.locator('[role="toast-container"] div.qt-toast-success', {
+        hasText: 'Summary cleared — the Librarian is rebuilding it.',
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    expect(await readSummaryState(page, chatId)).toEqual({
+      contextSummary: null,
+      summaryAnchorMessageIds: [],
+      lastSummaryTurn: 0,
+    });
+
+    const jobResp = await page.request.post('/api/dispatch', {
+      data: { type: 'systemJobGet', jobId },
+    });
+    expect(jobResp.ok(), `systemJobGet → ${jobResp.status()}`).toBe(true);
+    const jobBody = (await jobResp.json()) as {
+      data?: { job?: { type?: string; payload?: { chatId?: string } } };
+    };
+    expect(jobBody.data?.job?.type).toBe('CONTEXT_SUMMARY');
+    expect(jobBody.data?.job?.payload?.chatId).toBe(chatId);
   });
 });

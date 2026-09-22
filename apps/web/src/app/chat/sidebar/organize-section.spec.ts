@@ -50,6 +50,7 @@ function stubClient(
       (rename)="fired.push('rename')"
       (mergeIn)="fired.push('merge')"
       (openState)="fired.push('state')"
+      (rebuildSummary)="fired.push('rebuildSummary')"
       (openGallery)="fired.push('gallery')"
     />
   `,
@@ -89,13 +90,14 @@ describe('OrganizeSection', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows Copy ID, State and Gallery (numbered from the first paint — v4 ChatSidebar.tsx:1676) — and Edit Enclave only for an autonomous room', async () => {
+  it('shows Copy ID, State, Rebuild Summary… and Gallery (numbered from the first paint — v4 ChatSidebar.tsx:1676) — and Edit Enclave only for an autonomous room', async () => {
     const fixture = await render();
     expect(labels(fixture)).toEqual([
       'Copy ID',
       'Rename',
       'State…',
       'Merge In…',
+      'Rebuild Summary…',
       'Export',
       'Export Markdown',
       'Gallery (0)',
@@ -103,12 +105,15 @@ describe('OrganizeSection', () => {
 
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
-    // Merge In… is HIDDEN in an autonomous room (v4 :1566 `&& !isAutonomousRoom`).
+    // Merge In… is HIDDEN in an autonomous room (v4 :1566 `&& !isAutonomousRoom`);
+    // Rebuild Summary… is NOT (v4 :1561 — only the server's 409 on a RUNNING
+    // room refuses it, and Merge In…'s own turn-loop reason doesn't apply).
     expect(labels(fixture)).toEqual([
       'Edit Enclave',
       'Copy ID',
       'Rename',
       'State…',
+      'Rebuild Summary…',
       'Export',
       'Export Markdown',
       'Gallery (0)',
@@ -120,13 +125,29 @@ describe('OrganizeSection', () => {
     fixture.componentInstance.isAutonomousRoom.set(true);
     fixture.detectChanges();
 
-    for (const label of ['Edit Enclave', 'Rename', 'State…', 'Gallery (0)']) {
+    for (const label of ['Edit Enclave', 'Rename', 'State…', 'Rebuild Summary…', 'Gallery (0)']) {
       const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
         (b) => (b as HTMLButtonElement).textContent!.trim() === label,
       ) as HTMLButtonElement;
       button.click();
     }
-    expect(fixture.componentInstance.fired).toEqual(['enclave', 'rename', 'state', 'gallery']);
+    expect(fixture.componentInstance.fired).toEqual([
+      'enclave',
+      'rename',
+      'state',
+      'rebuildSummary',
+      'gallery',
+    ]);
+  });
+
+  it('the Rebuild Summary… entry carries v4\'s title verbatim', async () => {
+    const fixture = await render();
+    const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (b) => (b as HTMLButtonElement).textContent!.trim() === 'Rebuild Summary…',
+    ) as HTMLButtonElement;
+    expect(button.getAttribute('title')).toBe(
+      'Discard the running summary and rebuild it from the start of the conversation',
+    );
   });
 
   it('downloads the Markdown transcript by anchor-click, as v4 does', async () => {

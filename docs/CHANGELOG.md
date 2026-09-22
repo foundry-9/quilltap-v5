@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(spa): "Rebuild Summary…" in the Salon's Organize drawer (P4.D213, bug 161)
+
+_Versions: SPA 0.5.748._
+
+Gives the Salon v4's remedy for a context summary gone wrong (bug 161's most
+visible symptom: an invented speaker name carried forward fold after fold).
+`ChatRebuildSummaryRequest` joins `core-contract.ts`'s `CoreRequest` union
+beside `ChatRegenerateTitleRequest`; `rebuildChatSummary(core, chatId)` in
+`chat-admin.api.ts` sends it and returns the job id. The Organize drawer
+gains "Rebuild Summary…" at v4's position (after Merge In…, before Export)
+with v4's title, icon and label — rendered in an autonomous room too, unlike
+Merge In…, since only a *running* room's 409 refuses it. The Salon's handler
+confirms with `window.confirm` (v4's promise-based `showConfirmation`, the
+established divergence), dispatches, and on success toasts "Summary cleared
+— the Librarian is rebuilding it." and kicks the same-tab queue nudge; on a
+server refusal it toasts `Failed to rebuild the summary: <the server's
+sentence>` (the 409 on a running room, 400 with no connection profiles, 500);
+a non-Error throw toasts the bare fallback. No self-invalidation — the
+server's `chats` realtime publish reaches the Salon through the existing
+`chatKeys.detail` subscription.
+
+Specs pin the request bytes, all four confirm/dispatch branches, the entry's
+position and autonomous-room visibility, the queue nudge, and the absence of
+self-invalidation; five mutation proofs run and reverted (hiding the entry
+in an autonomous room, reordering it after Export, dropping the queue nudge,
+dropping the server-sentence prefix, adding a self-invalidation call — each
+reddened exactly its target test). A live Playwright beat is gated behind
+`P4D212_SERVER_LANDED = false`, flipped at the round's unification once the
+server half (P4.D212) lands the `chatRebuildSummary` verb.
+
+Consumed no committed fixture; touched nothing outside `apps/web/**`.
 #### 2026-09-22 — docs(porting): the P4.D212 lane record and order status (P4.D212)
 
 _Docs-only change._

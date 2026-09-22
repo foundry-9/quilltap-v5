@@ -494,6 +494,23 @@ export interface ChatRegenerateTitleRequest {
   chatId: string;
 }
 
+/**
+ * Discard the chat's running context summary and let the ordinary fold
+ * cadence rebuild it from turn 1 — the operator's remedy for a summary gone
+ * wrong, most notably a speaker name the fold model invented and then
+ * carried forward (v4 `POST …?action=rebuild-summary`, bug 161, `e7821606f`).
+ *
+ * `lastFullRebuildTurn` is deliberately **not** cleared: zeroing it would
+ * route any chat past turn 50 into the single-shot `forceRegenerate` path,
+ * which will not fit a cheap model's context window on a long chat. Refuses
+ * `409` on a running autonomous room (its own turn loop owns the summary
+ * cadence) and `400` when the user has no connection profiles.
+ */
+export interface ChatRebuildSummaryRequest {
+  type: 'chatRebuildSummary';
+  chatId: string;
+}
+
 /** Attach a tag (v4 `POST …?action=add-tag`). */
 export interface ChatAddTagRequest {
   type: 'chatAddTag';
@@ -2565,6 +2582,7 @@ export type CoreRequest =
   | ChatRngRequest
   | ChatUpdateToolSettingsRequest
   | ChatRegenerateTitleRequest
+  | ChatRebuildSummaryRequest
   | ChatAddTagRequest
   | ChatRemoveTagRequest
   | ChatBulkReattributeRequest

@@ -325,6 +325,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (rename)="rename.emit()"
             (mergeIn)="mergeIn.emit()"
             (openState)="openState.emit()"
+            (rebuildSummary)="rebuildSummary.emit()"
             (openGallery)="openGallery.emit()"
           />
         </qt-collapsible-card>
@@ -427,6 +428,7 @@ export class ChatSidebar implements OnInit {
   readonly rename = output<void>();
   readonly mergeIn = output<void>();
   readonly openState = output<void>();
+  readonly rebuildSummary = output<void>();
   readonly openGallery = output<void>();
 
   // --- Edit Content section ---

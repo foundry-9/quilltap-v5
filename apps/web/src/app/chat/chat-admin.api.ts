@@ -72,6 +72,21 @@ export async function regenerateChatTitle(core: CoreClient, chatId: string): Pro
   return String(data['title'] ?? '');
 }
 
+/**
+ * §1 `ChatRebuildSummary` — the Organize drawer's "Rebuild Summary…" entry
+ * (v4 `useSummaryActions.ts`, bug 161, `e7821606f`).
+ *
+ * Discards the chat's running context summary and enqueues a fresh
+ * `CONTEXT_SUMMARY` job to rebuild it from turn 1; returns the job's id.
+ * Rejects with a {@link CoreDispatchError} on a refusal — the Salon caller
+ * reads `err.message` for the toast (the 409 on a running autonomous room,
+ * the 400 with no connection profiles, the 500 catch-all).
+ */
+export async function rebuildChatSummary(core: CoreClient, chatId: string): Promise<string> {
+  const data = await core.dispatchData({ type: 'chatRebuildSummary', chatId });
+  return String(data['jobId'] ?? '');
+}
+
 /** v4's `roleFilter` values (`BulkCharacterReplaceModal.tsx:49`). */
 export type RoleFilter = 'ASSISTANT' | 'USER' | 'both';
 

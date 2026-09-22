@@ -4071,3 +4071,141 @@ describe('SalonConversation — an explicit control refused mid-turn says so (bu
     ).toEqual([]);
   });
 });
+
+describe('SalonConversation — Rebuild Summary (P4.D213, v4 useSummaryActions.ts, bug 161)', () => {
+  type Host = { onRebuildSummary(): Promise<void> };
+  const CONFIRM_SENTENCE =
+    'Discard this chat’s running summary and rebuild it from the beginning? The summary will be empty until the next few folds refill it.';
+
+  function client(
+    dispatchData: (req: { type: string; [k: string]: unknown }) => Promise<unknown>,
+  ): Partial<CoreClient> {
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: chatDetail() } };
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+        };
+      }
+      return { type: 'ack', data: {} };
+    });
+    return {
+      events$: new Subject<ScopedEvent>().asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expect: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a dismissed confirm dispatches nothing and raises no toast', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = await render(
+      client(async (req) => {
+        seen.push(req);
+        return {};
+      }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const before = toasts().length;
+
+    await (fixture.componentInstance as unknown as Host).onRebuildSummary();
+
+    expect(window.confirm).toHaveBeenCalledWith(CONFIRM_SENTENCE);
+    expect(seen.some((r) => r.type === 'chatRebuildSummary')).toBe(false);
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('a confirmed dispatch clears the summary, toasts success, and kicks the queue', async () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    const fixture = await render(
+      client(async (req) => {
+        seen.push(req);
+        if (req.type === 'chatRebuildSummary') return { success: true, jobId: 'job-1' };
+        return {};
+      }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let queueKicked = false;
+    window.addEventListener('quilltap:queue-change', () => (queueKicked = true), { once: true });
+    const before = toasts().length;
+
+    await (fixture.componentInstance as unknown as Host).onRebuildSummary();
+
+    // The component's other panels read plenty else through `dispatchData`
+    // (the background resolver, informs, the gallery count…) — narrow to the
+    // one request this action itself sends.
+    expect(seen.filter((r) => r.type === 'chatRebuildSummary')).toEqual([
+      { type: 'chatRebuildSummary', chatId: 'chat-1' },
+    ]);
+    expect(toasts().slice(before)).toEqual([
+      { type: 'success', message: 'Summary cleared — the Librarian is rebuilding it.' },
+    ]);
+    expect(queueKicked).toBe(true);
+  });
+
+  it('does not invalidate queries itself — the server\'s realtime publish reaches the existing chatKeys.detail subscription', async () => {
+    const fixture = await render(
+      client(async (req) => (req.type === 'chatRebuildSummary' ? { jobId: 'job-1' } : {})),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const queryClient = TestBed.inject(QueryClient);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    invalidate.mockClear();
+
+    await (fixture.componentInstance as unknown as Host).onRebuildSummary();
+
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('a server refusal toasts "Failed to rebuild the summary: <the server\'s sentence>"', async () => {
+    const fixture = await render(
+      client(async (req) => {
+        if (req.type === 'chatRebuildSummary') {
+          throw new Error('Pause the room before rebuilding its summary.');
+        }
+        return {};
+      }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const before = toasts().length;
+
+    await (fixture.componentInstance as unknown as Host).onRebuildSummary();
+
+    expect(toasts().slice(before)).toEqual([
+      {
+        type: 'error',
+        message: 'Failed to rebuild the summary: Pause the room before rebuilding its summary.',
+      },
+    ]);
+  });
+
+  it('a non-Error throw toasts the bare fallback, with no sentence appended', async () => {
+    const fixture = await render(
+      client(async (req) => {
+        if (req.type === 'chatRebuildSummary') {
+          throw 'connection reset';
+        }
+        return {};
+      }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const before = toasts().length;
+
+    await (fixture.componentInstance as unknown as Host).onRebuildSummary();
+
+    expect(toasts().slice(before)).toEqual([
+      { type: 'error', message: 'Failed to rebuild the summary' },
+    ]);
+  });
+});

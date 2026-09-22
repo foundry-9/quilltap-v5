@@ -141857,3 +141857,141 @@ tauri, fixture-sanitizer, SPA. The unifier recounts (§R.8).
 `4e1a8e061` is NO-PORT-RATIFIED on this file list; the rest of its six files
 (CHANGELOG, `.claude/commands/update-documentation.md`, the bug-162 file) are
 the standing NO-PORT class or P4.D214's.
+## Lane record — P4.D213: "Rebuild Summary…", bug 161's SPA half (2026-09-22)
+
+Branch `claude/rebuild-summary-spa-600eeb`, from `main` `fc63905e`. §R.2
+freshness probe PASS at lane start (branch `main`, HEAD `a2db63da7`, both
+logs empty, tree CLEAN on the v4 checkout). No Rust oracle: the SPA has none
+(`spa-has-no-zod`); every v4 string below is a fresh `git show
+e7821606f:<path>` read, re-verified before typing.
+
+### What landed (Tier 1, items 1–5, all five)
+
+1. **`ChatRebuildSummaryRequest`** (`core-contract.ts`, beside
+   `ChatRegenerateTitleRequest`; the `CoreRequest` union member next to it)
+   — §S.1 verbatim, doc comment carrying v4's `API.md` paragraph (the
+   `lastFullRebuildTurn` why, read at `e7821606f`).
+2. **`rebuildChatSummary(core, chatId): Promise<string>`**
+   (`chat-admin.api.ts`) over `core.dispatchData`, returning `jobId`; a new
+   `chat-admin.api.spec.ts` pins `{ type: 'chatRebuildSummary', chatId:
+   'chat-1' }` (the `chat-rename-modal.spec.ts:134` shape) and the rejection
+   path.
+3. **The Organize entry** (`organize-section.ts`): `Rebuild Summary…`
+   (U+2026), `title="Discard the running summary and rebuild it from the
+   start of the conversation"`, icon `refresh`, `qt-tool-palette-button`,
+   between the `@if (!isAutonomousRoom())` Merge-In block and Export —
+   OUTSIDE that `@if`, so it renders in an autonomous room too (v4's
+   position is "after Continue Elsewhere and Merge In…"; Continue Elsewhere
+   is v5's one still-unported entry, so "after Merge In…" is the whole
+   translation). New `rebuildSummary = output<void>()`, threaded through
+   `chat-sidebar.ts` (not separately named in the order's file list but
+   inside its "apps/web/** whole" grant — the re-export every sibling
+   output already needed). `organize-section.spec.ts` grown: the two
+   existing label-order tests gain the entry (present in BOTH the
+   non-autonomous and autonomous rows, unlike Merge In…), `reports each
+   entry to the Salon` fires it, and a new case pins the `title` attribute
+   verbatim.
+4. **The Salon handler** (`salon-conversation.ts` `onRebuildSummary`):
+   `window.confirm('Discard this chat’s running summary and rebuild it from
+   the beginning? The summary will be empty until the next few folds refill
+   it.')` (U+2019 in `chat’s`, the `typeof window !== 'undefined'` guard
+   this file's own `onDelete` already uses) → cancel = no dispatch → success
+   = `toasts.showSuccess('Summary cleared — the Librarian is rebuilding
+   it.')` + `notifyQueueChange()` → `err instanceof Error` (every
+   `CoreDispatchError`, which `dispatchData` throws uniformly for every
+   refusal AND every transport-level failure, `.message` always populated)
+   = `` `Failed to rebuild the summary: ${err.message}` `` → anything else
+   thrown = the bare `'Failed to rebuild the summary'`. Five new specs in
+   `salon-conversation.spec.ts` (a new describe block): dismissed dialog
+   dispatches nothing; confirmed dispatch sends exactly one
+   `chatRebuildSummary` request, toasts success, and fires the
+   `quilltap:queue-change` window event; the handler calls
+   `queryClient.invalidateQueries` ZERO times (no self-invalidation — the
+   server's `chats` realtime publish reaches the existing `chatKeys.detail`
+   subscription); a server refusal toasts the colon-prefixed sentence; a
+   non-Error throw toasts the bare fallback.
+5. **The live beat**, gated: `salon-dialogs-flow.spec.ts` gains
+   `P4D212_SERVER_LANDED = false` beside the file's other `*_LANDED`
+   constants (the `P49K2_SERVER_LANDED` precedent) and a
+   `test.describe('P4.D213 — Rebuild Summary', …)` with `test.skip(!
+   P4D212_SERVER_LANDED, …)`. Plants a stale `contextSummary` on "Solo
+   Voyage" through `chatUpdate` (the `salon-scenario-flow.spec.ts` /
+   `salon-streaming-avatar-flow.spec.ts` precedent for planting arbitrary
+   chat-bag fields in e2e setup — not run in this lane, so unverified
+   against the real server; flagged for the unifier's first live run),
+   dismisses once (nothing changes), then confirms: reads the dispatch
+   response's `jobId`, the success toast, the three cleared columns
+   (`contextSummary` null, `summaryAnchorMessageIds` `[]`,
+   `lastSummaryTurn` 0) read immediately (before the mock LLM's fold cadence
+   can refill anything), and a `systemJobGet` confirming a `CONTEXT_SUMMARY`
+   job row with the right `chatId` in its payload.
+
+### Deferred (Tier 2, item 6) — loud, not silent
+
+**The running-autonomous-room error-toast beat was NOT built.** Producing a
+deterministic RUNNING autonomous room under the e2e mock is its own
+apparatus (`forcing-a-deterministic-turn-in-a-salon-e2e-beat`,
+`salon-autonomous-entry.spec.ts`'s fixture room) and this lane judged it out
+of proportion to a should-land item when the sentence is already covered:
+the unit spec's "a server refusal toasts…" case exercises the identical
+`Pause the room before rebuilding its summary.` string through a mocked
+`CoreDispatchError`. If a lane later builds that deterministic room for
+another beat, a third e2e arm here would be cheap to add on top of it — not
+done now.
+
+### Tier 3 — restated, untouched
+
+Continue Elsewhere remains the drawer's one unported entry
+(`organize-section.ts`'s existing doc comment, unchanged in substance).
+No modal confirm component was introduced — the `window.confirm` divergence
+sentence is carried in `onRebuildSummary`'s doc comment, the third home
+after almanack/wardrobe.
+
+### Mutation proofs — five run, each reddened exactly its target, each reverted by file backup
+
+| mutation | reddened | reverted |
+|---|---|---|
+| wrap the new button in `@if (!isAutonomousRoom())` | `organize-section.spec.ts`: the label-order test (both arms) + `reports each entry to the Salon` (button not found) | yes |
+| move the button after Export | `organize-section.spec.ts`: the label-order test (position) | yes |
+| drop `notifyQueueChange()` | `salon-conversation.spec.ts`: the confirmed-dispatch test's `queueKicked` assertion | yes |
+| drop the colon-prefixed sentence, toast the bare fallback unconditionally | `salon-conversation.spec.ts`: the server-refusal test | yes |
+| add `queryClient.invalidateQueries` after the dispatch | `salon-conversation.spec.ts`: the no-self-invalidation test | yes |
+
+Each revert confirmed by `diff` against a pre-mutation file copy — clean
+both times.
+
+### The gate, as run
+
+| step | result |
+|---|---|
+| §R.2 probe | PASS (branch `main`, HEAD `a2db63da7`, both logs empty, tree CLEAN) |
+| `npm run lint` | clean — `check-qt-classes --self-test: 5/5`, 958 qt-* classes, every guarded reference resolves |
+| `npm run build` | clean (the only real type check — `spa-tsc-does-not-typecheck-app-sources`) |
+| `npm test` (targeted, pre-mutation) | `OrganizeSection` 8/8, `rebuildChatSummary` 2/2, the new Rebuild-Summary describe block 5/5 |
+| mutation proofs | 5/5, each reddening exactly its target, each reverted |
+| `npm test` (whole, post-revert) | **441 test files / 7,474 tests, 0 failed** |
+
+No Rust gate steps — nothing outside `apps/web/**` changed.
+
+### Fixtures
+
+Consumed the e2e Salon fixture the Organize beats already stage
+(`salon-dialogs-flow.spec.ts`'s "Solo Voyage" chat), read-only in every
+LANDED test (the gated live beat plants through `chatUpdate`, not a
+committed pair). Widened nothing.
+
+### Versions at lane close
+
+SPA **0.5.748**. Unmoved by this lane: core 0.0.992, harness 0.0.890, host
+0.0.146, web 0.0.170, cli 0.0.25, fixture-sanitizer 0.0.4, tauri 0.0.7,
+sqlite3mc-sys (pinned).
+
+### For the unifier
+
+`P4D212_SERVER_LANDED` in `salon-dialogs-flow.spec.ts` flips to `true` once
+P4.D212 is on the branch, and its beat gets its first live run then (this
+lane could not run it — `chatRebuildSummary` doesn't exist yet on `main`).
+The `chatUpdate` plant of `contextSummary`/`summaryAnchorMessageIds`/
+`lastSummaryTurn` is unverified against the real server; if the server
+rejects any of those three keys in the bag, the beat's setup needs a
+different planting route (measure at the first live run).

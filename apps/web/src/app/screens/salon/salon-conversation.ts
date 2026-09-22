@@ -38,6 +38,7 @@ import {
 } from '../../chat/llm-logs.api';
 import { MessageList } from '../../chat/message-list';
 import { shouldShowDangerStyling } from '../../chat/concierge-state';
+import { rebuildChatSummary } from '../../chat/chat-admin.api';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import type { ChatSectionState } from '../../chat/sidebar/chat-section';
 import type { VisibilityState } from '../../chat/sidebar/visibility-section';
@@ -368,6 +369,7 @@ interface CascadePrompt {
           (editEnclave)="showEditEnclave.set(true)"
           (rename)="showRename.set(true)"
           (mergeIn)="showMerge.set(true)"
+          (rebuildSummary)="onRebuildSummary()"
           (bulkReplace)="showBulkReplace.set(true)"
           (searchReplace)="showSearchReplace.set(true)"
           (openProject)="showProject.set(true)"
@@ -4258,6 +4260,49 @@ export class SalonConversation {
       return;
     }
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+  }
+
+  /**
+   * The Organize drawer's "Rebuild Summary…" entry (v4 `useSummaryActions.ts`,
+   * bug 161, `e7821606f`) — the operator's remedy for a running context
+   * summary that has gone wrong (most notably an invented speaker name).
+   *
+   * DIVERGENCE (deliberate, recorded): v4 gates on its promise-based
+   * `showConfirmation` modal; v5 has no such component and `window.confirm`
+   * is the established idiom here (the almanack / wardrobe / character-edit
+   * precedent). The sentence is v4's, verbatim.
+   *
+   * v4's success/error toasts are two DISTINCT shapes, not one fallback: a
+   * refused dispatch (409 on a running autonomous room, 400 with no
+   * connection profiles, 500) carries the server's sentence in
+   * `CoreDispatchError.message`, reported as `Failed to rebuild the summary:
+   * <sentence>`; anything else thrown reports the bare fallback. No
+   * self-invalidation: the server's `chats` realtime publish (§S.1) reaches
+   * the Salon through the EXISTING `chatKeys.detail` subscription, the same
+   * way every other realtime-pushed chat field does.
+   */
+  protected async onRebuildSummary(): Promise<void> {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'Discard this chat’s running summary and rebuild it from the beginning? The summary will be empty until the next few folds refill it.',
+      )
+    ) {
+      return;
+    }
+    const chatId = this.chatId();
+    if (!chatId) return;
+    try {
+      await rebuildChatSummary(this.core, chatId);
+      this.toasts.showSuccess('Summary cleared — the Librarian is rebuilding it.');
+      notifyQueueChange();
+    } catch (err) {
+      this.toasts.showError(
+        err instanceof Error
+          ? `Failed to rebuild the summary: ${err.message}`
+          : 'Failed to rebuild the summary',
+      );
+    }
   }
 
   protected async onCascadeConfirm(choice: MemoryCascadeChoice): Promise<void> {

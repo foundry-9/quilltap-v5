@@ -51,6 +51,12 @@ import { Icon } from '../../ui/icon';
  * (`ChatRenameModal.tsx:52,184-192`), so v5's live verb had no reachable caller
  * until it landed (dogfood walk 2026-07-27).
  *
+ * **Rebuild Summary… is LIVE** (v4 `useSummaryActions.ts`, bug 161,
+ * `e7821606f`, P4.D213) — sitting after Merge In… in v4's own order (v4 also
+ * has Continue Elsewhere between them, still Tier-3 here). Unlike Merge In…,
+ * it is rendered in an autonomous room too: only a *running* room refuses it,
+ * and the server's 409 covers that case at dispatch time.
+ *
  * ## Gallery — the retired divergence (P4.D176, `78b381a96` bug 129)
  *
  * This entry used to carry a recorded divergence: *"v4 gates Gallery on
@@ -122,6 +128,16 @@ import { Icon } from '../../ui/icon';
       <button
         type="button"
         class="qt-tool-palette-button"
+        title="Discard the running summary and rebuild it from the start of the conversation"
+        (click)="rebuildSummary.emit()"
+      >
+        <qt-icon name="refresh" class="w-4 h-4" />
+        <span>Rebuild Summary…</span>
+      </button>
+
+      <button
+        type="button"
+        class="qt-tool-palette-button"
         title="Export chat"
         (click)="onExport()"
       >
@@ -160,6 +176,7 @@ export class OrganizeSection {
   readonly rename = output<void>();
   readonly mergeIn = output<void>();
   readonly openState = output<void>();
+  readonly rebuildSummary = output<void>();
   readonly openGallery = output<void>();
 
   /**
