@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): three more drift commits, and v4 hits the qt_text wall from its own CLI
+
+_Docs-only change._
+
+The third `/driftcheck` of the day. v4 landed three commits between 19:37 and
+22:20 — five minutes before the check — all three out of one live `Friday`
+chat whose running summary had been calling a character "Vivienne", a name in
+no message and on no character. v4 main is now sixteen commits past the
+`baa85e19b` baseline: thirteen ORDERED into the catch-up round currently in
+flight across eight lane worktrees, three new and UNPROCESSED.
+
+`4e1a8e061` is docs-only (both bug files plus the design of record) and a
+NO-PORT? with a mirror, to be taken at the path `e7821606f` leaves it at.
+
+`e7821606f` (bug 161) is a PORT on a surface v5 reproduces verbatim, measured
+rather than inferred: v5's fold renders `role.to_uppercase()` under a prompt
+whose last line is still v4's pre-fix "Use character names, not roles.", and
+v5 carries the same duplicated seat-name loop v4 has now deleted from its
+episode pass. It also carries a PORT-NEW half — `?action=rebuild-summary` and
+its Salon Organize-drawer entry — which lands on a file the in-flight P4.D206
+lane owns. `QT_ORACLE_FOLD_EPISODE` and the context-summary families move at
+this commit.
+
+`a2db63da7` (bug 162) is small but changes what the round's keystone must do.
+v4's CLI raw-SQL path had rolled its own connection and so never registered
+`qt_text()`, and v4 fixed it by routing that path through its one shared
+opener rather than adding a second registration call — "because two openers is
+how this happened". That is independent, v4-side corroboration of this
+ledger's escalation, and it says where P4.D203's registration belongs: inside
+the shared opener. v5 already has only one CLI opener, so the registration
+will reach raw SQL and the REPL for free; what does move is a user-facing
+string, `Cannot open database:` becoming the per-target friendly-name form —
+a Tier R comparand, to be measured against the oracle before it is touched.
+
+Also re-measured: `help/` is now eleven files behind v4 (two missing, nine
+differing — `chats.md` is new to the list). The regen rule is unchanged: PIN
+REQUIRED at `baa85e19b`.
+
 #### 2026-09-21 — docs(porting): order the `f45a517a9` thirteen-commit drift catch-up round — nine lanes stacked on one codec keystone (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211)
 
 _Docs-only change._
