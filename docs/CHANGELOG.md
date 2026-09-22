@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(oracle): the zod-email case held a raw NUL, so git treated the file as binary
+
+_Versions: harness 0.0.861._
+
+`harness/oracle/cases/zod-email.ts` deliberately probes a NUL-bearing address,
+but the byte was written into the source verbatim instead of as an escape. One
+raw `\0` makes git classify the file as binary — no diffs, no blame, no review —
+which for an oracle case is worse than the missing coverage would have been.
+
+Now `'a@b.co\u0000'`, six characters. Proven a true no-op rather than assumed: the
+case was re-recorded at the `f45a517a9` pin and the 1,014-row output is
+byte-identical to the pre-fix recording, and `zod_email_equivalence` passes
+against it.
+
 #### 2026-09-21 — docs(porting): the P4.D211 lane's gate record and what it measured that the order got wrong
 
 _No crate versions bumped._

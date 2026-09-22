@@ -141462,3 +141462,26 @@ core **0.0.968**, harness **0.0.860**, web **0.0.159**, SPA **0.5.742**.
 Unmoved by this lane: host 0.0.139, cli 0.0.22, tauri 0.0.7,
 fixture-sanitizer 0.0.3, sqlite3mc-sys (pinned, never bumped). The unifier
 recounts as base + the sum of every lane's bumps (§R.8).
+
+## Lane record — P4.D211 rider: the zod-email case held a raw NUL (2026-09-21)
+
+Caught at lane close by `git diff --stat`, which rendered
+`harness/oracle/cases/zod-email.ts` as `Bin 0 -> 5740 bytes`. The corpus
+deliberately probes `'a@b.co<NUL>'`, but the NUL went into the SOURCE as a raw
+byte rather than as the escape `\u0000`. **One raw `\0` makes git classify a text
+file as binary** — no diff, no blame, no reviewable history — which for an oracle
+case matters more than the row it was testing.
+
+`od -An -c` on the file was the diagnostic; `file` reported `data` rather than
+`Unicode text`. Fixed to the six-character escape (5,740 -> 5,745 bytes).
+
+**Proven byte-neutral, not assumed:** a fresh pin at `f45a517a9` was created for
+the purpose, the case re-recorded, and the 1,014-row NDJSON `cmp`'d
+byte-identical to the pre-fix recording; `zod_email_equivalence` then passed
+against the new recording. (The other non-ASCII bytes in the file — an a-umlaut,
+an e-acute, an em dash — are ordinary UTF-8 and were left alone.)
+
+**The trap, for anyone writing a corpus that probes control bytes:** an escape
+sequence typed into a tool's JSON payload can arrive as the CHARACTER it denotes.
+Write control-byte probes so the SOURCE stays ASCII, and check `file` (or
+`git diff --stat` for a `Bin` marker) on any new corpus that names one.
