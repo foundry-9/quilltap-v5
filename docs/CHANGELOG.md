@@ -12,6 +12,49 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(profile): `is_zod_email` becomes the regex it claimed to be — 288 of 1,014 addresses were judged wrong
+
+_Versions: core 0.0.968, harness 0.0.860._
+
+`api/user_profile.rs::is_zod_email` carried the comment "Zod v4's `z.email()`
+regex, transcribed" over a loose hand rule: any non-`@`, non-whitespace local
+part, a dotted domain with a 2+-letter last label. It was not a transcription,
+and nothing compared it to anything — the only coverage was five hand asserts,
+all five of which the loose rule and the real regex agree on. The `6b0615807`
+drift check measured the gap in passing and banked it, since the zod bump did
+not cause it.
+
+The new `zod_email_equivalence` differential records `z.email()`'s verdict from
+v4's own validator over 1,014 inputs — a cross product of 40 local parts and 25
+domains plus 19 hand-written shapes, chosen against the grammar's three
+positions rather than against v5's rule. Red-first, `is_zod_email` disagreed on
+**288 of 1,014**, every one of them over-permissive, which meant PERSISTING an
+address v4 answers 400 for. It is now the real pattern, transcribed at 4.6.5,
+and agrees on all 1,014.
+
+Three rules the loose form had no notion of, each now pinned in the module's own
+shape test alongside the accepting neighbour that makes it a rule rather than a
+blanket ban: the local part's final character class admits neither `'` nor `.`
+though the two before it admit both (`o'brien@b.co` passes, `a.@b.co` does not);
+a domain label must START with an alphanumeric, though a trailing hyphen is
+legal (`b-.co` passes, `-b.co` does not); and `_` and `'` are legal in the local
+part and illegal in the domain.
+
+The corpus is recorded from v4's real validator rather than transcribed from
+`v4/core/regexes.js`, so it re-records with the dependency instead of rotting
+beside it — which matters here, because 4.6.5 rewrote this exact regex. Recorded
+at both 4.5.4 and 4.6.5 against the same v4 source, the 1,014 rows are
+byte-identical, so the rewrite is semantically neutral and there is one rule to
+carry rather than two.
+
+`profile_routes_equivalence`, regenerated at the target pin to re-run the
+readers, is red on four `patch_avatar_*` cases with `no such column:
+generationKey` — an ELEVENTH fixture-vintage family, on the
+`profile-{main,mount}.db` pair, proven pre-existing by re-running it under the
+loose rule and getting the same four. It is recorded for the heal order, not
+fixed here. Every email row in that family passes under both rules, which is
+exactly why the gap needed a differential of its own.
+
 #### 2026-09-21 — test(providers): re-record all nine provider corpora at `f45a517a9` — the rebuilt SDKs moved two version stamps and nothing else
 
 _Versions: harness 0.0.859._

@@ -141125,3 +141125,129 @@ done
   versions the way `zod_version_guard` guards zod. The stamps now sit in two
   corpora that no reader compares, so the next SDK bump re-records silently.
   `x-stainless-package-version` is the natural constant to pin.
+
+## Lane record — P4.D211 unit 3 (Tier 2): `is_zod_email` converged on v4's real validator (2026-09-21)
+
+The ledger's `6b0615807` item (3)(b) banked a v5-side finding on its way to
+proving the `plugin-manifest.schema.json` email pattern inert: `api/user_profile
+.rs::is_zod_email`, labelled "Zod v4's `z.email()` regex, transcribed", is a
+loose hand rule that disagreed with zod on **204 of 596** sampled inputs, at
+4.5.4 and 4.6.5 equally. Not the bump's fault, so not the bump's obligation —
+banked for a follow-up. This is that follow-up, at Tier 2 as the order tiers it.
+
+### Why it was invisible
+
+The function's only coverage was `user_profile.rs`'s five-assert
+`email_regex_shape` — and **all five pass under the loose rule AND under the real
+regex.** The route family (`profile_routes_equivalence`) carries four email rows,
+of which exactly one is malformed (`not-an-email`), which both rules refuse. So
+every existing instrument was green-by-luck. That is the shape of this finding:
+not an untested function, a function whose tests could not discriminate.
+
+### The corpus
+
+`harness/oracle/cases/zod-email.ts` records `z.email()`'s verdict and its
+sentence from v4's own validator: a deterministic cross product of **40 local
+parts x 25 domains** plus **19 hand-written shapes** the cross product cannot
+spell (no `@`, several `@`, stray control bytes), deduped — **1,014 rows, 145
+accepted / 869 refused**, every refusal carrying `Invalid email address`.
+
+Chosen against the GRAMMAR's three positions rather than against v5's rule —
+the dot-separated run `(?:[A-Za-z0-9_'+\-]+\.)*`, the optional tail
+`[A-Za-z0-9_'+\-]*`, and the FINAL class `[A-Za-z0-9_+-]` which admits neither
+`'` nor `.`. That asymmetry is the grammar's least obvious rule and the loose
+form had no notion of it.
+
+**Two mechanics worth carrying for the next `zod`-driving case.**
+
+1. **A bare `import { z } from 'zod'` in an oracle case cannot work.** It
+   resolves from the CASE FILE's directory — the v5 worktree, which has no
+   `node_modules` — and dies before the first row. Every other case gets v4's zod
+   for free by importing a v4 module that imports it; this one needs `z.email()`
+   itself, which no v4 module exports. The fix is an explicit dynamic import
+   resolved from `process.cwd()`, which the recipe already requires to be the pin.
+2. **The case also drives v4's REAL exported validator** —
+   `UserSchema.shape.email` (`lib/schemas/auth.types.ts:23`, the users repo's own
+   gate) — and ASSERTS the two agree on every row, so the `nullable().optional()`
+   wrapper's transparency for string inputs is proven rather than assumed. It
+   then proves the wrapper IS a wrapper (it accepts `null`/`undefined` where bare
+   `z.email()` refuses both), so the two comparands can never silently collapse
+   into one schema.
+
+### Red-first, then green
+
+| | count |
+|---|---|
+| `is_zod_email` vs v4, BEFORE | **288 of 1,014 disagree** — every one over-permissive |
+| `is_zod_email` vs v4, AFTER | **0 of 1,014** |
+
+288, not the ledger's 204, because this corpus is 1,014 inputs designed against
+the grammar rather than 596 sampled. The failure direction is the whole point:
+v5 ACCEPTED where v4 refuses, so `parse_email` returned `Field::Value` and the
+route **persisted an address v4 answers 400 for**. Sample rows:
+`a@-b.co`, `a@b_c.co`, `a@b'c.co`, `a@ä.co`, `a.@b.co`, `a.'@b.co`, `'@b.co`.
+
+### What landed
+
+`ZOD_EMAIL`, a `LazyLock<Regex>` holding `v4/core/regexes.js`'s `email` at 4.6.5
+transcribed character for character, with the three `js-regex-to-rust-regex-
+fidelity` axes checked in the doc comment and each measured inert (no `\s`, no
+`m` flag, no case folding; every class an explicit ASCII range, so Rust's
+Unicode-default changes nothing — `ä` matches none of them on either side).
+`is_zod_email` becomes `pub` for the differential, the way
+`zod_issues::zod_uuid_ok` already is.
+
+The module's `email_regex_shape` keeps its five original asserts, relabelled as
+the floor they are, and gains
+`email_regex_discriminates_where_a_loose_rule_cannot` — the three missed rules,
+each with the ACCEPTING neighbour that makes it a position rule rather than a
+character ban, plus the last-label rule and the anchoring pair. That test runs
+without an oracle, so the module is guarded on a CI box too.
+
+### Mutation proof
+
+| proof | result |
+|---|---|
+| revert `is_zod_email` to the loose rule | **288 rows red, named individually.** This is the red-first run, re-performed deliberately as the mutation. Reverted by file backup; 1,014/1,014 green again. |
+
+### ⚠ An ELEVENTH fixture-vintage family, found by re-running the readers
+
+`profile_routes_equivalence` regenerated at the target pin is **RED on four
+cases** — `patch_avatar_{image_category,avatar_category,wrong_category,
+missing_file}`, all four `sqlite error: no such column: generationKey`.
+
+**Proven PRE-EXISTING, not this lane's:** re-running the family with
+`is_zod_email` reverted to the loose rule produces **the same four reds, by the
+same message**. The cause is the committed `profile-{main,mount}.db` pair
+predating v4's `files.generationKey` migration — the same column that makes
+`character_wizard_tier3` one of the standing reds. It has been red since v5
+started binding that column and was simply never visible, because
+`QT_ORACLE_PROFILE` sits outside the gate's env block and the family SKIPs.
+
+**For the heal order:** its list is nine families on four pairs; this is a TENTH
+family on a FIFTH pair (`profile-{main,mount}.db`, `files.generationKey`). §R.12
+forbids widening a committed pair this round, so nothing was widened here. All
+fourteen non-avatar cases pass, including every email row — which is precisely
+why the email gap needed a differential of its own rather than a route family.
+
+### Regen recipes, as run
+
+```bash
+# the email corpus (1,014 rows) — at the TARGET, and at the 4.5.4 control
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+cd /tmp/qt-v4-pin-p4d211-f45a517a9   # or /tmp/p4d211/ctl-zod454
+TZ=UTC npx tsx <V5W>/harness/oracle/cases/zod-email.ts > /tmp/oracle-zod-email.ndjson
+QT_ORACLE_ZOD_EMAIL=/tmp/oracle-zod-email.ndjson \
+  cargo test -p quilltap-harness --test zod_email_equivalence -- --nocapture
+
+# the route family, to re-run the readers (jest /tmp mirror — jest ignores .claude/)
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree> ; TMPO=/tmp/p4d211/qt-profile-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/profile-routes.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/profile-web.json" "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d211-f45a517a9
+QT_FIXTURE_PROFILE_MAIN=$V5W/crates/quilltap-web/tests/fixtures/profile-main.db \
+QT_FIXTURE_PROFILE_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/profile-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-profile.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$TMPO/cases" -- profile-routes
+```

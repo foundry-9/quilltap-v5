@@ -31,6 +31,9 @@
 //!    `serverError('User not found')` on the GET, while the PATCH's identical
 //!    condition answers `notFound('User')` (`:271`). Both carried verbatim.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
@@ -156,27 +159,49 @@ fn parse_image(field: &Option<Option<Value>>) -> Field {
     }
 }
 
-/// Zod v4's `z.email()` regex, transcribed: one or more non-`@`/whitespace
-/// characters, `@`, a dotted domain whose last label is 2+ letters.
-fn is_zod_email(s: &str) -> bool {
-    let Some((local, domain)) = s.rsplit_once('@') else {
-        return false;
-    };
-    if local.is_empty() || local.contains(char::is_whitespace) || local.contains('@') {
-        return false;
-    }
-    let labels: Vec<&str> = domain.split('.').collect();
-    if labels.len() < 2 {
-        return false;
-    }
-    if labels
-        .iter()
-        .any(|l| l.is_empty() || l.contains(char::is_whitespace))
-    {
-        return false;
-    }
-    let tld = labels[labels.len() - 1];
-    tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic())
+/// Zod v4's `z.email()` regex — `v4/core/regexes.js`'s `email`, transcribed
+/// character for character at `zod` 4.6.5 (v4 `f45a517a9`).
+///
+/// ```text
+/// /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/
+/// ```
+///
+/// The three axes `js-regex-to-rust-regex-fidelity` names are all inert here:
+/// no `\s`, no `m` flag (so both engines anchor to the whole haystack, and
+/// neither matches before a trailing newline), no case folding. Every class is
+/// an explicit ASCII range, so Rust's Unicode-by-default mode changes nothing —
+/// `ä` matches none of them, on either side.
+///
+/// Zod 4.6.5 rewrote this pattern from 4.5.4's lookahead form
+/// (`^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@…`) into the grouped
+/// form above. The two are semantically equivalent — measured over this
+/// function's whole 1,014-row corpus recorded from v4's real validator at both
+/// versions, not inferred — so there is one rule to carry, not two.
+///
+/// **Three rules a hand rule reliably misses**, and this one did until P4.D211
+/// measured it (288 of 1,014 inputs disagreed with v4, every one of them
+/// over-permissive, and the consequence was PERSISTING an address v4 refuses):
+///
+/// 1. The local part's final character class `[A-Za-z0-9_+-]` admits neither
+///    `'` nor `.`, though the two classes before it admit both — so `a.` and
+///    `a.'` are refused while `a'b` is accepted.
+/// 2. A domain label must START with `[A-Za-z0-9]`, so `-b.co` is refused
+///    (`b-.co` is not — a trailing hyphen is legal).
+/// 3. Neither `_` nor `'` is legal anywhere in a DOMAIN, though both are legal
+///    in the local part.
+static ZOD_EMAIL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$",
+    )
+    .expect("the transcribed z.email() pattern must compile")
+});
+
+/// `z.email()` — see [`ZOD_EMAIL`] for the pattern and its provenance. Pinned
+/// against v4's REAL validator by `quilltap-harness`'s `zod_email_equivalence`
+/// over 1,014 inputs; `pub` for that differential, the way
+/// `zod_issues::zod_uuid_ok` is.
+pub fn is_zod_email(s: &str) -> bool {
+    ZOD_EMAIL.is_match(s)
 }
 
 /// `z.url()` — parseable as an absolute URL with a scheme and a non-empty
@@ -360,6 +385,10 @@ mod tests {
         ));
     }
 
+    /// The five cases this test was born with. All five pass under a LOOSE hand
+    /// rule too, which is why they never caught the 288-row gap `zod_email_
+    /// equivalence` measured — kept as the floor, with the rules that do
+    /// discriminate below.
     #[test]
     fn email_regex_shape() {
         assert!(is_zod_email("charlie@foundry-9.com"));
@@ -367,6 +396,49 @@ mod tests {
         assert!(!is_zod_email("nope@nope"));
         assert!(!is_zod_email("@nope.com"));
         assert!(!is_zod_email("a b@nope.com"));
+    }
+
+    /// The three rules a hand rule reliably misses, each with the ACCEPTING
+    /// neighbour that makes it a rule rather than a blanket refusal. The full
+    /// proof is the differential (`zod_email_equivalence`, 1,014 inputs against
+    /// v4's real validator); this is the module's own guard, which runs without
+    /// an oracle.
+    #[test]
+    fn email_regex_discriminates_where_a_loose_rule_cannot() {
+        // 1. The local part's FINAL class `[A-Za-z0-9_+-]` admits neither `'`
+        //    nor `.`, though the two classes before it admit both.
+        assert!(is_zod_email("o'brien@b.co"));
+        assert!(!is_zod_email("a.@b.co"));
+        assert!(!is_zod_email("a.'@b.co"));
+        assert!(!is_zod_email("'@b.co"));
+        // ...and the dot-run may not lead, or double.
+        assert!(is_zod_email("first.last@b.co"));
+        assert!(!is_zod_email(".a@b.co"));
+        assert!(!is_zod_email("a..b@b.co"));
+
+        // 2. A domain label must START with `[A-Za-z0-9]`; a TRAILING hyphen is
+        //    legal, so this is a position rule, not a character ban.
+        assert!(is_zod_email("a@foundry-9.com"));
+        assert!(is_zod_email("a@b-.co"));
+        assert!(!is_zod_email("a@-b.co"));
+        assert!(!is_zod_email("a@b.-co"));
+
+        // 3. `_` and `'` are legal in the local part and illegal in the DOMAIN.
+        assert!(is_zod_email("a_b@b.co"));
+        assert!(!is_zod_email("a@b_c.co"));
+        assert!(!is_zod_email("a@b'c.co"));
+
+        // The last label is 2+ ASCII LETTERS — a digit or a single char fails,
+        // and non-ASCII is refused everywhere.
+        assert!(!is_zod_email("a@b.c"));
+        assert!(!is_zod_email("a@b.123"));
+        assert!(!is_zod_email("a@\u{e4}.co"));
+
+        // Anchoring: no `m` flag on either side, so surrounding whitespace and a
+        // trailing newline are refused rather than trimmed.
+        assert!(!is_zod_email(" a@b.co"));
+        assert!(!is_zod_email("a@b.co "));
+        assert!(!is_zod_email("a@b.co\n"));
     }
 
     #[test]
