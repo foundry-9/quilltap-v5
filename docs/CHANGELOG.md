@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(help): re-vendor `help/chats.md` at v4 `e7821606f` (P4.D212)
+
+_No crate versions bumped._
+
+`help/chats.md` byte-copied from the target pin (38,039 → 39,682 bytes), adding
+v4's `### Rebuilding the Running Summary` section. The tree stays at 126 files,
+so neither count literal moves. `help_tree_equivalence` passes at `a2db63da7`
+(its NDJSON carries the section title) and fails at the baseline pin as
+designed. The host embeds `help/` from its build script; no crate file changed,
+so nothing is bumped.
+
 #### 2026-09-22 — feat(chats): the rebuild-summary verb (v4 `e7821606f`, P4.D212)
 
 _Versions: core 0.0.994, harness 0.0.892, web 0.0.171._
