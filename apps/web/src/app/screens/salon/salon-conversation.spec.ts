@@ -51,6 +51,31 @@ import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
 import { chatKeys } from '../../chat/chat-keys';
 
+/**
+ * `AutoScrollController.performScrollToBottom` schedules four deferred
+ * corrections (50/150/300 ms), and the last of them calls
+ * `container.scrollTo` — which JSDOM's `HTMLElement` does not have. A timer
+ * that fires after its fixture is gone therefore throws into the RUN rather
+ * than into a test, and vitest exits non-zero on the unhandled error while
+ * every test still reports green (440/440 files, 7,465/7,465 tests, exit 1 —
+ * the most confusing shape a suite can take).
+ *
+ * Two tests in `salon-conversation.spec.ts` already install exactly this stub
+ * around themselves; P4.D206 lifts it to file scope in every spec that mounts
+ * the Salon, because the arming is not per-test — it depends on what the
+ * message list renders, which is why the stray timers appeared when the
+ * regeneration row and the status strip joined it. The per-test copies still
+ * work: they only add a key that is `!(k in proto)`, and now it always is.
+ */
+beforeAll(() => {
+  const proto = globalThis.HTMLElement?.prototype as unknown as Record<string, unknown>;
+  if (!proto) return;
+  for (const key of ['scrollTo', 'scrollIntoView'] as const) {
+    if (!(key in proto)) proto[key] = () => {};
+  }
+});
+
+
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
   return {
     id: 'p1',

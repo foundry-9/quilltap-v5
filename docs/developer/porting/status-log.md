@@ -140716,3 +140716,106 @@ specs pin (`.qt-chat-regenerating-plate`, `.qt-chat-regenerating-original`,
 `aria-label="Regenerate response"` read off `message-row.ts` rather than
 guessed). **The unifier should expect the ungated Inform test to run in the
 unified suite** and treat a failure there as this lane's to answer.
+
+### P4.D206 lane close — the deferrals, and the drift probe's SECOND result
+
+**Tier 2 item 6 — the dialog's persisted geometry: DEFERRED, and the premise
+is refuted rather than the work skipped.** v4 persists
+`quilltap:inform-geometry` through `FloatingDialog`, which is a DRAGGABLE,
+RESIZABLE frame; the stored value is that frame's width/height/position. v5 has
+no such primitive at all — every ported dialog is a centered `qt-modal` at a
+width token (the `brahma-console-dialog.ts` ruling, applied again by
+`insert-announcement-dialog.ts`), and a centered modal has no geometry to
+persist. There is therefore nothing to port here, not a thing left undone: the
+storage key would be written and never read. Recorded in the component's own
+header comment. **If v5 ever grows a draggable dialog, this key is one of the
+sites that owes it.**
+
+**Tier 2 item 7 — the memo comparator (v4 bug (a)): N/A, recorded WITH the
+spec that would have caught it.** See the units 6–7 record above.
+
+**Tier 3 — the `regenerationStatus ?? sseStreaming.responseStatus` precedence
+when BOTH are live: UNREACHABLE, and now structurally so.** v4 needs the `??`
+because it has ONE strip fed from two sources. v5's two strip sites are
+mutually exclusive by construction — the list renders its own only when
+`stream()` is null — so there is no precedence to express and no expression to
+get wrong. The condition that makes it unreachable is the same one in both
+apps: a send during a regeneration is refused, in v5 by `composerLocked`.
+Pinned by `renders no strip of its own while a turn is streaming (the bubble
+owns it)` in `message-list.spec.ts`, which is the assertion that would fail if
+the exclusivity ever broke.
+
+**⚠ THE §R.2 FRESHNESS PROBE PASSED AT LANE START AND FAILS AT LANE CLOSE.**
+At close (2026-09-21): branch `main` still, but v4 HEAD has moved ONE commit past
+the round's target to **`4e1a8e061`** ("docs: plan the summarizer name fix, file
+bugs 161 and 162", 2026-09-21 19:37, docs-only — six files, all under `docs/`
+and `.claude/`), and the tree is **DIRTY** with that work in flight:
+`lib/chat/context-summary.ts`, `lib/memory/fold-episode-pass.ts`,
+`lib/memory/cheap-llm-tasks/chat-tasks.ts`,
+`app/api/v1/chats/[id]/{actions/index.ts,handlers/post.ts}`,
+`app/salon/[id]/SalonView.tsx`, `app/salon/[id]/hooks/index.ts`,
+`components/chat/ChatSidebar.tsx`, `help/chats.md`, plus six untracked files
+(NEW `lib/chat/speaker-names.ts`, `app/salon/[id]/hooks/useSummaryActions.ts`,
+`app/api/v1/chats/[id]/actions/rebuild-summary.ts` and three specs).
+
+**This lane's work is UNAFFECTED, and the reason is structural, not lucky.**
+P4.D206 regenerates NOTHING from the harness (§R.3's regen rule never applied
+to it) and never read v4's WORKING TREE: every v4 source was read at the pinned
+sha through `git show f45a517a9:<path>` or `git show <sha> -- <path>`, both of
+which read commit objects. A moved HEAD and a dirty tree cannot reach a commit
+object, so no transcription, no spec case and no contract field in this lane
+can have been contaminated. The lane did not stop, because there was nothing in
+flight for the dirt to poison; the probe result is reported instead.
+
+**The new drift is `/driftcheck`'s to classify, NOT this lane's** (a lane never
+writes the ledger). Two things the next check should weigh, recorded here
+because this lane measured them:
+
+1. **`4e1a8e061` is docs-only** — six files, none of them code — so on its own
+   it is a NO-PORT? candidate of the standing class. But it FILES BUG 162,
+   whose text says the CLI's raw-SQL / `--repl` / `--write` path opens its own
+   connection without `qt_text()` and so can neither read a compressed column
+   nor write a `chat_messages` row. That is the same seam **P4.D203's keystone
+   S** registers the UDF at (`crates/quilltap-cli/src/dbopen.rs:14` is one of
+   S's three registration points), so the port may already be ahead of v4 here
+   — worth measuring rather than assuming in either direction.
+2. **The dirty tree touches `app/salon/[id]/SalonView.tsx` and
+   `app/salon/[id]/hooks/index.ts`** — the two files this lane's swipe half was
+   transcribed from. Whatever lands there (bug 161's `useSummaryActions` hook
+   and a rebuild-summary action) will need absorbing into
+   `salon-conversation.ts`, which is the file this lane leaves changed. A
+   future SPA lane should read this lane's record before re-deriving that
+   wiring.
+
+### P4.D206 rider — the green suite that exited 1
+
+The lane's final gate read **440 files passed / 7,465 tests passed, exit 1** —
+the most confusing shape a suite can take, and the reason it is written down.
+Vitest caught **7 unhandled errors**, all the same:
+`TypeError: b.container.scrollTo is not a function` at `chat/auto-scroll.ts:203`
+from a `Timeout._onTimeout` at `:182`, originating in `salon-conversation.spec.ts`
+(4), `salon-turn-controls.spec.ts` (2) and `salon-impersonation-voice.spec.ts` (1).
+
+**MEASURED, not assumed: this lane caused it.** The lane's own pristine-main
+baseline run (taken before the first commit) had **ZERO** occurrences and exited
+0; the count then went 0 → 1 (after the Inform vertical) → 3 (after the swipe) →
+7 (final). `AutoScrollController.performScrollToBottom` schedules four deferred
+corrections (50/150/300 ms) and the last calls `container.scrollTo`, which
+JSDOM's `HTMLElement` does not implement — so a timer that outlives its fixture
+throws into the RUN instead of into a test. What changed is not auto-scroll but
+what the message list RENDERS: the regeneration row and the status strip arm the
+scroll where it previously stayed idle.
+
+**Fixed in the spec harness, deliberately not in production.** In a real browser
+`scrollTo` always exists; guarding production code for a JSDOM gap would be
+paying for the test's problem in the shipped bundle. The tree already had the
+idiom — two `salon-conversation.spec.ts` tests install exactly this stub around
+themselves — so it is lifted to FILE scope in the three Salon-mounting specs.
+The per-test copies are untouched and still correct: they add a key only when
+`!(k in proto)`, and now it always is. Re-run: **440 / 7,465 / exit 0, zero
+unhandled errors.**
+
+**The lesson worth carrying:** a vitest run can report every file and every test
+green and still exit non-zero, and the reason will be below the summary line
+under `Unhandled Errors`. **Read the exit code, not the counts** — and when they
+disagree, the counts are the ones lying by omission.

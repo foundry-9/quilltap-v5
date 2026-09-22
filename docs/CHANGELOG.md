@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(spec): stub scrollTo for every Salon-mounting spec, so a stray timer cannot fail the run (P4.D206)
+
+_No crate versions bumped._
+
+`AutoScrollController.performScrollToBottom` schedules four deferred
+corrections and the last calls `container.scrollTo`, which JSDOM's HTMLElement
+does not have. A timer firing after its fixture is gone throws into the RUN
+rather than into a test, so vitest exits non-zero while every test reports
+green — 440/440 files and 7,465/7,465 tests with exit 1.
+
+Two tests in `salon-conversation.spec.ts` already installed exactly this stub
+around themselves. It is lifted to file scope in the three specs that mount the
+Salon, because the arming is not per-test: it depends on what the message list
+renders, which is why the stray timers appeared as the regeneration row and the
+status strip joined it. The per-test copies still work — they only add a key
+that is absent, and now it never is.
+
 #### 2026-09-21 — test(e2e): the Inform walk and the regeneration walk, gated for the unifier (P4.D206 unit 8)
 
 _No crate versions bumped._
