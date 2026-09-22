@@ -21,8 +21,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-cd-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-dialogs-export.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/p4d171-columns.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-dialogs-web.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
@@ -36,6 +37,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { ensureP4D171Columns } from '../lib/p4d171-columns';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -122,6 +124,68 @@ interface CaseSpec {
   name: string;
   action: 'export' | 'export-markdown' | 'outfit-summary' | 'group-stores';
   chatId: string;
+  /** P4.106 item 6: plant an Inform on the per-run COPY first (see below). */
+  plantInform?: boolean;
+}
+
+/**
+ * P4.106 item 6 — an Inform planted on the per-run COPY of `chat-dialogs-*`
+ * (the committed pair is never touched): two `chat_informs` rows (a pending
+ * and a consumed one) through v4's REAL repository, and the inform's Host
+ * RECORD message (`systemSender: 'host'`, `systemKind: 'inform'`, public)
+ * through the REAL `chats.addMessage` — which is how `?action=inform` writes it.
+ * Neither export surface reads `chat_informs` at all, so the table rows are the
+ * neutrality half; the record message is the half that asks a question: does
+ * an out-of-character note reach the JSONL / the Markdown transcript?
+ */
+const INFORM_RECORD_ID = '1f100000-0000-4000-8000-0000000000d1';
+async function plantInform(chatId: string): Promise<void> {
+  // The vintage pair predates `78b381a96`'s two columns, and v4's REAL
+  // `addMessage` writes the chat row (incl. `cycleOrderParticipantIds`) — the
+  // same repaired-at-boot heal the Rust family's `fresh_db` applies to EVERY
+  // copy. Only the two plant cases write, so only they need it here.
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+  ensureP4D171Columns(getRawDatabase() as never);
+  const { ensureCollection } = await import('@/lib/database/manager');
+  const { ChatInformsRepository } = await import(
+    '@/lib/database/repositories/chat-informs.repository'
+  );
+  const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  await ensureCollection('chat_informs', ChatInformSchema);
+  const informs = new ChatInformsRepository();
+  for (const consumed of [false, true]) {
+    const k = consumed ? 2 : 1;
+    await informs.create(
+      {
+        chatId,
+        batchId: `1f10000${k}-0000-4000-8000-0000000000b${k}`,
+        participantId: `1f10000${k}-0000-4000-8000-0000000000a${k}`,
+        contentMarkdown: 'The clock in the hall has stopped.',
+        recordMessageId: INFORM_RECORD_ID,
+        consumedAt: consumed ? '2026-01-03T00:00:00.000Z' : null,
+        consumedByMessageId: consumed ? `1f10000${k}-0000-4000-8000-0000000000e${k}` : null,
+      } as never,
+      {
+        id: `1f10000${k}-0000-4000-8000-00000000000${k}`,
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: consumed ? '2026-01-03T00:00:00.000Z' : '2026-01-02T00:00:00.000Z',
+      },
+    );
+  }
+  await getRepositories().chats.addMessage(chatId, {
+    type: 'message',
+    id: INFORM_RECORD_ID,
+    role: 'ASSISTANT',
+    content: 'The clock in the hall has stopped.',
+    opaqueContent: null,
+    attachments: [],
+    createdAt: '2026-01-02T00:00:00.000Z',
+    participantId: null,
+    systemSender: 'host',
+    systemKind: 'inform',
+    targetParticipantIds: null,
+  } as never);
 }
 
 async function runCase(
@@ -146,6 +210,7 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  if (c.plantInform) await plantInform(c.chatId);
 
   // The ticking frozen clock (chain-depth-frozen-clock-artifact): nothing in
   // these READ paths mints a stamp that lands in the output, but the house
@@ -256,6 +321,15 @@ async function main(): Promise<void> {
     { name: 'export_multi', action: 'export', chatId: EXPORT_CHAT },
     { name: 'export_no_character', action: 'export', chatId: NOCHAR_CHAT },
     { name: 'export_chat_missing', action: 'export', chatId: MISSING_ID },
+    // P4.106 item 6: the JSONL and the Markdown transcript over a planted
+    // Inform (two `chat_informs` rows + the Host record message).
+    { name: 'export_with_inform', action: 'export', chatId: EXPORT_CHAT, plantInform: true },
+    {
+      name: 'export_markdown_with_inform',
+      action: 'export-markdown',
+      chatId: EXPORT_CHAT,
+      plantInform: true,
+    },
     // P4.d28: the Markdown transcript. MARKDOWN_CHAT carries the arms the ROUTE
     // owns rather than the renderer — the character-id collection reaching into
     // `customAnnouncer` (an off-scene Pip) and `carinaMeta` (Wren, and the

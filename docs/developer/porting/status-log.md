@@ -143497,3 +143497,36 @@ name:** this family's fixtures are bare characters-only DBs (no `chats` /
 `chat_messages`), so a bundle carrying `chatInforms` cannot land here; the
 same `executeImport` inform path is proven over a full instance with planted
 rows by unit 9's three `execute_chats_informs_*` arms.
+
+### Unit 11 — item 6 part 3: `chat_export` over a planted Inform
+
+**The order's premise corrected:** `chat_export` is NOT a system-bundle
+family — it is `?action=export` (the SillyTavern JSONL, `handlers/get.ts:48`)
+and `?action=export-markdown`, neither of which reads `chat_informs` in v4
+(grep: the only `app/` readers are `participants.ts` and `inform.ts`).
+So the arm asks the question that CAN be asked of it: two `chat_informs`
+rows (pending + consumed, `recordMessageId` set) through v4's REAL
+repository AND the inform's Host RECORD message (`systemSender: 'host'`,
+`systemKind: 'inform'`, public) through the REAL `chats.addMessage`, planted
+on the per-run COPY of `chat-dialogs-*` (the committed pair untouched —
+P4.103 widens it; at unification this case runs over the widened pair).
+Two cases (14 → 16): `export_with_inform`, `export_markdown_with_inform`,
+both on `EXPORT_CHAT`. v4's copy needed `ensureP4D171Columns` for these two
+cases only (its `addMessage` writes `cycleOrderParticipantIds`; the first
+run died `no such column` — the Rust `fresh_db` already heals every copy);
+the recipe header now stages `lib/p4d171-columns.ts`.
+
+**Measured v4 (matched byte-for-byte by v5):** the JSONL export INCLUDES
+the record as an ordinary line — `{"name":"Nora","is_user":false,…,"mes":
+"The clock in the hall has stopped."}` — attributed through the
+null-participant primary-name fallback to the chat's primary CHARACTER,
+first in the file by `createdAt`; the Markdown transcript OMITS it (the
+bytes equal `export_markdown_defaults`). **Candidate v4 filing** (an
+out-of-character operator note exported as the character's own line, in a
+format meant to be re-imported elsewhere) — recorded, not filed from the
+lane; v5 is faithful.
+
+Regen AS RUN (probe PASS): `TMPO=/tmp/p4106/qt-cd-oracle` (+ `lib/`), the
+pair copied to `/tmp/p4106/fx/`, `TZ=UTC … -- "chat-dialogs-export\.test\.
+ts$"` → 16 rows. Mutation: v5's JSONL filter also dropping `systemKind ==
+"inform"` → exactly `export_with_inform` red.

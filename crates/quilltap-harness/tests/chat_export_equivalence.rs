@@ -94,6 +94,58 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     .expect("open db")
 }
 
+/// P4.106 item 6 — the oracle's `plantInform`, cell for cell, on the per-run
+/// COPY: two `chat_informs` rows (pending + consumed) through
+/// `ChatInformsRepository::create`, and the inform's Host record message
+/// through the production `add_message` (how `?action=inform` writes it).
+fn plant_inform(db: &Db, chat_id: &str) {
+    use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
+    const RECORD: &str = "1f100000-0000-4000-8000-0000000000d1";
+    let chat = chat_id.to_string();
+    db.write_blocking(move |w| {
+        let conn = w.main().connection();
+        quilltap_core::db::chat_informs::ensure_chat_informs_table(conn)?;
+        let repo = ChatInformsRepository::new(conn);
+        for consumed in [false, true] {
+            let k = if consumed { 2 } else { 1 };
+            repo.create(&ChatInformCreate {
+                id: format!("1f10000{k}-0000-4000-8000-00000000000{k}"),
+                chat_id: chat.clone(),
+                batch_id: format!("1f10000{k}-0000-4000-8000-0000000000b{k}"),
+                participant_id: format!("1f10000{k}-0000-4000-8000-0000000000a{k}"),
+                content_markdown: "The clock in the hall has stopped.".into(),
+                record_message_id: Some(RECORD.into()),
+                created_at: "2026-01-02T00:00:00.000Z".into(),
+                updated_at: if consumed {
+                    "2026-01-03T00:00:00.000Z".into()
+                } else {
+                    "2026-01-02T00:00:00.000Z".into()
+                },
+                consumed_at: consumed.then(|| "2026-01-03T00:00:00.000Z".to_string()),
+                consumed_by_message_id: consumed
+                    .then(|| format!("1f10000{k}-0000-4000-8000-0000000000e{k}")),
+            })?;
+        }
+        let event: quilltap_core::db::chats_messages::ChatEventInput =
+            serde_json::from_value(json!({
+                "type": "message",
+                "id": RECORD,
+                "role": "ASSISTANT",
+                "content": "The clock in the hall has stopped.",
+                "opaqueContent": null,
+                "attachments": [],
+                "createdAt": "2026-01-02T00:00:00.000Z",
+                "participantId": null,
+                "systemSender": "host",
+                "systemKind": "inform",
+                "targetParticipantIds": null,
+            }))
+            .expect("inform record event");
+        w.main().chat_messages().add_message(&chat, &event)
+    })
+    .expect("plant the inform on the fixture copy");
+}
+
 /// The web-edge projection of a Response for this family: status + headers +
 /// body/bodyText, mirroring what the oracle records.
 fn project(r: &Response) -> Value {
@@ -260,6 +312,25 @@ fn chat_export_matches_oracle() {
     ] {
         let db = fresh_db(&spec, name);
         let r = quilltap_core::services::chat_export::chat_export(&db, &spec.user_id, chat);
+        check(name, &r);
+    }
+
+    // ── P4.106 item 6: both export surfaces over a planted Inform ──────────
+    for (name, markdown) in [
+        ("export_with_inform", false),
+        ("export_markdown_with_inform", true),
+    ] {
+        let db = fresh_db(&spec, name);
+        plant_inform(&db, EXPORT_CHAT);
+        let r = if markdown {
+            quilltap_core::services::markdown_transcript::chat_export_markdown(
+                &db,
+                &spec.user_id,
+                EXPORT_CHAT,
+            )
+        } else {
+            quilltap_core::services::chat_export::chat_export(&db, &spec.user_id, EXPORT_CHAT)
+        };
         check(name, &r);
     }
 

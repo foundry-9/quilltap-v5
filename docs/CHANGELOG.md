@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the chat export surfaces over a planted Inform (P4.106 item 6, part 3)
+
+_Versions: harness 0.0.901._
+
+P4.106 item 6 (part 3). `chat_export` adds `export_with_inform` and
+`export_markdown_with_inform`: two `chat_informs` rows and the inform's Host
+record message planted on the per-run copy of the `chat-dialogs` pair
+through each side's real repositories. Neither export reads `chat_informs`.
+Measured on v4 and matched by v5: the SillyTavern JSONL includes the record
+as an ordinary line attributed to the primary character, and the Markdown
+transcript leaves it out. The v4 case now heals its copy with
+`ensureP4D171Columns` for these two cases, since v4's `addMessage` writes
+`cycleOrderParticipantIds`, which the vintage pair lacks. Filtering the
+record out of v5's JSONL fails exactly `export_with_inform`.
+
 #### 2026-09-22 — test(harness): the qtap_import two-link-blob bundle row (P4.106 item 10)
 
 _Versions: harness 0.0.900._
