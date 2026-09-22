@@ -109,6 +109,13 @@ async fn shipped_help_tree_matches_oracle() {
     .expect("clear the seeded embedding profile");
 
     let files = embedded_help_source_files();
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    // ⚠ **DESIGNED RED on the P4.D205 lane branch alone: 125 vs the target
+    // pin's 126.** This lane adds `help/inform.md` (124 → 125) and re-vendors
+    // `help/insert-announcement.md`; the one remaining file is
+    // `help/cli-sync.md`, which **P4.D210 adds in the same round** (§R.10(d)).
+    // At unification both are present and this is 126 = 126. A red here that
+    // names any OTHER file is a real failure.
     assert_eq!(
         files.len(),
         want.count,

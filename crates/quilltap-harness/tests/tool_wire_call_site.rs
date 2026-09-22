@@ -183,6 +183,8 @@ async fn captured_body_opts(
         "pp-1",
         None,
         "msg-1",
+        // P4.D205: this corpus carries no informs.
+        vec![],
     );
     let mut state = StreamingState {
         full_response: "Let me roll.".into(),

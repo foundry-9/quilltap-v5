@@ -805,7 +805,10 @@ mod tests {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ChatInformRemap {
     Ok {
-        data: crate::db::chat_informs::ChatInformCreate,
+        // Boxed: the `Ok` payload is ~240 bytes against `Dropped`'s one
+        // `String`, and clippy's `large_enum_variant` is right that every
+        // `Dropped` would otherwise carry the cost.
+        data: Box<crate::db::chat_informs::ChatInformCreate>,
         /// True when the row's `consumedByMessageId` named a message the
         /// destination does not have and was nulled. The row is still a real
         /// historical inform, so it is KEPT — it simply loses its swipe anchor.
@@ -882,7 +885,7 @@ pub fn remap_chat_inform(
 
     let now = crate::clock::now_iso();
     ChatInformRemap::Ok {
-        data: crate::db::chat_informs::ChatInformCreate {
+        data: Box::new(crate::db::chat_informs::ChatInformCreate {
             id: uuid::Uuid::new_v4().to_string(),
             chat_id,
             batch_id: s("batchId").unwrap_or_default(),
@@ -893,7 +896,7 @@ pub fn remap_chat_inform(
             updated_at: now,
             consumed_at: s("consumedAt"),
             consumed_by_message_id: if cleared { None } else { consumed_by },
-        },
+        }),
         consumed_by_message_id_cleared: cleared,
     }
 }

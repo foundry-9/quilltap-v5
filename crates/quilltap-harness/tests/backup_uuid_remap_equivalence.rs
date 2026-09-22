@@ -49,7 +49,8 @@ use sha2::{Digest, Sha256};
 
 /// Every collection `remapBackupData` returns, in v4's return-literal order —
 /// and the ONLY keys it returns (`manifest` is `undefined` here and dropped).
-const COLLECTIONS: [&str; 38] = [
+// P4.D205: 38 + 1 = 39 (`chatInforms`, v4 `e7d77bb60`).
+const COLLECTIONS: [&str; 39] = [
     "characters",
     "chats",
     "tags",
@@ -71,6 +72,9 @@ const COLLECTIONS: [&str; 38] = [
     "characterPluginData",
     "conversationAnnotations",
     "chatDocuments",
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    "chatInforms",
+    // === end P4.D205 ===
     "instanceSettings",
     "embeddingStatus",
     "conversationChunks",
@@ -137,6 +141,9 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         character_plugin_data: rows(data, "characterPluginData"),
         conversation_annotations: rows(data, "conversationAnnotations"),
         chat_documents: rows(data, "chatDocuments"),
+        // === P4.D205 (v4 `e7d77bb60`) — the six-field remap (`id`, `chatId`,
+        // `batchId`, `participantId`, `recordMessageId`, `consumedByMessageId`).
+        chat_informs: rows(data, "chatInforms"),
         instance_settings: rows(data, "instanceSettings"),
         embedding_status: rows(data, "embeddingStatus"),
         conversation_chunks: rows(data, "conversationChunks"),
@@ -182,6 +189,9 @@ fn produced(out: &BackupData, key: &str) -> Vec<Value> {
         "characterPluginData" => out.character_plugin_data.clone(),
         "conversationAnnotations" => out.conversation_annotations.clone(),
         "chatDocuments" => out.chat_documents.clone(),
+        // === P4.D205 ===
+        "chatInforms" => out.chat_informs.clone(),
+        // === end P4.D205 ===
         "instanceSettings" => out.instance_settings.clone(),
         "embeddingStatus" => out.embedding_status.clone(),
         "conversationChunks" => out.conversation_chunks.clone(),

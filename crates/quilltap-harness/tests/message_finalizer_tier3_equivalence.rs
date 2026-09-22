@@ -841,6 +841,9 @@ fn message_finalizer_tier3_matches_oracle() {
         let confirmation = NoAnswerConfirmation;
 
         let opts = FinalizeOptions {
+            // P4.D205: this corpus plants no informs, so the finalizer's
+            // consumption block is skipped — the neutrality leg for it.
+            inform_row_ids: Vec::new(),
             chat_id: call.chat_id.clone(),
             user_id: spec.user_id.clone(),
             chat,

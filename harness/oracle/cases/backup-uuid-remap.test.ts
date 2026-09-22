@@ -94,6 +94,7 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   ['characterPluginData', 'character-plugin-data.json'],
   ['conversationAnnotations', 'conversation-annotations.json'],
   ['chatDocuments', 'chat-documents.json'],
+  ['chatInforms', 'chat-informs.json'],
   ['instanceSettings', 'instance-settings.json'],
   ['embeddingStatus', 'embedding-status.json'],
   ['conversationChunks', 'conversation-chunks.json'],
@@ -580,6 +581,43 @@ function edgeCases(): Case[] {
         embeddingStatus: [{ id: 'es-1', entityId: 'mem-1', profileId: 'ep-1' }],
         tfidfVocabularies: [{ id: 'tv-1', profileId: 'ep-1' }],
         embeddingProfiles: [{ id: 'ep-1', apiKeyId: 'ak-1', tags: [] }],
+      }),
+    },
+    {
+      name: 'chat_informs_six_field_remap',
+      note: 'P4.D205 (v4 e7d77bb60): all SIX id fields move — id, chatId, batchId, participantId, recordMessageId, consumedByMessageId. batchId is a row nowhere, and is remapped anyway so the whole batch travels together and no source id survives. A row with the two nullable message pointers ABSENT is the other half: remapFields only touches strings, so they stay absent.',
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'inf-chat',
+            userId: 'old-user',
+            participants: [{ id: 'inf-part', characterId: 'inf-char' }],
+            messages: [
+              { id: 'inf-record-msg', participantId: 'inf-part', attachments: [] },
+              { id: 'inf-consumed-msg', participantId: 'inf-part', attachments: [] },
+            ],
+          },
+        ],
+        chatInforms: [
+          {
+            id: 'inf-1',
+            chatId: 'inf-chat',
+            batchId: 'inf-batch',
+            participantId: 'inf-part',
+            contentMarkdown: 'You notice the clock has stopped.',
+            recordMessageId: 'inf-record-msg',
+            consumedAt: '2026-01-01T00:00:00.000Z',
+            consumedByMessageId: 'inf-consumed-msg',
+          },
+          {
+            id: 'inf-2',
+            chatId: 'inf-chat',
+            batchId: 'inf-batch',
+            participantId: 'inf-part',
+            contentMarkdown: 'A second passage in the same batch.',
+          },
+        ],
       }),
     },
     {

@@ -915,6 +915,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.participant_id.clone().unwrap(),
                     None,
                     call.pre_generated_message_id.clone().unwrap(),
+                    // P4.D205: this corpus carries no informs.
+                    vec![],
                 );
                 let attached = call
                     .attached_files
@@ -1133,6 +1135,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.participant_id.clone().unwrap(),
                     None,
                     call.pre_generated_message_id.clone().unwrap(),
+                    // P4.D205: this corpus carries no informs.
+                    vec![],
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
                 let mut params = base_params_with_attachments(

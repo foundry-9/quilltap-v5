@@ -139233,3 +139233,157 @@ $N/node --import tsx "$W/harness/oracle/fixtures/dump-export-key-order.ts" \
 (`primary_stream.rs` ×3, `native_tool_loop.rs`, `text_tool_loop.rs`,
 `build_context.rs` ×2) each take the empty/`None` value with a one-line note. No
 production site outside the ones named above constructs either type.
+
+### Unit 8 — the docs mirrors, PRE-LISTED for the unifier (§R.9)
+
+§R.9 makes `docs/v4/` the unifier's, not the lane's. These are the paths this
+lane's two rows (`e7d77bb60` + the `781e3b499` ratification) move, with the byte
+counts **measured at the target pin `f45a517a9`** and the v5 mirror's current
+bytes beside them:
+
+| mirror path | target-pin bytes | v5 mirror now |
+|---|---|---|
+| `docs/v4/developer/features/salon-inform.md` | **30,264** | **ABSENT — new file** |
+| `docs/v4/developer/API.md` | 219,745 | 212,970 |
+| `docs/v4/developer/DDL.md` | 125,326 | 114,051 |
+| `docs/v4/developer/PROMPT_ARCHITECTURE.md` | 33,334 | 30,981 |
+
+⚠ `salon-inform.md` must be mirrored at the **POST-`e7d77bb60`** bytes (30,264),
+never at its birth version from `781e3b499` — that is the copy carrying the
+status header, and §R.9 says so explicitly. Its *other* caveat still STANDS
+(§R.4(e)): **live verification against a real instance has not been run on
+either side**, which is why this lane's work is a 💸 dogfood row rather than a
+closed one.
+
+`docs/CHANGELOG.md` is the standing NO-PORT class. `help/inform.md` and
+`help/insert-announcement.md` are NOT mirror rows — they are shipped tree files
+and were byte-copied in unit 7. `public/schemas/*` likewise: the export schema is
+vendored (unit 6) and the NDJSON schema is not vendored at all.
+
+### What this lane did NOT land — OPEN under the order
+
+Stated exactly, because the unifier and the human rely on it. Everything below
+is unstarted or partial; nothing is stubbed and no `TODO` was left in code.
+
+1. **`build_context_tier3` NOT grown with v4's three `context-management.test.ts`
+   cases** (item 2's family). The block itself has its own tier-1 family and the
+   `build_context` wiring compiles and is exercised, but v4's three arms —
+   nothing owed → exactly 2 system blocks; exactly one extra block after the
+   identity reminder with blocks 0/1 byte-identical; several passages in posting
+   order rule-separated — are NOT ported, and **the byte-identical NEUTRALITY pin
+   the order asks for is therefore NOT recorded**. This is the single most
+   valuable remaining family: it is the only thing that proves a turn without
+   informs still assembles byte-for-byte.
+2. **`orchestrator_tier3` / `primary_stream_tier3` consumption arms NOT added**
+   (item 3's families). The code is ported and builds; no arm pins "consumed
+   against the saved id", "nothing touched on a plain turn", "rows left pending
+   when the save throws", or the preserved-partial consume. The finalizer's
+   ordering argument (the consume sits after the save's `?`) is carried as a code
+   comment, not as a test.
+3. **`regenerate_swipe_tier3`'s three re-apply rows NOT added** (item 3). The
+   handle is landed and marked; the order also asks for a SOURCE-CENSUS guard in
+   this lane's files so P4.D207 cannot half-land its rewrite — **that guard is
+   not written.** P4.D207 must be told by hand.
+4. **`turn_transcript`'s Staff-skip row NOT pinned** with v4's new case (item 4),
+   and the six `isRecordOnlyMessage` unit cases are not ported — the predicate is
+   ported and covered only through the widened strip.
+5. **No dispatch WIRE test** for the three verbs (item 5). The
+   `dispatch_wrong_type_census` recount IS done and green (441 → 444, measured),
+   but the order's red-first tri-state arms through `POST /api/dispatch`
+   (absent / `null` / wrong-typed on all three body keys) are not written — and
+   that is the ONLY instrument that sees a serde collapse, so the tri-state
+   choice is currently argued from the P4.96/P4.98 precedent rather than measured
+   here. The `salon_mutations` participant-removal row is likewise not added.
+6. **The system-bundle families are NOT grown with planted rows** (item 6):
+   `chat_export`, `qtap_import`, `system_backup`, `system_restore`,
+   `backup_uuid_remap`, `system_import_state`. The remap RULES have their own
+   tier-1 family (`chat_informs_remap_equivalence`, green, 8 cases), but nothing
+   drives a bundle carrying informs end to end, and the pre-4.10-archive arm
+   (answering zero, writing nothing) is unpinned.
+7. **Tier 2 item 10 NOT done** — the read-count assert (one
+   `find_pending_for_participant` per turn, zero on a turn with no responding
+   participant). The GATE for it is ported and commented; it is not measured.
+
+**Tier 2 item 9 IS done**: cancel publishes the `chats` topic explicitly. The
+order's "`publish_sites` census recounted" is **not applicable, measured** —
+`realtime_publish_sites_guard`'s census is scoped to `enclave/lifecycle.rs`
+alone, so a new publish site elsewhere moves nothing in it (the guard is green).
+
+**Tier 2 item 11 IS done** — the two-DDL filing candidate is recorded in unit 1
+with its measurement.
+
+**Tier 3 deferrals, recorded as the order directs:** Carina does not deliver
+informs (v4 does not either — it builds its own minimal call), and pending
+informs do not travel through a chat merge (v4's help says so). Neither is an
+arm; both are recorded here rather than coded.
+
+### Unit 6 rider — `backup_uuid_remap` GROWN with a planted Inform case
+
+Closing part of what the OPEN list above calls item 6's family gap, while the
+gate ran. The `backup-uuid-remap` oracle's corpus generator gained a dedicated
+case, `chat_informs_six_field_remap`, and BOTH the corpus and the NDJSON were
+regenerated in the one hash-pinned invocation the family requires.
+
+The case carries two rows of ONE batch:
+- the first with both nullable message pointers SET
+  (`recordMessageId` + `consumedByMessageId`);
+- the second with both ABSENT — `remapFields` only touches strings, so they must
+  stay absent rather than becoming `null`.
+
+**v4's real output is the proof the design intended:** both rows come back
+sharing the SAME remapped `batchId` (`…0007`), so the whole batch travels
+together and no source id survives. The Rust side matches byte for byte.
+
+Three edits the growth forced, each recorded: `COLLECTIONS` 38 → **39**; the
+entity table gains `"chatInforms"` after `"chatDocuments"`; the per-collection
+projection arm added.
+
+| # | mutation | reddened |
+|---|---|---|
+| M8 | drop `batchId` from the remap field list | `chat_informs_six_field_remap` in THREE places — `chatInforms differs`, `getMapping() differs`, and `getSize(): rust 7 vs oracle 8` (one fewer id enters the remapper's map) |
+
+**Regen recipe as run** (hash-pinned — the corpus and the NDJSON must be written
+by the SAME invocation, or the Rust side refuses on the sha mismatch):
+
+```bash
+TMPO=/tmp/qt-uuidremap-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$W/harness/oracle/cases/backup-uuid-remap.test.ts" "$TMPO/cases/"
+cp "$W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d205-f45a517a9
+QT_FIXTURE_SD_MAIN=$W/crates/quilltap-web/tests/fixtures/system-data-main.db \
+QT_FIXTURE_SD_MOUNT=$W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
+QT_FIXTURE_SD_LLM=$W/crates/quilltap-web/tests/fixtures/system-data-llmlogs.db \
+QT_CORPUS_OUT=$W/harness/oracle/fixtures/uuid-remap-corpus.json \
+QT_ORACLE_OUT=/tmp/p4d205/oracle-backup-uuid-remap.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- backup-uuid-remap
+```
+
+⚠ **`harness/oracle/fixtures/uuid-remap-corpus.json` is a COMMITTED, hash-pinned
+fixture this lane REWROTE.** It is read by `backup_uuid_remap_equivalence` alone
+(the sha stamp is per-NDJSON-line), so no other family is invalidated — but
+anyone regenerating it must use the recipe above, from the target pin, or the
+hash check refuses the run.
+
+**The remaining item-6 families are still OPEN**: `chat_export`, `qtap_import`,
+`system_backup`, `system_restore` and `system_import_state` carry no planted
+informs, and the pre-4.10-archive arm is unpinned.
+
+**Nine `#[cfg(test)]` / harness call sites** took the new required fields as the
+gate surfaced them (`answer_confirmation_tier3`, `build_context_tier3`,
+`message_finalizer_tier3`, `native_tool_loop_tier3`, `text_tool_loop_tier3`,
+`primary_stream_tier3` ×2, `tool_wire_call_site`, `backup_uuid_remap`), each with
+a one-line note saying the corpus carries no informs. **`build_context_tier3`'s
+and `message_finalizer_tier3`'s notes say more than that**: those two ARE the
+byte-identical neutrality legs for the block and for the consumption block — they
+run the whole path with nothing pending and must stay green, which they do. That
+is weaker than the arms item 2 and item 3 ask for (nothing asserts the block
+WOULD appear), but it is not nothing, and it is what the OPEN list should be read
+against.
+
+**Two clippy lints the change raised, both fixed rather than suppressed
+wholesale:** `PreservePartialOnError::new`'s eighth argument takes a NARROW
+`#[allow(clippy::too_many_arguments)]` with the reason (they are v4's captured
+closure variables, one for one, and grouping them into a struct would be tidier
+Rust and a worse port), and `ChatInformRemap::Ok`'s payload is BOXED (~240 bytes
+against `Dropped`'s one `String`).

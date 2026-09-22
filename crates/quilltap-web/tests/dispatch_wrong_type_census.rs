@@ -2555,10 +2555,22 @@ fn is_route_identifier(field: &str) -> bool {
 // `*_id` rule drops it and the excluded count rises by exactly one. The
 // variant's other SIX keys are body keys carried raw as `Option<Option<Value>>`
 // tri-states, so `typed_request_fields` never sees them; they are adjudicated in
-// `MOUNT_SYNC_RAW_SIX` at the foot of this file. ⚠ P4.D205 and P4.D207 add verbs
-// on their own branches, so the UNIFIER recounts rather than taking this lane's
-// 442.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 442;
+// `MOUNT_SYNC_RAW_SIX` at the foot of this file.
+//
+// **P4.D205 (+3): 441 → 444.** The three Inform verbs (`chatInform`,
+// `chatInformsList`, `chatInformCancel`) each carry a typed `chat_id: String`,
+// which is a URL path segment on v4's route (`/api/v1/chats/[id]`) and so is
+// dropped by the route-identifier rule — exactly what the rule is for. Their
+// BODY keys (`contentMarkdown`, `targetParticipantIds`, `batchId`) are
+// `Option<Option<Value>>` tri-states, which `typed_request_fields` never sees,
+// so nothing entered the typed set and no census row is owed. Measured by
+// running the test, not predicted.
+//
+// **The `f45a517a9` round's unification: 441 + 1 (P4.D210) + 3 (P4.D205) +
+// 0 (P4.D207 — `MessageSwipe.stream` is a flag on an EXISTING verb, no new
+// `*_id`) = 445.** Each lane carried its own arithmetic on its own branch; the
+// unifier recounted rather than taking any lane's number.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 445;
 
 #[test]
 fn census_covers_every_typed_request_field() {

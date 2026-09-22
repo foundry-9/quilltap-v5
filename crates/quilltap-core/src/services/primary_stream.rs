@@ -680,6 +680,14 @@ pub struct PreservePartialOnError {
 
 impl PreservePartialOnError {
     /// Build the preserver for this turn.
+    ///
+    /// P4.D205 took this from seven parameters to eight (`inform_row_ids`).
+    /// Grouping them into a struct would be tidier Rust and a worse port: these
+    /// are v4's captured closure variables, one for one
+    /// (`makePreservePartialOnError({chatId, characterId, character, …,
+    /// informRowIds})`), and the correspondence is what makes the hunk
+    /// reviewable against v4's.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         chat_id: impl Into<String>,
         character_id: impl Into<String>,

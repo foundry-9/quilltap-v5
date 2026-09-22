@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the Inform rows under the uuid remap, and the nine call sites the two new required fields reached (P4.D205)
+
+_Versions: core 0.0.973, harness 0.0.866, web 0.0.160._
+
+`backup_uuid_remap` now carries a planted Inform case. Two rows of one batch —
+one with both nullable message pointers set, one with both absent — prove the
+six-field remap: v4's own output brings them back sharing the same remapped
+`batchId`, so the whole batch travels together and no source id survives, while
+the absent pointers stay absent rather than becoming null. Dropping `batchId`
+from the field list reddens the case three ways, including the remapper's own
+size falling from eight ids to seven.
+
+The two new required fields — `FinalizeOptions.inform_row_ids` and
+`BuildContextInput.regeneration_of_message_ids` — reached nine test call sites,
+each taking the empty value with the reason. Two of those are load-bearing
+rather than incidental: `build_context_tier3` and `message_finalizer_tier3` run
+the whole path with nothing pending, which makes them the byte-identical
+neutrality legs for the block and for the consumption block.
+
+The dispatch wrong-type census moves 441 to 444 — the three verbs' `chatId` is a
+URL path segment on v4's route, so the route-identifier rule drops it, which is
+what that rule is for. Measured by running the test, not predicted. No census row
+is owed: the body keys are tri-states the census never sees.
+
+Two clippy lints the change raised are fixed rather than suppressed wholesale: a
+narrow allow on the preserver's eighth argument, with the reason that these are
+v4's captured closure variables one for one, and a box on the remap result's
+larger variant.
+
+
 #### 2026-09-22 — feat(backup): Inform rows through export, import, backup and restore, and the schema re-vendored (P4.D205)
 
 _Versions: core 0.0.972, harness 0.0.865._

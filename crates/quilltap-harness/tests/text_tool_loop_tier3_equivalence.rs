@@ -380,6 +380,8 @@ async fn text_tool_loop_tier3_matches_oracle() {
             format!("{}-pp", c.chat_id),
             None,
             format!("{}-msg", c.chat_id),
+            // P4.D205: this corpus carries no informs.
+            vec![],
         );
         let mut state = StreamingState {
             full_response: c.initial_full_response.clone(),

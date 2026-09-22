@@ -669,6 +669,8 @@ fn answer_confirmation_tier3_matches_oracle() {
         }];
 
         let opts = FinalizeOptions {
+            // P4.D205: this corpus carries no informs.
+            inform_row_ids: Vec::new(),
             chat_id: call.chat_id.clone(),
             user_id: spec.user_id.clone(),
             chat,

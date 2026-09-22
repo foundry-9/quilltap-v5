@@ -706,6 +706,10 @@ async fn build_context_tier3_matches_oracle() {
         };
 
         let input = BuildContextInput {
+            // P4.D205: not a swipe, so the inform block reads the PENDING set.
+            // The corpus plants no `chat_informs` rows, so the block is absent
+            // and this family is the byte-identical neutrality leg.
+            regeneration_of_message_ids: None,
             // U4.4: the enclave per-turn clamp — None on this corpus (inert).
             autonomous_context_cap: None,
             turn_skip: op.turn_skip.as_ref().map(|t| {
