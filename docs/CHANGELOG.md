@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(harness): the tier-1 codec family — byte parity with v4's real text-compression.ts, in both directions (P4.D203)
+
+_Versions: harness 0.0.858._
+
+The equivalence proof for the codec S landed. `text_compression_equivalence`
+drives v4's REAL `lib/database/text-compression.ts` over a committed corpus and
+compares 76 rows in three kinds.
+
+`encode` (33 rows) pins v5's stored bytes against v4's `textToBlob` — decision,
+stored length and hex. `decode` (18 rows) pins `blobToText` and
+`isCompressedTextBlob` over every legacy and corrupt shape: null, undefined,
+plain and empty strings, uncompressed buffers ascii and multi-byte, the empty
+buffer, a two-byte buffer, the embedding magic `0xEB`, a header-only blob,
+INTEGER and REAL cells, and — over a genuine brotli payload — the well-formed
+blob, two truncations, an unknown version byte, an unknown codec byte and a
+wrong magic byte.
+
+`crossDecode` (25 rows) is the one that matters if byte parity ever lapses:
+v4's real decoder run over blobs **v5 produced**. The corpus's `v5Blobs`
+section is written by an `#[ignore]`d fixture step in the family before the
+oracle runs, so v4 reads v5's actual bytes rather than its own.
+
+The corpus (`harness/oracle/fixtures/text-compression.json`, generator shipped
+beside it) spans the floor measured in BYTES at 511/512/513 ascii, 508 and 512
+bytes of four-byte emoji, 511 bytes of three-byte characters and 513 of
+two-byte ones — plus four incompressible shapes, twelve real-shaped transcript
+rows straddling the floor, and an `llm_logs.response`-shaped payload.
+
+Mutation proofs: moving the floor to 513 reddens 9 rows; re-adding a `flush()`
+before the writer drops reddens 50. The third — dropping v4's `total >=
+raw.length` guard — SURVIVED, and probing settled why: across seven adversarial
+shapes from 512 B to 16 KB, brotli q5's worst ratio is 0.863, so the arm is
+unreachable for any real UTF-8 input at or above the floor. v4's own test never
+reaches it either. The guard stays because v4 has it, and it is now pinned at
+its own altitude by a one-line `compressed_is_worth_storing` with a boundary
+test, against which the mutation does redden.
+
 #### 2026-09-21 — feat(db): the compressed-text codec and the `qt_text` UDF — v5 can read a v4-4.10 instance again (P4.D203 S)
 
 _Versions: core 0.0.967, cli 0.0.23, web 0.0.158._

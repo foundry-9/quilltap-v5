@@ -136927,9 +136927,20 @@ because each one is why a specific expression had to gain a wrapper):
 
 ### Unit 2 — S, the substrate commit
 
-**S's hash: recorded in this lane's final report and in the commit itself; the
-five stacked lanes (P4.D204, P4.D205, P4.D207, P4.D208, P4.D209) branch from
-it.** Contents, exactly §R.10(a)'s list plus the one registration site the
+# ⭐ **S = `144a0e80`** (`claude/p4-d203-text-codec-f45a517a9`)
+
+**The five stacked lanes branch from THIS commit, not from `main`:**
+
+```bash
+git worktree add <path> -b claude/<lane>-144a0e80 144a0e80
+```
+
+P4.D204, P4.D205, P4.D207, P4.D208 and P4.D209 all take it (§R.10(a));
+P4.D210 takes T from P4.D209 and may start its pure modules from S. A lane
+branched from S never edits S's files — report a finding in S to P4.D203
+through this log.
+
+S's contents are Contents, exactly §R.10(a)'s list plus the one registration site the
 census found:
 
 * workspace `Cargo.toml` — `rusqlite` gains `"functions"` (NO bundled feature);
