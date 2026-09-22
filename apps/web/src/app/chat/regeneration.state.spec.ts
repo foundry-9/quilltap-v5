@@ -46,6 +46,8 @@ interface Harness {
   calls: Record<string, unknown>[];
   /** Resolve or reject the in-flight dispatch. */
   settle: (err?: Error) => void;
+  /** Resolve the in-flight dispatch with a chosen answer. */
+  settleWith: (answer: Record<string, unknown>) => void;
   refetched: number;
   selected: string[];
 }
@@ -79,6 +81,7 @@ function harness(): Harness {
     stream,
     calls,
     settle: (err?: Error) => (err ? reject(err) : resolve({ message: null })),
+    settleWith: (answer: Record<string, unknown>) => resolve(answer),
     refetched: 0,
     selected: [],
   };
@@ -230,6 +233,21 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     expect(h.controller.regeneration()).toBeNull();
     expect(h.controller.regenerationStatus()).toBeNull();
     expect(h.controller.isRegenerating()).toBe(false);
+  });
+
+  it('falls back to the dispatch answer’s message id when the done frame carried none', async () => {
+    // The `done` frame rides the Event channel and the subscription is torn
+    // down the instant the dispatch settles, so a frame that loses that race
+    // must not cost the operator the variant they just made (unify §3).
+    const h = harness();
+    const selected: string[] = [];
+    const run = h.controller.regenerate('m-1', async () => {}, (id) => selected.push(id));
+    await tick();
+    h.stream.frames.next(frame('m-1', { content: 'draft' }));
+    await tick();
+    h.settleWith({ message: { id: 'swipe-9', content: 'the persisted line' } });
+    await run;
+    expect(selected).toEqual(['swipe-9']);
   });
 
   it('does not select a variant when done carried no message id', async () => {

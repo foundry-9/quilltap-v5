@@ -137,7 +137,17 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
     // A batch that covers every eligible seat is public, so the server records
     // it with null targets — but it is still PENDING on both seats, so the
     // chips name them. (The record and the chips answer different questions.)
-    await expect(page.getByText(/^Informing .* before their next turn$/)).toBeVisible();
+    const chip = page.locator('.qt-chat-tool-result-chip', {
+      hasText: /^Informing (Aria, Bram|Bram, Aria) before their next turn$/,
+    });
+    await expect(chip).toBeVisible();
+
+    // Withdraw it, so the batch does not linger into the beats below (a
+    // leftover two-seat chip CONTAINS "Informing Aria" and would make a
+    // one-seat locator ambiguous).
+    await chip.getByRole('button', { name: /^Withdraw the inform for / }).click();
+    await expect(page.getByText('The note has been withdrawn')).toBeVisible();
+    await expect(chip).toHaveCount(0);
   });
 
   test('informing ONE seat names it on the chip, and the cross withdraws it', async ({ page }) => {
@@ -174,23 +184,43 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
 
+    // Inform EVERYONE. The rotation's next speaker is a weighted draw the beat
+    // cannot force (`forcing-a-deterministic-turn-in-a-salon-e2e-beat`), so a
+    // note aimed at one seat would be consumed only if that seat happened to
+    // take the floor. A note owed to BOTH seats is consumed by whichever seat
+    // speaks, and the chip's text records exactly that: it names both seats
+    // before the turn and only the other one after it.
     await page.getByRole('button', { name: 'Inform the cast' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: /Aria/ }).click();
     await writePassage(page, 'You remember the gate was already open.');
     await footerButton(page, 'Inform').click();
 
-    const chip = page.locator('.qt-chat-tool-result-chip', { hasText: 'Informing Aria' });
-    await expect(chip).toBeVisible({ timeout: 15_000 });
+    const bothSeats = page.locator('.qt-chat-tool-result-chip', {
+      hasText: /^Informing (Aria, Bram|Bram, Aria) before their next turn$/,
+    });
+    await expect(bothSeats).toBeVisible({ timeout: 15_000 });
 
     // Run a real turn. The mock answers whatever the seat is asked, so the only
     // thing under test is that the pending row is consumed by the generation it
     // was written for.
     const composer = page.locator('.qt-chat-composer-input').first();
     await composer.click();
-    await page.keyboard.type('Aria, what do you make of it?');
+    await page.keyboard.type('What do you make of it?');
     await page.locator('button[aria-label="Send message"]').click();
 
-    // Once Aria has had her turn the note is gone, like a note fed to the fire.
-    await expect(chip).toHaveCount(0, { timeout: 30_000 });
+    // Once a seat has had its turn ITS row is gone, like a note fed to the fire.
+    // Only consumption can shrink the chip's name list (a withdrawal removes
+    // the whole batch), so the two-seat chip going is the proof. What remains
+    // depends on how far the turn CHAIN ran — the first live run had both
+    // seats speak, leaving no chip at all — so the remainder is tidied, not
+    // asserted.
+    await expect(bothSeats).toHaveCount(0, { timeout: 30_000 });
+    const oneSeat = page.locator('.qt-chat-tool-result-chip', {
+      hasText: /^Informing (Aria|Bram) before their next turn$/,
+    });
+    if ((await oneSeat.count()) > 0) {
+      // Leave nothing behind for a later spec reading this chat.
+      await oneSeat.getByRole('button', { name: /^Withdraw the inform for / }).click();
+      await expect(oneSeat).toHaveCount(0);
+    }
   });
 });

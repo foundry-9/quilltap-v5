@@ -137,6 +137,23 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
       'A second telling',
       { timeout: 30_000 },
     );
+    // The mock's reply is the SAME fixed sentence for every completion, so the
+    // text above cannot tell the variants apart; the swipe counter can. After
+    // one re-roll the group holds two variants and the new one is selected.
+    // The counter is the bare `N/M` span between the two swipe chevrons.
+    const counter = page
+      .locator('.qt-chat-message-row-assistant')
+      .last()
+      .locator('span', { hasText: /^\d+\/\d+$/ });
+    await expect(counter).toHaveText('2/2', { timeout: 15_000 });
+
+    // 4. A SECOND re-roll is where v4 bug (b) actually bites: the group now
+    //    exists in the previous swipe map, so the reconcile's id-carry has a
+    //    previous selection to keep. The counter must read the newest variant.
+    await regenerateButton(page).click();
+    await expect(page.locator('.qt-chat-regenerating-plate')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.qt-chat-regenerating')).toHaveCount(0, { timeout: 30_000 });
+    await expect(counter).toHaveText('3/3', { timeout: 15_000 });
   });
 
   test('the composer and the action bar are shut for the duration', async ({ page }) => {

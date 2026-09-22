@@ -4214,6 +4214,17 @@ export class SalonConversation {
       message.id,
       async () => {
         await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+        // v4's `fetchChat` writes `setSwipeStates` before it resolves, so its
+        // `selectSwipeVariant` runs over a map that already holds the new
+        // variant. Here the query's `data()` is written when the refetch
+        // settles, but the transcript is reconciled by the seed EFFECT above,
+        // which the zoneless scheduler runs on a later tick — so the selection
+        // below would search the PRE-refetch map, find nothing, and leave the
+        // reconcile's id-carry on the line just replaced: v4 bug (b) reproduced
+        // by timing (the unification review's finding). Seed synchronously
+        // here; the effect's later pass is a no-op on unchanged rows and
+        // carries the selection made below by id.
+        untracked(() => this.seedTranscriptFromChat());
       },
       (newSwipeId) => {
         const next = selectSwipeVariant(this.transcriptSwipeStates(), newSwipeId);

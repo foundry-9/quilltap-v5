@@ -175,11 +175,23 @@ export class RegenerationController {
     });
 
     try {
-      await this.core
+      const answered = await this.core
         .dispatchData({ type: 'messageSwipe', messageId, stream: true })
         .finally(() => sub.unsubscribe());
 
       if (streamError) throw new Error(streamError);
+
+      // The dispatch answers the same `201 { message }` the non-streaming call
+      // does (§S.2), and it is the authoritative copy of the persisted row: the
+      // `done` frame rides the Event channel and the subscription above is torn
+      // down the instant the dispatch settles, so a terminal frame that loses
+      // that race would leave `newSwipeId` null and the operator on the line
+      // they just replaced. Prefer the frame's id (it arrives first in practice)
+      // and fall back to the response's — the unification review's finding.
+      if (!newSwipeId) {
+        const posted = answered?.['message'] as { id?: string } | null | undefined;
+        newSwipeId = posted?.id ?? null;
+      }
 
       // Hold the live text in place until the authoritative transcript is in
       // hand; clearing first would flash the line we just replaced.
