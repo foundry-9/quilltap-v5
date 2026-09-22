@@ -138213,3 +138213,236 @@ Pins, both verified by `rev-parse` AND `ls -ld` per ledger §5.1:
 `LinkBlobInput` / `LinkDocumentInput`, `set_link_timestamps`,
 `drop_chunks_for_links`, the per-field SET, and bug 157's two signatures all
 land here. Versions: core 0.0.970, harness 0.0.863, web 0.0.159.
+
+### The units, in order
+
+| commit | unit |
+|---|---|
+| `c91aa240` | **T** — the repo-layer contract: bugs 155 + 156 + 157, seam 4, `set_link_timestamps`, `drop_chunks_for_links`, the eleven `LinkBlobInput` spills, the three bug-157 caller repoints, and the NEW `doc_mount_write_metadata_equivalence` |
+| `da456d22` | docs — T's hash recorded the moment it existed (§R.10(a)) |
+| `14f8f705` | the post-write reindex hoisted; bug 159's image half; the five path-normaliser copies folded to one + a census |
+| `93db395b` | the two-link-blob corpus growth (route + attach), the migration DECISION, the item-7 deferral |
+
+### The new family, and why it had to be new
+
+`doc_mount_write_metadata_equivalence` drives v4's REAL repositories DIRECTLY —
+`linkDocumentContent`, `linkBlobContent`, `setLinkTimestamps`, `bindLinkGroup`,
+`updateDescription`, `updateExtractedText` — never through
+`writeDatabaseDocument`. **That distinction is the whole instrument, and it is a
+correction to the order's §R.5 prediction.** The order expected
+`doc_mount_file_links_tier2` to be "red-first on bug 155's five columns and bug
+156's `chunkCount`/`doc_mount_chunks` rows". It is not, and cannot be:
+
+- every `write-blob` op in that corpus passes `description` and `extractedText`
+  explicitly, so bug 155's KEEP arm is never taken; and
+- every document op goes through `writeDatabaseDocument`, which re-chunks the
+  instant it returns — so `chunkCount` is back to its real value before the dump
+  is taken, and bug 156 leaves **no trace in a final-state diff through that
+  writer**.
+
+Measured, not argued: `doc_mount_file_links_tier2` regenerated at the target pin
+is **ok** both before and after T. Every byte-preserving writer — file-ops, the
+sync applier, every in-child `doc_write_file` — calls the repository directly,
+which is where the defect lives and where the new family looks.
+
+33 ops in four groups, and what each proves in the dump: bug 155 (a silent
+overwrite keeps `extractedText`/`extractionStatus` while an explicit `''` clears
+`description`; a fresh insert defaults blank; an explicit JS `null` CLEARS where
+an omission KEEPS, with an omitted `description` kept in the same write); bug 156
+(`notes/one.md` repointed → `chunkCount` 0 and its chunk row GONE;
+`notes/two.md` rewritten with identical bytes → both survive, and it is the only
+chunk row left; `twins/left.md` + `twins/right.md` bound and both chunked, then
+the left rewritten → the SIBLING is retired too); seam 4 (`dated/doc.md`
+inserted with both stamps pinned then updated with `lastModified` alone —
+`createdAt` reaches the dump still carrying its INSERT value, which is why no
+later op touches it; `setLinkTimestamps` false for an unknown link AND for an
+empty ask); bug 157 (two links on one blob, each path resolving to its OWN link
+id, each caption on its own row, extracted text per location).
+
+The harness keeps the corpus's `pinnedTimestamps` LITERAL and placeholders every
+other one. Without that carve-out "honoured the caller's clock" and "stamped
+now" are the same string and the whole timestamp group is unprovable.
+
+### Mutation proofs
+
+| # | mutation | target | result |
+|---|---|---|---|
+| M1 | write `description` unconditionally | `doc_mount_write_metadata` | **RED** — `art/nulled.bin` loses `"kept"` while the explicit-`''` arm stays green (the two-arm proof) |
+| M2 | skip `drop_chunks_for_links` | same | **RED** — `chunks diverged`, the retired row survives |
+| M3 | invert the fan-out `moved` filter | same | **RED** — the needs-rechunk probe: the sibling keeps its chunks |
+| M4 | restore the `LIMIT 1` fallback | same | **RED** — both captions land on one row |
+| M5 | read only the first fourcc | `blob_transcode_lossless_webp` | **RED** on 4 of 16 |
+| M6 | drop the odd-size pad byte | same | **RED** on 3 of 16, in BOTH directions |
+| M7 | drop the over-length guard | same | **SURVIVED — see below** |
+| M8 | hash the ORIGINAL bytes | the repo-level ordering tests | **RED** — the stored sha describes bytes the row does not hold |
+| M9 | rewrite neither path nor name | `normalize_blob_image` | **RED** on 4 of 9 |
+| M10 | restore the `LIMIT 1` fallback | `mount_write` | **RED** on `blob_patch_twin_pair` ONLY — the single-link `blob_patch` stays green, which is §R.5's trap proven |
+| M11 | restore the `LIMIT 1` fallback | the attach arm | **SURVIVED first, then RED — see below** |
+
+**M7 survived, and the reason is a proof rather than a corpus hole.** v4's
+`if (size > input.length) return false` has **no observable effect on the
+verdict**: `size > len` implies `offset + 8 + size > len`, so the very next loop
+condition fails and the walk returns `false` anyway. No input can exist where an
+over-length chunk is followed by a reachable `VP8L`. The guard is kept — it is
+v4's line, and it ends the walk in O(1) — and the measurement is recorded at the
+site so the next reader does not go looking for the case that would redden it.
+The corpus still pins the VERDICT on both sides (`size_past_end`,
+`size_max_u32`).
+
+**M11 survived as first written, and that was a finding.** The attach arm minted
+its twin and then attached the ORIGINAL. The deleted fallback is
+`WHERE fileId = ? LIMIT 1` with no `ORDER BY`, so it returns the first row of
+the scan — the original, which the fixture inserted long before the test minted
+the twin. The caption therefore landed on the right row BY LUCK. Flipping the
+arm to attach the TWIN removes the luck, and the proof reddens. Written up at
+the site, because the next person to add a twin case will reach for the same
+shape.
+
+### Measured corrections to the order
+
+1. **`writeDestBytes` takes the reindex call in its NATIVE-TEXT branch ONLY.**
+   The order says "both branches"; `23da0b322`'s `file-ops.ts` diff is one
+   import and one call at `:725`. The binary arm has no counterpart (§R.4 —
+   re-verify even where the order flags the trap).
+2. **`doc_mount_file_links_tier2` is NOT red-first on bugs 155/156** — see
+   above. Neither is `doc_mount_blobs_tier2` or `doc_blob` on bug 159: all three
+   regenerated **ok** at the target pin, because no corpus byte in any of them
+   is a decodable image, so the chokepoint is a measured no-op on both sides.
+3. **`LinkBlobInput` has ELEVEN production construction sites, not eight**, and
+   the order's list names two that are `CreateBlobInput` sites instead
+   (`tools/doc_edit/blob.rs`, `services/quilltap_import/document_stores.rs`)
+   while missing three (`tools/generate_image.rs:1252`,
+   `services/image_job_storage.rs:180`, `services/mount_index/store_file.rs:398`).
+   Both structs took the flag; the `.qtap` import is the only `false`.
+4. **Tier-2 item 8's premise is refuted.** v4's
+   `import-document-stores.ts` calls `updateExtractedText` with THREE arguments
+   at the target pin (`created.linkId`, at `:347-352`) — `0c14fd61f` updated it.
+   There is no v4 typing quirk and no filing candidate.
+5. **`update_path` has no v5 port**, so "leave its own `LIMIT 1` alone" is
+   vacuous. v4 has `updatePath` at `doc-mount-blobs.repository.ts:358` with its
+   fallback at `:364`; `doc_mount_blobs.rs` has no counterpart, and after T the
+   only `LIMIT 1` left in the file is inside a doc comment describing the bug.
+6. **No fifth host image seam was needed.** `HostImageCodec`'s existing
+   `WebpTranscoder::encode_webp` decodes through the `image` crate's format
+   sniffer and `image-webp` 0.2.4 handles a VP8L bitstream, so a lossless WebP
+   already reaches the same lossy encoder every bitmap does. The
+   `large_lossless_reencoded_not_renamed` case is the proof: through that seam
+   untouched, back at 620×440 and smaller.
+7. **v4's two post-write warn sentences have no v5 counterpart by
+   construction.** Both halves are infallible by signature in v5, and v4's own
+   outer catches are unreachable except on a dynamic-`import` failure a
+   statically linked binary cannot have (`reindexSingleFile` swallows everything
+   in its own catch; `reindexLinkGroupSiblings` swallows per sibling).
+8. **v5 has no in-memory mount-chunk cache**, so `invalidateMountPoint` has no
+   counterpart — recorded as a seam at the site, joining the three pre-existing
+   recorded no-ops in `embedding_reapply_profile`, `embedding_generate_job` and
+   `avatar_rolls_service`. Every v5 chunk read goes to SQLite, so deleting the
+   rows IS the invalidation.
+
+### Out-of-mandate edits (§R.10(e)), declared
+
+- **The eleven `LinkBlobInput` + two `CreateBlobInput` construction sites** —
+  one field each (`normalize_images`, and the two timestamps on `LinkBlobInput`).
+- **`tools/generate_image.rs`, `services/image_job_storage.rs`,
+  `tools/doc_edit/blob.rs`** — their local `normalise_blob_relative_path` copies
+  DELETED and repointed at the canonical one (the order's "five copies folded to
+  one"), each marked `// P4.D209 OUT-OF-MANDATE`. Guarded by
+  `blob_path_normaliser_census`.
+- **`services/file_storage.rs`'s `description`** changed from
+  `input.description.map(...)` to `Some(input.description.unwrap_or(""))`. This
+  is a REAL fix, not tidying: v4's `character-vault-bridge.ts:187` passes
+  `input.description ?? ''`, which is ALWAYS a string, so under bug 155 it is
+  always a SET. Passing `None` would have started silently preserving a caption
+  that writer means to overwrite — bug 155 inverted at one call site.
+- **An audit of the other ten sites found two where `None` vs `Some("")` is
+  indistinguishable** because the path is unique-suffix and therefore
+  insert-only (`tools/generate_image.rs:1252`,
+  `services/image_job_storage.rs:267` — `store_blob_to_mount`). Left alone
+  deliberately, to keep the spill to the one pre-declared line each; recorded
+  here so a later reader does not mistake the asymmetry for an oversight.
+
+### Findings for the unifier
+
+- **`projects_routes_equivalence` is RED, and it is NOT this lane's.** Classified
+  at BOTH pins per §R.5 before anything was touched: identical symptom at
+  `f45a517a9` and at `baa85e19b`. v5 answers `sqlite error: no such column:
+  cycleOrderParticipantIds` — a **fixture-vintage** red on the committed
+  `groups-projects-{main,mount}.db` pair, which predates P4.D195's bug-147
+  columns. `comm -12` of this lane's changed files against every file naming
+  that column is EMPTY. §R.12 forbids healing a committed pair this round; it
+  belongs with the ten-family fixture-vintage heal order, as an ELEVENTH.
+- **`BlobWithLink.original_file_name` is typed `String` over a column that can
+  be NULL** (`doc_mount_blobs.rs:133`, `row.get(12)`). A `.qtap` import has
+  always been able to write NULL there — before T through the corrective UPDATE,
+  after T straight through — so `find_by_mount_point_and_path` on an imported
+  blob would fail `InvalidColumnType`. **Pre-existing, not introduced here**, and
+  widening it spills into every reader of the joined view, so it is out of this
+  lane's mandate. Named for whoever owns that struct next.
+
+### The gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0` and `TZ=UTC`, each long
+step as ONE sentinel-guarded background chain (no `pgrep` poll loop; full logs
+captured, never `tail -N`).
+
+| step | result |
+|---|---|
+| §R.2 probe | **PASS** at open (after the human's re-pin — see §0) and again before every regen batch |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **clean (exit 0)** |
+| same with `--features quilltap-core/native-transport` | **clean (exit 0)** |
+| `cargo build --workspace --release` | **clean (exit 0)**, 11 m 28 s |
+| `cargo test --workspace --no-fail-fast` | **588 test binaries / 3,500 passed / 2 failed / 3 ignored** |
+
+**The two failures are neither of them this lane's, and both were red before it
+started** — the drift ledger's §1 names exactly this pair under "the workspace
+gate MOVES in TWO places, both by design, both measured red 2026-09-21 by
+running them": `qtap_schema_embed_guard::
+the_embedded_schema_equals_the_v4_checkouts` (Inform's re-vendor obligation from
+`e7d77bb60` — **P4.D205's**) and `zod_version_guard::
+v4s_installed_zod_matches_the_recorded_version` (`4.5.4 → 4.6.5` from
+`6b0615807` — **P4.D211's**).
+
+The 478 `SKIP:` lines are families outside the lane's env block, withheld on
+purpose so they skip honestly rather than fail on a deleted `/tmp` path (§R.3).
+**Every one of the lane's sixteen families was confirmed RUN by name**, each with
+a non-zero duration and zero skips inside its own binary:
+`doc_mount_write_metadata`, `blob_transcode_lossless_webp`,
+`normalize_blob_image`, `blob_path_normaliser_census`,
+`doc_mount_file_links_tier2`, `mount_write`, `mount_ops`, `mount_refresh`,
+`attach_mount_file`, `doc_blob`, `doc_mount_blobs_tier2`, `qtap_import`,
+`mount_link_groups`, `mount_case_resolution`, `mount_case_moves`,
+`doc_mount_chunks_tier2`.
+
+Neutrality legs, regenerated at the **BASELINE** pin
+(`/tmp/qt-v4-pin-p4d209-baa85e19b`) and run: 12 of 13 **ok** —
+`doc_enum`, `doc_fm`, `doc_fs`, `doc_text`, `doc_ui`, `groups_routes`,
+`groups_tier2`, `metadata_vault_roundtrip`, `projects_tier2`,
+`scenarios_routes`, `state_cascade`, `wardrobe_instructions_routes`. The
+thirteenth is `projects_routes`, classified above as a pre-existing
+fixture-vintage red at BOTH pins and NOT this lane's. Seam 4's neutrality is
+additionally true BY CONSTRUCTION: every pre-existing construction site passes
+`last_modified: None` / `created_at: None`, which resolves to `now` — exactly
+what the code did before.
+
+Versions at lane close: **core 0.0.972, harness 0.0.865, web 0.0.159**
+(host/cli/tauri/fixture-sanitizer/SPA untouched by this lane).
+
+### What is OPEN under the order at lane close
+
+Tier-1 items 1, 3, 4, 5 and 6 are CLOSED; tier-2 item 8 is closed by refutation
+and item 7 by a typed deferral at the site (both above). **Item 2 is closed
+except for one row, deferred loudly:**
+
+- **The `qtap_import` document-store round trip does NOT yet carry a two-link
+  blob whose extracted text lands on the SECOND-created link.** The family was
+  regenerated at the target pin and is **ok**, and the import's own bug-157
+  repoint (`document_stores.rs` → `Some(&created.link_id)`) is landed and
+  compiles, but it has no corpus row that would distinguish it from the deleted
+  fallback — the bundle fixture carries one link per blob. The shape it needs:
+  a `.qtap` bundle whose `documentStores` section holds two blob entries with
+  the SAME `dataBase64`/`sha256` at two `relativePath`s, the second carrying
+  `extractedText`; after import the SECOND link must hold it and the first must
+  be NULL. It is the same instrument `mount_write`'s `blob_patch_twin_pair` and
+  the attach arm now carry, on the third of the three repointed callers.
+  Everything needed is in place; only the bundle row is missing.
