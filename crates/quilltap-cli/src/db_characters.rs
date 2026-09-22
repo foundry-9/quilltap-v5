@@ -24,7 +24,7 @@ use serde_json::{Map, Value};
 
 use quilltap_core::services::character_archive::crypto;
 
-use crate::dbopen::{open_readonly, sqlite_msg};
+use crate::dbopen::{open_encrypted, sqlite_msg, OpenOptions};
 use crate::nodefmt::{
     cell_to_js_value, js_num_string, js_parse_int, json_stringify_pretty, node_join, node_resolve,
     slice_utf16, utf16_len,
@@ -69,15 +69,18 @@ pub struct Ctx {
 
 impl Ctx {
     fn open(&self, filename: &str, friendly: &str) -> Result<rusqlite::Connection, String> {
+        // v4 `openMainDb` & co. → `openEncryptedDb`: the missing-file and
+        // probe refusals (with the hint) are the opener's own messages.
         let db_path = node_join(&self.data_dir, filename);
-        if !std::path::Path::new(&db_path).exists() {
-            return Err(format!("{friendly} not found: {db_path}"));
-        }
-        open_readonly(&db_path, self.pepper.as_deref()).map_err(|e| {
-            format!(
-                "Cannot open {friendly}: {e}\nThe database may be encrypted with a different key, or the .dbkey file may be missing."
-            )
-        })
+        open_encrypted(
+            &db_path,
+            self.pepper.as_deref(),
+            OpenOptions {
+                readonly: true,
+                friendly_name: friendly,
+            },
+        )
+        .map_err(|e| e.message)
     }
 
     fn open_main(&self) -> Result<rusqlite::Connection, String> {

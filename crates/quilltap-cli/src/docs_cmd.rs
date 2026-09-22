@@ -15,7 +15,7 @@ use quilltap_core::doc_edit::qtap_uri::{
 use quilltap_core::doc_edit::DocEditScope;
 use quilltap_host::instances::InstanceRegistry;
 
-use crate::dbopen::{open_readonly, sqlite_msg};
+use crate::dbopen::{open_encrypted, sqlite_msg, OpenOptions};
 use crate::nodefmt::{cell_to_js_value, format_bytes, js_num_string, json_stringify_pretty};
 use crate::out;
 use crate::resolve::{load_db_key, print_default_instance_hint, resolve_data_dir_and_passphrase};
@@ -303,14 +303,17 @@ fn open_docs_db(flags: &Flags) -> Result<DocsDb, String> {
     let data_dir = resolved.data_dir.clone();
     let pepper = load_db_key(&data_dir, &resolved.passphrase)?;
     let db_path = crate::nodefmt::node_join(&data_dir, "quilltap-mount-index.db");
-    if !std::path::Path::new(&db_path).exists() {
-        return Err(format!("mount index database not found: {db_path}"));
-    }
-    let conn = open_readonly(&db_path, pepper.as_deref()).map_err(|e| {
-        format!(
-            "Cannot open mount index database: {e}\nThe database may be encrypted with a different key, or the .dbkey file may be missing."
-        )
-    })?;
+    // v4 `openMountIndexDb`: the missing-file and probe refusals are the
+    // opener's own messages.
+    let conn = open_encrypted(
+        &db_path,
+        pepper.as_deref(),
+        OpenOptions {
+            readonly: true,
+            friendly_name: "mount index database",
+        },
+    )
+    .map_err(|e| e.message)?;
     assert_docs_schema(&conn, &data_dir, &registry);
     Ok(DocsDb { conn, data_dir })
 }

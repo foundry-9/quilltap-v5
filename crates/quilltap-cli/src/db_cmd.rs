@@ -11,6 +11,7 @@ use quilltap_host::lock::{
     acquire_write_lock, is_pid_alive, release_write_lock, verify_pid_is_quilltap,
 };
 
+use crate::dbopen::{open_encrypted, sqlite_msg, OpenOptions};
 use crate::nodefmt::{cell_to_js_value, json_stringify_pretty, node_join};
 use crate::out;
 use crate::resolve::{load_db_key, print_default_instance_hint, resolve_data_dir_and_passphrase};
@@ -153,12 +154,13 @@ pub fn run(args: &[String]) -> i32 {
         out::exit(1);
     }
 
-    let db_filename = if use_llm_logs {
-        "quilltap-llm-logs.db"
+    // v4 `a2db63da7`: the filename AND the name the opener's refusals use.
+    let (db_filename, db_friendly_name) = if use_llm_logs {
+        ("quilltap-llm-logs.db", "LLM logs database")
     } else if use_mount_points {
-        "quilltap-mount-index.db"
+        ("quilltap-mount-index.db", "mount index database")
     } else {
-        "quilltap.db"
+        ("quilltap.db", "main database")
     };
     let db_path = node_join(&data_dir, db_filename);
 
@@ -183,19 +185,21 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let conn = match open_encrypted(&db_path, pepper.as_deref(), writable) {
+    // Open through the ONE shared opener (v4 `a2db63da7`, bug 162): it keys,
+    // verifies and registers `qt_text()`. Its failure message is printed BARE
+    // — v4's catch is `console.error(err.message)`, no `Error:` prefix, no hint
+    // of its own (the probe arm's message already carries the hint line).
+    let conn = match open_encrypted(
+        &db_path,
+        pepper.as_deref(),
+        OpenOptions {
+            readonly: !writable,
+            friendly_name: db_friendly_name,
+        },
+    ) {
         Ok(c) => c,
-        Err(OpenError::Open(e)) => {
-            // better-sqlite3's constructor throw (e.g. unreadable file).
-            out::elog(&format!("Error: {e}"));
-            if writable {
-                release_write_lock(std::path::Path::new(&data_dir));
-            }
-            out::exit(1);
-        }
-        Err(OpenError::Verify(e)) => {
-            out::elog(&format!("Cannot open database: {e}"));
-            out::elog("The database may be encrypted with a different key, or the .dbkey file may be missing.");
+        Err(e) => {
+            out::elog(&e.message);
             if writable {
                 release_write_lock(std::path::Path::new(&data_dir));
             }
@@ -296,60 +300,6 @@ fn run_verb_path(
             e.exit_code
         }
     }
-}
-
-enum OpenError {
-    Open(String),
-    Verify(String),
-}
-
-/// The rusqlite error text better-sqlite3 would surface (`err.message`): the
-/// engine message for a SQLite failure, the display form otherwise.
-fn sqlite_msg(e: &rusqlite::Error) -> String {
-    match e {
-        rusqlite::Error::SqliteFailure(_, Some(m)) => m.clone(),
-        other => other.to_string(),
-    }
-}
-
-/// Open an encrypted database exactly as v4's launcher does: read-only unless
-/// `--write`; `PRAGMA key` (raw-hex) as the first and only pragma; verified
-/// with `SELECT 1` before use (the read-path rule).
-fn open_encrypted(
-    db_path: &str,
-    pepper: Option<&str>,
-    writable: bool,
-) -> Result<rusqlite::Connection, OpenError> {
-    use rusqlite::OpenFlags;
-    let flags = if writable {
-        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX
-    } else {
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX
-    };
-    let conn = rusqlite::Connection::open_with_flags(db_path, flags)
-        .map_err(|e| OpenError::Open(sqlite_msg(&e)))?;
-    if let Some(pepper) = pepper {
-        let key_hex = quilltap_core::dbkey::pepper_b64_to_key_hex(pepper)
-            .map_err(|e| OpenError::Open(e.to_string()))?;
-        conn.pragma_update(None, "key", format!("x'{key_hex}'"))
-            .map_err(|e| OpenError::Verify(sqlite_msg(&e)))?;
-    }
-    conn.query_row("SELECT 1", [], |_| Ok(()))
-        .map_err(|e| OpenError::Verify(sqlite_msg(&e)))?;
-    // `qt_text()` — v4 registers it inside `openEncryptedDb`
-    // (`db-helpers.js:211`) for exactly this verb's sake, with the comment
-    // "It is also REQUIRED for any --write that touches chat_messages: the
-    // message search triggers call it, so a connection without it fails the
-    // write loudly rather than letting the index drift."
-    //
-    // ⚠ This is a SECOND production open of a real encrypted instance,
-    // alongside `dbopen::open_readonly`; P4.D203's order named only the
-    // latter, and this is the one the live `quilltap db` verb actually uses
-    // (`dbopen` serves `restore_key`, `db_characters` and `docs_cmd`). Found
-    // by the order's own `Connection::open` census. Both register.
-    quilltap_core::db::text_compression::register_qt_text(&conn)
-        .map_err(|e| OpenError::Verify(sqlite_msg(&e)))?;
-    Ok(conn)
 }
 
 fn dispatch(

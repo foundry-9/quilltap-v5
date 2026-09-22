@@ -223,11 +223,15 @@ fn prove_pepper(data_dir: &str, pepper: &str) -> Result<(bool, Vec<ProofRow>), S
         // the sqlite_master count. The open's failure message is v4's composed
         // two-liner (only its first line is ever printed); the count probe
         // after a successful open throws the raw engine text, as in v4.
-        let opened = crate::dbopen::open_readonly(&db_path, Some(pepper)).map_err(|e| {
-            format!(
-                "Cannot open {label}: {e}\nThe database may be encrypted with a different key, or the .dbkey file may be missing."
-            )
-        });
+        let opened = crate::dbopen::open_encrypted(
+            &db_path,
+            Some(pepper),
+            crate::dbopen::OpenOptions {
+                readonly: true,
+                friendly_name: label,
+            },
+        )
+        .map_err(|e| e.message);
         let probe = opened.and_then(|conn| {
             conn.query_row("SELECT count(*) AS n FROM sqlite_master", [], |_| Ok(()))
                 .map_err(|e| crate::dbopen::sqlite_msg(&e))

@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(cli): the `db` verb opens through the ONE shared opener with v4's per-target failure strings (P4.D214, v4 bug 162)
+
+_Versions: cli 0.0.26._
+
+Ports v4 `a2db63da7`. The `db` verb's private opener in `db_cmd.rs` is
+deleted; every direct-mode open (`db`, `db characters`, `docs`, `sync`,
+`instances restore-key`) now goes through `dbopen::open_encrypted`, widened for
+write and a friendly name. Failure output now matches v4: the probe arm says
+`Cannot open main database:` / `LLM logs database:` / `mount index database:`
+plus the hint, and an unreadable file prints the bare engine message with no
+`Error:` prefix (rusqlite's appended `: <path>` is stripped). The opener also
+owns v4's `<name> not found:` check. `sync` on a wrong-key or missing mount
+index now prints v4's composed message — a pre-existing v5 divergence, green at
+the baseline pin too. `qt_text()` was already registered on both openers since
+P4.D203; that behavior is unchanged. Tier R grows v4's bug-162 fixture shape
+(a compressed `chat_messages` row under an FTS update trigger) and 16 cases,
+244 → 260. Before the port, 8 were RED at the `a2db63da7` pin; after it, 0 are.
+The 16th, `sync missing mount index`, was added after that red run and is
+covered by a mutation proof instead. At the `f45a517a9` baseline the same 7 `db`
+arms are RED, plus v4's own pre-fix `no such function: qt_text` on 2 cases, so
+the string movement comes from v4.
 #### 2026-09-22 — feat(spa): "Rebuild Summary…" in the Salon's Organize drawer (P4.D213, bug 161)
 
 _Versions: SPA 0.5.748._

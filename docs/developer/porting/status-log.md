@@ -141995,3 +141995,115 @@ The `chatUpdate` plant of `contextSummary`/`summaryAnchorMessageIds`/
 `lastSummaryTurn` is unverified against the real server; if the server
 rejects any of those three keys in the bag, the beat's setup needs a
 different planting route (measure at the first live run).
+## Lane record — P4.D214 unit 1: the ONE CLI opener + the Tier R comparand (v4 bug 162, `a2db63da7`), 2026-09-22
+
+Branch `claude/cli-one-opener-tier-bug-6e3d22`, cut from `main` `4b05cf97`
+(the round's order commit, on top of `fc63905e`). cli 0.0.25 → 0.0.26.
+
+### §0 Probe + pins
+
+- Drift ledger §2 probe PASSED at lane start and again before the baseline
+  Tier R run: v4 on `main`, CLEAN, HEAD `a2db63da7`, `a2db63da7..main` and
+  `1a2b2164c..bugfix` both empty.
+- Pins (ledger §5.1, all three symlink classes): `/tmp/qt-v4-pin-p4d214-a2db63da7`
+  (`rev-parse` = `a2db63da785a…`) and `/tmp/qt-v4-pin-p4d214-f45a517a9`
+  (`f45a517a992b…`). Marker: `grep -c "openEncryptedDb(dbPath"
+  packages/quilltap/bin/quilltap.js` → 1 at the target, 0 at the baseline.
+
+### §1 What moved (from the hunks, §R.4)
+
+- `dbopen.rs` is the ONE opener: `open_encrypted(db_path, pepper, OpenOptions {
+  readonly, friendly_name }) -> Result<Connection, OpenFailure>`, where the
+  failure carries v4's `err.message` as thrown. The arms: missing file →
+  `{friendly} not found: {path}` (v4 `db-helpers.js:180-182`); constructor →
+  BARE engine text; key pragma → BARE; `SELECT 1` probe → `Cannot open
+  {friendly}: {e}\n<hint>` (ONE string); `qt_text` registration → REPORTED (the
+  recorded divergence, unchanged: v4 swallows it, but no case can reach it on
+  either side). `open_readonly` is REPLACED at every call site rather than kept
+  as a wrapper, since each caller now forwards the opener's message.
+- `db_cmd.rs`: the private `OpenError`/`sqlite_msg`/`open_encrypted` block and
+  the P4.D203-era "SECOND production open" comment are DELETED. The friendly
+  names are chosen by flag; `Database not found:` still runs ahead of
+  `load_db_key`, so the opener's `not found` arm is unreachable from `db`, as
+  in v4. The catch prints `e.message` BARE and releases the write lock on the
+  way out.
+- Callers repointed: `db_characters.rs` + `docs_cmd.rs` drop their own
+  existence pre-checks and hint composition (the opener owns both, with
+  byte-identical strings). `restore_key.rs` forwards the message and still
+  prints only its first line. `sync_cmd.rs` prints `Error: {message}` over the
+  composed message.
+- **A measurement the order did not predict:** rusqlite appends `: <path>` to a
+  failed open's engine text (`unable to open database file: /…/quilltap.db`),
+  while better-sqlite3 throws `sqlite3_errmsg` alone. The opener strips exactly
+  that suffix on the constructor arm.
+- **A v5 defect, not drift:** `sync`'s wrong-key and missing-mount-index
+  strings were already v4's composed message at the BASELINE (v4's
+  `sync-command.js` has used `openMountIndexDb` since `23da0b322`). v5 printed
+  the bare engine text and `unable to open database file`. Both rows are GREEN
+  at both pins after the port. Tier 2 item 6 is therefore a movement, ported.
+- **Measured v4 arms:** a garbage file AND a directory in place of
+  `quilltap.db` both pass the constructor and fail the probe (`file is not a
+  database`). A mode-000 file fails the CONSTRUCTOR (`unable to open database
+  file`) — BARE at the target, and an uncaught stack trace at the baseline.
+  The key pragma arm is unreachable on both sides (the pragma only installs
+  the codec).
+
+### §2 Tier R (`crates/quilltap-cli/tests/cli_differential.rs`)
+
+Grown master: instA's main DB carries v4's bug-162 integration-test DDL
+verbatim (`chat_messages`, the fts5 table, the map table, the AFTER UPDATE
+trigger calling `qt_text(new.content)`), with `m-1` = the core's `text_to_blob`
+of v4's `LONG_TEXT` (asserted compressed). There are 16 new cases, 244 → 260:
+`db qt_text read`, `db raw blob read`, `db write under fts trigger`, `db count
+chat_messages`, `db tables after grow`; `db wrong key {main,llm logs,mount
+points,write}` (a pre-hook rewraps instA's `.dbkey` around a different pepper,
+so `loadDbKey` succeeds and the probe fails); `db not a database` (garbage
+bytes); `db unreadable database` (+ `write`, mode 000 — the bare constructor
+arm); `db characters wrong key` + `docs wrong key` (neutrality: the other
+callers' strings do not move); `sync wrong key on the mount index`; `sync
+missing mount index`.
+
+Recipe (from the worktree; ~9.3 min; the family prints only a final summary):
+
+```bash
+CARGO_INCREMENTAL=0 QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d214-<sha> \
+QT_NODE=/Users/csebold/.nvm/versions/node/v24.13.1/bin/node TZ=UTC \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```
+
+| Run | Tree | Pin | Result |
+|---|---|---|---|
+| red-first | unported (265 incl. unit 2's 6 rows; before `sync missing mount index`) | `a2db63da7` | **8 failures**: the 7 `db` failure arms + `sync wrong key on the mount index`. The 4 bug-162 functional cases were already green (v5 registered `qt_text` since P4.D203) |
+| post-port | ported, 266 | `a2db63da7` | **266 / 0** |
+| baseline | ported, 266 | `f45a517a9` | **13 failures on 9 cases**: the same 7 `db` arms (the string movement comes from v4) + `db qt_text read` / `db write under fts trigger`, where v4's pre-fix bin answers `Error: no such function: qt_text` (v4's bug-162 symptom at its own pre-fix pin). Both `sync` rows are GREEN (the v5 defect above) |
+
+### §3 Mutation proofs (at the target pin; reverted by file backup)
+
+| Mutation | Predicted | Reddened |
+|---|---|---|
+| A: swap the `main`/`LLM logs` friendly names in `db_cmd.rs` | wrong key main, llm logs, write; not a database | exactly those 4 |
+| B: `Error: ` on the constructor arm | unreadable ×2 | exactly those 2 |
+| C: register nothing | qt_text read; write under fts trigger (v5: `Error: no such function: qt_text` — v4's bug-162 symptom reproduced) | exactly those 2 |
+| D: conflict report exits 0 (`sync_report.rs`) | sync conflict run ± json | exactly those 2 (unit 2's rows) |
+| F: drop the opener's existence check | sync missing mount index (+ any `docs`/`characters` not-found case) | only `sync missing mount index` (no existing case reaches the others' not-found) |
+| (A–D, F run together: disjoint predicted sets) | | 11 cases / 15 failures, total |
+| G: `Cannot open database:` (no friendly name) | every probe-arm case: wrong key ×4, not a database, characters, docs, sync wrong key | those 8 **+ `restore-key not-a-pepper warning` + `restore-key wrong pepper refused`** — `restore_key.rs`'s repointing proven by the same mutation |
+| E: drop the hint line | the same 8; the two `restore-key` rows must stay GREEN (that verb prints only the first line) | exactly the 8 |
+
+### §4 Tier 3 (unchanged, loud)
+
+`db --repl` stays the loud refusal at `db_cmd.rs` ("recognized but not yet
+available"). A `qt_text` registration failure is unreachable on either side:
+recorded, no case.
+
+### §5 Mirrors pre-listed for the unifier (§R.9; byte counts at `a2db63da7`)
+
+- `docs/v4/developer/bugs/fixed/bug-162-cli-raw-sql-no-qt-text.md` — 6,486 (NEW).
+- `docs/v4/developer/bugs.md` — 306,475 (carries bug 161's row too; P4.D212
+  lists it; mirror ONCE).
+- `docs/v4/packages-quilltap-README.md` — 34,707 → 34,898. `diff` against the
+  target measures `194a195,196`: a blank line and the `qt_text()` note inserted
+  AFTER line 194 (the order said "after the mirror's line 195": off by one).
+  This is the ONLY delta.
+- The `packages/quilltap` version stamp: NO-PORT, proven by Tier R at the
+  target pin (266/0).

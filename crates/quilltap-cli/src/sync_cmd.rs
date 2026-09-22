@@ -26,7 +26,7 @@ use quilltap_core::doc_edit::qtap_uri::{is_qtap_uri, parse_qtap_uri};
 use quilltap_core::doc_edit::DocEditScope;
 use quilltap_host::instances::InstanceRegistry;
 
-use crate::dbopen::{open_readonly, sqlite_msg};
+use crate::dbopen::{open_encrypted, sqlite_msg, OpenOptions};
 use crate::nodefmt::{js_parse_int, json_stringify_pretty, node_join, node_resolve};
 use crate::out;
 use crate::resolve::{load_db_key, print_default_instance_hint, resolve_data_dir_and_passphrase};
@@ -347,10 +347,21 @@ pub fn run(args: &[String]) -> i32 {
     };
     let db_path = node_join(&resolved.data_dir, "quilltap-mount-index.db");
     let mount = {
-        let conn = match open_readonly(&db_path, pepper.as_deref()) {
+        // v4 `openMountIndexDb(...)` throws to `syncCommand`'s top-level
+        // catch, which prints `Error: ${err.message}` — so the opener's
+        // composed two-liner arrives WITH the prefix (P4.D214, Tier R `sync
+        // wrong key on the mount index`).
+        let conn = match open_encrypted(
+            &db_path,
+            pepper.as_deref(),
+            OpenOptions {
+                readonly: true,
+                friendly_name: "mount index database",
+            },
+        ) {
             Ok(c) => c,
-            Err(message) => {
-                out::elog(&format!("Error: {message}"));
+            Err(e) => {
+                out::elog(&format!("Error: {}", e.message));
                 out::exit(1);
             }
         };

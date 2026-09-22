@@ -555,6 +555,44 @@ fn build_master(master: &Path, live: &Path) {
         .unwrap();
         c.execute("INSERT INTO gears (id, teeth) VALUES ('g1', 12.0)", [])
             .unwrap();
+
+        // P4.D214 — v4 bug 162's own fixture shape (`__tests__/unit/packages/
+        // quilltap/db-raw-sql-qt-text.integration.test.js` at `a2db63da7`),
+        // DDL verbatim: a compressed `chat_messages` row under an AFTER UPDATE
+        // trigger that calls `qt_text(new.content)`, so a `db --write` through
+        // an opener that never registered the function fails the write. v4's
+        // fixture compresses with its own `compressText`; this one with the
+        // core's encoder, byte-parity-proven against v4's (P4.D203).
+        c.execute_batch(
+            "CREATE TABLE chat_messages (
+               id TEXT PRIMARY KEY,
+               chatId TEXT,
+               content TEXT,
+               updatedAt TEXT
+             );
+             CREATE VIRTUAL TABLE chat_messages_fts USING fts5(content);
+             CREATE TABLE chat_messages_fts_map (rowid INTEGER PRIMARY KEY, messageId TEXT);",
+        )
+        .unwrap();
+        c.execute_batch(
+            "CREATE TRIGGER chat_messages_fts_update AFTER UPDATE ON chat_messages
+             BEGIN
+               INSERT INTO chat_messages_fts (rowid, content)
+               VALUES (new.rowid, qt_text(new.content));
+             END;",
+        )
+        .unwrap();
+        let long_text = format!(
+            "The Tuesday-night pie was, as ever, an act of considerable optimism. {}",
+            "x".repeat(600)
+        );
+        let cell = quilltap_core::db::text_compression::text_to_blob(&long_text);
+        assert!(cell.is_blob(), "the bug-162 row must be stored compressed");
+        c.execute(
+            "INSERT INTO chat_messages (id, chatId, content, updatedAt) VALUES (?, ?, ?, ?)",
+            rusqlite::params!["m-1", "c-1", cell, "2026-09-21T23:30:00.000Z"],
+        )
+        .unwrap();
     }
 
     // LLM-logs DB.
@@ -1973,6 +2011,140 @@ fn cli_differential() {
             envs: vec![("QUILLTAP_QUIET_HINTS", "1".to_string())],
             ..Default::default()
         },
+    );
+
+    // ---------------- db: the ONE opener (P4.D214, v4 bug 162) ----------------
+    //
+    // v4 `a2db63da7` retired the bin's private opener onto `openEncryptedDb`:
+    // `qt_text()` reaches raw SQL and `--write`, and the failure strings move —
+    // the probe arm names the TARGET (`Cannot open main database:` / `LLM
+    // logs database:` / `mount index database:`), and a constructor throw
+    // prints its message BARE. v4's four integration cases first, over its
+    // own fixture shape (grown into instA's main DB by `build_master`).
+    ctx.case_with(
+        "db qt_text read",
+        &d(&[
+            "--json",
+            "SELECT substr(qt_text(content), 1, 40) AS s FROM chat_messages LIMIT 1",
+        ]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "db raw blob read",
+        &d(&["--json", "SELECT content FROM chat_messages LIMIT 1"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "db write under fts trigger",
+        &d(&[
+            "--write",
+            "--json",
+            "UPDATE chat_messages SET updatedAt = '2026-09-22T00:00:00.000Z' WHERE id = 'm-1'",
+        ]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "db count chat_messages",
+        &d(&["--count", "chat_messages"]),
+        CaseOpts::default(),
+    );
+    ctx.case_with(
+        "db tables after grow",
+        &d(&["--tables"]),
+        CaseOpts::default(),
+    );
+
+    // The wrong key: instA's `.dbkey` rewrapped around a DIFFERENT pepper, so
+    // `loadDbKey` succeeds and the `SELECT 1` probe is what fails — the arm
+    // that carries the friendly name (the existing `db wrong passphrase` case
+    // fails earlier, inside `loadDbKey`, and never reached it).
+    const OTHER_PEPPER: &str = "d3JvbmdwZXBwZXJ3cm9uZ3BlcHBlcndyb25ncGVwMDE=";
+    let rekey_pre = |live: &Path| {
+        dbkey::save_dbkey(&live.join("instA/data"), OTHER_PEPPER, "").unwrap();
+    };
+    let rekeyed = || CaseOpts {
+        pre: Some(Box::new(rekey_pre)),
+        ..Default::default()
+    };
+    ctx.case_with("db wrong key main", &d(&["--tables"]), rekeyed());
+    ctx.case_with(
+        "db wrong key llm logs",
+        &d(&["--llm-logs", "--tables"]),
+        rekeyed(),
+    );
+    ctx.case_with(
+        "db wrong key mount points",
+        &d(&["--mount-points", "--tables"]),
+        rekeyed(),
+    );
+    ctx.case_with(
+        "db wrong key write",
+        &d(&["--write", "SELECT 1"]),
+        rekeyed(),
+    );
+    // Not a database at all: the constructor accepts the file (read-only
+    // opens are lazy on both sides) and the probe refuses it — the same arm.
+    let garbage_pre = |live: &Path| {
+        std::fs::write(
+            live.join("instA/data/quilltap.db"),
+            "this is not a sqlite database, not even slightly\n".repeat(40),
+        )
+        .unwrap();
+    };
+    ctx.case_with(
+        "db not a database",
+        &d(&["--tables"]),
+        CaseOpts {
+            pre: Some(Box::new(garbage_pre)),
+            ..Default::default()
+        },
+    );
+    // Unreadable: the CONSTRUCTOR throws, which v4 now prints bare
+    // (`unable to open database file`, no `Error:`) — at the baseline pin the
+    // throw escaped `dbCommand` uncaught as a stack trace. Mode 000 blocks the
+    // open, not the next case's `remove_dir_all` (a directory permission).
+    let unreadable_pre = |live: &Path| {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            live.join("instA/data/quilltap.db"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+    };
+    ctx.case_with(
+        "db unreadable database",
+        &d(&["--tables"]),
+        CaseOpts {
+            pre: Some(Box::new(unreadable_pre)),
+            ..Default::default()
+        },
+    );
+    ctx.case_with(
+        "db unreadable database write",
+        &d(&["--write", "SELECT 1"]),
+        CaseOpts {
+            pre: Some(Box::new(unreadable_pre)),
+            ..Default::default()
+        },
+    );
+    // The other `openEncryptedDb` callers under the same wrong key: their
+    // strings already carried the friendly form, and the one opener must not
+    // move them.
+    ctx.case_with(
+        "db characters wrong key",
+        &d(&["characters", "status"]),
+        rekeyed(),
+    );
+    ctx.case_with(
+        "docs wrong key",
+        &[
+            "docs".to_string(),
+            "--data-dir".to_string(),
+            inst_a.clone(),
+            "ls".to_string(),
+            "notes".to_string(),
+        ],
+        rekeyed(),
     );
 
     // Recognized-but-unshipped verbs exit loud on the v5 side only — assert
@@ -3902,6 +4074,35 @@ fn cli_differential() {
         "sync a non numeric port falls back",
         &sy(&["attic", "/tmp/qt-sync-r", "--port", "wibble"]),
         CaseOpts::default(),
+    );
+
+    // P4.D214 — the mount-index open under a wrong key. v4's `sync` opens
+    // through `openMountIndexDb` and its top-level catch prints `Error:
+    // ${err.message}` — so the composed friendly two-liner arrives WITH the
+    // prefix. (Pre-P4.D214 v5 printed the bare engine text here.)
+    ctx.case_with(
+        "sync wrong key on the mount index",
+        &sy(&["notes", "/tmp/qt-sync-r", "--port", "45677", "--dry-run"]),
+        CaseOpts {
+            pre: Some(Box::new(|live: &Path| {
+                dbkey::save_dbkey(&live.join("instA/data"), OTHER_PEPPER, "").unwrap();
+            })),
+            ..Default::default()
+        },
+    );
+
+    // …and with the mount index MISSING: `openEncryptedDb`'s own existence
+    // check answers `mount index database not found: <path>` (the `db` verb's
+    // `Database not found:` sits ahead of it; `sync` has no such pre-check).
+    ctx.case_with(
+        "sync missing mount index",
+        &sy(&["notes", "/tmp/qt-sync-r", "--port", "45677", "--dry-run"]),
+        CaseOpts {
+            pre: Some(Box::new(|live: &Path| {
+                std::fs::remove_file(live.join("instA/data/quilltap-mount-index.db")).unwrap();
+            })),
+            ..Default::default()
+        },
     );
 
     // ---------------- recall-replay (P4.d13) ----------------
