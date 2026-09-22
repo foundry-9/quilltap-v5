@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the provider-SDK version guard (P4.106 item 9)
+
+_Versions: harness 0.0.891._
+
+New `provider_sdk_version_guard.rs` (P4.106 item 9) pins the four provider
+SDKs the recorded corpora were built with: `openai` 7.20.0,
+`@anthropic-ai/sdk` 0.115.0, `@google/genai` 1.52.0, `@openrouter/sdk`
+1.3.11. One test checks every installed copy in the v4 checkout — the root
+`node_modules` and each `plugins/dist/*/node_modules`, since the anthropic
+and google SDKs exist only in plugin dirs. The other walks the three
+recorded corpora (`request-envelopes`, `google-wire`, `image-dialects`) and
+requires every header stamp to equal the constants, and each SDK to be
+present or absent where recorded. A checkout that is missing prints `SKIP:`;
+a moved version fails. Bumping `RECORDED_OPENAI_SDK` to 7.21.0 fails both
+tests.
 #### 2026-09-22 — test(harness): the character save-by-link family normalizes through the host encoder, and the P4.104 gate record (P4.104 unit 8)
 
 _Versions: harness 0.0.897._

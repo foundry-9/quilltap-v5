@@ -143038,3 +143038,35 @@ re-verified: no `conversion` module under `crates/quilltap-core/src/db/`).
 (+2). cli / tauri / fixture-sanitizer / SPA untouched. No `Cargo.toml`
 dependency changes. The `docs/v4/` mirror: no rows move (this lane ports an
 ABSORBED row; no v4 doc changed at the pin).
+---
+
+## Lane record — P4.106: the Inform coverage remainder + the three smalls (2026-09-22, branch `claude/p4-106-coverage-remainder-a67193`)
+
+Cut from `main` `4b05cf97`. §R.2 probe at lane start: v4 on `main`, HEAD
+`a2db63da7`, tree CLEAN, `a2db63da7..main` and `1a2b2164c..bugfix` both
+EMPTY — PASS. Pin: `/tmp/qt-v4-pin-p4106-f45a517a9` (`git rev-parse HEAD` =
+`f45a517a992bf94fdc6ae34b96791ef1d3538870`, the three symlink classes).
+Regen outputs staged under `/tmp/p4106/`.
+
+### Unit 1 — item 9: `provider_sdk_version_guard.rs`
+
+Measured at the pin (installed): root `openai` 7.20.0, `@openrouter/sdk`
+1.3.11; `@anthropic-ai/sdk` + `@google/genai` ABSENT from the root;
+`qtap-plugin-anthropic` `@anthropic-ai/sdk` 0.115.0; `qtap-plugin-google`
+`@google/genai` 1.52.0; `openai` 7.20.0 under `deepseek`, `grok`, `nanogpt`,
+`openai-compatible`, `openai`, `z-ai`; `@openrouter/sdk` 1.3.11 under
+`qtap-plugin-openrouter` — every figure the order recorded. Corpus stamps
+(re-grepped): `request-envelopes.recorded.ndjson` (367 rows) 7.20.0 ×216,
+0.115.0 ×44 (every one on an `api.anthropic.com` URL — the attribution rule
+the guard uses), the OpenRouter UA ×14; `image-dialects` 7.20.0 ×8, UA ×3;
+`google-wire` `google-genai-sdk/1.52.0 gl-node/v24.13.1` ×22.
+
+Deviation from the order, deliberate: the corpora half asserts PRESENCE /
+ABSENCE per SDK per corpus, not the stamp COUNTS — the envelope corpus grows
+most rounds (347 → 367 in P4.97) and a count pin would make every growth a
+guard edit with no information in it. A re-record under a new SDK still
+reddens (every stamp must equal the constant).
+
+Green: 2/2. Mutation: `RECORDED_OPENAI_SDK = "7.21.0"` → BOTH tests red
+(`:156` installed mismatch, `:244` corpus stamp) — as the order predicted.
+Reverted by file backup.
