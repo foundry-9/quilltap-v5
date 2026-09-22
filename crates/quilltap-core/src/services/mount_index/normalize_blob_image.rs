@@ -24,9 +24,24 @@
 //!
 //! **The seam.** v4 imports `sharp` at module scope; v5 injects the encoder
 //! ([`WebpTranscoder`]). A repository built without one normalizes NOTHING and
-//! says so once per write — which is byte-for-byte v4's own behaviour when
-//! `sharp` throws (it hands the original bytes back), so the un-wired default is
-//! a faithful arm rather than a hole.
+//! says so once per write — the same code path v4 takes when `sharp` throws
+//! (it hands the original bytes back).
+//!
+//! ⚠ **OPEN (the `f45a517a9` round's unification review, 2026-09-22): that
+//! default is NOT a faithful arm on v5's production paths.** `sharp` does not
+//! throw on a real PNG, so at `f45a517a9` v4 transcodes on EVERY call site its
+//! `normalize-blob-image.ts:11-15` names (the doc-edit tool, the three photo
+//! galleries, `image_job_storage`, the in-store copy/move, the chat-media
+//! attach); v5 wires a codec into `DocMountFileLinksRepository::with_blob_codec`
+//! from exactly ONE caller — the `quilltap sync` applier — and every other site
+//! reaches `DocMountBlobsRepository::create_with_ids`, which builds the links
+//! repository WITHOUT one, so those writes store the original bytes where v4
+//! stores WebP. No differential can see it: no corpus byte in
+//! `doc_mount_blobs_tier2` / `doc_blob` / `doc_mount_file_links_tier2` is a
+//! decodable image, and `normalize_blob_image_equivalence` wires the host codec
+//! directly. Threading the engine's `blob_webp` (`api/engine.rs`) through the
+//! remaining construction sites, with decodable-image corpus rows to prove it,
+//! is a round of its own — named in `phase-4.md` and the P4.D209 order header.
 
 use super::blob_transcode::{normalise_blob_relative_path, transcode_to_webp, WebpTranscoder};
 

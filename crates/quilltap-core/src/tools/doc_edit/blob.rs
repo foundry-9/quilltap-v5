@@ -236,7 +236,10 @@ pub fn handle_write_blob(
             file_type: None,
             // P4.D209: v4 `normalizeImages` defaults true (`186eb09cb`) — an
             // upload through the doc-edit tool is exactly what the chokepoint
-            // is for.
+            // is for. ⚠ As wired today the flag reaches a repository built
+            // WITHOUT a codec (see `normalize_blob_image.rs`'s OPEN note), so
+            // this site still stores the raw upload — the PASSTHROUGH comment
+            // above is the truth of the tree until that seam is threaded.
             normalize_images: true,
         })
         .map_err(|e| e.to_string())?;
