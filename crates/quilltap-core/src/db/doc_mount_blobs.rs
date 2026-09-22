@@ -141,11 +141,35 @@ pub struct BlobWithLink {
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
 pub struct DocMountBlobsRepository<'c> {
     conn: &'c Connection,
+    /// The WebP encoder [`Self::create`] hands to the links repository it
+    /// writes through (P4.104). v4's `create` late-binds
+    /// `docMountFileLinks.linkBlobContent`, whose normalization imports `sharp`
+    /// at module scope; v5 injects the encoder, so the facade must carry it or
+    /// its writes store the original bytes where v4 stores WebP. `None` (the
+    /// [`Self::new`] default) is for reads and deletes — and for the ONE write
+    /// that passes `normalize_images: false` (the `.qtap` import), where the
+    /// encoder is never consulted.
+    blob_codec: Option<&'c dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
 }
 
 impl<'c> DocMountBlobsRepository<'c> {
     pub fn new(conn: &'c Connection) -> Self {
-        Self { conn }
+        Self {
+            conn,
+            blob_codec: None,
+        }
+    }
+
+    /// [`Self::new`] with the host's WebP encoder wired, so [`Self::create`]
+    /// normalizes image bytes the way v4's `linkBlobContent` does (P4.104).
+    pub fn with_blob_codec(
+        conn: &'c Connection,
+        codec: &'c dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
+    ) -> Self {
+        Self {
+            conn,
+            blob_codec: Some(codec),
+        }
     }
 
     /// v4's lazy table-init (the repo's overridden `db()` creates
@@ -311,7 +335,11 @@ impl<'c> DocMountBlobsRepository<'c> {
             .clone()
             .unwrap_or_else(|| "blob".to_string());
 
-        let result = DocMountFileLinksRepository::new(self.conn).link_blob_content_with_ids(
+        let links = match self.blob_codec {
+            Some(codec) => DocMountFileLinksRepository::with_blob_codec(self.conn, codec),
+            None => DocMountFileLinksRepository::new(self.conn),
+        };
+        let result = links.link_blob_content_with_ids(
             &LinkBlobInput {
                 mount_point_id: input.mount_point_id.clone(),
                 relative_path: input.relative_path.clone(),
@@ -334,11 +362,20 @@ impl<'c> DocMountBlobsRepository<'c> {
             carried,
         )?;
 
-        self.find_by_mount_point_and_path(&input.mount_point_id, &input.relative_path)?
+        // v4 reads back by `link.mountPointId` / `link.relativePath` — the
+        // location the links write LANDED at, which normalization may have
+        // rewritten (`plate.png` → `plate.webp`, P4.104). The caller's path
+        // names a row that no longer exists once the codec is wired.
+        let (mount_point_id, relative_path): (String, String) = self.conn.query_row(
+            "SELECT mountPointId, relativePath FROM doc_mount_file_links WHERE id = ?1",
+            params![result.link_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        self.find_by_mount_point_and_path(&mount_point_id, &relative_path)?
             .ok_or_else(|| {
                 DbError::Internal(format!(
                     "Blob row not visible after upsert: {}/{} (link {})",
-                    input.mount_point_id, input.relative_path, result.link_id
+                    mount_point_id, relative_path, result.link_id
                 ))
             })
     }
@@ -726,5 +763,109 @@ fn posix_basename(path: &str) -> &str {
     match path.rsplit_once('/') {
         Some((_, name)) => name,
         None => path,
+    }
+}
+
+#[cfg(test)]
+mod create_reads_back_the_normalized_row_tests {
+    use super::*;
+    use crate::services::mount_index::blob_transcode::WebpTranscoder;
+
+    /// "Transcodes" anything to a fixed payload (D19: the ORDER of the write's
+    /// steps is the point, never sharp's bytes).
+    struct ScriptedCodec;
+    impl WebpTranscoder for ScriptedCodec {
+        fn encode_webp(&self, _bytes: &[u8], _quality: u8) -> Result<Vec<u8>, String> {
+            Ok(b"SCRIPTED-WEBP-PAYLOAD".to_vec())
+        }
+    }
+
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, sha256 TEXT NOT NULL,
+                fileSizeBytes REAL, fileType TEXT NOT NULL, source TEXT NOT NULL,
+                createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_folders (
+                id TEXT PRIMARY KEY NOT NULL, mountPointId TEXT NOT NULL, path TEXT NOT NULL,
+                name TEXT NOT NULL, parentId TEXT, createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_file_links (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL, linkGroupId TEXT,
+                mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL, fileName TEXT NOT NULL,
+                folderId TEXT, originalFileName TEXT, originalMimeType TEXT,
+                description TEXT, descriptionUpdatedAt TEXT, conversionStatus TEXT NOT NULL,
+                conversionError TEXT, plainTextLength REAL, extractedText TEXT,
+                extractedTextSha256 TEXT, extractionStatus TEXT NOT NULL, extractionError TEXT,
+                chunkCount REAL NOT NULL DEFAULT 0, allowEmbed REAL NOT NULL DEFAULT 1,
+                allowCharacterRead REAL NOT NULL DEFAULT 1,
+                allowCharacterWrite REAL NOT NULL DEFAULT 1,
+                lastModified TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn png_create() -> CreateBlobInput {
+        CreateBlobInput {
+            mount_point_id: "mp-1".to_string(),
+            relative_path: "art/plate.png".to_string(),
+            original_file_name: Some("plate.png".to_string()),
+            original_mime_type: Some("image/png".to_string()),
+            stored_mime_type: "image/png".to_string(),
+            sha256: "0".repeat(64),
+            data: b"pretend-png-bytes".to_vec(),
+            description: None,
+            file_name: None,
+            file_type: None,
+            normalize_images: true,
+        }
+    }
+
+    /// v4 `create` reads back by `link.relativePath` — the path the links
+    /// write RETURNS, which normalization has already rewritten. Reading back
+    /// by the CALLER's path finds nothing once a `.png` lands as `.webp`, and
+    /// the write that succeeded answers "Blob row not visible after upsert".
+    #[test]
+    fn a_normalized_create_answers_the_webp_row() {
+        let conn = scratch();
+        let codec = ScriptedCodec;
+        let found = DocMountBlobsRepository::with_blob_codec(&conn, &codec)
+            .create(&png_create())
+            .expect("the normalized write must read back");
+        assert_eq!(found.relative_path, "art/plate.webp");
+        assert_eq!(found.file_name, "plate.webp");
+        assert_eq!(found.stored_mime_type, "image/webp");
+        assert_eq!(
+            found.sha256,
+            hex::encode(Sha256::digest(b"SCRIPTED-WEBP-PAYLOAD"))
+        );
+    }
+
+    /// The pass-through's other half: the facade with no codec leaves the
+    /// bytes alone, so the green above cannot come from a row that never moved.
+    #[test]
+    fn a_create_without_a_codec_is_byte_preserving() {
+        let conn = scratch();
+        let found = DocMountBlobsRepository::new(&conn)
+            .create(&png_create())
+            .unwrap();
+        assert_eq!(found.relative_path, "art/plate.png");
+        assert_eq!(found.stored_mime_type, "image/png");
+    }
+
+    /// `normalize_images: false` wins over a wired codec — the `.qtap`
+    /// import's byte-fidelity path rides on it.
+    #[test]
+    fn the_false_flag_wins_over_a_wired_codec() {
+        let conn = scratch();
+        let codec = ScriptedCodec;
+        let mut input = png_create();
+        input.normalize_images = false;
+        let found = DocMountBlobsRepository::with_blob_codec(&conn, &codec)
+            .create(&input)
+            .unwrap();
+        assert_eq!(found.relative_path, "art/plate.png");
+        assert_eq!(found.stored_mime_type, "image/png");
     }
 }

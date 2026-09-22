@@ -142584,3 +142584,26 @@ other family.
 
 core 0.0.992 → 0.0.994, harness 0.0.890 → 0.0.892 (two bumps each — one per
 unit commit). host, web, cli, tauri, fixture-sanitizer, SPA untouched.
+---
+
+## P4.104 — bug 159's image half made a port: the blob-write seam (lane record, 2026-09-22)
+
+Branch `claude/p4-104-image-seam-6743b9`, cut from `main` `4b05cf97`. The
+§R.2 probe PASSED at lane start (v4 on `main`, HEAD `a2db63da7`, tree clean,
+`a2db63da7..main` and `1a2b2164c..bugfix` both empty). Pin:
+`/tmp/qt-v4-pin-p4104-f45a517a9` (`git rev-parse HEAD` =
+`f45a517a992bf94fdc6ae34b96791ef1d3538870`, the three symlink classes).
+
+### Unit 1 — the readback fix + the facade's codec pass-through (core 0.0.993)
+
+`DocMountBlobsRepository` gains a `blob_codec` field and `with_blob_codec`;
+`create_with_ids` builds its links repository with the codec when one is
+held. The readback now reads the link row's own `(mountPointId,
+relativePath)` by `link_id` and looks the blob up there — v4's `create`
+reads back by `link.mountPointId` / `link.relativePath`
+(`doc-mount-blobs.repository.ts:325` at the pin). **Red-first:**
+`a_normalized_create_answers_the_webp_row` failed on the un-fixed readback
+with `Internal("Blob row not visible after upsert: mp-1/art/plate.png (link
+…)")`; green after. Two companion arms: no codec is byte-preserving; the
+`false` flag wins over a wired codec. The red-first IS the mutation proof
+for "read back by the pre-normalization path".

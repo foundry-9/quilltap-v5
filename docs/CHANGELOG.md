@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(db): the blob facade reads back the row normalization moved, and carries the WebP encoder (P4.104 unit 1)
+
+_Versions: core 0.0.993._
+
+`DocMountBlobsRepository::create_with_ids` read its row back by the caller's
+path. Once an encoder is wired, `linkBlobContent`'s normalization lands a
+`.png` write as `.webp`, so a successful write answered "Blob row not visible
+after upsert". It now reads back by the path the link row actually holds,
+which is what v4's `create` does (`link.relativePath`). The repository also
+gains `with_blob_codec`, passing the encoder through to the links repository;
+`new` keeps no encoder, for reads, deletes and the `.qtap` import's
+`normalize_images: false` write. Three unit tests; the first was red before
+the fix with the exact error above.
 #### 2026-09-22 — docs(porting): the P4.105 lane record and order status
 
 _Docs-only change._
