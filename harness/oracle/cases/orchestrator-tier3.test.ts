@@ -854,6 +854,10 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'id')) }));
+  // P4.106 item 2: the inform-consumption comparand (the three inform calls'
+  // rows; the finalizer / the preserve-partial path write `consumedAt`,
+  // `consumedByMessageId` and `updatedAt`).
+  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_informs', 'id')) }));
 
   // W4.11a: the `llm_logs` rows the un-mocked `logLLMCall` wrote (read through the
   // llm-logs handle BEFORE closeDatabase(); id/createdAt/updatedAt placeholdered,

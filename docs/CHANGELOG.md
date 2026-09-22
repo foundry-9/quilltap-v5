@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the Inform consumption arms in orchestrator_tier3 + primary_stream_tier3, and the failed-consume line (P4.106 item 2, Tier 2)
+
+_Versions: harness 0.0.896._
+
+P4.106 item 2 and Tier 2 item 5. `orchestrator_tier3` adds four chats and
+four calls over seven `chat_informs` rows planted through v4's real
+repository, and now dumps and diffs `chat_informs` (consumer ids remapped
+through each side's message id map): a saved turn consumes its seat's two
+rows and leaves a bystander's pending, a mid-stream error consumes against the
+preserved partial, a seat whose only row is already consumed is left alone,
+and a row-targeted `BEFORE UPDATE … RAISE(ABORT)` trigger makes the consume
+fail on its second row. Measured on both sides: the first row stays
+consumed, the second stays pending, and the turn is saved; v5's
+`Error marking informs consumed` line is pinned at ERROR on that call and
+absent on the other three.
+
+`primary_stream_tier3` adds v4's two preserve-partial arms (consume against
+the pre-generated id; a turn with no informs touches nothing even though the
+seat has a pending row) with a per-call `informRowIds` key, and diffs
+`chat_informs`. Disabling either v5 `mark_consumed` site fails the matching
+family; demoting the error line to WARN fails the level assert.
+
 #### 2026-09-22 — test(harness): build_context_tier3's Inform arms over planted rows + the one-read-per-turn assert (P4.106 items 1, 7)
 
 _Versions: harness 0.0.895._

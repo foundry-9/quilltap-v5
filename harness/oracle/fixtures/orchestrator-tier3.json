@@ -2211,6 +2211,94 @@
      "participantId": "1d151005-0000-4000-8000-0000000002b5"
     }
    ]
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000c1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1a000000-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1a000000-0000-4000-8000-0000000000b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000c2",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1a000000-0000-4000-8000-0000000000a2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1a000000-0000-4000-8000-0000000000b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000c3",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1a000000-0000-4000-8000-0000000000a3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1a000000-0000-4000-8000-0000000000b3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1a000000-0000-4000-8000-0000000000d3",
+     "role": "ASSISTANT",
+     "content": "The clock had stopped, she noticed.",
+     "participantId": "1a000000-0000-4000-8000-0000000000a3",
+     "createdAt": "2026-06-01T00:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000c4",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1a000000-0000-4000-8000-0000000000a4",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1a000000-0000-4000-8000-0000000000b4",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -2911,6 +2999,47 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "1d151005-0000-4000-8000-0000000002a5"
+  },
+  {
+   "name": "inform_consumed_by_saved_turn",
+   "kind": "single",
+   "chatId": "1a000000-0000-4000-8000-0000000000c1",
+   "content": "What time is it?",
+   "continueMode": false,
+   "streamLabel": "inform_consumed_by_saved_turn",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "inform_consumed_by_preserved_partial",
+   "kind": "single",
+   "chatId": "1a000000-0000-4000-8000-0000000000c2",
+   "content": "Trigger an error.",
+   "continueMode": false,
+   "streamLabel": "inform_consumed_by_preserved_partial",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "expectThrow": true
+  },
+  {
+   "name": "inform_already_consumed_is_left_alone",
+   "kind": "single",
+   "chatId": "1a000000-0000-4000-8000-0000000000c3",
+   "content": "And now?",
+   "continueMode": false,
+   "streamLabel": "inform_already_consumed_is_left_alone",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
+  },
+  {
+   "name": "inform_consume_fails_on_a_poisoned_row",
+   "kind": "single",
+   "chatId": "1a000000-0000-4000-8000-0000000000c4",
+   "content": "Is the gate still open?",
+   "continueMode": false,
+   "streamLabel": "inform_consume_fails_on_a_poisoned_row",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
   }
  ],
  "streams": {
@@ -4271,6 +4400,61 @@
      }
     }
    ]
+  ],
+  "inform_consumed_by_saved_turn": [
+   [
+    {
+     "content": "She glances at the clock."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 6,
+      "totalTokens": 46
+     }
+    }
+   ]
+  ],
+  "inform_consumed_by_preserved_partial": [
+   [
+    {
+     "content": "She glances at the"
+    },
+    {
+     "error": "upstream connection reset"
+    }
+   ]
+  ],
+  "inform_already_consumed_is_left_alone": [
+   [
+    {
+     "content": "She says nothing of the clock."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 7,
+      "totalTokens": 47
+     }
+    }
+   ]
+  ],
+  "inform_consume_fails_on_a_poisoned_row": [
+   [
+    {
+     "content": "She peers at the gate."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 6,
+      "totalTokens": 46
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -4314,5 +4498,68 @@
  "apiKeys": {
   "c0000004-0000-4000-8000-000000000004": "unc-decrypted-key",
   "fa110004-0000-4000-8000-000000000f14": "understudy-decrypted-key"
- }
+ },
+ "informs": [
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e1",
+   "chatId": "1a000000-0000-4000-8000-0000000000c1",
+   "batchId": "1a000000-0000-4000-8000-0000000000f1",
+   "participantId": "1a000000-0000-4000-8000-0000000000a1",
+   "contentMarkdown": "The clock in the hall has stopped.",
+   "createdAt": "2026-06-01T00:00:00.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e2",
+   "chatId": "1a000000-0000-4000-8000-0000000000c1",
+   "batchId": "1a000000-0000-4000-8000-0000000000f2",
+   "participantId": "1a000000-0000-4000-8000-0000000000a1",
+   "contentMarkdown": "A letter waits on the silver tray.",
+   "createdAt": "2026-06-01T00:00:01.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e3",
+   "chatId": "1a000000-0000-4000-8000-0000000000c1",
+   "batchId": "1a000000-0000-4000-8000-0000000000f3",
+   "participantId": "1a000000-0000-4000-8000-0000000000b1",
+   "contentMarkdown": "Bystander passage.",
+   "createdAt": "2026-06-01T00:00:02.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e4",
+   "chatId": "1a000000-0000-4000-8000-0000000000c2",
+   "batchId": "1a000000-0000-4000-8000-0000000000f4",
+   "participantId": "1a000000-0000-4000-8000-0000000000a2",
+   "contentMarkdown": "The lamps flicker.",
+   "createdAt": "2026-06-01T00:00:00.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e5",
+   "chatId": "1a000000-0000-4000-8000-0000000000c3",
+   "batchId": "1a000000-0000-4000-8000-0000000000f5",
+   "participantId": "1a000000-0000-4000-8000-0000000000a3",
+   "contentMarkdown": "The clock in the hall has stopped.",
+   "createdAt": "2026-06-01T00:00:00.000Z",
+   "consumedAt": "2026-06-01T00:00:05.000Z",
+   "consumedByMessageId": "1a000000-0000-4000-8000-0000000000d3"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e6",
+   "chatId": "1a000000-0000-4000-8000-0000000000c4",
+   "batchId": "1a000000-0000-4000-8000-0000000000f6",
+   "participantId": "1a000000-0000-4000-8000-0000000000a4",
+   "contentMarkdown": "The gate is open.",
+   "createdAt": "2026-06-01T00:00:00.000Z"
+  },
+  {
+   "id": "1a000000-0000-4000-8000-0000000000e7",
+   "chatId": "1a000000-0000-4000-8000-0000000000c4",
+   "batchId": "1a000000-0000-4000-8000-0000000000f7",
+   "participantId": "1a000000-0000-4000-8000-0000000000a4",
+   "contentMarkdown": "The gardener has gone home.",
+   "createdAt": "2026-06-01T00:00:01.000Z"
+  }
+ ],
+ "informPoisonRowIds": [
+  "1a000000-0000-4000-8000-0000000000e7"
+ ]
 }

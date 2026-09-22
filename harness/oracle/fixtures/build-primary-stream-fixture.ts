@@ -52,10 +52,20 @@ interface ApiKeySpec {
   label: string;
   keyValue: string;
 }
+interface InformSpec {
+  id: string;
+  chatId: string;
+  batchId: string;
+  participantId: string;
+  contentMarkdown: string;
+  createdAt: string;
+}
 interface Spec {
   testPepperBase64: string;
   sentinel: string;
   chats: ChatSpec[];
+  /** P4.106 item 2: pending `chat_informs` rows for the two inform calls. */
+  informs?: InformSpec[];
   userId: string;
   profile: ProfileSpec;
   understudyProfile: ProfileSpec;
@@ -117,6 +127,33 @@ async function main(): Promise<void> {
   }
   // Force chat_messages into existence (empty) so the port can INSERT into it.
   await repo.getMessageCount(spec.chats[0].id);
+
+  // P4.106 item 2: the inform plant through v4's REAL repository (ids + stamps
+  // pinned) — the `build-chat-informs-fixture.ts` shape. The table is created
+  // by v4's own `ensureCollection` either way, so both sides can dump it.
+  {
+    const { ensureCollection: ensureInformCollection } = await import('@/lib/database/manager');
+    const { ChatInformsRepository } = await import(
+      '@/lib/database/repositories/chat-informs.repository'
+    );
+    const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+    await ensureInformCollection('chat_informs', ChatInformSchema);
+    const informRepo = new ChatInformsRepository();
+    for (const row of spec.informs ?? []) {
+      await informRepo.create(
+        {
+          chatId: row.chatId,
+          batchId: row.batchId,
+          participantId: row.participantId,
+          contentMarkdown: row.contentMarkdown,
+          recordMessageId: null,
+          consumedAt: null,
+          consumedByMessageId: null,
+        } as never,
+        { id: row.id, createdAt: row.createdAt, updatedAt: row.createdAt }
+      );
+    }
+  }
 
   // P4.D135: the fallback chain reads REAL rows — `repos.connections.findById`
   // for the named understudy, `findByUserId` for the tier pick, and

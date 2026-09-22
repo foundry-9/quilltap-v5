@@ -1965,10 +1965,79 @@ fn orchestrator_tier3_matches_oracle() {
     ctx.normalize_jobs(&mut got_jobs, &idmap);
     ctx.normalize_jobs(&mut want_jobs, &idmap2);
 
+    // P4.106 item 2: `chat_informs` — the consumption comparand. Normalized
+    // AFTER messages so `consumedByMessageId` verifies by relationship through
+    // each side's message idmap (a minted assistant id → the matching token; the
+    // seeded consumer → the same token both sides).
+    let mut got_informs = dump_table(&db, "chat_informs");
+    let mut want_informs = want_tables
+        .remove("chat_informs")
+        .expect("oracle chat_informs — regenerate the oracle");
+    normalize_informs(&mut got_informs, &idmap);
+    normalize_informs(&mut want_informs, &idmap2);
+
     pin_summary_fold_last_turn_divergence(&got_chats, &mut want_chats, &want_events);
     assert_table_eq("chats", &got_chats, &want_chats);
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
+    assert_table_eq("chat_informs", &got_informs, &want_informs);
+    // Non-vacuous by construction: the corpus plants five rows and three calls
+    // consume; the dump must carry them and at least one consumption.
+    {
+        let rows = got_informs["rows"].as_array().expect("chat_informs rows");
+        assert_eq!(rows.len(), 7, "the planted chat_informs rows went missing");
+        let consumed_by_turns = rows
+            .iter()
+            .filter(|r| r["consumedAt"] == Value::String("<ts>".into()))
+            .count();
+        assert_eq!(
+            consumed_by_turns, 4,
+            "the saved turn consumes two rows, the preserved partial one, and the \
+             poisoned turn its FIRST row (e6) before the trigger aborts the second"
+        );
+        // P4.106 Tier 2 — the failed consume, measured: v4 `markConsumed` loops
+        // `update` per id inside `safeQuery(…, 0)`, so a write that fails on the
+        // SECOND row leaves the FIRST consumed, the second pending, and the turn
+        // saved. v5 matches all three (the table equality above) — its per-id
+        // loop's first UPDATE is not rolled back by the second's error.
+        let poisoned = rows
+            .iter()
+            .find(|r| r["id"] == "1a000000-0000-4000-8000-0000000000e7")
+            .expect("the poisoned row");
+        assert!(
+            poisoned["consumedAt"].is_null(),
+            "the poisoned row must stay pending: {poisoned}"
+        );
+    }
+    // …and v5's line for it, at v4's level and wording (`safeQuery`'s error
+    // message is `'Error marking informs consumed'`), on that call ONLY.
+    for name in [
+        "inform_consume_fails_on_a_poisoned_row",
+        "inform_consumed_by_saved_turn",
+        "inform_consumed_by_preserved_partial",
+        "inform_already_consumed_is_left_alone",
+    ] {
+        let lines = &initial_logs[name];
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error marking informs consumed"))
+            .collect();
+        if name == "inform_consume_fails_on_a_poisoned_row" {
+            assert_eq!(hits.len(), 1, "{name}: one failed-consume line: {lines:#?}");
+            assert!(
+                hits[0].starts_with("ERROR quilltap::inform"),
+                "{name}: v4's safeQuery logs at ERROR: {}",
+                hits[0]
+            );
+            assert!(
+                hits[0].contains("P4.106 poisoned inform row"),
+                "{name}: the trigger's error must ride the line: {}",
+                hits[0]
+            );
+        } else {
+            assert!(hits.is_empty(), "{name}: no failed-consume line: {hits:?}");
+        }
+    }
 
     // --- P4.D186 tier 2: the held result's SHAPE, read off the jobs it did not
     // enqueue ---
@@ -2412,6 +2481,35 @@ fn pin_summary_fold_last_turn_divergence(
         for r in rows.iter_mut() {
             if r.get("id").and_then(Value::as_str) == Some(CHAT) {
                 r[FIELD] = Value::String(announced.clone());
+            }
+        }
+    }
+}
+
+/// P4.106 item 2: `chat_informs` rows (seeded ids, sorted by id). A row the
+/// run touched (`updatedAt` moved off `createdAt`) has its `updatedAt` and
+/// `consumedAt` placeholdered — v4's frozen clock vs v5's real one — and every
+/// `consumedByMessageId` goes through the side's message idmap.
+fn normalize_informs(dump: &mut Value, idmap: &HashMap<String, String>) {
+    if let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) {
+        rows.sort_by_key(|r| r["id"].as_str().unwrap_or("").to_string());
+        for row in rows {
+            let Some(obj) = row.as_object_mut() else {
+                continue;
+            };
+            let touched = obj.get("updatedAt") != obj.get("createdAt");
+            if touched {
+                obj.insert("updatedAt".into(), Value::String("<ts>".into()));
+                if obj.get("consumedAt").is_some_and(|v| !v.is_null()) {
+                    obj.insert("consumedAt".into(), Value::String("<ts>".into()));
+                }
+            }
+            if let Some(m) = obj.get("consumedByMessageId").and_then(Value::as_str) {
+                let tok = idmap
+                    .get(m)
+                    .cloned()
+                    .unwrap_or_else(|| format!("<unknown message {m}>"));
+                obj.insert("consumedByMessageId".into(), Value::String(tok));
             }
         }
     }

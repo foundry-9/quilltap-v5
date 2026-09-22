@@ -192,6 +192,30 @@
           "characterId": "cc000001-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "dd000041-0000-4000-8000-000000000041",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "inform consumed on a preserved partial",
+      "participants": [
+        {
+          "id": "ee000041-0000-4000-8000-000000000041",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "dd000042-0000-4000-8000-000000000042",
+      "userId": "bb000001-0000-4000-8000-000000000001",
+      "title": "no inform carried",
+      "participants": [
+        {
+          "id": "ee000042-0000-4000-8000-000000000042",
+          "type": "CHARACTER",
+          "characterId": "cc000001-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "character": {
@@ -655,6 +679,26 @@
           }
         }
       ]
+    ],
+    "inform_mid_error_consume": [
+      [
+        {
+          "content": "The lamplighter pauses"
+        },
+        {
+          "error": "upstream connection reset"
+        }
+      ]
+    ],
+    "inform_mid_error_none": [
+      [
+        {
+          "content": "The gardener pauses"
+        },
+        {
+          "error": "upstream connection reset"
+        }
+      ]
     ]
   },
   "calls": [
@@ -1057,6 +1101,37 @@
       "attachedFiles": [],
       "originalMessage": "kindly summon a bare helper",
       "comment": "P4.97: the retry's clears proven against a BARE primary too — no previousResponseId, no stop. The cache key is still set (runPrimaryStream passes `characterId` unconditionally, so the funnel always derives one), which is what makes this the one-key twin of tool_unsupported_retry_success rather than a no-key case. Appended LAST: the option-bag side-channel is an ORDERED per-call list, so a case inserted mid-array would shift every following index. Its marker deliberately shares no substring with any other: the mock resolves a label by FIRST containing marker, so `please invoke a helper, bare` would have resolved to tool_unsupported_then_ok and died on an exhausted cursor (measured)."
+    },
+    {
+      "name": "inform_consumed_by_preserved_partial",
+      "kind": "primary",
+      "chatId": "dd000041-0000-4000-8000-000000000041",
+      "participantId": "ee000041-0000-4000-8000-000000000041",
+      "preGeneratedMessageId": "ff000041-0000-4000-8000-000000000041",
+      "hasTools": false,
+      "streamLabel": "inform_mid_error_consume",
+      "attachedFiles": [],
+      "originalMessage": "a passage for the lamplighter",
+      "expectThrow": true,
+      "informRowIds": [
+        "1b000000-0000-4000-8000-0000000000e1",
+        "1b000000-0000-4000-8000-0000000000e2"
+      ],
+      "comment": "P4.106 item 2 \u2014 v4 `primary-stream.service.test.ts:227`: a preserved partial IS a persisted assistant turn and the model read the inform, so the turn's rows are consumed against the PRESERVED (pre-generated) message id. Rows planted through v4's REAL repository (the top-level `informs`); a third row for the same seat is NOT in this turn's informRowIds and must stay pending. Appended LAST (the ordered option-bag rule above)."
+    },
+    {
+      "name": "inform_untouched_when_turn_carried_none",
+      "kind": "primary",
+      "chatId": "dd000042-0000-4000-8000-000000000042",
+      "participantId": "ee000042-0000-4000-8000-000000000042",
+      "preGeneratedMessageId": "ff000042-0000-4000-8000-000000000042",
+      "hasTools": false,
+      "streamLabel": "inform_mid_error_none",
+      "attachedFiles": [],
+      "originalMessage": "no passage for the gardener",
+      "expectThrow": true,
+      "informRowIds": [],
+      "comment": "P4.106 item 2 \u2014 v4 `primary-stream.service.test.ts:249`: a turn that carried no inform touches nothing, even though the seat HAS a pending row (planted) \u2014 the preserve consumes only what the turn's context carried."
     }
   ],
   "authPrimaryProfile": {
@@ -1108,5 +1183,39 @@
     "baseUrl": null,
     "apiKeyId": "cc0000ff-0000-4000-8000-0000000000ff",
     "modelClass": null
-  }
+  },
+  "informs": [
+    {
+      "id": "1b000000-0000-4000-8000-0000000000e1",
+      "chatId": "dd000041-0000-4000-8000-000000000041",
+      "batchId": "1b000000-0000-4000-8000-0000000000f1",
+      "participantId": "ee000041-0000-4000-8000-000000000041",
+      "contentMarkdown": "The lamps are lit early tonight.",
+      "createdAt": "2026-02-01T00:00:00.000Z"
+    },
+    {
+      "id": "1b000000-0000-4000-8000-0000000000e2",
+      "chatId": "dd000041-0000-4000-8000-000000000041",
+      "batchId": "1b000000-0000-4000-8000-0000000000f2",
+      "participantId": "ee000041-0000-4000-8000-000000000041",
+      "contentMarkdown": "A letter waits on the silver tray.",
+      "createdAt": "2026-02-01T00:00:01.000Z"
+    },
+    {
+      "id": "1b000000-0000-4000-8000-0000000000e3",
+      "chatId": "dd000041-0000-4000-8000-000000000041",
+      "batchId": "1b000000-0000-4000-8000-0000000000f3",
+      "participantId": "ee000041-0000-4000-8000-000000000041",
+      "contentMarkdown": "Posted after the context was built; not this turn's.",
+      "createdAt": "2026-02-01T00:00:02.000Z"
+    },
+    {
+      "id": "1b000000-0000-4000-8000-0000000000e4",
+      "chatId": "dd000042-0000-4000-8000-000000000042",
+      "batchId": "1b000000-0000-4000-8000-0000000000f4",
+      "participantId": "ee000042-0000-4000-8000-000000000042",
+      "contentMarkdown": "The gate is open.",
+      "createdAt": "2026-02-01T00:00:00.000Z"
+    }
+  ]
 }

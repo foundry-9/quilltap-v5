@@ -230,6 +230,10 @@ struct CallW {
     participant_id: Option<String>,
     #[serde(default)]
     pre_generated_message_id: Option<String>,
+    /// P4.106 item 2: the turn's `BuiltContext.informRowIds`, handed to the
+    /// preserve-partial path (absent = none, as every pre-P4.106 call).
+    #[serde(default)]
+    inform_row_ids: Vec<String>,
     #[serde(default)]
     has_tools: bool,
     #[serde(default)]
@@ -915,8 +919,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.participant_id.clone().unwrap(),
                     None,
                     call.pre_generated_message_id.clone().unwrap(),
-                    // P4.D205: this corpus carries no informs.
-                    vec![],
+                    // P4.D205 / P4.106 item 2: the call's inform rows.
+                    call.inform_row_ids.clone(),
                 );
                 let attached = call
                     .attached_files
@@ -1135,8 +1139,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.participant_id.clone().unwrap(),
                     None,
                     call.pre_generated_message_id.clone().unwrap(),
-                    // P4.D205: this corpus carries no informs.
-                    vec![],
+                    // P4.D205 / P4.106 item 2: the call's inform rows.
+                    call.inform_row_ids.clone(),
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
                 let mut params = base_params_with_attachments(
@@ -1234,6 +1238,10 @@ async fn primary_stream_tier3_matches_oracle() {
     // W4.11b: the CHAT_MESSAGE `llm_logs` rows — the primary + tool-retry rows
     // (characterId set) and the failover-leg rows (characterId SET — v4 `65f5021c8`); none for
     // recovery (v4 passes no userId there). requestHashes are part of the row diff.
+    // P4.106 item 2: the preserve-partial consumption comparand.
+    let mut got_informs = db
+        .read_main(|c| quilltap_core::db::dump_table_json_conn(c, "chat_informs", "id"))
+        .expect("dump chat_informs");
     let got_logs = common::dump_llm_logs(&db);
     drop(db);
     let _ = std::fs::remove_file(&work);
@@ -1289,6 +1297,50 @@ async fn primary_stream_tier3_matches_oracle() {
         "chats column set"
     );
     assert_eq!(got_chats["rows"], want_chats["rows"], "chats rows diverge");
+
+    // P4.106 item 2: `chat_informs`. The consumer is the PRE-GENERATED id (a
+    // seeded literal both sides), so only the minted clock is placeholdered — on
+    // exactly the rows the run touched (`updatedAt` moved off `createdAt`).
+    let mut want_informs = oracle_tables
+        .remove("chat_informs")
+        .expect("oracle chat_informs — regenerate the oracle");
+    want_informs.as_object_mut().unwrap().remove("kind");
+    for dump in [&mut got_informs, &mut want_informs] {
+        let rows = dump["rows"].as_array_mut().expect("chat_informs rows");
+        rows.sort_by_key(|r| r["id"].as_str().unwrap_or("").to_string());
+        for row in rows.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            if obj.get("updatedAt") != obj.get("createdAt") {
+                obj.insert("updatedAt".into(), json!("<ts>"));
+                if obj.get("consumedAt").is_some_and(|v| !v.is_null()) {
+                    obj.insert("consumedAt".into(), json!("<ts>"));
+                }
+            }
+        }
+    }
+    assert_eq!(
+        got_informs["columns"], want_informs["columns"],
+        "chat_informs column set / order"
+    );
+    assert_eq!(
+        got_informs["rows"], want_informs["rows"],
+        "chat_informs rows diverge"
+    );
+    let consumed: Vec<&str> = got_informs["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| !r["consumedAt"].is_null())
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        consumed,
+        [
+            "1b000000-0000-4000-8000-0000000000e1",
+            "1b000000-0000-4000-8000-0000000000e2"
+        ],
+        "exactly the preserved turn's two rows are consumed (non-vacuity)"
+    );
 
     // W4.11b: the `llm_logs` CHAT_MESSAGE rows (id/createdAt/updatedAt placeholdered
     // by the shared dump; durationMs collapsed to the `"<ms>"` presence marker on

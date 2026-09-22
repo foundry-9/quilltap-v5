@@ -129,6 +129,8 @@ interface CallSpec {
   chatId?: string;
   participantId?: string;
   preGeneratedMessageId?: string;
+  /** P4.106 item 2: the turn's `BuiltContext.informRowIds`, handed to the preserve. */
+  informRowIds?: string[];
   hasTools?: boolean;
   streamLabel?: string;
   attachedFiles?: AttachedFileSpec[];
@@ -527,6 +529,9 @@ async function main(): Promise<void> {
         characterParticipant,
         streaming: streaming as never,
         preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
+        // P4.106 item 2: this turn's inform rows (absent = the pre-P4.106
+        // corpus, which carries none).
+        informRowIds: call.informRowIds ?? [],
       });
       try {
         const psResult = await runPrimaryStream({
@@ -658,6 +663,9 @@ async function main(): Promise<void> {
         characterParticipant,
         streaming: streaming as never,
         preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
+        // P4.106 item 2: this turn's inform rows (absent = the pre-P4.106
+        // corpus, which carries none).
+        informRowIds: call.informRowIds ?? [],
       });
       try {
         const psResult = await runPrimaryStream({
@@ -733,6 +741,8 @@ async function main(): Promise<void> {
 
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
+  // P4.106 item 2: the preserve-partial consumption comparand.
+  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_informs', 'id')) }));
 
   // W4.11b: dump the CHAT_MESSAGE `llm_logs` rows the REAL wrapper wrote. The
   // wrapper's `logLLMCall` is fire-and-forget (`.catch`, not awaited), so drain the

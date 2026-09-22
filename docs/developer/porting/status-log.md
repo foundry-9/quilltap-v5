@@ -143244,3 +143244,71 @@ vs (1, 0)` (the first op with a seat); the swipe arm reading PENDING →
 ⚠ For the unifier: this family is NOT one of the three that move at
 `a2db63da7` (it reaches no fold), and its informs comparand never reads a
 fold prompt.
+
+### Unit 6 — item 2 + Tier 2 item 5: the consumption arms + the failed-consume line
+
+**`orchestrator_tier3`** — corpus 60 → 64 chats, 61 → 65 calls; NEW
+top-level `informs` (7 rows) + `informPoisonRowIds` planted by
+`build-orchestrator-fixture.ts` (v4's REAL `ensureCollection` +
+`ChatInformsRepository.create`; the table is created even with no plant, so
+both sides always dump it) and a NEW `chat_informs` table dump in the case
++ the Rust family (`normalize_informs`: sorted by id; a TOUCHED row's
+`updatedAt`/`consumedAt` → `<ts>`; `consumedByMessageId` through each side's
+message idmap). Calls (all `single`, non-continue, no summary check — the
+comparand never reads a fold prompt, per the order's P4.D212 constraint):
+`inform_consumed_by_saved_turn` (C1: e1+e2 consumed by the saved turn, e3 a
+user-seat bystander untouched), `inform_consumed_by_preserved_partial` (C2:
+a partial then `upstream connection reset`, `expectThrow`; e4 consumed
+against the preserved message — v4's `primary-stream.service.test.ts:227`
+through the real orchestration), `inform_already_consumed_is_left_alone`
+(C3: e5 consumed by a seeded message — untouched), `inform_consume_fails_
+on_a_poisoned_row` (C4, Tier 2).
+
+**Tier 2 — the order's recipe was wrong, measured by reading:** "a `DROP`
+after the plant" cannot reach the failed consume — the inform block's READ
+fails first, `safeQuery(…, [])` answers empty, `informRowIds` is `[]`, and
+`mark_consumed` is never called. The instrument used instead: a
+row-targeted `BEFORE UPDATE ON chat_informs WHEN OLD.id = 'e7' BEGIN SELECT
+RAISE(ABORT, 'P4.106 poisoned inform row'); END` trigger in the fixture
+(reads succeed; the write fails on the SECOND row only). **Measured, v4:**
+e6 consumed, e7 pending, the turn saved (v4's per-id `update` loop inside
+`safeQuery(…, 0)`). **v5: identical** — the prediction that v5's single
+`db.write` closure would roll e6 back with e7's error was WRONG (the table
+equality held on the first run). v5's line pinned from the per-call
+`initial_logs` capture: exactly one `ERROR quilltap::inform Error marking
+informs consumed … error=sqlite error: P4.106 poisoned inform row` on the
+poison call, none on the other three inform calls. v4's own line is
+behind the jest logger mock (not measured on the v4 side — the table state
+is the differential).
+
+**`primary_stream_tier3`** — corpus 10 → 12 chats, 30 → 32 calls
+(APPENDED last, per the ordered option-bag rule), two streams, NEW
+top-level `informs` (4 rows); per-call `informRowIds` handed to
+`makePreservePartialOnError` (both construction sites; absent = `[]`) and
+to `PreservePartialOnError::new`; NEW `chat_informs` dump. Calls:
+`inform_consumed_by_preserved_partial` (e1+e2 in `informRowIds` →
+consumed by the PRE-GENERATED id `ff000041…`; e3, same seat, not in the
+turn's ids → pending) and `inform_untouched_when_turn_carried_none`
+(`informRowIds: []`; the seat's e4 stays pending — v4 `:249`). v4 measured
+exactly that.
+
+Regens AS RUN (probe PASS before each): orchestrator — `TMPO=/tmp/p4106/
+qt-orch-oracle`, builder `QT_FIXTURE_OUT=/tmp/p4106/qt-orch-main.db
+QT_FIXTURE_MOUNT_OUT=/tmp/p4106/qt-orch-mount.db` → "64 chats"; jest `TZ=UTC
+… -- "orchestrator-tier3\.test\.ts$"` → 1 passed; `grep -c 'She peers at the
+gate'` = 3. primary-stream — `TMPO=/tmp/p4106/qt-primary-stream-oracle`,
+builder `QT_FIXTURE_OUT=/tmp/p4106/qt-primary-stream.db` → "12 chats"; jest
+→ 118 rows; the fallback oracle regenerated beside it (1 row). Both
+families green.
+
+Mutations: the finalizer's `if !inform_row_ids.is_empty()` → `false && …`
+→ `table chat_informs mismatch`; the preserve's → orchestrator AND
+primary-stream `chat_informs` red; the failed-consume `error!` → `warn!` →
+the level assert red. Red-first availability: none on arrival (every arm
+ported); the Tier-2 arm was the one place a v5 red was PREDICTED (the
+rollback) and the measurement refuted it.
+
+⚠ For the unifier: `orchestrator_tier3` is one of the three families that
+MOVE at `a2db63da7` (P4.D212's fold). None of the four new calls reaches a
+fold (`summaryCheck: false`), so the re-record at the new baseline should
+move only the pre-existing fold rows it already predicted.

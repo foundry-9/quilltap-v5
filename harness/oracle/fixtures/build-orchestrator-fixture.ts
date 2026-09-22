@@ -223,6 +223,27 @@ interface Spec {
   files?: FileSpec[];
   chats: ChatSpec[];
   /**
+   * P4.106 item 2: `chat_informs` rows planted through v4's REAL repository
+   * (ids + stamps pinned), for the three inform-consumption calls' chats only.
+   */
+  informs?: Array<{
+    id: string;
+    chatId: string;
+    batchId: string;
+    participantId: string;
+    contentMarkdown: string;
+    createdAt: string;
+    consumedAt?: string | null;
+    consumedByMessageId?: string | null;
+  }>;
+  /**
+   * P4.106 Tier 2: `chat_informs` row ids whose UPDATE is poisoned by a
+   * `BEFORE UPDATE … RAISE(ABORT)` trigger — reads succeed, the consume's
+   * write fails on exactly these rows. Lives in the fixture, so both sides
+   * run the same trigger.
+   */
+  informPoisonRowIds?: string[];
+  /**
    * W4.10a: `apiKeyId → SYNTHETIC key value` seeded into the `api_keys` table so
    * the danger-reroute path resolves the key off the REAL table (the Rust
    * `DbApiKeys` resolver reads the same rows). The provider is derived from the
@@ -511,6 +532,42 @@ async function main(): Promise<void> {
     } else {
       await repos.chats.getMessageCount(chat.id);
     }
+  }
+
+  // P4.106 item 2: the inform plant (the `build-chat-informs-fixture.ts`
+  // shape). `chat_informs` is created by v4's own `ensureCollection` even when
+  // the spec plants nothing, so both sides always have the table to dump.
+  {
+    const { ChatInformsRepository } = await import(
+      '@/lib/database/repositories/chat-informs.repository'
+    );
+    const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+    await ensureCollection('chat_informs', ChatInformSchema);
+    const informRepo = new ChatInformsRepository();
+    for (const row of spec.informs ?? []) {
+      await informRepo.create(
+        {
+          chatId: row.chatId,
+          batchId: row.batchId,
+          participantId: row.participantId,
+          contentMarkdown: row.contentMarkdown,
+          recordMessageId: null,
+          consumedAt: row.consumedAt ?? null,
+          consumedByMessageId: row.consumedByMessageId ?? null,
+        } as never,
+        { id: row.id, createdAt: row.createdAt, updatedAt: row.createdAt }
+      );
+    }
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+    const rawDb = getRawDatabase() as unknown as { exec: (sql: string) => void } | null;
+    if (!rawDb) throw new Error('main DB handle unavailable for the inform poison');
+    (spec.informPoisonRowIds ?? []).forEach((id, i) => {
+      if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error(`bad poison id ${id}`);
+      rawDb.exec(
+        `CREATE TRIGGER "qt_p4106_poison_inform_${i}" BEFORE UPDATE ON "chat_informs" ` +
+          `WHEN OLD."id" = '${id}' BEGIN SELECT RAISE(ABORT, 'P4.106 poisoned inform row'); END`
+      );
+    });
   }
 
   // Force the tables the Rust port reads/writes but owns no DDL for into
