@@ -840,10 +840,44 @@ records THERE. Update this summary only when a phase or round completes.
   with a tool call, a chained OPENAI re-stream), and the standing queue
   (dedup/summaries, the Brahma deep query, #101, the re-measured compression
   row).
-- **Oracle baseline: `baa85e19b` (2026-09-18, v4 main — "fix(aurora): the
-  star that sets a default prompt calls a route that exists (bug 154)",
-  `4.10.0-dev.48`), adopted at the `baa85e19b` bug-154 default-system-prompt
-  drift catch-up + maintenance round unification (2026-09-18).**
+- **The `f45a517a9` thirteen-commit drift catch-up round (P4.D203 →
+  {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥
+  P4.D211): UNIFIED on main (2026-09-22) — ALL NINE LANDED; the oracle
+  baseline MOVES to `f45a517a9`; the ledger's §3 keeps THREE rows (bugs
+  161/162 + their docs commit, v4 HEAD `a2db63da7`, PIN REQUIRED).** The
+  largest round this port has run: the compressed-text codec + the `qt_text`
+  UDF on every connection (v5 can READ and WRITE a v4-4.10 instance again —
+  brotli parity byte-identical to 262 KB), FTS5 message search (the five
+  objects verbatim + the boot reconciler; the `.`-defect retired), Inform on
+  both sides, the streamed swipe on both sides (the `status` frame carries
+  `kind` first — §S.2 was wrong), the Scriptorium contract (bugs 155/156/157;
+  bug 159's image half as a seam), `quilltap sync` (Tier R 223 → 244), bug
+  158, Zod 4.6.5 (neutral; `is_zod_email` converged at tier 2). **The §3
+  review (six readers) found THREE BLOCKING defects and fixed them:** the
+  three Inform REST arms answered 500 on SUCCESS (the unwrapper matched no new
+  variant; the route family never touched axum); the backup manifest omitted
+  `chatInforms`; the SPA's bug-(b) selection ran over the PRE-refetch swipe map
+  (inert by zoneless timing — v4's `fetchChat` writes state before it
+  resolves). **The unified sweep found two more:** `informRowIds` skipped when
+  empty (v4 always emits it), and the joined blob row reading the nullable
+  `originalFileName` as a bare `String` (every text-blob import failed —
+  P4.D209 had widened only the write side). Twenty-two should-fixes landed
+  with tests; three dead recipes repaired; a merge-tooling trap recorded (a
+  naive union resolver truncated an arm on a diff3-split adjacency conflict).
+  **OPEN by name:** P4.D205's seven items; the image seam wired into the sync
+  applier ONLY; `update_message` DELETE+INSERT vs UPDATE under the triggers;
+  P4.D210's live Tier R rows + the writer-hold ruling; the fixture-vintage
+  heal (eleven families, six pairs). Gate: 68 families fresh from the pin
+  through the driver, all ok; SPA 440 files / 7,466; Playwright 329 passed / 1 failed (the pre-existing P4.66 bubble beat, 2/2 alone) / 6 skipped;
+  `cargo test --workspace` 611 binaries / 3,612 passed / 1 failed (the `cli_differential` env-block artifact, 244/0 by name) / 3 ignored. Versions: core 0.0.992, harness 0.0.890,
+  host 0.0.146, web 0.0.170, cli 0.0.25, SPA 0.5.747. **Next: the bug-161/162
+  catch-up, the fixture-vintage heal, the image seam, then the owed dogfood
+  pass on a Friday copy v5 can at last read and write** — `phase-4.md`.
+  Round record: `status-log.md`.
+- **Oracle baseline: `f45a517a9` (2026-09-21, v4 main — "feat(search): index
+  chat messages with FTS5, compress the transcript", `4.10.0-dev.61`),
+  adopted at the `f45a517a9` thirteen-commit drift catch-up round
+  unification (2026-09-22).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

@@ -141485,3 +141485,184 @@ an e-acute, an em dash — are ordinary UTF-8 and were left alone.)
 sequence typed into a tool's JSON payload can arrive as the CHARACTER it denotes.
 Write control-byte probes so the SOURCE stays ASCII, and check `file` (or
 `git diff --stat` for a `Bin` marker) on any new corpus that names one.
+
+## Round record — the `f45a517a9` thirteen-commit drift catch-up round unification (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211), 2026-09-22
+
+**ALL NINE ORDERS LANDED; the oracle baseline MOVES `baa85e19b` →
+`f45a517a9`; the ledger's §3 keeps THREE rows (v4 HEAD `a2db63da7` — bugs
+161/162 + the docs commit that filed them, all UNPROCESSED; PIN REQUIRED at
+the new baseline). The §3 review — six parallel readers plus the unifier's
+own reads — found THREE BLOCKING defects and fixed them on the unify branch,
+and the unified sweep found TWO more no lane could see. Six orders CLOSED
+WHOLE, P4.D205 LANDED with seven items OPEN by name, P4.D209 CLOSED with one
+item RE-OPENED, P4.D210 CLOSED with its live Tier R rows DECLARED
+undelivered. Versions: core 0.0.992, harness 0.0.890, host 0.0.146, web
+0.0.170, cli 0.0.25, fixture-sanitizer 0.0.4, SPA 0.5.747.**
+
+### §1 Survey
+
+Nine lane worktrees, all clean. Lanes P4.D204/D205/D207/D208/D209 were cut
+from P4.D203's TIP (`7903d46f`), not S (`144a0e80`) — a superset, pick
+order unaffected; P4.D210 from P4.D209's tip (`60dc4df1`). The ledger's §2
+probe PASSED at the opening (v4 `main` at `a2db63da7`, tree clean, bugfix
+unmoved) and again at the baseline move (09:29), so the ledger's verdict
+governed: thirteen ORDERED rows absorbed, three newer rows outside the round.
+Load-bearing facts read from the lane records before any pick: P4.D205
+PARTIALLY COMPLETE (seven items open); P4.D209 one corpus row open; P4.D206's
+two beats gated; P4.D207's `status` frame carries `kind` FIRST (§S.2 was
+wrong); P4.D210's help count 125 and census 442 to recount; P4.D211's Tier R
+223/4 at the target with the four reds P4.D210's; P4.D211's out-of-mandate
+clippy fix shared with P4.D203.
+
+### §2 Reconciliation
+
+`unify/f45a517a9` from main (`f05cb56a`); 55 lane commits cherry-picked in
+the ordered sequence D203 → D204 → D209 → D210 → D205 → D207 → D208 → D206 →
+D211. Conflicts: CHANGELOG/status-log union (both sides, newest first);
+version files kept at HEAD then RECOUNTED as base + the sum of every lane's
+bumps (core 0.0.966 + 24 = 0.0.990, harness + 31 = 0.0.888, host + 6 =
+0.0.145, web + 11 = 0.0.168, cli + 3 = 0.0.25, SPA + 5 = 0.5.746 — then +1
+each for the review fixes and again for the sweep fixes); the help-tree
+literals to 126 (124 + inform.md + cli-sync.md), the dispatch wrong-type
+census to 445 (441 + 3 + 1 + 0), the typed-only construction census to 113
+(109 + 1 + 3); the `seed_built_ins` fences ordered D205 → D204 → D208 (the
+D208 block had been appended mid-section); `db/mod.rs`, `services/mod.rs`,
+`regenerate_swipe.rs` (the D205 handle BEFORE the D207 `gathering` beat —
+v4's order), `help_tree_embed_guard.rs`, `host_help_docs_boot.rs`. ⚠ **A
+merge-tooling trap, recorded:** git's default conflict style split the
+adjacent-add conflict on `api/engine.rs`'s dispatch match into TWO blocks and
+the naive union resolver truncated the `ChatInform` arm — `quilltap-core` did
+not parse. Rebuilt with `git merge-file --diff3` from the lane tips (D205's
+fence before D210's per §R.10(b), then D207's in-place edits), every other
+hand-resolved file re-derived the same way and confirmed identical, then the
+stray `||||||| base` lines the resolver leaves behind stripped. All 304
+single-owner files verified identical to their lane tips; no lane commit
+missing by subject; no conflict marker anywhere.
+
+### §3 The review — what it found, what it fixed
+
+**BLOCKING, fixed on the unify branch (each with the test that keeps it
+caught):**
+
+1. **The three Inform REST arms answered 500 `Unexpected core response` on
+   SUCCESS** (P4.D205). `wardrobe_routes.rs`'s `unwrap_to_http` matched only
+   the wardrobe-family variants; the lane's route family called the handler
+   directly and never axum. The three variants are matched now and the error
+   arm carries v4's `details` array (it had been dropped at this edge too).
+   NEW `chat_informs_rest_routes.rs` drives the real router: pre-fix the two
+   success cases answered 500 and the two refusals lacked `details`; post-fix
+   4/4.
+2. **The backup manifest omitted `chatInforms`** (P4.D205) — v4
+   `backup-service.ts:480` writes it after `chatDocuments`; staging wrote
+   `chat-informs.json` before `instance-settings.json` where v4 writes it
+   after. Both fixed; `system_backup_equivalence` re-recorded at the target
+   (ok).
+3. **The SPA's bug-(b) fix was INERT at runtime** (P4.D206). v4's `fetchChat`
+   writes `setSwipeStates` before it resolves; v5's `invalidateQueries`
+   resolves while the transcript is reconciled by the seed EFFECT on a later
+   zoneless tick, so `selectSwipeVariant` searched the PRE-refetch map and the
+   id-carry left the operator on the replaced line. The refetch closure now
+   seeds synchronously; the dispatch's own `{ message }` is the `done`
+   frame's fallback (the frame can lose the tear-down race). The beat was
+   vacuous (the mock's reply is ONE fixed sentence) and is made honest: a
+   SECOND re-roll with the swipe counter 2/2 → 3/3 — run live, green.
+
+**Found by the unified sweep, fixed (no lane's gate could see them):**
+
+4. **`informRowIds` skipped when empty** — v4 ALWAYS emits it, between
+   `messagesTruncated` and `warnings`; `build_context_tier3` at the target
+   pin went red on exactly that key (the lane's "neutrality leg" green had
+   been a stale-baseline oracle). Moved and always serialized.
+5. **The joined blob row read `originalFileName` as a bare `String`** —
+   P4.D209 widened the WRITE side to `Option` (v4's nullable column; the
+   import writes NULL), so `system_import_state` failed every text blob with
+   `Invalid column type Null`, and a v4-written instance's attach/download
+   would have too. Widened; three consumers on v4's `||`.
+6. **Two hand-built tier-3 oracle contexts lacked `informRowIds`** —
+   `answer_confirmation_tier3` and `message_finalizer_tier3`, P4.D205's
+   claimed neutrality legs, THREW on the v4 side at the target pin before
+   any comparand existed. Fixed; both regenerate.
+
+**Should-fixes landed (twenty-two), by lane:** P4.D203 — the llm_logs UPDATE
+arms wrote the compressed columns UNENCODED (red-first on a long update op;
+census 12 → 14); brotli parity measured only to 5,464 bytes — ~64 KiB and
+~256 KiB prose rows added, parity HOLDS to 262,293 bytes; the codec family's
+recipe named a dead pin (driver-readable now). P4.D204 — `duration_ms` →
+`durationMs` + the three rebuild lines pinned; v4's `Replaced text in
+messages` INFO line ported with pin + order; a case comment; seven corpus
+JSONs' trailing newlines. P4.D205 — explicit `null` rendered `received
+undefined` (the tri-state's `Some(None)` lost the `Value::Null`); the
+pending-inform drop sat in the REPOSITORY (reached by the Salon bag PUT)
+where v4 drops only on the action — moved, mutation-proven; three sites
+propagated where v4's `safeQuery` swallows (finalization aborted AFTER the
+row saved; cancel's read 500 vs v4's 404; cancel's delete 500 vs `removed:
+0`); the import remap dropped on an empty-string pointer (corpus 8 → 10,
+red-first); the swipe-handle census the comment named now EXISTS; five nits.
+P4.D207 — the SSE edge's `Option<Json>` answered 415 on a form body (v4 falls
+through; red-first 415 → 201); the error-frame arm the wire header claimed is
+ADDED (a `FailingStream` spine). P4.D208 — the heal's two lines pinned and
+given v4's `LOG_CONTEXT`; `NO_DRIFT_MESSAGE` referenced; a comment made true;
+the shared helper hunk fenced. P4.D210 — `in_flight` gains an RAII slot;
+`birthtime_of` regains the NaN conjunct. P4.D211 — the new family's recipe
+named a dead pin (driver-readable now); the SPA twin's version note. Three
+more recipes (conversation-chunks, sync-manifest, the swipe SSE route) could
+not regenerate through the driver — a tsx env name, a doc line beginning
+`for `, an elided jest stage — all repaired and proven with `--run`.
+
+**Escalated, not fixed (each named in code or the order header):** the
+bug-159 image-normalization seam is wired into ONE caller (the sync applier)
+— every other v5 site stores the original bytes where v4 stores WebP, no
+corpus byte is a decodable image (P4.D209, OPEN); `update_message`'s DELETE +
+re-INSERT vs v4's UPDATE under the FTS triggers (P4.D203/D204, follow-up);
+P4.D210's live Tier R rows undelivered (declared); the whole sync run holding
+the single writer (a ruling); the bug-158 heal without a differential against
+v4's real migration; no provider-SDK version guard; a synced decodable image
+never converges (an upstream filing candidate — v4's own module doc says the
+opposite and its test passes only on an undecodable PNG).
+
+### §4 The wires
+
+`P4D205_SERVER_LANDED` and `P4D207_SERVER_LANDED` flipped; both specs run
+live against the release binary: the Inform walk 4/4 (the consume beat
+re-shaped to inform BOTH seats, since the rotation's draw cannot be forced
+and the first live run showed the turn chain runs both; the EVERYONE beat
+withdraws its batch), the regenerate walk 3/3 (the plate's four facts read in
+ONE DOM tick — four sequential assertions had raced the plate's withdrawal on
+the mock's instant first token; the second re-roll waits for the first one's
+turn to settle and its counter is the proof; the beat is marked `slow()`: its
+first full-suite red was the 30 s per-test budget landing on the 3/3 poll's
+first sample, read off the trace's timestamps, not the assertion). §S.1 diffed
+name-for-name across `core-contract.ts` and `api/types.rs` (the reviewers'
+reads); §S.2's `kind`-first status object tolerated by the SPA (a cast, no
+exact-shape match); the `docs/v4/` mirror landed (sixteen files + the widened
+`packages-quilltap-README.md`); the census guard `chat_informs_swipe_handle`
+written; the three help-count / census literals recounted.
+
+### §5 The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean — re-run after every fix batch.
+- **Oracles fresh from the `f45a517a9` pin through the sweep driver: 68
+  families — 62 ok on the review-fixed tree, six non-ok diagnosed and closed
+  (four code fixes above, three recipe repairs), then the affected 13 + 5
+  families re-run ok**; `backup_uuid_remap` (refused by the driver's
+  repo-write policy — its corpus is hash-pinned) and `compressed_collect`
+  (non-extractable) regenerated by hand from the pin, both green. Every
+  round family now runs end to end through the driver from the pin.
+- SPA: `npm run lint` clean (958 qt-* classes); `npm test` 440 files /
+  7,466 passed; `npm run build` clean.
+- Full Playwright against the fresh release binary + build: **329 passed / 1 failed / 6 skipped (10.4 m)** on the final tree — the six skips the standing parks; the one red the pre-existing P4.66 optimistic-bubble beat (green in the two earlier full runs of this gate), re-run by FILE alone: 2/2 (1.5 m). The two flipped beats ran in the full suite and alone: Inform 4/4, the regenerate walk 3/3 (its two earlier full-suite reds were the plate's assertion race and the 30 s test budget, both fixed above; a third run's reds on the composer-reopen waits coincided with the Rust chain's compile load and did not reproduce).
+- `cargo test --workspace` with the round's 92-variable env block: **611 test binaries / 3,612 passed / 1 failed / 3 ignored** — the one red `cli_differential`, an env-block artifact (the block carried `QT_NODE=$N/node` unexpanded, so the CLI spawn was NotFound); re-run by name against the pin with the real node path: **244 cases, 0 failures**. The 446 `SKIP:` lines are families outside the round's block; every round family confirmed RUN by name.
+
+### §6 Versions
+
+core 0.0.992, harness 0.0.890, host 0.0.146, web 0.0.170, cli 0.0.25,
+fixture-sanitizer 0.0.4, tauri 0.0.7 (unchanged), SPA 0.5.747.
+
+### §7 Onward
+
+See `phase-4.md` §"UNIFIED 2026-09-22" — the bug-161/162 catch-up first,
+then the fixture-vintage heal (eleven families, six pairs), the image
+seam + `update_message`, P4.D205's seven open items + P4.D210's live rows,
+then the owed dogfood pass on a Friday copy v5 can at last read and write.

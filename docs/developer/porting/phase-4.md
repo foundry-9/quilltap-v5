@@ -6628,7 +6628,63 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
-## The `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) — ORDERED 2026-09-21
+## The `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) — UNIFIED 2026-09-22
+
+**ALL NINE ORDERS LANDED; the oracle baseline MOVES `baa85e19b` →
+`f45a517a9`; the ledger's §3 holds THREE rows (bugs 161/162 + the docs
+commit that filed them, all UNPROCESSED — v4 HEAD `a2db63da7`, three past
+the new baseline; PIN REQUIRED). Six orders CLOSED WHOLE (P4.D203, P4.D204,
+P4.D207, P4.D208, P4.D211 — and P4.D206 with its bug-(b) fix REPAIRED at
+unification); P4.D205 LANDED with seven items OPEN by name; P4.D209 CLOSED
+with ONE item RE-OPENED (the image-normalization seam); P4.D210 CLOSED with
+its live Tier R rows DECLARED undelivered. The §3 review (six parallel
+readers + the unifier's own reads) found THREE BLOCKING defects and fixed
+them on the unify branch: the three Inform REST arms answered 500 on
+success; the backup manifest omitted `chatInforms`; the SPA's bug-(b)
+selection ran over the pre-refetch swipe map (inert by timing) — plus
+twenty-odd should-fixes (see the round record). What the next `/setupphase`
+reads first, in order:**
+
+1. **The `a2db63da7` bug-161/162 catch-up** (the ledger's three rows): the
+   context-summary fold's speaker names + `?action=rebuild-summary` and its
+   Salon Organize-drawer entry (`e7821606f` — `QT_ORACLE_FOLD_EPISODE` and the
+   context-summary families move; `help/chats.md` re-vendors), the CLI
+   opener consolidation + the `Cannot open database:` string as a Tier R
+   comparand (`a2db63da7` — v5's two openers both register `qt_text`
+   already), the docs mirror (`4e1a8e061`).
+2. **The fixture-vintage heal — ELEVEN families on SIX pairs** (the
+   standing ten + `search_replace_equivalence`; the pairs:
+   `subprompts-*`, `chat-delete-*`, `character-generators-*`,
+   `profile-*`, `groups-projects-*`, and the earlier six's), through v4's
+   migration DDL at the NEW pin (the widen brings the FTS triggers, so it
+   needs S + P4.D204 — which are now on main). Also the sidecar of the
+   0-byte `chat-compressed-mount.db`.
+3. **The P4.D209 image-normalization seam** (`normalize_blob_image.rs`'s
+   OPEN note): thread the engine's `blob_webp` into every
+   `LinkBlobInput` construction site (the doc-edit tool, the three photo
+   galleries, `image_job_storage`, the in-store copy/move, the chat-media
+   attach — the sync applier is the ONLY wired caller today), with
+   decodable-image corpus rows so a differential can see it; and the
+   `update_message` DELETE + re-INSERT vs v4's UPDATE under the FTS
+   triggers (`ftsId` renumbering, `_au`'s guard bypassed — an UPDATE-shaped
+   port with a corpus over a triggered fixture).
+4. **P4.D205's seven OPEN items** (its order header) and P4.D210's live
+   Tier R rows; the bug-158 heal's differential against v4's real migration;
+   the provider-SDK version guard (`x-stainless-package-version`); the
+   `quilltap sync` writer-hold ruling (the walks and disk applier run inside
+   `db.write`); the `qtap_import` two-link-blob bundle row.
+5. **The owed dogfood pass** — at last on a Friday copy v5 can READ and
+   WRITE: Inform end to end on a real instance (v4's own oracle is unproven
+   there), the streamed swipe's plate on a real re-roll, a `sync --dry-run`
+   against a real store (and a real photograph synced TWICE — the
+   convergence defect the review traced, an upstream filing candidate),
+   bug 158's greeting block on a chat v5 creates, a real `Mr. Smith`
+   search, a first boot on the 142k-message copy (the reconciler's rebuild
+   with no operator-visible progress), the `?stream=1` swipe edge with a
+   form body, a backup whose manifest counts informs.
+
+**Superseded plan text (ordered 2026-09-21), kept for the record:**
+
 
 **Baseline `baa85e19b`; v4 `main` HEAD `f45a517a9` (THIRTEEN past — the
 ledger's thirteen §3 rows, every one now `ORDERED(…)`), v4 `bugfix` tip
@@ -6915,8 +6971,10 @@ bug-154 default-system-prompt drift catch-up + maintenance round unification".
 6. **Standing, unchanged:** the two items awaiting the human's RULING (the
    census `ORDER BY`; the lock-conflict 503-vs-409); the REST
    `PUT /api/v1/characters/{id}` + `/prompts/{promptId}` edges (no client
-   posts REST there); the human `npm install` item (the four SDK-bundling
-   plugin dirs on `openai` 7.10.0); P4.D198's tier-3 backstop blindness; the
+   posts REST there); ~~the human `npm install` item (the four SDK-bundling
+   plugin dirs on `openai` 7.10.0)~~ — STRUCK at the `f45a517a9` round: P4.D211
+   measured every plugin dir rebuilt by `6b0615807` onto `openai` 7.20.0 /
+   `@openrouter/sdk` 1.3.11, so there is nothing left to install; P4.D198's tier-3 backstop blindness; the
    `name`-field turn-path measurement; the `/tmp/qt-oracle-run` shared
    staging; the "named, not order-sized" carry-overs.
 

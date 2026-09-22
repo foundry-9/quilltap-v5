@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — chore(unify): the `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) unified
+
+_Versions: core 0.0.992, harness 0.0.890, host 0.0.146, web 0.0.170, cli 0.0.25, fixture-sanitizer 0.0.4, SPA 0.5.747._
+
+Nine lanes unified onto main; the oracle baseline moves `baa85e19b` →
+`f45a517a9`. Absorbed whole: the compressed-text codec + the `qt_text` UDF on
+every connection (bugs 159/160's text half), FTS5 message search with its boot
+reconciler, Inform's server and client halves, the streamed swipe on both
+sides, the Scriptorium repo-layer contract (bugs 155/156/157 + bug 159's image
+half as a seam), `quilltap sync` end to end, bug 158, and the Zod 4.6.5 move;
+five docs-only commits ratified NO-PORT with their mirrors (sixteen files +
+the widened package README). Recounted at unification: versions as base + the
+lanes' sums, the help-tree count to 126, the dispatch wrong-type census to
+445, the typed-only construction census to 113; the boot-seed fences ordered
+D205 → D204 → D208; the two gated e2e beats flipped and run live.
+
+The review found three blocking defects and fixed them: the three Inform REST
+arms answered 500 on success; the backup manifest omitted `chatInforms`; the
+SPA's bug-(b) selection ran over the pre-refetch swipe map. The unified sweep
+found two more: `informRowIds` skipped when empty where v4 always emits it,
+and the joined blob row reading a nullable `originalFileName` as a bare
+string (every text-blob import failed). Twenty-two should-fixes landed with
+their tests, three dead recipes repaired; the image-normalization seam
+(wired into the sync applier only), `update_message` under the FTS triggers,
+P4.D210's live Tier R rows and the sync writer-hold are escalated by name.
+
+Gate: fmt + clippy (both feature sets) + release clean; 68 families fresh
+from the pin through the sweep driver, all ok after the fixes; SPA lint /
+440 files / 7,466 tests / build clean; full Playwright 329 passed / 1 failed (the pre-existing P4.66 bubble beat, 2/2 alone) / 6 skipped; `cargo test
+--workspace` with the 92-variable env block 611 binaries / 3,612 passed / 1 failed (the `cli_differential` env-block artifact, 244/0 by name) / 3 ignored. Round record in
+`status-log.md`.
+
 #### 2026-09-21 — fix(oracle): the zod-email case held a raw NUL, so git treated the file as binary
 
 _Versions: harness 0.0.861._
