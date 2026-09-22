@@ -137417,15 +137417,31 @@ nothing. **The unifier re-probes and decides; a lane never writes the ledger.**
 | `cargo fmt --all --check` | clean |
 | `cargo clippy --workspace --all-targets -- -D warnings` | **clean (exit 0)** — and see the pre-existing red S had to clear, above |
 | same with `--features quilltap-core/native-transport` | **clean (exit 0)** |
-| `cargo build --workspace --release` | see the round record |
-| `cargo test --workspace --no-fail-fast` with the lane env block | see the round record |
-| the lane's differentials by name | all green; every one confirmed RUN (non-zero duration), zero `SKIP:` among them |
+| `cargo build --workspace --release` | **clean (exit 0)**, 5 m 15 s |
+| `cargo test --workspace --no-fail-fast` with the lane env block | **584 test binaries / 3,491 passed / 3 failed / 3 ignored**, 483 `SKIP:` lines (all families outside the lane's env block, none of them this lane's). The three reds are the DESIGNED ones below. |
+| the lane's differentials by name | **ALL EIGHT GREEN, every one confirmed RUN with ZERO `SKIP:` lines in its own section**: `text_compression_equivalence` 3 passed / 1 ignored (the fixture step); `compressed_column_write_sites_census` 3 passed, 2.34 s; `compressed_collect_equivalence`; `collapse_stale_chat_caches_tier2_equivalence`; `chats_messages_read_equivalence`; `conversation_chunks_tier2_equivalence`; `llm_logs_tier2_equivalence`; `avatar_rolls_collapse_heal_equivalence` |
 | Tier R at the target pin | **223 cases / 4 failures, all four DESIGNED (P4.D210's) — see below** |
 | `help_tree_equivalence` at the target | **RED by DESIGN, 124 vs 126** — the two missing files are other lanes' (§R.10(d)) |
 
 The env block deliberately INCLUDES `QT_ORACLE_HELP_TREE`, so that designed
 red SHOWS rather than hiding behind a false `SKIP:` — the same choice the
 `baa85e19b` round made for its fixture-vintage reds.
+
+#### The workspace run's failures: THREE, and **none of them this lane's**
+
+Each is a red §R.5 predicts by name for another lane, and each attribution is
+MEASURED rather than assumed:
+
+| failing test | whose | the measurement |
+|---|---|---|
+| `shipped_help_tree_matches_oracle` | P4.D205 + P4.D210 | `embedded file count 124 vs 126`. A tree diff names the two missing files: `help/cli-sync.md` and `help/inform.md`. §R.10(d) assigns them. |
+| `the_embedded_schema_equals_the_v4_checkouts` | **P4.D205** | "the vendored qtap-export schema has DRIFTED … v4 95266 bytes, vendored 93384". §R.5: "`qtap_schema_embed_guard` red until the two schemas are re-vendored". ⚠ The guard reads the LIVE checkout (no `QT_V4_ROOT` set), which is now DIRTY — so the attribution was checked: the PIN's schema is **95266, byte-identical to the live one** (`cmp` clean), and the VENDORED copy is **93384, exactly the BASELINE pin's size**. The whole delta is `baa85e19b → f45a517a9`; **the dirty tree contributed nothing.** |
+| `v4s_installed_zod_matches_the_recorded_version` | **P4.D211** | "v4's installed `zod` moved 4.5.4 -> 4.6.5". §R.5: "`zod_version_guard` red until the re-measurement lands". The guard's own message names the regen scope. |
+
+**No family this lane touched failed**, and no family outside the lane failed
+for a reason the lane caused. The ten standing fixture-vintage reds did not
+appear, because their oracle vars are not in this lane's env block and they
+SKIPped honestly.
 
 #### Tier R at the target pin: **223 cases, 4 failures — all four DESIGNED, all four P4.D210's**
 
