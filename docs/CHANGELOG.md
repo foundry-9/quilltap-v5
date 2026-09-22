@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(web): the swipe's SSE REST edge, diffed against v4's real route handler (P4.D207)
+
+_Versions: web 0.0.160, harness 0.0.864._
+
+`POST /api/v1/messages/{id}?action=swipe[&stream=1]` — v5 had no POST edge on
+this path at all. The streaming leg answers `text/event-stream` with v4's three
+headers and v4's `data: <json>\n\n` framing, re-framed from the same
+`SwipeProgress` events the SPA consumes; without the flag it answers 201 with
+the swipe as JSON, and a body carrying `swipeIndex` takes the switch branch.
+
+The re-framer is shared, not copied: `generator_sse`'s pump now takes the
+payload family as a fn pointer, so the swipe inherits its subscribe-before-
+dispatch ordering and its two recorded `RecvError` divergences instead of
+growing a second, differently-wrong copy. The generator families were re-run
+and are unchanged.
+
+The oracle grew a second pass per case that drives v4's REAL handler with
+`stream=1` and records the status, the three headers, and the decoded frames —
+throwing if any chunk is not v4's framing. The v5 family replays the four cases
+over real HTTP against the same salon pair with the same canned deltas and the
+same usage, so every frame but the terminal `done` is a byte diff. All three
+refusals answer ordinary JSON with v4's status and copy on the streaming leg
+too, because `resolveSwipeTarget` runs before `new ReadableStream`.
+
+⚠ The oracle's stream pass runs AFTER its table dump: it is a real regeneration
+and writes its own row, so dumping after it would hand
+`salon_swipe_generate_equivalence` a two-row comparand its single-generation v5
+side can never match. Its recorded terminal frame therefore carries
+`swipeIndex: 2`, which the v5 family reproduces by running the non-stream leg
+first rather than excluding the field.
+
+`?action=reattribute` answers a loud typed 501 naming itself rather than v4's
+"Action parameter required" sentence: `MessageReattribute` is a real v5 verb
+with no REST edge, and claiming it is unrecognised would be false. Wiring it is
+outside this order. An unknown or absent action does get v4's sentence.
+
 #### 2026-09-21 — test(web): the streamed swipe's dispatch wire, end to end over /api/events (P4.D207)
 
 _Versions: web 0.0.159._

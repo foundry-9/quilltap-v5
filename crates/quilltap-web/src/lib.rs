@@ -43,6 +43,7 @@ pub mod log_file;
 // === P4.6ar: the llm-logs read surface + system image-aesthetics REST edges ===
 pub mod llm_logs_routes;
 pub mod messages_routes;
+pub mod messages_swipe_routes;
 // === P4.9P: the global-search REST edge ===
 pub mod ui_search_routes;
 // === end P4.6ar ===
@@ -361,6 +362,11 @@ pub fn build_router(state: SharedState) -> Router {
         )
         // === P4.D183: the messages collection edge (v4 `5029075bb`) ===
         .route("/api/v1/messages", get(messages_routes::messages_get))
+        // === P4.D207: the streamed swipe's REST edge (v4 `f564b0de3`) ===
+        .route(
+            "/api/v1/messages/{id}",
+            post(messages_swipe_routes::messages_post),
+        )
         .route(
             "/api/v1/terminals",
             post(terminal_routes::terminals_post).get(terminal_routes::terminals_get),

@@ -351,8 +351,81 @@ async function main(): Promise<void> {
         });
         tables[key] = { table, columns, rows };
       }
+
+      // P4.D207 — the SSE leg of the SAME case, from the SAME real handler.
+      // v4's `resolveSwipeTarget` runs before `new ReadableStream`, so a
+      // refusal is an ordinary JSON error on BOTH legs and only a throw inside
+      // `start()` becomes an `error` frame. Recorded per case so the v5 REST
+      // edge can be diffed against it rather than against a transcription.
+      //
+      // ⚠ Run SECOND, AFTER the tables above are already dumped. The stream
+      // leg is a real regeneration and writes its own swipe row, so dumping
+      // after it would hand `salon_swipe_generate_equivalence` a two-row
+      // comparand its single-generation v5 side can never match. The tables
+      // are the NON-STREAM leg's alone; this block records only the stream's
+      // SHAPE (status, headers, framing, frame sequence). It does mean the
+      // recorded terminal frame carries `swipeIndex: 2` — the second
+      // regeneration of the same message — which is what the v5 route family
+      // reproduces rather than excludes.
+      const streamUrl = `http://localhost/api/v1/messages/${c.messageId}?action=swipe&stream=1`;
+      const streamResponse = (await POST(
+        mockRequest(streamUrl, {}) as never,
+        { params: Promise.resolve({ id: c.messageId }) } as never,
+      )) as {
+        status: number;
+        headers?: { get: (k: string) => string | null };
+        body?: ReadableStream<Uint8Array>;
+        json?: () => Promise<unknown>;
+      };
+      let streamKind = 'json';
+      let streamFrames: unknown[] = [];
+      let streamBody: unknown = null;
+      const streamHeaders: Record<string, string | null> = {};
+      if (streamResponse.body && typeof streamResponse.body.getReader === 'function') {
+        streamKind = 'sse';
+        for (const h of ['content-type', 'cache-control', 'connection']) {
+          streamHeaders[h] = streamResponse.headers?.get(h) ?? null;
+        }
+        const reader = streamResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let text = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          text += decoder.decode(value, { stream: true });
+        }
+        // The RAW framing matters as much as the payloads: v4 writes
+        // `data: <json>\n\n` with no `event:` line, no `id:`, no retry.
+        streamFrames = text
+          .split('\n\n')
+          .filter((chunk) => chunk.length > 0)
+          .map((chunk) => {
+            if (!chunk.startsWith('data: ')) {
+              throw new Error(`unexpected SSE chunk framing: ${JSON.stringify(chunk)}`);
+            }
+            return JSON.parse(chunk.slice(6));
+          });
+      } else {
+        streamBody = streamResponse.json ? await streamResponse.json() : null;
+      }
+
       const canned = Array.from(cannedCompletions.values());
-      outLines.push(JSON.stringify({ name: c.name, status, body, tables, canned }));
+      outLines.push(
+        JSON.stringify({
+          name: c.name,
+          status,
+          body,
+          tables,
+          canned,
+          stream: {
+            kind: streamKind,
+            status: streamResponse.status ?? null,
+            headers: streamHeaders,
+            frames: streamFrames,
+            body: streamBody,
+          },
+        }),
+      );
     } finally {
       (global as { Date: DateConstructor }).Date = RealDate;
       pinned.restore();

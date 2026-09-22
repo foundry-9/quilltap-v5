@@ -26,192 +26,15 @@
 //!   cargo test -p quilltap-web --test message_swipe_stream_dispatch_wire
 
 mod common;
+mod swipe_spine;
 
-use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use quilltap_core::api::types::Event;
-use quilltap_core::db::runtime::Db;
-use quilltap_core::model::completion::{
-    CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
-};
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::model::stream::{
-    StreamChunk, StreamChunkResult, StreamParams, StreamUsage, StreamingCompletionProvider,
-};
-use quilltap_core::services::file_storage::ProductionFileBytes;
-use quilltap_core::services::pricing_fetcher::{PricingFetch, PricingFetcher};
-use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
-use quilltap_host::spine::{ChatCreateSpine, ChatSpine, SpineBundle, SpineFactory};
-use quilltap_host::{HostImageCodec, LocalStorageBackend};
 use serde_json::{json, Value};
 
-/// The two prose deltas the canned stream yields, so the wire sees the
-/// `regenerating` beat fire ONCE and two `{"content": …}` frames follow.
-const SWIPE_DELTAS: [&str; 2] = ["A re-rolled ", "line, at last."];
-
-/// A streaming provider that answers EVERY call with one fixed sequence. The
-/// swipe's one generation is the only stream this venue opens.
-struct AnyStream;
-impl StreamingCompletionProvider for AnyStream {
-    #[allow(clippy::manual_async_fn)]
-    fn stream_message(
-        &self,
-        _provider: &str,
-        _base_url: Option<&str>,
-        _params: &StreamParams,
-    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
-        async move {
-            let (tx, rx) = tokio::sync::mpsc::channel(8);
-            for d in SWIPE_DELTAS {
-                let _ = tx.send(Ok(StreamChunk::content(d.to_string()))).await;
-            }
-            let _ = tx
-                .send(Ok(StreamChunk::done(Some(StreamUsage {
-                    prompt_tokens: 11,
-                    completion_tokens: 7,
-                    total_tokens: 18,
-                }))))
-                .await;
-            rx
-        }
-    }
-}
-
-/// `{}` for every cheap-LLM call (the ported parsers resolve it to
-/// nothing-found and the paths degrade gracefully).
-struct AnyCompletion;
-impl CompletionProvider for AnyCompletion {
-    #[allow(clippy::manual_async_fn)]
-    fn send_message(
-        &self,
-        _provider: &str,
-        _base_url: Option<&str>,
-        _params: &CompletionParams,
-    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + Send {
-        async move {
-            Ok(CompletionResponse {
-                content: "{}".to_string(),
-                usage: None,
-                finish_reason: None,
-                attachment_results: None,
-                cache_usage: None,
-            })
-        }
-    }
-}
-
-struct NoPricingFetch;
-impl PricingFetch for NoPricingFetch {
-    fn openrouter_public_models(&self) -> Option<Value> {
-        None
-    }
-    fn openrouter_sdk_models(&self, _api_key: &str) -> Option<Value> {
-        None
-    }
-    fn ollama_tags(&self, _base_url: &str) -> Option<Value> {
-        None
-    }
-}
-
-fn test_env() -> SelfInventoryEnv {
-    SelfInventoryEnv {
-        version: "0.0.0-swipe-wire".to_string(),
-        runtime_mode: "local-dev".to_string(),
-        client_shell: ClientShell::Browser,
-        mount_index_degraded: false,
-        release_notes: None,
-        changelog: None,
-        model_info: Vec::new(),
-        fallback_pricing: Vec::new(),
-        registry_default_context: 8192,
-    }
-}
-
-/// ⚠ **`swipe_generate` must be `Some` here**, unlike the `chat_send_smoke`
-/// factory this is modelled on. With it `None` the engine's readiness gate
-/// answers `"swipe generation not assembled"` (a 500) BEFORE
-/// `message_swipe_generate` runs at all — so the guards never execute, no frame
-/// is ever published, and every assertion in this file would be measuring the
-/// refusal instead of the wire. That is exactly what the first run of this test
-/// measured, and it is why the bundle below wires the spine into both slots.
-struct SwipeSpineFactory {
-    base_dir: std::path::PathBuf,
-}
-
-impl SpineFactory for SwipeSpineFactory {
-    fn build(
-        &self,
-        db: &Db,
-        events: &tokio::sync::broadcast::Sender<Event>,
-        _terminal: Option<Arc<quilltap_host::terminal::TerminalManager>>,
-        pepper: &str,
-        data_dir: &std::path::Path,
-        bus: &Arc<quilltap_core::services::creation_progress::CreationProgressBus>,
-    ) -> SpineBundle {
-        let embedding = Arc::new(CannedEmbeddingProvider::new());
-        let completion = Arc::new(AnyCompletion);
-        let streaming = Arc::new(AnyStream);
-        let spine = Arc::new(ChatSpine {
-            db: db.clone(),
-            events: events.clone(),
-            embedding: Arc::clone(&embedding),
-            completion: Arc::clone(&completion),
-            streaming: Arc::clone(&streaming),
-            pricing: Arc::new(PricingFetcher::new(NoPricingFetch)),
-            tz: "UTC".to_string(),
-            env: test_env(),
-            file_bytes: Arc::new(ProductionFileBytes {
-                db: db.clone(),
-                backend: Arc::new(LocalStorageBackend::new(self.base_dir.join("files"))),
-                codec: Arc::new(HostImageCodec),
-            }),
-            image_transcoder: Arc::new(HostImageCodec),
-            scrollback: None,
-            consult: None,
-            web_search: None,
-            image_describe: None,
-        });
-        let chat_create = Arc::new(ChatCreateSpine {
-            db: db.clone(),
-            events: events.clone(),
-            bus: Arc::clone(bus),
-            pepper: pepper.to_string(),
-            data_dir: data_dir.to_path_buf(),
-            embedding,
-            completion,
-            streaming,
-            tz: "UTC".to_string(),
-        });
-        SpineBundle {
-            chat_send: Arc::clone(&spine) as _,
-            chat_create,
-            swipe_generate: Some(Arc::clone(&spine) as _),
-            provider_actions: None,
-            memory_embedding: None,
-            courier_resolve: None,
-            save_image_bytes: None,
-            image_generation: None,
-            consult: None,
-            brahma_console_send: None,
-            help_chat_send: None,
-            recall_replay: None,
-            announcement_preview: None,
-            in_scene_voice: None,
-            operator_tool_runner: None,
-            regenerate_title: None,
-            outfit_llm_choose: None,
-            image_describe: None,
-            web_search: None,
-            search_providers: Vec::new(),
-            job_handlers: Vec::new(),
-            generators_detail: None,
-            generators_wizard: None,
-        }
-    }
-}
+use swipe_spine::{SwipeSpineFactory, SWIPE_DELTAS};
 
 /// The chat-send fixture's populated chat. ⚠ NOT the smoke chat
 /// `9fe3f87b-…` that `chat_send_smoke` uses: that one is EMPTY until the smoke
@@ -416,7 +239,7 @@ async fn the_stream_flag_narrates_a_generate_and_is_ignored_by_a_switch() {
     // stream carries usage, so the token triple is real on the persisted row.
     assert_eq!(
         done.pointer("/message/tokenCount").and_then(Value::as_i64),
-        Some(18),
+        Some(52),
         "the usage rode the terminal chunk onto the row: {done:?}"
     );
     let first = mine[0].get("status").expect("a status frame");

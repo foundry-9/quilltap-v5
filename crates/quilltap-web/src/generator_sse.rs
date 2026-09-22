@@ -85,16 +85,43 @@ fn frame(event: &serde_json::Value) -> Vec<u8> {
     format!("data: {event}\n\n").into_bytes()
 }
 
-/// Pull the inner v4 progress object out of an [`Event`] iff it is a
-/// generator frame for `progress_id`.
-fn matching<'a>(ev: &'a Event, progress_id: &str) -> Option<&'a serde_json::Value> {
-    if ev.progress_id.as_deref() != Some(progress_id) {
-        return None;
-    }
-    match &ev.payload {
+/// Which payload family a re-framer forwards, and where its inner v4 object
+/// sits. A plain fn pointer so the two families share one pump without a
+/// generic parameter reaching every caller.
+///
+/// P4.D207 widened this from a hard-coded `GeneratorProgress` match: the
+/// streamed swipe re-frames the same way onto the same wire, and duplicating
+/// the pump would have duplicated the two `RecvError` arms and their reasoning
+/// with it.
+pub type FrameOf = for<'a> fn(&'a EventPayload) -> Option<&'a serde_json::Value>;
+
+/// The character generators' payload (`p4.9k`).
+pub fn generator_frame(payload: &EventPayload) -> Option<&serde_json::Value> {
+    match payload {
         EventPayload::GeneratorProgress(p) => Some(&p.event),
         _ => None,
     }
+}
+
+/// The streamed swipe's payload (P4.D207, v4 `f564b0de3`).
+pub fn swipe_frame(payload: &EventPayload) -> Option<&serde_json::Value> {
+    match payload {
+        EventPayload::SwipeProgress(p) => Some(&p.frame),
+        _ => None,
+    }
+}
+
+/// Pull the inner v4 object out of an [`Event`] iff it is `frame_of`'s family
+/// AND carries `progress_id`.
+fn matching<'a>(
+    ev: &'a Event,
+    progress_id: &str,
+    frame_of: FrameOf,
+) -> Option<&'a serde_json::Value> {
+    if ev.progress_id.as_deref() != Some(progress_id) {
+        return None;
+    }
+    frame_of(&ev.payload)
 }
 
 /// Re-frame one generator run as v4's SSE stream. `dispatch` MUST be un-polled
@@ -110,8 +137,26 @@ where
     F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
+    stream_frames(events, progress_id, generator_frame, dispatch, outcome).await
+}
+
+/// Re-frame ONE run of any `progress_id`-tagged Event family as v4's SSE
+/// stream. `dispatch` MUST be un-polled on entry (see the module header,
+/// step 1); `outcome` maps its result to the non-stream refusal body a failure
+/// BEFORE the first frame answers.
+pub async fn stream_frames<F, T>(
+    events: &broadcast::Sender<Event>,
+    progress_id: String,
+    frame_of: FrameOf,
+    dispatch: F,
+    outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
+) -> AxumResponse
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
     // 1. Subscribe BEFORE the dispatch future is polled.
-    stream_generator_from(events.subscribe(), progress_id, dispatch, outcome).await
+    stream_generator_from(events.subscribe(), progress_id, frame_of, dispatch, outcome).await
 }
 
 /// The body of [`stream_generator`], taking the subscription it already made.
@@ -123,6 +168,7 @@ where
 async fn stream_generator_from<F, T>(
     mut rx: broadcast::Receiver<Event>,
     progress_id: String,
+    frame_of: FrameOf,
     dispatch: F,
     outcome: impl Fn(T) -> Result<(), (StatusCode, serde_json::Value)> + Send + 'static,
 ) -> AxumResponse
@@ -141,7 +187,7 @@ where
             biased;
             ev = rx.recv() => match ev {
                 Ok(ev) => {
-                    if let Some(inner) = matching(&ev, &progress_id) {
+                    if let Some(inner) = matching(&ev, &progress_id, frame_of) {
                         pending.push(frame(inner));
                     }
                 }
@@ -181,7 +227,7 @@ where
         // The run ended before any frame. Drain whatever it emitted in the same
         // tick, then either refuse (no frame at all) or answer a short stream.
         while let Ok(ev) = rx.try_recv() {
-            if let Some(inner) = matching(&ev, &progress_id) {
+            if let Some(inner) = matching(&ev, &progress_id, frame_of) {
                 pending.push(frame(inner));
             }
         }
@@ -220,7 +266,7 @@ where
                 biased;
                 ev = rx.recv() => match ev {
                     Ok(ev) => {
-                        if let Some(inner) = matching(&ev, &progress_id) {
+                        if let Some(inner) = matching(&ev, &progress_id, frame_of) {
                             if tx.send(Ok(frame(inner))).await.is_err() {
                                 return;
                             }
@@ -250,7 +296,7 @@ where
         // Drain what landed before the run resolved, then close (v4's
         // `controller.close()` after the runner's promise settles).
         while let Ok(ev) = rx.try_recv() {
-            if let Some(inner) = matching(&ev, &progress_id) {
+            if let Some(inner) = matching(&ev, &progress_id, frame_of) {
                 if tx.send(Ok(frame(inner))).await.is_err() {
                     return;
                 }
@@ -320,7 +366,8 @@ mod tests {
                     std::future::pending::<()>().await;
                     Ok::<(), ()>(())
                 };
-                stream_generator_from(rx, "p1".to_string(), dispatch, no_refusal).await
+                stream_generator_from(rx, "p1".to_string(), generator_frame, dispatch, no_refusal)
+                    .await
             })
         });
         let warn = lines
@@ -367,7 +414,14 @@ mod tests {
                     std::future::pending::<()>().await;
                     Ok::<(), ()>(())
                 };
-                let resp = stream_generator_from(rx, "p1".to_string(), dispatch, no_refusal).await;
+                let resp = stream_generator_from(
+                    rx,
+                    "p1".to_string(),
+                    generator_frame,
+                    dispatch,
+                    no_refusal,
+                )
+                .await;
                 // Draining the body drives the spawned pump to its Closed arm.
                 let bytes = to_bytes(resp.into_body(), 1 << 20).await.unwrap();
                 String::from_utf8(bytes.to_vec()).unwrap()
