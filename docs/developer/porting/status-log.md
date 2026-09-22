@@ -137109,3 +137109,264 @@ one-line `compressed_is_worth_storing(raw_len, compressed_len)` with a boundary
 test at 508/509/510 against a 512-byte raw. **Re-run as M2b, the mutation now
 reddens that pin.** The measurement is recorded in the function's doc comment so
 the next reader does not re-derive it.
+
+### Unit 4 — the write side, the raw-SQL rewrites, and the write census
+
+**Ten write sites route through `text_to_blob`.** `chats_messages.rs`'s four
+(the message insert's `content` + `opaqueContent`, the context-summary insert's
+`context`, the system insert's `description`; `update_message` is a DELETE +
+re-INSERT through `insert_event` and adds none of its own),
+`conversation_chunks.rs`'s two (`create` and the dynamic `update` patch arm —
+the patch arm matters on its own or an upsert over an existing chunk launders
+the cell back to plaintext), `llm_logs.rs`'s two (JSON FIRST then the codec,
+v4's own ordering for the two columns that are both), and the avatar-roll heal's
+two under v4's explicit NULL guards.
+
+**Raw SQL rewritten:** the almanack's TWO `json_extract(qt_text("response"),
+'$.error')`, the cold-chunk `trim(qt_text(content)) != ''`, and the render
+reconciler's three `LENGTH(qt_text(cc."content"))`.
+
+**⚠ Tier-2 item 10 needs no separate change.** The order asks for "the
+`llm_logs` usage aggregate (`db/llm_logs.rs`) wrapped over `qt_text("response")`
+exactly as v4's `USAGE_AGGREGATE_COLUMNS:50`". Measured: **v5 has no such
+aggregate in `db/llm_logs.rs`.** Its only home for v4's
+`USAGE_AGGREGATE_COLUMNS` is `almanack/phase6_wire_records.rs:124,184`, and both
+copies are wrapped above. Item 10 is therefore CLOSED by unit 4, not deferred.
+
+**⚠ THREE of the order's item-4 sub-items resolve to NO CHANGE by measurement**
+— each now carrying a code comment naming the sha so the next reader does not
+"fix" them:
+
+| site | the order asked for | MEASURED at `f45a517a9` |
+|---|---|---|
+| `tools/run_sql.rs:356` | "decodes a compressed cell to text for the model" | `f45a517a9` did NOT touch `run-sql-handler.ts`'s `sanitizeRow`; v4 still renders EVERY blob as `` `<blob: ${value.length} bytes>` ``. v5 already matches. Decoding would be a v5 INVENTION. |
+| `services/brahma_console/prompt_text.rs:62` | the sentence "stays truthful either way" | **v4 tells the model about `qt_text` NOWHERE** — zero hits across `lib/tools/`, `lib/services/` and `app/`. Adding a hint would diverge. NO CHANGE. |
+| `crates/quilltap-cli/src/nodefmt.rs:39-56` | "renders the decoded text" | v4's CLI decodes in exactly THREE verbs — `cmdMessages`, `cmdMessage`, `cmdLog` (`db-commands.js:484,570,616-617`) — all three of which v5 does not ship. `quilltap db "<SQL>"` (`bin/quilltap.js:1049-1059`) does plain `JSON.stringify(rows)`/`console.table(rows)` over whatever better-sqlite3 returns, so a compressed cell prints as a Node Buffer on BOTH sides. v5's Buffer form is already right; the REGISTRATION is what makes the path usable. |
+
+**The census, `compressed_column_write_sites_census`** — and it took four
+rounds of false positives to make honest. Every one is recorded in the file,
+because each is a trap the next census will meet:
+
+1. **The naive brace counter is not safe tree-wide.** The sibling
+   `stream_watchdog_wrap_census` balances `{`/`}` by counting characters, which
+   works only because it scans a curated file list. Over all of
+   `crates/quilltap-core/src` it panics on **ten files** —
+   `cycle_order.rs`, `select_speaker.rs`, `db/chats_read.rs`,
+   `db/fictional_clock_anchor_repair.rs`, `api/generators_wizard.rs`,
+   `generators/llm_json.rs`, `services/chat_events.rs`,
+   `services/agent_mode.rs`, `services/off_scene.rs`,
+   `services/avatar_cache.rs` — each a test module whose JSON fixture text has
+   braces inside a STRING literal. The census carries a small lexer.
+2. **But the OUTPUT must KEEP string literals.** The thing the census searches
+   for — `INSERT INTO chat_messages (… content …)` — *is* a string literal. The
+   first draft emitted a space for every literal, and its mutation proof duly
+   SURVIVED: a brand-new file with an unconverted `chat_messages` insert was not
+   caught, because the insert had been elided before the search ran. Two views
+   now: `production_zone` (verbatim, test items dropped) for the search, and
+   `code_only` for the count.
+3. **Counting needs both call shapes.** `text_to_blob(&m.content)` and
+   `opt.as_deref().map(text_to_blob)` are both codec routes; a `text_to_blob(`
+   pattern scores the `.map` form ZERO, and reported
+   `db/avatar_rolls_collapse_heal.rs` as having NO codec call when both of its
+   writes go through one.
+4. **The verb must be word-bounded on BOTH sides and ADJACENT to the table.**
+   `services/backup/collect.rs` flagged because `createdAt, updatedAt FROM
+   conversation_chunks` contains the substring `UPDATE` (fixed by bounding the
+   right side too); `tools/definitions/data.rs` flagged because the `run_sql`
+   tool's JSON description mentions `INSERT/UPDATE/DELETE` in one sentence and
+   `chat_messages` in another, inside one literal, and is not SQL at all (fixed
+   by requiring the table within 40 characters of the verb).
+
+Arm (b) — "the census's file list IS the set of production files writing one of
+the seven columns" — is the arm that catches the write nobody thought about, and
+it is why the lexer has to scan the whole tree. `db/chats_search.rs` is EXEMPT
+by name with P4.D204's ownership as the reason.
+
+Mutation proofs: M4 (unconvert the context-summary write) → 3 vs 4, RED. M5 (a
+NEW file with an unconverted `chat_messages` insert) → named, RED — after the
+literal fix. M6 (unconvert the heal's `.map` form) → 0 vs 2, RED.
+
+### Unit 5 — bug 160
+
+`services/collapse_stale_chat_caches.rs` gains `compiledIdentityStacks` in the
+SET and in the guard disjunct. **v5 had reproduced v4's omission exactly.**
+
+The family was **GREEN BY LUCK**: neither `retention-caches.json` nor either
+side's comparand mentioned the column. Grown with a THIRD chat — stale,
+carrying ONLY `compiledIdentityStacks`, both older cache columns NULL — plus the
+column in both projections. **That stack-only row is the point:** with the
+guard's new disjunct removed but the SET kept, the WHERE excludes that chat and
+the stack survives, while the other two chats stay green because they carry all
+three columns. A column added to an existing row would have pinned nothing
+(`a-guard-whose-other-conjuncts-are-false-is-untested`).
+
+Red-first on unported v5 against the target-pinned oracle: `chatsCollapsed` **1
+where v4 reports 2**, `chatRowsCleared` **1 where v4 reports 2**. Both halves
+independently mutation-proven — M7 (the disjunct alone) reddens the summary, M8
+(the SET's column alone) reddens the chats projection.
+
+### Unit 6 — the read-side proofs, red-first
+
+**The ledger's three named worst failures, all reproduced and closed.**
+
+**(a) "a chat with one long message opens"** — `chats-messages-read-tier2`
+grown by six rows across all four registered columns and both sides of the
+floor: 2048 B `content` beside 1024 B `opaqueContent`; exactly 512 ascii bytes;
+511 ascii bytes (stays plain TEXT, so the column holds a MIX); 128 four-byte
+emoji (512 BYTES, 128 code points); 1500 B `context`; 900 B `description`; plus
+a `findChatIdForMessage` over the compressed row. **RED-FIRST:
+`Sqlite(InvalidColumnType(3, "content", Blob))`** on the whole `getMessages` —
+the ledger's measurement to the letter.
+
+**(b) "Create Backup succeeds with non-zero `llm_logs`"** — unit 7 below.
+
+**(c) "the boot heal runs"** — `avatar-rolls-collapse-heal` grown with the
+scenario `repoints-a-lantern-announcement-whose-text-is-a-compressed-blob`:
+2 KB bodies with the quoted uuid in the MIDDLE, so the substitution must survive
+a decode/re-encode round trip. **RED-FIRST: `Sqlite(InvalidColumnType(2,
+"content", Blob))`** — the boot pass aborting, which is the first thing that
+broke on a migrated instance.
+
+`conversation_chunks_tier2` grown with a 1600 B seed chunk plus three ops that
+read and rewrite it: an update to LONGER prose, an update that shrinks it BELOW
+the floor (so the cell must become plain TEXT again — the same column holding a
+mix over its own history), and an upsert over its `(chatId, interchangeIndex)`
+whose read-before-write is why a render WRITE used to fail on its own READ.
+RED-FIRST: `row state diverged`. `llm_logs_tier2` grown with a seed row whose
+serialized request and response both clear the floor AND a CREATE op with long
+payloads — the seed proves the READ, the op proves the WRITE. RED-FIRST: `row
+state diverged`.
+
+#### Three instrument findings, each of which hid a real proof
+
+**⚠ 1. A stale recipe header made a family SKIP and print "ok".**
+`conversation_chunks_tier2_equivalence`'s header documented `QT_ORACLE_CC` /
+`QT_FIXTURE_CC`; the code has ALWAYS read `QT_ORACLE_CONVERSATION_CHUNKS` /
+`QT_FIXTURE_CONVERSATION_CHUNKS`. Following the header, the family skipped in
+0.00 s — and a codec mutation that should have reddened it "passed". Caught only
+because the mutation's survival was surprising enough to chase. **The gate's
+"grep the log for `SKIP:` (ZERO)" rule exists for exactly this, and a lane that
+greps only for `test result` will not see it.** Header corrected.
+
+**⚠ 2. The heal oracle could not see the codec at all.** It hand-rolls its own
+`chat_messages` table and INSERTs plain strings, bypassing the repository layer
+that would encode. On a plaintext cell both `qt_text()` and `textToBlob()` are
+no-ops, so v5's pre-codec `Option<String>` bind passed. The oracle now seeds
+through v4's REAL `textToBlob` and registers v4's REAL
+`registerTextCodecFunction` (never reimplemented), and the harness side does the
+same. Sub-floor values come back as the ORIGINAL STRING, so every pre-existing
+scenario's bytes are untouched.
+
+**⚠ 3. `qt_text()` is TOTAL, so a decoded comparand cannot see a lost write.**
+With both dumps reading `qt_text(content)`, dropping v4's `textToBlob()` from
+the heal's write-back left the comparand identical — a plaintext cell decodes to
+itself. The mutation SURVIVED until both dumps gained `typeof(content) AS
+contentStorage` beside the text. **That pair is the peer-writer invariant made
+visible**, and the lesson generalizes: wherever a port wraps a read in a total
+decoder, the storage form must be a comparand of its own or the write half is
+unpinned.
+
+Two corpus-sensitivity constants moved, arithmetic recorded in both files: the
+chunk family's `olderThan` shape pin **2 → 3** (the new embedded seed row is
+clearable on the unguarded third pass; **v5 and v4 AGREED on 3 before the
+constant moved** — the equivalence assert above it passed, only the shape pin
+failed), and the heal dump's column list (+2).
+
+**NOT grown, with the reason: `llm_logs_routes_equivalence`.** Its 14 log rows
+are PRE-BAKED in the committed `inspector-llm.db` (the oracle copies the triple
+at `:283-285`; it seeds nothing at run time), so growing it means rebuilding a
+committed fixture — which §R.12 forbids for every lane and every pair bar the
+ONE new one. The `llm_logs` READ marshal is proven instead by unit 7's family
+over the new committed triple. **For the fixture-vintage heal order:
+`inspector-{main,mount,llm}.db` needs a compressed `llm_logs` row when it is
+next rebuilt.**
+
+### Unit 7 — the new committed triple and the SILENT backup
+
+**`crates/quilltap-web/tests/fixtures/chat-compressed-{main,mount,llmlogs}.db`**
+(+ three `.meta.json` sidecars), built at the TARGET pin by
+`harness/oracle/fixtures/build-chat-compressed-fixture.ts` from
+`harness/oracle/fixtures/chat-compressed.json`. The ONE new committed fixture
+§R.12 authorizes this lane. The `llm_logs` rows are written by the BUILDER, not
+the oracle, because jest's setup mocks the logging service — a jest oracle
+writes ZERO log rows.
+
+NEW family `compressed_collect_equivalence`. **The oracle is v4's own call:**
+`collectUserData` is module-private, but the call it makes for that partition is
+`repos.llmLogs.findAll(10000)`, and the case drives that exact REAL method plus
+`repos.chats.getMessages` and `repos.conversationChunks.findByChatId`.
+
+**RED-FIRST, with `F::JsonZ` reverted to `F::Json`: `llm_logs row COUNT
+diverged — left: 0, right: 2`.** That is the ledger's failure (b) reproduced to
+the row: no error, no warning, no failed step — a backup archive with a
+partition quietly missing, because `backup/mod.rs`'s `.unwrap_or_default()`
+swallowed the `InvalidColumnType`. The chunk bind's revert reddens too, loudly,
+which is the contrast worth keeping: the same collector fails silently on one
+partition and loudly on another.
+
+**A known gap RECORDED, not papered over:** the new triple's `chats` table is
+born without `transcriptVersion` — `ensureCollection` does not ALTER an existing
+table and `initializeDatabase` creates that one first, so the builder logs
+"Failed to bump transcript version". No reader in the new family touches the
+column. **This pair joins the fixture-vintage heal order §R.12 defers by name.**
+
+### Unit 8 — the sanitizer, and the help page
+
+`help/data-retention.md` byte-copied at the target pin (4,409 → 5,944 bytes).
+**Verified by a whole-tree `cmp`: `data-retention.md` is ABSENT from the
+differing list**, which now holds exactly the seven pages §R.11 assigns to other
+lanes (`chat-message-actions.md`, `cli-docs.md`, `dangerous-content.md`,
+`insert-announcement.md`, `mount-points.md`, `scriptorium.md`, `search.md`).
+The vendored count stays **124**.
+
+**`help_tree_equivalence` at the target pin is RED on this lane's tree, BY
+DESIGN: `embedded file count 124 vs the oracle's 126`.** The two missing files
+are `help/cli-sync.md` (P4.D210's) and `help/inform.md` (P4.D205's), confirmed
+by name with a tree diff. Nothing for this lane to do; the family goes green
+when those two land and both count literals move to 126 (§R.10(d)). The pin was
+verified by the §R.3 marker (`How the Message Search Reads Your Words`, present
+once).
+
+**The sanitizer** decodes a compressed cell, scrubs the TEXT, and re-encodes
+through `text_to_blob`. Before this, a compressed cell fell to the generic
+`Blob` arm, whose same-length SHA-256 counter-mode noise produced a cell still
+wearing the `0x51 0x01 0x01` header over a brotli payload of pure noise: every
+reader believes it is compressed text, `blob_to_text` takes its corrupt-payload
+fallback, and the caller gets the noise as UTF-8. And it was INCONSISTENT — the
+same column's sub-512-byte rows went down the `Text` arm and sanitized into
+valid pseudo-text, so one fixture held both kinds. Keyed by `(table, column)`,
+so `files.description` and `doc_mount_file_links.description` are NOT swept in
+with `chat_messages.description`. Mutation M9 (route it back to the generic arm)
+reddens. Both of the sanitizer's production opens register `qt_text`; the WRITE
+one is the sharper case — `sanitize_db` replays every `sqlite_master` row
+verbatim, triggers included, then bulk-INSERTs `chat_messages`.
+
+### Unit 9 — the deferrals, recorded in code
+
+`db/text_compression.rs`'s module doc names all three reclamation migrations
+(`compress-chat-message-text-v1` with its `dependsOn`, `BATCH_SIZE` 250,
+`SAMPLE_LIMIT` 50 and four columns; `compress-llm-log-payloads-v1`;
+`compress-conversation-chunk-content-v1`), states why v5 runs none of them this
+round (byte reclamation, not a correctness prerequisite — new writes already
+compress and every reader tolerates a mixed column forever, so there is no gate
+for them to sit behind), and carries **v4's ordering constraint** for whoever
+re-homes one: `create-chat-message-fts-v1` MUST precede
+`compress-chat-message-text-v1`, because the `_au` trigger's comparison is
+DECODED and so a compress-in-place leaves the index untouched. v5 honours it
+trivially by never compressing in a heal at all this round; a future order may
+re-home the first as a ledger-guarded boot heal, but only AFTER P4.D204's
+reconciler puts the index in place.
+
+**Seam 12** of the `186eb09cb` row (v4's `withTransaction` bypass) is recorded
+**N/A** against that sha in the same module doc: v4 needs it because its
+collection abstraction wraps writes in a transaction the migration must
+sidestep; v5 has no collection abstraction and its writers own their
+transactions directly.
+
+**Tier-3 deferrals, all three as the order specifies:** the three compression
+migrations (above); v4's `rejectJsonOperator` — **N/A, v5 has no
+`$push`/`$pull`/`$addToSet` path over any of the seven columns** (recorded
+against `f45a517a9`); and the CLI's `db log` / `db messages` / `db message`
+verbs, which stay "recognized but not yet available" (`db_cmd.rs:274-285`,
+pre-existing — and the reason `nodefmt.rs` needed no change, since those are
+precisely v4's three decoding verbs).

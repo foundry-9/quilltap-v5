@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): the P4.D203 lane record — the codec keystone, its measurements, and the three instrument findings
+
+_Docs-only change._
+
+The units 4–9 record for the compressed-text codec lane: the ten write sites and
+the census's four rounds of false positives, bug 160's green-by-luck family, the
+three read-family proofs of the drift ledger's named failures, the new committed
+triple, the sanitizer, and the deferrals recorded in code.
+
+Three corrections to the order, each measured rather than reasoned: tier-2 item
+10 needs no separate change (v5's only home for v4's `USAGE_AGGREGATE_COLUMNS`
+is the almanack, already wrapped), and three of item 4's raw-SQL sub-items
+resolve to NO CHANGE (`run_sql.rs`, `prompt_text.rs`, `nodefmt.rs` are all
+already v4-faithful at the target pin — v4 mentions `qt_text` to the model
+nowhere, and its CLI decodes only in three verbs v5 does not ship).
+
+Three instrument findings worth carrying forward: a stale recipe header made a
+family SKIP and print "ok" while a codec mutation passed; the heal oracle
+hand-rolled its table and could not see the codec until it seeded through v4's
+real `textToBlob`; and `qt_text()` being TOTAL meant a decoded comparand could
+not see a dropped write until both dumps gained `typeof(content)` beside the
+text.
+
 #### 2026-09-21 — test(harness): the silent zero-`llm_logs` backup, reproduced and closed on a new committed compressed instance (P4.D203)
 
 _Versions: harness 0.0.862._
