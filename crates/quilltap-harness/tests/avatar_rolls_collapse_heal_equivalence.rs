@@ -74,6 +74,12 @@ fn spec_path() -> std::path::PathBuf {
 /// v4's test builds, and all the pass reads or writes.
 fn build_main() -> Connection {
     let c = Connection::open_in_memory().expect("main");
+    // P4.D203: the heal's SELECT reads `qt_text(content)` / `qt_text(
+    // opaqueContent)`, exactly as v4's migration does, and the dump below reads
+    // through the same function. A hand-rolled connection registers nothing —
+    // every real v5 open does — so without this the pass dies with "no such
+    // function: qt_text", which is the loud failure the codec's doc calls for.
+    quilltap_core::db::text_compression::register_qt_text(&c).expect("register qt_text");
     c.execute_batch(
         r#"
         CREATE TABLE "files" (
@@ -106,6 +112,7 @@ fn build_main() -> Connection {
 
 fn build_mount() -> Connection {
     let c = Connection::open_in_memory().expect("mount");
+    quilltap_core::db::text_compression::register_qt_text(&c).expect("register qt_text");
     c.execute_batch(
         r#"
         CREATE TABLE "doc_mount_files" ("id" TEXT PRIMARY KEY);
@@ -365,8 +372,23 @@ fn dump_all(main: &Connection, mount: &Connection) -> Value {
         ),
         "chat_messages": dump(
             main,
-            "SELECT id, attachments, content, opaqueContent FROM chat_messages ORDER BY id",
-            &["id", "attachments", "content", "opaqueContent"],
+            // P4.D203: the decoded text AND the storage form. `qt_text()` is
+            // total, so the text alone cannot see whether the heal's write-back
+            // re-compressed; `typeof()` can, and that is the peer-writer
+            // invariant this heal must hold.
+            "SELECT id, attachments, qt_text(content) AS content, \
+                    qt_text(opaqueContent) AS opaqueContent, \
+                    typeof(content) AS contentStorage, \
+                    typeof(opaqueContent) AS opaqueContentStorage \
+               FROM chat_messages ORDER BY id",
+            &[
+                "id",
+                "attachments",
+                "content",
+                "opaqueContent",
+                "contentStorage",
+                "opaqueContentStorage",
+            ],
         ),
         "doc_mount_files": dump(
             mount, "SELECT id FROM doc_mount_files ORDER BY id", &["id"],
@@ -615,8 +637,16 @@ fn avatar_rolls_collapse_matches_oracle() {
                         Value::Null => None,
                         v => Some(serde_json::to_string(v).expect("json")),
                     },
-                    m.get("content").and_then(Value::as_str),
-                    m.get("opaqueContent").and_then(Value::as_str)
+                    // P4.D203: seed through the codec, as the oracle now seeds
+                    // through v4's REAL `textToBlob`. Sub-floor values come back
+                    // as the original string, so every pre-existing scenario's
+                    // bytes are untouched.
+                    m.get("content")
+                        .and_then(Value::as_str)
+                        .map(quilltap_core::db::text_compression::text_to_blob),
+                    m.get("opaqueContent")
+                        .and_then(Value::as_str)
+                        .map(quilltap_core::db::text_compression::text_to_blob)
                 ],
             )
             .expect("insert message");

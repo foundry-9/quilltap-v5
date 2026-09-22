@@ -285,6 +285,55 @@
         "invokedBy": "user"
       },
       "createdAt": "2026-02-01T00:00:14.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000010",
+      "role": "ASSISTANT",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cr",
+      "opaqueContent": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across th",
+      "systemSender": null,
+      "createdAt": "2026-02-01T00:00:20.000Z",
+      "comment": "P4.D203: content AND opaqueContent both far over the 512-byte floor, so v4 stores both as brotli BLOBs. Before the codec this ONE row failed the ENTIRE getMessages."
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000011",
+      "role": "USER",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she re",
+      "createdAt": "2026-02-01T00:00:21.000Z",
+      "comment": "P4.D203: EXACTLY 512 bytes \u2014 the floor is `< MIN` so this compresses."
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000012",
+      "role": "USER",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she r",
+      "createdAt": "2026-02-01T00:00:22.000Z",
+      "comment": "P4.D203: 511 bytes \u2014 stays plain TEXT. Beside 0011 this proves the column holds a MIX, which is the codec's whole premise."
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-000000000013",
+      "role": "USER",
+      "content": "\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01\ud83d\udf01",
+      "createdAt": "2026-02-01T00:00:23.000Z",
+      "comment": "P4.D203: 128 four-byte emoji = 512 BYTES but only 128 code points \u2014 the floor is measured in bytes, so this compresses."
+    },
+    {
+      "type": "context-summary",
+      "id": "e1000001-0000-4000-8000-000000000014",
+      "context": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled i",
+      "createdAt": "2026-02-01T00:00:24.000Z",
+      "comment": "P4.D203: the `context` column over the floor. Its marshal binds a REQUIRED string, so a compressed cell failed the whole read."
+    },
+    {
+      "type": "system",
+      "id": "e1000001-0000-4000-8000-000000000015",
+      "systemEventType": "MEMORY_EXTRACTION",
+      "description": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger,",
+      "createdAt": "2026-02-01T00:00:25.000Z",
+      "comment": "P4.D203: the `description` column over the floor, also a REQUIRED string bind."
     }
   ],
   "queries": [
@@ -315,6 +364,11 @@
     {
       "kind": "findChatIdForMessage",
       "messageId": "e1000001-0000-4000-8000-ffffffffffff"
+    },
+    {
+      "kind": "findChatIdForMessage",
+      "messageId": "e1000001-0000-4000-8000-000000000010",
+      "comment": "P4.D203: the id lookup over a row whose content is a compressed BLOB."
     }
   ]
 }

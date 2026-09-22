@@ -43,9 +43,15 @@
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-cc-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-conversation-chunks-fixture.ts
-//!   QT_FIXTURE_CC=/tmp/qt-cc-fixture.db \
+//!   QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/conversation-chunks-tier2.ts \
 //!     > /tmp/oracle-cc.ndjson
+//! ⚠ The header's recipe named `QT_FIXTURE_CC` / `QT_ORACLE_CC` until P4.D203,
+//! but the code has always read `QT_FIXTURE_CONVERSATION_CHUNKS` /
+//! `QT_ORACLE_CONVERSATION_CHUNKS`. Following the stale recipe makes the family
+//! SKIP in 0.00 s and print "ok" — which is how it survived a codec mutation
+//! that should have reddened it. Corrected below.
+//!
 //! Run:
 //!   QT_ORACLE_CONVERSATION_CHUNKS=/tmp/oracle-cc.ndjson \
 //!   QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db \
@@ -398,9 +404,15 @@ fn conversation_chunks_tier2_matches_oracle() {
     );
     // And pin the corpus's own shape: the guard must have SPARED something
     // (a first pass that cleared everything would agree with an unguarded port).
+    //
+    // The "off" arm moved 2 → 3 at P4.D203: the compressed-content seed row
+    // (`b1000000-…-00b1`, chat `aaaa`, interchange 7) carries an embedding and a
+    // 2026-01-01 `updatedAt`, so the unguarded third pass clears it too. v5 and
+    // v4 AGREED on 3 before this constant moved — the assert above is the
+    // equivalence, this one is only the corpus's shape.
     assert_eq!(
         want_cleared,
-        vec![1, 0, 2],
+        vec![1, 0, 3],
         "the corpus stopped exercising the olderThan guard (on / idempotent / off)"
     );
 

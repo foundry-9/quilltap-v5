@@ -16,19 +16,20 @@
     "18-24 are bug 145's shapes (v4 23abc1ba1). TWO of v4's six new cases are NOT",
     "here, because the corpus already had them: its `reports the rolls it kept`",
     "and its census `says nothing about a duplicate it chose to keep` seed exactly",
-    "what scenario 9 seeds, so scenario 9 carries both — the port moves its",
+    "what scenario 9 seeds, so scenario 9 carries both \u2014 the port moves its",
     "`message` (the kept clause) and its `warns` stay empty. And v4's census case",
     "is an EARLY-RETURN pass (one roll, no victims), so three of these ask what",
     "v4's own suite never opens: 22 the post-summary census exit, 23 the",
     "!isPhotosRelativePath conjunct (an album link in the roll's OWN mount, seeded",
-    "FIRST — the mount conjunct alone saves v4's `vault-1` cases), and 24 a",
+    "FIRST \u2014 the mount conjunct alone saves v4's `vault-1` cases), and 24 a",
     "non-zero `protectedKept` in the summary log bag (v4's protected case takes",
     "the early return, where no summary line is emitted at all).",
     "",
     "A roll seeds a `files` row PLUS its vault file/blob/link/chunk, exactly as",
     "v4's `seedRoll` does. `noBlob: true` seeds the files row alone. `albumLinks`",
     "is v4's `keepInAlbum`: a SECOND link over the SAME content row, at",
-    "photos/kept-<id>.webp, in `vault-1` unless the entry names a mount."
+    "photos/kept-<id>.webp, in `vault-1` unless the entry names a mount.",
+    "P4.D203 (v4 186eb09cb/f45a517a9): the scenario `repoints-a-lantern-announcement-whose-text-is-a-compressed-blob` is the boot heal's codec proof. `chat_messages.content` and `opaqueContent` are REGISTERED COMPRESSED COLUMNS, so at the target pin v4 stores both of this message's 2 KB bodies as brotli BLOBs. v4's migration reads them through `qt_text()` and writes them back through `textToBlob()` (`collapse-duplicate-avatar-rolls-v1.ts:497-508,556-561`); v5 had neither, so its `Option<String>` bind raised `InvalidColumnType` and the `?` aborted the whole BOOT pass \u2014 this heal is the FIRST thing that broke on a migrated instance, at startup. The inline uuid sits in the MIDDLE of the long body, so the substitution must survive a decode/re-encode round trip."
   ],
   "mountPointId": "mount-1",
   "nowIso": "2026-09-14T12:00:00.000Z",
@@ -36,23 +37,51 @@
     {
       "name": "keeps-the-newest-and-deletes-the-rest",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "mid", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-03-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "mid",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "name": "keeps-configurations-apart",
       "rolls": [
-        { "id": "coat-old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "coat-new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" },
-        { "id": "scarf", "prompt": "Solo portrait of a single woman: Friday. Wearing a red scarf.", "createdAt": "2026-02-01T00:00:00.000Z" }
+        {
+          "id": "coat-old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "coat-new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        },
+        {
+          "id": "scarf",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a red scarf.",
+          "createdAt": "2026-02-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "name": "same-prompt-different-model-is-a-different-configuration",
       "rolls": [
-        { "id": "flux", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
+        {
+          "id": "flux",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
         {
           "id": "sdxl",
           "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
@@ -63,26 +92,49 @@
     },
     {
       "name": "keys-a-lone-roll-without-deleting-it",
-      "rolls": [{ "id": "only", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" }]
+      "rolls": [
+        {
+          "id": "only",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "name": "repoints-chat-avatars-and-character-overrides",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "chats": [
         {
           "id": "chat-1",
           "characterAvatars": {
-            "char-1": { "imageId": "old", "generatedAt": "x", "afterMessageCount": 4 }
+            "char-1": {
+              "imageId": "old",
+              "generatedAt": "x",
+              "afterMessageCount": 4
+            }
           }
         }
       ],
       "characters": [
         {
           "id": "char-1",
-          "avatarOverrides": [{ "chatId": "chat-1", "imageId": "old" }],
+          "avatarOverrides": [
+            {
+              "chatId": "chat-1",
+              "imageId": "old"
+            }
+          ],
           "defaultImageId": null
         }
       ]
@@ -90,13 +142,23 @@
     {
       "name": "repoints-a-lantern-announcement-and-the-uuid-it-quotes-inline",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "messages": [
         {
           "id": "msg-1",
-          "attachments": ["old"],
+          "attachments": [
+            "old"
+          ],
           "content": "The new one is attached here, catalogued under uuid `old`, should anyone care to look.",
           "opaqueContent": "A new portrait has been commissioned, catalogued under uuid `old`."
         }
@@ -105,13 +167,23 @@
     {
       "name": "leaves-unrelated-attachments-and-messages-alone",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "messages": [
         {
           "id": "msg-other",
-          "attachments": ["some-other-file"],
+          "attachments": [
+            "some-other-file"
+          ],
           "content": "untouched",
           "opaqueContent": null
         }
@@ -120,23 +192,49 @@
     {
       "name": "takes-the-deleted-rolls-chunks-link-blob-and-content-row-with-it",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ]
     },
     {
       "name": "never-deletes-a-roll-a-character-names-as-its-portrait",
       "rolls": [
-        { "id": "portrait", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "portrait",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "characters": [
-        { "id": "char-1", "avatarOverrides": null, "defaultImageId": "link-portrait" }
+        {
+          "id": "char-1",
+          "avatarOverrides": null,
+          "defaultImageId": "link-portrait"
+        }
       ]
     },
     {
       "name": "ignores-rows-with-no-prompt-to-key-on",
-      "rolls": [{ "id": "no-prompt", "prompt": "", "createdAt": "2026-01-01T00:00:00.000Z" }]
+      "rolls": [
+        {
+          "id": "no-prompt",
+          "prompt": "",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "name": "ignores-files-that-are-not-avatars",
@@ -152,27 +250,54 @@
     {
       "name": "is-idempotent-a-second-pass-finds-nothing-left-to-do",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "runTwice": true
     },
     {
       "name": "should-run-is-true-while-an-unkeyed-avatar-remains",
-      "rolls": [{ "id": "only", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" }]
+      "rolls": [
+        {
+          "id": "only",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "name": "a-ledger-row-from-the-other-app-runs-nothing",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "preCompleted": true
     },
     {
       "name": "an-already-keyed-instance-has-nothing-to-run",
       "rolls": [],
-      "chats": [{ "id": "chat-empty", "characterAvatars": null }]
+      "chats": [
+        {
+          "id": "chat-empty",
+          "characterAvatars": null
+        }
+      ]
     },
     {
       "name": "a-roll-whose-storage-key-names-no-blob-still-collapses",
@@ -183,7 +308,11 @@
           "createdAt": "2026-01-01T00:00:00.000Z",
           "noBlob": true
         },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ]
     },
     {
@@ -206,33 +335,79 @@
     {
       "name": "keeps-the-album-photo-and-its-bytes-when-the-roll-is-collapsed",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
-      "albumLinks": [{ "rollId": "old" }]
+      "albumLinks": [
+        {
+          "rollId": "old"
+        }
+      ]
     },
     {
       "name": "still-frees-the-bytes-of-a-roll-nobody-kept",
       "rolls": [
-        { "id": "kept", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "unkept", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-02-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "kept",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "unkept",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
-      "albumLinks": [{ "rollId": "kept" }]
+      "albumLinks": [
+        {
+          "rollId": "kept"
+        }
+      ]
     },
     {
       "name": "drops-the-files-row-of-a-roll-whose-only-surviving-link-is-the-album-copy",
       "rolls": [
-        { "id": "orphaned", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "orphaned",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
-      "albumLinks": [{ "rollId": "orphaned" }],
-      "deleteLinks": ["link-orphaned"]
+      "albumLinks": [
+        {
+          "rollId": "orphaned"
+        }
+      ],
+      "deleteLinks": [
+        "link-orphaned"
+      ]
     },
     {
       "name": "the-census-names-a-duplicate-key-this-pass-did-not-double-up-on-purpose",
       "rolls": [
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "extraFiles": [
         {
@@ -248,8 +423,16 @@
     {
       "name": "the-census-fires-after-a-collapse-too",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "extraFiles": [
         {
@@ -265,21 +448,75 @@
     {
       "name": "an-album-link-in-the-rolls-own-mount-is-still-not-the-rolls-own-link",
       "rolls": [
-        { "id": "old", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "albumLinksFirst": true,
-      "albumLinks": [{ "rollId": "old", "mountPointId": "mount-1" }]
+      "albumLinks": [
+        {
+          "rollId": "old",
+          "mountPointId": "mount-1"
+        }
+      ]
     },
     {
       "name": "keeps-a-portrait-and-still-collapses-an-unprotected-sibling",
       "rolls": [
-        { "id": "portrait", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-01-01T00:00:00.000Z" },
-        { "id": "spare", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-02-01T00:00:00.000Z" },
-        { "id": "new", "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.", "createdAt": "2026-06-01T00:00:00.000Z" }
+        {
+          "id": "portrait",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "spare",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
       ],
       "characters": [
-        { "id": "char-1", "avatarOverrides": null, "defaultImageId": "link-portrait" }
+        {
+          "id": "char-1",
+          "avatarOverrides": null,
+          "defaultImageId": "link-portrait"
+        }
+      ]
+    },
+    {
+      "name": "repoints-a-lantern-announcement-whose-text-is-a-compressed-blob",
+      "rolls": [
+        {
+          "id": "old",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "new",
+          "prompt": "Solo portrait of a single woman: Friday. Wearing a green coat.",
+          "createdAt": "2026-06-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "msg-1",
+          "attachments": [
+            "old"
+          ],
+          "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a catalogued under uuid `old`, should anyone care to look. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a",
+          "opaqueContent": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a A new portrait has been commissioned, catalogued under uuid `old`. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a"
+        }
       ]
     }
   ]

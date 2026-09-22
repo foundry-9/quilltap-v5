@@ -12,6 +12,56 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(harness): four read families grown red-first over compressed cells, and the boot heal's codec proved both ways (P4.D203)
+
+_Versions: harness 0.0.861._
+
+The drift ledger predicted three worst failures on a v4-4.10 instance. Two are
+reproduced and closed here, each red-first against an oracle regenerated at the
+target pin.
+
+**(a) A chat with one long message cannot open.** `chats-messages-read-tier2`
+gains six rows covering all four registered `chat_messages` columns on both
+sides of the floor: 2 KB of `content` beside 1 KB of `opaqueContent`, exactly
+512 ascii bytes, 511 ascii bytes (which stays plain TEXT, so the column holds a
+MIX), 128 four-byte emoji (512 bytes, 128 code points — the floor is measured in
+bytes), a 1.5 KB `context` and a 900-byte `description`. Red-first:
+`InvalidColumnType(3, "content", Blob)` on the whole `getMessages`, exactly as
+the ledger measured.
+
+**(c) The boot heal dies at startup.** `avatar-rolls-collapse-heal` gains a
+scenario whose lantern announcement carries 2 KB bodies with the quoted uuid in
+the MIDDLE, so the substitution must survive a decode/re-encode round trip. Its
+oracle now seeds through v4's REAL `textToBlob` and registers v4's REAL
+`registerTextCodecFunction` — the test hand-rolls its `chat_messages` table and
+inserted plain strings, so it could not see the codec at all. Both halves are
+independently proven: the unwrapped SELECT gives `InvalidColumnType(2,
+"content", Blob)`, and the write-back with v4's `textToBlob` dropped diverges on
+the storage form. That second proof needed an instrument: `qt_text()` is total,
+so a decoded comparand cannot tell a re-compressed cell from a plaintext one,
+and the mutation survived until both dumps gained `typeof(content)` beside the
+text. That pair is the peer-writer invariant made visible.
+
+`conversation_chunks_tier2` gains a 1.6 KB seed chunk plus three ops that read
+and rewrite it — an update to longer prose, an update that shrinks it BELOW the
+floor (so the cell must become plain TEXT again), and an upsert over its
+`(chatId, interchangeIndex)`, whose read-before-write is why a render WRITE used
+to fail on its own READ. `llm_logs_tier2` gains a seed row whose serialized
+request and response both clear the floor, plus a CREATE op with long payloads —
+the seed proves v5 READS v4's compressed cell, the op proves v5 WRITES the same
+bytes.
+
+Two corpus-sensitivity constants moved with their arithmetic recorded: the
+chunk family's `olderThan` shape pin 2 → 3 (the new embedded seed row is
+clearable on the unguarded pass; v5 and v4 agreed on 3 before the constant
+moved), and the heal dump's column list.
+
+⚠ A finding worth the next lane's attention: `conversation_chunks_tier2`'s
+header documented `QT_ORACLE_CC` / `QT_FIXTURE_CC` while the code has always
+read `QT_ORACLE_CONVERSATION_CHUNKS` / `QT_FIXTURE_CONVERSATION_CHUNKS`.
+Following the stale recipe makes the family SKIP in 0.00 s and print "ok" — which
+is how it survived a codec mutation that should have reddened it. Corrected.
+
 #### 2026-09-21 — fix(sanitizer): scrub compressed text INSIDE the codec, and re-vendor `help/data-retention.md` (P4.D203)
 
 _Versions: fixture-sanitizer 0.0.4._

@@ -25,7 +25,7 @@
     "BLOB untouched. v4's `_update` rewrites the whole row from the hydrated",
     "existing entity (the BLOB round-trips losslessly); the Rust partial",
     "`UPDATE SET` simply never names the embedding column. The post-update dump",
-    "must still show the original embedding hex — op #3 below exercises this.",
+    "must still show the original embedding hex \u2014 op #3 below exercises this.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one the",
     "folders / tags / help-docs fixtures use. It is NOT the real Friday pepper",
@@ -39,20 +39,21 @@
     "by the reopen path survives the maintenance sweep for a full retention window.",
     "Three `clearEmbeddings` ops close the arms: the guard ON (one row older than",
     "the cutoff cleared; the row stamped EXACTLY at the cutoff and the row after it",
-    "both spared — `<` is strict), a second identical pass (0 rows, idempotent),",
-    "and the guard OFF (no `olderThan` — every embedded row on the chat goes).",
+    "both spared \u2014 `<` is strict), a second identical pass (0 rows, idempotent),",
+    "and the guard OFF (no `olderThan` \u2014 every embedded row on the chat goes).",
     "A cleared row's `updatedAt` is MINTED (v4 stamps `new Date()`; v5 injects its",
     "own), so the harness placeholders any timestamp not literally in this spec.",
     "",
     "P4.44 (Bug 17 CREATE arm): the earlier upserts all hit an EXISTING",
     "(chatId, interchangeIndex) row, so only the update arm was covered. Arms 4/5",
     "upsert on (chatId ffff, index 0/1) pairs NOT in the seed, so v4 falls to",
-    "`_create` and v5 to the create arm — minting id + createdAt + updatedAt (v4 a",
+    "`_create` and v5 to the create arm \u2014 minting id + createdAt + updatedAt (v4 a",
     "UUID + `new Date()`; v5 a synthetic id + injected now) and carrying the",
     "supplied-or-NULL embedding. All three minted fields are absent from this spec,",
     "so the harness placeholders every id/createdAt/updatedAt it does not pin; the",
     "dump is then re-sorted by (chatId, interchangeIndex) so the row ordering is",
-    "independent of the minted id (v4's is random)."
+    "independent of the minted id (v4's is random).",
+    "P4.D203 (v4 186eb09cb/f45a517a9): `conversation_chunks.content` is a REGISTERED COMPRESSED COLUMN (v4 manager.ts:125). Seed row 3 carries 1,600 bytes of compressible prose, so at the target pin v4 stores it as a brotli BLOB and every marshal of it is a codec read. `marshal_cc_row` is reached from INSIDE `upsert` via `find_by_interchange_index`, so before the codec a render WRITE failed on its own read \u2014 which the two ops below exercise: an `update` that REPLACES the long content (the patch arm must re-compress, or an upsert launders the cell back to plaintext) and an `upsert` over the same (chatId, interchangeIndex) that has to READ it first."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -86,6 +87,26 @@
       "participantNames": [],
       "messageIds": [],
       "embedding": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "b1000000-0000-4000-8000-0000000000b1",
+      "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+      "interchangeIndex": 7,
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The ",
+      "participantNames": [
+        "Aurora"
+      ],
+      "messageIds": [
+        "m1000000-0000-4000-8000-000000000003"
+      ],
+      "embedding": [
+        0.25,
+        -0.5,
+        0.125,
+        0.75
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
@@ -137,7 +158,7 @@
     },
     {
       "kind": "update",
-      "comment": "Update on the EMBEDDED seed row `Aurora`: change content + interchangeIndex + participantNames only (NO embedding field). The embedding BLOB must SURVIVE untouched — the post-update dump still shows `0000003f000080be0000403f0000003e`. createdAt preserved, updatedAt pinned.",
+      "comment": "Update on the EMBEDDED seed row `Aurora`: change content + interchangeIndex + participantNames only (NO embedding field). The embedding BLOB must SURVIVE untouched \u2014 the post-update dump still shows `0000003f000080be0000403f0000003e`. createdAt preserved, updatedAt pinned.",
       "id": "1a000000-0000-4000-8000-000000000001",
       "data": {
         "content": "Aurora greets the salon at dawn, rewritten.",
@@ -241,7 +262,7 @@
     },
     {
       "kind": "clearEmbeddings",
-      "comment": "Guard ON at 2026-04-15: only the 2026-04-01 row is strictly older, so exactly ONE row is cold-tiered. The row stamped EXACTLY at the cutoff is SPARED (`updatedAt < ?`), and so is the 2026-05-01 row — that is the reopen warmth the sweep must not discard.",
+      "comment": "Guard ON at 2026-04-15: only the 2026-04-01 row is strictly older, so exactly ONE row is cold-tiered. The row stamped EXACTLY at the cutoff is SPARED (`updatedAt < ?`), and so is the 2026-05-01 row \u2014 that is the reopen warmth the sweep must not discard.",
       "chatId": "c0000000-0000-4000-8000-00000000dddd",
       "olderThan": "2026-04-15T00:00:00.000Z"
     },
@@ -337,7 +358,7 @@
     },
     {
       "kind": "upsert",
-      "comment": "Bug 17 arm 1 — SUPPLIED embedding wins. Upsert (eeee, 0) with a new content AND a new embedding: input.embedding !== undefined, so the stored vector is OVERWRITTEN with the quantized [0.25,0.5,-0.5,-0.75], not NULLed. updatedAt minted -> normalized.",
+      "comment": "Bug 17 arm 1 \u2014 SUPPLIED embedding wins. Upsert (eeee, 0) with a new content AND a new embedding: input.embedding !== undefined, so the stored vector is OVERWRITTEN with the quantized [0.25,0.5,-0.5,-0.75], not NULLed. updatedAt minted -> normalized.",
       "data": {
         "chatId": "c0000000-0000-4000-8000-00000000eeee",
         "interchangeIndex": 0,
@@ -359,7 +380,7 @@
     },
     {
       "kind": "upsert",
-      "comment": "Bug 17 arm 2 — CONTENT CHANGE with no embedding NULLs the stale vector. Upsert (eeee, 1) with different content, no embedding key: existing.content != input.content -> embedding = NULL, so the render handler will re-embed.",
+      "comment": "Bug 17 arm 2 \u2014 CONTENT CHANGE with no embedding NULLs the stale vector. Upsert (eeee, 1) with different content, no embedding key: existing.content != input.content -> embedding = NULL, so the render handler will re-embed.",
       "data": {
         "chatId": "c0000000-0000-4000-8000-00000000eeee",
         "interchangeIndex": 1,
@@ -374,7 +395,7 @@
     },
     {
       "kind": "upsert",
-      "comment": "Bug 17 arm 3 — IDENTICAL content preserves the vector. Upsert (eeee, 2) with the SAME content, no embedding key (only messageIds differ): neither branch fires, the BLOB is left untouched -> the dump still shows the original embedding hex.",
+      "comment": "Bug 17 arm 3 \u2014 IDENTICAL content preserves the vector. Upsert (eeee, 2) with the SAME content, no embedding key (only messageIds differ): neither branch fires, the BLOB is left untouched -> the dump still shows the original embedding hex.",
       "data": {
         "chatId": "c0000000-0000-4000-8000-00000000eeee",
         "interchangeIndex": 2,
@@ -389,7 +410,7 @@
     },
     {
       "kind": "upsert",
-      "comment": "Bug 17 arm 4 — the CREATE arm WITH a supplied embedding. Upsert on a (chatId ffff, interchangeIndex 0) pair NOT in the seed: `findByInterchangeIndex` misses, so v4 falls to `_create(input)` and v5 to the create arm, minting id + createdAt + updatedAt (v4 a UUID + `new Date()`; v5 injects a synthetic id + UPSERT_NOW_ISO) and storing the supplied embedding [0.25,0.5,-0.5,-0.75] (quantized). The id/createdAt/updatedAt are minted, so all three normalize on both sides; the embedding hex is the load-bearing assertion (a create arm that dropped it stores NULL).",
+      "comment": "Bug 17 arm 4 \u2014 the CREATE arm WITH a supplied embedding. Upsert on a (chatId ffff, interchangeIndex 0) pair NOT in the seed: `findByInterchangeIndex` misses, so v4 falls to `_create(input)` and v5 to the create arm, minting id + createdAt + updatedAt (v4 a UUID + `new Date()`; v5 injects a synthetic id + UPSERT_NOW_ISO) and storing the supplied embedding [0.25,0.5,-0.5,-0.75] (quantized). The id/createdAt/updatedAt are minted, so all three normalize on both sides; the embedding hex is the load-bearing assertion (a create arm that dropped it stores NULL).",
       "data": {
         "chatId": "c0000000-0000-4000-8000-00000000ffff",
         "interchangeIndex": 0,
@@ -411,7 +432,7 @@
     },
     {
       "kind": "upsert",
-      "comment": "Bug 17 arm 5 — the CREATE arm with NO embedding. Upsert on (chatId ffff, interchangeIndex 1), also not in the seed: the create arm carries the absent embedding through as SQL NULL (v4 `_create` with the schema's null default), the counterpart to arm 4's supplied-embedding create.",
+      "comment": "Bug 17 arm 5 \u2014 the CREATE arm with NO embedding. Upsert on (chatId ffff, interchangeIndex 1), also not in the seed: the create arm carries the absent embedding through as SQL NULL (v4 `_create` with the schema's null default), the counterpart to arm 4's supplied-embedding create.",
       "data": {
         "chatId": "c0000000-0000-4000-8000-00000000ffff",
         "interchangeIndex": 1,
@@ -421,6 +442,40 @@
         ],
         "messageIds": [
           "m1000000-0000-4000-8000-0000000000e1"
+        ]
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D203: replace the long seed's content with DIFFERENT long prose. The dynamic `update` patch's content arm must route through the codec, or an upsert over an existing chunk launders the cell back to plaintext. No embedding field, so the BLOB must survive untouched.",
+      "id": "b1000000-0000-4000-8000-0000000000b1",
+      "data": {
+        "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled in",
+        "updatedAt": "2026-03-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D203: shrink the same cell to 400 bytes \u2014 UNDER the floor, so the codec must store plain TEXT again. The column therefore holds a MIX over its own history, which is the codec's whole premise.",
+      "id": "b1000000-0000-4000-8000-0000000000b1",
+      "data": {
+        "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. T",
+        "updatedAt": "2026-03-06T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "P4.D203: upsert over (aaaa, 7) \u2014 the chunk whose stored content is a brotli BLOB. `upsert` calls `find_by_interchange_index` FIRST, so before the codec the render WRITE failed on its own READ. No embedding supplied and the content CHANGES, so bug 17 NULLs the stale vector.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-00000000aaaa",
+        "interchangeIndex": 7,
+        "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed on",
+        "participantNames": [
+          "Aurora",
+          "Prospero"
+        ],
+        "messageIds": [
+          "m1000000-0000-4000-8000-0000000000a2"
         ]
       }
     }

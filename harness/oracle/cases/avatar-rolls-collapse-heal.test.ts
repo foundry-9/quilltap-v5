@@ -232,8 +232,22 @@ interface Spec {
   scenarios: Scenario[];
 }
 
+/// v4's real `registerTextCodecFunction`, loaded from the checkout rather than
+/// reimplemented (P4.D203).
+function registerTextCodec(db: DatabaseInstance): void {
+  const { registerTextCodecFunction } = require(
+    path.join(process.cwd(), 'lib', 'database', 'backends', 'sqlite', 'text-codec-function'),
+  ) as { registerTextCodecFunction: (db: unknown) => void };
+  registerTextCodecFunction(db);
+}
+
 function makeMainDb(): DatabaseInstance {
   const db = new Database(':memory:');
+  // P4.D203: the heal's SELECT and this test's dump both call `qt_text()`, and
+  // v4 registers it on every connection it opens (`text-codec-function.ts`,
+  // six sites). A hand-rolled test connection registers nothing, so without
+  // this the migration fails with "no such function: qt_text".
+  registerTextCodec(db);
   db.exec(`
     CREATE TABLE "files" (
       "id" TEXT PRIMARY KEY,
@@ -263,6 +277,7 @@ function makeMainDb(): DatabaseInstance {
 
 function makeMountDb(file: string): DatabaseInstance {
   const db = new Database(file);
+  registerTextCodec(db);
   db.exec(`
     CREATE TABLE "doc_mount_files" ("id" TEXT PRIMARY KEY);
     CREATE TABLE "doc_mount_blobs" ("id" TEXT PRIMARY KEY, "fileId" TEXT NOT NULL);
@@ -404,9 +419,23 @@ function dumpAll(main: DatabaseInstance, mount: DatabaseInstance) {
       main,
       'SELECT id, avatarOverrides, defaultImageId FROM characters ORDER BY id'
     ),
+    // P4.D203: read the two compressed columns through `qt_text()`, exactly as
+    // v4's own migration does (`collapse-duplicate-avatar-rolls-v1.ts:497-508`).
+    // The comparand is therefore the TEXT both sides must agree on, not the
+    // bytes — which keeps every pre-existing scenario's expectation unchanged
+    // while making the compressed scenario's substitution readable in a diff.
     chat_messages: q(
       main,
-      'SELECT id, attachments, content, opaqueContent FROM chat_messages ORDER BY id'
+      'SELECT id, attachments, qt_text(content) AS content, ' +
+        'qt_text(opaqueContent) AS opaqueContent, ' +
+        // P4.D203: the STORAGE FORM beside the text. `qt_text()` is total, so a
+        // plaintext cell decodes to itself and the decoded comparand alone
+        // cannot see whether the write-back re-compressed — a v5 that dropped
+        // v4's `textToBlob()` on the write passed. This pair is the
+        // peer-writer invariant made visible.
+        "typeof(content) AS contentStorage, " +
+        'typeof(opaqueContent) AS opaqueContentStorage ' +
+        'FROM chat_messages ORDER BY id'
     ),
     doc_mount_files: q(mount, 'SELECT id FROM doc_mount_files ORDER BY id'),
     doc_mount_blobs: q(mount, 'SELECT id, fileId FROM doc_mount_blobs ORDER BY id'),
@@ -509,6 +538,20 @@ describe('avatar-rolls-collapse-heal oracle', () => {
             );
         }
         for (const m of scenario.messages ?? []) {
+          // P4.D203: `content` / `opaqueContent` are REGISTERED COMPRESSED
+          // COLUMNS (v4 `manager.ts:134-139`). This test hand-rolls its
+          // `chat_messages` table and inserts directly, bypassing the repository
+          // layer that would normally encode — so it encodes through v4's REAL
+          // `textToBlob` here. Without this the seed is always plain TEXT and
+          // the scenario cannot see the codec at all: the migration's
+          // `qt_text()` read and `textToBlob()` write-back are both no-ops on a
+          // plaintext cell, so v5's pre-codec `Option<String>` bind passed.
+          //
+          // Values under the 512-byte floor come back as the ORIGINAL STRING, so
+          // every pre-existing scenario's bytes are untouched.
+          const { textToBlob } = require(
+            path.join(process.cwd(), 'lib', 'database', 'text-compression'),
+          ) as { textToBlob: (v: string) => Buffer | string };
           testDb
             .prepare(
               'INSERT INTO chat_messages (id, attachments, content, opaqueContent) VALUES (?, ?, ?, ?)'
@@ -516,8 +559,10 @@ describe('avatar-rolls-collapse-heal oracle', () => {
             .run(
               m.id,
               m.attachments === null ? null : JSON.stringify(m.attachments),
-              m.content ?? null,
-              m.opaqueContent ?? null
+              m.content === null || m.content === undefined ? null : textToBlob(m.content),
+              m.opaqueContent === null || m.opaqueContent === undefined
+                ? null
+                : textToBlob(m.opaqueContent)
             );
         }
         if (scenario.preCompleted) plantLedgerRow(testDb, spec);
