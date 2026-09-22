@@ -143448,3 +143448,52 @@ export marshal (item 6's export row reddens)" was carried out on the
 BACKUP marshal (unit 8, `system_backup`); the `.qtap` writer's own
 chatInforms rows remain proven only through v4's side here (the payload is
 v4's). A planted-inform case in `system_export` is the follow-up.
+
+### Unit 10 — item 10: the `qtap_import` two-link-blob bundle row
+
+NEW committed artifact `harness/oracle/fixtures/qtap-import-two-link-blob.
+qtap` — **2,757 bytes**, sha256 `f75a64ab48f36fca8bee5644ea644a94c5a23f77
+c15844979d38ec6da2630a3e` — v4's REAL exporter's NDJSON (`createNdjsonStream`,
+type `document-stores`, `scope: 'selected'`), built ONCE at the pin by NEW
+`build-qtap-import-two-link-blob.ts`: a throwaway instance, one database
+store (`1e000000-…-a1`, "Lamplighter Plates"), `docMountBlobs.create` twice
+over a decodable 1×1 PNG (70 bytes, sha256 `6b7fa434…bcd0`) at
+`plates/first.png` + `plates/second.png` with `normalizeImages: false` (the
+builder asserts ONE deduped blob, TWO links), then `updateExtractedText(blob,
+…, secondLinkId)`. The bundle's two `doc_mount_blob` records: first
+`extractedText: null` / `none`, second the text / `converted`. Build AS RUN:
+cwd the pin, `QT_BUNDLE_OUT=/tmp/p4106/qtap-import-two-link-blob.qtap npx tsx
+<v5w>/harness/oracle/fixtures/build-qtap-import-two-link-blob.ts`, then `cp`
+into the tree. (A rebuild mints a new manifest `createdAt`, folder id, and
+link ids — the committed bytes are the artifact; rebuild only deliberately.)
+
+`qtap-import.ts` gains a FOURTH isolated pair (the bug117 reason): the bundle
+through v4's REAL `peekFormat` + `readNdjsonLines` + `assembleExportFromStream`
+(the `loadQtapFromUpload` path), `executeImport` (`skip`, no memories);
+`twoLinkBlob` = `{success, warnings, blobs[{sha256, storedMimeType, sizeBytes,
+dataSha256}], links[path-ordered, with the per-link extraction sidecar],
+distinctFileIds}`. v4 measured: success, no warnings, ONE blob with
+`dataSha256 == sha256` and `image/png`, two links sharing ONE file, text +
+sha + `converted` on `plates/second.png` only. The Rust leg loads through
+v5's REAL `ndjson::load_qtap_from_upload` and asserts the same plus the
+floor on its own dump. Green. Regen AS RUN: the family header's two tsx
+lines from the pin with the fixtures at `/tmp/p4106/qt-qtapimport-{main,
+mount}.db` and the oracle at `/tmp/p4106/oracle-qtap-import.ndjson`.
+
+Mutations: `update_extracted_text`'s `WHERE id = ?6` → the deleted fallback
+(the FIRST link of the blob's file, `ORDER BY rowid LIMIT 1`) → `two-link
+links` red — the bug-157 repoint this row exists for; the import's
+`stored_mime_type` → `"image/webp"` → `two-link blob rows` red.
+**The order's mutation SURVIVES, measured:** `normalize_images: true` at the
+import site (`document_stores.rs:600`) leaves every row green — the import's
+`DocMountBlobsRepository` is built WITHOUT a codec (`normalize_blob_image.rs`
+'s OPEN note: only the sync applier threads one), so the flag is inert there.
+P4.104 does not own `services/quilltap_import/**`, so its seam will not make
+this mutation bite at unification either; the pin (bytes + mime) is what
+would catch a codec reaching this site with the flag flipped.
+
+**`qtap_import`'s planted-inform arm — deferred to its better home, by
+name:** this family's fixtures are bare characters-only DBs (no `chats` /
+`chat_messages`), so a bundle carrying `chatInforms` cannot land here; the
+same `executeImport` inform path is proven over a full instance with planted
+rows by unit 9's three `execute_chats_informs_*` arms.

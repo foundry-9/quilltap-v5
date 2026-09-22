@@ -183,6 +183,10 @@ fn bug158_qtap_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/qtap-import-bug158.qtap")
 }
 
+fn two_link_blob_qtap_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/qtap-import-two-link-blob.qtap")
+}
 fn bug117_qtap_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/qtap-import-bug117.qtap")
@@ -828,13 +832,159 @@ fn qtap_import_tier2_matches_oracle() {
         let _ = std::fs::remove_file(&mount3_path);
     }
 
+    // ── P4.106 item 10: the two-link blob (the P4.D209 OPEN row) ───────────
+    //
+    // `qtap-import-two-link-blob.qtap` is v4's REAL exporter's NDJSON (built at
+    // the pin by `build-qtap-import-two-link-blob.ts`, committed): ONE blob at
+    // two paths, the SECOND link carrying `extractedText`. Loaded through v5's
+    // REAL NDJSON loader (`load_qtap_from_upload`, v4 `loadQtapFromUpload`).
+    // The comparand: the blob rows (with a sha256 of the stored BYTES) and the
+    // links in path order with their per-link extraction sidecar — the second
+    // link holds the text, the first is NULL (the bug-157 repoint,
+    // `document_stores.rs` → `Some(&created.link_id)`, which no row could see
+    // before). Isolated for the bug117 reason.
+    {
+        let pid = std::process::id();
+        let main4_path = std::env::temp_dir().join(format!("qt-qtapimport-2link-main-{pid}.db"));
+        let mount4_path = std::env::temp_dir().join(format!("qt-qtapimport-2link-mount-{pid}.db"));
+        let _ = std::fs::remove_file(&main4_path);
+        let _ = std::fs::remove_file(&mount4_path);
+        std::fs::copy(&main_fixture, &main4_path).unwrap_or_else(|e| panic!("copy main4: {e}"));
+        std::fs::copy(&mount_fixture, &mount4_path).unwrap_or_else(|e| panic!("copy mount4: {e}"));
+        let main4 = Writer::open_writable(&main4_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main4: {e}"));
+        let mount4 = Writer::open_writable(&mount4_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount4: {e}"));
+
+        let bytes = std::fs::read(two_link_blob_qtap_path()).expect("read two-link .qtap");
+        let export =
+            quilltap_core::services::quilltap_import::ndjson::load_qtap_from_upload(&bytes)
+                .expect("load the two-link NDJSON bundle");
+        let options = ImportOptions {
+            include_memories: false,
+            ..ImportOptions::seed_defaults()
+        };
+        let got = execute_import(
+            main4.connection(),
+            mount4.connection(),
+            SINGLE_USER_ID,
+            &export,
+            &options,
+            None,
+        )
+        .expect("two-link execute_import");
+
+        let want = &oracle["twoLinkBlob"];
+        assert_eq!(
+            Value::Bool(got.success),
+            want["success"],
+            "two-link success"
+        );
+        assert_eq!(
+            serde_json::to_value(&got.warnings).unwrap(),
+            want["warnings"],
+            "two-link warnings"
+        );
+        let got_dump = dump_two_link_blob(&mount4);
+        assert_eq!(got_dump["blobs"], want["blobs"], "two-link blob rows");
+        assert_eq!(got_dump["links"], want["links"], "two-link links");
+        assert_eq!(
+            got_dump["distinctFileIds"], want["distinctFileIds"],
+            "two-link: both links share one file"
+        );
+
+        // The floor — each fact the row exists to pin, asserted on v5's own
+        // dump so the arm cannot pass on two matching empties.
+        let blobs = got_dump["blobs"].as_array().expect("blobs");
+        assert_eq!(blobs.len(), 1, "ONE blob row for the two links");
+        assert_eq!(
+            blobs[0]["dataSha256"], blobs[0]["sha256"],
+            "byte fidelity: the stored bytes are the bundle's"
+        );
+        assert_eq!(
+            blobs[0]["storedMimeType"], "image/png",
+            "normalize_images: false keeps the PNG a PNG"
+        );
+        let links = got_dump["links"].as_array().expect("links");
+        assert_eq!(links.len(), 2, "both links land");
+        assert_eq!(
+            links[0]["extractedText"],
+            Value::Null,
+            "the FIRST link holds no text"
+        );
+        assert!(
+            links[1]["extractedText"].is_string(),
+            "the SECOND link holds the extracted text"
+        );
+
+        drop(main4);
+        drop(mount4);
+        let _ = std::fs::remove_file(&main4_path);
+        let _ = std::fs::remove_file(&mount4_path);
+    }
+
     let _ = std::fs::remove_file(&main_work);
     let _ = std::fs::remove_file(&mount_work);
 
     eprintln!(
         "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join \
-         + bug-158 strip."
+         + bug-158 strip + the two-link blob."
     );
+}
+
+/// P4.106 item 10's comparand, in the oracle case's shape.
+fn dump_two_link_blob(mount: &Writer) -> Value {
+    use sha2::{Digest, Sha256};
+    let conn = mount.connection();
+    let mut stmt = conn
+        .prepare(
+            "SELECT sha256, storedMimeType, sizeBytes, data FROM doc_mount_blobs ORDER BY sha256",
+        )
+        .expect("prepare blobs");
+    let blobs: Vec<Value> = stmt
+        .query_map([], |r| {
+            let data: Vec<u8> = r.get(3)?;
+            Ok(serde_json::json!({
+                "sha256": r.get::<_, String>(0)?,
+                "storedMimeType": r.get::<_, String>(1)?,
+                "sizeBytes": r.get::<_, i64>(2)?,
+                "dataSha256": format!("{:x}", Sha256::digest(&data)),
+            }))
+        })
+        .expect("query blobs")
+        .collect::<Result<_, _>>()
+        .expect("blob rows");
+    let mut stmt = conn
+        .prepare(
+            "SELECT relativePath, fileName, originalFileName, originalMimeType, extractedText, \
+             extractedTextSha256, extractionStatus, extractionError FROM doc_mount_file_links \
+             ORDER BY relativePath",
+        )
+        .expect("prepare links");
+    let links: Vec<Value> = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "relativePath": r.get::<_, String>(0)?,
+                "fileName": r.get::<_, String>(1)?,
+                "originalFileName": r.get::<_, Option<String>>(2)?,
+                "originalMimeType": r.get::<_, Option<String>>(3)?,
+                "extractedText": r.get::<_, Option<String>>(4)?,
+                "extractedTextSha256": r.get::<_, Option<String>>(5)?,
+                "extractionStatus": r.get::<_, Option<String>>(6)?,
+                "extractionError": r.get::<_, Option<String>>(7)?,
+            }))
+        })
+        .expect("query links")
+        .collect::<Result<_, _>>()
+        .expect("link rows");
+    let distinct: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT fileId) FROM doc_mount_file_links",
+            [],
+            |r| r.get(0),
+        )
+        .expect("distinct fileIds");
+    serde_json::json!({ "blobs": blobs, "links": links, "distinctFileIds": distinct })
 }
 
 /// The bug-158 comparand, in the oracle case's shape: every chat's title and its

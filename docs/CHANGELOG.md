@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the qtap_import two-link-blob bundle row (P4.106 item 10)
+
+_Versions: harness 0.0.900._
+
+P4.106 item 10. New committed bundle `qtap-import-two-link-blob.qtap`
+(2,757 bytes), built once at the `f45a517a9` pin through v4's real NDJSON
+exporter by the new `build-qtap-import-two-link-blob.ts`: one database store,
+one PNG blob written at two paths (deduped onto one blob, two links), the
+second link carrying `extractedText`. `qtap_import` imports it on an isolated
+fixture pair through each side's real NDJSON loader and compares the blob rows
+(with a digest of the stored bytes) and the links: one blob, both links on one
+file, the text on the second link only, the bytes and `image/png` unchanged.
+Restoring the old `LIMIT 1` fallback in `update_extracted_text` fails the
+links row; storing the blob as `image/webp` fails the blob row. The order's
+`normalize_images: true` mutation survives on this tree because the import's
+blob repository has no codec, so the flag is inert there.
+
 #### 2026-09-22 — test(harness): the .qtap import-execute arms over planted informs + the baseline-guard vacuity fix (P4.106 item 6, part 2)
 
 _Versions: harness 0.0.899._

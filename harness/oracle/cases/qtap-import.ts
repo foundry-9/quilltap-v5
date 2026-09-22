@@ -318,6 +318,87 @@ async function main(): Promise<void> {
     return { success: r158.success, warnings: r158.warnings, chats };
   })();
 
+  // ── P4.106 item 10: the two-link blob (the P4.D209 OPEN row) ────────────
+  //
+  // `qtap-import-two-link-blob.qtap` is v4's REAL exporter's NDJSON (built once
+  // at the pin by `build-qtap-import-two-link-blob.ts` and committed): one
+  // database store, ONE blob at two `relativePath`s, the SECOND link carrying
+  // `extractedText`. Loaded through v4's REAL NDJSON reader (the
+  // `loadQtapFromUpload` path) and imported with v4's own `normalizeImages:
+  // false`. The comparand: the blob rows (one expected) with a sha256 of the
+  // stored BYTES — byte fidelity, `image/png` kept — and the links in path
+  // order with their per-link extraction sidecar (text on the second only).
+  // A FOURTH isolated pair, for the bug117 reason.
+  const twoLinkBlob = await (async () => {
+    const scratch4 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-twolink-'));
+    mkdirSync(join(scratch4, 'data'), { recursive: true });
+    const main4 = join(scratch4, 'twolink-main.db');
+    const mount4 = join(scratch4, 'twolink-mount.db');
+    copyFileSync(mainFixture, main4);
+    copyFileSync(mountFixture, mount4);
+    process.env.SQLITE_PATH = main4;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mount4;
+    process.env.QUILLTAP_DATA_DIR = scratch4;
+
+    await initializeDatabase();
+    const midb4 = getRawMountIndexDatabase();
+    if (!midb4) throw new Error('mount-index DB handle unavailable (two-link pair)');
+
+    const bytes = readFileSync(join(here, '..', 'fixtures', 'qtap-import-two-link-blob.qtap'));
+    const { peekFormat, readNdjsonLines } = await import('@/lib/import/ndjson-reader');
+    const { assembleExportFromStream } = await import('@/lib/import/quilltap-import-stream');
+    const { format, stream } = await peekFormat(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(bytes));
+          controller.close();
+        },
+      })
+    );
+    if (format !== 'ndjson') throw new Error(`expected an NDJSON bundle, got ${format}`);
+    const exportData = await assembleExportFromStream(readNdjsonLines(stream));
+    const rTwo = await executeImport(SINGLE_USER_ID, exportData as never, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    });
+
+    const { createHash } = await import('node:crypto');
+    const blobs = (
+      midb4
+        .prepare('SELECT sha256, storedMimeType, sizeBytes, data FROM doc_mount_blobs ORDER BY sha256')
+        .all() as Array<{ sha256: string; storedMimeType: string; sizeBytes: number; data: Buffer }>
+    ).map((b) => ({
+      sha256: b.sha256,
+      storedMimeType: b.storedMimeType,
+      sizeBytes: b.sizeBytes,
+      dataSha256: createHash('sha256').update(b.data).digest('hex'),
+    }));
+    const links = midb4
+      .prepare(
+        'SELECT relativePath, fileName, originalFileName, originalMimeType, extractedText, ' +
+          'extractedTextSha256, extractionStatus, extractionError FROM doc_mount_file_links ' +
+          'ORDER BY relativePath'
+      )
+      .all();
+    const sharedFile =
+      (
+        midb4
+          .prepare('SELECT COUNT(DISTINCT fileId) AS n FROM doc_mount_file_links')
+          .get() as { n: number }
+      ).n;
+
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+    return {
+      success: rTwo.success,
+      warnings: rTwo.warnings,
+      blobs,
+      links,
+      distinctFileIds: sharedFile,
+    };
+  })();
+
   process.stdout.write(
     JSON.stringify({
       case: 'qtap-import-tier2',
@@ -342,6 +423,7 @@ async function main(): Promise<void> {
       },
       bug117,
       bug158,
+      twoLinkBlob,
     }) + '\n'
   );
   process.exit(0);
