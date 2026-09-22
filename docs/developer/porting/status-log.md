@@ -142107,3 +142107,33 @@ recorded, no case.
   This is the ONLY delta.
 - The `packages/quilltap` version stamp: NO-PORT, proven by Tier R at the
   target pin (266/0).
+
+## Lane record — P4.D214 unit 2: P4.D210's live `sync` rows as canned-stub Tier R rows, 2026-09-22
+
+cli 0.0.26 → 0.0.27. Closes P4.D210's DECLARED gap (Tier-1 item 4's live
+rows); P4.D210's status header gains one sentence naming this round.
+
+- **Shape taken:** NOT a booted `quilltap-web`. Tier R runs the SAME argv on
+  v4's bin, and v4's `sync` is an HTTP client, so the one server both launchers
+  can share is the in-process `spawn_canned_stub` (the archive section's
+  instrument). One stub per report, answering v4 `handleSync`'s bare
+  `successResponse(report)` (the full `SyncReport` shape: `storeId`,
+  `storeName`, `targetPath`, `dryRun`, `actions`, `summary`, `warnings`,
+  `elapsedMs`).
+- **Bodies, cited from `harness/oracle/cases/sync-report.ts`:** dry run =
+  ACTIONS `create-disk-with-sha-and-size`, `modify-store-with-a-reason`,
+  `mkdir-disk-a-folder-gets-a-slash`, `touch-disk` + one warning, elapsed 1249
+  (`rounds-to-a-tenth`); clean = no actions, zero summary, elapsed 812
+  (`nothing`); conflict = the create (outcome `done`) + `conflict-has-no-side`,
+  `conflicts: 1`, elapsed 1950 (`rounds-up`).
+- **The precondition, measured:** instA's `notes` row (N1, `database`) already
+  resolves offline through `require_mount`, so no pre-hook is needed.
+- Six cases (± `--json`), exit 0 / 0 / 2 on both sides. A second
+  `assert_canned_wire_parity()` after the section checks every (v4, v5)
+  request pair — URL `/api/v1/mount-points/<N1>?action=sync` + body.
+- **Green before the port** (the red-first run's 265 cases counted these 6
+  green): the render → exit glue was already v4's. The rows now pin it
+  end to end. Mutation D (conflict exits 0) reddens exactly the two conflict
+  rows (unit 1 §3).
+- Tier R 260 → **266**: 266 / 0 at `a2db63da7`; at `f45a517a9` all six green
+  (the 13 baseline failures are unit 1's 9 cases).

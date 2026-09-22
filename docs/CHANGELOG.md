@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(cli): P4.D210's live `sync` rows land as canned-stub Tier R rows (P4.D214)
+
+_Versions: cli 0.0.27._
+
+Closes P4.D210's declared gap. Six Tier R cases (`sync dry run`, `sync clean
+run`, `sync conflict run`, each with and without `--json`) run both launchers
+against an in-process stub. It serves the route's bare report, built from the
+`sync-report` tier-1 corpus rows. The cases exit 0/0/2 and assert wire parity
+per request. Tier R 260 → 266, green at both pins.
+
 #### 2026-09-22 — fix(cli): the `db` verb opens through the ONE shared opener with v4's per-target failure strings (P4.D214, v4 bug 162)
 
 _Versions: cli 0.0.26._

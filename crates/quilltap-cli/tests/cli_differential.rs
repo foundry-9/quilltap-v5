@@ -4105,6 +4105,54 @@ fn cli_differential() {
         },
     );
 
+    // P4.D214 — P4.D210's undelivered live rows, as CANNED-STUB rows. v4's
+    // `sync` is an HTTP client to a running v4 server; the one instrument that
+    // proves both launchers' post → render → exit glue against ONE server is
+    // the canned stub the archive section already uses. Each stub answers the
+    // route's bare `successResponse(report)` (v4 `mount-points/[id]/route.ts`
+    // `handleSync`), built from the `sync-report` tier-1 corpus's rows
+    // (`harness/oracle/cases/sync-report.ts`: ACTIONS `create-disk-with-sha-
+    // and-size`, `modify-store-with-a-reason`, `mkdir-disk-a-folder-gets-a-
+    // slash`, `touch-disk`, `conflict-has-no-side`; SUMMARIES `rounds-to-a-
+    // tenth` / `nothing` / `rounds-up` elapsed values), which v4's REAL
+    // renderer already agrees on. The store resolves offline from instA's
+    // `notes` row — no pre-hook needed.
+    {
+        const SHA64: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        let dry_body = format!(
+            r#"{{"storeId":"{N1}","storeName":"notes","targetPath":"/tmp/qt-sync-r","dryRun":true,"actions":[{{"kind":"create","side":"disk","relativePath":"chapters/01.md","entryKind":"file","sha256":"{SHA64}","sizeBytes":2048,"outcome":"planned"}},{{"kind":"modify","side":"store","relativePath":"chapters/03.md","entryKind":"file","reason":"disk newer by 2h 14m","sha256":"{SHA64}","sizeBytes":900,"outcome":"planned"}},{{"kind":"mkdir","side":"disk","relativePath":"lore/maps","entryKind":"folder","outcome":"planned"}},{{"kind":"touch","side":"disk","relativePath":"ch.md","entryKind":"file","reason":"mtime 2026-09-20T10:00:00.000Z","outcome":"planned"}}],"summary":{{"created":1,"modified":1,"deleted":0,"touched":1,"described":0,"conflicts":0,"skipped":0,"failed":0}},"warnings":["lore/harbour.png: no description yet"],"elapsedMs":1249}}"#
+        );
+        let clean_body = format!(
+            r#"{{"storeId":"{N1}","storeName":"notes","targetPath":"/tmp/qt-sync-r","dryRun":false,"actions":[],"summary":{{"created":0,"modified":0,"deleted":0,"touched":0,"described":0,"conflicts":0,"skipped":0,"failed":0}},"warnings":[],"elapsedMs":812}}"#
+        );
+        let conflict_body = format!(
+            r#"{{"storeId":"{N1}","storeName":"notes","targetPath":"/tmp/qt-sync-r","dryRun":false,"actions":[{{"kind":"create","side":"disk","relativePath":"chapters/01.md","entryKind":"file","sha256":"{SHA64}","sizeBytes":2048,"outcome":"done"}},{{"kind":"conflict","side":null,"relativePath":"ch.md","entryKind":"file","reason":"both sides changed; --prefer to resolve","outcome":"skipped"}}],"summary":{{"created":1,"modified":0,"deleted":0,"touched":0,"described":0,"conflicts":1,"skipped":0,"failed":0}},"warnings":[],"elapsedMs":1950}}"#
+        );
+        let rows: [(&str, String, &[&str]); 3] = [
+            ("sync dry run", dry_body, &["--dry-run"]),
+            ("sync clean run", clean_body, &[]),
+            ("sync conflict run", conflict_body, &[]),
+        ];
+        for (name, body, extra) in rows {
+            let port = spawn_canned_stub(200, &body).to_string();
+            for json in [false, true] {
+                let mut args = sy(&["notes", "/tmp/qt-sync-r", "--port", &port]);
+                args.extend(extra.iter().map(|s| s.to_string()));
+                if json {
+                    args.push("--json".to_string());
+                }
+                let label = if json {
+                    format!("{name} json")
+                } else {
+                    name.to_string()
+                };
+                ctx.case_with(&label, &args, CaseOpts::default());
+            }
+        }
+        // Both launchers posted the same URL + body to every stub.
+        assert_canned_wire_parity();
+    }
+
     // ---------------- recall-replay (P4.d13) ----------------
     ctx.case("recall-replay help", &["recall-replay", "--help"]);
     ctx.case("recall-replay no chat", &["recall-replay"]);
