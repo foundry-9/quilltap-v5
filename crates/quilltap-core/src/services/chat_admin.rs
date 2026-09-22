@@ -66,7 +66,7 @@ use crate::services::image_job_common::{
 };
 use crate::services::memory_service::delete_memory_with_vector;
 use crate::services::queue_service::{
-    enqueue_chat_danger_classification, enqueue_conversation_render,
+    enqueue_chat_danger_classification, enqueue_context_summary, enqueue_conversation_render,
 };
 
 // ===========================================================================
@@ -749,23 +749,7 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
         return bad_request("No connection profiles available");
     }
 
-    // v4: the first CHARACTER participant's profile when it resolves, else the
-    // user's first profile.
-    let participant_profile_id =
-        chat.get("participants")
-            .and_then(Value::as_array)
-            .and_then(|ps| {
-                ps.iter()
-                    .find(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
-                    .and_then(|p| p.get("connectionProfileId").and_then(Value::as_str))
-            });
-    let connection_profile = participant_profile_id
-        .and_then(|id| {
-            profiles
-                .iter()
-                .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
-        })
-        .unwrap_or(&profiles[0]);
+    let connection_profile = cast_or_first_profile(&chat, &profiles);
 
     let available: Vec<CheapLlmProfile> =
         profiles.iter().map(cheap_llm_profile_from_value).collect();
@@ -861,6 +845,156 @@ pub async fn chat_regenerate_title<C: crate::model::completion::CompletionProvid
     ok(json!({ "success": true, "title": new_title }))
 }
 
+/// v4's profile precedence for regenerate-title AND rebuild-summary: the first
+/// CHARACTER participant's `connectionProfileId` when it names an available
+/// profile, else the user's first profile. `profiles` must be non-empty (both
+/// callers answer 400 first).
+fn cast_or_first_profile<'a>(chat: &Value, profiles: &'a [Value]) -> &'a Value {
+    let participant_profile_id =
+        chat.get("participants")
+            .and_then(Value::as_array)
+            .and_then(|ps| {
+                ps.iter()
+                    .find(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+                    .and_then(|p| p.get("connectionProfileId").and_then(Value::as_str))
+            });
+    participant_profile_id
+        .and_then(|id| {
+            profiles
+                .iter()
+                .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
+        })
+        .unwrap_or(&profiles[0])
+}
+
+// ===========================================================================
+// rebuild-summary (v4 `actions/rebuild-summary.ts`, `e7821606f` — P4.D212)
+// ===========================================================================
+
+/// v4 `POST /api/v1/chats/[id]?action=rebuild-summary` — discard the chat's
+/// running context summary and let the ordinary fold cadence rebuild it from
+/// turn 1. The operator's remedy for a summary that has gone wrong — most
+/// notably a speaker name the fold model invented and then carried forward
+/// (bug 161).
+///
+/// Deliberately *not* the single-shot `forceRegenerate` path: that puts every
+/// turn up to the tail floor into one request and will not fit a cheap model's
+/// window on a long chat. Clearing the anchor instead means the existing
+/// cadence folds `FOLD_TURN_BATCH` turns at a time, one bounded call per fire,
+/// until it is back within `FOLD_TRIGGER_DELTA` of the head.
+///
+/// Refusals in v4's order: 404 (the chat read — v4's `handlePost`, before any
+/// action runs), 409 on an autonomous room whose `runState` is `running`, 400
+/// when the user has no connection profiles. ⚠ `e7821606f`'s commit message
+/// names only the 409; the HUNK also carries the 400 — and does NOT check the
+/// cheap-LLM settings the way regenerate-title does, so that sibling arm is not
+/// carried here. Any failure after the refusals is v4's catch: an error log and
+/// a 500 `Failed to rebuild the summary`; when the clearing update fails, the
+/// enqueue and the publish never run.
+///
+/// Dispatch-only on v5 (`Request::ChatRebuildSummary`), the regenerate-title
+/// precedent: the REST edge serves only equip / regenerate-avatar / inform /
+/// cancel-inform, and its pointer sentence already sends every other chat
+/// action to `POST /api/dispatch`. Answers through `Response::ChatAdmin`, so no
+/// new `Response` variant and no REST unwrapper change.
+pub async fn chat_rebuild_summary(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    now_iso: &str,
+) -> Response {
+    let chat = match load_chat(db, chat_id) {
+        Ok(Some(c)) => c,
+        Ok(None) => return not_found("Chat"),
+        Err(e) => return internal(e),
+    };
+    match rebuild_summary(db, user_id, chat_id, &chat, now_iso).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::error!(
+                chatId = chat_id,
+                error = %e,
+                "[Chats v1] Failed to rebuild context summary"
+            );
+            server_error("Failed to rebuild the summary")
+        }
+    }
+}
+
+/// v4 `handleRebuildSummary`'s `try` body; an `Err` is its catch arm.
+async fn rebuild_summary(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    chat: &Value,
+    now_iso: &str,
+) -> Result<Response, DbError> {
+    // An autonomous room in flight owns its own summary cadence; pulling the
+    // anchor out from under a running turn loop is the operator's call to make
+    // from a paused room, not ours to make mid-run.
+    if chat.get("chatType").and_then(Value::as_str) == Some("autonomous")
+        && chat.get("runState").and_then(Value::as_str) == Some("running")
+    {
+        return Ok(Response::error(
+            ErrorKind::Conflict,
+            "Pause the room before rebuilding its summary.",
+        ));
+    }
+
+    let uid = user_id.to_string();
+    let profiles = db.read_main(move |c| connection_profiles::find_by_user_id(c, &uid))?;
+    if profiles.is_empty() {
+        return Ok(bad_request("No connection profiles available"));
+    }
+
+    // Same profile precedence as regenerate-title: the cast's own profile when
+    // it has one, otherwise whatever is first. The cheap-LLM resolver derives
+    // the summariser from it.
+    let connection_profile_id = cast_or_first_profile(chat, &profiles)
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+
+    // One update: summary, its anchor set, and the fold cursor go together, so
+    // there is no window where a fold could advance a cursor over a summary
+    // that is already gone.
+    //
+    // `lastFullRebuildTurn` is deliberately left where it is. Zeroing it would
+    // put the next gate evaluation over T_HARD_TURN_THRESHOLD on any chat past
+    // turn 50 and route the rebuild straight into the single-shot path this
+    // action exists to avoid.
+    let cid = chat_id.to_string();
+    let patch = ChatUpdate {
+        context_summary: Some(None),
+        summary_anchor_message_ids: Some(Vec::new()),
+        last_summary_turn: Some(0.0),
+        updated_at: Some(now_iso.to_string()),
+        ..Default::default()
+    };
+    db.write(move |w| w.main().chats().update(&cid, &patch).map(|_| ()))
+        .await?;
+
+    // v4 passes no options, so `enqueueJob`'s defaults apply: priority 0,
+    // maxAttempts 3, no dedupe.
+    let job_id =
+        enqueue_context_summary(db, user_id, chat_id, &connection_profile_id, false, 0.0).await?;
+
+    crate::realtime::bus::publish_realtime(
+        crate::realtime::types::RealtimeTopic::Chats,
+        Some(chat_id),
+    );
+
+    tracing::info!(
+        chatId = chat_id,
+        jobId = job_id.as_str(),
+        connectionProfileId = connection_profile_id.as_str(),
+        "[Chats v1] Context summary cleared for rebuild"
+    );
+
+    Ok(ok(json!({ "success": true, "jobId": job_id })))
+}
+
 /// The `RawMessage` view `extract_visible_conversation` consumes.
 fn raw_messages(events: &[Value]) -> Vec<crate::chat_tasks::RawMessage> {
     events
@@ -877,4 +1011,254 @@ fn raw_messages(events: &[Value]) -> Vec<crate::chat_tasks::RawMessage> {
             // === end P4.D205 ===
         })
         .collect()
+}
+
+#[cfg(test)]
+mod rebuild_summary_tests {
+    //! P4.D212: the rebuild-summary verb's non-DB observables — its two log
+    //! lines (each with a silence leg), its realtime publish, and v4's catch
+    //! arm: when the clearing update fails, the enqueue and the publish never
+    //! run. The DB half is `chat_rebuild_summary_equivalence` (v4's REAL route)
+    //! and `chat_rebuild_summary_dispatch_wire` (the serde trip).
+    //!
+    //! The update failure is INDUCED, not argued: a `BEFORE UPDATE ON chats …
+    //! RAISE(ABORT)` trigger fails the one write while leaving the chat read
+    //! and the profile read that precede it working — the one shape that
+    //! reaches the catch arm past both refusals.
+
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::realtime::publish_sites::HintCapture;
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c1000000-0000-4000-8000-0000000000d2";
+    const SEAT: &str = "e1000000-0000-4000-8000-0000000000d2";
+    const PROFILE: &str = "b1000000-0000-4000-8000-0000000000d2";
+    const NOW: &str = "2026-09-22T00:00:00.000Z";
+
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("rs");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    async fn seed(db: &Db) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "The Rebuild Room",
+            "participants": [
+                { "id": SEAT, "type": "CHARACTER", "controlledBy": "llm",
+                  "characterId": "a1000000-0000-4000-8000-0000000000d2",
+                  "createdAt": NOW, "updatedAt": NOW }
+            ],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: NOW.to_string(),
+            updated_at: NOW.to_string(),
+        };
+        let profile = connection_profiles::CpCreate {
+            user_id: crate::api::SINGLE_USER_ID.to_string(),
+            name: "Summariser".to_string(),
+            provider: "OPENAI".to_string(),
+            transport: "direct".to_string(),
+            courier_delta_mode: false,
+            api_key_id: None,
+            base_url: None,
+            model_name: "gpt-4o-mini".to_string(),
+            parameters: json!({}),
+            is_default: true,
+            is_cheap: false,
+            allow_web_search: false,
+            use_native_web_search: false,
+            allow_tool_use: false,
+            pseudo_tool_mode: "auto".to_string(),
+            multi_character_prefill: None,
+            model_class: None,
+            fallback_profile_id: None,
+            allow_tier_fallback: false,
+            max_context: None,
+            max_tokens: None,
+            is_dangerous_compatible: false,
+            supports_image_upload: false,
+            tags: vec![],
+            sort_index: 0.0,
+            total_tokens: 0.0,
+            total_prompt_tokens: 0.0,
+            total_completion_tokens: 0.0,
+            message_count: 0.0,
+        };
+        let popts = connection_profiles::CreateOptions {
+            id: PROFILE.to_string(),
+            created_at: NOW.to_string(),
+            updated_at: NOW.to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)?;
+            connection_profiles::ConnectionProfilesRepository::new(w.main().connection())
+                .create(&profile, &popts)
+        })
+        .await
+        .expect("seed the chat + profile");
+    }
+
+    fn summary_job_count(db: &Db) -> i64 {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                "SELECT COUNT(*) FROM background_jobs WHERE type = 'CONTEXT_SUMMARY'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+    }
+
+    /// Run the verb under a THREAD-SCOPED capturing subscriber (the guard
+    /// spans the awaits on this current-thread runtime).
+    async fn rebuild_captured(db: &Db) -> (Response, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
+        let guard = tracing::subscriber::set_default(subscriber);
+        let resp = chat_rebuild_summary(db, crate::api::SINGLE_USER_ID, CHAT, NOW).await;
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        (resp, lines)
+    }
+
+    fn lines_with<'a>(lines: &'a [String], needle: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(needle)).collect()
+    }
+
+    #[tokio::test]
+    async fn a_rebuild_logs_its_info_line_and_publishes_the_chats_topic() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+
+        let (resp, lines) = rebuild_captured(&db).await;
+        let Response::ChatAdmin(body) = &resp else {
+            panic!("expected the 200 body, got {resp:?}");
+        };
+        let job_id = body["jobId"].as_str().expect("a jobId").to_string();
+
+        let info = lines_with(&lines, "[Chats v1] Context summary cleared for rebuild");
+        assert_eq!(info.len(), 1, "exactly one info line: {lines:#?}");
+        let info = info[0];
+        assert!(
+            info.starts_with("INFO quilltap_core::services::chat_admin"),
+            "{info}"
+        );
+        for field in [
+            format!(" chatId={CHAT}"),
+            format!(" jobId={job_id}"),
+            format!(" connectionProfileId={PROFILE}"),
+        ] {
+            assert!(info.contains(&field), "missing `{field}` in {info}");
+        }
+        assert!(
+            lines_with(&lines, "Failed to rebuild context summary").is_empty(),
+            "the success path says nothing of failure: {lines:#?}"
+        );
+
+        let hints = cap.drain_sorted().await;
+        assert!(
+            hints.contains(&("chats".to_string(), Some(CHAT.to_string()))),
+            "v4 `publishRealtime('chats', chatId)` so the summary panel re-reads: {hints:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refusal_logs_nothing_and_publishes_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+        db.write(|w| {
+            w.main().connection().execute(
+                "UPDATE chats SET chatType = 'autonomous', runState = 'running' WHERE id = ?1",
+                [CHAT],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let _ = cap.drain().await; // the seed's own hints
+
+        let (resp, lines) = rebuild_captured(&db).await;
+        assert!(
+            matches!(&resp, Response::Error(e) if matches!(e.kind, ErrorKind::Conflict)),
+            "{resp:?}"
+        );
+        assert!(
+            lines_with(&lines, "[Chats v1]").is_empty(),
+            "a refusal is not a rebuild and not a failure: {lines:#?}"
+        );
+        assert_eq!(summary_job_count(&db), 0);
+        assert_eq!(cap.drain().await, vec![], "a refusal announces nothing");
+    }
+
+    #[tokio::test]
+    async fn a_failed_update_answers_500_and_neither_enqueues_nor_publishes() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+        db.write(|w| {
+            w.main().connection().execute_batch(
+                "CREATE TRIGGER poison_chats_update BEFORE UPDATE ON chats \
+                 BEGIN SELECT RAISE(ABORT, 'poisoned chats update'); END;",
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let _ = cap.drain().await;
+
+        let (resp, lines) = rebuild_captured(&db).await;
+        match &resp {
+            Response::Error(e) => {
+                assert!(matches!(e.kind, ErrorKind::Internal), "{resp:?}");
+                assert_eq!(e.message, "Failed to rebuild the summary");
+            }
+            other => panic!("expected v4's 500, got {other:?}"),
+        }
+        let err = lines_with(&lines, "[Chats v1] Failed to rebuild context summary");
+        assert_eq!(err.len(), 1, "exactly one error line: {lines:#?}");
+        assert!(
+            err[0].starts_with("ERROR quilltap_core::services::chat_admin"),
+            "{}",
+            err[0]
+        );
+        assert!(err[0].contains(&format!(" chatId={CHAT}")), "{}", err[0]);
+        assert!(
+            err[0].contains("poisoned chats update"),
+            "the error rides along: {}",
+            err[0]
+        );
+        assert!(
+            lines_with(&lines, "Context summary cleared for rebuild").is_empty(),
+            "{lines:#?}"
+        );
+
+        assert_eq!(summary_job_count(&db), 0, "the enqueue never ran");
+        assert!(
+            !cap.drain()
+                .await
+                .contains(&("chats".to_string(), Some(CHAT.to_string()))),
+            "the publish never ran"
+        );
+    }
 }

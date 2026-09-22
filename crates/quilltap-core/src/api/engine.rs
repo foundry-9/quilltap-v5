@@ -5720,6 +5720,22 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D210 ===
+            // === P4.D212 ===
+            // The enqueue is a DB write; the CONTEXT_SUMMARY job itself runs on
+            // the host's pump (the danger scan's enqueue precedent) — no driver.
+            Request::ChatRebuildSummary { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_admin::chat_rebuild_summary(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &crate::clock::now_iso(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D212 ===
         }
     }
 

@@ -10,7 +10,20 @@
  * (`services::chat_admin::*` and friends) diffs byte-for-byte.
  *
  * `regenerate-title` is model-dependent and is pinned by the separate tier-3
- * `chat-regenerate-title-tier3` oracle, not here.
+ * `chat-regenerate-title-tier3` oracle, not here. `rebuild-summary` (P4.D212,
+ * v4 `e7821606f`) is driven here for its four REST-side answers; its full
+ * corpus (the refusal order, the profile precedence, the payload bytes, the
+ * publish) is `chat-rebuild-summary.test.ts`.
+ *
+ * ⚠ The per-copy WIDEN (P4.D212): the committed `chat-admin-*` pair predates
+ * v4's `cycleOrderParticipantIds` (chats) and `routeTrail` (chat_messages)
+ * columns, and v4's repositories write every schema key — so on the unwidened
+ * pair every v4 chat/message write fails (measured at `a2db63da7`: 26 of the 57
+ * pre-existing cases answer 500 and three merge cases a false "already present"
+ * 400 — the whole family RED against v5). The committed pair is not this family's to rebuild (§R.12), so
+ * each per-case COPY is widened after the open through v4's OWN migration
+ * statements, guarded on `pragma_table_info` as `addColumnIfMissing` is; the
+ * Rust side applies the identical widen.
  *
  * The clock is frozen to NOW_MS for every case, so the minted `createdAt` on the
  * rng / run-tool TOOL messages lands on the same bytes as the Rust side's
@@ -68,6 +81,12 @@ const DORIAN = 'a1000000-0000-4000-8000-000000000004';
 const SOURCE_CHAT = 'c1000000-0000-4000-8000-000000000002';
 
 const RealDate = Date;
+
+/** A running summary for rebuild-summary to clear (P4.D212). */
+const REBUILD_SEED =
+  `UPDATE "chats" SET "contextSummary" = 'Aria and the lamplighter argued over the ledger.', ` +
+  `"summaryAnchorMessageIds" = '["d1000000-0000-4000-8000-000000000001"]', ` +
+  `"lastSummaryTurn" = 42, "lastFullRebuildTurn" = 60 WHERE "id" = '${CHAT}'`;
 
 // The per-case injected byte stream for `crypto.randomBytes` (mirrors the Rust
 // `FixedBytes`). The rng cases set it; every other case leaves it empty and
@@ -207,10 +226,39 @@ async function readJobs(userId: string): Promise<unknown> {
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 
+/** v4's own `addColumnIfMissing` statements for the columns the committed
+ *  pair lacks (`add-cycle-order-column-v1.ts`, the routeTrail migration). */
+const WIDEN: Array<[string, string, string]> = [
+  ['chats', 'cycleOrderParticipantIds', "TEXT DEFAULT '[]'"],
+  ['chat_messages', 'routeTrail', 'TEXT DEFAULT NULL'],
+];
+
+/** Raw SQL on the case's copy, through its own cipher-keyed connection. */
+function rawExec(spec: Spec, path: string, sqls: string[]): void {
+  const Driver = jest.requireActual(
+    join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(path);
+  db.pragma(`key = "x'${Buffer.from(spec.testPepperBase64, 'base64').toString('hex')}'"`);
+  try {
+    for (const [table, column, decl] of WIDEN) {
+      const have = db
+        .prepare(`SELECT 1 FROM pragma_table_info('${table}') WHERE name = '${column}'`)
+        .all();
+      if (have.length === 0) db.exec(`ALTER TABLE "${table}" ADD COLUMN "${column}" ${decl}`);
+    }
+    for (const sql of sqls) db.exec(sql);
+  } finally {
+    db.close();
+  }
+}
+
 interface CaseSpec {
   name: string;
   /** Replay the committed byte stream for this case (the rng cases). */
   rng?: boolean;
+  /** Raw SQL planted on the case's copy after the open (rebuild-summary). */
+  plant?: string[];
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
 }
 
@@ -249,6 +297,7 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  rawExec(spec, mainWork, c.plant ?? []);
 
   // A TICKING frozen clock: each argless `new Date()` / `Date.now()` advances
   // 1 ms from `frozenNowMs`. A hard freeze would give every message written in
@@ -277,6 +326,8 @@ async function runCase(
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      // Emitted so the Rust side can assert it planted the SAME statements.
+      ...(c.plant !== undefined ? { plant: c.plant } : {}),
     };
   } finally {
     global.Date = RealDate;
@@ -896,6 +947,37 @@ async function main(): Promise<void> {
       name: 'merge_chat_missing',
       run: async () =>
         respond(await post(MISSING_ID, 'merge-conversation', { sourceChatId: SOURCE_CHAT })),
+    },
+    // ── ?action=rebuild-summary (P4.D212) ───────────────────────────────────
+    // CHAT's first CHARACTER seat carries no profile → the user's first
+    // profile. `lastFullRebuildTurn` is seeded NON-ZERO so "left alone" shows.
+    {
+      name: 'rebuild_summary',
+      plant: [REBUILD_SEED],
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rebuild-summary', {}));
+        return { status, body, tables: await jobTables() };
+      },
+    },
+    {
+      name: 'rebuild_summary_chat_missing',
+      run: async () => respond(await post(MISSING_ID, 'rebuild-summary', {})),
+    },
+    {
+      name: 'rebuild_summary_running_room',
+      plant: [REBUILD_SEED, `UPDATE "chats" SET "chatType" = 'autonomous', "runState" = 'running' WHERE "id" = '${CHAT}'`],
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rebuild-summary', {}));
+        return { status, body, tables: await jobTables() };
+      },
+    },
+    {
+      name: 'rebuild_summary_no_profiles',
+      plant: [REBUILD_SEED, `DELETE FROM "connection_profiles"`],
+      run: async () => {
+        const { status, body } = await respond(await post(CHAT, 'rebuild-summary', {}));
+        return { status, body, tables: await jobTables() };
+      },
     },
   ];
 

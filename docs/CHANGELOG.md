@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(chats): the rebuild-summary verb (v4 `e7821606f`, P4.D212)
+
+_Versions: core 0.0.994, harness 0.0.892, web 0.0.171._
+
+Adds `Request::ChatRebuildSummary { chat_id }` and
+`services::chat_admin::chat_rebuild_summary`, the port of v4's
+`POST /api/v1/chats/[id]?action=rebuild-summary`. It is dispatch-only,
+following the regenerate-title precedent: no REST arm, and the REST edge's
+pointer sentence is unchanged. It answers through the existing
+`Response::ChatAdmin`, so there is no new response variant and no REST
+unwrapper change.
+
+Refusals come in v4's order: 404 `Chat not found`, then 409 `Pause the room
+before rebuilding its summary.` for a running autonomous room (a paused room
+passes), then 400 `No connection profiles available`. There is no cheap-LLM
+settings check; regenerate-title has one, rebuild-summary does not.
+
+On success it makes one update that clears `contextSummary`,
+`summaryAnchorMessageIds` and `lastSummaryTurn`. `lastFullRebuildTurn` is
+deliberately left alone. It then enqueues one `CONTEXT_SUMMARY` job at v4's
+`enqueueJob` defaults (priority 0, maxAttempts 3, `forceRegenerate:
+false`), publishes the `chats` topic, logs the info line, and returns
+`{success, jobId}`. Any later failure logs the error line and returns a 500
+`Failed to rebuild the summary`. When the update fails, nothing is enqueued
+and nothing is published.
+
+The profile precedence is shared with regenerate-title through one helper.
+
+Tests: a new `chat_rebuild_summary_equivalence` (17 cases) against v4's real
+route; four rebuild rows in `chat_admin_routes_equivalence`, whose per-case
+copies are now widened with v4's own `addColumnIfMissing` statements (the
+committed `chat-admin-*` pair lacks `cycleOrderParticipantIds` and
+`routeTrail`, and the family was red on `main`); a new dispatch wire test
+(the 200 body's key order, the side effects, 409, 400, 404, and a wrong-type
+`chatId`); three core unit tests (the info and error lines with their
+silence legs, the publish, and a poisoned-update arm); and the census
+recounted from 445 to 446.
+
 #### 2026-09-22 — fix(summary): name the speakers in the fold transcript (bug 161, P4.D212)
 
 _Versions: core 0.0.993, harness 0.0.891._

@@ -24,6 +24,24 @@
 //! in-band instead: each side computes `sameJobId` from its OWN two calls, and
 //! that boolean is compared.
 //!
+//! ## The per-copy WIDEN (P4.D212)
+//!
+//! The committed `chat-admin-*` pair predates v4's `cycleOrderParticipantIds`
+//! (chats) and `routeTrail` (chat_messages) columns. On the unwidened pair v4
+//! answers 500 on every chat/message write and v5's own chat read fails with
+//! `no such column: cycleOrderParticipantIds` (measured at `a2db63da7` — the
+//! family panicked on its first dump). Both sides therefore widen each per-case
+//! COPY through v4's own `addColumnIfMissing` statements ([`WIDEN`]), guarded
+//! on `pragma_table_info`; the committed pair itself is untouched (§R.12).
+//!
+//! ## rebuild-summary (P4.D212)
+//!
+//! Dispatch-only on v5, so the v5 side calls
+//! `chat_admin::chat_rebuild_summary` directly. Its four REST-side answers are
+//! pinned here (200 / 404 / 409 / 400, each with the chat + job dump); the full
+//! corpus is `chat_rebuild_summary_equivalence`. The planted SQL is asserted
+//! equal to the statements the oracle emitted for the row.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-chat-admin.ndjson npx jest -- chat-admin-routes
 //! Run:
@@ -63,6 +81,24 @@ const SOURCE_CHAT: &str = "c1000000-0000-4000-8000-000000000002";
 const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
 /// The fixture's seed timestamp — what an untouched `updatedAt` still reads.
 const SEED_ISO: &str = "2026-05-01T00:00:00.000Z";
+
+/// v4's own `addColumnIfMissing` statements for the columns the committed pair
+/// lacks — byte-identical to the oracle's `WIDEN`.
+const WIDEN: &[(&str, &str, &str)] = &[
+    ("chats", "cycleOrderParticipantIds", "TEXT DEFAULT '[]'"),
+    ("chat_messages", "routeTrail", "TEXT DEFAULT NULL"),
+];
+
+/// A running summary for rebuild-summary to clear — byte-identical to the
+/// oracle's `REBUILD_SEED` (asserted against the emitted `plant`).
+const REBUILD_SEED: &str = "UPDATE \"chats\" SET \"contextSummary\" = 'Aria and the lamplighter argued over the ledger.', \
+     \"summaryAnchorMessageIds\" = '[\"d1000000-0000-4000-8000-000000000001\"]', \
+     \"lastSummaryTurn\" = 42, \"lastFullRebuildTurn\" = 60 WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'";
+
+/// Cases whose chat row carries ONLY a minted `updatedAt` (no message was
+/// written, so `lastMessageAt` stands): v4's must be at-or-after the frozen
+/// instant and v5's the injected `now_iso`, asserted, then blanked.
+const UPDATED_AT_MINTED_CASES: &[&str] = &["rebuild_summary"];
 
 /// Cases where v4 answers 201 and the dispatch boundary answers 200.
 const V4_CREATED_CASES: &[&str] = &["add_tag_new", "add_tag_already_present"];
@@ -165,6 +201,12 @@ fn env_or_skip(key: &str) -> Option<String> {
 }
 
 fn fresh_db(spec: &Spec, tag: &str) -> Db {
+    fresh_db_planted(spec, tag, &[])
+}
+
+/// [`fresh_db`] plus raw SQL planted on the copy after the open (after the
+/// [`WIDEN`], which every case gets).
+fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> Db {
     let scratch = std::env::temp_dir().join(format!("qt-ca-{}-{}", tag, std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).unwrap();
@@ -172,7 +214,7 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
     let mount = scratch.join("mount.db");
     std::fs::copy(fixtures_dir().join("chat-admin-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("chat-admin-mount.db"), &mount).unwrap();
-    Db::open(
+    let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
@@ -180,7 +222,35 @@ fn fresh_db(spec: &Spec, tag: &str) -> Db {
         },
         &spec.test_pepper_base64,
     )
-    .expect("open db")
+    .expect("open db");
+    let plant: Vec<String> = plant.iter().map(|s| s.to_string()).collect();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    rt.block_on(db.write(move |w| {
+        let c = w.main().connection();
+        for (table, column, decl) in WIDEN {
+            let have: i64 = c.query_row(
+                &format!(
+                    "SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'"
+                ),
+                [],
+                |r| r.get(0),
+            )?;
+            if have == 0 {
+                c.execute_batch(&format!(
+                    "ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {decl}"
+                ))?;
+            }
+        }
+        for sql in &plant {
+            c.execute_batch(sql)?;
+        }
+        Ok(())
+    }))
+    .expect("widen + plant");
+    db
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +545,7 @@ fn chat_admin_routes_match_oracle() {
         .build()
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
+    let mut failed_plant: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
     let mut check = |name: &str, resp: &Response, tables: Option<Value>| {
@@ -550,6 +621,32 @@ fn chat_admin_routes_match_oracle() {
             let mut want_tables = want["tables"].clone();
             // Wall-clock-minted chat timestamps: prove BOTH sides wrote, then
             // drop the two keys (see CLOCK_MINTED_CASES).
+            if UPDATED_AT_MINTED_CASES.contains(&name) {
+                for (is_v4, tbl) in [(true, &mut want_tables), (false, &mut got_tables)] {
+                    let chat = tbl.get_mut("chat").and_then(Value::as_object_mut);
+                    let got = chat
+                        .as_ref()
+                        .and_then(|c| c.get("updatedAt"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    let ok = if is_v4 {
+                        got.as_str() >= FROZEN_NOW_ISO
+                    } else {
+                        got == FROZEN_NOW_ISO
+                    };
+                    if !ok {
+                        eprintln!(
+                            "[{name}] {} updatedAt = {got:?} — not the minted write",
+                            if is_v4 { "v4" } else { "v5" }
+                        );
+                        failed.push(format!("{name}_updatedAt"));
+                    }
+                    if let Some(c) = chat {
+                        c.insert("updatedAt".into(), Value::String("<minted>".into()));
+                    }
+                }
+            }
             if CLOCK_MINTED_CASES.contains(&name) {
                 for (is_v4, tbl) in [(true, &mut want_tables), (false, &mut got_tables)] {
                     match tbl.get_mut("chat").and_then(Value::as_object_mut) {
@@ -1045,6 +1142,59 @@ fn chat_admin_routes_match_oracle() {
         check(name, &r, tables);
     }
 
+    // ── ?action=rebuild-summary (P4.D212) ───────────────────────────────────
+    // Dispatch-only on v5: the service is called directly.
+    let running_room =
+        "UPDATE \"chats\" SET \"chatType\" = 'autonomous', \"runState\" = 'running' \
+                        WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'";
+    let no_profiles = "DELETE FROM \"connection_profiles\"";
+    for (name, chat, plant, dump) in [
+        ("rebuild_summary", CHAT, vec![REBUILD_SEED], true),
+        ("rebuild_summary_chat_missing", MISSING_ID, vec![], false),
+        (
+            "rebuild_summary_running_room",
+            CHAT,
+            vec![REBUILD_SEED, running_room],
+            true,
+        ),
+        (
+            "rebuild_summary_no_profiles",
+            CHAT,
+            vec![REBUILD_SEED, no_profiles],
+            true,
+        ),
+    ] {
+        // The planted statements must be the oracle's own, byte for byte.
+        let emitted: Vec<String> = oracle
+            .get(name)
+            .and_then(|w| w.get("plant"))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if emitted != plant.iter().map(|s| s.to_string()).collect::<Vec<_>>() {
+            eprintln!("[{name}] PLANT DRIFT: oracle {emitted:?} vs {plant:?}");
+            failed_plant.push(format!("{name}_plant"));
+        }
+        let db = fresh_db_planted(&spec, name, &plant);
+        let r = rt.block_on(chat_admin::chat_rebuild_summary(
+            &db,
+            &spec.user_id,
+            chat,
+            FROZEN_NOW_ISO,
+        ));
+        let tables = dump.then(|| {
+            json!({
+                "chat": dump_chat(&db, CHAT),
+                "jobs": dump_jobs(&db, &spec.user_id),
+            })
+        });
+        check(name, &r, tables);
+    }
+
     // Shape, not a hand-written count: the two case sets must agree exactly.
     let expected: BTreeSet<String> = oracle.keys().cloned().collect();
     let missing: Vec<&String> = expected.difference(&driven).collect();
@@ -1054,6 +1204,10 @@ fn chat_admin_routes_match_oracle() {
         "case-set drift — oracle-only: {missing:?}; driven-only: {extra:?}"
     );
     assert!(failed.is_empty(), "chat-admin route mismatches: {failed:?}");
+    assert!(
+        failed_plant.is_empty(),
+        "planted SQL drifted from the oracle's: {failed_plant:?}"
+    );
 }
 
 /// The `jobId` a chat-admin body carries, if any.

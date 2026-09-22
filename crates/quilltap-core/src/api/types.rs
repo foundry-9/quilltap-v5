@@ -3968,6 +3968,17 @@ pub enum Request {
         use_manifest: Option<Option<serde_json::Value>>,
     },
     // === end P4.D210 ===
+
+    // === P4.D212 ===
+    /// Discard the chat's running context summary and let the fold cadence
+    /// rebuild it from turn 1 (v4 `POST …?action=rebuild-summary`, `e7821606f`).
+    /// Dispatch-only — the regenerate-title precedent; answers through
+    /// `Response::ChatAdmin` (`{ success: true, jobId }`).
+    #[serde(rename_all = "camelCase")]
+    ChatRebuildSummary {
+        chat_id: String,
+    },
+    // === end P4.D212 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

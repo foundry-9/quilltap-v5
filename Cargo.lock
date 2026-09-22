@@ -3949,7 +3949,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.993"
+version = "0.0.994"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3994,7 +3994,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-harness"
-version = "0.0.891"
+version = "0.0.892"
 dependencies = [
  "base64 0.22.1",
  "flate2",
@@ -4064,7 +4064,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.170"
+version = "0.0.171"
 dependencies = [
  "axum",
  "base64 0.22.1",

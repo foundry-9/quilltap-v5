@@ -2585,7 +2585,13 @@ fn is_route_identifier(field: &str) -> bool {
 // 0 (P4.D207 — `MessageSwipe.stream` is a flag on an EXISTING verb, no new
 // `*_id`) = 445.** Each lane carried its own arithmetic on its own branch; the
 // unifier recounted rather than taking any lane's number.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 445;
+//
+// **P4.D212 (+1): 445 → 446** — `Request::ChatRebuildSummary.chat_id`, the ONE
+// typed field the new verb carries. It is v4's `[id]` path segment on `POST
+// /api/v1/chats/[id]?action=rebuild-summary`, so the route-identifier rule
+// drops it and the excluded count rises by exactly one. The verb has no body.
+// Measured by running the test (red at 446 against 445 first), not predicted.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 446;
 
 #[test]
 fn census_covers_every_typed_request_field() {
