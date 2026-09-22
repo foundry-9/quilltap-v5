@@ -1,0 +1,125 @@
+{
+  "$comment": [
+    "The committed `chat-compressed-{main,mount,llmlogs}.db` triple (P4.D203).",
+    "Built at the TARGET pin f45a517a9 through v4's REAL repositories, so every",
+    "cell of 512 bytes or more is a brotli BLOB v4's own documentToRow wrote.",
+    "Its purpose is the drift ledger's failure (b) \u2014 'Create Backup succeeds with",
+    "non-zero llm_logs' \u2014 which no other family can prove: every one that could",
+    "reads a committed fixture the round's \u00a7R.12 forbids rebuilding.",
+    "Sizes are deliberate: each registered column has a row ABOVE the floor and,",
+    "where the column is repeated, one BELOW it, so the same column holds a MIX."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-0000-4000-8000-0000000000a1",
+  "characterId": "cccccccc-0000-4000-8000-0000000000c1",
+  "chatId": "aaaaaaa1-0000-4000-8000-0000000000a1",
+  "participantId": "fbfbfbfb-0000-4000-8000-0000000000c1",
+  "chunkId": "cc000001-0000-4000-8000-0000000000c1",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "chunkContent": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a c",
+  "messages": [
+    {
+      "type": "message",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "role": "USER",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cr",
+      "createdAt": "2026-03-01T00:00:01.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000000-0000-4000-8000-000000000002",
+      "role": "ASSISTANT",
+      "participantId": "fbfbfbfb-0000-4000-8000-0000000000c1",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled i",
+      "opaqueContent": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled ",
+      "createdAt": "2026-03-01T00:00:02.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000000-0000-4000-8000-000000000003",
+      "role": "USER",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she r",
+      "createdAt": "2026-03-01T00:00:03.000Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000000-0000-4000-8000-000000000004",
+      "role": "USER",
+      "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she re",
+      "createdAt": "2026-03-01T00:00:04.000Z"
+    },
+    {
+      "type": "context-summary",
+      "id": "e1000000-0000-4000-8000-000000000005",
+      "context": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a ",
+      "createdAt": "2026-03-01T00:00:05.000Z"
+    },
+    {
+      "type": "system",
+      "id": "e1000000-0000-4000-8000-000000000006",
+      "systemEventType": "MEMORY_EXTRACTION",
+      "description": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed ",
+      "createdAt": "2026-03-01T00:00:06.000Z"
+    }
+  ],
+  "logs": [
+    {
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "type": "CHAT_MESSAGE",
+      "messageId": null,
+      "chatId": "aaaaaaa1-0000-4000-8000-0000000000a1",
+      "characterId": "cccccccc-0000-4000-8000-0000000000c1",
+      "autonomousRunId": null,
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          {
+            "role": "system",
+            "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, ",
+            "contentLength": 1300,
+            "hasAttachments": false
+          }
+        ],
+        "temperature": 0.7,
+        "maxTokens": 1024,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, a",
+        "contentLength": 1700,
+        "finishReason": "end_turn"
+      }
+    },
+    {
+      "id": "d1000000-0000-4000-8000-000000000002",
+      "type": "CHAT_MESSAGE",
+      "messageId": null,
+      "chatId": "aaaaaaa1-0000-4000-8000-0000000000a1",
+      "characterId": "cccccccc-0000-4000-8000-0000000000c1",
+      "autonomousRunId": null,
+      "provider": "ANTHROPIC",
+      "modelName": "claude-opus-4-8",
+      "request": {
+        "messageCount": 1,
+        "messages": [
+          {
+            "role": "system",
+            "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled",
+            "contentLength": 700,
+            "hasAttachments": false
+          }
+        ],
+        "temperature": 0.7,
+        "maxTokens": 1024,
+        "toolCount": 0
+      },
+      "response": {
+        "content": "The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing a coin of light across the ledger, and she read the entry twice. The Lantern hissed once and settled into its brass cradle, throwing ",
+        "contentLength": 600,
+        "finishReason": "end_turn"
+      }
+    }
+  ]
+}

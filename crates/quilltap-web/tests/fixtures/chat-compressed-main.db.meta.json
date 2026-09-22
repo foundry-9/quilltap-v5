@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "Sidecar for the chat-compressed-{main,mount,llmlogs}.db triple (P4.D203).",
+    "Built at the TARGET pin f45a517a9 by",
+    "harness/oracle/fixtures/build-chat-compressed-fixture.ts from",
+    "harness/oracle/fixtures/chat-compressed.json \u2014 see the builder's header for",
+    "the exact invocation. Do NOT rebuild at another pin: the cells would",
+    "re-encode (drift-ledger \u00a75.1 / this round's \u00a7R.12).",
+    "KNOWN GAP, recorded not healed: the `chats` table is born without",
+    "`transcriptVersion`, so the builder logs 'Failed to bump transcript",
+    "version'. `ensureCollection` does not ALTER an existing table and",
+    "initializeDatabase creates this one first. No reader in",
+    "compressed_collect_equivalence touches the column; the ten-family",
+    "fixture-vintage heal is DEFERRED BY NAME to the round after this one",
+    "(\u00a7R.12), and this pair joins that order's list."
+  ],
+  "userId": "e18e05bc-0000-4000-8000-0000000000a1",
+  "chatId": "aaaaaaa1-0000-4000-8000-0000000000a1",
+  "participantId": "fbfbfbfb-0000-4000-8000-0000000000c1",
+  "characterId": "cccccccc-0000-4000-8000-0000000000c1",
+  "chunkId": "cc000001-0000-4000-8000-0000000000c1",
+  "messageIds": [
+    "e1000000-0000-4000-8000-000000000001",
+    "e1000000-0000-4000-8000-000000000002",
+    "e1000000-0000-4000-8000-000000000003",
+    "e1000000-0000-4000-8000-000000000004",
+    "e1000000-0000-4000-8000-000000000005",
+    "e1000000-0000-4000-8000-000000000006"
+  ],
+  "logIds": [
+    "d1000000-0000-4000-8000-000000000001",
+    "d1000000-0000-4000-8000-000000000002"
+  ],
+  "compressedCells": {
+    "chat_messages.content": "2048 B, 1500 B, 512 B (compressed); 511 B (plain TEXT)",
+    "chat_messages.opaqueContent": "1100 B (compressed)",
+    "chat_messages.context": "1400 B (compressed)",
+    "chat_messages.description": "950 B (compressed)",
+    "conversation_chunks.content": "1800 B (compressed)",
+    "llm_logs.request": "both rows over the floor (compressed)",
+    "llm_logs.response": "both rows over the floor (compressed)"
+  }
+}

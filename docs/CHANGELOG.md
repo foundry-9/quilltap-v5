@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(harness): the silent zero-`llm_logs` backup, reproduced and closed on a new committed compressed instance (P4.D203)
+
+_Versions: harness 0.0.862._
+
+The drift ledger's third and worst failure: on a v4-4.10 instance
+`services/backup/collect.rs`'s `F::Json` bind on `llm_logs.{request,response}`
+raised `InvalidColumnType`, and `backup/mod.rs`'s `.unwrap_or_default()`
+swallowed it — so **a backup SILENTLY contained ZERO `llm_logs` rows.** No
+error, no warning, no failed step: the operator got an archive with a partition
+quietly missing. (The `chat_messages` arm of the same collector failed LOUDLY
+instead, its `?` propagating — which is the only reason the two are worth
+distinguishing.)
+
+Every existing backup family reads a committed fixture the round's §R.12 forbids
+rebuilding at the target pin, so this lands on the ONE new committed triple §R.12
+authorizes this lane: `chat-compressed-{main,mount,llmlogs}.db`, baked at
+`f45a517a9` through v4's REAL repositories, with all four registered
+`chat_messages` columns on both sides of the floor, a 1.8 KB
+`conversation_chunks` row, and two `llm_logs` rows whose serialized request and
+response both clear it — written by the builder rather than the oracle because
+jest's setup mocks the logging service, so a jest oracle writes zero log rows.
+
+The oracle is v4's own call: `collectUserData` is module-private, but the call it
+makes for that partition is `repos.llmLogs.findAll(10000)`, and the case drives
+that exact REAL method plus `repos.chats.getMessages` and
+`repos.conversationChunks.findByChatId`.
+
+Red-first with `F::JsonZ` reverted to `F::Json`: `llm_logs row COUNT diverged,
+left: 0, right: 2` — the ledger's silent backup, reproduced to the row. The
+chunk bind's revert reddens too, loudly.
+
+The sidecars record a known gap rather than papering over it: the `chats` table
+is born without `transcriptVersion`, because `ensureCollection` does not ALTER an
+existing table and `initializeDatabase` creates that one first. No reader in the
+new family touches the column, and this pair joins the fixture-vintage heal the
+round defers by name.
+
 #### 2026-09-21 — test(harness): four read families grown red-first over compressed cells, and the boot heal's codec proved both ways (P4.D203)
 
 _Versions: harness 0.0.861._
