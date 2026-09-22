@@ -811,7 +811,16 @@ mod tests {
     }
 
     fn preserver() -> PreservePartialOnError {
-        PreservePartialOnError::new("chat-1", "char-1", "Friday", vec![], "pp-1", None, "pre-1")
+        PreservePartialOnError::new(
+            "chat-1",
+            "char-1",
+            "Friday",
+            vec![],
+            "pp-1",
+            None,
+            "pre-1",
+            vec![],
+        )
     }
 
     fn state_with(full: &str) -> StreamingState {

@@ -88,6 +88,9 @@ mod tests {
             "character",
             "chat",
             "chat_message",
+            // === P4.D205 (v4 `e7d77bb60`) ===
+            "chat_inform",
+            // === end P4.D205 ===
             "memory",
             "roleplay_template",
             "tag",

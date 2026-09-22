@@ -48,6 +48,9 @@ pub fn preview_restore(zip_path: &Path, temp_root: &Path) -> Result<RestoreSumma
         // Counted after zip extraction; not shown in preview (v4 `:55`).
         user_installed_themes: 0,
         chat_documents: d.chat_documents.len(),
+        // === P4.D205 (v4 `e7d77bb60`, `restore/preview.ts:57`) ===
+        chat_informs: d.chat_informs.len(),
+        // === end P4.D205 ===
         instance_settings: d.instance_settings.len(),
         embedding_status: d.embedding_status.len(),
         conversation_chunks: d.conversation_chunks.len(),

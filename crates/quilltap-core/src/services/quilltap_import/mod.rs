@@ -33,7 +33,10 @@ mod memories;
 pub mod ndjson;
 pub mod preview;
 mod profiles;
-mod reconcile;
+// P4.D205: `pub` so `chat_informs_remap_equivalence` can drive
+// `remap_chat_inform` directly — the function is a pure decision over explicit
+// inputs, and driving it through the whole importer would hide which rule fired.
+pub mod reconcile;
 pub mod reset;
 pub mod seed;
 pub mod seed_assets;
@@ -145,6 +148,12 @@ pub struct ImportCounts {
     pub conversation_annotations: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_documents: Option<u32>,
+    // === P4.D205 (v4 `e7d77bb60`) ===
+    // Placed after `chatDocuments` because that is v4's own key order in
+    // `export/types.ts:104-115` (`chatDocuments` then `chatInforms`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_informs: Option<u32>,
+    // === end P4.D205 ===
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document_stores: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1476,6 +1485,123 @@ fn import_body(
         }
         imported.chat_documents = Some(chat_docs_imported);
     }
+
+    // === P4.D205 (v4 `e7d77bb60`, `execute.ts:703-790`, step "7b-ii") ===
+    // 7b-ii. Inform rows (`chat_informs`), consumed ones included — a consumed
+    //    row is what lets a swipe of the turn that consumed it re-apply the same
+    //    passage in this instance.
+    //
+    //    Must follow both the chat AND its messages: the row points at a chat
+    //    participant, at the Host record message documenting the post, and (when
+    //    consumed) at the assistant message that carried it. Every one of those
+    //    is verified before a row is written — `remap_chat_inform` owns that
+    //    judgement; here we only gather the sets it checks against.
+    if let Some(items) = non_empty_array(data, "chatInforms") {
+        // Per destination chat: the seats and the message ids it actually has.
+        let mut known_by_chat: std::collections::HashMap<
+            String,
+            (
+                std::collections::HashSet<String>,
+                std::collections::HashSet<String>,
+            ),
+        > = std::collections::HashMap::new();
+
+        let mut informs_imported = 0u32;
+        let mut informs_dropped = 0u32;
+        for inform in items {
+            let source_chat_id = inform
+                .get("chatId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let remapped_chat_id = id_maps
+                .chats
+                .get(source_chat_id)
+                .unwrap_or(source_chat_id)
+                .to_string();
+
+            let known = known_by_chat
+                .entry(remapped_chat_id.clone())
+                .or_insert_with(|| {
+                    let mut participants = std::collections::HashSet::new();
+                    let mut messages = std::collections::HashSet::new();
+                    match crate::db::chats_read::find_by_id(main, &remapped_chat_id) {
+                        Ok(Some(chat)) => {
+                            if let Some(ps) = chat.get("participants").and_then(Value::as_array) {
+                                for p in ps {
+                                    if let Some(pid) = p.get("id").and_then(Value::as_str) {
+                                        participants.insert(pid.to_string());
+                                    }
+                                }
+                            }
+                        }
+                        // v4 wraps the whole read in a try/catch → warn, and
+                        // carries on with the EMPTY sets (so every row drops).
+                        Ok(None) => {}
+                        Err(e) => tracing::warn!(
+                            chat_id = %remapped_chat_id,
+                            error = %e,
+                            "Failed to read chat while importing informs",
+                        ),
+                    }
+                    if let Ok(events) =
+                        crate::db::chats_messages_read::get_messages(main, &remapped_chat_id)
+                    {
+                        for ev in events {
+                            if let Some(mid) = ev.get("id").and_then(Value::as_str) {
+                                messages.insert(mid.to_string());
+                            }
+                        }
+                    }
+                    (participants, messages)
+                });
+
+            let inform_id = inform.get("id").and_then(Value::as_str).unwrap_or("");
+            match reconcile::remap_chat_inform(inform, &remapped_chat_id, &known.0, &known.1) {
+                reconcile::ChatInformRemap::Dropped { reason } => {
+                    informs_dropped += 1;
+                    warnings.push(format!("Dropped an imported inform: {reason}"));
+                    tracing::warn!(
+                        inform_id,
+                        chat_id = %remapped_chat_id,
+                        reason = %reason,
+                        "Dropped imported inform with an unresolvable reference",
+                    );
+                }
+                reconcile::ChatInformRemap::Ok {
+                    data,
+                    consumed_by_message_id_cleared,
+                } => {
+                    if consumed_by_message_id_cleared {
+                        let consumed_by_message_id = inform
+                            .get("consumedByMessageId")
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        tracing::warn!(
+                            inform_id,
+                            chat_id = %remapped_chat_id,
+                            consumed_by_message_id,
+                            "Imported inform lost its consumedByMessageId",
+                        );
+                    }
+                    match crate::db::chat_informs::ChatInformsRepository::new(main).create(&data) {
+                        Ok(()) => informs_imported += 1,
+                        Err(e) => {
+                            informs_dropped += 1;
+                            warnings.push(format!("Failed to import inform: {e}"));
+                        }
+                    }
+                }
+            }
+        }
+        imported.chat_informs = Some(informs_imported);
+        tracing::debug!(
+            total = items.len(),
+            imported = informs_imported,
+            dropped = informs_dropped,
+            "Imported chat informs",
+        );
+    }
+    // === end P4.D205 ===
 
     // 7c. Document stores (Scriptorium) — mount point configs plus, for
     //    database-backed mounts, folder structures, document bodies and blobs.

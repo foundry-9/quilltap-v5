@@ -26,7 +26,9 @@ use serde_json::{json, Value};
 ///
 /// ⚠ `generators::qtap_schema`'s own `the_embedded_schema_compiles` carries a
 /// SECOND copy of this number. A re-vendor moves both.
-const VENDORED_BYTES: usize = 93_384;
+/// P4.D205: 95,266 at v4 `e7d77bb60` — the Inform re-vendor (`$defs.ChatInform`,
+/// `chats.chatInforms`, `counts.chatInforms`). 93,384 at `31436bae4`.
+const VENDORED_BYTES: usize = 95_266;
 
 fn v4_root() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("QT_V4_ROOT") {

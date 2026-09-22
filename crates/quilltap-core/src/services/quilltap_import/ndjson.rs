@@ -194,6 +194,9 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
     let mut project_links: Vec<Value> = Vec::new();
     let mut conversation_annotations: Vec<Value> = Vec::new();
     let mut chat_documents: Vec<Value> = Vec::new();
+    // === P4.D205 (v4 `e7d77bb60`, `quilltap-import-stream.ts:150,316,587`) ===
+    let mut chat_informs: Vec<Value> = Vec::new();
+    // === end P4.D205 ===
 
     // The `7189a968` additions. General-library folders are a DISTINCT typed
     // field from the doc-store `folders` above (v4's own hazard note endorses
@@ -352,6 +355,9 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             }
             "conversation_annotation" => conversation_annotations.push(data()),
             "chat_document" => chat_documents.push(data()),
+            // === P4.D205 ===
+            "chat_inform" => chat_informs.push(data()),
+            // === end P4.D205 ===
             "doc_mount_point" => mount_points.push(data()),
             "doc_mount_folder" => folders.push(data()),
             "doc_mount_document" => documents.push(data()),
@@ -725,6 +731,7 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             project_links,
             conversation_annotations,
             chat_documents,
+            chat_informs,
             file_folders,
             files: files.into_iter().map(|(_, f)| Value::Object(f)).collect(),
             prompt_templates,
@@ -760,6 +767,7 @@ struct Collected {
     project_links: Vec<Value>,
     conversation_annotations: Vec<Value>,
     chat_documents: Vec<Value>,
+    chat_informs: Vec<Value>,
     /// General file-library folders — a DISTINCT typed field from the
     /// doc-store `folders` (v4's `fileFolders`; see the assembler note).
     file_folders: Vec<Value>,
@@ -814,6 +822,9 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
                     "conversationAnnotations".into(),
                     Value::Array(c.conversation_annotations),
                 );
+            }
+            if !c.chat_informs.is_empty() {
+                d.insert("chatInforms".into(), Value::Array(c.chat_informs));
             }
             if !c.chat_documents.is_empty() {
                 d.insert("chatDocuments".into(), Value::Array(c.chat_documents));

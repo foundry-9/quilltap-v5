@@ -272,6 +272,30 @@ pub fn remap_backup_data(
         r.remap_fields(d, &["id", "chatId"])
     });
 
+    // === P4.D205 (v4 `e7d77bb60`, `uuid-remap.ts:345-362`) ===
+    // An Inform row references the chat, one of its participants
+    // (`participantId` is a SEAT id, never a character id), the Host record
+    // message and — once consumed — the assistant message that carried it. All
+    // four were remapped with the chat above, so the remapper answers with the
+    // same new ids. `batchId` is not a row anywhere; it is remapped anyway so
+    // the whole batch moves together and **no id from the source instance
+    // survives the restore**. The nullable fields are left alone when absent —
+    // `remap_fields` only touches strings.
+    let chat_informs = each(&data.chat_informs, |i| {
+        r.remap_fields(
+            i,
+            &[
+                "id",
+                "chatId",
+                "batchId",
+                "participantId",
+                "recordMessageId",
+                "consumedByMessageId",
+            ],
+        )
+    });
+    // === end P4.D205 ===
+
     // Conversation chunks reference chats and individual messages.
     let conversation_chunks = each(&data.conversation_chunks, |c| {
         chain(r, c, &["id", "chatId"], &["messageIds"])
@@ -384,6 +408,9 @@ pub fn remap_backup_data(
         character_plugin_data,
         conversation_annotations,
         chat_documents,
+        // === P4.D205 ===
+        chat_informs,
+        // === end P4.D205 ===
         instance_settings,
         embedding_status,
         conversation_chunks,

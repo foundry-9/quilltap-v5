@@ -173,6 +173,11 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
     let conversation_annotations = opt("data/conversation-annotations.json")?;
 
     let chat_documents = opt("data/chat-documents.json")?;
+    // === P4.D205 (v4 `e7d77bb60`, `restore/archive.ts:250-251`) ===
+    // Inform rows (4.10) — read OPTIONALLY, so a pre-4.10 archive simply has
+    // none and restores exactly as it did before the feature existed.
+    let chat_informs = opt("data/chat-informs.json")?;
+    // === end P4.D205 ===
     let instance_settings = opt("data/instance-settings.json")?;
     let embedding_status = opt("data/embedding-status.json")?;
     let conversation_chunks = opt("data/conversation-chunks.json")?;
@@ -193,6 +198,9 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
 
     Ok((
         BackupData {
+            // === P4.D205 ===
+            chat_informs,
+            // === end P4.D205 ===
             characters,
             chats,
             tags,

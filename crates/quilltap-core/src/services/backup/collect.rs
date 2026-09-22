@@ -98,6 +98,9 @@ pub struct BackupData {
     pub character_plugin_data: Vec<Value>,
     pub conversation_annotations: Vec<Value>,
     pub chat_documents: Vec<Value>,
+    // === P4.D205 ===
+    pub chat_informs: Vec<Value>,
+    // === end P4.D205 ===
     pub instance_settings: Vec<Value>,
     pub embedding_status: Vec<Value>,
     pub conversation_chunks: Vec<Value>,
@@ -257,6 +260,26 @@ const CONVERSATION_ANNOTATIONS: &[(&str, F)] = &[
     ("createdAt", F::Str),
     ("updatedAt", F::Str),
 ];
+
+// === P4.D205 (v4 `e7d77bb60`, `backup-service.ts:230-236`) ===
+// The three nullable columns are `StrOpt`, which OMITS a NULL rather than
+// writing `null` — which is exactly what v4's own backup produces, because it
+// collects through `chatInforms.findByChatId` and its SQLite backend turns every
+// NULL cell into `undefined` before serialization
+// (`backends/sqlite/backend.ts:477-479`).
+const CHAT_INFORMS: &[(&str, F)] = &[
+    ("id", F::Str),
+    ("chatId", F::Str),
+    ("batchId", F::Str),
+    ("participantId", F::Str),
+    ("contentMarkdown", F::Str),
+    ("recordMessageId", F::StrOpt),
+    ("createdAt", F::Str),
+    ("updatedAt", F::Str),
+    ("consumedAt", F::StrOpt),
+    ("consumedByMessageId", F::StrOpt),
+];
+// === end P4.D205 ===
 
 const CHAT_DOCUMENTS: &[(&str, F)] = &[
     ("id", F::Str),
@@ -496,6 +519,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         // Per-chat collections, in chat order (`:219-235`).
         let mut conversation_annotations = Vec::new();
         let mut chat_documents = Vec::new();
+        // === P4.D205 OUT-OF-MANDATE — P4.D203 owns this file ===
+        let mut chat_informs = Vec::new();
+        // === end P4.D205 OUT-OF-MANDATE ===
         let mut conversation_chunks = Vec::new();
         for chat in &chats {
             let cid = chat.get("id").and_then(Value::as_str).unwrap_or_default();
@@ -513,6 +539,22 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 "chatId = ?1",
                 &[&cid],
             )?);
+            // === P4.D205 OUT-OF-MANDATE — P4.D203 owns this file ===
+            // Consumed rows come along on purpose: the row a past turn consumed
+            // is what lets a swipe of that turn re-apply the same passage once
+            // the instance is restored. The table is absent on a pre-4.10
+            // instance, so the read is gated the way every optional collection
+            // here is.
+            if table_exists(main, "chat_informs") {
+                chat_informs.extend(query_all(
+                    main,
+                    "chat_informs",
+                    CHAT_INFORMS,
+                    "chatId = ?1",
+                    &[&cid],
+                )?);
+            }
+            // === end P4.D205 OUT-OF-MANDATE ===
             conversation_chunks.extend(read_conversation_chunks(main, cid)?);
         }
 
@@ -589,6 +631,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
             character_plugin_data,
             conversation_annotations,
             chat_documents,
+            // === P4.D205 OUT-OF-MANDATE — P4.D203 owns this file ===
+            chat_informs,
+            // === end P4.D205 OUT-OF-MANDATE ===
             instance_settings: read_instance_settings(main),
             embedding_status: query_all(main, "embedding_status", EMBEDDING_STATUS, "", &[])?,
             conversation_chunks,
@@ -659,6 +704,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
     })?;
 
     Ok(BackupData {
+        // === P4.D205 OUT-OF-MANDATE — P4.D203 owns this file ===
+        chat_informs: main_side.chat_informs,
+        // === end P4.D205 OUT-OF-MANDATE ===
         characters,
         chats: main_side.chats,
         tags: main_side.tags,
@@ -718,6 +766,9 @@ struct MainSide {
     character_plugin_data: Vec<Value>,
     conversation_annotations: Vec<Value>,
     chat_documents: Vec<Value>,
+    // === P4.D205 OUT-OF-MANDATE — P4.D203 owns this file ===
+    chat_informs: Vec<Value>,
+    // === end P4.D205 OUT-OF-MANDATE ===
     instance_settings: Vec<Value>,
     embedding_status: Vec<Value>,
     conversation_chunks: Vec<Value>,

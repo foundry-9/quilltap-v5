@@ -63,6 +63,9 @@ pub struct RestoreSummary {
     pub conversation_annotations: usize,
     pub user_installed_themes: usize,
     pub chat_documents: usize,
+    // === P4.D205 (v4 `e7d77bb60`, `restore/preview.ts:57`) ===
+    pub chat_informs: usize,
+    // === end P4.D205 ===
     pub instance_settings: usize,
     pub embedding_status: usize,
     pub conversation_chunks: usize,

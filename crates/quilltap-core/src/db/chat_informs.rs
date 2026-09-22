@@ -138,9 +138,55 @@ pub struct PendingInformBatch {
     pub pending_participant_ids: Vec<String>,
 }
 
+/// Render a row the way v4's repository hands it to a serializer — **null
+/// optionals OMITTED, not rendered `null`**.
+///
+/// Measured at the target pin, and it is a whole-backend rule rather than a
+/// `chat_informs` quirk: v4's SQLite deserializer converts every NULL cell to
+/// `undefined` before Zod sees it
+/// (`lib/database/backends/sqlite/backend.ts:477-479`, "Convert null to
+/// undefined for Zod .optional() compatibility"), and `JSON.stringify` drops an
+/// `undefined` property. So the export NDJSON record and the backup JSON — both
+/// of which serialize rows straight off `findByChatId` — carry no
+/// `recordMessageId` / `consumedAt` / `consumedByMessageId` key at all when
+/// those are NULL.
+///
+/// Where v4 wants an explicit null it writes one, which is exactly why
+/// `findPendingBatches` coalesces `row.recordMessageId ?? null`.
+pub fn row_to_json(r: &ChatInformRow) -> serde_json::Value {
+    let mut m = serde_json::Map::new();
+    let mut put = |k: &str, v: serde_json::Value| {
+        m.insert(k.to_string(), v);
+    };
+    put("id", serde_json::Value::String(r.id.clone()));
+    put("chatId", serde_json::Value::String(r.chat_id.clone()));
+    put("batchId", serde_json::Value::String(r.batch_id.clone()));
+    put(
+        "participantId",
+        serde_json::Value::String(r.participant_id.clone()),
+    );
+    put(
+        "contentMarkdown",
+        serde_json::Value::String(r.content_markdown.clone()),
+    );
+    if let Some(v) = &r.record_message_id {
+        put("recordMessageId", serde_json::Value::String(v.clone()));
+    }
+    put("createdAt", serde_json::Value::String(r.created_at.clone()));
+    put("updatedAt", serde_json::Value::String(r.updated_at.clone()));
+    if let Some(v) = &r.consumed_at {
+        put("consumedAt", serde_json::Value::String(v.clone()));
+    }
+    if let Some(v) = &r.consumed_by_message_id {
+        put("consumedByMessageId", serde_json::Value::String(v.clone()));
+    }
+    serde_json::Value::Object(m)
+}
+
 /// Fields for creating one row with its id and timestamps supplied by the caller
 /// — the import/restore shape (v4 `create(data, { id })`), and what
 /// [`ChatInformsRepository::create_batch`] fills in per target.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatInformCreate {
     pub id: String,
     pub chat_id: String,

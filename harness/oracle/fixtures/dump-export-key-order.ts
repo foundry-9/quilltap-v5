@@ -31,6 +31,8 @@ import { z } from 'zod';
 
 async function main(): Promise<void> {
   const types = await import('@/lib/schemas/types');
+  // P4.D205 (v4 `e7d77bb60`): the Inform row's own schema module.
+  const informTypes = await import('@/lib/schemas/chat-inform.types');
   const profiles = await import('@/lib/schemas/profile.types');
   const projectTypes = await import('@/lib/schemas/project.types');
   const groupTypes = await import('@/lib/schemas/group.types');
@@ -40,6 +42,7 @@ async function main(): Promise<void> {
     ['character', types.CharacterSchema],
     ['chat', types.ChatMetadataSchema],
     ['chat_message', types.MessageEventSchema],
+    ['chat_inform', informTypes.ChatInformSchema],
     ['memory', types.MemorySchema],
     ['roleplay_template', types.RoleplayTemplateSchema],
     ['tag', tagTypes.TagSchema],

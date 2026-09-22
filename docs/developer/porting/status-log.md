@@ -139150,3 +139150,86 @@ oracle was regenerated after each widening and re-verified green. Anyone
 rebuilding the fixture must regenerate BOTH `chat-informs-tier2.ts` and leave the
 routes oracle alone (the routes oracle is mock-driven and does not read the
 fixture at all).
+
+### Unit 6 — export / import / backup / restore + the vendored schema
+
+**Export.** `qtap_export/records.rs` emits `chat_inform` straight after the
+messages and BEFORE the annotations — v4's own placement, for v4's own reason:
+`recordMessageId` and `consumedByMessageId` point at message ids the reader has
+only just seen. A failed read WARNS and carries on (v4's try/catch); it must
+never abandon the chat mid-stream. The record's key order comes from
+`schema-key-order.json`, **regenerated through the existing
+`dump-export-key-order.ts` generator** (taught v4's `ChatInformSchema`) rather
+than transcribed — the diff added exactly one kind and moved no other.
+
+⚠ **The export record OMITS its null optionals**, because it serializes a row
+read back through v4's backend (unit 1's finding). `db::chat_informs::row_to_json`
+is the one home of that rule, and the same rule already existed independently in
+the backup marshal layer: `F::StrOpt` skips a NULL rather than writing `null`.
+Two ports of the same v4 behaviour, arrived at from opposite directions, agreeing
+— recorded because it is a useful cross-check rather than a coincidence.
+
+**Import.** The NDJSON reader accumulates `chat_informs` per chat; step 7b-ii
+runs after the chat AND its messages. `remap_chat_inform` lives in
+`quilltap_import/reconcile.rs` and takes the ALREADY-RESOLVED destination chat id
+rather than the id map — the caller needs it anyway to look up the known sets,
+and taking it as a parameter keeps the function a pure decision over explicit
+inputs, which is what lets the differential drive it directly. `reconcile` became
+`pub` for that reason.
+
+**Backup / restore.** The collector block is the §R.10(e) pre-declared spill into
+P4.D203's `collect.rs`, marked as such, and is gated on `table_exists` because a
+pre-4.10 instance has no table. `staging.rs` writes `data/chat-informs.json`;
+`archive.rs` reads it OPTIONALLY (a pre-4.10 archive restores exactly as before);
+`uuid_remap.rs` rewrites all six id fields — `batchId` included, though it is a
+row nowhere, so the whole batch moves together and **no id from the source
+instance survives**; `delete_all.rs`'s `FORMAT3_MAIN_TABLES` gains
+`chat_informs` at v4's position.
+
+**Two provenance-dependent shapes, both reproduced:**
+- **restore** preserves the row's `id` but NOT its timestamps — v4 destructures
+  `{ id, createdAt, updatedAt, ...informData }` and passes only `{ id }` as its
+  create options, so the restored row is minted fresh clocks;
+- **import** preserves neither — v4 calls `chatInforms.create(result.data)` with
+  no options at all.
+
+**The vendored schema.** 93,384 → **95,266** bytes at the target pin, and BOTH
+hard-coded copies of that number moved (`generators/qtap_schema.rs`'s
+`the_embedded_schema_compiles` and `qtap_schema_embed_guard::VENDORED_BYTES` —
+the standing `a-vendored-count-is-hard-coded-in-several-crates` trap). Verified:
+`$defs.ChatInform` carries v4's seven required keys and `additionalProperties:
+true`, and `chats.chatInforms` / `counts.chatInforms` are present. Both guards
+GREEN at the target pin (2 passed).
+
+⚠ **Correction to the order.** It says the re-vendor has "TWO export-schema byte
+homes" meaning two schema FILES (`qtap-export` at 95,266 and
+`qtap-export-ndjson` at 10,989). Measured: **v5 does not vendor the NDJSON schema
+at all** — there is no such file anywhere in the tree, and no constant carries
+10,890. The two homes are the two RUST copies of the one `qtap-export` count. No
+v5 change is owed for the NDJSON schema.
+
+**Family: NEW `chat_informs_remap_equivalence`** — 8 cases over v4's REAL
+`remapChatInform`, diffing `ok`, the drop sentence with its ids interpolated, the
+whole remapped `data`, and `consumedByMessageIdCleared`. The corpus GUARDS its
+own coverage (at least two drops and one clear, asserted), and pins that the
+SOURCE id never survives the remap. `id`/`createdAt`/`updatedAt` are not compared
+against v4 because v4's `data` type omits them outright
+(`Omit<ChatInform, 'id'|'createdAt'|'updatedAt'>`); the port's minted values are
+asserted fresh and equal instead.
+
+| # | mutation | reddened |
+|---|---|---|
+| M7 | keep an unknown `consumedByMessageId` instead of nulling it | "KEPT with the field nulled — an unknown consumedByMessageId only costs the swipe anchor" |
+
+**Regen recipe as run:**
+```bash
+cd /tmp/qt-v4-pin-p4d205-f45a517a9
+$N/npx tsx "$W/harness/oracle/cases/chat-informs-remap.ts" > /tmp/p4d205/oracle-chat-informs-remap.ndjson
+$N/node --import tsx "$W/harness/oracle/fixtures/dump-export-key-order.ts" \
+  > "$W/crates/quilltap-core/src/services/qtap_export/schema-key-order.json"
+```
+
+**The seven `#[cfg(test)]` call sites the two new required fields spilled into**
+(`primary_stream.rs` ×3, `native_tool_loop.rs`, `text_tool_loop.rs`,
+`build_context.rs` ×2) each take the empty/`None` value with a one-line note. No
+production site outside the ones named above constructs either type.

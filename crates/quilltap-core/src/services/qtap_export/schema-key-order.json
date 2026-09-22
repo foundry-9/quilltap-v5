@@ -192,6 +192,18 @@
     "pendingExternalPromptFull",
     "pendingExternalAttachments"
   ],
+  "chat_inform": [
+    "id",
+    "chatId",
+    "batchId",
+    "participantId",
+    "contentMarkdown",
+    "recordMessageId",
+    "createdAt",
+    "updatedAt",
+    "consumedAt",
+    "consumedByMessageId"
+  ],
   "memory": [
     "id",
     "characterId",

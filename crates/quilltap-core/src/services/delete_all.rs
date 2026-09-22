@@ -204,6 +204,12 @@ fn memory_ids_for_character(conn: &Connection, character_id: &str) -> Vec<String
 /// backup's rules without colliding on `(fromText, caseSensitive)`.
 const FORMAT3_MAIN_TABLES: &[&str] = &[
     "chat_documents",
+    // === P4.D205 (v4 `e7d77bb60`, `delete-service.ts:33-42`) ===
+    // Inform rows. No `userId` column (single-user), so the per-row scoped
+    // deletion never reaches them; without this a replace-mode restore would
+    // collide on the preserved primary keys, exactly as `chat_documents` does.
+    "chat_informs",
+    // === end P4.D205 ===
     "conversation_chunks",
     "tfidf_vocabularies",
     "embedding_status",

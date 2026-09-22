@@ -4394,6 +4394,7 @@ mod distill_latency_tests {
             minutes_since_last_timestamp_announcement: None,
             autonomous_context_cap: None,
             reserved_outgoing_tokens: None,
+            regeneration_of_message_ids: None,
             turn_skip: None,
             // The whole point of the branch: nothing pre-searched, so the
             // fallback distill runs.
@@ -4721,6 +4722,7 @@ mod inter_character_log_tests {
             minutes_since_last_timestamp_announcement: None,
             autonomous_context_cap: None,
             reserved_outgoing_tokens: None,
+            regeneration_of_message_ids: None,
             turn_skip: None,
             pre_searched_memories: None,
             recall_signals: None,

@@ -798,3 +798,104 @@ mod tests {
         assert_eq!(before, after, "an untouched profile must not be re-stamped");
     }
 }
+
+// === P4.D205 (v4 `e7d77bb60`, `reconcile.ts:19-101`) ===
+
+/// What one imported `chat_informs` row resolved to.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ChatInformRemap {
+    Ok {
+        data: crate::db::chat_informs::ChatInformCreate,
+        /// True when the row's `consumedByMessageId` named a message the
+        /// destination does not have and was nulled. The row is still a real
+        /// historical inform, so it is KEPT — it simply loses its swipe anchor.
+        consumed_by_message_id_cleared: bool,
+    },
+    Dropped {
+        reason: String,
+    },
+}
+
+/// Rewrite one Inform row's FKs for the destination instance (v4
+/// `remapChatInform`).
+///
+/// Three of the four references are identity maps in practice rather than
+/// lookups, and that is exactly why they have to be *checked* here:
+///
+/// - `chatId` goes through `id_maps.chats` like every other chat sidecar.
+/// - `participantId` is a chat PARTICIPANT id. Participants ride inside the chat
+///   row, so `chats.create` preserves their ids verbatim — but a chat the
+///   conflict strategy skipped, or one whose roster was edited in the
+///   destination, may not have the seat at all.
+/// - `recordMessageId` and `consumedByMessageId` are message ids, which
+///   `addMessage` also preserves verbatim — but a message import that warned and
+///   continued leaves a hole.
+///
+/// A row whose seat or whose Host record is missing is **dropped**: an inform
+/// aimed at nobody would sit pending forever, and a record pointer into empty
+/// space is a transcript lie. A missing `consumedByMessageId` only costs the row
+/// its swipe anchor, so the row is KEPT with the field nulled.
+///
+/// The returned `id` / `createdAt` / `updatedAt` are freshly minted: v4's import
+/// calls `chatInforms.create(result.data)` with NO `CreateOptions`, so the
+/// destination row gets its own id. (The RESTORE path is the opposite — it
+/// preserves `{id: inform.id}`.)
+/// `remapped_chat_id` is the DESTINATION chat id — the caller has already run
+/// `id_maps.chats` over the row's source `chatId` (it needs the result anyway,
+/// to look up the known sets). Taking it as a parameter keeps this function a
+/// pure decision over explicit inputs, which is what lets the differential drive
+/// it directly.
+pub fn remap_chat_inform(
+    inform: &serde_json::Value,
+    remapped_chat_id: &str,
+    known_participant_ids: &std::collections::HashSet<String>,
+    known_message_ids: &std::collections::HashSet<String>,
+) -> ChatInformRemap {
+    let s = |k: &str| {
+        inform
+            .get(k)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    let chat_id = remapped_chat_id.to_string();
+    let participant_id = s("participantId").unwrap_or_default();
+
+    if !known_participant_ids.contains(&participant_id) {
+        return ChatInformRemap::Dropped {
+            reason: format!("participant {participant_id} is not a seat in chat {chat_id}"),
+        };
+    }
+
+    let record_message_id = s("recordMessageId");
+    if let Some(rid) = &record_message_id {
+        if !known_message_ids.contains(rid) {
+            return ChatInformRemap::Dropped {
+                reason: format!("record message {rid} is missing from chat {chat_id}"),
+            };
+        }
+    }
+
+    let consumed_by = s("consumedByMessageId");
+    let cleared = consumed_by
+        .as_ref()
+        .is_some_and(|m| !known_message_ids.contains(m));
+
+    let now = crate::clock::now_iso();
+    ChatInformRemap::Ok {
+        data: crate::db::chat_informs::ChatInformCreate {
+            id: uuid::Uuid::new_v4().to_string(),
+            chat_id,
+            batch_id: s("batchId").unwrap_or_default(),
+            participant_id,
+            content_markdown: s("contentMarkdown").unwrap_or_default(),
+            record_message_id,
+            created_at: now.clone(),
+            updated_at: now,
+            consumed_at: s("consumedAt"),
+            consumed_by_message_id: if cleared { None } else { consumed_by },
+        },
+        consumed_by_message_id_cleared: cleared,
+    }
+}
+
+// === end P4.D205 ===

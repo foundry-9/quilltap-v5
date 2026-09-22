@@ -252,6 +252,38 @@ pub(super) fn stream_chats(
             }
         }
 
+        // === P4.D205 (v4 `e7d77bb60`, `ndjson-writer.ts:341-358`) ===
+        // Inform rows come straight after the messages — BEFORE the annotations
+        // — because `recordMessageId` and `consumedByMessageId` point at message
+        // ids the reader has only just seen. Consumed rows ride along on
+        // purpose: the row a past turn consumed is what makes a swipe of that
+        // turn honest once the chat lands in another instance.
+        //
+        // A failed read WARNS and carries on (v4's try/catch) — it must never
+        // abandon the chat mid-stream.
+        match crate::db::chat_informs::ChatInformsRepository::new(main).find_by_chat_id(id) {
+            Ok(informs) => {
+                for inform in &informs {
+                    let mut m = Map::new();
+                    m.insert("kind".into(), Value::String("chat_inform".into()));
+                    m.insert("chatId".into(), Value::String(id.clone()));
+                    m.insert(
+                        "data".into(),
+                        reorder("chat_inform", crate::db::chat_informs::row_to_json(inform)),
+                    );
+                    out.push(Value::Object(m));
+                    counts.bump("chatInforms");
+                }
+                tracing::debug!(chat_id = %id, count = informs.len(), "Exported chat informs");
+            }
+            Err(e) => tracing::warn!(
+                chat_id = %id,
+                error = %e,
+                "Failed to load chat informs for export",
+            ),
+        }
+        // === end P4.D205 ===
+
         // Annotations + chat documents AFTER the messages so importers can
         // resolve sourceMessageId / chatId against ids already seen.
         if let Ok(annotations) = conversation_annotations::find_full_json_by_chat_id(main, id) {

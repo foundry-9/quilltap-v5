@@ -168,7 +168,9 @@ mod tests {
         // and a re-vendor must move BOTH (the standing
         // `a-vendored-count-is-hard-coded-in-several-crates` trap; this one is
         // what caught the miss in this lane's own gate).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 93_384);
+        // P4.D205: 95,266 at v4 `e7d77bb60` (the `$defs.ChatInform` definition
+        // plus `chats.chatInforms` and `counts.chatInforms`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 95_266);
     }
 
     #[test]

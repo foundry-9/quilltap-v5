@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(backup): Inform rows through export, import, backup and restore, and the schema re-vendored (P4.D205)
+
+_Versions: core 0.0.972, harness 0.0.865._
+
+The rows now travel. Consumed ones ride along everywhere on purpose: the row a
+past turn consumed is what lets a swipe of that turn re-apply the same passage
+once the chat lands in another instance.
+
+Export emits `chat_inform` straight after the messages and BEFORE the
+annotations, because `recordMessageId` and `consumedByMessageId` point at message
+ids the reader has only just seen. A failed read warns and carries on rather than
+abandoning the chat mid-stream. The record's key order comes from v4's own Zod
+shape, re-dumped through the existing generator rather than transcribed.
+
+Import accumulates the rows per chat and writes them in step 7b-ii, after both
+the chat and its messages, because the row points at a seat, at the Host record
+message, and once consumed at the assistant message that carried it.
+`remap_chat_inform` owns the judgement: a missing seat or a missing record
+message DROPS the row — an inform aimed at nobody would sit pending forever, and
+a record pointer into empty space is a transcript lie — while a missing
+`consumedByMessageId` only costs the row its swipe anchor, so it is kept with the
+field nulled.
+
+Backup writes `data/chat-informs.json`; restore reads it optionally, so a
+pre-4.10 archive simply has none. The uuid remap rewrites all six id fields,
+`batchId` included even though it is a row nowhere, so the whole batch moves
+together and no id from the source instance survives. The format-3 truncation
+takes `chat_informs` for the same reason it takes `chat_documents`: no `userId`
+column, so the per-row scoped wipe never reaches it and a replace-mode restore
+would collide on the preserved primary keys.
+
+Two shapes differ by provenance and both are reproduced: the restore preserves
+the row's id but mints fresh timestamps, while the import preserves neither.
+
+The vendored export schema moves 93,384 to 95,266 bytes, and both hard-coded
+copies of that number with it. The NDJSON schema needed no change — measured, v5
+does not vendor it at all, which corrects the work order's "two export-schema
+byte homes" to two Rust copies of the one count.
+
+`chat_informs_remap_equivalence` drives v4's real `remapChatInform` over eight
+cases; the corpus guards that both drop rules and the keep-with-null rule are
+actually exercised, and it pins that the source id never survives the remap.
+
+
 #### 2026-09-21 — feat(salon): Inform — the prompt block, its consumption, the record, the three strips and the three verbs (P4.D205)
 
 _Versions: core 0.0.971, harness 0.0.864, web 0.0.159, host 0.0.141._

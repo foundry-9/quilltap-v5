@@ -1659,8 +1659,16 @@ mod tests {
             effective_api_key: "k".into(),
             ..Default::default()
         };
-        let mut preserve =
-            PreservePartialOnError::new("c1", "ch1", "Friday", Vec::new(), "pp1", None, "msg-1");
+        let mut preserve = PreservePartialOnError::new(
+            "c1",
+            "ch1",
+            "Friday",
+            Vec::new(),
+            "pp1",
+            None,
+            "msg-1",
+            vec![],
+        );
 
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
@@ -1974,6 +1982,8 @@ mod tests {
             "part-1",
             None,
             "msg-1",
+            // P4.D205: no informs on this turn.
+            Vec::new(),
         );
         let params = StreamParams {
             messages: vec![StreamMessage::user("please invoke a helper")],
@@ -2254,6 +2264,8 @@ mod tests {
             "part-1",
             None,
             "msg-1",
+            // P4.D205: no informs on this turn.
+            Vec::new(),
         );
         let params = StreamParams {
             messages: vec![StreamMessage::user("a very long message")],

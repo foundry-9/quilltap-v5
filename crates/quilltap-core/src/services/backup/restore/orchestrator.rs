@@ -1045,6 +1045,44 @@ fn restore_on_writer(
         }
     }
 
+    // ── 22i-ii. Inform rows (P4.D205, v4 `e7d77bb60`, `restore.ts:772-790`) ──
+    //
+    // Consumed rows come back too: the row a past turn consumed is what lets a
+    // swipe of that turn re-apply the same passage. Must follow the chats
+    // (13/14) and their replayed transcripts, since the row points at a seat, at
+    // the Host record message and, once consumed, at the assistant message that
+    // carried it.
+    //
+    // **The id is preserved; the timestamps are NOT.** v4 destructures
+    // `{ id, createdAt, updatedAt, ...informData }` and passes only
+    // `{ id: inform.id }` as its create options, so the restored row is minted
+    // fresh clocks. (The IMPORT path is the opposite — it preserves nothing and
+    // mints a new id as well.)
+    {
+        let repo = crate::db::chat_informs::ChatInformsRepository::new(main);
+        for inform in &data.chat_informs {
+            let now = crate::clock::now_iso();
+            let create = crate::db::chat_informs::ChatInformCreate {
+                id: id_of(inform),
+                chat_id: s(inform, "chatId"),
+                batch_id: s(inform, "batchId"),
+                participant_id: s(inform, "participantId"),
+                content_markdown: s(inform, "contentMarkdown"),
+                record_message_id: os(inform, "recordMessageId"),
+                created_at: now.clone(),
+                updated_at: now,
+                consumed_at: os(inform, "consumedAt"),
+                consumed_by_message_id: os(inform, "consumedByMessageId"),
+            };
+            warn_row!(
+                w,
+                c.chat_informs,
+                "Failed to restore inform".to_string(),
+                repo.create(&create)
+            );
+        }
+    }
+
     // ── 22j. Vector index metas + entries (main partition) ───────────────────
     {
         let repo = crate::db::vector_indices::VectorIndicesRepository::new(main);
@@ -2228,6 +2266,9 @@ struct Counters {
     conversation_annotations: usize,
     user_installed_themes: usize,
     chat_documents: usize,
+    // === P4.D205 ===
+    chat_informs: usize,
+    // === end P4.D205 ===
     instance_settings: usize,
     embedding_status: usize,
     conversation_chunks: usize,
@@ -2259,6 +2300,9 @@ impl Counters {
         embedding_reconcile: crate::services::backup::restore::EmbeddingReconcileSummary,
     ) -> RestoreSummary {
         RestoreSummary {
+            // === P4.D205 ===
+            chat_informs: self.chat_informs,
+            // === end P4.D205 ===
             characters: data.characters.len(),
             chats: data.chats.len(),
             messages: self.messages,
