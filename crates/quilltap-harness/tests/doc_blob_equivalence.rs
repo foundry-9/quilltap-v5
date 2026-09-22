@@ -347,7 +347,13 @@ fn doc_blob_matches_oracle() {
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
 
-    image_pass(&spec, &fixture_main, &fixture_mount, &scratch, &oracle_image);
+    image_pass(
+        &spec,
+        &fixture_main,
+        &fixture_mount,
+        &scratch,
+        &oracle_image,
+    );
 
     eprintln!(
         "OK: doc-blob handlers matched oracle ({} ops + 4 table dumps incl. Librarian chat_messages).",

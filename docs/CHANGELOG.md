@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — style(harness): rustfmt the two P4.104 unit-3 family files
+
+_No crate versions bumped._
+
+Formatting only; unit 3 landed two lines rustfmt reflows.
+
 #### 2026-09-22 — fix(files): one transcode policy for every blob write, the general upload transcodes, and decodable rows for the galleries, avatars and uploads (P4.104 unit 5)
 
 _Versions: core 0.0.995, harness 0.0.894, web 0.0.172._

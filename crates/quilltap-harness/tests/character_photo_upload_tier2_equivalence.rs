@@ -250,7 +250,7 @@ fn photo_upload_matches_oracle() {
                     caption.as_deref(),
                     &tags,
                     FIXED_KEPT_AT,
-                        BLOB_WEBP,
+                    BLOB_WEBP,
                 ))
             }))
             .unwrap();
