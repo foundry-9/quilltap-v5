@@ -327,6 +327,18 @@ pub struct BuiltContext {
     pub memories_included: usize,
     pub messages_included: usize,
     pub messages_truncated: bool,
+    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:359`/`:2748`) ===
+    /// The `chat_informs` rows this context's inform block carried, for the
+    /// finalizer to mark consumed against the PERSISTED assistant message.
+    /// Empty when nothing was delivered **and on every swipe** — a swipe reads
+    /// consumed rows and must never consume again. v4 ALWAYS emits the key (an
+    /// empty array on a plain turn) at this position — between
+    /// `messagesTruncated` and `warnings` — so it is never skipped: the lane
+    /// had it last and `skip_serializing_if = "Vec::is_empty"`, and
+    /// `build_context_tier3` regenerated at the target pin went red on exactly
+    /// that key (the `f45a517a9` round's unification).
+    pub inform_row_ids: Vec<String>,
+    // === end P4.D205 ===
     pub warnings: Vec<String>,
     pub debug_memories: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -347,14 +359,6 @@ pub struct BuiltContext {
     pub compression_applied: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compression_details: Option<CompressionDetailsOut>,
-    // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:359`/`:2748`) ===
-    /// The `chat_informs` rows this context's inform block carried, for the
-    /// finalizer to mark consumed against the PERSISTED assistant message.
-    /// Empty when nothing was delivered **and on every swipe** — a swipe reads
-    /// consumed rows and must never consume again.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub inform_row_ids: Vec<String>,
-    // === end P4.D205 ===
 }
 
 // ---------------------------------------------------------------------------

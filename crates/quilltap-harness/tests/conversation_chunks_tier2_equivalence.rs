@@ -43,12 +43,13 @@
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-cc-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-conversation-chunks-fixture.ts
-//!   QT_FIXTURE_CONVERSATION_CHUNKS=/tmp/qt-cc-fixture.db \
+//!   QT_FIXTURE_CC=/tmp/qt-cc-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/conversation-chunks-tier2.ts \
 //!     > /tmp/oracle-cc.ndjson
-//! ⚠ The header's recipe named `QT_FIXTURE_CC` / `QT_ORACLE_CC` until P4.D203,
-//! but the code has always read `QT_FIXTURE_CONVERSATION_CHUNKS` /
-//! `QT_ORACLE_CONVERSATION_CHUNKS`. Following the stale recipe makes the family
+//! ⚠ Two different names on purpose: the tsx CASE reads `QT_FIXTURE_CC` (its own
+//! header says so) while the Rust side has always read `QT_FIXTURE_CONVERSATION_CHUNKS` /
+//! `QT_ORACLE_CONVERSATION_CHUNKS`; P4.D203 fixed the run stage and the `f45a517a9`
+//! unification fixed the regen stage, which had taken the Rust name too. Following the stale recipe makes the family
 //! SKIP in 0.00 s and print "ok" — which is how it survived a codec mutation
 //! that should have reddened it. Corrected below.
 //!

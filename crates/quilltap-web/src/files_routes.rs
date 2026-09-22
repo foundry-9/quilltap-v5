@@ -502,7 +502,14 @@ pub async fn mount_blob_get(
                 };
                 let len = meta.size_bytes.max(0) as usize;
                 let name =
-                    blob_disposition_name(&path, &[&meta.original_file_name, "file"]).to_string();
+                    // `originalFileName` is a nullable column (an import writes NULL when
+                    // the bundle has none); the helper already skips an empty
+                    // candidate, which is v4's `||` fall-through.
+                    blob_disposition_name(
+                        &path,
+                        &[meta.original_file_name.as_deref().unwrap_or(""), "file"],
+                    )
+                    .to_string();
                 return Ok(Some((data, meta.stored_mime_type, meta.sha256, len, name)));
             }
             // The documents fallback (a text file addressed via /blobs —

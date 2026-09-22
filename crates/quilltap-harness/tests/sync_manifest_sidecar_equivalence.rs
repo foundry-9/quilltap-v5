@@ -9,9 +9,9 @@
 //!     `/\s+$/`, whose class is ECMAScript's `\s` and NOT Rust's
 //!     `char::is_whitespace`. The two disagree on exactly two characters
 //!     (U+FEFF, which JS strips and Rust does not; U+0085, which Rust strips and
-//!     JS does not), and a caption ending in either would round-trip differently
-//!     for ever — the sha is the comparison currency, so a one-character
-//!     disagreement is a permanent false "edited".
+//!     JS does not), and a caption ending in either would round-trip
+//!     differently for ever — the sha is the comparison currency, so a
+//!     one-character disagreement is a permanent false "edited".
 //!   - `manifest-bytes` — what `write_manifest` puts on disk, byte for byte
 //!     (`JSON.stringify(m, null, 2)` + a trailing newline), so key order,
 //!     indent, and the `null` vs absent distinction on the two nullable fields

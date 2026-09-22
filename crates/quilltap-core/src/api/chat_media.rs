@@ -1554,7 +1554,13 @@ async fn ensure_image_description(
     let result = describe
         .describe(crate::services::file_fallback::FallbackFile {
             id: blob.id.clone(),
-            filename: blob.original_file_name.clone(),
+            // v4 `files/route.ts:220` passes `blob.originalFileName` raw — a
+            // nullable column (the import writes NULL when the bundle has none),
+            // so `undefined` reaches the describer there; the nearest String
+            // here is empty. (The `f45a517a9` round's unification: the joined
+            // blob row read this column as a bare `String` and a NULL took the
+            // whole attach down with `Invalid column type Null`.)
+            filename: blob.original_file_name.clone().unwrap_or_default(),
             mime_type: blob.stored_mime_type.clone(),
             data: Some(data),
         })
@@ -1742,10 +1748,11 @@ pub async fn chat_attach_mount_file(
         }
     }
 
-    let display_title = if blob.original_file_name.is_empty() {
-        mount_file.file_name.clone()
-    } else {
-        blob.original_file_name.clone()
+    // v4 `files/route.ts:383`: `blob.originalFileName || mountFile.fileName` —
+    // JS truthiness, so both NULL and `''` fall to the file name.
+    let display_title = match blob.original_file_name.as_deref() {
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => mount_file.file_name.clone(),
     };
     let announcement = post_librarian_attach_announcement(
         db,

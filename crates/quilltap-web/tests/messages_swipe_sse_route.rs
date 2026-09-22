@@ -26,7 +26,19 @@
 //! for the full recipe — it is the SAME oracle `salon_swipe_generate_equivalence`
 //! reads, which is deliberate: one run records both the route-level tables and
 //! this stream shape, so the two families cannot disagree about what v4 did):
-//!   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson npx jest -- salon-swipe-generate
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-salon-swipe-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+//!   cp $V5W/harness/oracle/cases/salon-swipe-generate.test.ts "$TMPO/cases/"
+//!   cp $V5W/harness/oracle/lib/p4d171-columns.ts "$TMPO/lib/"
+//!   cp $V5W/harness/oracle/lib/pinned-draws.ts "$TMPO/lib/"
+//!   cp $V5W/harness/oracle/fixtures/salon.json                "$TMPO/fixtures/"
+//!   cd ~/source/quilltap-server
+//!   TZ=UTC QT_FIXTURE_SALON_MAIN=$V5W/crates/quilltap-web/tests/fixtures/salon-main.db \
+//!   QT_FIXTURE_SALON_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/salon-mount.db \
+//!   QT_ORACLE_OUT=/tmp/oracle-salon-swipe.ndjson \
+//!   $N/npx jest --silent --watchman=false --testTimeout=120000 \
+//!   --roots "$PWD" --roots "$TMPO/cases" -- salon-swipe-generate
 //! Run:
 //!   QT_ORACLE_SALON_SWIPE=/tmp/oracle-salon-swipe.ndjson \
 //!     cargo test -p quilltap-web --test messages_swipe_sse_route

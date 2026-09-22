@@ -453,10 +453,18 @@ async fn a_failure_after_the_stream_opened_is_an_error_frame() {
 
     let frames = collect_frames(events, Duration::from_secs(20)).await;
     let (status, body) = dispatch.await.unwrap();
+    // The reply first: a refusal BEFORE the generation (a 404/400/409) emits
+    // no frame at all, and reading it here names the cause instead of the
+    // symptom. The generation's failure must have reached the swipe path.
+    assert!(
+        status >= 400,
+        "the dispatch must carry the generation's failure, got {status} {body}"
+    );
     let mine = swipe_frames(&frames, &target_id);
     assert!(
         !mine.is_empty(),
-        "no `swipeProgress` frame reached /api/events at all (all frames: {})",
+        "no `swipeProgress` frame reached /api/events at all (all frames: {}; \
+         dispatch answered {status} {body})",
         frames.len()
     );
 
