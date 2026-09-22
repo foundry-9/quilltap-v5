@@ -6628,6 +6628,202 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) — ORDERED 2026-09-21
+
+**Baseline `baa85e19b`; v4 `main` HEAD `f45a517a9` (THIRTEEN past — the
+ledger's thirteen §3 rows, every one now `ORDERED(…)`), v4 `bugfix` tip
+`1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on `main`,
+CLEAN, at BOTH the planning-start and the planning-close probes
+(2026-09-21 — the §2 probe PASSED twice, so the ledger stood and nothing
+was re-derived); regen rule PIN REQUIRED, absolutely (every lane's moving
+families from a lane-unique detached worktree at `f45a517a9`, its
+neutrality legs at `baa85e19b`).** The standing rule holds: drift debt
+clears before new scope — and this round IS the drift, whole, because the
+thirteen commits are contiguous and the baseline cannot move past the
+blocking pair (`186eb09cb` + `f45a517a9`, which together make v5 unable to
+READ four `chat_messages` columns, `conversation_chunks.content` and the
+two `llm_logs` payloads, and unable to WRITE a single chat message to a
+migrated instance — measured on a read-only copy of live Friday) without
+absorbing Inform, the streamed swipe, `quilltap sync`, bugs 155–160 and the
+Zod 4.6 move that sit between. Nine lanes — the most this port has run at
+once — with ONE keystone: **P4.D203's first commit (S: the brotli codec +
+the `qt_text` UDF registered on every connection + the read binds
+converted) is the commit six lanes branch from**, because at the target
+pin every oracle-built fixture already carries compressed cells (measured:
+`initializeDatabase()` does NOT run the migration runner, so those fixtures
+have NO FTS triggers — v5 can write into them without the UDF but cannot
+read a compressed cell without the codec). P4.D204 (FTS5) stacks on S;
+P4.D210 (the sync engine) stacks on P4.D209's first commit (T: the
+repo-layer contract — bug 155's per-field SET, bug 156's chunk retirement,
+bug 157's required `link_id`, the per-location timestamps). P4.D206 (the
+Salon SPA) and P4.D211 (the dependency move) start from `main` at once. The
+round-wide §R meeting points (twelve of them — the stacking rule, the
+fences on `api/types.rs`/`engine.rs` and `host.rs::seed_built_ins`, the
+help count moving in TWO lanes, five pre-declared out-of-mandate spills,
+the committed-fixture prohibition), the §S contract (the three Inform
+verbs, the streamed swipe's `stream` flag + `swipeProgress` event family,
+`mountSync`), the Ownership table and the verification gate are spliced
+byte-identically into every order (one md5 over the block, verified at
+planning: `c94c52e8757c6f17e9df56cb4b081770`). Fresh surveys (2026-09-21,
+at `f45a517a9` and on `main` `07f4d7ae` — four parallel v4 hunk readers +
+the planner's own source reads) are folded into the orders' survey
+sections on top of the ledger's same-day rows.
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d203-text-codec-qt-text-substrate.md` — P4.D203, the keystone.**
+   v4 `lib/database/text-compression.ts` byte-for-byte in its decisions
+   (`0x51 0x01 0x01`, the 512-byte floor in BYTES, the `total >= raw.length`
+   incompressible rule, the total `blobToText`), the `qt_text` UDF via
+   rusqlite's `functions` feature at the three open points (an open ERROR
+   if it fails to register — v4's "loud, immediate failure beats silent
+   index drift"), a `CompressedText` `FromSql` newtype so every read bind
+   on the seven registered columns changes one type name, every WRITE
+   through `text_to_blob` with a source census guarding the count, the six
+   raw-SQL sites over `qt_text()`, bug 160's third column on the nightly
+   collapse, the sanitizer scrubbing INSIDE the codec, the CLI raw-SQL
+   path decoding, `help/data-retention.md`; the brotli PARITY MEASUREMENT
+   first (Node `zlib` q5 vs the Rust `brotli` crate — either answer is
+   fine; a mismatch means the harness gains a DECODE normalizer and the
+   on-disk bytes are proven by a cross-decode tier-1 family over v4's real
+   decoder); a NEW committed pair at the target vintage; the three
+   compression migrations DEFERRED by name as reclamation. Bumps core +
+   harness + cli + fixture-sanitizer.
+2. **`p4.d204-fts5-message-search.md` — P4.D204, stacked on S.** The five
+   FTS objects VERBATIM in `db/chat_message_fts.rs` (the map table, the
+   contentless FTS5 table with `unicode61 remove_diacritics 2`, the three
+   triggers whose `_ai` body and `_au` WHEN call `qt_text`), the boot
+   reconciler in `seed_built_ins` (which IS `create-chat-message-fts-v1`;
+   `SQLITE_ENABLE_FTS5` is already compiled in — no build change), the
+   pure `fts_query` at tier 1, the global search as v4's two SQL shapes
+   under `defer_text_decode` with the runtime fallback and the plan debug
+   line, `like_pattern_reproduces_v4_mangling` RETIRED red-first (a v5
+   user searching `Mr. Smith` gets nothing today — closed), the snippet's
+   diacritic fold with `matchLength`, `help/search.md`. Bumps core +
+   harness + host + web.
+3. **`p4.d205-inform-server.md` — P4.D205, stacked on S.** `chat_informs`
+   on both surfaces (D23 re-dump + a boot ensure — with a MEASURED
+   decision between v4's two DDLs: `generateDDL` emits no FK and a
+   `createdAt` index while the migration hand-writes an FK and three
+   purpose indexes, and the repo's lazy create runs first), the repository
+   with v4's method set, the Inform block between system blocks 2 and 3
+   (empty-is-absent; no builder-version move; read before the history
+   budget), consumption only against a persisted assistant message, the
+   swipe-group re-apply HANDLE in P4.D207's file, the Host record with the
+   coverage rule (`coversEveryone` decides public vs whisper), the three
+   record-only strips incl. `extract_visible_conversation`'s kind-skip (a
+   v4 hole v5 almost certainly reproduces), the three verbs with the tri-
+   state keys, participant removal, export/import/backup/restore + the two
+   vendored schemas (byte counts in TWO homes), `help/inform.md` (+1 on
+   BOTH count literals) + `help/insert-announcement.md`. Bumps core +
+   harness + host + web.
+4. **`p4.d206-salon-spa-inform-swipe.md` — P4.D206, from `main`.** The
+   Inform dialog (LLM seats only; Everyone = empty OR full selection; v4's
+   copy verbatim), the pending chips, the gutter *i* ("Inform the cast"),
+   the `out of character` label, `chatKeys.informs` on the `chats` realtime
+   topic; the streamed swipe's client half (`messageSwipe { stream: true }`
+   + `swipeProgress` by `progressId`; the `Regenerating...` plate that
+   withdraws on the first token; the dimmed original; the disabled action
+   bar; `composerLocked` on every control — v4's bug (c); `selectSwipe
+   Variant` on `done` — v4's bug (b), red-first if v5 reproduces it; the
+   six qt-* classes). Two live beats gated on `P4D205_SERVER_LANDED` /
+   `P4D207_SERVER_LANDED`, flipped by the unifier. Bumps the SPA only.
+5. **`p4.d207-swipe-stream-server.md` — P4.D207, stacked on S.** The
+   swipe's generation as a `watch_stream`-wrapped `stream_message` (the
+   TWELFTH wrap site — census bump red-first), FOUR status beats (not the
+   commit message's five) with v4's sentences, delta content / cumulative
+   reasoning, every persisted field riding the chunks (v5's own tracked
+   deferral RETIRED — `rawResponse`/`reasoningContent`/`thoughtSignature`
+   move from NULL by design), `resolveSwipeTarget`'s three refusals before
+   any frame, the `stream` flag + `EventPayload::SwipeProgress` carrying
+   v4's frames verbatim, the SSE REST edge as Tier 2, `help/chat-message-
+   actions.md`. Bumps core + harness + web.
+6. **`p4.d208-scenario-seeded-summary.md` — P4.D208, stacked on S.** Bug
+   158: the `contextSummary` seed DELETED (v5 still MINTS the damage), the
+   greeting block's cap/empty-arm/note (a visibility widening plus three
+   lines; two recorded divergences PRESERVED), the predicate under the
+   import's single create and the restore, the three Concierge scenario
+   arms with the `input_source` question decided by measurement, the
+   migration re-homed as a ledger-guarded boot heal whose SQL predicate is
+   ONE string, `help/dangerous-content.md`; the danger trio GROWN red-first
+   (green-by-luck today). The banked population proof has EXPIRED (v4
+   healed Friday: 0 seeded rows) — the proof is rows v5 mints. Bumps core +
+   harness + host.
+7. **`p4.d209-scriptorium-repo-layer.md` — P4.D209, stacked on S; cuts T.**
+   Bug 157 (three v5 callers pass `None` while holding the link id — the
+   vision model re-runs on every attach), bugs 155/156 (the per-field SET
+   with the `extracted_text` tri-state; chunk retirement + `chunkCount = 0`
+   + invalidation; `write_dest_bytes` re-chunking; the rescan predicate
+   now SEES a repointed link), the timestamps + `set_link_timestamps`, the
+   post-write reindex hoisted, bug 159's image half (normalization INTO
+   the blob funnel BEFORE the sha; `is_lossless_webp`'s RIFF walk; the
+   fifth host image seam; five path-normaliser copies → one), the two-link-
+   blob corpus growth without which bug 157 is comparand-invisible; the
+   re-encode migration a recorded decision. Bumps core + harness + host.
+8. **`p4.d210-quilltap-sync.md` — P4.D210, stacked on T.** The nine engine
+   modules mirrored file-for-file (the PURE planner at tier 1 over its
+   576-line corpus; manifest; sidecar; walkers with dot-segments invisible
+   both ways; appliers over T's chokepoints with NO metadata opinion and
+   the CAS; the per-store mutex; five refusal codes with v4's sentences),
+   `Request::MountSync` with the six-key schema and its 409/400/500 map,
+   the CLI verb as v4's thin HTTP client with `sync_help.txt` CAPTURED at
+   the pin, the pure renderer, the three completion templates, Tier R
+   grown (four designed reds closed), `help/cli-sync.md` (+1 on BOTH count
+   literals) + three differing pages. Bumps core + harness + web + cli.
+9. **`p4.d211-zod-4-6-dependency-move.md` — P4.D211, from `main`.** The
+   Zod 4.5.4 → 4.6.5 re-measurement (the P4.D158 procedure: locale
+   sentences, core regexes, newly-reachable validators — a TABLE before any
+   file moves), the two hand-rolled engines regenerated from their
+   GENERATOR + the SPA corpus + the edge sites, THEN `zod_version_guard`'s
+   constant; the nine provider recorders re-run at BOTH pins and compared
+   row by row (`stream_decoders` first — the six trailing-blank-line-less
+   transcripts are the at-risk rows of the bundles' new SSE flush arm);
+   the four prefault pins re-run; Tier R for the stamp; the widened CLI-
+   reference mirror pre-listed (`CLI.md` gutted 28,099 → 6,542 bytes; the
+   package README has no mirror home); `is_zod_email` converged at Tier 2
+   (204 of 596 inputs disagree with zod at BOTH versions). Bumps core +
+   harness + SPA.
+
+**Execution:** P4.D203 launches FIRST and ALONE, on the most capable
+model, with one job: cut S (the substrate commit — hours, not days) and
+record its hash; the moment S exists, P4.D204, P4.D205, P4.D207, P4.D208
+and P4.D209 launch in parallel from S (one worktree each; P4.D205, P4.D209
+and P4.D210 on the most capable model — a new table with a two-DDL
+measurement, a repo-layer contract that spills across eight files, and a
+2,127-line engine with no v5 analogue; P4.D204, P4.D207 and P4.D208 may
+run on a cheaper tier with the orders' file:line surveys in hand);
+P4.D210 launches from T the moment P4.D209 records it (its pure modules
+may start from S); P4.D206 and P4.D211 launch from `main` at once (P4.D211
+is measurement-heavy — most capable). Disk: nine `target/` dirs at 50–70 GB
+each is the constraint; `df -h ~` showed 136 GB free at planning — run at
+most FIVE Rust lanes concurrently and reclaim `target/debug/incremental`
+between waves. Pick order at `/unify`: P4.D203 → P4.D204 → P4.D209 →
+P4.D210 → P4.D205 → P4.D207 → P4.D208 → P4.D206 → P4.D211; the help count
+recounted to 126, the census counts to base + sums, the versions likewise;
+the baseline MOVES to `f45a517a9` at unification; the eight code rows
+retire `ABSORBED(…)` and the five docs rows `NO-PORT-RATIFIED(…)` with the
+mirrors §R.9 pre-lists (incl. the widened `docs/v4/packages-quilltap-
+README.md`); the phase-4.md `npm install` item is struck with the six-
+dirs/two-versions correction.
+
+**Deliberately left out of this round:** the ten-family fixture-vintage
+heal (it must run on a tree that carries S and P4.D204 — a widen through
+v4's migration DDL at the new pin brings the FTS triggers with it — so it
+is the round AFTER this one's first item, by name); the three text
+compression migrations and the image re-encode migration as boot heals
+(reclamation; each order records the deferral and v4's ordering
+constraint); the two uuid-gate copies outside the `zod_issues` home, the
+System Prompts tab's success sentence, the archived-PUT 500 sentence and
+the rename wart (the previous round's §7 smalls — not drift, and every
+lane is already full); the owed dogfood pass (a `/dogfood`, not an order —
+it runs after this round unifies and gains, at last, a Friday copy v5 can
+READ and WRITE again, plus Inform end to end on a real instance — v4's own
+oracle is unproven there — the streamed swipe's plate, a `sync --dry-run`
+against a real store, bug 158's greeting block on a chat v5 creates, and a
+real `Mr. Smith` search); and v4's inevitable follow-ups to the four
+features it landed in one week (the probe will catch them; a lane STOPs
+and the human records a waiver per the `89fcc3c0d` round's precedent).
+
 ## The `baa85e19b` bug-154 default-system-prompt drift catch-up + maintenance round (P4.D201 ∥ P4.D202 ∥ P4.100 ∥ P4.101 ∥ P4.102) — UNIFIED 2026-09-18
 
 **ALL FIVE ORDERS CLOSED WHOLE; the oracle baseline MOVES `89fcc3c0d` →

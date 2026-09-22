@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): order the `f45a517a9` thirteen-commit drift catch-up round — nine lanes stacked on one codec keystone (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211)
+
+_Docs-only change._
+
+Nine work orders under `docs/developer/porting/work-orders/` for the whole
+of v4's drift since `baa85e19b`: the compressed-text codec + `qt_text` UDF
+substrate that makes v5 able to read and write a 4.10 instance again
+(P4.D203, the keystone every DB-touching lane branches from — its first
+commit S), FTS5 message search stacked on it (P4.D204), Inform's server half
+(P4.D205) and the Salon SPA lane carrying Inform's and the streamed swipe's
+client halves (P4.D206), the swipe as a watched stream (P4.D207), bug 158
+(P4.D208), the Scriptorium repo layer for bugs 155/156/157 and bug 159's
+image half (P4.D209, whose first commit T the `quilltap sync` lane stacks
+on — P4.D210), and the Zod 4.6 / SDK-bundle dependency move with the
+recorders re-run at both pins (P4.D211).
+
+Every order carries the same byte-identical round-wide block (§R meeting
+points incl. the stacking rule, the `api/types.rs`/`engine.rs` and
+`seed_built_ins` fences, the help count moving in two lanes, five
+pre-declared out-of-mandate spills and a prohibition on rebuilding any
+committed fixture at the target pin; §S with the three Inform verbs, the
+swipe's `stream` flag + `swipeProgress` event family and `mountSync`; the
+Ownership table; the gate), md5 `c94c52e8757c6f17e9df56cb4b081770`. The
+drift ledger's thirteen §3 rows are all `ORDERED(…)`; the regen rule stays
+PIN REQUIRED at `baa85e19b`. The §2 probe passed at planning start and at
+planning close. Planning record in `phase-4.md`.
+
+Left out by name: the ten-family fixture-vintage heal (it needs a tree
+carrying the codec and the FTS objects first), the four reclamation
+migrations as boot heals, the previous round's small follow-ups, and the
+owed dogfood pass.
+
+
 #### 2026-09-21 — docs(porting): the FTS5 escalation — v5 cannot write a chat message to a v4 4.10 instance
 
 _Docs-only change._
