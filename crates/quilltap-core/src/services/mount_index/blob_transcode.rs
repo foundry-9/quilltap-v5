@@ -19,6 +19,29 @@
 //! floor spares small lossless assets (icons, diagrams, screenshots with hard
 //! edges) where lossless is the right encoding and the saving is trivial.
 //!
+//! ## The reclamation migration: recorded, not run (P4.D209 item 6)
+//!
+//! `186eb09cb` ships more than the write-side fix. It also ships a ONE-WAY
+//! migration, `recompress-oversized-mount-blobs-v1` (`dependsOn:
+//! ['sqlite-initial-schema-v1']`), which sweeps the blobs already in a store:
+//! every row whose `storedMimeType` is one of png/jpeg/jpg/gif/heic/heif/tiff/
+//! avif, plus up to `SAMPLE_LIMIT = 64` sniffed WebP rows, re-encoded in a
+//! per-candidate transaction that rewrites `doc_mount_blobs`
+//! (`data, sha256, sizeBytes, storedMimeType, updatedAt`), then
+//! `doc_mount_files` (`sha256, fileSizeBytes, updatedAt`), then — best-effort,
+//! in the MAIN db, keyed on the OLD hash — `files.sha256`, which is bug 117's
+//! invariant. `relativePath` is deliberately left alone.
+//!
+//! **v5 runs no reclamation this round, by decision.** Three reasons, in order
+//! of weight: (1) on any instance shared with v4 the migration has ALREADY run,
+//! so a v5 pass would find nothing and could only do harm; (2) it is one-way
+//! and rewrites the content-addressed hashes that dedup and every storage key
+//! are built on, which is not a thing to land beside the write-side fix it
+//! depends on; (3) v5's migration runner is itself still deferred, so there is
+//! no ledger-guarded place to put it. A future order may re-home it as a
+//! boot heal behind bug 117's `files.sha256` invariant — at which point the
+//! first question is whether the ledger already records v4 having run it.
+//!
 //! **The decode side needs no new host seam** — measured, not assumed: the
 //! existing [`WebpTranscoder`] impl (`quilltap-host::HostImageCodec`) decodes
 //! through the `image` crate's format sniffer, and `image-webp` handles a VP8L

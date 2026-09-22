@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(scriptorium): the two-link blob that makes bug 157 visible, at the route and at the attach (P4.D209)
+
+_Versions: core 0.0.972, harness 0.0.865._
+
+Bug 157 was comparand-invisible by construction: on a blob with ONE link the
+deleted `WHERE fileId = ? LIMIT 1` fallback is *correct*, so every family that
+drives `updateDescription` was green before and after the fix. Two instruments
+now exist, each red-first proven by restoring the fallback.
+
+`mount_write` gains `blob_patch_twin_pair`: byte-identical uploads to
+`twins/one.bin` and `twins/two.bin` dedup onto one file row with one blob and
+two links, and each path then takes a caption of its own. The whole scenario
+lives in ONE case because `runCase` re-copies the fixture per case on both
+sides — the three-case version silently 404'd and deduped nothing, which is
+worth knowing about this family. The pre-existing `blob_patch` case does NOT
+redden under the restored fallback; the twin pair does.
+
+`attach_mount_file` gains a v5-only arm counting the vision driver's
+invocations. `ensure_image_description` reads the description off the ATTACHED
+link and used to write it back with no link id, so on a shared blob the caption
+landed on a row the read never looks at and the vision model re-ran on every
+attach — spend, not just a wrong row. The arm mints the twin at runtime (§R.12
+forbids rebuilding the committed pair) and attaches the TWIN rather than the
+original: the fallback has no ORDER BY and returns the first row of the scan,
+so attaching the original lands the caption correctly by luck and the mutation
+proof survives. Measured — it did, on the first writing.
+
+Also recorded: the `recompress-oversized-mount-blobs-v1` migration from
+`186eb09cb` is a DECISION, not a heal — v5 runs no reclamation this round, and
+the module doc says why. And v4's THIRD `updateExtractedText` site in
+`store-file.ts` (the catch arm, which writes the exception's message where the
+empty arm writes a fixed sentence) has no reachable v5 counterpart: the
+extractor seam returns `String`, infallible by signature, so nothing can throw
+into it. Porting it means widening the seam, which belongs with the deferred
+production extractor; the deferral is typed at the site.
+
+
 #### 2026-09-21 — feat(scriptorium): one post-write re-chunk block, and image normalization moves inside the blob writer (v4 bug 159's image half) (P4.D209)
 
 _Versions: core 0.0.971, harness 0.0.864._

@@ -454,6 +454,26 @@ pub fn store_mount_file(
         } else {
             // The extractor produced no text (v4's empty arm; the refusing
             // seam routes here too, loudly).
+            //
+            // ⚠ **v4 has a THIRD arm here and v5 cannot reach it** (P4.D209
+            // tier-2 item 7, measured rather than deferred on a hunch).
+            // `store-file.ts:329-350` wraps the extraction in a try/catch and,
+            // on a throw, warns `storeMountFile: text extraction failed` and
+            // writes `extractionStatus: 'failed'` with the EXCEPTION'S MESSAGE
+            // as `extractionError` — where this empty arm writes the fixed
+            // sentence. v5's seam is
+            // `DocumentTextExtractor::extract(&self, &[u8], &str) -> String`:
+            // infallible by signature, so there is no error to catch, and the
+            // refusing default returns an empty string and lands HERE instead.
+            //
+            // Porting the arm therefore is not a local edit — it means widening
+            // the seam to `Result<String, String>` across every implementor and
+            // caller, which is out of this lane's mandate and pointless before
+            // there is an extractor that can fail: the production pdf/docx
+            // extractor is itself a standing deferral, so today NOTHING can take
+            // v4's catch. **The order belongs with the extractor**: whoever
+            // lands it widens the seam and takes v4's third arm in the same
+            // commit, with a `mount_write` row for the thrown-message text.
             blobs.update_extracted_text(
                 &result.blob_id,
                 None,

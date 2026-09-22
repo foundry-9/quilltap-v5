@@ -276,6 +276,13 @@ const put = (id: string, path: string[], body: unknown) => async () =>
   );
 
 const GARBAGE_PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 9, 9, 9, 9]);
+/**
+ * Bug 157's bytes (P4.D209). Uploaded to TWO paths, they dedup onto ONE
+ * `doc_mount_files` row with ONE blob and TWO links — the shape a character
+ * vault has for every avatar it holds at both `photos/` and `images/history/`.
+ * Undecodable, like GARBAGE_PNG, so no transcode can move them on either side.
+ */
+const TWIN_BYTES = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 7, 7, 7, 7, 7]);
 const FAKE_WEBP = Buffer.from('RIFF0000WEBPVP8 fake-but-webp-typed', 'utf8');
 const GARBAGE_PDF = Buffer.from('definitely not a pdf either', 'utf8');
 
@@ -485,6 +492,52 @@ function cases(): CaseSpec[] {
             itemParams(MP_DB, ['images', 'logo.png']),
           ),
         ),
+    },
+    // ── bug 157: one blob, two locations, two captions ──
+    // `updateDescription` used to resolve its target with `WHERE fileId = ?
+    // LIMIT 1` when the route passed no link id, so on a shared blob the
+    // caption landed on whichever link SQLite handed back. The route now passes
+    // `meta.linkId`. Without a SECOND link on one blob this family is green
+    // before and after the fix — the fallback is CORRECT when there is only one
+    // candidate — so the twin is the instrument, not decoration. And
+    // `blob_patch` above cannot be that instrument: `runCase` re-copies the
+    // fixture for EVERY case, so the whole scenario has to live inside one.
+    {
+      name: 'blob_patch_twin_pair',
+      run: async () => {
+        const blobs = await blobsRoute();
+        const item = await blobItemRoute();
+        // Byte-identical uploads to two paths: one file row, one blob, TWO links.
+        await blobs.POST(
+          multipartRequest(`${B}/${MP_DB}/blobs`, { path: 'twins/one.bin' }, {
+            name: 'one.bin', type: 'application/octet-stream', bytes: TWIN_BYTES,
+          }),
+          params(MP_DB),
+        );
+        await blobs.POST(
+          multipartRequest(`${B}/${MP_DB}/blobs`, { path: 'twins/two.bin' }, {
+            name: 'two.bin', type: 'application/octet-stream', bytes: TWIN_BYTES,
+          }),
+          params(MP_DB),
+        );
+        // Each path takes a caption of its own. The dump then shows two links
+        // on one blob carrying DIFFERENT descriptions — which the `LIMIT 1`
+        // fallback cannot produce, because it would write both to the same row.
+        await item.PATCH(
+          jsonRequest(`${B}/${MP_DB}/blobs/twins/one.bin`, {
+            description: 'the caption belongs to this path',
+          }),
+          itemParams(MP_DB, ['twins', 'one.bin']),
+        );
+        return respond(
+          await item.PATCH(
+            jsonRequest(`${B}/${MP_DB}/blobs/twins/two.bin`, {
+              description: 'and this one belongs to the other',
+            }),
+            itemParams(MP_DB, ['twins', 'two.bin']),
+          ),
+        );
+      },
     },
     {
       name: 'blob_patch_missing',

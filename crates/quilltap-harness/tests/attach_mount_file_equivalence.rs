@@ -730,3 +730,188 @@ fn attach_without_describe_driver_still_succeeds() {
         "and no IMAGE_DESCRIPTION row is written"
     );
 }
+
+/// Bug 157 at the attach site (P4.D209 — v4 `0c14fd61f`), the v5-only arm.
+///
+/// `ensure_image_description` READS `blob.description` off the joined ATTACHED
+/// link and, before the fix, WROTE it back with no link id — so
+/// `updateDescription` resolved the target with `WHERE fileId = ? LIMIT 1`. On
+/// a blob carried at several locations that is a different row. The caption
+/// then landed somewhere the read never looks, the attached link stayed blank,
+/// and **the vision model re-ran on every single attach** — which is spend, not
+/// just a wrong row. v5's own comment named the hazard and reproduced it.
+///
+/// The committed fixture has one link per blob, and §R.12 forbids rebuilding it
+/// at the target pin, so the twin is minted at RUNTIME: a second link to the
+/// same bytes, exactly what a character vault holds for every avatar it carries
+/// at both `photos/` and `images/history/`.
+///
+/// The instrument is a CALL COUNT. A describer that answers identically every
+/// time cannot show the difference in any response body — the second attach
+/// looks the same whether the caption was cached or re-derived. Counting the
+/// invocations is the only thing that separates them.
+#[test]
+fn a_second_attach_of_a_twinned_blob_does_not_re_run_vision() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Counts its invocations and answers a fixed description, so the only
+    /// observable difference between "cached" and "re-derived" is the count.
+    struct CountingDescriber {
+        calls: Arc<AtomicUsize>,
+    }
+    impl ImageDescribeDriver for CountingDescriber {
+        fn describe<'a>(
+            &'a self,
+            _file: FallbackFile,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = FallbackResult> + Send + 'a>>
+        {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                FallbackResult {
+                    type_: file_fallback::FallbackType::ImageDescription,
+                    text_content: None,
+                    image_description: Some("a counted description".to_string()),
+                    processing_metadata: None,
+                    error: None,
+                }
+            })
+        }
+    }
+
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let meta: Meta = serde_json::from_str(
+        &std::fs::read_to_string(fixtures_dir().join("attach-file-main.db.meta.json")).unwrap(),
+    )
+    .unwrap();
+    let db = fresh_db(&spec, "twinvision");
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Mint the twin: a SECOND link at another path, on the same bytes, so
+    // `link_blob_content`'s sha dedup gives both links one file row and one
+    // blob. Reading the bytes back out of the fixture is what makes them
+    // identical rather than merely similar.
+    let mount_point_id = meta.mount_point_id.clone();
+    let source_rel = "library/undescribed.png";
+    let twin_rel = "history/undescribed-twin.png";
+    rt.block_on(async {
+        let mp = mount_point_id.clone();
+        db.write(move |ws| {
+            let conn = ws
+                .mount_index()
+                .expect("the fixture opens a mount-index partition")
+                .connection();
+            let blobs = quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository::new(conn);
+            let original = blobs
+                .find_by_mount_point_and_path(&mp, source_rel)?
+                .expect("the fixture's undescribed blob");
+            let bytes = blobs.read_data(&original.id)?.expect("its bytes");
+            quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository::new(conn)
+                .link_blob_content(&quilltap_core::db::doc_mount_file_links::LinkBlobInput {
+                    mount_point_id: mp.clone(),
+                    relative_path: twin_rel.to_string(),
+                    file_name: "undescribed-twin.png".to_string(),
+                    file_type: None,
+                    original_file_name: Some("undescribed-twin.png".to_string()),
+                    original_mime_type: Some(original.stored_mime_type.clone()),
+                    stored_mime_type: original.stored_mime_type.clone(),
+                    sha256: original.sha256.clone(),
+                    data: bytes,
+                    // No codec is wired on this repository, so the bytes are
+                    // stored verbatim — which is the point: the twin must
+                    // dedup onto the SAME file row.
+                    normalize_images: true,
+                    description: None,
+                    conversion_status: None,
+                    extracted_text: None,
+                    extracted_text_sha256: None,
+                    extraction_status: None,
+                    last_modified: None,
+                    created_at: None,
+                })
+                .map(|_| ())
+        })
+        .await
+        .expect("mint the twin link");
+    });
+
+    // One blob, two links — asserted, not assumed, or the rest proves nothing.
+    let (source_file_id, twin_file_id) = {
+        let mp = mount_point_id.clone();
+        db.read_mount_index(move |conn| {
+            let blobs = quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository::new(conn);
+            let a = blobs
+                .find_by_mount_point_and_path(&mp, source_rel)?
+                .unwrap();
+            let b = blobs.find_by_mount_point_and_path(&mp, twin_rel)?.unwrap();
+            assert_ne!(a.link_id, b.link_id, "two distinct links");
+            Ok::<_, quilltap_core::db::DbError>((a.file_id, b.file_id))
+        })
+        .expect("read back the pair")
+    };
+    assert_eq!(
+        source_file_id, twin_file_id,
+        "the twin must share ONE content row — otherwise the `LIMIT 1` fallback \
+         would have had only one candidate and this test proves nothing"
+    );
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let describe: Arc<dyn ImageDescribeDriver> = Arc::new(CountingDescriber {
+        calls: Arc::clone(&calls),
+    });
+
+    // ⚠ **Attach the TWIN, not the original**, and the reason is the whole
+    // instrument. The deleted fallback was `WHERE fileId = ? LIMIT 1` with no
+    // ORDER BY, so it returns the FIRST row of the scan — the original, which
+    // the fixture inserted long before this test minted the twin. Attaching the
+    // original therefore lands the caption on the right row BY LUCK, and the
+    // mutation proof for this arm survives (measured, P4.D209: it did). Attach
+    // the row the fallback would NOT pick and the luck is gone.
+    let first = rt.block_on(chat_media::chat_attach_mount_file(
+        &db,
+        Some(&describe),
+        CHAT,
+        &mount_point_id,
+        twin_rel,
+    ));
+    assert_eq!(status_body(&first).0, 200, "the first attach must succeed");
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "the first attach derives the description"
+    );
+    assert_eq!(
+        dump_description(&db, &mount_point_id, twin_rel),
+        json!({ "description": "a counted description" }),
+        "the caption caches on the ATTACHED link"
+    );
+    assert_eq!(
+        dump_description(&db, &mount_point_id, source_rel),
+        json!({ "description": "" }),
+        "and NOT on its twin — which is exactly what the deleted `LIMIT 1` \
+         fallback could not guarantee, since that row is the one it would pick"
+    );
+
+    let second = rt.block_on(chat_media::chat_attach_mount_file(
+        &db,
+        Some(&describe),
+        CHAT,
+        &mount_point_id,
+        twin_rel,
+    ));
+    assert_eq!(
+        status_body(&second).0,
+        200,
+        "the second attach must succeed"
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "the second attach reads the cached caption back — the vision model must \
+         NOT run again. Before bug 157's fix the caption landed on the twin, the \
+         read found the attached link still blank, and this count was 2 (and 3, \
+         and 4, once per attach, for as long as the file was attached)."
+    );
+}

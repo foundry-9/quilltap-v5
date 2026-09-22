@@ -37,6 +37,12 @@ use quilltap_core::api::types::Response;
 use quilltap_core::db::runtime::Db;
 use serde_json::json;
 
+/// Bug 157's bytes (P4.D209): uploaded to two paths they dedup onto ONE file
+/// row with ONE blob and TWO links — a character vault's shape for every avatar
+/// it holds at both `photos/` and `images/history/`. Undecodable, so no
+/// transcode can move them on either side.
+const TWIN_BYTES: &[u8] = &[137, 80, 78, 71, 13, 10, 26, 10, 7, 7, 7, 7, 7];
+
 const GARBAGE_PNG: &[u8] = &[137, 80, 78, 71, 13, 10, 26, 10, 9, 9, 9, 9];
 const FAKE_WEBP: &[u8] = b"RIFF0000WEBPVP8 fake-but-webp-typed";
 const GARBAGE_PDF: &[u8] = b"definitely not a pdf either";
@@ -365,6 +371,55 @@ fn mount_write_matches_oracle() {
                 ))
             }),
         ),
+        // Bug 157's instrument: one blob at TWO paths, each taking its own
+        // caption. `runCase` re-copies the fixture per case on BOTH sides, so
+        // the whole scenario lives in one case; and `blob_patch` above cannot
+        // serve, because a single-link blob makes the deleted `LIMIT 1`
+        // fallback correct.
+        (
+            "blob_patch_twin_pair",
+            200,
+            Box::new(|db, rt| {
+                rt.block_on(async {
+                    mf::mount_blob_upload(
+                        db,
+                        MP_DB,
+                        "twins/one.bin",
+                        None,
+                        &b64(TWIN_BYTES),
+                        Some("application/octet-stream".to_string()),
+                        Some("one.bin".to_string()),
+                        None,
+                    )
+                    .await;
+                    mf::mount_blob_upload(
+                        db,
+                        MP_DB,
+                        "twins/two.bin",
+                        None,
+                        &b64(TWIN_BYTES),
+                        Some("application/octet-stream".to_string()),
+                        Some("two.bin".to_string()),
+                        None,
+                    )
+                    .await;
+                    mf::mount_blob_update(
+                        db,
+                        MP_DB,
+                        "twins/one.bin",
+                        Some("the caption belongs to this path".to_string()),
+                    )
+                    .await;
+                    mf::mount_blob_update(
+                        db,
+                        MP_DB,
+                        "twins/two.bin",
+                        Some("and this one belongs to the other".to_string()),
+                    )
+                    .await
+                })
+            }),
+        ),
         (
             "blob_patch_missing",
             200,
@@ -404,6 +459,7 @@ fn mount_write_matches_oracle() {
         checked += 1;
     }
 
-    assert_eq!(checked, 22, "expected the 22 mount-write cases");
+    // 22 + 1 (P4.D209 added `blob_patch_twin_pair`, bug 157's instrument).
+    assert_eq!(checked, 23, "expected the 23 mount-write cases");
     eprintln!("OK: mount-write matched oracle ({checked} cases).");
 }
