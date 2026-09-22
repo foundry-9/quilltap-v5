@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(test): the swipe edge's row in the typed-only construction census (P4.D207)
+
+_Versions: web 0.0.161._
+
+`messages_swipe_routes.rs` is the first new `*_routes.rs` file since
+`tri_state_edges_share_the_decoder`'s per-file census was written, so its three
+`Request::MessageSwipe` constructions moved a count no work order lists — the
+censuses are keyed by file, and a new file moves them without touching an
+existing one. Both constants updated with the arithmetic in the comment: the
+per-file row, and the total (109 = 110 − 1 → 112 = 113 − 1).
+
+The sibling guard `web_edge_body_parse_guard` does not move. `swipeIndex` is
+v4 `safeParse` — a wrong type falls through to GENERATE rather than being
+refused — and `stream` is a query flag with no v4 body counterpart, so both
+verdicts live in `dispatch_wrong_type_census`.
+`no_new_tri_state_variant_is_hand_built_outside_the_helper` was green
+throughout and correctly: `MessageSwipe` carries no tri-state field.
+
 #### 2026-09-22 — feat(web): the swipe's SSE REST edge, diffed against v4's real route handler (P4.D207)
 
 _Versions: web 0.0.160, harness 0.0.864._

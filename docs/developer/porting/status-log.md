@@ -139442,3 +139442,352 @@ exists to enforce, and it confirmed the port obeyed it**).
 
 **§R.2 probe at lane close:** branch `main`, HEAD `a2db63da7`, tree CLEAN, both
 logs EMPTY — PASS, unchanged from the resumption probe.
+
+## P4.D207 — the swipe as a watched stream, the server half of v4 `f564b0de3` (2026-09-21 → 2026-09-22)
+
+**Branch `claude/p4-d207-swipe-stream-server-32d789`, three commits, ALL of
+Tier 1 and ALL of Tier 2 landed.** Oracle baseline `baa85e19b`; target pin
+`f45a517a9`. Worktree cut from P4.D203's TIP (`7903d46f`), not from S
+(`144a0e80`) alone — S is an ancestor plus D203's eleven further commits, and
+every sibling stacked lane sits at the same tip, so it is a round-wide choice,
+not this lane's. None of S's files were edited.
+
+### §0 — the probe, and the waiver that was not needed
+
+The §R.2 probe **FAILED at first pickup** and the lane STOPPED as ordered: v4
+`main` had moved to `e7821606f`, two commits past the order's `f45a517a9`.
+The human ran `/driftcheck`, which recorded a THIRD commit (`a2db63da7`, bug
+162) and — this is the part that mattered — wrote the ruling into §1 verbatim:
+*"THE CATCH-UP ROUND IS IN FLIGHT … The three new rows are OUTSIDE that round's
+scope and must not be added to a running lane."* So no waiver was required:
+the ledger itself says the new rows are not this round's. Re-probed against the
+UPDATED §1 (branch `main`, HEAD `a2db63da7`, tree CLEAN, both logs empty) —
+**PASS** — and again before each of the three regen batches. It passed every
+time; the checkout never went dirty during this lane.
+
+Pins, both verified by `rev-parse` AND `ls -ld`:
+`/tmp/qt-v4-pin-p4d207-f45a517a9` (target) and
+`/tmp/qt-v4-pin-p4d207-baa85e19b` (baseline).
+
+### The four measurements the order got wrong, or did not have
+
+1. **⚠ The `status` frame carries `kind`, and §S.2 says it does not.** The
+   order's shared contract spells the frame
+   `{"status":{"stage","message","characterName","characterId"}}`. It is
+   wrong. v4's route passes the WHOLE progress event to
+   `encodeStatusEvent(encoder, event)`, which does `JSON.stringify({ status })`
+   — so the service's `{kind, stage, message, characterName, characterId}`
+   literal reaches the client with `kind` intact and in FIRST position.
+   (`encodeStatusEvent`'s TypeScript parameter does not declare `kind`, but
+   `event` is a variable, not an object literal, so TS's excess-property check
+   never applies and nothing strips it at runtime.) **Settled empirically, not
+   by reading**: the oracle imports v4's REAL encoders and runs them over v4's
+   REAL progress events, and the recorded frames are
+   `{"status":{"kind":"status","stage":"gathering",…}}`. §R.4's rule — port
+   from the hunks, and re-verify even where an order flags a trap — earned its
+   place twice over here, because the order IS the prose this time.
+2. **v5 was wrapping v4's error message.** A generation failure went out as
+   `DbError::Internal("swipe generation failed: {…}")`, which matches no v4
+   byte: v4's JSON leg answers `serverError(error.message)` and the SSE leg's
+   `error` frame carries `details: error.message`, both RAW. Pre-existing, and
+   invisible until the error frame made it visible. Closed with a new
+   `RegenError::Generation(String)` whose `Display` is the message unadorned.
+3. **The census could not express the swipe's budget class.** It had exactly
+   two shapes — "the funnel" (`streaming_service()` context + default budgets)
+   and "the greeting" (own context + own 90/60 budgets) — as a
+   `GREETING_SITE` special case. v4's swipe is a THIRD: the Salon's DEFAULT
+   240/120 budgets with its OWN `context: 'regenerate-swipe.service'`. Neither
+   existing arm could hold it. Replaced the special case with an
+   `OWN_CONTEXT_SITES` table of `(site, context, budgets-are-default)`.
+4. **The order's Ownership table does not cover three files the mandate
+   requires.** See §Out-of-mandate below.
+
+### Units
+
+**Commit 1 `1298fd92` — the generation as a watched stream (Tier 1 items 1, 2,
+4, 5 + the verb's flag).**
+
+- `services/regenerate_swipe.rs`: `provider.stream_message(...)` wrapped in
+  `watch_stream` with `StallBudgets::default()` and v4's five `logContext`
+  fields; v4's accumulation verbatim (content appends, reasoning last-wins and
+  never concatenated, `usage`/`rawResponse`/`thoughtSignature` last-wins under
+  JS-truthy tests); the persist writing all six fields off the chunks. **The
+  header's tracked deferral is REWRITTEN as closed**, with v4's own sentence
+  quoted.
+- The stall arm: a source `Err` ends the loop and returns
+  `RegenError::Generation`, so **the swipe is all-or-nothing** — no partial
+  row, no swipe-group write, no memory cascade. Measured on v4: its `for await`
+  throws and unwinds the whole function, and the persist is below it. The
+  order's Tier-3 "no preserved partial" is therefore CONFIRMED, not assumed.
+- `RegenerateSwipeProgress` + `SwipeProgressEmitter` (the
+  `GeneratorProgressEmitter` shape, same empty-string rule), `to_v4_frame`
+  holding v4's bytes in ONE place. The four beats, the deltas and the
+  cumulative reasoning come from the service; the two TERMINAL frames
+  (`{done,message}` and the `error` frame) are emitted by
+  `api::salon::message_swipe_generate`, which is v4's own placement — its route
+  builds both, its service builds neither.
+- `MessageSwipe` gains `#[serde(default)] stream: bool` inside the
+  `// === P4.D207 ===` fence; `EventPayload::SwipeProgress` +
+  `SwipeProgressPayload` + `Event::swipe_progress` likewise; the engine arm
+  builds the emitter from the flag and the TARGET message id.
+- **An attachment divergence CLOSED, not carried.** The old completion funnel
+  narrowed each bag to four fields (dropping `url`) and re-anchored by index;
+  `StreamMessage::User` carries the verbatim JSON bags per message, exactly as
+  v4's `attachments: m.attachments` does. The module's NAMED DIVERGENCE
+  paragraph is gone with it.
+- `name` is still dropped on the formatted→stream conversion. Pre-existing and
+  v4-wide, not swipe-specific: v4's `streaming.service.ts:374-378` passes
+  `name` on the SEND path too and v5's orchestrator port already drops it, so
+  this reuses the orchestrator's conversion rather than inventing a second one.
+
+**Commit 2 `ec3a15a2` — the dispatch wire.** `POST /api/dispatch` against a
+canned spine, reading `/api/events`. Four beats + two deltas + `done` with the
+persisted row (token triple off the terminal chunk); a SWITCH with
+`stream: true` narrates nothing; the three refusals answer JSON and publish no
+frame; an absent `stream` decodes as false and reaches the same guard with the
+same sentence. `dispatch_wrong_type_census` gains `MessageSwipe.stream`
+(`V4::Query`); **the excluded-count constant does NOT move — 441 → 441** (a
+`bool` named `stream` is not an `*_id`, so `is_route_identifier` never saw it;
+this is a ROW, not an exclusion).
+
+**Commit 3 `c76cedce` — the SSE REST edge (Tier 2).** NEW
+`crates/quilltap-web/src/messages_swipe_routes.rs` (the order asked which — it
+is a new file, not an arm in `messages_routes.rs`, because v5 had no POST edge
+on that path at all) + the `lib.rs` route line. `generator_sse`'s pump was
+widened to take the payload family as a `FrameOf` fn pointer, so the swipe
+shares its subscribe-before-dispatch ordering and both recorded `RecvError`
+divergences instead of growing a second copy; the four generator families were
+re-run unchanged.
+
+### Differentials — every one regenerated fresh from the pin §R.3 assigns it
+
+| family | pin | result |
+|---|---|---|
+| `regenerate_swipe_tier3_equivalence` | target | **green**, 2 tests (the narrated leg + the silent-neutrality leg) |
+| `salon_swipe_generate_equivalence` | target | **green**, 4 cases |
+| `messages_swipe_sse_route` (NEW) | target | **green**, 3 tests |
+| `message_swipe_stream_dispatch_wire` (NEW) | — (v5 wire) | **green**, 2 tests |
+| `stream_watchdog_wrap_census` | — (source census) | **green**, 2 tests, red-first twice |
+| `dispatch_wrong_type_census` | — (source census) | **green**, 10 tests |
+| `help_tree_equivalence` | target | **RED by DESIGN, 124 vs 126 — NOT this lane's** (below) |
+| `salon_mutations_equivalence` | baseline | **green** (neutrality) |
+| `salon_reads_equivalence` | baseline | **green** (neutrality) |
+| `stream_decoders_equivalence` | baseline | **green**, 5 tests (neutrality) |
+| `primary_stream_tier3_equivalence` | baseline | **green**, 2 tests (neutrality) |
+
+**`help_tree_equivalence`'s red is entirely other lanes'**, and that is
+measured rather than argued. A whole-tree `cmp` against the target pin after
+the re-vendor: **MISSING (2)** `cli-sync.md` (P4.D210) and `inform.md`
+(P4.D205); **DIFFERING (6)** `cli-docs.md` / `mount-points.md` /
+`scriptorium.md` (P4.D210), `dangerous-content.md` (P4.D208),
+`insert-announcement.md` (P4.D205), `search.md` (P4.D204).
+`chat-message-actions.md` is **gone from that list** — it was on it before this
+lane and is byte-identical now (16,155 bytes). `data-retention.md` is gone too,
+which confirms P4.D203's re-vendor. The count literals are untouched: this
+lane adds no help file.
+
+⚠ **`primary_stream_tier3_equivalence`'s first sweep attempt reported
+`regen_failed`** on a stale `/tmp/oracle-primary-stream.ndjson`; the driver
+removed the stale files and the immediate re-run went green end to end. Worth
+knowing the shape: a `regen_failed` from the sweep driver is not always the
+family.
+
+### The corpus growth, and why it is shaped that way
+
+`regenerate-swipe-tier3.json`'s `completion` became a three-chunk STREAM, and
+each choice in it is load-bearing:
+
+- **Two prose deltas**, so `content` must be the CONCATENATION and the
+  `regenerating` beat must fire exactly ONCE (the M1 mutation targets this).
+- **A stale `rawResponse` AND `reasoningContent` on the MIDDLE chunk**, so
+  last-wins is measurable in both fields (M3 targets `rawResponse`).
+- **A NON-EMPTY terminal `rawResponse`** — an empty object is JS-truthy too, so
+  `{}` could not tell a truthiness bug from a stored-verbatim bug.
+- All four record fields on the terminal chunk, so the three columns v5 wrote
+  NULL are a real comparand. **This was §R.5's DESIGNED red**, and the
+  re-recorded oracle now carries `rawResponse`, `reasoningContent` and
+  `thoughtSignature` with real values on both sides.
+
+The oracle also grew an ordered `progress` comparand per call, recorded by
+running each v4 `onProgress` event through v4's OWN SSE encoders and decoding
+the `data:` line back to an object. So the comparand is the WIRE bytes, not a
+paraphrase — and it is what settled the `kind` question above. v5's side is
+drained off a real `Event` subscription, so the two halves meet on the wire.
+
+`not_assistant` records ZERO frames on both sides (v4's guard throws before any
+beat), which is the arm that keeps the comparand honest for a refusal.
+
+### Mutation proofs — seven, every one reddening exactly its target
+
+Reverts by file backup (`/tmp/p4d207/*.bak`), never `git checkout`.
+
+| # | mutation | reddens |
+|---|---|---|
+| M1 | fire `regenerating` on EVERY content chunk | `regenerate_swipe_tier3` **progress frames** |
+| M2 | CONCATENATE reasoning instead of last-wins | `regenerate_swipe_tier3` **chat_messages** |
+| M3 | keep `rawResponse` from the FIRST chunk | `regenerate_swipe_tier3` **chat_messages** |
+| M4 | append content only when observed | the **neutrality** test (silent leg) |
+| M5 | emit a beat BEFORE the refusals | `salon_swipe_generate`, all **three** refusal cases |
+| M6 | let the SWITCH branch read the flag | `message_swipe_stream_dispatch_wire` |
+| M7 | a refusal commits to a 200 stream | `messages_swipe_sse_route` |
+
+Plus the two RED-FIRST census steps, recorded with their pre-fix text: the
+twelfth site with no row (`services/regenerate_swipe.rs: 1 production
+.stream_message( call(s) and no census row`), then the row added and the
+BUDGET census failing on the missing `streaming_service(` — which is the
+finding in item 3 above, arriving as a red rather than as a reading.
+
+M2's precision is worth recording: it reddens the persisted row and **not** the
+frames, because v4 emits `chunk.reasoningContent` on the frame and assigns it
+to the accumulator separately. A mutation that moved both would have been a
+weaker instrument.
+
+### ⚠ An instrument finding: the budget census counted its own prose
+
+The first version of the context check reported only `expected 1
+"context: \"regenerate-swipe.service\""` and the site came back RED at what
+looked like zero matches. It was TWO: the swipe module's own doc comment quoted
+the needle verbatim. The message hid the number it had measured, which turned a
+one-line prose collision into a hunt. Fixed both ways — the message now REPORTS
+the count and says a count above the wrap count is usually prose, and the doc
+uses v4's own single-quoted JS spelling. (`a-source-census-needs-a-lexer-and-
+must-keep-literals`, arriving in a new disguise.)
+
+### ⚠ Two state-sequence findings from the new route family's own first run
+
+Both looked like port defects and were neither:
+
+1. **`swipeIndex: 1` vs `2`.** The oracle runs the non-stream leg FIRST on the
+   same database, so its stream leg regenerates a message already in a swipe
+   group. The v5 family now reproduces the sequence rather than excluding the
+   field.
+2. **The switch answered 400, not 200.** The salon fixture's target is not in a
+   swipe group until something regenerates it. The dispatcher test now seeds a
+   generation first — which is also what makes its 200 meaningful.
+
+And one in the oracle itself: the stream pass MUST run **after** the table
+dump. It is a real regeneration and writes its own row, so dumping after it
+handed `salon_swipe_generate_equivalence` a two-row comparand its
+single-generation v5 side could never match. Caught before it shipped; the
+ordering and the reason are now a comment in the case.
+
+### ⚠ Out-of-mandate edits — three files, none owned by any lane in this round
+
+Checked against every row of the Ownership table before touching them. Each is
+marked in place with a `P4.D207 OUT-OF-MANDATE` comment naming why.
+
+1. **`crates/quilltap-core/src/api/chat_send.rs`** — `SwipeGenerateRequest`
+   gains `progress: SwipeProgressEmitter`. Unavoidable: v4's `onProgress` is an
+   argument to the service, and the composing host is the only thing that can
+   build the provider bundle the service runs on, so the flag must cross the
+   driver seam. Additive, `Default`-inert.
+2. **`crates/quilltap-host/src/spine.rs`** — `run_swipe` passes
+   `&*self.streaming` and forwards `req.progress`; the error mapping gains the
+   `Generation` arm. Unavoidable: it is the ONLY production caller of
+   `regenerate_message_as_swipe`, which now drives the streaming seam. **§R.8
+   does not list `host` among P4.D207's expected bumps — it is bumped here, and
+   the unifier should expect it.**
+3. **`crates/quilltap-core/src/realtime/types.rs`** — one line in an
+   exhaustiveness tripwire whose own comment prescribes exactly this edit
+   ("acknowledged here, not widened to a wildcard"). It fired as designed, for
+   the second time.
+
+`crates/quilltap-web/src/generator_sse.rs` is also not in any lane's list; the
+pump widening is described under commit 3.
+
+### Deferrals — loud, typed, named
+
+- **`?action=reattribute` on the new REST edge** answers a typed **501**
+  naming itself (`"The 'reattribute' message action is recognized but not yet
+  served over REST; dispatch \`messageReattribute\` instead."`) rather than
+  v4's `Action parameter required: swipe or reattribute`. `MessageReattribute`
+  is a real v5 verb with no REST edge; v4's sentence would claim it is
+  unrecognised, which is false. Wiring it is outside this order. An unknown or
+  absent action DOES get v4's sentence, because there the two agree. Pinned in
+  `messages_swipe_sse_route`.
+- **The `theme-storybook` mirror** — NO-PORT source, as the order rules
+  (P4.D206 carries the classes).
+- **A preserved partial on the swipe path** — v4 has none; MEASURED (item 1
+  above), recorded, no arm.
+- **`docs/developer/API.md` (+29)** — pre-listed for the unifier's `docs/v4/`
+  mirror. The swipe section documents
+  `POST /api/v1/messages/[id]?action=swipe&stream=1`.
+
+### For the unifier
+
+- `regenerate_swipe_tier3` is SHARED with **P4.D205** (its three re-apply case
+  rows are P4.D205's; the regen here is this lane's). If both lanes' regens
+  collide, **re-run the family once on the union** — the corpus edits are in
+  different objects (`completion` here, `calls` there) and should merge, but
+  the NDJSON must be re-recorded either way.
+- **P4.D205's pre-declared handle in `services/regenerate_swipe.rs`** (the
+  swipe-group ids into the context build) is PRESERVED: nothing in this lane
+  touched the region between `previous_messages` and the context-build call,
+  and the `gathering` beat was deliberately anchored at the `cp_input` line
+  rather than immediately after `previous_messages` so the two hunks do not
+  share an anchor. v4's own order (ids, then `gathering`) is intact either way.
+- `crates/quilltap-web/tests/swipe_spine/mod.rs` is a NEW shared test-helper
+  module dir (like `tests/common/`), used by both web families. It does not
+  compile as its own test binary.
+- Versions bumped by this lane: **core +1, harness +2, host +1, web +2.**
+
+### The lane's gate
+
+Run from the lane worktree with `CARGO_INCREMENTAL=0 TZ=UTC`, one
+sentinel-guarded background chain, the FULL log captured and read (never
+`| tail`).
+
+| step | result |
+|---|---|
+| §R.2 probe | **PASS** at the opening (post-`/driftcheck`) and before each of the three regen batches |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| same with `--features quilltap-core/native-transport` | clean |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast -- --nocapture` | **586 test binaries / 3,505 passed / 4 failed / 3 ignored**, 485 `SKIP:` lines (all families outside the lane's env block; none of them this lane's) |
+| the lane's 11 differentials by name | **ALL GREEN**, every one confirmed RUN by a non-zero duration — see the table above |
+
+The env block deliberately INCLUDES `QT_ORACLE_HELP_TREE`, so the designed
+124-vs-126 red SHOWS rather than hiding behind a false `SKIP:` — the choice the
+`baa85e19b` round made for its fixture-vintage reds and P4.D203 made for this
+one.
+
+#### The four reds: THREE are other lanes', ONE was this lane's and is FIXED
+
+| failing test | whose | the measurement |
+|---|---|---|
+| `shipped_help_tree_matches_oracle` | P4.D205 + P4.D210 | `124 vs 126`; a whole-tree `cmp` names the two missing files and the six still-differing ones, and `chat-message-actions.md` is on neither list (above) |
+| `the_embedded_schema_equals_the_v4_checkouts` | **P4.D205** | v4 95,266 / vendored 93,384. ⚠ The guard reads the LIVE checkout, which has MOVED to `a2db63da7` since the round was ordered — so the attribution was re-measured rather than inherited: the live schema and the TARGET pin's are **both 95,266**, and the vendored copy is **93,384, the BASELINE pin's exact size**. The whole delta is `baa85e19b → f45a517a9` (`e7d77bb60`, Inform); **the three new drift commits contributed nothing.** |
+| `v4s_installed_zod_matches_the_recorded_version` | P4.D211 | `4.5.4 -> 4.6.5` from `6b0615807`, exactly as §R.5 predicts |
+| `typed_only_hand_built_construction_count_matches_the_recorded_table` | **THIS LANE** | see below |
+
+**The fourth was ours, and no order predicted it.**
+`tri_state_edges_share_the_decoder` keeps a per-file census of typed-only
+hand-built `Request::…{}` constructions in `*_routes.rs`, and
+`messages_swipe_routes.rs` is the **first NEW `*_routes.rs` file since that
+table was written** — so the count moved because a FILE appeared, not because
+an existing one changed. Three constructions (`Request::MessageSwipe` on the
+switch leg, the non-stream generate leg and the SSE leg), measured with the
+grep the failure message itself prescribes. Both constants updated with the
+arithmetic in the comment: the per-file row, and the total
+(**109 = 110 − 1 → 112 = 113 − 1**). Its sibling guard
+`web_edge_body_parse_guard` was re-run and does NOT move — `swipeIndex` is
+v4 `safeParse` (a wrong type falls through to GENERATE rather than refusing)
+and `stream` is a query flag with no v4 body counterpart, so both verdicts
+live in `dispatch_wrong_type_census`. `no_new_tri_state_variant_is_hand_built_
+outside_the_helper` stayed green throughout, correctly: `MessageSwipe` carries
+no `Option<Option<…>>`.
+
+The lesson for the round: **a lane that adds a NEW `*_routes.rs` file moves a
+census no order lists**, because the censuses are keyed by file. Worth the
+next `/setupphase` knowing.
+
+#### Source censuses this lane moved
+
+| census | move |
+|---|---|
+| `stream_watchdog_wrap_census` | 11 files/27 sites → **12 files/28 sites**; `OWN_CONTEXT_SITES` replaces the `GREETING_SITE` special case |
+| `dispatch_wrong_type_census` | +1 ROW (`MessageSwipe.stream`); the excluded constant **unmoved at 441** |
+| `tri_state_edges_share_the_decoder` | +1 file row (3); total **109 → 112** |
+| `help_tree_embed_guard` / `host_help_docs_boot` | **unmoved** — this lane adds no help FILE, only re-vendors one |
+| `qtap_schema_embed_guard` | not this lane's (above) |

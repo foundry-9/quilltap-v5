@@ -589,6 +589,10 @@ fn no_new_tri_state_variant_is_hand_built_outside_the_helper() {
 /// P4.62) — this table only counts them, so a new hand-built edge has to be
 /// argued into the count rather than typed silently.
 ///
+/// Re-measured 2026-09-22 (P4.D207 added `messages_swipe_routes.rs`, the
+/// first NEW `*_routes.rs` file since this table was written — the count moved
+/// because a file appeared, not because an existing one changed).
+///
 /// Measured 2026-09-18 at this port's `main` tip (post-conversion: this
 /// order's four edges no longer appear here — `subprompts_routes.rs` fell
 /// from 5 hand-built constructions to 3, `prompt_templates_routes.rs` from 5
@@ -607,6 +611,20 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("images_routes.rs", 4),
     ("llm_logs_routes.rs", 5),
     ("messages_routes.rs", 2),
+    // P4.D207 (v4 `f564b0de3`): the NEW swipe REST edge, 3 constructions of
+    // ONE variant — `Request::MessageSwipe` for the switch leg, the
+    // non-stream generate leg and the SSE leg. It carries only typed fields
+    // (`message_id: String`, `swipe_index: Option<i64>`, `stream: bool`) and
+    // no `Option<Option<…>>`, so it belongs in THIS table and not in the
+    // tri-state helper's — `no_new_tri_state_variant_is_hand_built_outside_
+    // the_helper` agrees, and stayed green when this row was still missing.
+    //
+    // Its wrong-type verdicts are `web_edge_body_parse_guard.rs`'s, not this
+    // file's: `swipeIndex` is v4 `safeParse` (a wrong type falls through to
+    // GENERATE, it is not refused) and `stream` is a QUERY flag with no v4
+    // body counterpart at all. Both are adjudicated in
+    // `dispatch_wrong_type_census`.
+    ("messages_swipe_routes.rs", 3),
     ("photos_routes.rs", 4),
     ("prompt_templates_routes.rs", 2),
     ("subprompts_routes.rs", 3),
@@ -658,13 +676,15 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 110,
-        "P4.D205: 110 = 111 total `*_routes.rs` variant constructions minus the 1 \
-         CharacterRename tri-state exception. 109 = 110 - 1 before the Inform verbs; the \
-         `?action=informs` GET adds ONE typed-only hand-built construction \
-         (`ChatInformsList`, whose only field is the path id), while the two POST arms go \
-         through \
-         `request_envelope` and add none — which is the rule this census enforces. \
-         Re-measure both numbers together if this moves"
+        total, 113,
+        "113 = 114 total `*_routes.rs` variant constructions minus the 1 CharacterRename \
+         tri-state exception. 109 = 110 - 1 at the 2026-09-18 measurement; the `f45a517a9` \
+         round's unification recounts as base + the lanes' sums: P4.D205's `?action=informs` \
+         GET adds ONE typed-only hand-built construction (`ChatInformsList`, whose only \
+         field is the path id — its two POST arms go through `request_envelope` and add \
+         none, which is the rule this census enforces), and P4.D207's \
+         `messages_swipe_routes.rs` adds THREE `Request::MessageSwipe` constructions (the \
+         switch leg, the non-stream generate leg and the SSE leg): 110 + 1 + 3 = 114 and \
+         109 + 1 + 3 = 113. Re-measure both numbers together if this moves."
     );
 }
