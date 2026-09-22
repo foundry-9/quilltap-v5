@@ -37,6 +37,10 @@ pub mod chat_activity_recompute_heal;
 pub mod chat_documents;
 pub mod chat_message_fts;
 pub mod chat_message_fts_reconcile;
+
+// === P4.D205 ===
+pub mod chat_informs;
+// === end P4.D205 ===
 // === P4.D171 ===
 pub mod chat_messages_route_trail_repair;
 // === end P4.D171 ===
@@ -301,6 +305,14 @@ impl Writer {
     pub fn chat_documents(&self) -> chat_documents::ChatDocumentsRepository<'_> {
         chat_documents::ChatDocumentsRepository::new(&self.conn)
     }
+
+    // === P4.D205 ===
+    /// The chat-informs repository over this writer's connection (the Salon's
+    /// Inform rows).
+    pub fn chat_informs(&self) -> chat_informs::ChatInformsRepository<'_> {
+        chat_informs::ChatInformsRepository::new(&self.conn)
+    }
+    // === end P4.D205 ===
 
     /// The chat-settings repository over this writer's connection.
     pub fn chat_settings(&self) -> chat_settings::ChatSettingsRepository<'_> {

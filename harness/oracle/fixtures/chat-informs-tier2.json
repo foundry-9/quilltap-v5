@@ -1,0 +1,223 @@
+{
+  "testPepperBase64": "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=",
+  "_comment": "P4.D205 — the chat_informs repository corpus (v4 e7d77bb60). The seed is INSERTION-ORDERED on purpose: `gamma` is written AFTER `alpha` but carries a lexicographically smaller id at the SAME createdAt, so the three reads that sort must put gamma first. Drop v4's `id.localeCompare` tiebreak and a stable sort leaves them in rowid order — the read comparands redden.",
+  "chatId": "11111111-1111-4111-8111-111111111111",
+  "otherChatId": "22222222-2222-4222-8222-222222222222",
+  "p1": "aaaaaaaa-0000-4000-8000-000000000001",
+  "p2": "aaaaaaaa-0000-4000-8000-000000000002",
+  "p3": "aaaaaaaa-0000-4000-8000-000000000003",
+  "seed": [
+    {
+      "id": "f0000000-0000-4000-8000-00000000000a",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b1111111-0000-4000-8000-000000000001",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "alpha passage",
+      "recordMessageId": "d0000000-0000-4000-8000-000000000100",
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "f0000000-0000-4000-8000-00000000000b",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b1111111-0000-4000-8000-000000000001",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "contentMarkdown": "alpha passage",
+      "recordMessageId": "d0000000-0000-4000-8000-000000000100",
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000000c",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b3333333-0000-4000-8000-000000000003",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "gamma passage",
+      "recordMessageId": null,
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "updatedAt": "2026-01-02T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "b0000000-0000-4000-8000-00000000000d",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b2222222-0000-4000-8000-000000000002",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "beta passage",
+      "recordMessageId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "b0000000-0000-4000-8000-00000000000e",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b2222222-0000-4000-8000-000000000002",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000003",
+      "contentMarkdown": "beta passage",
+      "recordMessageId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    },
+    {
+      "id": "c0000000-0000-4000-8000-00000000000f",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b4444444-0000-4000-8000-000000000004",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "consumed by m1",
+      "recordMessageId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T12:00:00.000Z",
+      "consumedAt": "2026-01-01T12:00:00.000Z",
+      "consumedByMessageId": "ee000000-0000-4000-8000-000000000201"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000010",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "batchId": "b4444444-0000-4000-8000-000000000004",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000002",
+      "contentMarkdown": "consumed by m2",
+      "recordMessageId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T12:00:00.000Z",
+      "consumedAt": "2026-01-01T12:00:00.000Z",
+      "consumedByMessageId": "ee000000-0000-4000-8000-000000000202"
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000011",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "batchId": "b5555555-0000-4000-8000-000000000005",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "contentMarkdown": "other chat passage",
+      "recordMessageId": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "consumedAt": null,
+      "consumedByMessageId": null
+    }
+  ],
+  "ops": [
+    {
+      "kind": "findPendingForParticipant",
+      "label": "pending for p1 — createdAt asc, then the id tiebreak, consumed excluded, other chat excluded",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "findPendingForParticipant",
+      "label": "a seat owed nothing",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000009"
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "the swipe re-apply set for one message",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": ["ee000000-0000-4000-8000-000000000201"]
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "an empty message list answers [] without a read",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": []
+    },
+    {
+      "kind": "findConsumedByMessages",
+      "label": "another seat's consumed row is not this seat's",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000001",
+      "messageIds": ["ee000000-0000-4000-8000-000000000202"]
+    },
+    {
+      "kind": "findPendingBatches",
+      "label": "the fold — one entry per post, each carrying the seats still owed it",
+      "chatId": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "kind": "findByChatId",
+      "label": "everything for the chat, consumed included (export/backup read this)",
+      "chatId": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "kind": "findByBatchId",
+      "label": "one batch, both its seats",
+      "batchId": "b1111111-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "createBatch",
+      "label": "one batchId, two rows, a record message — the minted leg",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "contentMarkdown": "a fresh passage",
+      "participantIds": [
+        "aaaaaaaa-0000-4000-8000-000000000002",
+        "aaaaaaaa-0000-4000-8000-000000000003"
+      ],
+      "recordMessageId": "d0000000-0000-4000-8000-000000000101"
+    },
+    {
+      "kind": "createBatch",
+      "label": "no record message — recordMessageId lands NULL",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "contentMarkdown": "a recordless passage",
+      "participantIds": ["aaaaaaaa-0000-4000-8000-000000000001"],
+      "recordMessageId": null
+    },
+    {
+      "kind": "markConsumed",
+      "label": "two rows consumed against one assistant message",
+      "ids": [
+        "f0000000-0000-4000-8000-00000000000a",
+        "00000000-0000-4000-8000-00000000000c"
+      ],
+      "messageId": "ee000000-0000-4000-8000-000000000209"
+    },
+    {
+      "kind": "markConsumed",
+      "label": "an empty id list is a no-op answering 0",
+      "ids": [],
+      "messageId": "ee000000-0000-4000-8000-000000000209"
+    },
+    {
+      "kind": "markConsumed",
+      "label": "an unknown id moves nothing and is not counted",
+      "ids": ["99999999-9999-4999-8999-999999999999"],
+      "messageId": "ee000000-0000-4000-8000-000000000209"
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "a batch whose every row is consumed loses NOTHING — the swipe can still re-apply it",
+      "batchId": "b4444444-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "findByBatchId",
+      "label": "and the consumed rows are still there",
+      "batchId": "b4444444-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "deletePendingByBatch",
+      "label": "a wholly pending batch goes",
+      "batchId": "b2222222-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "deletePendingForParticipant",
+      "label": "a seat leaves the chat — only its PENDING rows go",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "participantId": "aaaaaaaa-0000-4000-8000-000000000002"
+    },
+    {
+      "kind": "deleteByChatId",
+      "label": "the chat-delete cascade (v5's only cascade — no FK on the generateDDL surface)",
+      "chatId": "22222222-2222-4222-8222-222222222222"
+    }
+  ]
+}

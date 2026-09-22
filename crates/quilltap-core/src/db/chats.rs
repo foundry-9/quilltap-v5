@@ -1376,6 +1376,31 @@ impl<'c> ChatsRepository<'c> {
                 "[Chats] Failed to delete conversation annotations for chat"
             );
         }
+        // === P4.D205 (v4 `e7d77bb60`) ===
+        // Sweep the chat's `chat_informs` rows. On v4 this is the FK doing it —
+        // its `add-chat-informs-table-v1` migration declares `FOREIGN KEY
+        // ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE`, and its own
+        // `deleteByChatId` is documented as a mirror "for callers that ask".
+        // **On v5 this call IS the cascade**: the generateDDL surface v5
+        // follows (D23 — `fresh_schema.json`, and `ensure_chat_informs_table`
+        // on the boot chain) carries NO foreign key, measured at the target
+        // pin. Without this a deleted chat leaks every inform it was ever
+        // handed, consumed and pending alike.
+        //
+        // Best-effort with a warn, exactly like the annotations sweep above:
+        // the `chats` row is already gone, so failing the call here would only
+        // report an error for a delete that has, in the part the caller can
+        // see, succeeded.
+        if let Err(e) =
+            super::chat_informs::ChatInformsRepository::new(self.conn).delete_by_chat_id(id)
+        {
+            tracing::warn!(
+                chat_id = %id,
+                error = %e,
+                "[Chats] Failed to delete chat informs for chat"
+            );
+        }
+        // === end P4.D205 ===
         Ok(true)
     }
 

@@ -1410,6 +1410,26 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.d27 ===
+            // === P4.D205 (v4 `e7d77bb60`, migration
+            // `add-chat-informs-table-v1`) ===
+            // The `chat_informs` table, re-homed from v4's migration runner to
+            // a boot ensure for the same reason as its neighbours above.
+            // Load-bearing on an existing instance: the composer's pending-chip
+            // read runs on every Salon open, so without the table the first
+            // read would hit `no such table: chat_informs`.
+            //
+            // It emits the **generateDDL** shape — no foreign key, the
+            // `createdAt` index — which is what `fresh_schema.json` carries
+            // from the D23 re-dump, so a fresh instance and an ensured one
+            // agree byte for byte. v4's migration writes a different shape (an
+            // FK plus three purpose-built indexes); the two are
+            // column-name-addressed and interchangeable, and whichever creates
+            // the table first wins. The consequence v5 must carry is in
+            // `db/chats.rs::delete`: with no FK, the chat-delete cascade
+            // deletes these rows explicitly.
+            quilltap_core::db::chat_informs::ensure_chat_informs_table(main)?;
+            // === end P4.D205 ===
+
             // === P4.D204 (v4 `f45a517a9`, `lib/startup/reconcile-chat-
             // message-fts.ts` PHASE 3.65 + the migration
             // `create-chat-message-fts-v1`) ===

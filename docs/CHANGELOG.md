@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(db): the `chat_informs` table, its repository, the D23 re-dump and the chat-delete cascade (P4.D205)
+
+_Versions: core 0.0.970, harness 0.0.863, host 0.0.140._
+
+The storage half of v4 `e7d77bb60`'s Inform — an out-of-character passage the
+operator hands to one or more LLM-controlled seats. One row per (batch x target),
+so consumption is a single-row write with no shared array to clobber.
+
+`db/chat_informs.rs` carries v4's ten methods under v4's names, including the
+read comparator (`createdAt` ascending, tie-broken by `id.localeCompare`, with
+the NaN leg reproduced rather than promoted to a total order) and cancel's rule
+that a consumed row survives so a later swipe can still re-apply it.
+
+v4 ships the table TWICE and the shapes differ: `generateDDL` (no foreign key,
+one `createdAt` index) and the `add-chat-informs-table-v1` migration (a chatId
+FK plus three purpose-built indexes). Measured at the target pin: v4 runs the
+migration runner at PHASE 1, before anything touches a repository, so a real v4
+instance carries the MIGRATION shape and it is the `createdAt` index that never
+lands — the reverse of what the work order predicted. v5 follows the generateDDL
+surface, as it has for every other table since P4.4: `fresh_schema.json` is
+re-dumped from v4's live `generateDDL` (D23 — the delta is exactly two
+statements, and `chat_settings_seed.json` is byte-identical), and
+`ensure_chat_informs_table` emits the same two on the boot chain. The consequence
+v5 must carry is the cascade: with no FK, `chats.delete` now deletes the rows
+explicitly, best-effort with a warn like the annotations sweep beside it.
+
+Two fidelity findings the differential caught, both measured rather than
+reasoned: v4 mints the row timestamps INSIDE `createBatch`'s loop, not once
+before it (one oracle batch came back with its two rows five milliseconds
+apart); and v4's SQLite backend converts every NULL cell to `undefined` on
+read, so a row read back omits its null optional keys entirely, while a row
+returned by `_create` carries them as explicit nulls. That second rule is a
+whole-backend one and reaches the export NDJSON and backup JSON records.
+
+The new `chat_informs_tier2` family drives v4's real repository through 18 ops
+and diffs two comparands — every read's RESULT (final state cannot see a sort, a
+fold, or a count) and the final table. Both mutation proofs redden exactly their
+target: dropping the id tiebreak reddens the ordering read, and letting cancel
+take consumed rows reddens the batch that must lose nothing.
+
 #### 2026-09-22 — docs(scriptorium): the `QUILLTAP_JOB_CHILD` divergence, re-recorded at the sync applier (P4.D210)
 
 _Versions: core 0.0.976._

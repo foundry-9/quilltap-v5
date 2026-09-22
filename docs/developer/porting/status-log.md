@@ -138868,3 +138868,126 @@ The three reds, each attributed by measurement rather than assumption:
 
 Versions at lane close: **core 0.0.976, harness 0.0.870, host 0.0.140, web
 0.0.160, cli 0.0.25.** Tauri and fixture-sanitizer untouched; the SPA untouched.
+
+## P4.D205 — Inform, the server half (v4 `e7d77bb60`), stacked on P4.D203's S
+
+Branch `claude/p4-d205-inform-server-port-e6bf4a`. Oracle baseline `baa85e19b`;
+target pin `f45a517a9`. **§R.2 probe:** FAILED at first attempt (v4 had moved to
+`e7821606f`, two commits past the target, with bugs 161/162 filed); the lane
+STOPped and reported. The human re-ran `/driftcheck`; the ledger's §1 now
+records HEAD `a2db63da7` with the three new rows classified **outside this
+round's scope** ("must not be added to a running lane"). Re-probed against the
+new §1: branch `main`, tree CLEAN, both logs EMPTY — **PASS**. Work resumed on
+that recorded decision, never on the lane's own reading.
+
+**Lane base — for the unifier.** §R.10(a) says branch from **S = `144a0e80`**.
+This worktree was cut from P4.D203's lane TIP (`7903d46f`), i.e. S plus the rest
+of that lane's nine code/docs commits. That is a superset of S and exactly the
+tree the unifier will hold when it picks P4.D205 (P4.D203 is cherry-picked
+first), but it means `git diff S...<this lane>` is NOT empty for P4.D203's files.
+**The lane's own commits are exactly `git log 7903d46f..HEAD`.**
+
+### Unit 1 — storage: the table, the repository, the D23 re-dump, the cascade
+
+**The two-DDL measurement (the order's item-2 question), answered.** v4 ships
+`chat_informs` twice: `generateDDL(ChatInformSchema)` (no FK, one index
+`idx_chat_informs_createdAt` on `("createdAt" DESC)`) and the
+`add-chat-informs-table-v1` migration (a `chatId` FK with `ON DELETE CASCADE`
+plus `idx_chat_informs_pending`/`_batch`/`_consumedBy`). Measured at the pin:
+`instrumentation.ts` runs the migration runner at **PHASE 1, "Run Migrations
+FIRST - before anything else"**, and nothing ahead of it touches a repository
+(grepped `getRepositories`/`initializeDatabase`/`ensureCollection` over lines
+1–410 — zero hits; `initializeDatabase` does not appear in `instrumentation.ts`
+at all). So a real v4 instance gets the MIGRATION shape and `ensureCollection`
+later no-ops. **The order predicted the opposite** ("expect the generateDDL
+shape … and the migration's `shouldRun` false"); it is the `createdAt` index
+that never lands on a real instance, not the migration's three. The generateDDL
+shape is what lands wherever the migration runner does not run — jest, the tsx
+oracles, the D23 dump.
+
+**v5 follows the generateDDL surface**, the same choice the port has made for
+every table since P4.4 (`dump-fresh-schema.ts`'s header: a long-lived v4
+instance is the hand-written base plus ~170 ALTERs, and both engines are
+column-name-addressed). `fresh_schema.json` re-dumped from v4's live
+`generateDDL` at the pin — **the delta is exactly two statements**, every other
+statement in all three partitions byte-identical, and `chat_settings_seed.json`
+came back IDENTICAL (the order's cross-check). `ensure_chat_informs_table`
+emits the same two on the boot chain, in one fenced block at the end of
+`host.rs::seed_built_ins`'s main-partition section (§R.10(c)).
+
+**The cascade.** No FK on v5's surface, so `db/chats.rs::delete` now calls
+`delete_by_chat_id` explicitly — best-effort with a warn, matching the
+conversation-annotations sweep immediately above it (the `chats` row is already
+gone; failing there would report an error for a delete the caller has seen
+succeed). v4's own `deleteByChatId` is documented as a mirror "for callers that
+ask"; on v5 it IS the cascade.
+
+**Filing candidate (Tier 2 item 11), with the measurement attached:** on any v4
+instance that has booted, the three purpose-built indexes land and the
+`createdAt` index never does; on any jest/oracle-built database the reverse. v4
+therefore has two live index sets for one table depending on provenance. No
+correctness consequence measured — every read this port drives is
+column-name-addressed and none depends on an index — so it is recorded, not
+filed.
+
+**Two fidelity findings the differential caught** (both measured at the pin,
+neither inferred):
+
+1. **`createBatch` mints its timestamps PER ROW, inside the loop** — v4 calls
+   `this.create(...)` per target and each `_create` reads its own
+   `getCurrentTimestamp()`. One oracle batch returned its two rows at
+   `…42.573Z` and `…42.578Z`, five milliseconds apart. The port had hoisted a
+   single `now` out of the loop; fixed. The `batchId` stays hoisted, because
+   v4 mints it once before the loop.
+2. **v4's SQLite backend converts every NULL cell to `undefined` on read**
+   (`backends/sqlite/backend.ts:477-479`), so a row read back from the database
+   **omits** its null optional keys rather than carrying `null`, while a row
+   returned by `_create` carries them as explicit nulls (the input object plus
+   the minted fields, never deserialized). A whole-backend rule, not a
+   `chat_informs` quirk. **It reaches units 6's export NDJSON and backup JSON,
+   which serialize raw rows** — flagged there. Where v4 wants an explicit null
+   it writes one, which is exactly why `findPendingBatches` coalesces
+   `row.recordMessageId ?? null`.
+
+**Family: NEW `chat_informs_tier2`** (`crates/quilltap-harness/tests/
+chat_informs_tier2_equivalence.rs`) over v4's REAL `ChatInformsRepository`, 18
+ops across all ten methods. Two comparands, because final state cannot see a
+sort, a fold, or a count: **every read op's RESULT**, in order, and the final
+table dump. The corpus seeds `gamma` AFTER `alpha` with the same `createdAt` and
+a smaller `id`, so rowid order and sorted order disagree and the
+`id.localeCompare` tiebreak is observable. Normalization is keyed on the
+committed spec — a UUID or timestamp that appears in the spec is compared
+EXACTLY, anything else was minted at run time and becomes `ID_n` / `<ts>` — so
+the seed's pinned timestamps, i.e. the whole ordering proof, stay under byte
+comparison. Result: **18 read ops, 6 final rows, matched.**
+
+Mutation proofs (file-backup revert, both reddening exactly their target):
+
+| mutation | expected red | observed |
+|---|---|---|
+| drop the `id.localeCompare` tiebreak | the ordering read | RED on `findPendingForParticipant` — "createdAt asc, then the id tiebreak…" |
+| let `deletePendingByBatch` take consumed rows | the survive-cancel row | RED on "a batch whose every row is consumed loses NOTHING" |
+
+**`provisioning_equivalence` — the backwards-sensitivity proof the order asked
+for, run rather than argued:** oracle regenerated at the target pin (it carries
+the two `chat_informs` statements); holding the **OLD** `fresh_schema.json`
+against it → **FAILED** on the schema statement list; restoring the re-dumped
+one → **3 passed** (the two `.dbkey` legs SKIP — they need
+`verify-dbkey-crosscompat.ts`'s outputs, which this unit does not move).
+
+**Regen recipe as run** (from the lane-unique target pin; the committed headers
+stay canonical per §R.3, and `$W` is this worktree):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+cd /tmp/qt-v4-pin-p4d205-f45a517a9
+QT_FIXTURE_OUT=/tmp/p4d205/qt-chat-informs-fixture.db \
+  $N/npx tsx "$W/harness/oracle/fixtures/build-chat-informs-fixture.ts"
+QT_FIXTURE_CHAT_INFORMS=/tmp/p4d205/qt-chat-informs-fixture.db \
+  $N/npx tsx "$W/harness/oracle/cases/chat-informs-tier2.ts" \
+  > /tmp/p4d205/oracle-chat-informs.ndjson
+QT_SCHEMA_OUT=/tmp/p4d205/fresh-schema.json QT_SEED_OUT=/tmp/p4d205/chat-settings-seed.json \
+  $N/npx tsx "$W/harness/oracle/provision/dump-fresh-schema.ts"
+QT_ORACLE_PROVISION=/tmp/p4d205/oracle-provision.json QT_V4_FRESH_OUT=/tmp/p4d205/qt-v4-fresh \
+  $N/npx tsx "$W/harness/oracle/provision/build-provision-oracle.ts"
+```
