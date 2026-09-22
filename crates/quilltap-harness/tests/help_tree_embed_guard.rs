@@ -62,7 +62,7 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// re-vendored pages (`data-retention`, `search`, `insert-announcement`,
 /// `chat-message-actions`, `dangerous-content`, `cli-docs`, `mount-points`,
 /// `scriptorium`) move no count.
-const VENDORED_FILE_COUNT: usize = 125;
+const VENDORED_FILE_COUNT: usize = 126;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
