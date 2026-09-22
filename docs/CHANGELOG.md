@@ -12,6 +12,45 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(summary): name the speakers in the fold transcript (bug 161, P4.D212)
+
+_Versions: core 0.0.993, harness 0.0.891._
+
+Ports v4 `e7821606f`'s server half. v5 reproduced v4's defect exactly: the
+context-summary fold rendered `USER:` / `ASSISTANT:` under a prompt whose last
+line told the model to use character names, so a model with no name to use
+made one up and every later fold carried it forward.
+
+- New `services::speaker_names` (v4 `lib/chat/speaker-names.ts`):
+  `resolve_speaker_names` reads every participant, including removed and
+  silent seats, with raw character reads. It drops an empty name and
+  swallows a failed read per seat. `speaker_label` falls back to `User` for a
+  `USER` line and `Character` for any other role.
+- The fold-episode pass uses the shared resolver; its private loop is
+  deleted. One behavior change: a character whose name is the empty string
+  now gets the `Character` fallback instead of an empty label, as in v4.
+- The fold task takes a new `FoldTurn` type with a required `speaker` and
+  renders `{stamp}{speaker}: {content}`. The shared `ChatMessage` used by
+  the title tasks is unchanged.
+- `FOLD_SUMMARY_PROMPT` was regenerated with the new
+  `harness/tools/extract-prompt-text.cjs`. The extractor reproduces the
+  baseline file byte for byte; at the target, the only change is v4's
+  one-sentence edit.
+- `generate_context_summary` resolves names before the empty-turns return
+  and logs `[Context Summary] Resolved speaker names for fold` at debug with
+  v4's four fields. The id list uses the `…Json` file-layer convention.
+
+Differentials: a new `speaker_names_equivalence` (4 cases, 12 name pairs, 17
+character reads counted by a statement trace, 88 labels);
+`context_summary_service_tier3` re-recorded at the target pin and grown by
+three ops (named seats, a removed/dangling/empty-name seat mix, and a
+too-few-turns silence leg), with the debug line capture-pinned per op;
+`fold_episode_tier3` grown with an empty-name seat. That arm renders `: Dell
+hums…` at the baseline pin and `Character: Dell hums…` at the target; the
+rest of the corpus is neutral across the two pins. The arm sits in the
+`episode_pass` window: in `no_episodes` a canned-key miss and a hit both
+write nothing, so the first placement survived the pre-port file.
+
 #### 2026-09-22 — docs(porting): the `a2db63da7` bug-161/162 drift catch-up + maintenance round ordered (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106)
 
 _Docs-only; no version bumps._

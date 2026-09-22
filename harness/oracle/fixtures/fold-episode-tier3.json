@@ -22,6 +22,14 @@
       "name": "Cass",
       "identity": "Cass is elsewhere.",
       "controlledBy": "llm"
+    },
+    {
+      "id": "dd000000-0000-4000-8000-0000000000d1",
+      "name": "Dell",
+      "identity": "Dell's name was lost in the ledger.",
+      "controlledBy": "llm",
+      "emptyName": true,
+      "comment": "P4.D212 (bug 161): created as 'Dell' through v4's REAL repo, then blanked to name '' by a direct UPDATE. Pre-fix, both v4's private loop (`if (character)`) and v5's pushed the EMPTY name and rendered ': …'; the shared resolver's `if (character?.name)` gate drops it, so the line renders 'Character: …'. Its seat is ABSENT in the outing chat, so the pass writes it no memory; the line sits in `episode_pass`'s window, where a prompt-key miss changes the written episodes (in `no_episodes` a miss and a hit both write nothing, so the arm would be invisible there)."
     }
   ],
   "chats": [
@@ -44,6 +52,12 @@
         {
           "id": "9c000000-0000-4000-8000-0000000000c1",
           "characterId": "cc000000-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "absent"
+        },
+        {
+          "id": "9d000000-0000-4000-8000-0000000000d1",
+          "characterId": "dd000000-0000-4000-8000-0000000000d1",
           "controlledBy": "llm",
           "status": "absent"
         }
@@ -139,6 +153,13 @@
           "role": "ASSISTANT",
           "content": "Seventeen gulls, and every one of them a critic.",
           "participantId": "9b000000-0000-4000-8000-0000000000b1",
+          "createdAt": "2026-07-14T09:20:00.000Z"
+        },
+        {
+          "id": "e2000000-0000-4000-8000-0000000000d1",
+          "role": "ASSISTANT",
+          "content": "Dell hums something with no words.",
+          "participantId": "9d000000-0000-4000-8000-0000000000d1",
           "createdAt": "2026-07-14T09:20:00.000Z"
         },
         {

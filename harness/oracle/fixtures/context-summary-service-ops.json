@@ -107,6 +107,36 @@
       "op": "check_gate_fires_fold",
       "kind": "title",
       "response": "The Long Road Onward"
+    },
+    {
+      "op": "fold_named_seats",
+      "kind": "fold",
+      "response": "Active threads: Pell and Wren tend the lighthouse. Resolved decisions: relight the lamp. Emotional state: hopeful. Open questions: the fog."
+    },
+    {
+      "op": "fold_named_seats",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "fold_named_seats",
+      "kind": "title",
+      "response": "The Lamp at the Edge"
+    },
+    {
+      "op": "fold_removed_and_dangling",
+      "kind": "fold",
+      "response": "Active threads: the door stays shut. Resolved decisions: none. Emotional state: uneasy. Open questions: who is Character."
+    },
+    {
+      "op": "fold_removed_and_dangling",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "fold_removed_and_dangling",
+      "kind": "title",
+      "response": "A Knock Unanswered"
     }
   ],
   "ops": [
@@ -175,6 +205,24 @@
       "messageIds": [
         "ffffffff-0000-4000-8000-0000000003e7"
       ]
+    },
+    {
+      "name": "fold_named_seats",
+      "kind": "generate",
+      "chatId": "c000000c-0000-4000-8000-00000000000c",
+      "forceRegenerate": false
+    },
+    {
+      "name": "fold_removed_and_dangling",
+      "kind": "generate",
+      "chatId": "c000000d-0000-4000-8000-00000000000d",
+      "forceRegenerate": false
+    },
+    {
+      "name": "fold_too_few_turns",
+      "kind": "generate",
+      "chatId": "c000000e-0000-4000-8000-00000000000e",
+      "forceRegenerate": false
     }
   ]
 }

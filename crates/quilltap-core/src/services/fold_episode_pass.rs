@@ -21,7 +21,7 @@ use crate::chat_predicates::{is_participant_present, participant_status_from_str
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
-use crate::db::{characters_read, chats_read, memories_read};
+use crate::db::{chats_read, memories_read};
 use crate::episodic::resolve_when_phrase;
 use crate::memory_tasks::{
     build_fold_episode_messages, parse_fold_episodes, ExtractionClock, FoldEpisodeMessage,
@@ -33,6 +33,7 @@ use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::memory_gate::{
     create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
 };
+use crate::services::speaker_names::{resolve_speaker_names, speaker_label};
 
 /// Cap on fragment links attached to one episode (per character) — v4
 /// `MAX_FRAGMENT_LINKS`.
@@ -146,48 +147,19 @@ pub async fn run_fold_episode_pass<C: CompletionProvider, E: EmbeddingProvider>(
         narrative_now: None,
     };
 
-    // Resolve speaker names per participant (raw read — survives a broken vault).
-    let mut speaker_names: Vec<(String, String)> = Vec::new();
-    for p in &participants {
-        let Some(character_id) = str_field(p, "characterId").filter(|c| !c.is_empty()) else {
-            continue;
-        };
-        let participant_id = str_field(p, "id").unwrap_or_default().to_string();
-        if speaker_names.iter().any(|(id, _)| id == &participant_id) {
-            continue;
-        }
-        // v4 wraps the lookup in a try/catch — the name stays role-labelled.
-        let cid = character_id.to_string();
-        if let Ok(Some(character)) =
-            db.read_main(move |conn| characters_read::find_by_id_raw(conn, &cid))
-        {
-            if let Some(name) = str_field(&character, "name") {
-                speaker_names.push((participant_id, name.to_string()));
-            }
-        }
-    }
+    // Resolve speaker names per participant. Shared with the context-summary
+    // fold — see `services::speaker_names` for why there is only one of these
+    // (v4 `e7821606f` deleted this pass's private loop; its `if (character)`
+    // gate became the shared `if (character?.name)`).
+    let speaker_names = db
+        .read_main(|conn| Ok(resolve_speaker_names(conn, &participants)))
+        .unwrap_or_default();
 
     let rendered: Vec<FoldEpisodeMessage> = input
         .window_messages
         .iter()
         .map(|m| FoldEpisodeMessage {
-            speaker: m
-                .participant_id
-                .as_deref()
-                .and_then(|pid| {
-                    speaker_names
-                        .iter()
-                        .find(|(id, _)| id == pid)
-                        .map(|(_, n)| n.clone())
-                })
-                .unwrap_or_else(|| {
-                    if m.role == "USER" {
-                        "User"
-                    } else {
-                        "Character"
-                    }
-                    .to_string()
-                }),
+            speaker: speaker_label(m.participant_id.as_deref(), &m.role, &speaker_names),
             content: m.content.clone().unwrap_or_default(),
             created_at: m.created_at.clone(),
         })

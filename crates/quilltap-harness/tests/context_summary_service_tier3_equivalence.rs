@@ -75,6 +75,22 @@
 //! the `chat_messages` dump. The `check`-op internal fold runs those four arms as
 //! no-ops (see the `FoldEpisodePassSeams` paragraph above).
 //!
+//! P4.D212 (bug 161, v4 `e7821606f`) — the fold transcript names its speakers.
+//! The fold prompt is compared verbatim (the canned-call key), so every fold op
+//! is red against a pre-fix port on BOTH the labels (`USER:`/`ASSISTANT:` →
+//! a character name or the `User`/`Character` fallback) and the prompt's new
+//! last sentence. The corpus grows three ops: `fold_named_seats` (both seats
+//! resolve — the persona is an ordinary CHARACTER seat — plus one unattributed
+//! assistant line), `fold_removed_and_dangling` (a REMOVED-but-listed seat still
+//! names its lines; a dangling `characterId`, an EMPTY-NAME character and an
+//! unknown `participantId` fall back; one character on two seats), and
+//! `fold_too_few_turns` (the silence leg). The v5-only `[Context Summary]
+//! Resolved speaker names for fold` debug line is capture-pinned per op
+//! (`expected_speaker_names_line`). ⚠ v4's ORDER — the resolution runs BEFORE
+//! the `No content in turns to fold` return — cannot be observed by behaviour:
+//! every partitioned turn carries at least one message, so that return is
+//! unreachable on both sides. The port keeps v4's order anyway.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-ctxsum-oracle
@@ -113,6 +129,90 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 mod common;
+
+// ---------------------------------------------------------------------------
+// P4.D212 (bug 161, v4 `e7821606f`): the `[Context Summary] Resolved speaker
+// names for fold` debug line, capture-pinned per op on the v5 side.
+// ---------------------------------------------------------------------------
+
+const SPEAKER_NAMES_LINE: &str = "[Context Summary] Resolved speaker names for fold";
+
+/// Run `f` under a THREAD-SCOPED capturing subscriber (every `#[tokio::test]`
+/// is current-thread, so the guard spans the awaits) and return its lines.
+async fn capture_lines<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
+    use tracing_subscriber::layer::SubscriberExt;
+    let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let subscriber = tracing_subscriber::registry()
+        .with(quilltap_core::test_support::CaptureLayer(logs.clone()));
+    let guard = tracing::subscriber::set_default(subscriber);
+    let out = f.await;
+    drop(guard);
+    let lines = logs.lock().unwrap().clone();
+    (out, lines)
+}
+
+/// The per-op expectation for the debug line: `None` = the op must not log it
+/// (the fold returned before the resolution, or never folded); `Some` = exactly
+/// one line with these fields. v4 computes `unresolvedParticipantIds` as every
+/// seat absent from the map — no-`characterId`, dangling and empty-name seats
+/// alike — and `seatCount` counts every participant, removed ones included.
+fn expected_speaker_names_line(op: &str) -> Option<(usize, usize, &'static str)> {
+    match op {
+        // One seat on the provisioned `Vaulted A`.
+        "fold_regular" => Some((1, 1, "[]")),
+        // Seats on characters the fixture never created (aa…0002…0005).
+        "hard_rebuild" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000002"]"#)),
+        "fold_with_librarian_sweep" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000003"]"#)),
+        "help_like_fold" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000004"]"#)),
+        "title_failure" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000005"]"#)),
+        "check_gate_fires_fold" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000009"]"#)),
+        // Both seats resolve — the persona is an ordinary CHARACTER seat.
+        "fold_named_seats" => Some((2, 2, "[]")),
+        // Oriel (REMOVED but listed) + Wren twice resolve; the dangling seat and
+        // the empty-name seat do not.
+        "fold_removed_and_dangling" => Some((
+            5,
+            3,
+            r#"["ee00000d-0000-4000-8000-000000000002","ee00000d-0000-4000-8000-000000000003"]"#,
+        )),
+        // `Not enough turns to fold` returns BEFORE the resolution; the gate
+        // skips and the invalidates never fold.
+        _ => None,
+    }
+}
+
+fn assert_speaker_names_line(op: &str, chat_id: &str, lines: &[String]) {
+    let hits: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains(SPEAKER_NAMES_LINE))
+        .collect();
+    match expected_speaker_names_line(op) {
+        None => assert!(
+            hits.is_empty(),
+            "{op}: the fold never reached the resolution, so no speaker-names line: {hits:?}"
+        ),
+        Some((seats, resolved, unresolved_json)) => {
+            assert_eq!(
+                hits.len(),
+                1,
+                "{op}: exactly one speaker-names line: {lines:#?}"
+            );
+            let line = hits[0];
+            assert!(
+                line.starts_with("DEBUG quilltap_core::services::context_summary"),
+                "{op}: v4 logs this at debug: {line}"
+            );
+            for field in [
+                format!(" chatId={chat_id}"),
+                format!(" seatCount={seats}"),
+                format!(" resolvedCount={resolved}"),
+                format!(" unresolvedParticipantIdsJson={unresolved_json}"),
+            ] {
+                assert!(line.contains(&field), "{op}: missing `{field}` in {line}");
+            }
+        }
+    }
+}
 
 const SEED_SENTINEL: &str = "2026-03-01T00:00:00.000Z";
 
@@ -657,14 +757,15 @@ async fn context_summary_service_tier3_matches_oracle() {
                     completion: &completion,
                     executor: &executor,
                 };
-                let r = generate_context_summary_with_seams(
+                let (r, lines) = capture_lines(generate_context_summary_with_seams(
                     &db,
                     &completion,
                     &executor,
                     &options,
                     &seams,
-                )
+                ))
                 .await;
+                assert_speaker_names_line(&op.name, &op.chat_id, &lines);
                 // Match v4's result shape: undefined keys are dropped by
                 // JSON.stringify, so `summary`/`error`/`usage` only appear when set.
                 let mut obj = serde_json::Map::new();
@@ -689,12 +790,13 @@ async fn context_summary_service_tier3_matches_oracle() {
                 Value::Object(obj)
             }
             "invalidate" => {
-                let r = invalidate_context_summary_if_message_covered(
+                let (r, lines) = capture_lines(invalidate_context_summary_if_message_covered(
                     &db,
                     &op.chat_id,
                     &op.message_ids,
-                )
+                ))
                 .await;
+                assert_speaker_names_line(&op.name, &op.chat_id, &lines);
                 json!(r)
             }
             "check" => {
@@ -710,22 +812,25 @@ async fn context_summary_service_tier3_matches_oracle() {
                     completion: &completion,
                     executor: &executor,
                 };
-                let outcome = check_and_generate_summary_if_needed_with_seams(
-                    &db,
-                    &completion,
-                    &executor,
-                    &op.chat_id,
-                    &current_profile,
-                    &settings,
-                    &profiles,
-                    &ops_spec.user_id,
-                    None,
-                    None,
-                    true,
-                    &check_seams,
-                )
-                .await
-                .unwrap_or_else(|e| panic!("{}: check failed: {e:?}", op.name));
+                let (outcome, lines) =
+                    capture_lines(check_and_generate_summary_if_needed_with_seams(
+                        &db,
+                        &completion,
+                        &executor,
+                        &op.chat_id,
+                        &current_profile,
+                        &settings,
+                        &profiles,
+                        &ops_spec.user_id,
+                        None,
+                        None,
+                        true,
+                        &check_seams,
+                    ))
+                    .await;
+                assert_speaker_names_line(&op.name, &op.chat_id, &lines);
+                let outcome =
+                    outcome.unwrap_or_else(|e| panic!("{}: check failed: {e:?}", op.name));
                 // Reconstruct the same observable shape as the oracle: enqueue
                 // presence + the title job's interchange (else null) + the
                 // resulting chat's contextSummary/title/lastSummaryTurn.

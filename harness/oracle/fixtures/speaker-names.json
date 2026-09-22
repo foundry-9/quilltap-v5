@@ -1,0 +1,241 @@
+{
+  "_comment": "P4.D212 tier-2 corpus for v4 lib/chat/speaker-names.ts (e7821606f, bug 161). Characters are created by v4's REAL repos.characters.create; chats by repos.chats.create. Shapes v4's schemas forbid are asked of the real write path FIRST and planted by direct SQL only if it refuses (see the builder): measured at a2db63da7, characters.create ACCEPTS the empty name (`plantEmptyName` is then a no-op fallback), while chats.create REFUSES the seats with no / empty characterId (ChatParticipantBaseSchema characterId: UUIDSchema), which are therefore planted. v4's `repos.chats.findById` Zod-validates the stored row and answers NULL for a chat carrying a planted seat (logged `Data validation failed`), so that chat (`read: raw`) is read on BOTH sides from the raw `participants` JSON column and handed to the resolver as `{ participants }` — the resolver's own contract; every other chat (`read: repo`) goes through v4's `repos.chats.findById` / v5's `chats_read::find_by_id`. The label list is applied to every case; each case also labels every one of its seats under USER and ASSISTANT.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2026-09-01T12:00:00.000Z",
+  "characters": [
+    {
+      "id": "5e000000-0000-4000-8000-000000000001",
+      "name": "Aria",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "5e000000-0000-4000-8000-000000000002",
+      "name": "Charlie",
+      "controlledBy": "user"
+    },
+    {
+      "id": "5e000000-0000-4000-8000-000000000003",
+      "name": "Beatrix",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "5e000000-0000-4000-8000-000000000004",
+      "name": "Cosmo",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "5e000000-0000-4000-8000-000000000005",
+      "name": "Placeholder For Empty",
+      "controlledBy": "llm",
+      "plantEmptyName": true
+    },
+    {
+      "id": "5e000000-0000-4000-8000-000000000006",
+      "name": "Dorian",
+      "controlledBy": "llm"
+    }
+  ],
+  "missingCharacterId": "5e000000-0000-4000-8000-0000000000ff",
+  "chats": [
+    {
+      "name": "cast",
+      "id": "5c000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000001",
+          "characterId": "5e000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000002",
+          "characterId": "5e000000-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000003",
+          "characterId": "5e000000-0000-4000-8000-000000000003",
+          "controlledBy": "llm",
+          "status": "removed"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000004",
+          "characterId": "5e000000-0000-4000-8000-000000000004",
+          "controlledBy": "llm",
+          "status": "silent"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000007",
+          "characterId": "5e000000-0000-4000-8000-0000000000ff",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000008",
+          "characterId": "5e000000-0000-4000-8000-000000000005",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000009",
+          "characterId": "5e000000-0000-4000-8000-000000000006",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000010",
+          "characterId": "5e000000-0000-4000-8000-000000000006",
+          "controlledBy": "llm",
+          "status": "absent"
+        }
+      ],
+      "read": "repo"
+    },
+    {
+      "name": "duplicate-seat-ids",
+      "id": "5c000000-0000-4000-8000-000000000002",
+      "participants": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000011",
+          "characterId": "5e000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000011",
+          "characterId": "5e000000-0000-4000-8000-000000000006",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000012",
+          "characterId": "5e000000-0000-4000-8000-0000000000ff",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000012",
+          "characterId": "5e000000-0000-4000-8000-000000000004",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000013",
+          "characterId": "5e000000-0000-4000-8000-000000000005",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000013",
+          "characterId": "5e000000-0000-4000-8000-000000000003",
+          "controlledBy": "llm",
+          "status": "removed"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000014",
+          "characterId": "5e000000-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "read": "repo"
+    },
+    {
+      "name": "no-seats",
+      "id": "5c000000-0000-4000-8000-000000000003",
+      "participants": [],
+      "read": "repo"
+    },
+    {
+      "name": "planted-seats",
+      "id": "5c000000-0000-4000-8000-000000000004",
+      "read": "raw",
+      "participants": [
+        {
+          "id": "5a000000-0000-4000-8000-000000000021",
+          "characterId": "5e000000-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000022",
+          "characterId": "5e000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "plant": "deleteCharacterId"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000023",
+          "characterId": "5e000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active",
+          "plant": "emptyCharacterId"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000024",
+          "characterId": "5e000000-0000-4000-8000-000000000005",
+          "controlledBy": "llm",
+          "status": "silent"
+        },
+        {
+          "id": "5a000000-0000-4000-8000-000000000025",
+          "characterId": "5e000000-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "removed"
+        }
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000001",
+      "role": "USER"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-0000000000aa",
+      "role": "USER"
+    },
+    {
+      "participantId": null,
+      "role": "USER"
+    },
+    {
+      "participantId": null,
+      "role": "ASSISTANT"
+    },
+    {
+      "participantId": "",
+      "role": "USER"
+    },
+    {
+      "participantId": "",
+      "role": "ASSISTANT"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-0000000000aa",
+      "role": "ASSISTANT"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-0000000000aa",
+      "role": "SYSTEM"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-0000000000aa",
+      "role": "TOOL"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000008",
+      "role": "ASSISTANT"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000008",
+      "role": "SYSTEM"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000003",
+      "role": "TOOL"
+    }
+  ]
+}

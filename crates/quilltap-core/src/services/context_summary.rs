@@ -107,9 +107,10 @@ pub mod title_verdict;
 // === end P4.D110 ===
 
 use tasks::{
-    fold_chat_summary, generate_help_chat_title_from_summary, generate_title_from_summary,
-    ChatMessage,
+    fold_chat_summary, generate_help_chat_title_from_summary, generate_title_from_summary, FoldTurn,
 };
+
+use crate::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerNames};
 
 /// v4 `SUMMARY_CONTENT_PREFIX` (`lib/services/librarian-notifications/writer.ts`):
 /// the legacy-whisper content prefix the sweep matches on when a whisper carries
@@ -481,25 +482,33 @@ fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
     }
 }
 
-/// v4 `turnsToChatMessages` over the fold range: flatten each turn's messages to
-/// `{ role: role.toLowerCase(), content, createdAt }` — the message dates feed
-/// the fold summary's Timeline section. The ported [`FoldedTurn`] carries only
-/// message ids, so the row is reconstructed from the full message list via
-/// `rows_by_id` — the same rows the turn was partitioned from.
+/// v4 `turnsToChatMessages(turns, names)` over the fold range: flatten each
+/// turn's messages to `{ speaker, role: role.toLowerCase(), content, createdAt }`
+/// — key order `speaker, role, content, createdAt`. Every line carries a speaker
+/// label resolved from the chat's seats — a bare `USER:` / `ASSISTANT:`
+/// transcript is what let a model invent a name for the character nobody
+/// happened to address (bug 161, `e7821606f`). The message dates feed the fold
+/// summary's Timeline section. The ported [`FoldedTurn`] carries only message
+/// ids, so the row is reconstructed from the full message list via
+/// `rows_by_id` — the same rows the turn was partitioned from (and the row
+/// carries the `participantId` the label is resolved from).
 fn turns_to_chat_messages(
     turns: &[FoldedTurn],
     rows_by_id: &HashMap<&str, &Value>,
-) -> Vec<ChatMessage> {
+    names: &SpeakerNames,
+) -> Vec<FoldTurn> {
     let mut result = Vec::new();
     for t in turns {
         for id in &t.ids {
             if let Some(m) = rows_by_id.get(id.as_str()) {
-                result.push(ChatMessage {
-                    role: m
-                        .get("role")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_lowercase(),
+                let role = m.get("role").and_then(Value::as_str).unwrap_or("");
+                result.push(FoldTurn {
+                    speaker: speaker_label(
+                        m.get("participantId").and_then(Value::as_str),
+                        role,
+                        names,
+                    ),
+                    role: role.to_lowercase(),
                     content: m
                         .get("content")
                         .and_then(Value::as_str)
@@ -515,6 +524,32 @@ fn turns_to_chat_messages(
         }
     }
     result
+}
+
+/// v4's `[Context Summary] Resolved speaker names for fold` debug line
+/// (`e7821606f`) — so the next unresolvable seat is visible in the log before
+/// it is visible in a summary. `seatCount` counts EVERY participant and
+/// `unresolvedParticipantIds` is every seat absent from the map, so a seat
+/// with no `characterId` is counted unresolved.
+///
+/// `unresolvedParticipantIdsJson`, not `unresolvedParticipantIds`: v4 hands
+/// winston a raw `string[]`; `tracing` has no structured-value channel, so the
+/// callsite serializes and the file layer's `…Json` convention re-parses it
+/// back into an array under the unsuffixed name (P4.91's `fileIdsJson`).
+fn log_resolved_speaker_names(chat_id: &str, participants: &[Value], names: &SpeakerNames) {
+    let unresolved: Vec<&str> = participants
+        .iter()
+        .map(|p| p.get("id").and_then(Value::as_str).unwrap_or_default())
+        .filter(|id| !names.has(id))
+        .collect();
+    let unresolved_json = serde_json::to_string(&unresolved).unwrap_or_else(|_| "[]".into());
+    tracing::debug!(
+        chatId = chat_id,
+        seatCount = participants.len(),
+        resolvedCount = names.len(),
+        unresolvedParticipantIdsJson = unresolved_json.as_str(),
+        "[Context Summary] Resolved speaker names for fold"
+    );
 }
 
 /// v4 `PartitionInputMessage` view of a `getMessages` row.
@@ -659,7 +694,18 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     let lo = (fold_from_turn - 1).max(0) as usize;
     let hi = fold_through_turn.max(0) as usize;
     let turns_to_fold = &all_turns[lo.min(all_turns.len())..hi.min(all_turns.len())];
-    let new_turns_content = turns_to_chat_messages(turns_to_fold, &rows_by_id);
+    // v4 resolves + logs BEFORE the empty-turns return, from the chat row it
+    // already holds — every participant, removed and silent seats included.
+    let participants: Vec<Value> = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let speaker_names = db
+        .read_main(|conn| Ok(resolve_speaker_names(conn, &participants)))
+        .unwrap_or_default();
+    log_resolved_speaker_names(&chat_id, &participants, &speaker_names);
+    let new_turns_content = turns_to_chat_messages(turns_to_fold, &rows_by_id, &speaker_names);
 
     if new_turns_content.is_empty() {
         return Ok(SummaryGenerationResult::fail("No content in turns to fold"));

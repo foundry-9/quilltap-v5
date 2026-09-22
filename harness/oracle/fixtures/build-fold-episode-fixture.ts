@@ -33,6 +33,8 @@ interface CharacterSpec {
   name: string;
   identity?: string;
   controlledBy: string;
+  /** P4.D212: blank the name to '' after create (a direct UPDATE — see below). */
+  emptyName?: boolean;
 }
 interface ChatSpec {
   id: string;
@@ -183,6 +185,16 @@ async function main(): Promise<void> {
       } as never,
       { id: c.id }
     );
+    // P4.D212 (bug 161): an EMPTY-NAME character is the one arm where the
+    // shared resolver's `if (character?.name)` gate differs from the deleted
+    // private loop's `if (character)`. The row is created under a real name and
+    // blanked directly, so the arm does not lean on the create path's handling
+    // of '' (measured at `a2db63da7`: v4's create ACCEPTS an empty name despite
+    // `CharacterSchema.name`'s `min(1)` — the P4.D212 speaker-names family pins
+    // that side).
+    if (c.emptyName) {
+      maindb.prepare("UPDATE characters SET name = '' WHERE id = ?").run(c.id);
+    }
   }
 
   for (const chat of spec.chats) {

@@ -35,10 +35,33 @@ pub struct ChatMessage {
     pub role: String,
     pub content: String,
     /// The message's wall-clock stamp (v4's `ChatMessage & { createdAt? }`).
-    /// When present, its DATE is rendered inline so the fold summary's
-    /// Timeline section can date events from the transcript instead of
-    /// guessing. Only [`fold_chat_summary`] reads it — the title tasks build
-    /// their own rendering.
+    /// Since bug 161 (`e7821606f`) the fold renders [`FoldTurn`] instead, so
+    /// no task reads this — the title tasks build their own rendering and
+    /// never date a line.
+    pub created_at: Option<String>,
+}
+
+/// One turn the fold task renders (v4 `FoldSummaryInput.newTurns`:
+/// `ChatMessage & { speaker: string; createdAt?: string | null }`, `e7821606f`).
+///
+/// `speaker` is the transcript label — a character name, or the `User` /
+/// `Character` fallback for a seat that could not be resolved (see
+/// [`crate::services::speaker_names`]). It is what the rendered transcript
+/// shows; `role` stays on the shape for callers that want it, but a bare LLM
+/// role never reaches the model, because a model told to summarize in names
+/// and given only roles will invent one (bug 161).
+///
+/// A fold-only type rather than a `speaker` field on the shared
+/// [`ChatMessage`]: the title tasks build `ChatMessage` too, and v4 keeps that
+/// type unchanged (the fold input is an intersection). A REQUIRED `speaker`
+/// here means the fold cannot be handed a turn without one.
+#[derive(Clone, Debug)]
+pub struct FoldTurn {
+    pub speaker: String,
+    pub role: String,
+    pub content: String,
+    /// The message's wall-clock stamp; its DATE is rendered inline so the
+    /// Timeline section can date events from the transcript.
     pub created_at: Option<String>,
 }
 
@@ -68,7 +91,7 @@ pub async fn fold_chat_summary<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
     prior_summary: Option<&str>,
-    new_turns: &[ChatMessage],
+    new_turns: &[FoldTurn],
     selection: &CheapLlmSelection,
 ) -> CheapLlmTaskResult<String> {
     let new_turns_text = new_turns
@@ -79,7 +102,9 @@ pub async fn fold_chat_summary<C: CompletionProvider>(
                 Some(created_at) => format!("[{}] ", utf16_truncate(created_at, 10)),
                 None => String::new(),
             };
-            format!("{stamp}{}: {}", m.role.to_uppercase(), m.content)
+            // v4 `${stamp}${m.speaker}: ${m.content}` (bug 161 — was the
+            // upper-cased role).
+            format!("{stamp}{}: {}", m.speaker, m.content)
         })
         .collect::<Vec<_>>()
         .join("\n\n");

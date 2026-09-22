@@ -165,6 +165,7 @@ pub mod scenario_selection;
 pub mod scene_state_tracking;
 pub mod scheduled_maintenance;
 pub mod sillytavern;
+pub mod speaker_names;
 pub mod story_background_job;
 pub mod suparna_mail;
 pub mod suparna_notifications;

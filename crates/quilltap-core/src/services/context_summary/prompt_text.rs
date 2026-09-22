@@ -5,7 +5,11 @@
 //! `CHAT_TITLE_CONSIDERATION_PROMPT` + `HELP_CHAT_TITLE_CONSIDERATION_PROMPT`).
 //! Extracted mechanically (no byte transcribed by hand); the tier-3
 //! differential proves the bytes reach the provider unchanged. Regenerate by
-//! re-running the session extraction against the v4 checkout if the prompts change.
+//! re-running the extraction against a pinned v4 tree if the prompts change:
+//!   node harness/tools/extract-prompt-text.cjs \
+//!     <pin>/lib/memory/cheap-llm-tasks/chat-tasks.ts <this file> > new.rs
+//! (P4.D212 shipped the extractor; it reproduces the `f45a517a9` file byte for
+//! byte, and at `e7821606f` moves only `FOLD_SUMMARY_PROMPT`'s last paragraph.)
 
 pub(crate) const FOLD_SUMMARY_PROMPT: &str = r#"You are updating an existing summary of an ongoing roleplay conversation.
 
@@ -17,7 +21,7 @@ The summary tracks five sections:
 - Open questions: unanswered things in the air. Drop any the new turns answered. Carry forward the rest. Add new ones.
 - Timeline: dated one-liners of specific things that HAPPENED — visits, outings, arrivals, purchases, incidents. Format each line as "- YYYY-MM-DD (narrative: 'in-story time', only if the story runs on its own timeline): what happened, naming place and participants". Dates come from the timestamps on the new turns. APPEND-ONLY: carry forward every prior Timeline line unchanged and add new lines at the bottom. Cap at ~30 lines — when over, merge the OLDEST lines into coarser one-liners (never drop the dates). Standing facts, moods, and decisions do not belong here — only events.
 
-Rewrite the five sections in plain prose (the Timeline as its dated list). Be concise. Don't transcribe — synthesize. Use character names, not roles. Output only the five sections under their labels; no preamble, no closing remarks."#;
+Rewrite the five sections in plain prose (the Timeline as its dated list). Be concise. Don't transcribe — synthesize. Refer to each speaker by the name on their turns. If a turn is labelled only by a role, keep that label; never invent a name for anyone. Output only the five sections under their labels; no preamble, no closing remarks."#;
 
 pub(crate) const CHAT_TITLE_FROM_SUMMARY_PROMPT: &str = r#"Generate a literary title for this conversation based on the summary provided, like titling a short story.
 The title should:

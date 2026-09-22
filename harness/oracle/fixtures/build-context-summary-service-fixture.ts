@@ -55,6 +55,8 @@ interface MessageSeed {
   content: string;
   systemSender?: string;
   summaryAnchor?: { compactionGeneration: number };
+  /** P4.D212: the seat the line is attributed to (`null` = unattributed). */
+  participantId?: string | null;
 }
 interface ChatSeed {
   id: string;
@@ -71,11 +73,19 @@ interface ChatSeed {
   participants: Array<Record<string, unknown>>;
   messages: MessageSeed[];
 }
+interface ExtraCharacterSeed {
+  id: string;
+  name: string;
+  controlledBy: 'llm' | 'user';
+  /** Blanked to name '' after create by a direct UPDATE. */
+  emptyName?: boolean;
+}
 interface Spec {
   testPepperBase64: string;
   seedTimestamp: string;
   userId: string;
   chats: ChatSeed[];
+  extraCharacters?: ExtraCharacterSeed[];
 }
 
 // Round-3 Group 7: the `fold_regular` chat's single participant character —
@@ -227,6 +237,24 @@ async function main(): Promise<void> {
     { id: VAULT_CHARACTER_ID }
   );
 
+  // P4.D212 (bug 161): the characters the speaker-name arms resolve — created
+  // through v4's REAL repo (pinned ids), then an `emptyName` one is blanked by a
+  // direct UPDATE — an empty name is exactly the `if (character?.name)` gate's
+  // arm, and blanking it directly keeps the arm independent of how the create
+  // path treats ''.
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  for (const ch of spec.extraCharacters ?? []) {
+    await repos.characters.create(
+      { name: ch.name, userId: spec.userId, aliases: [], controlledBy: ch.controlledBy } as never,
+      { id: ch.id }
+    );
+    if (ch.emptyName) {
+      const maindb = getRawDatabase();
+      if (!maindb) throw new Error('main DB handle unavailable');
+      maindb.prepare("UPDATE characters SET name = '' WHERE id = ?").run(ch.id);
+    }
+  }
+
   for (const c of spec.chats) {
     await repo.create(
       {
@@ -252,6 +280,7 @@ async function main(): Promise<void> {
             createdAt: TS,
           };
           if (m.systemSender !== undefined) base.systemSender = m.systemSender;
+          if (m.participantId !== undefined) base.participantId = m.participantId;
           if (m.summaryAnchor !== undefined) base.summaryAnchor = m.summaryAnchor;
           return base;
         }) as never
@@ -318,7 +347,8 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built context-summary-service fixtures: main=${out} mount=${mountOut} ` +
-      `(${spec.chats.length} chats, 1 vaulted character + 1 seeded prior summary)\n`
+      `(${spec.chats.length} chats, 1 vaulted character + ${(spec.extraCharacters ?? []).length} ` +
+      `speaker-name characters + 1 seeded prior summary)\n`
   );
   process.exit(0);
 }

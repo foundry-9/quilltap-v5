@@ -20,6 +20,24 @@
 //! `Character` speaker fallback), and an empty-episode run that must write
 //! nothing.
 //!
+//! P4.D212 (bug 161, v4 `e7821606f`): the pass now resolves speakers through
+//! the SHARED `services::speaker_names` (v4 deleted its private loop). The one
+//! behaviour delta is an EMPTY-NAME character — the old gate was `if
+//! (character)` (an empty label), the shared one `if (character?.name)` (the
+//! `Character` fallback). The `episode_pass` window carries a line from an
+//! ABSENT seat on such a character (`Dell`, blanked by the builder — absent,
+//! so the pass writes it no memory): v4 at the baseline pin renders `: Dell
+//! hums…`, v4 at `e7821606f` and the port `Character: Dell hums…`. Measured
+//! red-first by restoring `main`'s pre-port `fold_episode_pass.rs` whole (the
+//! canned key misses, 0 episodes). ⚠ The line lives in `episode_pass`, not
+//! `no_episodes`: there a miss and a hit both write nothing, and the arm was
+//! invisible (the first placement survived the pre-port file). Dropping the
+//! resolver's empty-name filter ALONE stays green here — v4's `speakerLabel`
+//! also falls through on an empty resolved name, so the label is guarded
+//! twice; `speaker_names_equivalence` and the context-summary debug line's
+//! `resolvedCount` are what see the map. The rest of the corpus is neutral
+//! across the two pins.
+//!
 //! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
 //! CASES run from a `/tmp` mirror because jest ignores `.claude/` paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<v5 worktree> ; M=/tmp/qt-d14-oracle

@@ -1534,8 +1534,577 @@
           "content": "assistant replies 5 in b"
         }
       ]
+    },
+    {
+      "id": "c000000c-0000-4000-8000-00000000000c",
+      "title": "Named Seats",
+      "chatType": "salon",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "_note": "P4.D212: both seats resolve (the persona is an ordinary CHARACTER seat); turn 3's assistant line has participantId null \u2192 the Character fallback.",
+      "participants": [
+        {
+          "id": "ee00000c-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000012",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee00000c-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd00000c-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 0",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 0",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 1",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 1",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 2",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 2",
+          "participantId": null
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 3",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 3",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 4",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000009",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 4",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000010",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 5",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000011",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 5",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000012",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 6",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000013",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 6",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000014",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 7",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000015",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 7",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000016",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 8",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000017",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 8",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000018",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 9",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000019",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 9",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000020",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 10",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000021",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 10",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000022",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 11",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000023",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 11",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000024",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 12",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000025",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 12",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000026",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 13",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000027",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 13",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000028",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 14",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000029",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 14",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000030",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 15",
+          "participantId": "ee00000c-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000c-0000-4000-8000-000000000031",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 15",
+          "participantId": "ee00000c-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "id": "c000000d-0000-4000-8000-00000000000d",
+      "title": "Removed And Dangling",
+      "chatType": "salon",
+      "contextSummary": "Active threads: a door. Resolved decisions: none. Emotional state: curious. Open questions: who knocks.",
+      "compactionGeneration": 1,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "_note": "P4.D212: Oriel's seat is REMOVED but still listed (v4 resolves over all participants); the dangling seat names no character row; Blank's name is ''; Wren is held by an active AND a silent seat (two reads); S_UNK is in no seat.",
+      "participants": [
+        {
+          "id": "ee00000d-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000013",
+          "controlledBy": "llm",
+          "status": "removed",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee00000d-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-0000000000ff",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee00000d-0000-4000-8000-000000000003",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000014",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee00000d-0000-4000-8000-000000000004",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee00000d-0000-4000-8000-000000000005",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "silent",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd00000d-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "the visitor knocks, part 0",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 0",
+          "participantId": "ee00000d-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "the visitor knocks, part 1",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 1",
+          "participantId": "ee00000d-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "the visitor knocks, part 2",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 2",
+          "participantId": "ee00000d-0000-4000-8000-000000000003"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "the visitor knocks, part 3",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 3",
+          "participantId": "ee00000d-0000-4000-8000-000000000005"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "the visitor knocks, part 4",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000009",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 4",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000010",
+          "role": "USER",
+          "content": "the visitor knocks, part 5",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000011",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 5",
+          "participantId": "ee00000d-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000012",
+          "role": "USER",
+          "content": "the visitor knocks, part 6",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000013",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 6",
+          "participantId": "ee00000d-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000014",
+          "role": "USER",
+          "content": "the visitor knocks, part 7",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000015",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 7",
+          "participantId": "ee00000d-0000-4000-8000-000000000003"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000016",
+          "role": "USER",
+          "content": "the visitor knocks, part 8",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000017",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 8",
+          "participantId": "ee00000d-0000-4000-8000-000000000005"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000018",
+          "role": "USER",
+          "content": "the visitor knocks, part 9",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000019",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 9",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000020",
+          "role": "USER",
+          "content": "the visitor knocks, part 10",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000021",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 10",
+          "participantId": "ee00000d-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000022",
+          "role": "USER",
+          "content": "the visitor knocks, part 11",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000023",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 11",
+          "participantId": "ee00000d-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000024",
+          "role": "USER",
+          "content": "the visitor knocks, part 12",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000025",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 12",
+          "participantId": "ee00000d-0000-4000-8000-000000000003"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000026",
+          "role": "USER",
+          "content": "the visitor knocks, part 13",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000027",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 13",
+          "participantId": "ee00000d-0000-4000-8000-000000000005"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000028",
+          "role": "USER",
+          "content": "the visitor knocks, part 14",
+          "participantId": null
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000029",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 14",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000030",
+          "role": "USER",
+          "content": "the visitor knocks, part 15",
+          "participantId": "ee00000d-0000-4000-8000-0000000000ff"
+        },
+        {
+          "id": "dd00000d-0000-4000-8000-000000000031",
+          "role": "ASSISTANT",
+          "content": "someone answers the door, part 15",
+          "participantId": "ee00000d-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "c000000e-0000-4000-8000-00000000000e",
+      "title": "Too Few Turns",
+      "chatType": "salon",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "_note": "P4.D212: three turns, under FOLD_TAIL_FLOOR + 1 \u2014 the fold returns `Not enough turns to fold` BEFORE the speaker names are resolved, so the debug line must stay silent.",
+      "participants": [
+        {
+          "id": "ee00000e-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd00000e-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "short visit 0"
+        },
+        {
+          "id": "dd00000e-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "short reply 0",
+          "participantId": "ee00000e-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000e-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "short visit 1"
+        },
+        {
+          "id": "dd00000e-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "short reply 1",
+          "participantId": "ee00000e-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd00000e-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "short visit 2"
+        },
+        {
+          "id": "dd00000e-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "short reply 2",
+          "participantId": "ee00000e-0000-4000-8000-000000000001"
+        }
+      ]
     }
   ],
   "_invalidateHitTarget": "dd00000a-0000-4000-8000-000000000004",
-  "_invalidateMissTarget": "ffffffff-0000-4000-8000-0000000003e7"
+  "_invalidateMissTarget": "ffffffff-0000-4000-8000-0000000003e7",
+  "_extraCharactersNote": "P4.D212 (bug 161): characters the speaker-name arms resolve. Created through v4's REAL repos.characters.create; `emptyName` ones are then set to name '' by a direct UPDATE, which is the `if (character?.name)` gate's arm.",
+  "extraCharacters": [
+    {
+      "id": "aa000000-0000-4000-8000-000000000011",
+      "name": "Wren",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000012",
+      "name": "Pell",
+      "controlledBy": "user"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000013",
+      "name": "Oriel",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "aa000000-0000-4000-8000-000000000014",
+      "name": "Blank",
+      "controlledBy": "llm",
+      "emptyName": true
+    }
+  ]
 }
