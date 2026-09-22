@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the character save-by-link family normalizes through the host encoder, and the P4.104 gate record (P4.104 unit 8)
+
+_Versions: harness 0.0.897._
+
+`characters_mutations_equivalence` saves a real PNG already in its committed
+fixture (`photos/aria.png`) by link; v4 stores it as WebP. The family was red
+on `main` for exactly this reason and now passes the host encoder, which closes
+it. The lane's gate record and the order's closing status header.
+
 #### 2026-09-22 — test(harness): the blob-normalization differential through the repository (P4.104 unit 7)
 
 _Versions: harness 0.0.896._

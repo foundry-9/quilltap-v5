@@ -142963,3 +142963,78 @@ $N/npx tsx $V5W/harness/oracle/cases/normalize-blob-image.ts > /tmp/p4104/oracle
 repository case reuses the function row — a repository-level oracle would
 need a real-DB v4 case, and the function row is already the v4 answer for
 the same bytes).
+
+### Unit 8 — a pre-existing site-2 red closed; the lane gate (harness 0.0.897)
+
+**`characters_mutations_equivalence` — RED on `main`, closed here.** Its
+committed fixture already carries a DECODABLE PNG (`photos/aria.png`), saved
+by link through `save_link_to_character_gallery` (site 2); v4 stores it as
+`photos/aria.webp`. Unit 2's compile fix had handed the family the refusing
+encoder (behaviour-neutral with `main`, where the site had none), so
+`photo_save_link_tables` and `photo_body_caption_null_ok_tables` were red
+(`GOT "photos/aria.png" / WANT "photos/aria.webp"`) — measured identically on
+an unmodified `main` (`4b05cf97`) worktree against the same pinned oracle. The
+family now passes `&quilltap_host::HostImageCodec`: green. This is a
+decodable-image row that already existed, and its red-first is `main` itself.
+
+**The gate** (`CARGO_INCREMENTAL=0 TZ=UTC`, from the lane worktree):
+- §R.2 probe PASSED at lane start, before every regen batch, and before the
+  workspace run (`main`, clean, `a2db63da7..main` and `1a2b2164c..bugfix`
+  empty).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets; `cargo build --workspace --release`
+  clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (every family below pointed at its `/tmp/p4104/…` oracle/fixture, every
+  other family's var withheld): **612 test binaries / 3,620 passed / 1 failed /
+  3 ignored**. The one red is `photos_routes_equivalence`'s five pre-existing
+  save rows (the fixture-vintage pair, unit 5). Every lane family confirmed RUN
+  by its OK line: `character_photo_upload_tier2`, `doc_blob`, `mount_write`,
+  `mount_ops`, `mount_case_moves`, `mount_link_groups`, `photos_routes`
+  (`save_real_png`), `photo_tools`, `character_avatar_write_tier2`,
+  `files_routes`, `image_generation_tier3`, `images_generate_route`,
+  `avatar_job_tier3`, `normalize_blob_image` (both tests),
+  `blob_write_sites_census`. (`characters_mutations` was run by name after
+  the unit-8 change: green.)
+- **Neutrality sweep** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-p4104-f45a517a9`, results `/tmp/p4104/sweep-neutrality.json`)
+  over the families the later core changes reach without being grown here:
+  15 ok — `story_background_job_tier3`, `image_ingest_tier2`,
+  `image_generate_route`, `avatar_rolls_tier2`, `seed_avatars`,
+  `reset_builtins`, `chat_gallery`, `doc_fs`, `doc_enum`, `doc_text`,
+  `doc_ui`, `doc_fm`, `doc_opacity`, `chat_upload_codec_wiring`,
+  `file_attachment_tier3`. Three failed and were each measured on an
+  unmodified `main` worktree with the same pinned oracles:
+  `characters_mutations` (this lane's — closed above); **`wardrobe_routes_
+  equivalence` — PRE-EXISTING RED on `main`, NOT this lane's**: ~20 outfit /
+  equip rows 500 (`Failed to fetch equipped outfit` / `Failed to update
+  equipped slot`) and `regen_ok` (`Failed to queue avatar regeneration`) — no
+  blob path involved; identical failure list on `main`. **`almanack_tier2_
+  equivalence` — PRE-EXISTING RED on `main`, NOT this lane's**: v5 writes no
+  `files` row after `generate` and the delete leaves the mount link
+  (`persisted_after_generate` / `list_route` / `persisted_after_delete`);
+  identical on `main`. Both are named for the unifier to classify at both pins
+  (they look like fixture vintage; neither committed pair is on P4.103's list).
+
+**Findings for the unifier / other owners (none changed here):**
+1. `photos-main.db` (committed, web fixtures) — fixture vintage, NOT on
+   P4.103's list (unit 5).
+2. `wardrobe_routes` and `almanack_tier2` — pre-existing reds on `main`
+   (above).
+3. `services/quilltap_import/{reset,seed}.rs` pass `execute_import(…, None)`
+   → bundled sample images stored un-normalized (P4.106's tree; unit 2).
+4. The lexer in `blob_write_sites_census.rs` is a verbatim copy of
+   `compressed_column_write_sites_census.rs`'s (P4.105 owns that file this
+   round) — lift both into shared test support in a quiet round.
+
+**Tier 3, restated.** (7) The image re-encode MIGRATION stays deferred
+reclamation — a v5 boot never re-encodes existing rows. (8) v4's
+`mount-index/conversion.ts` has no v5 twin (`db/conversion` never ported —
+re-verified: no `conversion` module under `crates/quilltap-core/src/db/`).
+
+**Versions this lane:** core 0.0.992 → 0.0.996 (+4), harness 0.0.890 →
+0.0.897 (+7), host 0.0.146 → 0.0.147 (+1, `spine.rs` — the three
+`blob_webp` wiring lines; `image_codec.rs` untouched), web 0.0.170 → 0.0.172
+(+2). cli / tauri / fixture-sanitizer / SPA untouched. No `Cargo.toml`
+dependency changes. The `docs/v4/` mirror: no rows move (this lane ports an
+ABSORBED row; no v4 doc changed at the pin).
