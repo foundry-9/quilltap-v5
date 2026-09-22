@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): the P4.D212 lane record and order status (P4.D212)
+
+_Docs-only change._
+
+Appends the lane record to `status-log.md`: the gate (614 binaries / 3,625
+passed / 0 failed; clippy clean in both feature sets; Tier R 244/0 at the
+baseline pin), the mutation table, the regen recipes, the mirror pre-list, and
+eight findings for the unifier. Chief among them: `orchestrator_tier3`'s
+convergence pin trips because v4's own row moved at `e7821606f`; the
+`chat-admin-*` pair is fixture-vintage; `courier_images_routes` is red on
+`main`. Updates the order's status header.
+
 #### 2026-09-22 — docs(help): re-vendor `help/chats.md` at v4 `e7821606f` (P4.D212)
 
 _No crate versions bumped._

@@ -141666,3 +141666,194 @@ See `phase-4.md` §"UNIFIED 2026-09-22" — the bug-161/162 catch-up first,
 then the fixture-vintage heal (eleven families, six pairs), the image
 seam + `update_message`, P4.D205's seven open items + P4.D210's live rows,
 then the owed dogfood pass on a Friday copy v5 can at last read and write.
+
+## Lane record — P4.D212: bug 161's server half + the rebuild-summary verb (2026-09-22)
+
+Branch `claude/speaker-names-rebuild-summary-269bbd`, cut from `main`
+`4b05cf97`. The §R.2 probe PASSED at lane start and before every regen batch
+(branch `main`, HEAD `a2db63da7`, tree clean, both logs empty). Pins:
+`/tmp/qt-v4-pin-p4d212-a2db63da7` (target) and
+`/tmp/qt-v4-pin-p4d212-f45a517a9` (baseline), each verified by `rev-parse` and
+`ls -ld`; every regen staged under `/tmp/p4d212/…`, never the recipes' shared
+`/tmp/qt-*` names (the re-runs used a wrapper that rewrites the `--show`
+recipe's `/tmp/qt-`/`/tmp/oracle-` paths into a lane-private dir and `cd`s into
+the pin).
+
+### Commits
+
+1. `fix(summary): name the speakers in the fold transcript (bug 161, P4.D212)` — core 0.0.993, harness 0.0.891
+2. `feat(chats): the rebuild-summary verb (v4 e7821606f, P4.D212)` — core 0.0.994, harness 0.0.892, web 0.0.171
+3. `docs(help): re-vendor help/chats.md at v4 e7821606f (P4.D212)` — no bumps
+4. `docs(porting): the P4.D212 lane record …` — docs-only
+
+### What landed (Tier 1 whole, Tier 2 whole)
+
+- **`services::speaker_names`** (NEW) — `resolve_speaker_names(conn,
+  participants) -> SpeakerNames` (insertion-ordered pairs; `get`/`has`/`len`)
+  and `speaker_label(participant_id, role, names)`. v4's module doc carried,
+  plus a `⚠ e7821606f`-prose note (§R.4(a)).
+- **The fold-episode pass** repointed; its private loop deleted.
+- **The fold task**: a fold-only `FoldTurn { speaker, role, content,
+  created_at }` with a REQUIRED `speaker`. Chosen over a `speaker` field on
+  the shared `ChatMessage` because the title tasks build `ChatMessage` too and
+  v4 keeps that type unchanged (the fold input is an intersection). A required
+  field means the fold cannot be handed a turn without one. `ChatMessage.
+  created_at` is now read by no task (doc comment updated; the title
+  builders outside this lane's ownership still set it `None`).
+- **`FOLD_SUMMARY_PROMPT` regenerated mechanically** by the NEW
+  `harness/tools/extract-prompt-text.cjs`. It evaluates each named template
+  literal from v4's `chat-tasks.ts` and splices the runtime value into the
+  existing file's `r#"…"#` bodies. It reproduces the `f45a517a9` file byte
+  for byte, it is idempotent at the target, and the target diff is exactly
+  the one sentence. The generated file's header names the command.
+- **`generate_context_summary`** resolves from the chat row it already holds,
+  BEFORE the empty-turns return, and logs `[Context Summary] Resolved speaker
+  names for fold` at DEBUG with `chatId`, `seatCount`, `resolvedCount`,
+  `unresolvedParticipantIdsJson` (the `…Json` convention).
+- **`Request::ChatRebuildSummary`** inside `// === P4.D212 ===` fences at the
+  END of `Request` and of the engine match, plus `services::chat_admin::
+  chat_rebuild_summary`. Profile precedence is factored into
+  `cast_or_first_profile`, shared with regenerate-title (whose
+  `chat_regenerate_title_tier3` neutrality leg covers the refactor; see
+  findings for why that leg is red). The verb's why-comments quote
+  `rebuild-summary.ts` and API.md. It is dispatch-only (Tier-3 item 10,
+  recorded in the doc comment), with NO new `Response` variant and no REST
+  unwrapper change.
+- **Census** 445 → 446 (red at 446 first, then recounted in the comment).
+- **`help/chats.md`** byte-copied (39,682; `cmp` against `git show
+  e7821606f:help/chats.md`). The count stays 126.
+
+### Differentials (regen recipes as run)
+
+| family | pin | result | notes |
+|---|---|---|---|
+| `speaker_names_equivalence` (NEW, tier 2) | target | green | 4 cases / 12 name pairs / 17 reads / 88 labels. v5's reads are counted by a `sqlite3_trace_v2` statement trace, self-checked (hit=1, miss=1, chat read=0) |
+| `context_summary_service_tier3` | target | green | re-recorded; grown by `fold_named_seats`, `fold_removed_and_dangling`, `fold_too_few_turns`; debug line capture-pinned per op, with silence on the gate-skip/invalidate/too-few ops |
+| `fold_episode_tier3` | target | green | grown with an empty-name (`Dell`) line on an ABSENT seat in `episode_pass`. Existing corpus neutral across both pins (results, canned keys, tables modulo minted) |
+| `chat_rebuild_summary_equivalence` (NEW) | target | green | 17 cases over the real route; `jest.setup` mocks neither the queue service nor the bus |
+| `chat_admin_routes_equivalence` | target | green | 61/61 (57 + 4 rebuild rows) after the per-copy widen (finding 2) |
+| `chat_rebuild_summary_dispatch_wire` (NEW) | — | 4/4 | 200 key order off the raw text; 409/400/404; wrong-type and absent `chatId` → 400 |
+| core `rebuild_summary_tests` | — | 3/3 | info + error lines with silence legs; the `chats` publish; a poisoned `BEFORE UPDATE` trigger → 500, no job, no publish |
+| `memory_pipeline_jobs_tier3` | target / baseline | green / RED | the predicted movement |
+| `orchestrator_tier3` | target / baseline | RED (pin) / RED (trace) | see finding 1; green at the target with the one convergence assert disabled (measured, restored by backup) |
+| `courier_images_routes` | both + clean `main` | RED ×3 | pre-existing (finding 3) |
+| `help_tree_equivalence` | target / baseline | green / RED | marker `Rebuilding the Running Summary` 1 / 0 |
+| neutrality @ baseline: `chat_tasks`, `context_summary_equivalence`, `danger_trigger`, `salon_reads`, `salon_mutations` | baseline | green | `danger_trigger` mocks the summary check (neutral by construction) |
+| `chat_regenerate_title_tier3` | baseline | RED | pre-existing fixture vintage (finding 2) |
+
+Recipes: the fold families via `/tmp/p4d212/ctxsum-regen.sh <pin> <dir>` and
+`/tmp/p4d212/fe-regen.sh <pin> <dir>` (the committed header recipe with
+lane-private paths). The new families follow their committed headers
+(`cd ~/source/quilltap-server` → run from the pin):
+
+- speaker-names: `QT_FIXTURE_SPEAKER_NAMES_MAIN=… QT_FIXTURE_SPEAKER_NAMES_MOUNT=…
+  npx tsx $V5W/harness/oracle/fixtures/build-speaker-names-fixture.ts`, then the
+  same env with `npx tsx $V5W/harness/oracle/cases/speaker-names.ts > oracle.ndjson`;
+  run with `QT_ORACLE_SPEAKER_NAMES` + `QT_FIXTURE_SPEAKER_NAMES_MAIN`.
+- rebuild-summary / chat-admin: `/tmp` mirror of the case +
+  `chat-admin-web.json`; `QT_FIXTURE_CA_MAIN/MOUNT` = the committed pair
+  (copied per case, never written); `QT_ORACLE_OUT=…`; `jest --roots "$PWD"
+  --roots "$TMPO/cases" -- chat-rebuild-summary` (resp. `chat-admin-routes`);
+  run with `QT_ORACLE_CHAT_REBUILD_SUMMARY` (resp. `QT_ORACLE_CHAT_ADMIN`).
+
+### Mutation table (each reverted by file backup, `cmp`-verified)
+
+| mutation | reddens |
+|---|---|
+| render `m.role.to_uppercase()` instead of `speaker` | `context_summary_service_tier3` (every fold op) |
+| the pre-fix prompt sentence | `context_summary_service_tier3` |
+| drop the resolver's `!n.is_empty()` | `context_summary_service_tier3` (`resolvedCount`), `speaker_names_equivalence`. ⚠ `fold_episode_tier3` stays GREEN (finding 4) |
+| drop BOTH empty-name gates (resolver + label) | `fold_episode_tier3` |
+| restore `main`'s pre-port `fold_episode_pass.rs` whole | `fold_episode_tier3` (red-first) |
+| resolve only `active` seats | `context_summary_service_tier3`, `fold_episode_tier3`, `speaker_names_equivalence` |
+| fall back to the bare role | `speaker_names_equivalence` |
+| drop the debug line | `context_summary_service_tier3` |
+| move the resolution AFTER the empty-turns return | **UNOBSERVABLE** — that return is dead on both sides (every partitioned turn carries ≥ 1 message). The port keeps v4's order; recorded in the family's doc comment |
+| clear `lastFullRebuildTurn` too / `forceRegenerate: true` / priority `-2` | `chat_rebuild_summary_equivalence` (every 200 case) |
+| carry regenerate-title's cheap-LLM 400 | `chat_rebuild_summary_equivalence` (NULL-settings and no-settings-row cases) |
+| swap the 409 and 400 | `chat_rebuild_summary_equivalence` (`rebuild_running_room_no_profiles_409`) |
+| publish before the update | core `a_failed_update_answers_500_and_neither_enqueues_nor_publishes` ONLY (2/3 green, measured) |
+
+### The gate
+
+| step | result |
+|---|---|
+| §R.2 probe | PASS at lane start and before every regen batch |
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean in BOTH feature sets |
+| the lane's families by name | all green at the target pin, zero `SKIP:` (table above) |
+| neutrality legs at the baseline pin | five green; `chat_regenerate_title_tier3` red (pre-existing, finding 2) |
+| mutation proofs | every one reddens its target, except the two recorded above (the dead-return order leg; the single empty-name gate on the episode side) |
+| `cargo build --workspace --release` | clean |
+| `cargo test --workspace --no-fail-fast` (lane env block: ctxsum, fold-episode, speaker-names, rebuild-summary, chat-admin, help-tree @ target, mpj @ target) | **614 test binaries / 3,625 passed / 0 failed / 3 ignored**; every lane family confirmed RUN; 509 `SKIP:` lines, all from families whose vars were withheld |
+| censuses | `dispatch_wrong_type_census` 12/12 at 446; `help_tree_embed_guard` + `host_help_docs_boot` green, unmoved at 126 |
+| Tier R @ baseline (`f45a517a9`) | **244 cases / 0 failures** (the verb is not a CLI surface) |
+
+### Versions at lane close
+
+core **0.0.994**, harness **0.0.892**, web **0.0.171**. Unmoved: host, cli,
+tauri, fixture-sanitizer, SPA. The unifier recounts (§R.8).
+
+### Findings (for the unifier / other lanes)
+
+1. **`orchestrator_tier3`'s `pin_summary_fold_last_turn_divergence` TRIPS at
+   `a2db63da7`. This is v4 converging, not a v5 red.** v4's own
+   `summary_fold` row (`c860cf74`) carries `lastTurnParticipantId: null` at
+   `f45a517a9` and `c96713aa…` (the id its own frame announced) at
+   `a2db63da7`. It is stable across two regens. The only code commit in range
+   touching that path is `e7821606f` (`a2db63da7` is CLI-only, `4e1a8e061`
+   docs-only). The likely mechanism: the fold's new `await
+   resolveSpeakerNames` moves the interleaving that used to lose the write.
+   That is unproven; the attribution is by elimination. With that one assert
+   disabled, the family is GREEN at the target, so the fold movement is
+   otherwise absorbed. **P4.106 owns the file: retire the pin and compare
+   the field when re-recording from the new baseline.** The candidate v4
+   filing that pin carried is moot.
+2. **The committed `chat-admin-*` pair is fixture-vintage** (no
+   `chats.cycleOrderParticipantIds`, no `chat_messages.routeTrail`). It is
+   NOT among P4.103's six. `chat_admin_routes_equivalence` was red on this
+   branch before any change (26/57 v4 cases 500, v5 panicked on its first
+   dump). This lane widens each per-case COPY with v4's own
+   `addColumnIfMissing` statements, guarded on `pragma_table_info` (both
+   sides, byte-identical). That is a no-op once the pair is widened; the pair
+   itself is untouched. **`chat_regenerate_title_tier3_equivalence` reads the
+   same pair and is RED at the baseline pin on `no such column:
+   cycleOrderParticipantIds`.** It is pre-existing: the failing read is
+   `chats_read::find_by_id`, which this lane did not touch, and the lane does
+   not own that family. It needs the same widen, or the pair heal.
+3. **`courier_images_routes_equivalence` is red on clean `main`**, measured
+   by building `main` in a scratch worktree against the same target oracle.
+   The failure is `InvalidColumnType(8, "request", Blob)`: the family's own
+   `llm_logs` dump reads `request` as a raw `String` where the P4.D203 codec
+   now stores a compressed BLOB. It is the same at both pins and not this
+   lane's. The dump should read through `qt_text()` or the codec.
+4. **The order's prediction that dropping `!n.is_empty()` reddens
+   `fold_episode_tier3` is FALSE, and faithfully so.** v4's `speakerLabel`
+   also falls through on an empty resolved name, so the label is guarded
+   twice. `speaker_names_equivalence` (the map) and the debug line's
+   `resolvedCount` are what see it. The first placement of the empty-name
+   line, in `no_episodes`, was invisible even to the pre-port file (a canned
+   miss and a hit both write nothing there). It was moved to `episode_pass`
+   and proven red-first.
+5. **v4 ACCEPTS an empty character name on create**, despite
+   `CharacterSchema.name`'s `min(1)` (measured by the speaker-names agent).
+   The builders still blank by UPDATE; their comments are corrected.
+6. **v5's `chats_read::find_by_id` returns a chat whose participant has no
+   `characterId`, where v4's `findById` logs `Data validation failed` and
+   returns NULL.** Out of scope; recorded.
+7. `recipe_sweep.py --self-test` fails on `doc_opacity_equivalence`'s header
+   (`W=${V5W:-…}`). Pre-existing, not this lane's.
+8. `help/` is embedded by `quilltap-host`'s build script, but a byte-copy
+   changes no crate file, so host is not bumped (the P4.D210 precedent bumped
+   host because it moved count literals).
+
+### Mirror pre-list (§R.9 — the unifier writes `docs/v4/`), bytes at `a2db63da7`
+
+- `docs/v4/developer/features/complete/context-summary-speaker-names.md` — NEW, 9,712 (the FINAL path)
+- `docs/v4/developer/bugs/fixed/bug-161-summary-invents-a-name.md` — NEW, 6,100
+- `docs/v4/developer/API.md` — 219,745 → 221,285
+- `docs/v4/developer/bugs.md` — 302,517 → 306,475 (carries bug 162's row too — mirror ONCE)
+
+`4e1a8e061` is NO-PORT-RATIFIED on this file list; the rest of its six files
+(CHANGELOG, `.claude/commands/update-documentation.md`, the bug-162 file) are
+the standing NO-PORT class or P4.D214's.
