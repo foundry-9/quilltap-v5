@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(help): the four help pages `quilltap sync` moves (P4.D210)
+
+_Versions: harness 0.0.868, host 0.0.140._
+
+`help/cli-sync.md` is new (9,338 bytes) and `help/cli-docs.md`,
+`help/mount-points.md` and `help/scriptorium.md` are re-vendored at v4
+`f45a517a9`, all four byte for byte from `23da0b322`. The tree goes 124 → 125
+files and both count literals move with it. ⚠ P4.D205 adds `help/inform.md` on
+its own branch for another +1, so the unifier recounts to 126 rather than taking
+either lane's number.
+
 #### 2026-09-22 — test(scriptorium): the sync engine end to end — 47 scenarios, one shared script, and two defects it found (P4.D210)
 
 _Versions: core 0.0.974, harness 0.0.867._

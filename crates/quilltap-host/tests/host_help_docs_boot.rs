@@ -87,7 +87,12 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // `help_tree_embed_guard` pins the same count against the on-disk tree —
     // this assert is the SECOND home of it, in another crate, which only a
     // `--workspace` run reaches.
-    assert_eq!(expected, 124, "the vendored tree at v4 f4ad2c8d1");
+    //
+    // 125 on this lane's branch (124 + 1): P4.D210's re-vendor at v4
+    // `f45a517a9` adds `help/cli-sync.md`. P4.D205 adds `help/inform.md` on its
+    // own branch for another +1, so the unifier RECOUNTS to 126 here and in the
+    // harness guard rather than taking either lane's number.
+    assert_eq!(expected, 125, "the vendored tree at v4 f45a517a9");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();

@@ -138690,3 +138690,17 @@ for each; both would have SURVIVED the corpus, which is the finding.
 
 Versions: core 0.0.974, harness 0.0.867.
 
+
+### Unit 3 — the four help pages, and the count
+
+`help/cli-sync.md` NEW (9,338) plus `help/cli-docs.md` (25,275),
+`help/mount-points.md` (28,607) and `help/scriptorium.md` (23,140) re-vendored,
+all four byte-copied from the target pin. 124 → 125, both literals moved with
+the arithmetic in the comment. ⚠ **The unifier recounts to 126** — P4.D205 adds
+`help/inform.md` on its own branch. `diff -rq` against the pin's tree confirms
+the six files still differing are exactly the other lanes' (`data-retention` →
+P4.D203, `search` → P4.D204, `inform` + `insert-announcement` → P4.D205,
+`chat-message-actions` → P4.D207, `dangerous-content` → P4.D208).
+
+Versions: harness 0.0.868, host 0.0.140.
+

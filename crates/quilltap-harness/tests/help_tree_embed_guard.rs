@@ -53,7 +53,15 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// P4.D175's `help/chat-gallery.md`; 122 at `25f534c0b` after P4.D168's
 /// `help/character-progressions.md`; 121 at `2f4254b42` after P4.D163's
 /// `help/character-subprompts.md`; 120 at `d883a5ee1`).
-const VENDORED_FILE_COUNT: usize = 124;
+///
+/// **125 on this lane's branch (124 + 1).** P4.D210's re-vendor at v4
+/// `f45a517a9` ADDS `help/cli-sync.md` (`23da0b322`, the new verb's page) and
+/// MODIFIES three (`help/cli-docs.md`, `help/mount-points.md`,
+/// `help/scriptorium.md` — same commit), so the count moves by exactly +1.
+/// ⚠ **The round's other new page is P4.D205's `help/inform.md`** (v4
+/// `e7d77bb60`), which bumps this same literal by another +1 on ITS branch —
+/// so the unifier RECOUNTS to **126**, rather than taking either lane's number.
+const VENDORED_FILE_COUNT: usize = 125;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
