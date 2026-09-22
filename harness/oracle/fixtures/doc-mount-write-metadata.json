@@ -1,0 +1,233 @@
+{
+  "_comment": "P4.D209 \u2014 the Scriptorium repo layer's WRITE-METADATA contract, driven through v4's REAL DocMountFileLinksRepository / DocMountBlobsRepository rather than through writeDatabaseDocument. That distinction is the whole instrument: writeDatabaseDocument re-chunks immediately, so it puts chunkCount straight back and bug 156 leaves no trace in a final-state dump. Calling linkDocumentContent directly is what every byte-preserving writer does, and it is where the defect lives. (1-6) bug 155 \u2014 an overwrite that says nothing about description / extractedText / extractionStatus must KEEP them; an explicit '' still clears; a fresh insert defaults blank; an explicit null clears where an omission keeps. (7-18) bug 156 \u2014 a repoint drops the old chunks and zeroes chunkCount, an unchanged rewrite leaves both alone, and a bound hard-link sibling is retired with the writer. (19-26) the per-location timestamps \u2014 lastModified + createdAt honoured on insert, lastModified alone on update leaving createdAt, the same on a blob write, `now` with no opinion, setLinkTimestamps moving lastModified on one path and createdAt on another (never on dated/doc.md, whose createdAt must reach the dump still carrying the value its INSERT was given \u2014 a later set would be indistinguishable from a blank-then-set), false for an unknown link and false for an empty ask. (27-33) bug 157 \u2014 one blob at TWO locations: each path resolves to its OWN link id, a caption lands on the asked path and leaves the twin blank, the two locations carry different captions, and extracted text is per location. The needs-rechunk probe is the rescan's own predicate (chunkCount == 0 || conversionStatus != 'converted') read back over every link.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "store": {
+    "id": "5700000e-0000-4000-8000-0000000000d5",
+    "name": "Group Files: Crew",
+    "basePath": "",
+    "mountType": "database",
+    "storeType": "documents",
+    "includePatterns": [],
+    "excludePatterns": [],
+    "enabled": true,
+    "lastScannedAt": null,
+    "scanStatus": "idle",
+    "lastScanError": null,
+    "conversionStatus": "idle",
+    "conversionError": null,
+    "fileCount": 0,
+    "chunkCount": 0,
+    "totalSizeBytes": 0,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+  },
+  "pinnedTimestamps": [
+    "2019-03-04T05:06:07.000Z",
+    "2021-07-08T09:10:11.000Z",
+    "2022-11-12T13:14:15.000Z",
+    "2018-01-02T03:04:05.000Z"
+  ],
+  "ops": [
+    {
+      "kind": "write-blob",
+      "relativePath": "art/logo.bin",
+      "dataHex": "5a5a5a5a0001",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "logo.bin",
+      "originalMimeType": "application/octet-stream",
+      "description": "a described plate",
+      "extractedText": "plate text",
+      "extractedTextSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "extractionStatus": "converted"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "art/logo.bin",
+      "dataHex": "5a5a5a5a0002",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "logo.bin",
+      "originalMimeType": "application/octet-stream"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "art/logo.bin",
+      "dataHex": "5a5a5a5a0003",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "logo.bin",
+      "originalMimeType": "application/octet-stream",
+      "description": ""
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "art/fresh.bin",
+      "dataHex": "5a5a5a5a0004",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "fresh.bin",
+      "originalMimeType": "application/octet-stream"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "art/nulled.bin",
+      "dataHex": "5a5a5a5a0005",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "nulled.bin",
+      "originalMimeType": "application/octet-stream",
+      "description": "kept",
+      "extractedText": "present at first",
+      "extractionStatus": "converted"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "art/nulled.bin",
+      "dataHex": "5a5a5a5a0006",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "nulled.bin",
+      "originalMimeType": "application/octet-stream",
+      "extractedText": null
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "notes/one.md",
+      "content": "the first revision of one\n"
+    },
+    {
+      "kind": "chunk",
+      "relativePath": "notes/one.md"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "notes/one.md",
+      "content": "the second revision of one, wholly different\n"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "notes/two.md",
+      "content": "two never changes\n"
+    },
+    {
+      "kind": "chunk",
+      "relativePath": "notes/two.md"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "notes/two.md",
+      "content": "two never changes\n"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "twins/left.md",
+      "content": "the twins share these bytes\n"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "twins/right.md",
+      "content": "the twins share these bytes\n"
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "twins/left.md",
+      "destPath": "twins/right.md"
+    },
+    {
+      "kind": "chunk",
+      "relativePath": "twins/left.md"
+    },
+    {
+      "kind": "chunk",
+      "relativePath": "twins/right.md"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "twins/left.md",
+      "content": "the left twin has moved on\n"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "dated/doc.md",
+      "content": "a dated document\n",
+      "lastModified": "2019-03-04T05:06:07.000Z",
+      "createdAt": "2018-01-02T03:04:05.000Z"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "dated/doc.md",
+      "content": "a dated document, revised\n",
+      "lastModified": "2021-07-08T09:10:11.000Z"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "dated/blob.bin",
+      "dataHex": "5a5a5a5a0007",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "blob.bin",
+      "originalMimeType": "application/octet-stream",
+      "lastModified": "2019-03-04T05:06:07.000Z"
+    },
+    {
+      "kind": "write-doc",
+      "relativePath": "dated/plain.md",
+      "content": "no opinion about the clock\n"
+    },
+    {
+      "kind": "set-timestamps",
+      "relativePath": "dated/plain.md",
+      "lastModified": "2022-11-12T13:14:15.000Z"
+    },
+    {
+      "kind": "set-timestamps",
+      "relativePath": "dated/blob.bin",
+      "createdAt": "2022-11-12T13:14:15.000Z"
+    },
+    {
+      "kind": "set-timestamps-unknown",
+      "linkId": "5700000e-0000-4000-8000-00000000dead"
+    },
+    {
+      "kind": "set-timestamps",
+      "relativePath": "dated/plain.md"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "vault/photos/a.bin",
+      "dataHex": "5a5a5a5a0008",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "a.bin",
+      "originalMimeType": "application/octet-stream"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "vault/history/a.bin",
+      "dataHex": "5a5a5a5a0008",
+      "storedMimeType": "application/octet-stream",
+      "originalFileName": "a.bin",
+      "originalMimeType": "application/octet-stream"
+    },
+    {
+      "kind": "resolve-links",
+      "paths": [
+        "vault/photos/a.bin",
+        "vault/history/a.bin"
+      ]
+    },
+    {
+      "kind": "update-description",
+      "relativePath": "vault/photos/a.bin",
+      "description": "the photos-folder caption"
+    },
+    {
+      "kind": "update-description",
+      "relativePath": "vault/history/a.bin",
+      "description": "the history-folder caption"
+    },
+    {
+      "kind": "update-extracted-text",
+      "relativePath": "vault/history/a.bin",
+      "extractedText": "history-only extraction",
+      "extractedTextSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "extractionStatus": "converted"
+    },
+    {
+      "kind": "needs-rechunk-probe"
+    }
+  ]
+}

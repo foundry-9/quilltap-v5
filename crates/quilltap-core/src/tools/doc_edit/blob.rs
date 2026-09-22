@@ -244,14 +244,18 @@ pub fn handle_write_blob(
         .create(&CreateBlobInput {
             mount_point_id: mp.id.clone(),
             relative_path: final_path,
-            original_file_name: original_filename,
-            original_mime_type: mime_type,
+            original_file_name: Some(original_filename),
+            original_mime_type: Some(mime_type),
             stored_mime_type,
             sha256: transcoded_sha,
             data: raw_bytes,
             description: Some(description),
             file_name: None,
             file_type: None,
+            // P4.D209: v4 `normalizeImages` defaults true (`186eb09cb`) — an
+            // upload through the doc-edit tool is exactly what the chokepoint
+            // is for.
+            normalize_images: true,
         })
         .map_err(|e| e.to_string())?;
 

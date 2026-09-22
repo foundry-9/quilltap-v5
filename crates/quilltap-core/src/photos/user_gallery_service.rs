@@ -544,16 +544,21 @@ pub fn save_to_user_gallery(
         relative_path: relative_path.clone(),
         file_name: basename_of_relative_path(&relative_path),
         file_type: None,
-        original_file_name: file_entry.original_filename.clone(),
-        original_mime_type: file_entry.mime_type.clone(),
+        original_file_name: Some(file_entry.original_filename.clone()),
+        original_mime_type: Some(file_entry.mime_type.clone()),
         stored_mime_type: file_entry.mime_type.clone(),
         sha256: sha256.clone(),
         data: buffer,
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
         description: Some(caption.unwrap_or("").to_string()),
         conversion_status: None,
-        extracted_text: Some(markdown.clone()),
-        extracted_text_sha256: Some(extracted_text_sha256),
+        extracted_text: Some(Some(markdown.clone())),
+        extracted_text_sha256: Some(Some(extracted_text_sha256)),
         extraction_status: Some("converted".to_string()),
+        last_modified: None,
+        created_at: None,
     })?;
 
     chunk_and_insert_extracted_text(

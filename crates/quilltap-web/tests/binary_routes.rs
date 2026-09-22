@@ -80,14 +80,18 @@ fn seed_blobs(base: &std::path::Path, mount_point_id: &str) {
         repo.create(&CreateBlobInput {
             mount_point_id: mount_point_id.to_string(),
             relative_path: rel.to_string(),
-            original_file_name: original.to_string(),
-            original_mime_type: "image/heic".to_string(),
+            original_file_name: Some(original.to_string()),
+            original_mime_type: Some("image/heic".to_string()),
             stored_mime_type: "image/webp".to_string(),
             sha256: String::new(),
             data: TINY_PNG.to_vec(),
             description: None,
             file_name: None,
             file_type: None,
+            // A fixture seed, not a write under test: the stored mime is
+            // already `image/webp`, and these bytes are a PNG stub no codec
+            // decodes, so the chokepoint is a no-op here either way.
+            normalize_images: true,
         })
         .unwrap();
     }

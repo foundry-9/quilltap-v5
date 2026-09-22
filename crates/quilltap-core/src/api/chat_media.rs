@@ -1578,15 +1578,22 @@ async fn ensure_image_description(
     };
     let description = crate::jsstr::js_trim(raw).to_string();
 
-    // Cache it on the blob's link (v4 `docMountBlobs.updateDescription(blob.id,
-    // description)` — no linkId, so the FIRST link of the blob's file is the
-    // target, which for a multi-linked blob is not necessarily the attached one).
+    // Cache it on the ATTACHED link (v4 `chats/[id]/files/route.ts:238`,
+    // `0c14fd61f`). Bug 157's hazard was exactly here: the old no-linkId form
+    // resolved `WHERE fileId = ? LIMIT 1`, so for a blob carried at several
+    // locations the caption landed on whichever link SQLite handed back — not
+    // necessarily the one being attached. The read at the top of this function
+    // takes `blob.description` off the joined ATTACHED link, so writing
+    // anywhere else meant the next attach found it still blank and re-ran the
+    // vision model, every time. `blob.link_id` is the same row, read and
+    // written.
     let blob_id = blob.id.clone();
+    let link_id = blob.link_id.clone();
     let cached = description.clone();
     if let Err(e) = db
         .write(move |ws| {
             DocMountBlobsRepository::new(super::mount_files::mount_conn(ws)?)
-                .update_description(&blob_id, &cached, None)
+                .update_description(&blob_id, &cached, &link_id)
                 .map(|_| ())
         })
         .await

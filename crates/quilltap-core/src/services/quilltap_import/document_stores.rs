@@ -480,6 +480,8 @@ pub(super) fn import_document_stores(
                 allow_embed: None,
                 allow_character_read: None,
                 allow_character_write: None,
+                last_modified: None,
+                created_at: None,
             },
             &carried,
         );
@@ -575,48 +577,36 @@ pub(super) fn import_document_stores(
                     &CreateBlobInput {
                         mount_point_id: target_mount_id,
                         relative_path: relative_path.clone(),
-                        original_file_name: s(blob, "originalFileName"),
-                        original_mime_type: s(blob, "originalMimeType"),
+                        // v4 passes these through INCLUDING their `null` — a
+                        // document-store export emits `null` for both on every
+                        // blob. The P4.6BK escalation below asked for the
+                        // widening that makes this a straight pass-through;
+                        // P4.D209 landed it.
+                        original_file_name: opt_s(blob, "originalFileName"),
+                        original_mime_type: opt_s(blob, "originalMimeType"),
                         stored_mime_type: s(blob, "storedMimeType"),
                         sha256: s(blob, "sha256"),
                         data,
                         description: opt_s(blob, "description"),
                         file_name: None,
                         file_type: None,
+                        // Byte fidelity: an imported bundle must come back
+                        // exactly as it was archived, so the write-side image
+                        // normalization is skipped here. A character archived
+                        // and rehydrated has to round-trip identically, and the
+                        // bundle's recorded sha256 has to keep matching the
+                        // bytes. v4 `import-document-stores.ts:326` — the ONLY
+                        // `normalizeImages: false` in the tree.
+                        normalize_images: false,
                     },
                     &carried,
                 )
                 .map_err(|e| e.to_string())?;
             created_link_id = Some(created.link_id.clone());
-            // ⚠ v5 type gap, corrected here rather than at the source.
-            //
-            // v4 passes `blob.originalFileName` / `originalMimeType` straight
-            // through to the link row, INCLUDING their `null` — and a
-            // document-store export emits `null` for both on every blob (the
-            // writer has no such fields to emit). v5's `CreateBlobInput` types
-            // them `String`, so the absent key becomes `''` and the link's
-            // upsert writes an empty string where v4 writes SQL NULL. The
-            // observable difference is real: the export/import round-trip is the
-            // only caller that has nothing to put there.
-            //
-            // The proper fix is widening `LinkBlobInput.original_file_name` /
-            // `original_mime_type` to `Option<String>`, but
-            // `db/doc_mount_file_links.rs` belongs to another lane this round
-            // (P4.6BK, round-2 §Ownership), so this lane reproduces v4's exact
-            // net state with a targeted correction instead of editing it. When
-            // that type is widened this block collapses into the `create` call
-            // above. Escalated in the lane record.
-            mount
-                .execute(
-                    "UPDATE doc_mount_file_links SET originalFileName = ?1, \
-                     originalMimeType = ?2 WHERE id = ?3",
-                    rusqlite::params![
-                        opt_s(blob, "originalFileName"),
-                        opt_s(blob, "originalMimeType"),
-                        created.link_id,
-                    ],
-                )
-                .map_err(|e| DbError::from(e).to_string())?;
+            // P4.6BK's escalation is DISCHARGED: `original_file_name` /
+            // `original_mime_type` are `Option<String>` on `CreateBlobInput`
+            // now, so the two nulls pass straight through the `create` call
+            // above and the corrective UPDATE that used to stand here is gone.
             // Restore the extractedText sidecar on imports from 4.3-dev+ exports.
             // Older exports omit these fields; keep the blob in the default 'none'
             // state so on-upload extraction has nothing to re-run.
@@ -635,7 +625,12 @@ pub(super) fn import_document_stores(
                         extracted_sha.as_deref(),
                         &status,
                         error.as_deref(),
-                        None,
+                        // Bug 157 (v4 `0c14fd61f`): the extracted text of a
+                        // shared blob belongs to a LOCATION, not to the bytes.
+                        // v4 passes `created.linkId` here; the old `LIMIT 1`
+                        // fallback could land it on a sibling location whose
+                        // rows this import had already written.
+                        &created.link_id,
                     )
                     .map_err(|e| e.to_string())?;
             }

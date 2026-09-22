@@ -77,16 +77,22 @@ fn mount_case_resolution_matches_oracle() {
             relative_path: rel.to_string(),
             file_name: name.to_string(),
             file_type: None,
-            original_file_name: name.to_string(),
-            original_mime_type: "image/png".to_string(),
+            original_file_name: Some(name.to_string()),
+            original_mime_type: Some("image/png".to_string()),
             stored_mime_type: "image/png".to_string(),
             sha256: "0".repeat(64),
             data: bytes.as_bytes().to_vec(),
+            // The oracle omits `normalizeImages`, so v4 takes its `true`
+            // default; these bytes are not a decodable image on either side, so
+            // both store them verbatim.
+            normalize_images: true,
             description: None,
             conversion_status: None,
             extracted_text: None,
             extracted_text_sha256: None,
             extraction_status: None,
+            last_modified: None,
+            created_at: None,
         };
         repo.link_blob_content(&blob("Art/Logo.png", "Logo.png", "first-logo-bytes"))
             .expect("blob A");

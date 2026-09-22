@@ -447,6 +447,14 @@ pub struct LinkDocumentInput {
     pub allow_embed: Option<bool>,
     pub allow_character_read: Option<bool>,
     pub allow_character_write: Option<bool>,
+    /// Per-location timestamps (v4 `23da0b322`, seam 4). Callers that are
+    /// restoring or mirroring a file whose times are known — the document-store
+    /// sync — supply them so the two sides converge; every other caller omits
+    /// them and gets `now`. See [`LinkBlobInput::last_modified`].
+    pub last_modified: Option<String>,
+    /// Honoured on INSERT only (v4 `input.createdAt ?? now` in the insert arm;
+    /// the update arm never touches `createdAt`).
+    pub created_at: Option<String>,
 }
 
 /// What [`DocMountFileLinksRepository::link_document_content`] minted/resolved.
@@ -471,21 +479,51 @@ pub struct LinkBlobInput {
     /// File-row `fileType`. `None` → `'blob'` (no chunkable text). pdf/docx
     /// declare their type so the conversion pipeline picks them up.
     pub file_type: Option<String>,
-    pub original_file_name: String,
-    pub original_mime_type: String,
+    /// v4 types these `string` but passes JS `null` straight through on the
+    /// `.qtap` import path (a document-store export emits `null` for both on
+    /// every blob — the writer has no such fields to emit), and the link row
+    /// then stores SQL NULL. `Option` is what reproduces that; the P4.6BK
+    /// escalation in `services::quilltap_import::document_stores` asked for
+    /// exactly this widening and is discharged by it.
+    pub original_file_name: Option<String>,
+    pub original_mime_type: Option<String>,
     pub stored_mime_type: String,
-    /// Advisory only — recomputed from `data`.
+    /// Advisory only — recomputed from `data` AFTER normalization.
     pub sha256: String,
-    /// Already-transcoded bytes destined for `doc_mount_blobs`.
+    /// The bytes destined for `doc_mount_blobs`. Since v4 `186eb09cb` these are
+    /// the bytes as HANDED IN: image normalization happens inside this writer
+    /// (see [`Self::normalize_images`]), not at the call site, so what lands in
+    /// the row may not be what was passed.
     pub data: Vec<u8>,
-    /// `None` → `''` (link `description` default).
+    /// Normalize image bytes to WebP before storing (v4 `normalizeImages`,
+    /// default `true` — `186eb09cb`).
+    ///
+    /// This is the chokepoint: transcoding at the call sites was optional and
+    /// most of them skipped it, which is how untranscoded PNGs and oversized
+    /// lossless WebP reached the store. `false` is for byte-fidelity restores
+    /// ONLY — importing a `.qtap` bundle or rehydrating an archive, where the
+    /// bytes must come back exactly as they went in.
+    pub normalize_images: bool,
+    /// `None` = **no opinion** (bug 155, v4 `23da0b322`), NOT "blank it". On a
+    /// fresh insert an omitted `description` takes the empty default; on an
+    /// upsert over an existing link the stored value is KEPT. An explicit
+    /// `Some(String::new())` still clears — that is a set.
     pub description: Option<String>,
     /// `None` → derived from `file_type` (`'blob'` → `'skipped'`, else `'pending'`).
     pub conversion_status: Option<String>,
-    pub extracted_text: Option<String>,
-    pub extracted_text_sha256: Option<String>,
-    /// `None` → `'none'`.
+    /// Bug 155's tri-state: v4's `string | null` vs `undefined`. `None` = the
+    /// field is absent (keep what is stored, or take the insert default);
+    /// `Some(None)` = an explicit JS `null` (clear it); `Some(Some(t))` = set.
+    /// `extracted_text_sha256` rides the SAME gate v4 puts it behind — the two
+    /// columns join the SET clause together, keyed on `extractedText`.
+    pub extracted_text: Option<Option<String>>,
+    pub extracted_text_sha256: Option<Option<String>>,
+    /// `None` = no opinion (insert default `'none'`, upsert keeps stored).
     pub extraction_status: Option<String>,
+    /// Per-location timestamps (v4 `23da0b322`, seam 4). Omitted = `now`.
+    pub last_modified: Option<String>,
+    /// Honoured on INSERT only.
+    pub created_at: Option<String>,
 }
 
 /// What [`DocMountFileLinksRepository::link_blob_content`] minted/resolved (the
@@ -649,6 +687,8 @@ impl<'c> DocMountFileLinksRepository<'c> {
             allow_embed: None,
             allow_character_read: None,
             allow_character_write: None,
+            last_modified: None,
+            created_at: None,
         })?;
 
         // Chunk the just-written content (v4 `database-store.ts:133-155`) — the
@@ -803,17 +843,44 @@ impl<'c> DocMountFileLinksRepository<'c> {
             .map(Some)
             .or_else(no_rows_to_none)?;
 
+        let link_modified = input.last_modified.clone().unwrap_or_else(|| now.clone());
+
         let mut group_siblings: Vec<GroupSibling> = Vec::new();
+        let mut content_changed = false;
         let link_id = if let Some(existing) = existing_link {
             let link_id = existing.id;
+            // Bug 156 (v4 `23da0b322`): repointing the link at different content
+            // invalidates every chunk built from the old revision. Chunks are
+            // keyed by `linkId` and cascade only on link *deletion*, so without
+            // this the stale rows survive an overwrite and keep answering
+            // semantic search — and the link would claim `chunkCount > 0,
+            // converted`, which is exactly the predicate `rescan_database_mount_
+            // point` uses to decide it has nothing to do. Dropping the rows and
+            // zeroing the count makes the overwrite announce itself: writers
+            // that re-chunk immediately set the real count back moments later;
+            // writers that do not are caught by the next rescan instead of
+            // never.
+            content_changed = existing.file_id != file_id;
+            if content_changed {
+                drop_chunks_for_links(&tx, &[link_id.as_str()])?;
+            }
+            // v4 splices `chunkCount = 0,` into the SET when the content moved.
+            let chunk_count_set = if content_changed {
+                "chunkCount = 0, "
+            } else {
+                ""
+            };
             tx.execute(
-                "UPDATE doc_mount_file_links SET \
-                   fileId = ?1, folderId = ?2, \
-                   plainTextLength = ?3, \
-                   conversionStatus = 'converted', conversionError = NULL, \
-                   allowEmbed = ?4, allowCharacterRead = ?5, allowCharacterWrite = ?6, \
-                   lastModified = ?7, updatedAt = ?8 \
-                 WHERE id = ?9",
+                &format!(
+                    "UPDATE doc_mount_file_links SET \
+                       fileId = ?1, folderId = ?2, \
+                       plainTextLength = ?3, \
+                       conversionStatus = 'converted', conversionError = NULL, \
+                       allowEmbed = ?4, allowCharacterRead = ?5, allowCharacterWrite = ?6, \
+                       {chunk_count_set}\
+                       lastModified = ?7, updatedAt = ?8 \
+                     WHERE id = ?9"
+                ),
                 params![
                     file_id,
                     folder_id,
@@ -821,7 +888,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     allow_embed,
                     allow_character_read,
                     allow_character_write,
-                    now,
+                    link_modified,
                     now,
                     link_id,
                 ],
@@ -835,6 +902,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                 existing.link_group_id.as_deref(),
                 &link_id,
                 &file_id,
+                &link_modified,
                 &now,
                 Some(&FanOutTextState {
                     plain_text_length: input.plain_text_length,
@@ -843,7 +911,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     allow_character_write,
                 }),
             )?;
-            if existing.file_id != file_id {
+            if content_changed {
                 gc_orphaned_file_row(&tx, &existing.file_id)?;
             }
             link_id
@@ -874,8 +942,8 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     allow_embed,
                     allow_character_read,
                     allow_character_write,
-                    now,
-                    now,
+                    link_modified,
+                    input.created_at.clone().unwrap_or_else(|| now.clone()),
                     now,
                 ],
             )?;
@@ -883,6 +951,18 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
 
         tx.commit()?;
+
+        // v4 `23da0b322`: when chunks were dropped it calls
+        // `invalidateMountPoint` for this mount and for every distinct sibling
+        // mount, because the rows this write deleted are cached per mount.
+        // **v5 has no in-memory mount-chunk cache**, so that call has NO
+        // COUNTERPART here — measured, not assumed: the same recorded no-op
+        // `services::embedding_reapply_profile`, `services::
+        // embedding_generate_job` and `photos::avatar_rolls_service` already
+        // name for v4's `invalidateMountPoint` / `invalidateMountChunkCacheAll`.
+        // Every v5 read of a chunk goes to SQLite, so deleting the rows IS the
+        // invalidation. Recorded as a seam rather than invented.
+        let _ = content_changed;
 
         if !group_siblings.is_empty() {
             tracing::debug!(
@@ -1028,6 +1108,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
 
         // 4. upsert doc_mount_file_links by (mountPointId, relativePath).
+        // v4's five defaults, computed once and used by BOTH arms (the insert
+        // writes them unconditionally; the update writes only those whose input
+        // field was actually present — bug 155).
         let description = input.description.clone().unwrap_or_default();
         let description_updated_at: Option<String> = if description.is_empty() {
             None
@@ -1035,6 +1118,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
             Some(now.clone())
         };
         let extraction_status = input.extraction_status.as_deref().unwrap_or("none");
+        let extracted_text: Option<String> = input.extracted_text.clone().flatten();
+        let extracted_text_sha256: Option<String> = input.extracted_text_sha256.clone().flatten();
+        let link_modified = input.last_modified.clone().unwrap_or_else(|| now.clone());
 
         // Case-insensitive, case-preserving upsert (see link_document_content):
         // a re-write in a different casing updates the existing row in place and
@@ -1052,28 +1138,55 @@ impl<'c> DocMountFileLinksRepository<'c> {
         let mut group_siblings: Vec<GroupSibling> = Vec::new();
         let link_id = if let Some(existing) = existing_link {
             let link_id = existing.id;
+            // Bug 155 (v4 `23da0b322`): an overwrite is a write of BYTES. A
+            // caller that says nothing about the caption has no opinion about
+            // it, and blanking it here is silent data loss — `docs write
+            // --force` over a described image, a re-upload onto the same path,
+            // a mirror push from disk. So the metadata columns join the SET
+            // clause only when their input field is actually present; an
+            // explicit `Some("")` still clears.
+            let mut sets: Vec<&str> = vec![
+                "fileId = ?",
+                "folderId = ?",
+                "originalFileName = ?",
+                "originalMimeType = ?",
+            ];
+            let mut values: Vec<Box<dyn ToSql>> = vec![
+                Box::new(file_id.clone()),
+                Box::new(folder_id.clone()),
+                Box::new(input.original_file_name.clone()),
+                Box::new(input.original_mime_type.clone()),
+            ];
+            if input.description.is_some() {
+                sets.push("description = ?");
+                sets.push("descriptionUpdatedAt = ?");
+                values.push(Box::new(description.clone()));
+                values.push(Box::new(description_updated_at.clone()));
+            }
+            // v4 gates BOTH text columns on `extractedText` alone — a caller
+            // that sends only a sha is saying nothing, and the pair must stay
+            // consistent.
+            if input.extracted_text.is_some() {
+                sets.push("extractedText = ?");
+                sets.push("extractedTextSha256 = ?");
+                values.push(Box::new(extracted_text.clone()));
+                values.push(Box::new(extracted_text_sha256.clone()));
+            }
+            if input.extraction_status.is_some() {
+                sets.push("extractionStatus = ?");
+                values.push(Box::new(extraction_status.to_string()));
+            }
+            sets.push("lastModified = ?");
+            sets.push("updatedAt = ?");
+            values.push(Box::new(link_modified.clone()));
+            values.push(Box::new(now.clone()));
+            values.push(Box::new(link_id.clone()));
             tx.execute(
-                "UPDATE doc_mount_file_links SET \
-                   fileId = ?1, folderId = ?2, \
-                   originalFileName = ?3, originalMimeType = ?4, \
-                   description = ?5, descriptionUpdatedAt = ?6, \
-                   extractedText = ?7, extractedTextSha256 = ?8, extractionStatus = ?9, \
-                   lastModified = ?10, updatedAt = ?11 \
-                 WHERE id = ?12",
-                params![
-                    file_id,
-                    folder_id,
-                    input.original_file_name,
-                    input.original_mime_type,
-                    description,
-                    description_updated_at,
-                    input.extracted_text,
-                    input.extracted_text_sha256,
-                    extraction_status,
-                    now,
-                    now,
-                    link_id,
-                ],
+                &format!(
+                    "UPDATE doc_mount_file_links SET {} WHERE id = ?",
+                    sets.join(", ")
+                ),
+                rusqlite::params_from_iter(values.iter().map(|v| v.as_ref())),
             )?;
             // Bytes are shared, so the whole group moves; each member keeps its
             // own description and extracted caption (no text state).
@@ -1082,6 +1195,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                 existing.link_group_id.as_deref(),
                 &link_id,
                 &file_id,
+                &link_modified,
                 &now,
                 None,
             )?;
@@ -1121,11 +1235,11 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     description,
                     description_updated_at,
                     conversion_status,
-                    input.extracted_text,
-                    input.extracted_text_sha256,
+                    extracted_text,
+                    extracted_text_sha256,
                     extraction_status,
-                    now,
-                    now,
+                    link_modified,
+                    input.created_at.clone().unwrap_or_else(|| now.clone()),
                     now,
                 ],
             )?;
@@ -1911,6 +2025,49 @@ impl<'c> DocMountFileLinksRepository<'c> {
         Ok(affected > 0)
     }
 
+    /// Move a link's per-location timestamps without touching its bytes — v4
+    /// `setLinkTimestamps` (`doc-mount-file-links.repository.ts:754`,
+    /// `23da0b322`).
+    ///
+    /// The mirror half of `last_modified` / `created_at` on the two
+    /// `link_*_content` writers: a document-store sync that finds both sides
+    /// byte-identical but differently dated copies the winner's clock across
+    /// rather than the bytes. `updatedAt` is the row's own audit column and
+    /// always moves to now — it is not the file's mtime.
+    ///
+    /// Returns `false` when no such link exists, or when nothing was asked for.
+    pub fn set_link_timestamps(
+        &self,
+        link_id: &str,
+        last_modified: Option<&str>,
+        created_at: Option<&str>,
+    ) -> Result<bool, DbError> {
+        let mut sets: Vec<&str> = Vec::new();
+        let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+        if let Some(lm) = last_modified {
+            sets.push("lastModified = ?");
+            values.push(Box::new(lm.to_string()));
+        }
+        if let Some(ca) = created_at {
+            sets.push("createdAt = ?");
+            values.push(Box::new(ca.to_string()));
+        }
+        if sets.is_empty() {
+            return Ok(false);
+        }
+        sets.push("updatedAt = ?");
+        values.push(Box::new(now_iso()));
+        values.push(Box::new(link_id.to_string()));
+        let affected = self.conn.execute(
+            &format!(
+                "UPDATE doc_mount_file_links SET {} WHERE id = ?",
+                sets.join(", ")
+            ),
+            rusqlite::params_from_iter(values.iter().map(|v| v.as_ref())),
+        )?;
+        Ok(affected > 0)
+    }
+
     /// Delete every `doc_mount_chunks` row for a link (v4
     /// `docMountChunks.deleteByLinkId`). Used by the chunk-rollup pass to clear
     /// prior chunks before re-chunking; a no-op when none exist.
@@ -2297,6 +2454,7 @@ pub(crate) fn fan_out_group_file_id(
     group_id: Option<&str>,
     exclude_link_id: &str,
     new_file_id: &str,
+    last_modified: &str,
     now: &str,
     text_state: Option<&FanOutTextState>,
 ) -> Result<Vec<GroupSibling>, DbError> {
@@ -2304,18 +2462,24 @@ pub(crate) fn fan_out_group_file_id(
         return Ok(Vec::new());
     };
 
-    let siblings: Vec<GroupSibling> = {
+    // `fileId` rides along so the `moved` filter below can tell which members
+    // this write actually repoints (v4 `23da0b322` widened the SELECT for
+    // exactly that).
+    let siblings: Vec<(GroupSibling, String)> = {
         let mut stmt = conn.prepare(
-            "SELECT id, mountPointId, relativePath FROM doc_mount_file_links \
+            "SELECT id, mountPointId, relativePath, fileId FROM doc_mount_file_links \
              WHERE linkGroupId = ?1 AND id <> ?2",
         )?;
         let rows = stmt
             .query_map(params![group_id, exclude_link_id], |row| {
-                Ok(GroupSibling {
-                    id: row.get(0)?,
-                    mount_point_id: row.get(1)?,
-                    relative_path: row.get(2)?,
-                })
+                Ok((
+                    GroupSibling {
+                        id: row.get(0)?,
+                        mount_point_id: row.get(1)?,
+                        relative_path: row.get(2)?,
+                    },
+                    row.get::<_, String>(3)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         rows
@@ -2326,6 +2490,31 @@ pub(crate) fn fan_out_group_file_id(
 
     match text_state {
         Some(t) => {
+            // Bug 156, the sibling half: each member keeps its own chunks, so a
+            // repointed sibling's chunks are as stale as the writer's own. Drop
+            // them and zero the count for exactly the members whose content
+            // MOVED, so `reindex_link_group_siblings` (the post-write pass) or
+            // the next rescan rebuilds them rather than leaving the previous
+            // revision answering searches. A member already on `new_file_id` is
+            // not moved by this write and keeps the chunks it has.
+            let moved: Vec<&str> = siblings
+                .iter()
+                .filter(|(_, file_id)| file_id != new_file_id)
+                .map(|(sib, _)| sib.id.as_str())
+                .collect();
+            if !moved.is_empty() {
+                drop_chunks_for_links(conn, &moved)?;
+                let placeholders = (1..=moved.len())
+                    .map(|i| format!("?{i}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                conn.execute(
+                    &format!(
+                        "UPDATE doc_mount_file_links SET chunkCount = 0 WHERE id IN ({placeholders})"
+                    ),
+                    rusqlite::params_from_iter(moved.iter()),
+                )?;
+            }
             conn.execute(
                 "UPDATE doc_mount_file_links SET \
                    fileId = ?1, plainTextLength = ?2, \
@@ -2339,7 +2528,7 @@ pub(crate) fn fan_out_group_file_id(
                     t.allow_embed,
                     t.allow_character_read,
                     t.allow_character_write,
-                    now,
+                    last_modified,
                     now,
                     group_id,
                     exclude_link_id,
@@ -2350,12 +2539,43 @@ pub(crate) fn fan_out_group_file_id(
             conn.execute(
                 "UPDATE doc_mount_file_links SET fileId = ?1, lastModified = ?2, updatedAt = ?3 \
                  WHERE linkGroupId = ?4 AND id <> ?5",
-                params![new_file_id, now, now, group_id, exclude_link_id],
+                params![new_file_id, last_modified, now, group_id, exclude_link_id],
             )?;
         }
     }
 
-    Ok(siblings)
+    Ok(siblings.into_iter().map(|(sib, _)| sib).collect())
+}
+
+/// Delete every `doc_mount_chunks` row belonging to `link_ids` — v4
+/// `dropChunksForLinks` (`doc-mount-file-links.repository.ts:93`, `23da0b322`).
+///
+/// Tolerates a mount index whose `doc_mount_chunks` table has not been created
+/// yet: this repository's tables are minted lazily on first use, so a store
+/// written to before anything has ever chunked has no such table, and a missing
+/// table means there are no stale chunks to retire anyway. Anything else is a
+/// real failure and rolls the enclosing write back.
+///
+/// Runs inside the caller's transaction (`conn` is the transaction handle).
+pub(crate) fn drop_chunks_for_links(conn: &Connection, link_ids: &[&str]) -> Result<(), DbError> {
+    if link_ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders = (1..=link_ids.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!("DELETE FROM doc_mount_chunks WHERE linkId IN ({placeholders})");
+    match conn.execute(&sql, rusqlite::params_from_iter(link_ids.iter())) {
+        Ok(_) => Ok(()),
+        // v4's `/no such table/i` — the only tolerated failure.
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg)))
+            if msg.to_lowercase().contains("no such table") =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Drop a content row that no link references any more — v4 `gcOrphanedFileRow`

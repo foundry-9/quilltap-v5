@@ -1179,17 +1179,25 @@ pub fn store_mount_blob(
         relative_path: final_path.clone(),
         file_name,
         file_type: Some(detect_blob_file_type(&final_path)),
-        original_file_name: input.original_file_name.to_string(),
-        original_mime_type: input.original_mime_type.to_string(),
+        original_file_name: Some(input.original_file_name.to_string()),
+        original_mime_type: Some(input.original_mime_type.to_string()),
         stored_mime_type: transcoded.stored_mime_type.clone(),
         sha256: transcoded.sha256.clone(),
         data: transcoded.data.clone(),
-        // v4 `description: input.description ?? ''` — LinkBlobInput's None → ''.
-        description: input.description.map(str::to_string),
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
+        // v4 `character-vault-bridge.ts:187` passes `input.description ?? ''`
+        // — ALWAYS a string, so under bug 155 this is always a SET, never a
+        // "no opinion". Passing `None` here would silently start preserving a
+        // stored caption this writer means to overwrite.
+        description: Some(input.description.unwrap_or("").to_string()),
         conversion_status: None,
         extracted_text: None,
         extracted_text_sha256: None,
         extraction_status: None,
+        last_modified: None,
+        created_at: None,
     })?;
 
     Ok(StoredBlob {

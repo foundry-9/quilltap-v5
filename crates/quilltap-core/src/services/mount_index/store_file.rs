@@ -400,19 +400,26 @@ pub fn store_mount_file(
         relative_path: final_path.clone(),
         file_name: node_basename(&final_path).to_string(),
         file_type: Some(mirror_file_type.to_string()),
-        original_file_name: input
-            .original_file_name
-            .clone()
-            .unwrap_or_else(|| node_basename(&final_path).to_string()),
-        original_mime_type: original_mime_type.clone(),
+        original_file_name: Some(
+            input
+                .original_file_name
+                .clone()
+                .unwrap_or_else(|| node_basename(&final_path).to_string()),
+        ),
+        original_mime_type: Some(original_mime_type.clone()),
         stored_mime_type: transcoded.stored_mime_type.clone(),
         sha256: transcoded.sha256.clone(),
         data: transcoded.data.clone(),
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
         description: Some(input.description.clone().unwrap_or_default()),
         conversion_status: None,
         extracted_text: None,
         extracted_text_sha256: None,
         extraction_status: None,
+        last_modified: None,
+        created_at: None,
     })?;
 
     // PDF/DOCX: extract plain text from the ORIGINAL bytes (transcode only
@@ -429,7 +436,7 @@ pub fn store_mount_file(
                 Some(&sha),
                 "converted",
                 None,
-                Some(&result.link_id),
+                &result.link_id,
             )?;
             has_extracted_text = true;
             links.update(
@@ -452,7 +459,7 @@ pub fn store_mount_file(
                 None,
                 "failed",
                 Some("Converter produced no text"),
-                Some(&result.link_id),
+                &result.link_id,
             )?;
             links.update(
                 &result.link_id,

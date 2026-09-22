@@ -183,17 +183,22 @@ pub fn write_main_avatar_to_vault(
         file_name: "avatar.webp".to_string(),
         // v4 omits fileType here (the repo defaults it, like the other bridges).
         file_type: None,
-        original_file_name: safe_original_name,
-        original_mime_type: content_type.to_string(),
+        original_file_name: Some(safe_original_name),
+        original_mime_type: Some(content_type.to_string()),
         stored_mime_type: transcoded.stored_mime_type.clone(),
         sha256: transcoded.sha256.clone(),
         data: transcoded.data.clone(),
         // v4: `description: input.description ?? ''`.
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
         description: Some(description.unwrap_or("").to_string()),
         conversion_status: None,
         extracted_text: None,
         extracted_text_sha256: None,
         extraction_status: None,
+        last_modified: None,
+        created_at: None,
     })?;
 
     Ok(AvatarWrite {
@@ -270,16 +275,21 @@ fn store_blob_to_mount(
         file_name,
         // v4 `detectBlobFileType(finalPath)` → `blob` for a .png/.webp image.
         file_type: Some(detect_blob_file_type(&final_path)),
-        original_file_name: original_file_name.to_string(),
-        original_mime_type: content_type.to_string(),
+        original_file_name: Some(original_file_name.to_string()),
+        original_mime_type: Some(content_type.to_string()),
         stored_mime_type: stored_mime_type.clone(),
         sha256: sha256.clone(),
         data: content.to_vec(),
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
         description: description.map(str::to_string),
         conversion_status: None,
         extracted_text: None,
         extracted_text_sha256: None,
         extraction_status: None,
+        last_modified: None,
+        created_at: None,
     })?;
 
     Ok(WrittenImage {

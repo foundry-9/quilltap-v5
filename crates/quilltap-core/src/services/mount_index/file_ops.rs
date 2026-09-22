@@ -420,6 +420,8 @@ fn write_dest_bytes(
             allow_embed: None,
             allow_character_read: None,
             allow_character_write: None,
+            last_modified: None,
+            created_at: None,
         })?;
         // v4 emitDocumentWritten — the watcher deferral (see module header).
         return Ok(content_sha);
@@ -440,16 +442,21 @@ fn write_dest_bytes(
         relative_path: dest_rel.to_string(),
         file_name: dest_file_name.clone(),
         file_type: Some(file_type.to_string()),
-        original_file_name: dest_file_name,
-        original_mime_type: original_mime.clone(),
+        original_file_name: Some(dest_file_name),
+        original_mime_type: Some(original_mime.clone()),
         stored_mime_type: original_mime,
         sha256: sha.clone(),
         data: bytes.to_vec(),
+        // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+        // chokepoint, default true.
+        normalize_images: true,
         description: None,
         conversion_status: None,
         extracted_text: None,
         extracted_text_sha256: None,
         extraction_status: None,
+        last_modified: None,
+        created_at: None,
     })?;
     // v4 emitDocumentWritten — the watcher deferral.
     Ok(sha)

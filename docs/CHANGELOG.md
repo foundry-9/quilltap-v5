@@ -12,6 +12,58 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(scriptorium): a caption survives an overwrite, a repoint retires its chunks, and a caption belongs to a path (v4 bugs 155, 156, 157) (P4.D209 T)
+
+_Versions: core 0.0.970, harness 0.0.863, web 0.0.159._
+
+The Scriptorium repository layer's write-metadata contract, absorbed from v4
+`23da0b322` and `0c14fd61f`. Three defects v5 measurably reproduced:
+
+**Bug 155.** `link_blob_content`'s UPDATE branch wrote `description`,
+`extractedText`, `extractedTextSha256` and `extractionStatus` unconditionally,
+so a caller that said nothing about them blanked them. Every byte-preserving
+writer says nothing about them, which is how re-uploading an image over its own
+path erased its caption. The UPDATE now builds its SET clause per field:
+omitted means keep, an explicit `''` still clears, and the INSERT keeps its
+blank defaults. `extractedText` and `extractedTextSha256` became
+`Option<Option<String>>` so an explicit null stays distinguishable from an
+omission, and they join the SET together on `extractedText`'s presence, as v4
+gates them.
+
+**Bug 156.** Chunks are keyed by `linkId` and cascade only on link deletion, so
+repointing a link left the old revision's chunks answering semantic search while
+the link went on claiming `chunkCount > 0, converted` — exactly the predicate
+the rescan uses to decide it has nothing to do. `link_document_content` now
+computes `content_changed`, drops the chunks through a new
+`drop_chunks_for_links` (tolerant of a mount index whose `doc_mount_chunks`
+table was never minted), and splices `chunkCount = 0` into the UPDATE.
+`fan_out_group_file_id` does the same for exactly the hard-link siblings whose
+content moved, and takes the writer's `lastModified` rather than the clock.
+
+**Bug 157.** `update_description` and `update_extracted_text` resolved their
+target with `WHERE fileId = ? LIMIT 1` when no link id was given, so on a blob
+carried at two locations — a character vault holds every avatar at both
+`photos/` and `images/history/`, byte-identical, on one file row — the caption
+landed on an arbitrary one. `link_id` is required now and the fallback is gone;
+`update_path`'s own `LIMIT 1` is untouched. The three callers that passed `None`
+already held the right link id: the blob PATCH route, the chat-attachment vision
+cache (where the hazard was worst — the read took the description off the
+attached link, so a caption written elsewhere meant the vision model re-ran on
+every attach), and the `.qtap` import.
+
+Also from `23da0b322`: optional per-location `lastModified` / `createdAt` on
+both writers (honoured on INSERT, `lastModified` only on UPDATE) and their
+mirror `set_link_timestamps`. And `LinkBlobInput.normalize_images` (v4
+`186eb09cb`), the flag only; the normalization call itself follows.
+`original_file_name` / `original_mime_type` widened to `Option<String>`, which
+discharges the P4.6BK escalation and retires the corrective UPDATE the `.qtap`
+import carried in its place.
+
+Verified by a new tier-2 differential, `doc_mount_write_metadata_equivalence`,
+driving v4's real repositories directly rather than through
+`writeDatabaseDocument` — the distinction is the instrument, since that writer
+re-chunks immediately and leaves bug 156 no trace in a final-state dump.
+
 #### 2026-09-22 — docs(porting): the P4.D204 gate, the census handoff, and an eleventh fixture-vintage red proven pre-existing
 
 _Docs-only change._

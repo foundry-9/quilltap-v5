@@ -389,7 +389,7 @@ pub async fn mount_file_update(
                     "__BLOB_ONLY_DESCRIPTION__".to_string(),
                 ));
             };
-            blobs.update_description(&meta.id, d, Some(&meta.link_id))?;
+            blobs.update_description(&meta.id, d, &meta.link_id)?;
         }
         Ok(serde_json::json!({ "currentPath": current_path }))
     })
@@ -886,9 +886,15 @@ pub async fn mount_blob_update(
             let Some(meta) = blobs.find_by_mount_point_and_path(&mp, &p)? else {
                 return Ok(None);
             };
-            // v4's route calls updateDescription WITHOUT a linkId (the first
-            // link of the blob's file is targeted).
-            let updated = blobs.update_description(&meta.id, &desc, None)?;
+            // Bug 157 (v4 `0c14fd61f`): the caption belongs to the PATH, not
+            // to the bytes. v4's route now passes `meta.linkId` — the very row
+            // `find_by_mount_point_and_path` resolved five lines up — and the
+            // `WHERE fileId = ? LIMIT 1` fallback that used to stand in for it
+            // is gone. On a blob carried at two locations (a character vault
+            // holds every avatar at both `photos/` and `images/history/`,
+            // byte-identical, on one file row) the fallback wrote the caption
+            // to an arbitrary one of them.
+            let updated = blobs.update_description(&meta.id, &desc, &meta.link_id)?;
             match updated {
                 Some(u) => Ok(Some(
                     blobs

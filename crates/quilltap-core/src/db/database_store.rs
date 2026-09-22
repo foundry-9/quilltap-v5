@@ -209,6 +209,8 @@ pub fn write_database_document(
         allow_embed: None,
         allow_character_read: None,
         allow_character_write: None,
+        last_modified: None,
+        created_at: None,
     })?;
 
     // Chunk the just-written content so it is immediately searchable (v4

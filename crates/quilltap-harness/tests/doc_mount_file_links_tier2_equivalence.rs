@@ -324,17 +324,22 @@ fn doc_mount_file_links_tier2_matches_oracle() {
                             .expect("file name")
                             .to_string(),
                         file_type: None,
-                        original_file_name: original_file_name.clone(),
-                        original_mime_type: original_mime_type.clone(),
+                        original_file_name: Some(original_file_name.clone()),
+                        original_mime_type: Some(original_mime_type.clone()),
                         stored_mime_type: stored_mime_type.clone(),
                         // Advisory only — recomputed from the bytes, both sides.
                         sha256: "0".repeat(64),
                         data,
+                        // The oracle omits `normalizeImages`, so v4 takes its
+                        // `true` default (v4 `186eb09cb`).
+                        normalize_images: true,
                         description: Some(description.clone()),
                         conversion_status: None,
-                        extracted_text: Some(extracted_text.clone()),
+                        extracted_text: Some(Some(extracted_text.clone())),
                         extracted_text_sha256: None,
                         extraction_status: None,
+                        last_modified: None,
+                        created_at: None,
                     })
                     .expect("link_blob_content");
                 }

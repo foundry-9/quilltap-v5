@@ -93,8 +93,10 @@ pub struct BlobMetadata {
 pub struct CreateBlobInput {
     pub mount_point_id: String,
     pub relative_path: String,
-    pub original_file_name: String,
-    pub original_mime_type: String,
+    /// v4 passes these straight through to the link row INCLUDING their `null`
+    /// (see [`crate::db::doc_mount_file_links::LinkBlobInput::original_file_name`]).
+    pub original_file_name: Option<String>,
+    pub original_mime_type: Option<String>,
     pub stored_mime_type: String,
     /// Advisory — recomputed from `data` by `link_blob_content`.
     pub sha256: String,
@@ -105,6 +107,10 @@ pub struct CreateBlobInput {
     pub file_name: Option<String>,
     /// `None` → `'blob'`.
     pub file_type: Option<String>,
+    /// Forwarded to `link_blob_content`. `true` normalizes images to WebP
+    /// before storing; `false` is for byte-fidelity restores ONLY — the
+    /// `.qtap` import and archive rehydrate (v4 `186eb09cb`).
+    pub normalize_images: bool,
 }
 
 /// A blob's metadata joined with its link location (v4 `DocMountBlobWithLink`,
@@ -316,11 +322,14 @@ impl<'c> DocMountBlobsRepository<'c> {
                 stored_mime_type: input.stored_mime_type.clone(),
                 sha256: input.sha256.clone(),
                 data: input.data.clone(),
+                normalize_images: input.normalize_images,
                 description: input.description.clone(),
                 conversion_status: None,
                 extracted_text: None,
                 extracted_text_sha256: None,
                 extraction_status: None,
+                last_modified: None,
+                created_at: None,
             },
             carried,
         )?;
@@ -397,38 +406,35 @@ impl<'c> DocMountBlobsRepository<'c> {
         }
     }
 
-    /// v4 `updateDescription(id, description, linkId?)`: descriptions live on
-    /// the LINK row (`description` + `descriptionUpdatedAt`); without a linkId
-    /// the first link of the blob's file is targeted. Returns the refreshed
-    /// joined view, or `None` when the blob/link is missing.
+    /// Update the description on ONE link to a blob row — v4
+    /// `updateDescription(id, description, linkId)` (`0c14fd61f`, bug 157).
+    ///
+    /// Blobs themselves don't carry per-link metadata; the description is a
+    /// property of the `(mountPoint, path)` LINK, and content-addressing means
+    /// one blob row can carry several links — a character vault holds every
+    /// avatar at both `photos/` and `images/history/`, byte-identical, on one
+    /// file row.
+    ///
+    /// `link_id` is therefore **required**: there is no such thing as "the"
+    /// link for a blob. It used to be optional, and the two-argument form
+    /// resolved the target with `WHERE fileId = ? LIMIT 1`, which wrote the
+    /// caption to an arbitrary one of the sharing locations (bug 157 — v5
+    /// reproduced it). Callers that hold a path already hold the link:
+    /// [`Self::find_by_mount_point_and_path`] returns `link_id` on the joined
+    /// view.
+    ///
+    /// Returns the refreshed joined view, or `None` when the blob is missing.
     pub fn update_description(
         &self,
         id: &str,
         description: &str,
-        link_id: Option<&str>,
+        link_id: &str,
     ) -> Result<Option<BlobWithLink>, DbError> {
         let now = crate::clock::now_iso();
-        let Some(blob) = self.find_by_id(id)? else {
+        let Some(_blob) = self.find_by_id(id)? else {
             return Ok(None);
         };
-        let target_link = match link_id {
-            Some(l) => Some(l.to_string()),
-            None => self
-                .conn
-                .query_row(
-                    "SELECT id FROM doc_mount_file_links WHERE fileId = ?1 LIMIT 1",
-                    params![blob.file_id],
-                    |row| row.get::<_, String>(0),
-                )
-                .map(Some)
-                .or_else(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                    other => Err(other),
-                })?,
-        };
-        let Some(target_link) = target_link else {
-            return Ok(None);
-        };
+        let target_link = link_id;
         self.conn.execute(
             "UPDATE doc_mount_file_links                SET description = ?1, descriptionUpdatedAt = ?2, updatedAt = ?3              WHERE id = ?4",
             params![description, now, now, target_link],
@@ -446,9 +452,12 @@ impl<'c> DocMountBlobsRepository<'c> {
             })
     }
 
-    /// v4 `updateExtractedText(id, input, linkId?)`: the extraction-state
-    /// bookkeeping rewrite on the LINK row. All four fields are always set
-    /// (`None` → SQL NULL), matching v4's unconditional UPDATE.
+    /// Update the extracted-text / extraction-status fields on ONE link to a
+    /// blob row — v4 `updateExtractedText(id, input, linkId)` (`0c14fd61f`,
+    /// bug 157). Same per-link semantics as [`Self::update_description`],
+    /// `link_id` included: the extracted text of a shared blob belongs to a
+    /// location, not to the bytes. All four fields are always set (`None` → SQL
+    /// NULL), matching v4's unconditional UPDATE.
     #[allow(clippy::too_many_arguments)]
     pub fn update_extracted_text(
         &self,
@@ -457,30 +466,13 @@ impl<'c> DocMountBlobsRepository<'c> {
         extracted_text_sha256: Option<&str>,
         extraction_status: &str,
         extraction_error: Option<&str>,
-        link_id: Option<&str>,
+        link_id: &str,
     ) -> Result<bool, DbError> {
         let now = crate::clock::now_iso();
-        let Some(blob) = self.find_by_id(id)? else {
+        let Some(_blob) = self.find_by_id(id)? else {
             return Ok(false);
         };
-        let target_link = match link_id {
-            Some(l) => Some(l.to_string()),
-            None => self
-                .conn
-                .query_row(
-                    "SELECT id FROM doc_mount_file_links WHERE fileId = ?1 LIMIT 1",
-                    params![blob.file_id],
-                    |row| row.get::<_, String>(0),
-                )
-                .map(Some)
-                .or_else(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
-                    other => Err(other),
-                })?,
-        };
-        let Some(target_link) = target_link else {
-            return Ok(false);
-        };
+        let target_link = link_id;
         self.conn.execute(
             "UPDATE doc_mount_file_links SET                extractedText = ?1, extractedTextSha256 = ?2,                extractionStatus = ?3, extractionError = ?4, updatedAt = ?5              WHERE id = ?6",
             params![

@@ -1254,16 +1254,21 @@ pub(crate) fn save_generated_image(
             relative_path: unique_path.clone(),
             file_name: file_name.clone(),
             file_type: Some("blob".to_string()),
-            original_file_name: safe_name.clone(),
-            original_mime_type: mime_type.to_string(),
+            original_file_name: Some(safe_name.clone()),
+            original_mime_type: Some(mime_type.to_string()),
             stored_mime_type: converted.mime_type.clone(),
             sha256: sha256.clone(),
             data: converted.bytes.clone(),
+            // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
+            // chokepoint, default true.
+            normalize_images: true,
             description: None,
             conversion_status: None,
             extracted_text: None,
             extracted_text_sha256: None,
             extraction_status: None,
+            last_modified: None,
+            created_at: None,
         })
         .map_err(|e| format!("Failed to save generated image: {e}"))?;
     let storage_key = format!("mount-blob:{mount_point_id}:{}", written.blob_id);

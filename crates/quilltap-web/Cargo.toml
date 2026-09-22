@@ -8,7 +8,7 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.158"
+version = "0.0.159"
 #OLD "0.0.157"
 edition = "2021"
 publish = false
