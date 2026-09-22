@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): the `a2db63da7` bug-161/162 drift catch-up + maintenance round ordered (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106)
+
+_Docs-only; no version bumps._
+
+Seven work orders written for the next round, all cut from `main`: bug 161
+(the fold transcript names its speakers; the `rebuild-summary` verb) split
+server/SPA, bug 162 (the CLI's one opener + the Tier R comparand, with
+P4.D210's declared live rows folded in as canned-stub rows), and four
+maintenance lanes for the named backlog — the fixture-vintage heal (six
+pairs, every reader re-run), bug 159's image seam made a port across ten
+write sites, `update_message` as an UPDATE under the FTS triggers, and the
+Inform coverage remainder with the bug-158 heal differential, the
+provider-SDK version guard and the two-link-blob import bundle. The drift
+ledger's three rows are marked `ORDERED(…)`; the phase plan carries the
+round's ORDERED section with two corrections to earlier plan text (the
+fixture migrator is ALTER-only — it never brings the FTS triggers; the
+heal's "eleven families" were never enumerated consistently, so the order
+names the seven standing reds and every reader of the six pairs).
+
 #### 2026-09-22 — chore(unify): the `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) unified
 
 _Versions: core 0.0.992, harness 0.0.890, host 0.0.146, web 0.0.170, cli 0.0.25, fixture-sanitizer 0.0.4, SPA 0.5.747._

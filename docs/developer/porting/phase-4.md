@@ -6628,6 +6628,185 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) — ORDERED 2026-09-22
+
+**Baseline `f45a517a9`; v4 `main` HEAD `a2db63da7` (THREE past — the
+ledger's three §3 rows, every one now `ORDERED(…)`), v4 `bugfix` tip
+`1a2b2164c` and `release` tip `8fbf2afe0` unmoved; the checkout on `main`,
+CLEAN, at BOTH the planning-start and the planning-close probes
+(2026-09-22 — the §2 probe PASSED twice, so the ledger stood and nothing
+was re-derived); regen rule PIN REQUIRED (the two drift lanes pin the
+target `a2db63da7` for their moving families and the baseline for their
+neutrality legs; the four maintenance lanes pin the baseline ONLY).** The
+standing rule holds: drift debt clears before new scope — and this round
+clears it in three lanes while four maintenance lanes take the named
+backlog the `f45a517a9` unification ranked 2–4, because the drift is
+small (three commits, one of them docs-only) and every backlog item was
+blocked only on S + P4.D204 being on main, which they now are. Seven
+lanes, seven worktrees, every one cut from `main` `fc63905e` — no keystone.
+The round-wide §R meeting points (twelve — the two pin classes, the
+`api/types.rs`/`engine.rs` fence for ONE new verb, the orchestrator /
+salon-mutations / chat-export / qtap-import ownership edges between the
+lanes that re-run and the lanes that edit, the six-pair widen as P4.103's
+alone, three pre-declared spills), the §S contract (ONE verb,
+`chatRebuildSummary`, with its refusal order, its single update, its
+enqueue at priority 0 and its two log lines), the Ownership table and the
+verification gate are spliced byte-identically into every order (one md5
+over the block, verified at planning: `c2fcab344b353e52bb9ba25ba57e5ba7`).
+Fresh surveys (2026-09-22, at `a2db63da7` and on `main` `fc63905e` — four
+parallel readers + the planner's own source reads) are folded into the
+orders' survey sections on top of the ledger's same-day rows. **Two
+corrections to earlier plan text, made in the orders:** the fixture
+migrator is ALTER-only — "the widen brings the FTS triggers" (the
+`f45a517a9` UNIFIED section's item 2) is false, and the pairs stay
+trigger-free on both sides; and the heal's "eleven families" were never
+enumerated consistently (the "six earlier ones" were closed by P4.94) —
+P4.103 names the SEVEN standing reds and runs EVERY reader of the six
+pairs (twenty-two families, four web suites, five Playwright specs).
+
+**The orders** (`docs/developer/porting/work-orders/`):
+
+1. **`p4.d212-bug-161-speaker-names-rebuild-summary-server.md` —
+   P4.D212, bug 161 server.** ONE `speaker_names` resolver (v4's `lib/
+   chat/speaker-names.ts` line for line — every participant, raw reads,
+   the `?.name` truthiness gate, the `User`/`Character` fallback) shared
+   by the context-summary fold (v5 reproduces the defect VERBATIM:
+   `role.to_uppercase()` under a prompt ending "Use character names, not
+   roles.") and the fold-episode pass (its duplicate loop DELETED; v5's
+   loop matches the PRE-fix empty-name gate — a red-first arm the commit
+   message never mentions); the fold turn's REQUIRED `speaker`;
+   `FOLD_SUMMARY_PROMPT` REGENERATED mechanically; the debug line with
+   v4's four fields BEFORE the empty-turns return; `Request::
+   ChatRebuildSummary` through `Response::ChatAdmin` with v4's two
+   refusals (409 running room, 400 no profiles — NOT regenerate-title's
+   cheap-LLM-settings arm), the ONE update leaving `lastFullRebuildTurn`
+   alone, the enqueue at priority 0, the `chats` publish, the two `[Chats
+   v1]` lines; dispatch-only (the regenerate-title precedent); the
+   census 445 → 446 + the wire test; `help/chats.md` byte-copied; the
+   `4e1a8e061` ratification with four mirrors pre-listed. Families: two
+   NEW (a real-DB `speaker_names` tier-2 with the removed / silent /
+   dangling / empty-name / shared-character seats; `chat_rebuild_summary`
+   over v4's REAL route with the job row in the comparand), `context_
+   summary_service_tier3` red-first then GROWN with `participantId`'d
+   messages (today NO message in its corpus carries one), `fold_episode_
+   tier3` grown, three fold-reaching families RE-RUN at the target
+   (`orchestrator_tier3`, `memory_pipeline_jobs_tier3`, `courier_images_
+   routes` — P4.106 owns the first's files). Bumps core + harness + web.
+2. **`p4.d213-bug-161-rebuild-summary-spa.md` — P4.D213, bug 161 SPA.**
+   The §S.1 twin; `rebuildChatSummary(core, chatId)`; the Organize entry
+   `Rebuild Summary…` at v4's position (after Merge In…, before Export)
+   with v4's title and `refresh` icon, NOT hidden in an autonomous room;
+   the Salon handler over `window.confirm` (the recorded divergence,
+   third home) with v4's confirm sentence, the success toast + the queue
+   nudge, the server-sentence error toast and the bare network toast; no
+   self-invalidation (the `chats` topic re-reads the chat); ONE live beat
+   gated on `P4D212_SERVER_LANDED`. Bumps the SPA only.
+3. **`p4.d214-bug-162-cli-one-opener-tier-r.md` — P4.D214, bug 162.**
+   v5's second private opener (`db_cmd.rs:301-353`) RETIRED onto ONE
+   `dbopen.rs` opener widened for write + friendly name, with v4's error
+   SHAPE (constructor and key-pragma failures BARE, the probe failure
+   `Cannot open {main|LLM logs|mount index} database: …` + the hint; the
+   `qt_text` registration failure kept as v5's recorded divergence);
+   Tier R at BOTH pins with the string movement RED at the target before
+   and RED at the baseline after (bug 144's lesson); the master fixture
+   grown with v4's own integration-test DDL (a compressed `chat_messages`
+   row under the FTS update trigger) + four cases + the wrong-key
+   pre-hook per target; **P4.D210's undelivered live `sync` rows as
+   CANNED-STUB rows** (a booted `quilltap-web` cannot be the instrument —
+   Tier R runs the same argv on v4's bin, whose `sync` is a client to a
+   v4 SERVER; the stub proves both bins' glue); the README mirror's
+   two-line delta + the bug-162 mirrors pre-listed. Bumps cli.
+4. **`p4.103-fixture-vintage-heal.md` — P4.103, maintenance.** The six
+   pairs (`subprompts`, `chat-delete`, `character-generators`, `chat-
+   dialogs`, `profile`, `groups-projects`) WIDENED in place through v4's
+   ALTER statements from the baseline pin (`--report-only` before and
+   after; the P4.94 table), the seven standing reds closed with zero core
+   change, EVERY reader re-run (22 families + 4 web suites + 5 Playwright
+   specs that copy `groups-projects-*` — the P4.D201 avatar-rolls lesson
+   applied before it fires), the `chat-compressed` triple's `transcript
+   Version` gap + the 0-byte mount file REBUILT (the ONE rebuild) + its
+   sidecars made true; the `inspector-*` compressed `llm_logs` row as
+   Tier 2 if plantable without a rebuild. Bumps web (+ core only if
+   `test_support` moves — it should not).
+5. **`p4.104-image-normalization-seam.md` — P4.104, maintenance.** Bug
+   159's image half made a PORT: the engine's `blob_webp` threaded into
+   the TEN un-wired write sites (the doc-edit tool, the three galleries,
+   `image_job_storage`'s two writers, `file_ops`'s copy/move/write,
+   `store_mount_file`, the chat-media attach, `save_generated_image` —
+   the last NOT on the OPEN note's list, found by census), the
+   `create_with_ids` readback bug (the PRE-normalization path) fixed
+   before it can fire, the double-normalization question at two sites
+   decided by measurement, DECODABLE-image corpus rows red-first in every
+   family those sites are proven by under D19's comparand (decision /
+   mime / path / name / sha-changed / dimensions — never the bytes), a
+   `blob_write_sites_census`. Bumps core + harness (+ host if a trait
+   impl is missing).
+6. **`p4.105-update-message-fts-update.md` — P4.105, maintenance.**
+   `update_message` as v4's UPDATE over every member column (the
+   marshaling SHARED with `insert_event`, one column list), the base
+   rowid preserved; a NEW tier-2 family over a fixture that CARRIES the
+   five FTS objects (v4's real `ensureChatMessageFtsSchema` at the pin)
+   with the STORAGE FORM in the comparand (map row, fts rowid, base
+   rowid) — red-first on the `ftsId` renumbering under DELETE+INSERT and
+   on the `_au` guard bypass; the write-sites census moved; `search_
+   messages_global`'s `safeQuery` `[]` where v5 propagates `Err` (Tier
+   2, measured through the REST edge too). Bumps core + harness.
+7. **`p4.106-inform-coverage-remainder-smalls.md` — P4.106,
+   maintenance.** P4.D205's seven open items as v4's own test arms
+   mirrored into the existing families with PLANTED rows, never mocks
+   (the three `context-management` arms; the consumption arms; the swipe
+   re-apply rows; the Staff-skip row + a NEW tier-1 `is_record_only_
+   message` family; the dispatch WIRE test for the three verbs + the
+   `salon_mutations` removal row with `chat_informs` in its TABLES; the
+   five bundle families planted on per-run COPIES + the pre-4.10-archive
+   arm as the existing zips; the one-read-per-turn assert as a harness-
+   side counting seam); the bug-158 heal's differential against v4's
+   REAL migration module (the `chat_activity_heal_equivalence` shape,
+   scenario for scenario); NEW `provider_sdk_version_guard` (openai
+   7.20.0 root + six plugin dirs, anthropic 0.115.0 and google-genai
+   1.52.0 under their plugin dirs ONLY, openrouter 1.3.11 — pinned
+   against the installed `package.json`s AND the recorded corpora's
+   stamps); the `qtap_import` two-link-blob bundle (the ONE new committed
+   artifact). Bumps harness + web (+ core only for a `cfg(test)` seam).
+
+**Execution:** all seven launch in parallel from `main` at once — there is
+no stacking. P4.D212, P4.104 and P4.106 on the most capable model (a
+cross-cutting port with a new verb and five moving families; a codec
+threaded through ten sites and the engine's arms; a seven-item coverage
+lane that must plant rows through v4's real repositories in six
+corpora); P4.D214 and P4.105 on the most capable model too if available
+(a Tier R comparand measured at two pins; an UPDATE whose comparand is
+the storage form) — else a strong mid tier with the orders' file:line
+surveys in hand; P4.D213 and P4.103 may run on a cheaper tier (a
+one-entry SPA vertical with every string given; a migrator run + a
+re-run list). Disk: seven `target/` dirs at 50–70 GB each against 147 GB
+free at planning — run at most FOUR Rust lanes concurrently (P4.D213 has
+no `target/`; P4.103's gate is short) and reclaim `target/debug/
+incremental` between waves. Pick order at `/unify`: P4.D212 → P4.D213 →
+P4.D214 → P4.103 → P4.105 → P4.104 → P4.106; the census to 446, the
+versions to base + sums; the baseline MOVES to `a2db63da7` at
+unification; the two code rows retire `ABSORBED(…)` and the docs row
+`NO-PORT-RATIFIED(…)` with the six mirrors §R.9 pre-lists; the unified
+sweep from the NEW baseline pin re-records P4.106's grown orchestrator
+corpus with P4.D212's fold present; `P4D212_SERVER_LANDED` flipped and
+the beat run live.
+
+**Deliberately left out of this round:** the `quilltap sync` writer-hold
+RULING (the whole run inside `db.write` — a human decision, not a lane;
+the P4.D210 header carries it); the three text-compression migrations and
+the image re-encode migration as boot heals (reclamation — restated in
+P4.104 and P4.105); `update_message`'s callers (nine — untouched by
+design; the change is inside the repository method); a REST `?action=
+rebuild-summary` arm (dispatch-only by the regenerate-title precedent —
+recorded, not stubbed); v4's `conversion.ts` (never ported, by prior
+decision); the owed dogfood pass (a `/dogfood`, not an order — it runs
+after this round unifies and gains the rebuild-summary entry on a real
+chat with an invented name, the `Cannot open main database:` line on a
+real wrong key, the widened pairs' Playwright specs live, a real
+photograph through a gallery save landing as WebP, and the standing
+queue); and v4's next commits (the probe will catch them; a lane STOPs
+and the human records a waiver per the `89fcc3c0d` round's precedent).
+
 ## The `f45a517a9` thirteen-commit drift catch-up round (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥ P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211) — UNIFIED 2026-09-22
 
 **ALL NINE ORDERS LANDED; the oracle baseline MOVES `baa85e19b` →
