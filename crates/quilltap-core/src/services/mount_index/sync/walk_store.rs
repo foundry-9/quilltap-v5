@@ -111,7 +111,11 @@ pub fn walk_store(conn: &Connection, mount_point_id: &str) -> Result<StoreWalkRe
                 description_updated_at: row.get(7)?,
                 link_group_id: row.get(8)?,
                 sha256: row.get(9)?,
-                file_size_bytes: row.get(10)?,
+                // `fileSizeBytes` has REAL affinity, so an i64 written into it
+                // reads back as a Real and a plain `get::<i64>` fails. The repo
+                // layer's `real_affinity_i64` is private, so the tolerance is
+                // spelled out here too.
+                file_size_bytes: real_affinity_i64(row.get_ref(10)?),
                 file_type: row.get(11)?,
             })
         })?;
@@ -169,6 +173,16 @@ pub fn walk_store(conn: &Connection, mount_point_id: &str) -> Result<StoreWalkRe
         warnings,
         reserved_paths,
     })
+}
+
+/// Read a REAL-affinity cell as i64, tolerating both storage forms — the twin of
+/// the repository layer's own helper (which is private to it).
+fn real_affinity_i64(v: rusqlite::types::ValueRef<'_>) -> i64 {
+    match v {
+        rusqlite::types::ValueRef::Integer(i) => i,
+        rusqlite::types::ValueRef::Real(f) => f as i64,
+        _ => 0,
+    }
 }
 
 struct StoreLink {

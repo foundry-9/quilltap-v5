@@ -1,0 +1,1063 @@
+{
+  "_comment": [
+    "The shared corpus for `sync_engine_equivalence` (P4.D210): the document-store",
+    "sync run end to end against a real store and a real directory, on both sides,",
+    "from the same script.",
+    "",
+    "Read by BOTH drivers — `harness/oracle/cases/sync-engine.test.ts` (v4's real",
+    "`syncMountPoint` over its real repositories) and",
+    "`crates/quilltap-harness/tests/sync_engine_equivalence.rs` (v5's) — so the two",
+    "cannot drift apart by transcription. It covers the ground of v4's own",
+    "`engine.integration.test.ts` (eight describe groups, ~40 cases) plus the",
+    "shapes that file leaves implicit.",
+    "",
+    "EVERY clock is explicit. A seed or a disk write with no `lastModified` would",
+    "take `now` on each side independently, and the sync propagates clocks between",
+    "the sides, so the comparand would be noise. The store writers accept explicit",
+    "per-location timestamps since v4 `23da0b322` seam 4, which is exactly what",
+    "makes this corpus deterministic.",
+    "",
+    "`bytes` fields are base64. `PNG` is v4's own fixture payload — bytes that",
+    "LOOK like a PNG header and are not a decodable image, which is why v4's",
+    "'byte for byte, no WebP transcode' case passes there; see",
+    "`apply_store.rs`'s header for the measurement.",
+    "",
+    "A text document's description has no write chokepoint on either side (`linkDocumentContent` takes none, and `updateDescription` is the BLOB repository's), so the 'a text document's caption is reported as unsynced' rule is proven at tier 1 in `sync_planner_equivalence` instead of here rather than inventing one."
+  ],
+  "constants": {
+    "T0": "2026-09-01T10:00:00.000Z",
+    "T1": "2026-09-10T10:00:00.000Z",
+    "T2": "2026-09-20T10:00:00.000Z",
+    "BIRTH": "2024-01-01T00:00:00.000Z",
+    "PNG_BASE64": "iVBORw0KGgogYW5kIHRoZW4gc29tZSBieXRlcyB0aGF0IGFyZSBub3QgcmVhbGx5IGEgUE5H",
+    "PNG_EDITED_BASE64": "iVBORw0KGgogYW5kIHRoZW4gc29tZSBESUZGRVJFTlQgYnl0ZXMgdGhhdCBhcmUgbm90IHJlYWxseSBhIFBORw==",
+    "INVALID_UTF8_BASE64": "IyBoZWFkaW5nCv/+IG5vdCB1dGYtOAo="
+  },
+  "scenarios": [
+    {
+      "id": "first-run/materialises-files-folders-and-sidecars",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "chapters/01.md",
+          "content": "# One\nThe first chapter.",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedBlob",
+          "path": "lore/harbour.png",
+          "bytes": "PNG",
+          "description": "A map of the harbour at dusk.",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "first-run/carries-the-stores-mtime-onto-disk",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a.md",
+          "content": "body",
+          "lastModified": "T2",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "first-run/an-empty-folder-becomes-a-real-directory",
+      "steps": [
+        {
+          "op": "seedFolder",
+          "path": "lore/maps"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "first-run/dry-run-changes-nothing-and-writes-no-manifest",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a.md",
+          "content": "body",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "dryRun": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "first-run/adopts-a-disk-file-into-the-store",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "drafts/new.md",
+          "body": "a draft",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "first-run/adopts-a-binary-and-its-sidecar",
+      "steps": [
+        {
+          "op": "writeDiskBytes",
+          "path": "pushed.png",
+          "bytes": "PNG",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": "pushed.png.description.md",
+          "body": "from the sidecar\n",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "converge/one-pass-over-text-a-binary-a-caption-and-a-folder",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "chapters/01.md",
+          "content": "# One",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedBlob",
+          "path": "lore/harbour.png",
+          "bytes": "PNG",
+          "description": "A map.",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedFolder",
+          "path": "empty"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "converge/a-file-pushed-the-other-way",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "notes.md",
+          "body": "notes",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "converge/after-an-edit-on-each-side",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a.md",
+          "content": "store one",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedDoc",
+          "path": "b.md",
+          "content": "store two",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "writeDisk",
+          "path": "a.md",
+          "body": "disk edited a",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "converge/after-a-caption-edit",
+      "steps": [
+        {
+          "op": "seedBlob",
+          "path": "harbour.png",
+          "bytes": "PNG",
+          "description": "the first caption",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "writeDisk",
+          "path": "harbour.png.description.md",
+          "body": "a better caption\n",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "edits/pulls-a-disk-edit-into-the-store",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "the store's text",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "writeDisk",
+          "path": "ch.md",
+          "body": "the disk's text",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "edits/pushes-a-store-edit-out-to-disk",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "one",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "two, from the store",
+          "lastModified": "T2",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "edits/refuses-when-both-sides-moved-and-changes-nothing",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "base",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "the store's edit",
+          "lastModified": "T2",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "ch.md",
+          "body": "the disk's edit",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "edits/prefer-disk-resolves-that-conflict",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "base",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "the store's edit",
+          "lastModified": "T2",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "ch.md",
+          "body": "the disk's edit",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "prefer": "disk"
+          }
+        }
+      ]
+    },
+    {
+      "id": "edits/prefer-store-resolves-it-the-other-way",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "base",
+          "lastModified": "T0",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "seedDoc",
+          "path": "ch.md",
+          "content": "the store's edit",
+          "lastModified": "T2",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "ch.md",
+          "body": "the disk's edit",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "prefer": "store"
+          }
+        }
+      ]
+    },
+    {
+      "id": "deletes/a-disk-deletion-reaches-the-store-only-with-a-base",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "gone.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "rmDisk",
+          "path": "gone.md"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "deletes/a-first-run-never-deletes",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "store-only.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "disk-only.md",
+          "body": "text",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "deletes/a-store-deletion-reaches-disk",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "gone.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "deleteLink",
+          "path": "gone.md"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "deletes/no-delete-keeps-both-sides-intact",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "gone.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "rmDisk",
+          "path": "gone.md"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "propagateDeletes": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "deletes/a-binarys-sidecar-goes-with-it",
+      "steps": [
+        {
+          "op": "seedBlob",
+          "path": "harbour.png",
+          "bytes": "PNG",
+          "description": "A caption.",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "deleteLink",
+          "path": "harbour.png"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "deletes/an-empty-folder-is-rmdired-after-its-files",
+      "steps": [
+        {
+          "op": "seedFolder",
+          "path": "drafts"
+        },
+        {
+          "op": "seedDoc",
+          "path": "drafts/old.md",
+          "content": "old",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "deleteLink",
+          "path": "drafts/old.md"
+        },
+        {
+          "op": "deleteFolder",
+          "path": "drafts"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "bytes/a-png-round-trips-byte-for-byte",
+      "steps": [
+        {
+          "op": "writeDiskBytes",
+          "path": "pushed.png",
+          "bytes": "PNG",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "bytes/a-caption-survives-a-byte-edit-pushed-from-disk-bug-155",
+      "steps": [
+        {
+          "op": "writeDiskBytes",
+          "path": "harbour.png",
+          "bytes": "PNG",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "setDescription",
+          "path": "harbour.png",
+          "text": "A map of the harbour."
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "writeDiskBytes",
+          "path": "harbour.png",
+          "bytes": "PNG_EDITED",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "bytes/pulls-an-edited-sidecar-back-into-the-store",
+      "steps": [
+        {
+          "op": "seedBlob",
+          "path": "harbour.png",
+          "bytes": "PNG",
+          "description": "the first caption",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "writeDisk",
+          "path": "harbour.png.description.md",
+          "body": "a better caption\n",
+          "mtime": "T2"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "bytes/a-store-path-using-the-reserved-suffix-is-reported",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "notes.md.description.md",
+          "content": "not a sidecar",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "bytes/a-cleared-sidecar-clears-the-caption",
+      "steps": [
+        {
+          "op": "seedBlob",
+          "path": "harbour.png",
+          "bytes": "PNG",
+          "description": "A caption.",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "rmDisk",
+          "path": "harbour.png.description.md"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/a-dotfile-on-disk-is-invisible",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": ".hidden",
+          "body": "secret",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": ".git/config",
+          "body": "config",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": "visible.md",
+          "body": "seen",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/a-dot-path-in-the-store-is-never-materialised",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": ".config/settings.md",
+          "content": "hidden",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedDoc",
+          "path": "visible.md",
+          "content": "seen",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/the-stores-own-exclude-patterns-apply-to-the-disk-walk",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "node_modules/pkg.md",
+          "body": "vendored",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": "kept.md",
+          "body": "kept",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/a-symlink-is-skipped-with-a-warning",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "real.md",
+          "body": "real",
+          "mtime": "T1"
+        },
+        {
+          "op": "symlinkDisk",
+          "path": "link.md",
+          "target": "real.md"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/a-quilltap-tmp-leftover-is-ignored",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "interrupted.md.quilltap-tmp",
+          "body": "half",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": "whole.md",
+          "body": "whole",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "untouched/an-orphan-sidecar-is-warned-about-not-deleted",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "nobody.png.description.md",
+          "body": "a caption for nothing\n",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-filesystem-store-points-at-its-own-base-path",
+      "store": {
+        "mountType": "filesystem",
+        "basePath": "/srv/lore"
+      },
+      "steps": [
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-filesystem-store-with-no-base-path",
+      "store": {
+        "mountType": "filesystem",
+        "basePath": ""
+      },
+      "steps": [
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/an-archived-characters-vault",
+      "store": {
+        "storeType": "character",
+        "archived": true
+      },
+      "steps": [
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-conversion-in-flight",
+      "store": {
+        "conversionStatus": "converting"
+      },
+      "steps": [
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-scan-in-flight",
+      "store": {
+        "scanStatus": "scanning"
+      },
+      "steps": [
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-manifest-belonging-to-another-store",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": ".quilltap-sync.json",
+          "body": "{\"version\":1,\"storeId\":\"another-store\",\"storeName\":\"Other\",\"lastSyncAt\":\"2026-09-01T10:00:00.000Z\",\"entries\":{}}",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync",
+          "expectRefusal": true
+        }
+      ]
+    },
+    {
+      "id": "refusals/no-manifest-ignores-one-that-would-be-refused",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": ".quilltap-sync.json",
+          "body": "{\"version\":1,\"storeId\":\"another-store\",\"storeName\":\"Other\",\"lastSyncAt\":\"2026-09-01T10:00:00.000Z\",\"entries\":{}}",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "useManifest": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "refusals/a-corrupt-manifest-is-a-warning-and-a-first-run",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a.md",
+          "content": "text",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": ".quilltap-sync.json",
+          "body": "{ not json",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "direction/to-disk-leaves-the-store-untouched",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "store.md",
+          "content": "from the store",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "disk.md",
+          "body": "from the disk",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "direction": "to-disk"
+          }
+        }
+      ]
+    },
+    {
+      "id": "direction/to-store-leaves-the-disk-untouched",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "store.md",
+          "content": "from the store",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "writeDisk",
+          "path": "disk.md",
+          "body": "from the disk",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync",
+          "options": {
+            "direction": "to-store"
+          }
+        }
+      ]
+    },
+    {
+      "id": "vault/a-keystone-removed-from-disk-is-a-conflict",
+      "store": {
+        "storeType": "character"
+      },
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "identity.md",
+          "content": "who she is",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedDoc",
+          "path": "notes/idea.md",
+          "content": "an idea",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "rmDisk",
+          "path": "identity.md"
+        },
+        {
+          "op": "rmDisk",
+          "path": "notes/idea.md"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "nested/a-deep-tree-round-trips",
+      "steps": [
+        {
+          "op": "seedDoc",
+          "path": "a/b/c/deep.md",
+          "content": "deep",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedDoc",
+          "path": "a/mid.md",
+          "content": "mid",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "seedDoc",
+          "path": "top.md",
+          "content": "top",
+          "lastModified": "T1",
+          "createdAt": "BIRTH"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "nested/a-disk-tree-is-adopted-whole",
+      "steps": [
+        {
+          "op": "writeDisk",
+          "path": "x/y/z/leaf.md",
+          "body": "leaf",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "kinds/a-file-on-one-side-and-a-folder-on-the-other",
+      "steps": [
+        {
+          "op": "seedFolder",
+          "path": "lore"
+        },
+        {
+          "op": "writeDisk",
+          "path": "lore",
+          "body": "a file, not a folder",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    },
+    {
+      "id": "text/a-non-utf8-md-on-disk-is-reported-not-mangled",
+      "steps": [
+        {
+          "op": "writeDiskBytes",
+          "path": "broken.md",
+          "bytes": "INVALID_UTF8",
+          "mtime": "T1"
+        },
+        {
+          "op": "writeDisk",
+          "path": "fine.md",
+          "body": "fine",
+          "mtime": "T1"
+        },
+        {
+          "op": "sync"
+        }
+      ]
+    }
+  ]
+}

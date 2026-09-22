@@ -138615,3 +138615,78 @@ the LIVE v4 checkout rather than a pin, so no lane can make them green from its
 own branch. Both of this lane's families confirmed RUN by name.
 
 Versions: core 0.0.973, harness 0.0.866.
+
+### Unit 2 — the engine end to end (`sync_engine_equivalence`), and the two defects it found
+
+47 scenarios over a corpus that is DATA
+(`harness/oracle/fixtures/sync-engine-scenarios.json`), read by both drivers, so
+the sides run one script rather than two transcriptions. It covers v4's own
+`engine.integration.test.ts` ground (its eight describe groups, ~40 cases) and
+adds the shapes that file leaves implicit — the `.quilltap-tmp` leftover, the
+orphan sidecar, the symlink, a non-UTF-8 `.md`, a deep tree in each direction,
+the kind disagreement, the cleared sidecar, and a corrupt manifest.
+
+**Every clock in the corpus is explicit**, which is what makes it comparable at
+all: the sync propagates clocks between the sides, so a seed that took `now`
+would be noise. T's widened per-location timestamps are what let a seed say
+when. Two normalizers, written twice and identical: an ISO instant that is NOT
+one of the corpus's constants is `now` and becomes `<minted>`; a minted UUID
+becomes `<id-N>` in first-seen order, per scenario, which keeps identity while
+dropping values.
+
+**⭐ TWO REAL DEFECTS, both found here and nowhere else:**
+
+1. **`birthtime_of` compared a TRUNCATED birthtime against a full-precision
+   ctime.** Node keeps `birthtimeMs` and `ctimeMs` as sub-millisecond floats and
+   v4's guard is `Math.abs(birth - ctimeMs) < 1`; the port took `as_millis()`
+   first, so a pair 0.002 ms apart became a pair 1.001 ms apart and the guard
+   answered the opposite. Measured consequence, on the ONE scenario that creates
+   a directory tree on disk and adopts it: v4 reported **no** creation date for
+   `x` and v5 reported one, while both agreed on `x/y` and `x/y/z` — the kind of
+   one-row-in-three disagreement that reads as noise until the comparand is
+   whole. Both values are floats now, and only the RENDERING truncates
+   (`new Date(ms)` is `ToInteger`).
+2. **`walk_store` read `fileSizeBytes` as a plain `i64`.** The column has REAL
+   affinity, so an integer written into it reads back as a `Real` and rusqlite
+   refuses outright — `InvalidColumnType(10, "fileSizeBytes", Real)`. The repo
+   layer has `real_affinity_i64` for exactly this and it is private, so the sync
+   family spells the tolerance out. It would have failed on every real store.
+
+**The declared seam: the post-write re-index.** v4's own integration test mocks
+`reindexSingleFile` / `reindexLinkGroupSiblings` and the oracle mocks them the
+same way; v5 has no mock seam and runs the hook for real. So `doc_mount_chunks`
+and the links' `chunkCount` are OUT of the comparand on both sides, and the
+v5-side half is `the_sync_issues_no_chunk_sql_of_its_own`: a text document
+pushed in by the sync HAS chunks (the document branch calls
+`reindex_after_database_write`), a blob has NONE (that branch does not). What
+the hook itself does is P4.D209's differential.
+
+**Two harness facts worth carrying forward**, both found the hard way:
+
+- The engine's `in_flight` set is a PROCESS GLOBAL and cargo runs a file's tests
+  in parallel threads. The standalone chunk test and the differential shared
+  `MOUNT_ID`, so the first held the slot while the second's opening scenarios
+  asked for it and got `SYNC_IN_PROGRESS`. That is the per-store mutex working
+  exactly as designed; the two tests simply must not name the same store.
+- A test store needs its own `doc_mount_points` ROW, not just the tables.
+  Without it the post-write re-index cannot tell a database store from a
+  filesystem one, goes looking on disk, and fails silently into the log — which
+  is how the first draft produced a page of `No such file or directory` and no
+  chunks at all.
+
+Two guards are UNREACHABLE from any scenario corpus and are pinned directly
+instead, with the reason in the source: `resolve_in_target`'s escape refusal (no
+walk can produce an escaping path — the store walk drops every dot-segment and
+`..` is one) and `StoreRaceError` (the corpus is a script, so nothing can edit
+the store between the plan and the apply). The P4.D210 order names a mutation
+for each; both would have SURVIVED the corpus, which is the finding.
+
+| mutation | proof |
+|---|---|
+| write the manifest under `--dry-run` | **1 of 47 red** (`first-run/dry-run-changes-nothing-and-writes-no-manifest`) |
+| pass a metadata opinion on the byte write (bug 155 undone) | **1 of 47 red** (`bytes/a-caption-survives-a-byte-edit-pushed-from-disk-bug-155`) |
+| hash the RENDERED sidecar instead of the parsed text | **22 of 74 red** (`sync_manifest_sidecar_equivalence`) |
+| return exit 1 on a conflict instead of 2 | **2 of 176 red** (`sync_report_equivalence`) |
+
+Versions: core 0.0.974, harness 0.0.867.
+

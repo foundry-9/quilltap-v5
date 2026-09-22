@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(scriptorium): the sync engine end to end — 47 scenarios, one shared script, and two defects it found (P4.D210)
+
+_Versions: core 0.0.974, harness 0.0.867._
+
+`sync_engine_equivalence` runs `sync_mount_point` against a real store and a
+real directory, over a corpus that is DATA
+(`harness/oracle/fixtures/sync-engine-scenarios.json`) read by both drivers — so
+the two sides run the same script rather than two transcriptions of it. It
+covers the ground of v4's own `engine.integration.test.ts` and holds the one
+property a planner test cannot: **a second run is a no-op**, proven on six
+scenarios. All 47 match.
+
+Two real defects, both found by it:
+
+`birthtime_of` truncated the birthtime to whole milliseconds before comparing it
+against a full-precision ctime, so the "these are the same instant" guard
+answered the opposite of v4's on a freshly created directory: v4 reported no
+creation date, v5 reported one. Node keeps both as floats and only the
+RENDERING truncates (`new Date(ms)` does `ToInteger`), and so does the port now.
+
+`walk_store` read `fileSizeBytes` as a plain `i64`, and the column has REAL
+affinity — so an integer written into it reads back as a Real and the read
+fails outright. The repository layer's own tolerance is private, so the sync
+family carries its own.
+
+The re-index hook is a DECLARED SEAM: v4's own integration test mocks it and so
+does the oracle, while v5 runs it for real, so `doc_mount_chunks` and
+`chunkCount` are out of the comparand on both sides and a v5-side test carries
+the other half — a text document pushed in by the sync has chunks, a blob has
+none, which is what "the sync issues no chunk SQL of its own" means.
+
 #### 2026-09-22 — feat(scriptorium): the document-store sync engine — the pure planner, the manifest, the sidecar, the two walks and the two appliers (P4.D210)
 
 _Versions: core 0.0.973, harness 0.0.866._

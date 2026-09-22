@@ -403,3 +403,54 @@ fn node_extname(p: &str) -> String {
         Some(i) => base[i..].to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The compare-and-swap's message, pinned directly.
+    ///
+    /// Like the disk applier's escape refusal, `StoreRaceError` cannot be
+    /// reached from a scenario corpus: the corpus is a script, so nothing can
+    /// edit the store BETWEEN the plan and the apply, and the mutation the
+    /// P4.D210 order names — "skip the CAS" — would survive
+    /// `sync_engine_equivalence` untouched. The sentence is the operator-facing
+    /// half and is v4's byte for byte, including the two twelve-character
+    /// prefixes, the `'none'` fallback for a side that has no sha at all, and
+    /// the ellipsis after each.
+    #[test]
+    fn the_race_sentence_is_v4s() {
+        let both = StoreRaceError {
+            relative_path: "chapters/01.md".to_string(),
+            expected: Some("a".repeat(64)),
+            found: Some("b".repeat(64)),
+        };
+        assert_eq!(
+            both.to_string(),
+            "chapters/01.md changed in the store while the sync was running \
+             (expected sha aaaaaaaaaaaa…, found bbbbbbbbbbbb…)"
+        );
+        // The planner saw nothing at this path, so anything there now is a race
+        // too — and `undefined?.slice(...) ?? 'none'` is the wording.
+        let neither = StoreRaceError {
+            relative_path: "new.md".to_string(),
+            expected: None,
+            found: Some("c".repeat(64)),
+        };
+        assert_eq!(
+            neither.to_string(),
+            "new.md changed in the store while the sync was running \
+             (expected sha none…, found cccccccccccc…)"
+        );
+        let gone = StoreRaceError {
+            relative_path: "gone.md".to_string(),
+            expected: Some("d".repeat(64)),
+            found: None,
+        };
+        assert_eq!(
+            gone.to_string(),
+            "gone.md changed in the store while the sync was running \
+             (expected sha dddddddddddd…, found none…)"
+        );
+    }
+}

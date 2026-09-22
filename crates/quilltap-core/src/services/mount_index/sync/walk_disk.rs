@@ -313,11 +313,20 @@ fn read_dir_sorted(dir: &Path) -> std::io::Result<Vec<(String, std::fs::FileType
     Ok(out)
 }
 
-/// The fields v4 reads off a `Stats`. `mtime_ms` is `new Date(mtimeMs)` —
-/// truncated to whole milliseconds, which is what `toISOString()` then renders.
+/// The fields v4 reads off a `Stats`.
+///
+/// `mtime_ms` is `new Date(mtimeMs)` — truncated to whole milliseconds, which is
+/// what `toISOString()` then renders. `birthtime_ms` and `ctime_ms` are kept as
+/// FLOATS with sub-millisecond precision, because Node's are and because
+/// [`birthtime_of`] compares them against each other with a tolerance of one
+/// millisecond. Truncating the birthtime first turns a pair that is 0.002 ms
+/// apart into a pair 1.001 ms apart, and the guard then answers the opposite —
+/// which is exactly the disagreement `sync_engine_equivalence` caught on a
+/// freshly created directory (`nested/a-disk-tree-is-adopted-whole`: v4 reported
+/// no creation date for `x`, v5 reported one).
 struct Stat {
     mtime_ms: i64,
-    birthtime_ms: i64,
+    birthtime_ms: f64,
     ctime_ms: f64,
 }
 
@@ -330,13 +339,14 @@ fn stat_or_none(absolute_path: &Path) -> Option<Stat> {
 fn stat_from_metadata(meta: &std::fs::Metadata) -> Stat {
     use std::os::unix::fs::MetadataExt;
     let mtime_ms = meta.mtime() * 1000 + i64::from(meta.mtime_nsec() as i32) / 1_000_000;
-    // Node reports `birthtimeMs` as 0 where the platform has no birthtime.
+    // Node reports `birthtimeMs` as 0 where the platform has no birthtime, and
+    // as a sub-millisecond float where it has one.
     let birthtime_ms = meta
         .created()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0);
+        .map(|d| d.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
     let ctime_ms = meta.ctime() as f64 * 1000.0 + meta.ctime_nsec() as f64 / 1_000_000.0;
     Stat {
         mtime_ms,
@@ -347,17 +357,17 @@ fn stat_from_metadata(meta: &std::fs::Metadata) -> Stat {
 
 #[cfg(not(unix))]
 fn stat_from_metadata(meta: &std::fs::Metadata) -> Stat {
-    let ms = |t: std::io::Result<std::time::SystemTime>| {
+    let ms = |t: std::io::Result<std::time::SystemTime>| -> f64 {
         t.ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis() as i64)
-            .unwrap_or(0)
+            .map(|d| d.as_secs_f64() * 1000.0)
+            .unwrap_or(0.0)
     };
     let mtime_ms = ms(meta.modified());
     Stat {
-        mtime_ms,
+        mtime_ms: mtime_ms as i64,
         birthtime_ms: ms(meta.created()),
-        ctime_ms: mtime_ms as f64,
+        ctime_ms: mtime_ms,
     }
 }
 
@@ -370,13 +380,16 @@ fn stat_from_metadata(meta: &std::fs::Metadata) -> Stat {
 fn birthtime_of(stat: &Stat) -> Option<String> {
     let birth = stat.birthtime_ms;
     // v4 `if (!birth || birth <= 0)` — 0 and negative both fall out.
-    if birth <= 0 {
+    if birth <= 0.0 {
         return None;
     }
-    if (birth as f64 - stat.ctime_ms).abs() < 1.0 {
+    // The comparison is between the two FLOATS, as Node's is.
+    if (birth - stat.ctime_ms).abs() < 1.0 {
         return None;
     }
-    Some(iso_from_unix_ms(birth))
+    // …and only the RENDERING truncates: `new Date(birthtimeMs)` does
+    // `ToInteger`, which for a positive value is a truncation toward zero.
+    Some(iso_from_unix_ms(birth as i64))
 }
 
 /// v4 `isValidUtf8` — round-trips through UTF-8 unchanged.

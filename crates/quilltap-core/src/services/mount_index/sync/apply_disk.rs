@@ -362,3 +362,43 @@ pub fn apply_disk_action(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `resolve_in_target`'s escape refusal is DEFENCE IN DEPTH: neither walk can
+    /// hand the applier an escaping path (the store walk drops any path with a
+    /// dot-segment, and `..` is one; the disk walk only ever reports paths it
+    /// just read from inside the target), so no engine scenario can reach it and
+    /// the corpus mutation the P4.D210 order names — "let `resolve_in_target`
+    /// accept `..`" — would survive `sync_engine_equivalence` untouched. It is
+    /// pinned here instead, which is the honest place for a guard whose whole
+    /// job is to catch a caller that should not exist.
+    #[test]
+    fn a_path_that_escapes_the_target_is_refused() {
+        let target = Path::new("/tmp/qt-target");
+        assert_eq!(
+            resolve_in_target(target, "lore/harbour.png").unwrap(),
+            Path::new("/tmp/qt-target/lore/harbour.png")
+        );
+        // A `..` that stays inside is fine — v4 resolves lexically and only then
+        // tests containment.
+        assert_eq!(
+            resolve_in_target(target, "lore/../harbour.png").unwrap(),
+            Path::new("/tmp/qt-target/harbour.png")
+        );
+        for escaping in ["../outside.md", "lore/../../outside.md", "/etc/passwd"] {
+            let err =
+                resolve_in_target(target, escaping).expect_err("an escaping path must be refused");
+            assert_eq!(
+                err.to_string(),
+                format!("Refusing to touch {escaping}: it resolves outside the target directory")
+            );
+        }
+        // The target ITSELF resolves, which is what `absolute !== base` allows.
+        assert_eq!(resolve_in_target(target, "").unwrap(), target);
+        // …and a sibling whose name merely STARTS with the target's does not.
+        assert!(resolve_in_target(target, "../qt-target-other/x.md").is_err());
+    }
+}
