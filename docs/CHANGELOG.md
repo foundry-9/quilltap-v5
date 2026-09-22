@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(web): the two route-surface censuses the Inform arms move (P4.D205)
+
+_Versions: harness 0.0.867, web 0.0.161._
+
+The chat POST edge's refusal sentence now names four served actions instead of
+two, and `query_param_semantics_equivalence` pins it at all five sites. The
+tri-state decoder census moves `wardrobe_routes.rs` 14 to 15 and its total 109 to
+110: the `?action=informs` GET hand-builds a typed-only variant whose single
+field is the path id, which is exactly what that table records, while the two
+POST arms go through the shared request-envelope decoder and add nothing — the
+rule the census exists to enforce.
+
+
 #### 2026-09-22 — test(harness): the Inform rows under the uuid remap, and the nine call sites the two new required fields reached (P4.D205)
 
 _Versions: core 0.0.973, harness 0.0.866, web 0.0.160._

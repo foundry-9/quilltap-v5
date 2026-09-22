@@ -614,7 +614,14 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("text_replacements_routes.rs", 6),
     ("tools_routes.rs", 1),
     ("ui_search_routes.rs", 1),
-    ("wardrobe_routes.rs", 14),
+    // P4.D205 (v4 `e7d77bb60`): 14 → 15. The `?action=informs` GET hand-builds
+    // `CoreRequest::ChatInformsList { chat_id }`, which is typed-only (one
+    // `String`) and so is exactly what this table is for. The two POST arms
+    // (`inform` / `cancel-inform`) do NOT appear here: their variants carry
+    // `Option<Option<Value>>` tri-states, so they go through
+    // `request_envelope::request_envelope` — which is the rule this census
+    // exists to enforce.
+    ("wardrobe_routes.rs", 15),
 ];
 
 #[test]
@@ -651,8 +658,13 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 109,
-        "109 = 110 total `*_routes.rs` variant constructions (measured 2026-09-18) minus the \
-         1 CharacterRename tri-state exception; re-measure both numbers together if this moves"
+        total, 110,
+        "P4.D205: 110 = 111 total `*_routes.rs` variant constructions minus the 1 \
+         CharacterRename tri-state exception. 109 = 110 - 1 before the Inform verbs; the \
+         `?action=informs` GET adds ONE typed-only hand-built construction \
+         (`ChatInformsList`, whose only field is the path id), while the two POST arms go \
+         through \
+         `request_envelope` and add none — which is the rule this census enforces. \
+         Re-measure both numbers together if this moves"
     );
 }

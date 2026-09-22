@@ -554,22 +554,22 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
     (
         "chat_item_post__bare",
         400,
-        "Only the equip and regenerate-avatar actions are served on this route",
+        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
     ),
     (
         "chat_item_post__empty",
         400,
-        "Only the equip and regenerate-avatar actions are served on this route",
+        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
     ),
     (
         "chat_item_post__unknown",
         400,
-        "Only the equip and regenerate-avatar actions are served on this route",
+        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
     ),
     (
         "chat_item_post__empty_then_known",
         400,
-        "Only the equip and regenerate-avatar actions are served on this route",
+        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route",
     ),
 ];
 
@@ -621,7 +621,7 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         "/api/v1/chats/bb000000-0000-4000-8000-0000000000bb",
         "save-image",
         400,
-        "Only the equip and regenerate-avatar actions are served on this route; the other chat actions ride POST /api/dispatch",
+        "Only the equip, regenerate-avatar, inform and cancel-inform actions are served on this route; the other chat actions ride POST /api/dispatch",
     ),
     (
         "GET",
