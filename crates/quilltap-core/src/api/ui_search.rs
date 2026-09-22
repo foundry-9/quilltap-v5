@@ -47,10 +47,12 @@
 //! insertion semantics; `serde_json`'s `preserve_order` keeps it).
 
 use serde_json::{json, Map, Value};
+use unicode_normalization::UnicodeNormalization;
 
 use crate::clock::now_iso;
 use crate::content_disposition::encode_uri_component;
 use crate::db::chats_search::ChatSearchRepository;
+use crate::db::fts_query::tokenize_like_unicode61;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, memories_read, tags, DbError};
 use crate::episodic::js_date_parse_ms;
@@ -140,9 +142,78 @@ fn get_match_priority(value: &str, query: &str) -> u8 {
     2
 }
 
-/// v4 `createSnippet` — center a window around the first (lowercased) match.
-/// The match index is found in the LOWERCASED strings but slices the ORIGINAL
-/// content, exactly as v4 does.
+/// Case-fold and strip diacritics, keeping a map back to the ORIGINAL UTF-16
+/// indices (v4 `foldWithIndexMap`).
+///
+/// Folding the whole string with `normalize('NFD')` would be simpler and
+/// wrong: NFD changes the string's length (é → e + U+0301), so an index into
+/// the folded text no longer points at the same character in the original.
+/// Folding per character and recording where each folded unit came from keeps
+/// the two coordinate systems tied together.
+///
+/// ⚠ **v4 iterates UTF-16 code units, not characters**, because `value[i]` in
+/// JS is one code unit. For an astral character that is a LONE SURROGATE, on
+/// which `normalize('NFD')` and `toLowerCase()` are both the identity — so the
+/// pair passes through as two units mapped to two indices. This port therefore
+/// works in `u16` space throughout: a `chars()` loop would fold an emoji to
+/// ONE entry and every index after it would point at the wrong place, and
+/// round-tripping through `String` would turn a lone surrogate into U+FFFD,
+/// which would make two DIFFERENT astral characters compare equal.
+fn fold_with_index_map(value: &str) -> (Vec<u16>, Vec<usize>) {
+    let units: Vec<u16> = value.encode_utf16().collect();
+    let mut folded: Vec<u16> = Vec::with_capacity(units.len());
+    let mut map: Vec<usize> = Vec::with_capacity(units.len());
+    for (i, &unit) in units.iter().enumerate() {
+        match char::from_u32(u32::from(unit)) {
+            // A whole scalar value: NFD, strip the combining marks v4 strips,
+            // then lowercase — in that order, because `İ` (U+0130) decomposes
+            // to `I` + U+0307 and only then folds to `i`.
+            Some(c) => {
+                let decomposed: String = c
+                    .nfd()
+                    .filter(|ch| !('\u{0300}'..='\u{036F}').contains(ch))
+                    .collect();
+                for u in decomposed.to_lowercase().encode_utf16() {
+                    folded.push(u);
+                    map.push(i);
+                }
+            }
+            // A lone surrogate — half of an astral pair. JS leaves it alone.
+            None => {
+                folded.push(unit);
+                map.push(i);
+            }
+        }
+    }
+    (folded, map)
+}
+
+/// The first index at which `needle` occurs in `haystack`, in UTF-16 units
+/// (JS `String.prototype.indexOf` over the folded buffers).
+fn index_of_u16(haystack: &[u16], needle: &[u16]) -> Option<usize> {
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// v4 `createSnippet` — centre a window on where the query matched.
+///
+/// Message results come from an FTS5 index now, and under token semantics a
+/// hit need NOT contain the literal query: `café` matches *cafe*, `walk`
+/// matches *walking*, and the phrase the user typed may never appear verbatim.
+/// A plain `indexOf` therefore misses, and every such result used to fall back
+/// to "the first N characters" — a snippet that showed the reader nothing
+/// about why the row matched.
+///
+/// So: the literal phrase first (the common case, and the cheapest), then the
+/// same phrase case-folded and diacritic-stripped, then each query token in
+/// turn as a folded prefix. The original head-of-content fallback stays for
+/// the genuine miss.
+///
+/// The match index is found in the LOWERCASED (or FOLDED) strings but slices
+/// the ORIGINAL content, exactly as v4 does — and `match_length` is measured
+/// in ORIGINAL indices through the map, because a fold can change length.
 fn create_snippet(content: &str, query: &str, max_length: usize) -> String {
     if content.is_empty() {
         return String::new();
@@ -151,7 +222,36 @@ fn create_snippet(content: &str, query: &str, max_length: usize) -> String {
     let lower_query = query.to_lowercase();
     let content_len = utf16_len(content);
 
-    let Some(match_index) = js_index_of(&lower_content, &lower_query, 0) else {
+    let mut match_index = js_index_of(&lower_content, &lower_query, 0);
+    let mut match_length = utf16_len(query);
+
+    if match_index.is_none() {
+        let (folded, map) = fold_with_index_map(content);
+        // The phrase, then each token — first one that lands wins. v4's
+        // `.filter(Boolean)` drops a needle that folds away to nothing.
+        let mut needles: Vec<Vec<u16>> = Vec::new();
+        for needle in std::iter::once(lower_query.clone()).chain(tokenize_like_unicode61(query)) {
+            let (folded_needle, _) = fold_with_index_map(&needle);
+            if !folded_needle.is_empty() {
+                needles.push(folded_needle);
+            }
+        }
+
+        for needle in &needles {
+            let Some(at) = index_of_u16(&folded, needle) else {
+                continue;
+            };
+            let start = map[at];
+            // Fold and original can disagree on length; measure in ORIGINAL
+            // indices. `map` is non-empty here because `folded` matched.
+            let last_folded = (at + needle.len() - 1).min(map.len() - 1);
+            match_length = map[last_folded] - start + 1;
+            match_index = Some(start);
+            break;
+        }
+    }
+
+    let Some(match_index) = match_index else {
         let mut s = utf16_truncate(content, max_length);
         if content_len > max_length {
             s.push_str("...");
@@ -160,7 +260,7 @@ fn create_snippet(content: &str, query: &str, max_length: usize) -> String {
     };
 
     let start = match_index.saturating_sub(30);
-    let end = (match_index + utf16_len(query) + 70).min(content_len);
+    let end = (match_index + match_length + 70).min(content_len);
     let mut snippet = utf16_substring(content, start, end);
     if start > 0 {
         snippet = format!("...{snippet}");

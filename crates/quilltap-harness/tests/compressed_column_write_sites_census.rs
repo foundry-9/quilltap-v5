@@ -30,8 +30,11 @@ use std::path::{Path, PathBuf};
 /// `(path under `crates/quilltap-core/src`, production `text_to_blob(` calls,
 /// why — naming every statement the count covers)`.
 ///
-/// **The arithmetic: 4 + 2 + 2 + 2 + 1 = 11 production `text_to_blob` calls
-/// across five files** (the fifth being the definition itself).
+/// **The arithmetic: 4 + 2 + 2 + 2 + 1 + 1 = 12 production `text_to_blob`
+/// calls across six files** (the sixth being the definition itself). The
+/// `db/chats_search.rs` row is P4.D204's: P4.D203 left that file EXEMPT with a
+/// note saying P4.D204 owned the rewrite and would land the codec there, which
+/// it has — so the file moves from EXEMPT to CENSUS and the count goes 11 → 12.
 const CENSUS: &[(&str, usize, &str)] = &[
     (
         "db/chats_messages.rs",
@@ -63,6 +66,22 @@ const CENSUS: &[(&str, usize, &str)] = &[
          textToBlob(content)`) so a NULL cell stays NULL. Its SELECT reads \
          through `qt_text()`, matching v4's own migration.",
     ),
+    // P4.D204 OUT-OF-MANDATE — P4.D203 owns this census file. This row and the
+    // EXEMPT row below are the two halves of the handoff P4.D203 WROTE INTO the
+    // exemption it is replacing ("P4.D204 owns the FTS5 rewrite of this file
+    // and lands them there"). Landed here rather than reported, because leaving
+    // the guard red over a file this lane has now fixed would hand the unifier
+    // a failure with no owner. Named in the P4.D204 lane record.
+    (
+        "db/chats_search.rs",
+        1,
+        "`replace_in_messages`'s `UPDATE chat_messages SET content = ?1` — the \
+         search-and-replace write, which v4 makes through its repository layer \
+         and so compresses whenever the replacement crosses the 512-byte floor. \
+         The file's READS need no codec call: both SQL shapes project \
+         `qt_text(m.\"content\")` in the outer select, so the text arrives \
+         decoded and binds as a plain `Option<String>`.",
+    ),
     (
         "db/text_compression.rs",
         1,
@@ -77,12 +96,16 @@ const CENSUS: &[(&str, usize, &str)] = &[
 /// expected to call `text_to_blob` — each with its reason, so a future reader
 /// cannot mistake an omission for a decision.
 const EXEMPT: &[(&str, &str)] = &[(
-    "db/chats_search.rs",
-    "P4.D204's file (the round's §R.10(f) fence). Its `UPDATE chat_messages \
-     SET content = ?1` (search-and-replace) and its `content` projection BOTH \
-     need the codec; P4.D204 owns the FTS5 rewrite of this file and lands them \
-     there. P4.D203 reported the finding through the status log rather than \
-     editing another lane's file.",
+    // P4.D204 OUT-OF-MANDATE — see the CENSUS note above.
+    "db/chat_message_fts.rs",
+    "A FALSE POSITIVE the scanner cannot avoid: this file's only `content` \
+     write is `INSERT INTO \"chat_messages_fts\"(rowid, content)`, and \
+     `chat_messages_fts` is the FTS5 INDEX, not `chat_messages`. Its `content` \
+     column is a different column that must hold DECODED text — the value bound \
+     there is read through `qt_text(\"content\")` precisely so the index \
+     tokenizes words rather than brotli bytes. Routing it through \
+     `text_to_blob` would index the compressed bytes and break search, which \
+     is the exact failure v4's contentless design exists to prevent.",
 )];
 
 /// The codec entry point a write must reach.
@@ -542,10 +565,14 @@ fn every_production_write_to_a_registered_column_goes_through_the_codec() {
         problems.len(),
         problems.join("\n  - ")
     );
+    // P4.D204 OUT-OF-MANDATE — 11 → 12, the arithmetic being
+    // 4 + 2 + 2 + 2 + 1 (P4.D203's five files) + 1 (`db/chats_search.rs`'s
+    // search-and-replace UPDATE, which P4.D203's own EXEMPT note handed to
+    // this lane to land).
     assert_eq!(
-        total, 11,
-        "the census totals 11 production `text_to_blob` occurrences \
-         (10 call sites + the definition); got {total}"
+        total, 12,
+        "the census totals 12 production `text_to_blob` occurrences \
+         (11 call sites + the definition); got {total}"
     );
 }
 

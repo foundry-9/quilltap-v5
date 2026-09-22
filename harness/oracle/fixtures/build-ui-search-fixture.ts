@@ -510,6 +510,30 @@ async function main(): Promise<void> {
       .run(TS, l.updatedAt, l.id);
   }
 
+  // 9. P4.D204: the message search index, built by v4's OWN
+  //    `ensureChatMessageFtsSchema` + `rebuildChatMessageFtsIndex`, LAST —
+  //    after every seed and every raw re-pin, so nothing writes through a
+  //    trigger on a connection that might not have registered `qt_text`.
+  //
+  //    This puts the fixture in the state every real instance is in (v4 after
+  //    its migration, v5 after its boot reconciler). It matters for the route:
+  //    without an index every message query takes the exact-scan fallback, so
+  //    every hit contains the query LITERALLY and `createSnippet`'s folded arm
+  //    — the whole point of `f45a517a9`'s rewrite — is unreachable. Measured:
+  //    with the index absent, the family is GREEN against a v5 that has not
+  //    ported the rewrite at all.
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { ensureChatMessageFtsSchema, rebuildChatMessageFtsIndex } = await import(
+      '@/lib/database/backends/sqlite/chat-message-fts'
+    );
+    const db = getRawDatabase();
+    if (!db) throw new Error('no raw SQLite database to build the message search index on');
+    ensureChatMessageFtsSchema(db);
+    const rebuilt = rebuildChatMessageFtsIndex(db);
+    process.stderr.write(`  message search index: ${rebuilt.indexed} messages\n`);
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

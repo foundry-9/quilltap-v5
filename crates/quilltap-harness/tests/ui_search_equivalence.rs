@@ -194,11 +194,24 @@ fn case_params(name: &str) -> UiSearchParams<'static> {
         // The oracle's URL is `?q=50%25`; `searchParams.get` decodes it before
         // the handler sees it, so the Rust side passes the decoded `50%`.
         "documents_like_wildcard" => p(Some("50%"), Some("documents"), None, None),
+        // ── The snippet under FTS semantics (P4.D204) ──
+        // Every row below is returned by the INDEX, so the query need not
+        // appear in the content literally — which is what `create_snippet`'s
+        // folded arm exists for, and what the pre-FTS corpus could not reach.
+        "snippet_literal_phrase" => p(Some("the estate"), Some("messages"), None, None),
+        "snippet_prefix_hit" => p(Some("walk"), Some("messages"), None, None),
+        "snippet_diacritic_fold" => p(Some("cafe"), Some("messages"), None, None),
+        "snippet_genuine_miss" => p(Some("zebra"), Some("messages"), None, None),
+        // The oracle's URL is `?q=caf%C3%A9.`; `searchParams.get` decodes it
+        // before the handler sees it, so the Rust side passes the decoded text.
+        "snippet_token_needle" => p(Some("caf\u{e9}."), Some("messages"), None, None),
+        "snippet_length_changing_fold" => p(Some("istanbul"), Some("messages"), None, None),
+        "snippet_astral_offsets" => p(Some("ankara"), Some("messages"), None, None),
         other => panic!("unknown oracle case {other:?} — regenerate both sides together"),
     }
 }
 
-const EXPECTED_CASES: [&str; 28] = [
+const EXPECTED_CASES: [&str; 35] = [
     "all_types_default",
     "characters_only",
     "chats_and_messages",
@@ -227,6 +240,13 @@ const EXPECTED_CASES: [&str; 28] = [
     "documents_zero_matches",
     "documents_cross_type_tie",
     "documents_like_wildcard",
+    "snippet_literal_phrase",
+    "snippet_prefix_hit",
+    "snippet_diacritic_fold",
+    "snippet_genuine_miss",
+    "snippet_token_needle",
+    "snippet_length_changing_fold",
+    "snippet_astral_offsets",
 ];
 
 #[test]

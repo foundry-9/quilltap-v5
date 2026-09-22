@@ -212,6 +212,25 @@ function buildCases(): CaseSpec[] {
     // `%` is escaped, so `Notes/50%-plans.md` matches and its decoy
     // `Notes/50-plans.md` does not. An unescaped `%50%%` would match both.
     { name: 'documents_like_wildcard', run: () => search('?q=50%25&types=documents') },
+
+    // P4.D204 — the snippet under FTS semantics. Every row below is returned
+    // by the INDEX (the fixture now carries one), so the query need not appear
+    // in the content literally, which is exactly what `createSnippet`'s folded
+    // arm exists for. v4's own four cases plus three this port adds for the
+    // UTF-16 seam.
+    { name: 'snippet_literal_phrase', run: () => search('?q=the%20estate&types=messages') },
+    { name: 'snippet_prefix_hit', run: () => search('?q=walk&types=messages') },
+    { name: 'snippet_diacritic_fold', run: () => search('?q=cafe&types=messages') },
+    { name: 'snippet_genuine_miss', run: () => search('?q=zebra&types=messages') },
+    // The TOKEN needle: `café.` folds to `cafe.`, which is not in any content;
+    // only the token `café` lands.
+    { name: 'snippet_token_needle', run: () => search('?q=caf%C3%A9.&types=messages') },
+    // A case fold that CHANGES LENGTH (`İ` → `i` + U+0307), so an index into
+    // the lowercased string no longer lines up with the original.
+    { name: 'snippet_length_changing_fold', run: () => search('?q=istanbul&types=messages') },
+    // Astral characters before the match: the fold map counts UTF-16 units,
+    // and a `chars()` port puts the window in the wrong place.
+    { name: 'snippet_astral_offsets', run: () => search('?q=ankara&types=messages') },
   ];
 }
 

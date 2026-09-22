@@ -137939,3 +137939,208 @@ maxLength}` on count/find and `Global search text exceeds maximum length`
 WITHOUT a `chatId` on the global op. All three sentences now land with capture
 pins and silence legs, over an in-memory connection carrying the same reduced
 DDL the FTS corpus uses — no fixture needed.
+
+### Unit 5 — the snippet's fold arm, and a measured correction to the order
+
+**⚠ The order's §R.5 prediction for this family is WRONG, and the measurement
+is the interesting part.** §R.5 lists `ui_search_equivalence` as "red by design
+at the target". Measured: regenerated at `f45a517a9` with the corpus AS IT
+STOOD, the family is **GREEN against a v5 that has not ported v4's
+`createSnippet` rewrite at all** — 28 cases, zero movement.
+
+The reason is structural, not luck. The ui-search fixture is built by v4's
+`initializeDatabase()`, which does not run the migration runner, so it had **no
+FTS objects**; every message query therefore took the exact-scan fallback;
+every hit contained the query LITERALLY; and `createSnippet`'s literal
+`indexOf` arm answered every time. The folded arm — the whole point of the
+rewrite — was unreachable by construction. A family can be green because the
+code agrees or because the corpus cannot reach the code, and only a
+measurement tells them apart.
+
+So the fixture builder now calls v4's OWN `ensureChatMessageFtsSchema` +
+`rebuildChatMessageFtsIndex` as its last step (72 messages indexed), putting
+it in the state every real instance is in, and the corpus grows a "Snippet
+Cases" chat of seven messages and seven route cases:
+
+| case | what it reaches |
+|---|---|
+| `snippet_literal_phrase` | v4's case 1 — the literal arm, `...` prefix |
+| `snippet_prefix_hit` | v4's case 2 |
+| `snippet_diacritic_fold` | v4's case 3 — `cafe` finds `café` **through the index**, so the literal arm MISSES and the fold arm answers |
+| `snippet_genuine_miss` | v4's case 4 |
+| `snippet_token_needle` | `café.` — the phrase folds to `cafe.` and misses; only the TOKEN needle lands |
+| `snippet_length_changing_fold` | `İstanbul` — `İ`.toLowerCase() is `i` + U+0307, so the lowercased string is LONGER than the original and only the folded map can place the match |
+| `snippet_astral_offsets` | three emoji before the match — the map counts UTF-16 units, and a `chars()` port puts the window in the wrong place |
+
+⚠ **v4's own test comment on case 2 misleads** (§R.4 applies to v4's tests as
+much as its commit messages): *"'walk' matches 'walking' in the index; a
+literal indexOf would miss."* It would not — `walk` is a substring of
+`walking`, so the literal arm hits. Case 2 does not exercise the fold arm at
+all; case 3 is the first one that does. Carried as a v5-side comment.
+
+**The port.** `fold_with_index_map` works in `u16` space throughout, because
+v4's loop is over UTF-16 code units (`value[i]`), and for an astral character
+that is a LONE SURROGATE on which `normalize('NFD')` and `toLowerCase()` are
+both the identity. Two traps a `chars()` or `String`-round-tripping port would
+hit: an emoji would fold to ONE entry and shift every later index, and a lone
+surrogate round-tripped through `String` becomes U+FFFD, which would make two
+DIFFERENT astral characters compare EQUAL. `create_snippet` gains v4's needle
+list (`[lowerQuery, ...tokens]`, each folded, empties dropped) and measures
+`match_length` in ORIGINAL indices through the map.
+
+#### One instrument failure worth recording
+
+The first regen after growing the corpus reported a healthy build and produced
+**empty results for every new case**. Two faults stacked: the new message ids
+collided with an existing chat's (`UNIQUE constraint failed: chat_messages.id`
+— the builder died at step 5), and because the previous run's `main.db` was
+still on disk, the jest oracle happily ran against the STALE fixture and
+reported a pass. `rm -rf` before the build surfaced both at once. This is
+ledger §5.2's silent-stale-pass discipline firing exactly as written: delete
+the fixture first, read the builder's last line, and grep the fresh NDJSON for
+the changed bytes.
+
+### Unit 6 — `help/search.md` re-vendored, and the help-tree measurement
+
+Byte-copied from the target pin (6,016 → 8,054 bytes, +42/−3), carrying v4's
+new "How the Message Search Reads Your Words" section — the token-matching
+contract stated for users, which is the same contract `db/fts_query.rs`'s
+module doc states for the port. The vendored file count is **unchanged at
+124**: this is a re-vendor, not a new page, so neither
+`help_tree_embed_guard.rs::VENDORED_FILE_COUNT` nor
+`host_help_docs_boot.rs` moves (§R.10(d)'s +1 rule belongs to P4.D205 and
+P4.D210).
+
+**`help_tree_equivalence` at the target pin will be RED on SIX files that are
+not this lane's**, and that is the round working as designed. Measured after
+the re-vendor, by `cmp` against `/tmp/qt-v4-pin-p4d204-f45a517a9/help/`:
+
+| file | still differs | owner (§R.11) |
+|---|---|---|
+| `search.md` | **no — in step** | P4.D204 (this lane) |
+| `data-retention.md` | no — in step | P4.D203 (already landed) |
+| `chat-message-actions.md` | yes | P4.D207 |
+| `dangerous-content.md` | yes | P4.D208 |
+| `insert-announcement.md` | yes | P4.D205 |
+| `cli-docs.md` / `mount-points.md` / `scriptorium.md` | yes | P4.D210 |
+
+The pin itself is verified by §R.3's own marker: the target-pinned NDJSON
+carries `How the Message Search Reads Your Words` (grep count 1); a
+baseline-pinned one would not.
+
+#### Mutation table for units 4–6 (revert by file backup, never `git checkout`)
+
+| # | mutation | reddens |
+|---|---|---|
+| M6 | drop `ESCAPE '\'` from the fallback SQL | BOTH in-module pins (`the_retired_regex_mangling_is_gone_from_both_shapes`, `a_user_typed_wildcard_stays_literal_on_the_fallback_path`) AND the differential — `plain: read 18 (searchMessagesGlobal "50%_off")` |
+| M7 | every plan becomes a fallback (the index is never touched) | the differential — `fts: read 11 (searchMessagesGlobal "walk")`, the prefix-match row |
+| M8 | `fold_with_index_map` iterates CHARS instead of UTF-16 units | `ui_search_equivalence` |
+
+⚠ **A lane-mechanics error worth recording: two mutation batteries ran
+CONCURRENTLY over the same source file.** The first battery's own M6 anchor
+had failed (a raw-string escaping mistake in the matcher), and because the
+script had no `set -e` it carried on to its M7 — which applied a malformed
+edit — while the corrected battery was running its own M6 and M7 over the same
+file. The visible symptom was M7 reporting `error: expected '{', found keyword
+'match'`: a compile error where a test failure was expected. That is
+indistinguishable from "the mutation reddened the build", which is precisely
+the reading the standing note
+`a-block-moving-mutation-must-still-compile` warns against — a build red
+proves nothing. M7 was re-run alone with nothing else touching the file, and
+both sources were verified byte-equal to their backups before and after.
+**The rule this adds: one mutation battery at a time, per file, and assert
+the anchor before trusting the run.**
+
+### Tier-2 item 11 — the neutrality legs, measured
+
+§R.3 names the measurement, and it came back **EMPTY**:
+
+```
+git diff --stat baa85e19b..f45a517a9 -- lib/tools/handlers/search* \
+  lib/mount-index/document-text-search* lib/help
+```
+
+So `search_tools_equivalence`, `vault_conv_search_equivalence` and the
+`help_snippet` surfaces are **neutral BY CONSTRUCTION** between the two pins —
+v4 did not touch a byte of them — and they stay baseline-pinned legs rather
+than target regens. They were not regenerated: a family whose v4 surface is
+byte-identical across the pins cannot move for a drift reason, and this lane
+touches none of their v5 code.
+
+**`search_replace_equivalence` is the one that needed thought**, because
+`chats-search.ops.ts` DID move (+126/−27) and that family reads it. Measured
+directly, by extracting `replaceInMessages` from both pins and diffing:
+**byte-identical across `baa85e19b` and `f45a517a9`** — every hunk in that file
+is the new search path. The v5 side of that function did move (the UPDATE now
+binds through `text_to_blob`), so the family runs in the workspace gate over
+its committed `chat-dialogs-{main,mount}` pair; every cell there is under the
+512-byte floor, so `text_to_blob` returns `Text` and the stored bytes are
+unchanged.
+
+### Where `quilltap-web` stands
+
+**Not touched, and that is a correction to §R.8's expectation.** The `ui_search`
+edge does not move: the route is the same GET with the same query parameters,
+and `ui_search_routes.rs` forwards them unchanged. The two web tests that
+mention the surface (`dispatch_wrong_type_census`,
+`tri_state_edges_share_the_decoder`) reference `ui/search/route.ts` only in
+their notes. No verb moves, so no census row moves either.
+
+⚠ **One effect on the committed web fixtures the unifier should know about, by
+design and not by accident:** the boot reconciler now runs on every
+`Host::assemble`, so any instance a test boots over a committed pair acquires
+the five FTS objects **in its working copy**. No committed pair changes in git
+(§R.12 holds), and a partition without a `chat_messages` table takes the
+reconciler's swallow-warn rather than failing the boot.
+
+### A finding outside this lane's ownership, for the unifier
+
+`harness/tools/recipe_sweep.py --list` reports
+`compressed_collect_equivalence: stale_v4_pin_path /tmp/qt-v4-pin-p4d203-f45a517a9`
+— a COMMITTED recipe header naming a `/tmp` pin, which §R.3 forbids ("a
+committed recipe NEVER names a `/tmp` pin — the driver's `--v4` is the pin").
+The file is P4.D203's; this lane did not touch it. Every recipe header this
+lane wrote uses `cd ~/source/quilltap-server`.
+
+### The lane's verification gate (2026-09-22)
+
+`cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets
+-- -D warnings` clean in **both** feature sets (default and
+`--features quilltap-core/native-transport`). `cargo build --workspace
+--release` clean. `cargo test --workspace --no-fail-fast` with the lane's env
+block: **584 test binaries, 3,521 passed, 4 failed, 3 ignored**, 488 `SKIP:`
+lines (families outside the block, none of them this lane's — every family
+this lane owns was confirmed RUN by name and by a non-zero duration).
+
+The four reds, each attributed:
+
+| family | attribution |
+|---|---|
+| `help_tree_equivalence` | **EXPECTED, not this lane's.** Six help pages still differ from the target pin and each belongs to another lane (§R.11's table): `chat-message-actions.md` (P4.D207), `dangerous-content.md` (P4.D208), `insert-announcement.md` (P4.D205), `cli-docs.md` / `mount-points.md` / `scriptorium.md` (P4.D210). This lane's `search.md` is in step, and so is P4.D203's `data-retention.md`. The family goes green when the round unifies. |
+| `qtap_schema_embed_guard` | **PRE-EXISTING, drift-ledger §1** — red until P4.D205 re-vendors the two schemas (`e7d77bb60` grew them). Not this lane's. |
+| `zod_version_guard` | **PRE-EXISTING, drift-ledger §1** — red until P4.D211's re-measurement (`6b0615807` moved 4.5.4 → 4.6.5). Not this lane's. |
+| `compressed_column_write_sites_census` | **THIS LANE'S, and fixed** — see below. |
+
+#### The census: a handoff P4.D203 wrote into its own exemption, plus one false positive
+
+P4.D203's `compressed_column_write_sites_census` flagged the new
+`db/chat_message_fts.rs` as writing a registered compressed column without the
+codec. That is a **false positive the scanner cannot avoid**: the file's only
+`content` write is `INSERT INTO "chat_messages_fts"(rowid, content)`, and
+`chat_messages_fts` is the FTS5 INDEX — a different table whose `content`
+column must hold DECODED text. Routing it through `text_to_blob` would index
+the brotli bytes and break search, which is the precise failure v4's
+contentless design exists to prevent.
+
+And the census's EXEMPT list already carried `db/chats_search.rs` with P4.D203's
+own note: *"P4.D204 owns the FTS5 rewrite of this file and lands them there.
+P4.D203 reported the finding through the status log rather than editing another
+lane's file."* This lane has now landed exactly that, so the exemption is stale
+and the file belongs in the CENSUS.
+
+⚠ **Both edits are OUT-OF-MANDATE in P4.D203's file**, marked
+`// P4.D204 OUT-OF-MANDATE` at each site and named here. The judgement: the
+alternative was to hand the unifier a red guard over a file this lane has just
+fixed, with the fix's own author being the only one who knows why the second
+row is exempt. P4.D203's exemption text is an explicit handoff in everything
+but the §R.10(e) label. The arithmetic moves **11 → 12** across six files.

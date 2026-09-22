@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(search): the snippet folds diacritics and measures the match in the ORIGINAL string, and `help/search.md` is re-vendored (P4.D204)
+
+_Versions: core 0.0.973, harness 0.0.866._
+
+`api/ui_search.rs` gains v4 `f45a517a9`'s `foldWithIndexMap` and the rewritten
+`createSnippet`. Message results come from an index now, so a hit need not
+contain the literal query — `café` matches *cafe*, and the phrase the user
+typed may never appear verbatim. A plain `indexOf` therefore misses, and every
+such result used to fall back to the first 120 characters, showing the reader
+nothing about why the row matched. The new arm tries the literal phrase, then
+the phrase case-folded and diacritic-stripped, then each query token in turn,
+and measures `match_length` in ORIGINAL indices through the map, because the
+fold changes length.
+
+The fold works in UTF-16 space throughout, because v4's loop is over code
+units (`value[i]`), and for an astral character that is a lone surrogate on
+which `normalize('NFD')` and `toLowerCase()` are both the identity. Two traps
+a `chars()` port would hit: an emoji would fold to one entry and shift every
+later index, and a lone surrogate round-tripped through a Rust `String`
+becomes U+FFFD, which would make two different astral characters compare
+equal.
+
+⚠ The order predicted this family would be red at the target. Measured, it was
+GREEN against a v5 that had not ported the rewrite at all — because the
+ui-search fixture had no FTS objects, so every message hit contained the query
+literally and the folded arm was unreachable. The fixture builder now calls
+v4's own ensure + rebuild as its last step (72 messages indexed), and the
+corpus grew a chat of seven messages and seven route cases: v4's four, plus a
+token-only needle (`café.`), a case fold that changes length (`İstanbul`), and
+three emoji before the match. With those in place the unported code goes red
+and the port goes green.
+
+`help/search.md` is re-vendored byte-identical at the target (6,016 → 8,054
+bytes), carrying the new "How the Message Search Reads Your Words" section
+that states the token-matching contract for users. The vendored file count is
+unchanged at 124.
+
 #### 2026-09-22 — fix(search): global message search runs v4's two SQL shapes, and the `.`-defect that returned nothing is retired (P4.D204)
 
 _Versions: core 0.0.972, harness 0.0.865._
