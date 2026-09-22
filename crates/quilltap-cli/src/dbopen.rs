@@ -26,5 +26,12 @@ pub fn open_readonly(db_path: &str, pepper: Option<&str>) -> Result<rusqlite::Co
     }
     conn.query_row("SELECT 1", [], |_| Ok(()))
         .map_err(|e| sqlite_msg(&e))?;
+    // v4 `db-helpers.js:211` registers `qt_text()` inside `openEncryptedDb` so
+    // raw SQL and the repl can read inside a compressed column. v4 wraps it in
+    // a `try` ("an old better-sqlite3 without db.function must not block a
+    // read"); Rust has no such ambient-version worry — `create_scalar_function`
+    // is a compile-time capability of the pinned rusqlite — so a failure here
+    // is reported rather than swallowed.
+    quilltap_core::db::text_compression::register_qt_text(&conn).map_err(|e| sqlite_msg(&e))?;
     Ok(conn)
 }

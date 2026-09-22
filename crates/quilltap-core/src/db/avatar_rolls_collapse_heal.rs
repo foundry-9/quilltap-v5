@@ -942,8 +942,17 @@ fn repoint_messages(main: &Connection, remap: &HashMap<String, String>) -> Resul
         opaque_content: Option<String>,
     }
     let rows: Vec<MessageRow> = {
+        // content / opaqueContent are compressed-text columns: read through
+        // qt_text() and write back through text_to_blob(), exactly as v4's
+        // `collapse-duplicate-avatar-rolls-v1.ts:497-508` does. v4's migration
+        // is ordered BEFORE compress-chat-message-text-v1, so on a real
+        // instance it has already run against plaintext — the codec here is
+        // what makes it safe to replay on a database that has since been
+        // compressed. Before this wrap the `?` below aborted the BOOT pass:
+        // this heal is the FIRST thing that broke on a migrated instance.
         let mut stmt = main.prepare(
-            "SELECT id, attachments, content, opaqueContent \
+            "SELECT id, attachments, qt_text(content) AS content, \
+                    qt_text(opaqueContent) AS opaqueContent \
                FROM chat_messages \
               WHERE attachments IS NOT NULL AND attachments != '[]'",
         )?;

@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-cli"
-version = "0.0.22"
+version = "0.0.23"
 dependencies = [
  "jiff",
  "libc",
@@ -3949,11 +3949,12 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.966"
+version = "0.0.967"
 dependencies = [
  "aes",
  "aes-gcm",
  "base64 0.22.1",
+ "brotli",
  "flate2",
  "futures-util",
  "getrandom 0.2.17",
@@ -4063,7 +4064,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.157"
+version = "0.0.158"
 dependencies = [
  "axum",
  "base64 0.22.1",

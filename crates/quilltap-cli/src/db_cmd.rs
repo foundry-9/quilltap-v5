@@ -336,6 +336,19 @@ fn open_encrypted(
     }
     conn.query_row("SELECT 1", [], |_| Ok(()))
         .map_err(|e| OpenError::Verify(sqlite_msg(&e)))?;
+    // `qt_text()` — v4 registers it inside `openEncryptedDb`
+    // (`db-helpers.js:211`) for exactly this verb's sake, with the comment
+    // "It is also REQUIRED for any --write that touches chat_messages: the
+    // message search triggers call it, so a connection without it fails the
+    // write loudly rather than letting the index drift."
+    //
+    // ⚠ This is a SECOND production open of a real encrypted instance,
+    // alongside `dbopen::open_readonly`; P4.D203's order named only the
+    // latter, and this is the one the live `quilltap db` verb actually uses
+    // (`dbopen` serves `restore_key`, `db_characters` and `docs_cmd`). Found
+    // by the order's own `Connection::open` census. Both register.
+    quilltap_core::db::text_compression::register_qt_text(&conn)
+        .map_err(|e| OpenError::Verify(sqlite_msg(&e)))?;
     Ok(conn)
 }
 

@@ -23,6 +23,7 @@ use serde_json::{Map, Value};
 
 use super::marshal::{dump_table, marshal, query_all, select_list, table_exists, F};
 use crate::db::runtime::Db;
+use crate::db::text_compression::CompressedText;
 use crate::db::{
     characters_read, chats_messages_read, chats_read, connection_profiles, image_profiles,
     js_number_to_json, memories_read, provider_models, tags, DbError,
@@ -343,8 +344,12 @@ const LLM_LOGS: &[(&str, F)] = &[
     ("autonomousRunId", F::StrOpt),
     ("provider", F::Str),
     ("modelName", F::Str),
-    ("request", F::Json("{}")),
-    ("response", F::Json("{}")),
+    // The two REGISTERED COMPRESSED COLUMNS of the llm-logs partition (v4
+    // `llm-logs.repository.ts:42`). Before the codec, a migrated instance's
+    // `Err` here was swallowed by `.unwrap_or_default()` downstream — so a
+    // backup SILENTLY contained ZERO `llm_logs` rows.
+    ("request", F::JsonZ("{}")),
+    ("response", F::JsonZ("{}")),
     ("usage", F::JsonOpt),
     ("cacheUsage", F::JsonOpt),
     ("rawProviderUsage", F::JsonOpt),
@@ -776,7 +781,13 @@ fn read_conversation_chunks(
             "interchangeIndex".into(),
             js_number_to_json(r.get::<_, f64>(2)?),
         );
-        o.insert("content".into(), Value::String(r.get::<_, String>(3)?));
+        // REGISTERED COMPRESSED COLUMN. This `?` propagates to
+        // `backup/mod.rs`, so before the codec a backup of a migrated instance
+        // failed LOUDLY here (unlike the llm-logs arm above, which was silent).
+        o.insert(
+            "content".into(),
+            Value::String(r.get::<_, CompressedText>(3)?.0),
+        );
         o.insert("participantNames".into(), json_array_or_empty(r.get(4)?));
         o.insert("messageIds".into(), json_array_or_empty(r.get(5)?));
         o.insert("embedding".into(), encode_embedding(r.get(6)?));

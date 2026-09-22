@@ -24,6 +24,7 @@ use rusqlite::Row;
 use serde_json::{Map, Value};
 
 use crate::db::js_number_to_json;
+use crate::db::text_compression::CompressedText;
 
 /// How one column becomes one JSON field.
 #[derive(Clone, Copy)]
@@ -47,6 +48,16 @@ pub(crate) enum F {
     Json(&'static str),
     /// A JSON-text column that is `.nullable().optional()` — omitted when NULL.
     JsonOpt,
+    /// A column that is BOTH a JSON column and a REGISTERED COMPRESSED COLUMN
+    /// (`llm_logs.request` / `llm_logs.response`, v4
+    /// `llm-logs.repository.ts:42`). Otherwise identical to [`F::Json`] — but
+    /// the cell is decoded through the text codec FIRST, exactly as v4's
+    /// `rowToDocument` runs its decode branch before the JSON and BLOB
+    /// branches so a Buffer is never mistaken for a Float32 embedding.
+    ///
+    /// Scoped deliberately: only the two columns v4 registers use it, so the
+    /// marshal never quietly decodes a column v4 would not have.
+    JsonZ(&'static str),
     /// The cell verbatim (text stays text even when it holds JSON — v4 only
     /// parses columns a repository lists as JSON columns).
     Raw,
@@ -88,6 +99,15 @@ pub(crate) fn marshal(row: &Row<'_>, fields: &[(&str, F)]) -> rusqlite::Result<V
                 let parsed = row
                     .get::<_, Option<String>>(idx)?
                     .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+                    .unwrap_or_else(|| {
+                        serde_json::from_str::<Value>(default_src).expect("valid default JSON")
+                    });
+                o.insert((*name).into(), parsed);
+            }
+            F::JsonZ(default_src) => {
+                let parsed = row
+                    .get::<_, Option<CompressedText>>(idx)?
+                    .and_then(|t| serde_json::from_str::<Value>(&t.0).ok())
                     .unwrap_or_else(|| {
                         serde_json::from_str::<Value>(default_src).expect("valid default JSON")
                     });

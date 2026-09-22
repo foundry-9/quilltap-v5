@@ -1,6 +1,7 @@
 [package]
 name = "quilltap-core"
-version = "0.0.966"
+version = "0.0.967"
+#OLD "0.0.966"
 #OLD "0.0.812"
 edition = "2021"
 publish = false
@@ -26,6 +27,10 @@ publish = false
 # Do NOT use rusqlite's bundled-sqlcipher (AES-only → NotADatabase on real DBs).
 # The `db` module is the first consumer; `dbkey` itself needs no SQLite.
 rusqlite = { workspace = true }
+# Brotli for the compressed-text codec (db/text_compression.rs). The PURE-RUST
+# crate, already in the lock transitively (tower-http); measured byte-identical
+# to Node's bundled brotli 1.2.0 at quality 5 — see the module's parity note.
+brotli = "8"
 # Link-only: pulls the cipher-correct sqlite3 into the link (see the crate). Kept
 # in the graph by `use quilltap_sqlite3mc_sys as _;` in lib.rs.
 quilltap-sqlite3mc-sys = { path = "../quilltap-sqlite3mc-sys" }

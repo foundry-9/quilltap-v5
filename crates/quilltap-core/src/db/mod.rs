@@ -113,6 +113,7 @@ pub mod sqlite_errors;
 pub mod store_backed;
 pub mod tags;
 pub mod terminal_sessions;
+pub mod text_compression;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;
 pub mod thinking_prefill_retire_heal;
@@ -246,6 +247,13 @@ impl Writer {
         // journal_mode returns the resulting mode as a row; consume it.
         let _mode: String =
             conn.query_row("PRAGMA journal_mode = TRUNCATE", [], |row| row.get(0))?;
+        // `qt_text()` on EVERY connection — and on a WRITABLE one it is not
+        // optional in any sense: v4 4.10 puts three triggers over
+        // `chat_messages` and two of them call `qt_text`, and SQLite resolves a
+        // trigger's functions when it COMPILES the trigger program. Without the
+        // registration EVERY `chat_messages` INSERT fails, including the rows
+        // the `_au` WHEN clause would have excluded. An open ERROR, not a warn.
+        text_compression::register_qt_text(&conn)?;
 
         Ok(Self { conn })
     }

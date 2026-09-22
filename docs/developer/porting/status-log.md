@@ -136871,3 +136871,230 @@ calling), D7 (NOT RUN rather than half-done), the four planted proofs in Part E
 (bug 145's collapse, the greeting ladder on a dangling key, a cross-provider
 failover with a tool call, a chained OPENAI re-stream), and the standing F-list
 (dedup/summaries, the Brahma deep query, #101, the re-measured compression row).
+
+---
+
+## P4.D203 — the compressed-text codec + the `qt_text` UDF (the keystone S)
+
+**Lane branch `claude/p4-d203-text-codec-f45a517a9`, worktree
+`.claude/worktrees/p4-d203`. Baseline `baa85e19b`; target pin
+`/tmp/qt-v4-pin-p4d203-f45a517a9`, neutrality pin
+`/tmp/qt-v4-pin-p4d203-baa85e19b`. §R.2 probe at lane start: PASS (branch
+`main`, HEAD `f45a517a9`, tree CLEAN, both logs empty).**
+
+### Unit 1 — the brotli parity measurement (tier-1 item 1), BEFORE any comparand
+
+**RESULT: PARITY HOLDS. Byte-identical on all 35 probe rows** (decision,
+compressed length, sha256 of the payload).
+
+* v5: the `brotli` crate **8.0.4**, `BrotliEncoderParams { quality: 5,
+  size_hint: raw.len(), ..Default::default() }` (default `lgwin`), written
+  through `brotli::CompressorWriter` and **finished on drop**.
+* v4: Node **24.13.1**, bundled brotli **1.2.0**,
+  `zlib.brotliCompressSync(raw, { BROTLI_PARAM_QUALITY: 5,
+  BROTLI_PARAM_SIZE_HINT: raw.length })`.
+* Corpus: v4's own test strings + 20 rows of long real-shaped prose + base64 +
+  hex + the printable cycle + 511/512/513-byte rows + incompressible blocks at
+  and near the floor.
+
+**So the design question the order left open is settled the cheap way: the
+harness tier-2 differ needs NO decode normalizer.** A compressed cell hexes
+identically on both sides already — `harness/oracle/lib/tier2.ts`'s
+`canonValue` and `quilltap_core::db::cell_to_json` both render a BLOB as
+lowercase hex — so tier-2 comparands compare raw cells exactly as they did
+before this round. v5's on-disk bytes are additionally proven by the
+cross-decode direction (v4's REAL `blobToText` over v5-produced blobs, the
+`crossDecode` rows of unit 3).
+
+⚠ **The trap, and it cost the first run:** calling `flush()` on the
+`CompressorWriter` before dropping it emits an empty meta-block, adding **1–3
+bytes to every payload**. The first parity run showed all 34 blob rows LONGER
+than Node's — while every round-trip still passed perfectly. A round-trip test
+can never see this; only a byte comparison against Node can. Recorded in the
+module doc and as a mutation proof (M3 below).
+
+**The four SQLite inferences the ledger left open, all measured in ONE rusqlite
+test over the real amalgamation** (`text_compression.rs::
+the_four_sqlite_facts_that_force_the_qt_text_wrappers` — kept as a durable pin,
+because each one is why a specific expression had to gain a wrapper):
+
+| inference | measured |
+|---|---|
+| `json_extract(<brotli blob>, '$.x')` | **raises** `SqliteFailure(Unknown, ext 1, "malformed JSON")` — BLOB args are JSONB since 3.45. Wrapped in `qt_text()` the same expression reads `"boom"`. |
+| `trim(<blob>) != ''` | **always 1** — `trim` casts the BLOB to text and a brotli payload never trims empty. So `conversation_chunks.rs:537` was SILENT-WRONG, not erroring. Wrapped, a whitespace-only cell correctly yields 0. |
+| `LENGTH(<blob>)` | **counts compressed bytes** (equal to the blob's length); `LENGTH(qt_text(c))` is strictly larger. So the three `LENGTH(cc."content")` in `conversation_render_reconcile.rs` measured the wrong quantity, also silently. |
+| `FromSql for String` over `ValueRef::Blob` | **`InvalidColumnType`** — exactly the failure the ledger measured on a v4-4.10 instance, and the reason every read site became `CompressedText`. |
+
+### Unit 2 — S, the substrate commit
+
+**S's hash: recorded in this lane's final report and in the commit itself; the
+five stacked lanes (P4.D204, P4.D205, P4.D207, P4.D208, P4.D209) branch from
+it.** Contents, exactly §R.10(a)'s list plus the one registration site the
+census found:
+
+* workspace `Cargo.toml` — `rusqlite` gains `"functions"` (NO bundled feature);
+  `brotli = "8"` becomes a direct `quilltap-core` dependency.
+* NEW `crates/quilltap-core/src/db/text_compression.rs` — the six constants,
+  `TextCell` + its `ToSql`, `text_to_blob`, the total `blob_to_text` over v4's
+  six arms in order (`Null` → `None`; `Text` → itself; `Integer`/`Real` → JS
+  `String(value)` via `pascal::js_value::number_to_string`; a headerless BLOB →
+  lossy UTF-8; else decompress with the payload-as-UTF-8 fallback),
+  `is_compressed_text_blob`, `decode_blob`, the `CompressedText` newtype with
+  `FromSql`, and `register_qt_text` (`create_scalar_function("qt_text", 1,
+  SQLITE_UTF8 | SQLITE_DETERMINISTIC, …)`).
+* Registration immediately after the `PRAGMA key` at **FOUR** production open
+  points, not three.
+
+**⚠ A correction to the order.** §R.10(a) names three open points
+(`db/runtime.rs open_readonly`, `db/mod.rs Writer::open_writable`,
+`quilltap-cli/src/dbopen.rs:14`). The `Connection::open` census the order itself
+asked for (187 sites; 6 production, 181 test) found **a fourth**:
+`crates/quilltap-cli/src/db_cmd.rs:329 open_encrypted` — a twin of
+`dbopen::open_readonly` **without** the registration, which is the opener the
+live `quilltap db` verb actually uses (`dbopen` serves `restore_key`,
+`db_characters` and `docs_cmd`) and **the only production opener that can open
+read-write** (`--write`). v4's own comment at `db-helpers.js:205-211` names this
+case precisely: "It is also REQUIRED for any --write that touches
+chat_messages." It registers now, in S, with the finding named in a code
+comment.
+
+The census's other two production opens are the fixture sanitizer's
+`open_read`/`open_write_fresh` (`crates/quilltap-fixture-sanitizer/src/lib.rs:
+104,114`) — **deliberately NOT in S** (the order fences the sanitizer out of the
+substrate); they land with the sanitizer unit, where `open_write_fresh` is the
+sharper risk: `sanitize_db` replays every `sqlite_master` row verbatim —
+triggers included — then bulk-INSERTs `chat_messages`, which cannot succeed on a
+4.10 snapshot without the UDF.
+
+Read sites converted in S (every one previously rejected a BLOB):
+
+| site | consequence before the codec |
+|---|---|
+| `chats_messages_read.rs` — `content` (idx 3), `opaqueContent` (22), `context` (30), `description` (32) | ONE compressed cell failed the ENTIRE `get_messages` (the `?` propagates out of the whole `query_map`), and `get_message_count` with it |
+| `conversation_chunks.rs` — `marshal_cc_row`, `find_all_with_embeddings`, the `CcChunkRow` read | `marshal_cc_row` is reached from INSIDE `upsert` via `find_by_interchange_index`, so the render WRITE failed on its own read; the embeddings read is swallowed at `tools/search.rs:370` |
+| `llm_logs.rs` — `request` (9), `response` (10) | the `Err` was treated as v4's Zod-drop: a 404 on every log, `[]` on every list |
+| `services/backup/collect.rs` + `marshal.rs` — the new `F::JsonZ` kind for the two llm-logs columns; `conversation_chunks.content` in the chunk dump | a backup of a migrated instance SILENTLY contained ZERO `llm_logs` rows (`.unwrap_or_default()`); the chunk arm failed the whole backup LOUDLY |
+| `db/avatar_rolls_collapse_heal.rs` — the SELECT wrapped as `qt_text(content)` / `qt_text(opaqueContent)`, matching v4's `collapse-duplicate-avatar-rolls-v1.ts:497-508` byte for byte | the `?` aborted the BOOT pass — **the first thing that broke on a migrated instance, at startup** |
+
+`chat_messages` in the backup collector needed no change of its own: it reads
+through `chats_messages_read::get_messages`, so it is fixed transitively.
+
+**`F::JsonZ` is scoped deliberately.** Rather than teaching the generic
+`F::Json` arm to decode — which would quietly decode columns v4 does not
+register — a new field kind covers exactly `llm_logs.request` and
+`llm_logs.response`, the two columns that are BOTH JSON and compressed. It runs
+the decode FIRST, the same ordering rule v4's `rowToDocument` carries so a
+Buffer is never mistaken for a Float32 embedding.
+
+**A finding handed to P4.D204 (not this lane's file, §R.10(f)):**
+`db/chats_search.rs:~200` binds `chat_messages.content` as a plain `String` in
+the global-search projection. P4.D204 rewrites that file over FTS5 and owns the
+fix; it needs `CompressedText` (or a `qt_text()` wrap) wherever the rewrite
+still projects `content`. Its write at `:243-246` likewise needs
+`text_to_blob`, as the order already says.
+
+### The pre-existing clippy red S had to clear
+
+`cargo clippy --workspace --all-targets -- -D warnings` **FAILED on `main`**
+before this lane changed anything: 11 errors, all `doc_lazy_continuation`, all
+in `crates/quilltap-web/tests/character_prompt_set_default_dispatch_wire.rs`.
+Verified pre-existing by running the same clippy invocation in the CLEAN main
+checkout — identical 11 errors, exit 101. The file landed at `093e4af9`, the
+PREVIOUS round's unification, whose gate record claims clippy clean in both
+feature sets; **that claim was wrong, or the check ran before the unifier added
+this file.** Worth knowing: a unification-time test file can miss the gate that
+was run before it existed.
+
+Cause: line 7 began `//! + \`post\` on …`, and a line beginning `+ ` is a
+markdown **list marker**, so clippy read the following ten lines as unindented
+lazy list continuations (the standing memory note
+`doc-comment-plus-starts-a-markdown-list`, now fired for the second time).
+
+**Fixed IN S, deliberately, though the file is out of this lane's mandate.** It
+is unowned by every lane in this round (P4.D205 owns
+`dispatch_wrong_type_census.rs`, not this file), the fix is a doc-comment reflow
+with no wording changed, and leaving it would hand the same red to all FIVE
+lanes that branch from S — so S carries it rather than each of them
+rediscovering it. Marked at the hunk with `// P4.D203 OUT-OF-MANDATE`.
+**Consequence for the unifier: P4.D203 bumps `web` too**, which §R.8 did not
+predict (it names web for D204/D205/D207/D210) — recount as base + D203's +1.
+
+### Unit 3 — the tier-1 codec family `text_compression_equivalence`
+
+**33 encode / 25 crossDecode / 18 decode rows, ALL matching v4's REAL
+`lib/database/text-compression.ts`.**
+
+Corpus: `harness/oracle/fixtures/text-compression.json` (committed, with its
+deterministic generator shipped beside it as `text-compression.gen.mjs` — no
+randomness, no clock). 33 texts spanning v4's own five round-trip strings, the
+floor in BYTES at 511/512/513 ascii AND at 508/512 bytes of four-byte emoji AND
+at 511 bytes of three-byte chars AND 513 of two-byte chars, four incompressible
+shapes, twelve real-shaped transcript rows straddling the floor, and an
+`llm_logs.response`-shaped JSON payload. 18 decode shapes: null, undefined,
+plain and empty strings, uncompressed buffers (ascii and multi-byte), the empty
+buffer, a two-byte buffer, the embedding magic `0xEB`, a header-only blob, an
+INTEGER and a REAL cell, and — over a REAL brotli payload — the well-formed
+blob, two truncations, an unknown version byte, an unknown codec byte and a
+wrong magic byte.
+
+Three row kinds, and the middle one is the one that matters:
+
+* `encode` — v4's `textToBlob` decision + stored bytes + hex. The byte pin.
+* `crossDecode` — **v4's REAL `blobToText` run over blobs v5 produced.** The
+  `v5Blobs` section is written by the `#[ignore]`d `regenerate_v5_blobs`
+  fixture step in the family BEFORE the oracle runs (25 rows — the texts that
+  actually compress). If byte parity ever lapses, this is the proof that
+  survives it.
+* `decode` — `blobToText` + `isCompressedTextBlob` over every legacy shape.
+
+Two corpus self-checks run with no oracle at all:
+`the_committed_v5_blobs_are_still_what_v5_writes` (v5's own byte pin — it
+reddens before the oracle is consulted) and
+`every_corpus_text_round_trips_through_v5`.
+
+**Regen recipe, as run:**
+
+```bash
+cd <lane worktree>
+cargo test -p quilltap-harness --test text_compression_equivalence \
+  -- --ignored regenerate_v5_blobs --nocapture        # → 25 v5 blobs
+
+mkdir -p /tmp/p4.d203
+cd /tmp/qt-v4-pin-p4d203-f45a517a9
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+QT_ORACLE=<lane worktree>/harness/oracle \
+  npx tsx "$QT_ORACLE/cases/text-compression.ts" \
+    "$QT_ORACLE/fixtures/text-compression.json" \
+    > /tmp/p4.d203/oracle-text-compression.ndjson   # → 76 lines
+
+cd <lane worktree>
+QT_ORACLE_TEXT_COMPRESSION=/tmp/p4.d203/oracle-text-compression.ndjson \
+  cargo test -p quilltap-harness --test text_compression_equivalence -- --nocapture
+```
+
+#### Mutation proofs — and the one that SURVIVED
+
+| mutation | expected | result |
+|---|---|---|
+| M1 — floor 512 → 513 | the exactly-512 rows redden | **RED**, 9 divergences; the v5 byte pin reddens too |
+| M2 — drop the `total >= raw.length` guard | the incompressible row reddens | **SURVIVED — a finding** (below) |
+| M3 — re-add `writer.flush()` before drop | every blob row reddens | **RED**, 50 divergences |
+
+**M2's survival is a MEASUREMENT, not a corpus hole.** The arm was probed
+directly across seven adversarial shapes at and above the floor — base64 of
+random bytes, printable-ASCII-95, random 2-byte codepoints (U+0080–U+07FF),
+random 3-byte BMP, random 4-byte astral, and base64 of an already-brotli'd
+payload — at sizes 512 B to 16 KB. **The worst compression ratio brotli q5
+produced was 0.863** (printable ASCII 95 at exactly 512 bytes); the committed
+corpus's own worst is 0.802. Brotli's framing overhead is a few bytes at
+≥ 512 B, so `compressed + 3 >= raw` needs a ratio at 1.0, which no UTF-8 text
+reaches. **v4's own test does not reach it either** — it asserts only
+`storedBytes <= rawBytes`, which holds on both branches.
+
+So the arm is **unreachable for any real ≥512-byte UTF-8 input**, and the guard
+stays because v4 has it. Per `a-guard-whose-other-conjuncts-are-false-is-
+untested`, it was pinned at its OWN altitude instead: the decision is now the
+one-line `compressed_is_worth_storing(raw_len, compressed_len)` with a boundary
+test at 508/509/510 against a 512-byte raw. **Re-run as M2b, the mutation now
+reddens that pin.** The measurement is recorded in the function's doc comment so
+the next reader does not re-derive it.

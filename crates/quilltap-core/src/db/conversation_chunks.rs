@@ -63,6 +63,7 @@
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
+use super::text_compression::CompressedText;
 use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::{blob_to_float32, float32_to_blob};
@@ -203,7 +204,10 @@ fn marshal_cc_row(row: &rusqlite::Row) -> rusqlite::Result<CcRow> {
         id: row.get(0)?,
         chat_id: row.get(1)?,
         interchange_index: row.get(2)?,
-        content: row.get(3)?,
+        // REGISTERED COMPRESSED COLUMN (v4 `manager.ts:125`). This marshal is
+        // reached from INSIDE `upsert` via `find_by_interchange_index`, so
+        // before the codec a render WRITE failed on its own read.
+        content: row.get::<_, CompressedText>(3)?.0,
         has_embedding: dim > 0,
         embedding_dim: dim,
     })
@@ -301,7 +305,8 @@ impl<'c> ConversationChunksRepository<'c> {
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
                 r.get::<_, f64>(2)?,
-                r.get::<_, String>(3)?,
+                // REGISTERED COMPRESSED COLUMN.
+                r.get::<_, CompressedText>(3)?.0,
                 r.get::<_, String>(4)?,
                 blob,
             ))
@@ -443,7 +448,8 @@ impl<'c> ConversationChunksRepository<'c> {
                         id: row.get(0)?,
                         chat_id: row.get(1)?,
                         interchange_index: row.get(2)?,
-                        content: row.get(3)?,
+                        // REGISTERED COMPRESSED COLUMN.
+                        content: row.get::<_, CompressedText>(3)?.0,
                     })
                 },
             )

@@ -82,6 +82,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::text_compression::CompressedText;
 use super::DbError;
 
 // ============================================================================
@@ -1184,8 +1185,15 @@ fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
             Err(e) => Err(e.into()),
         }
     }
-    let request_json: String = row.get(9)?;
-    let response_json: String = row.get(10)?;
+    // BOTH are REGISTERED COMPRESSED COLUMNS (v4 `llm-logs.repository.ts:42`,
+    // `LLM_LOG_COMPRESSED_COLUMNS = ['request','response']`). They are also
+    // JSON columns — which is exactly why v4's `rowToDocument` runs its DECODE
+    // branch FIRST, before the JSON and BLOB branches: a Buffer must never be
+    // mistaken for a Float32 embedding, and the JSON parse must see text.
+    // Before the codec, an `Err` here was swallowed as v4's Zod-drop by both
+    // callers — a 404 on every single log, and every list answering `[]`.
+    let request_json: String = row.get::<_, CompressedText>(9)?.0;
+    let response_json: String = row.get::<_, CompressedText>(10)?.0;
     Ok(LlmLogRow {
         id: row.get(0)?,
         user_id: row.get(1)?,

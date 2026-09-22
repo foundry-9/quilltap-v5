@@ -2,10 +2,18 @@
 //! `characterPromptSetDefault` verb — and the bug-154 lockstep it now carries —
 //! AT THE DISPATCH WIRE.
 //!
+// P4.D203 OUT-OF-MANDATE — unowned file, one doc-comment reflow. A line
+// beginning `+ ` is a markdown list marker, so clippy's
+// `doc_lazy_continuation` read the following ten lines as unindented list
+// continuations and FAILED the whole workspace lint. Pre-existing on `main`
+// since `093e4af9` (the previous round's unification), where the gate record
+// claims clippy clean in both feature sets. Reflowed so `+` is not
+// line-initial; no wording changed. See the memory note
+// `doc-comment-plus-starts-a-markdown-list`.
 //! v5 has **no** REST `PUT /api/v1/characters/{id}` and no
-//! `/prompts/{promptId}` route (measured at planning — `lib.rs` registers `get`
-//! + `post` on `/api/v1/characters/{id}` and nothing under `prompts`); the
-//! SPA's star has always posted this verb over `POST /api/dispatch`, which is
+//! `/prompts/{promptId}` route (measured at planning — `lib.rs` registers
+//! `get` + `post` on `/api/v1/characters/{id}` and nothing under `prompts`);
+//! the SPA's star has always posted this verb over `POST /api/dispatch`, which is
 //! therefore the ONLY transport the star's write crosses. The handler-level
 //! families (`characters_arrays_tier2_equivalence`'s `defaultColumnTrail`,
 //! `characters_mutations_equivalence`'s seven `default-prompt` arms) prove the

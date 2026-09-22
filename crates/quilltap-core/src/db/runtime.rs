@@ -44,6 +44,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::dbkey;
 use crate::write_partition::WriteDbTarget;
 
+use super::text_compression;
 use super::{DbError, Writer};
 
 /// Max read-only connections kept warm per partition. Beyond this the pool drops
@@ -328,6 +329,13 @@ fn open_readonly(path: &Path, key_hex: &str) -> Result<Connection, DbError> {
         | OpenFlags::SQLITE_OPEN_URI;
     let conn = Connection::open_with_flags(path, flags)?;
     conn.pragma_update(None, "key", format!("x'{key_hex}'"))?;
+    // `qt_text()` immediately after the key, on EVERY connection — v4 registers
+    // it at the same position in all six of its open sites. A read of a
+    // compressed column through raw SQL, and every FTS trigger v4 4.10 puts
+    // over `chat_messages`, needs it; a failure to register is an open ERROR,
+    // not a warn, because a missing UDF fails loudly ("no such function:
+    // qt_text") where a silent absence would let the index drift.
+    text_compression::register_qt_text(&conn)?;
     Ok(conn)
 }
 

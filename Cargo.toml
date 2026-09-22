@@ -51,4 +51,13 @@ opt-level = 2
 # Do NOT add `bundled-sqlcipher*` — that is AES-only and returns NotADatabase on
 # every real Quilltap database (the retired sqlcipher-probe proved this).
 [workspace.dependencies]
-rusqlite = { version = "0.37", default-features = false, features = ["buildtime_bindgen"] }
+rusqlite = { version = "0.37", default-features = false, features = [
+    "buildtime_bindgen",
+    # `functions` registers the `qt_text()` scalar UDF (db/text_compression.rs).
+    # v4 `f45a517a9` puts three FTS triggers over `chat_messages` and TWO of them
+    # call `qt_text` — including `_au`'s WHEN clause — and SQLite resolves a
+    # trigger's functions when it COMPILES the trigger program, before any row is
+    # tested. Without this feature v5 cannot so much as INSERT a chat message
+    # into a v4-4.10 instance. (Still NO bundled feature — the cipher rule.)
+    "functions",
+] }

@@ -12,6 +12,61 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(db): the compressed-text codec and the `qt_text` UDF — v5 can read a v4-4.10 instance again (P4.D203 S)
+
+_Versions: core 0.0.967, cli 0.0.23, web 0.0.158._
+
+The keystone substrate commit of the `f45a517a9` round. v4 `186eb09cb` and
+`f45a517a9` store `chat_messages.{content,opaqueContent,description,context}`,
+`conversation_chunks.content` and `llm_logs.{request,response}` as brotli BLOBs
+above a 512-byte floor, and put three FTS triggers over `chat_messages` — two of
+which call `qt_text()`. v5 had no codec and no UDF, so on a v4-4.10 instance
+every `String`/`Option<String>` bind on those seven columns failed with
+`InvalidColumnType` and every `chat_messages` INSERT failed with "no such
+function: qt_text" (SQLite resolves a trigger's functions when it COMPILES the
+trigger program, so the blast radius was every insert, not just indexed ones).
+
+New `db/text_compression.rs` ports v4's `lib/database/text-compression.ts`: the
+six constants, `text_to_blob` returning a `TextCell` that binds itself as TEXT
+or BLOB, a total `blob_to_text` over v4's six arms in order, a `CompressedText`
+newtype whose `FromSql` turns a read-site conversion into a one-type-name
+change, and `register_qt_text` porting `backends/sqlite/text-codec-function.ts`.
+`rusqlite` gains the `functions` feature (no bundled feature — the cipher rule
+stands) and `brotli` becomes a direct `quilltap-core` dependency.
+
+`qt_text` is now registered immediately after the `PRAGMA key` on every
+connection v5 opens: `db::runtime::open_readonly`, `db::Writer::open_writable`,
+`quilltap_cli::dbopen::open_readonly`, and — found by this commit's own
+`Connection::open` census, which the order's three-site list had missed —
+`quilltap_cli::db_cmd::open_encrypted`, the opener the live `quilltap db` verb
+actually uses and the only one that can open read-write. A failed registration
+is an open error, not a warn.
+
+Read sites converted: the four `chat_messages` columns in
+`chats_messages_read.rs` (one compressed cell used to fail the entire
+`get_messages`, and `get_message_count` with it), all three
+`conversation_chunks` marshals (one of which is reached from inside `upsert`, so
+a render write failed on its own read), both `llm_logs` payload columns (whose
+`Err` was swallowed as v4's Zod-drop — a 404 on every log and `[]` on every
+list), the backup collector's `conversation_chunks.content` plus a new
+`F::JsonZ` field kind scoped to exactly the two columns v4 registers as both
+JSON and compressed, and the avatar-roll collapse heal's SELECT, which now
+wraps both columns in `qt_text()` exactly as v4's migration does — that heal
+runs at boot and was the first thing to break on a migrated instance.
+
+Brotli byte parity with Node was measured before anything was designed: the
+`brotli` crate 8.0.4 at quality 5 with `size_hint = raw.len()` is
+byte-identical to Node 24.13.1's bundled brotli 1.2.0 on all 35 probe rows, so
+the harness tier-2 differ needs no decode normalizer. The four SQLite facts the
+raw-SQL rewrites rest on are pinned in one test over the real amalgamation:
+`json_extract` over a brotli BLOB raises "malformed JSON"; `trim(<blob>) != ''`
+is always true; `LENGTH(<blob>)` counts compressed bytes; and `FromSql for
+String` rejects a BLOB.
+
+The codec's own tier-1 differential against v4's real module lands in the very
+next commit — the work order fences this commit to the production substrate
+alone so the round's five stacked lanes inherit nothing else.
+
 #### 2026-09-21 — docs(porting): three more drift commits, and v4 hits the qt_text wall from its own CLI
 
 _Docs-only change._

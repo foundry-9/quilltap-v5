@@ -68,6 +68,7 @@ use rusqlite::{Connection, Row};
 use serde_json::{Map, Value};
 
 use super::js_number_to_json;
+use super::text_compression::CompressedText;
 use super::DbError;
 
 /// Every column the three union members consume, in a fixed SELECT order. The
@@ -160,13 +161,27 @@ fn array_or_empty(v: Option<String>) -> Value {
         .unwrap_or_else(|| Value::Array(Vec::new()))
 }
 
+/// `Option<CompressedText>` → `Option<String>` for the nullable compressed
+/// columns, so a call site reads exactly as it did before the codec landed.
+fn opt_text(v: Option<CompressedText>) -> Option<String> {
+    v.map(|c| c.0)
+}
+
 /// Marshal a `type='message'` row into a `MessageEvent` JSON object.
 fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     let mut o = Map::new();
     o.insert("type".into(), Value::String("message".into()));
     o.insert("id".into(), Value::String(row.get::<_, String>(0)?));
     o.insert("role".into(), Value::String(row.get::<_, String>(2)?));
-    o.insert("content".into(), Value::String(row.get::<_, String>(3)?));
+    // `content` is a REGISTERED COMPRESSED COLUMN (v4 `manager.ts:134-139`):
+    // on a v4-4.10 instance any cell of 512 bytes or more is a brotli BLOB,
+    // which a `String` bind rejects with `InvalidColumnType`. Because
+    // `get_messages` propagates the `?` out of the whole `query_map`, ONE
+    // compressed cell used to fail the ENTIRE chat read.
+    o.insert(
+        "content".into(),
+        Value::String(row.get::<_, CompressedText>(3)?.0),
+    );
     put_opt_json(&mut o, "rawResponse", row.get(4)?);
     put_opt_number(&mut o, "tokenCount", row.get(5)?);
     put_opt_number(&mut o, "promptTokens", row.get(6)?);
@@ -203,7 +218,8 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut o, "routeTrail", row.get(45)?);
     put_opt_json(&mut o, "targetParticipantIds", row.get(19)?);
     put_opt_string(&mut o, "systemSender", row.get(20)?);
-    put_opt_string(&mut o, "opaqueContent", row.get(22)?);
+    // REGISTERED COMPRESSED COLUMN — see `content` above.
+    put_opt_string(&mut o, "opaqueContent", opt_text(row.get(22)?));
     put_opt_string(&mut o, "systemKind", row.get(21)?);
     put_opt_json(&mut o, "hostEvent", row.get(23)?);
     put_opt_json(&mut o, "summaryAnchor", row.get(29)?);
@@ -230,7 +246,11 @@ fn marshal_context_summary(row: &Row) -> Result<Value, rusqlite::Error> {
     let mut o = Map::new();
     o.insert("type".into(), Value::String("context-summary".into()));
     o.insert("id".into(), Value::String(row.get::<_, String>(0)?));
-    o.insert("context".into(), Value::String(row.get::<_, String>(30)?));
+    // REGISTERED COMPRESSED COLUMN.
+    o.insert(
+        "context".into(),
+        Value::String(row.get::<_, CompressedText>(30)?.0),
+    );
     o.insert("createdAt".into(), Value::String(row.get::<_, String>(37)?));
     Ok(Value::Object(o))
 }
@@ -244,9 +264,10 @@ fn marshal_system(row: &Row) -> Result<Value, rusqlite::Error> {
         "systemEventType".into(),
         Value::String(row.get::<_, String>(31)?),
     );
+    // REGISTERED COMPRESSED COLUMN.
     o.insert(
         "description".into(),
-        Value::String(row.get::<_, String>(32)?),
+        Value::String(row.get::<_, CompressedText>(32)?.0),
     );
     put_opt_number(&mut o, "promptTokens", row.get(6)?);
     put_opt_number(&mut o, "completionTokens", row.get(7)?);
