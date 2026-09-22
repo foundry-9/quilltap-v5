@@ -142696,3 +142696,59 @@ EXEMPT file (`quilltap_import/document_stores.rs`, asserted still to pass
 / 0 with_blob_codec — the census says 1 / 1`; the `file_ops.rs` row deleted →
 `… 1 blob write(s) the census does not know` + the arithmetic line; the
 import's `false` flipped → `(EXEMPT) no longer passes normalize_images: false`.
+
+### Unit 3 — sites 1 and 2 proven with decodable rows + the shared D19 comparand (harness 0.0.892)
+
+The shared comparand: `harness/oracle/lib/blob-image-facts.ts` (v4 side,
+measured with real `sharp`'s `metadata()`) and
+`crates/quilltap-harness/tests/blob_image_facts/mod.rs` (v5 side,
+`HostImageCodec::measure`), included by `#[path]`. Per stored row:
+`relativePath`, `fileName`, `storedMimeType`, `shaChanged` (vs the input),
+`size` direction, decoded `width`/`height` — never the bytes, never the sha's
+value (D19).
+
+**Site 2 — `character_photo_upload_tier2`**, row `upload_real_png` (the
+`photo.png` seed as `Portrait.png`). Regen AS RUN (the pin, lane-private):
+```
+cd /tmp/qt-v4-pin-p4104-f45a517a9     # rev-parse f45a517a9
+V5W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin; TMPO=/tmp/p4104/photo-upload-mirror
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+cp $V5W/harness/oracle/cases/character-photo-upload-tier2.test.ts $TMPO/cases/
+cp $V5W/harness/oracle/fixtures/characters.json $TMPO/fixtures/
+cp $V5W/harness/oracle/lib/blob-image-facts.ts $TMPO/lib/
+cp $V5W/harness/oracle/fixtures/normalize-blob-image/photo.png $TMPO/fixtures/
+QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
+QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
+QT_ORACLE_OUT=/tmp/p4104/oracle-photo-upload.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$PWD" --roots "$TMPO/cases" -- character-photo-upload-tier2
+```
+v4: `imageFacts [{photos/Portrait.webp, Portrait.webp, image/webp, shaChanged
+true, smaller, 240×170}]`; v4's answer body keeps the PRE-normalization
+`photos/Portrait.png` and the input sha (its locals, not `link.*`) — v5 the
+same. **Red-first** (`BLOB_WEBP` = the refusing encoder): `[upload_real_png]
+imageFacts: got [{photos/Portrait.png, Portrait.png, image/png, shaChanged
+false, same, 240×170}]` + the `savedLinks` path; the five junk rows green.
+**Green** with `HostImageCodec`: 6/6. **Mutation** (`save_to_character_gallery`
+built on `::new`, reverted by file backup): the same `imageFacts` red.
+
+**Site 1 — `doc_blob`**, the IMAGE PASS (oracle line 3): a fresh copy of the
+builder-minted pair; v4's module-level `transcodeToWebP` passthrough mock now
+delegates to the REAL module under `globalThis.__qtRealTranscode`, set only
+for this pass (the mock is the whole module's, so it silenced v4's
+normalization as well). One `doc_write_blob` of `photo.png` as
+`art/real-photo.png`; the tool output compared with every `sha256` /
+`size_bytes` and `formattedText`'s byte count blanked on both sides, plus
+`imageFacts`. Regen AS RUN: the header recipe with STAGE=`/tmp/p4104/stage-doc-blob`,
+the fixture pair at `/tmp/p4104/dblob-{main,mount}.db`, the oracle at
+`/tmp/p4104/oracle-doc-blob.ndjson`, plus the lib + seed copies. v4:
+`art/real-photo.webp`, `image/webp`, smaller, 240×170. **Red-first** (no
+encoder in the tool context): `relative_path "art/real-photo.png"`,
+`stored_mime_type "image/png"`; the 11 ops + 4 dumps green. **Green** with the
+host encoder. **Mutations — MEASURED TO SURVIVE, and why:** (a) the facade
+built on `::new` and (b) the pre-transcode given the refusing encoder with the
+facade wired BOTH stay green. v4 and v5 each run `transcodeToWebP` with the
+same mime twice (the tool's pre-transcode, then the normalization), so either
+half alone produces the WebP; only removing both (the red-first) reddens. The
+facade half is therefore guarded by the census and unit 1's tests, and
+mutation (b) is itself the end-to-end proof of unit 1's readback: the
+normalization lands `art/real-photo.webp` and the facade reads that row back.

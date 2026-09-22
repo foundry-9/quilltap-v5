@@ -13,10 +13,21 @@
 //! W4.6c Librarian blob-write / delete announcement rows) are dumped and diffed. The
 //! `data` BLOB is dumped as lowercase hex on both sides (bit-exact).
 //!
-//! TRANSCODE SEAM: v4's `transcodeToWebP` is jest.mock'd to a PASSTHROUGH (store
-//! the raw bytes, storedMimeType = the input mime); the Rust write handler does the
-//! same passthrough (no sharp in the core). `normaliseBlobRelativePath` stays real
-//! both sides.
+//! TRANSCODE SEAM: for the op sequence, v4's `transcodeToWebP` is jest.mock'd to a
+//! PASSTHROUGH (store the raw bytes, storedMimeType = the input mime) — which, the
+//! mock being the whole module's, also silences `linkBlobContent`'s normalization.
+//! The Rust op sequence runs with NO encoder in the tool context, so its
+//! pre-transcode and normalization both take the refusing encoder's
+//! store-the-original arm over the same junk bytes. `normaliseBlobRelativePath`
+//! stays real both sides.
+//!
+//! P4.104 — THE IMAGE PASS (oracle line 3). A fresh fixture copy; v4 flips its
+//! mock to the REAL `transcodeToWebP` (real sharp) and v5 wires the host encoder
+//! ([`BLOB_WEBP`]) into the tool context; one `doc_write_blob` of the DECODABLE
+//! `photo.png` seed. Compared under D19: the tool output with every encoder-owned
+//! `sha256` / `size_bytes` (and `formattedText`'s byte count) blanked, and the
+//! stored row's `imageFacts` (`blob_image_facts/mod.rs`). Red-first on the
+//! un-wired tree: `art/real-photo.png` / `image/png` where v4 answers `.webp`.
 //!
 //! NORMALIZATION: every UUID string is remapped to a positional `<id-N>` token
 //! (first-appearance order, one map per compared value) and every ISO-8601
@@ -34,6 +45,9 @@
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $W/harness/oracle/cases/doc-blob.test.ts $STAGE/harness/oracle/cases/
 //!   cp $W/harness/oracle/fixtures/doc-blob.json $STAGE/harness/oracle/fixtures/
+//!   mkdir -p $STAGE/harness/oracle/lib
+//!   cp $W/harness/oracle/lib/blob-image-facts.ts $STAGE/harness/oracle/lib/
+//!   cp $W/harness/oracle/fixtures/normalize-blob-image/photo.png $STAGE/harness/oracle/fixtures/
 //!   cd ~/source/quilltap-server        # or a worktree pinned at the baseline
 //!   QT_FIXTURE_DBLOB_MAIN=/tmp/qt-dblob-main.db QT_FIXTURE_DBLOB_MOUNT=/tmp/qt-dblob-mount.db \
 //!     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-blob-fixture.ts
@@ -60,6 +74,17 @@ use quilltap_core::tools::doc_edit::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// The encoder the IMAGE PASS wires into the tool context — the host's, as the
+/// production tool runner reaches it through its byte store (P4.104).
+fn blob_webp() -> quilltap_core::services::mount_index::normalize_blob_image::SharedBlobWebp {
+    quilltap_core::services::mount_index::normalize_blob_image::SharedBlobWebp(Some(
+        std::sync::Arc::new(quilltap_host::HostImageCodec),
+    ))
+}
 
 #[derive(Deserialize)]
 struct Spec {
@@ -230,6 +255,12 @@ fn doc_blob_matches_oracle() {
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let (oracle_ops, oracle_dumps) = parse_oracle(&oracle_text);
+    let oracle_image = oracle_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).expect("parse oracle line"))
+        .find(|v| v["case"] == "doc-blob-image")
+        .expect("oracle missing the P4.104 image pass (line 3) — regenerate");
 
     // Copy the fixtures and open two writers (both connections held together).
     let scratch = std::env::temp_dir().join(format!("qt-dblob-harness-{}", std::process::id()));
@@ -316,10 +347,114 @@ fn doc_blob_matches_oracle() {
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
 
+    image_pass(&spec, &fixture_main, &fixture_mount, &scratch, &oracle_image);
+
     eprintln!(
         "OK: doc-blob handlers matched oracle ({} ops + 4 table dumps incl. Librarian chat_messages).",
         spec.ops.len()
     );
+}
+
+/// v4 `IMAGE_PASS_ARGS` (`doc-blob.test.ts`), plus the seed's base64.
+fn image_pass_args() -> Value {
+    use base64::Engine as _;
+    json!({
+        "mount_point": "self",
+        "path": "art/real-photo.png",
+        "original_filename": "real-photo.png",
+        "mime_type": "image/png",
+        "description": "a decodable picture",
+        "data_base64": base64::engine::general_purpose::STANDARD
+            .encode(blob_image_facts::seed_image("photo.png")),
+    })
+}
+
+/// Blank every encoder-owned value, exactly as the oracle's `blank` does.
+fn blank_encoder(v: &Value) -> Value {
+    match v {
+        Value::Array(a) => Value::Array(a.iter().map(blank_encoder).collect()),
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .map(|(k, x)| {
+                    let x = if k == "sha256" || k == "size_bytes" {
+                        json!("<encoder>")
+                    } else if let Value::String(s) = x {
+                        let re = regex::Regex::new(r"\(\d+ bytes,").unwrap();
+                        Value::String(re.replace_all(s, "(<encoder> bytes,").into_owned())
+                    } else {
+                        blank_encoder(x)
+                    };
+                    (k.clone(), x)
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// P4.104 — the IMAGE PASS: a fresh fixture copy, the host encoder wired, one
+/// decodable `doc_write_blob`, diffed under D19.
+fn image_pass(
+    spec: &Spec,
+    fixture_main: &str,
+    fixture_mount: &str,
+    scratch: &std::path::Path,
+    oracle: &Value,
+) {
+    let work_main = scratch.join("dblob-image-main.db");
+    let work_mount = scratch.join("dblob-image-mount.db");
+    let _ = std::fs::remove_file(&work_main);
+    let _ = std::fs::remove_file(&work_mount);
+    std::fs::copy(fixture_main, &work_main).expect("copy main fixture");
+    std::fs::copy(fixture_mount, &work_mount).expect("copy mount fixture");
+    let main = Writer::open_writable(&work_main, &spec.test_pepper_base64).expect("open main");
+    let mount = Writer::open_writable(&work_mount, &spec.test_pepper_base64).expect("open mount");
+
+    let ctx = DocEditToolContext {
+        chat_id: spec.chat_id.clone(),
+        user_id: spec.user_id.clone(),
+        project_id: Some(spec.project_id.clone()),
+        character_id: Some(spec.character_id.clone()),
+        operator_override: false,
+        files_dir: None,
+        blob_webp: blob_webp(),
+    };
+    let result = execute_doc_edit_tool(
+        main.connection(),
+        mount.connection(),
+        "doc_write_blob",
+        &image_pass_args(),
+        &ctx,
+    );
+    let output = normalize(&blank_encoder(
+        &serde_json::to_value(&result).expect("serialize result"),
+    ));
+    let want_output = normalize(&oracle["output"]);
+    assert_eq!(
+        output, want_output,
+        "image pass: tool output diverged\n  rust:   {output}\n  oracle: {want_output}"
+    );
+
+    let rows = blob_image_facts::stored_blob_rows(
+        mount.connection(),
+        "WHERE l.fileName LIKE 'real-photo%' ORDER BY l.relativePath",
+        &[],
+    );
+    let facts = Value::Array(blob_image_facts::blob_image_facts(
+        &rows,
+        &blob_image_facts::seed_image("photo.png"),
+    ));
+    assert_eq!(
+        facts, oracle["imageFacts"],
+        "image pass: imageFacts diverged\n  rust:   {facts}\n  oracle: {}",
+        oracle["imageFacts"]
+    );
+    eprintln!("[image pass] OK: {facts}");
+
+    drop(main);
+    drop(mount);
+    let _ = std::fs::remove_file(&work_main);
+    let _ = std::fs::remove_file(&work_mount);
 }
 
 /// Extract the `ops` array (line 1) + the `dumps` object (line 2) from the oracle

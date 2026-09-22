@@ -8,6 +8,14 @@
 //! the dotted sanitize) plus the dedup guard + the two 400-keyword arms; the
 //! shared write spine itself is also proven by `photo_save_link`.
 //!
+//! P4.104: `upload_real_png` hands the gallery a DECODABLE PNG (the
+//! `normalize-blob-image` seed) and compares its stored row's D19
+//! `imageFacts` (`blob_image_facts/mod.rs`) — v4 normalizes it to WebP inside
+//! `linkBlobContent` with real sharp, v5 through the host encoder this family
+//! hands `save_to_character_gallery` ([`BLOB_WEBP`]). Red-first on the
+//! un-wired tree (the refusing encoder): `photos/Portrait.png`, `image/png`,
+//! the sha unchanged, where v4 answers `.webp` / `image/webp` / changed.
+//!
 //! Generate the oracle (see the .ts header) then run:
 //!   QT_ORACLE_PHOTO_UPLOAD=/tmp/oracle-photo-upload.ndjson \
 //!     cargo test -p quilltap-harness --test character_photo_upload_tier2_equivalence
@@ -18,6 +26,14 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::photos::character_gallery_service::{save_to_character_gallery, GalleryError};
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// The encoder every write in this family normalizes through — the host's,
+/// as production wires it (P4.104).
+const BLOB_WEBP: &dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder =
+    &quilltap_host::HostImageCodec;
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const FIXED_KEPT_AT: &str = "2026-04-01T12:00:00.000Z";
@@ -38,6 +54,8 @@ struct Row {
     body: Option<Value>,
     #[serde(default)]
     saved_links: Value,
+    #[serde(default)]
+    image_facts: Option<Value>,
 }
 
 // The case inputs — kept identical to `character-photo-upload-tier2.test.ts`.
@@ -49,6 +67,8 @@ struct UploadCase {
     caption: Option<&'static str>,
     tags: Vec<String>,
     twice: bool,
+    /// P4.104: compare the stored `photos/` blobs' D19 facts.
+    image_facts: bool,
 }
 
 fn cases() -> Vec<UploadCase> {
@@ -61,6 +81,7 @@ fn cases() -> Vec<UploadCase> {
             caption: Some("A fine portrait"),
             tags: vec!["airship".into(), "adventure".into()],
             twice: false,
+            image_facts: false,
         },
         UploadCase {
             name: "upload_dotted",
@@ -70,6 +91,7 @@ fn cases() -> Vec<UploadCase> {
             caption: None,
             tags: vec![],
             twice: false,
+            image_facts: false,
         },
         UploadCase {
             name: "upload_dedup",
@@ -79,6 +101,7 @@ fn cases() -> Vec<UploadCase> {
             caption: None,
             tags: vec![],
             twice: true,
+            image_facts: false,
         },
         UploadCase {
             name: "err_empty",
@@ -88,6 +111,7 @@ fn cases() -> Vec<UploadCase> {
             caption: None,
             tags: vec![],
             twice: false,
+            image_facts: false,
         },
         UploadCase {
             name: "err_nonimage",
@@ -97,6 +121,18 @@ fn cases() -> Vec<UploadCase> {
             caption: None,
             tags: vec![],
             twice: false,
+            image_facts: false,
+        },
+        // P4.104: a DECODABLE image — normalized to WebP by `linkBlobContent`.
+        UploadCase {
+            name: "upload_real_png",
+            data: blob_image_facts::seed_image("photo.png"),
+            filename: "Portrait.png",
+            mime: "image/png",
+            caption: None,
+            tags: vec![],
+            twice: false,
+            image_facts: true,
         },
     ]
 }
@@ -200,7 +236,8 @@ fn photo_upload_matches_oracle() {
                         &mime,
                         caption.as_deref(),
                         &tags,
-                        FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                        FIXED_KEPT_AT,
+                        BLOB_WEBP,
                     );
                 }
                 Ok(save_to_character_gallery(
@@ -212,7 +249,8 @@ fn photo_upload_matches_oracle() {
                     &mime,
                     caption.as_deref(),
                     &tags,
-                    FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                    FIXED_KEPT_AT,
+                        BLOB_WEBP,
                 ))
             }))
             .unwrap();
@@ -255,6 +293,36 @@ fn photo_upload_matches_oracle() {
             ));
         } else {
             eprintln!("[{}] OK", c.name);
+        }
+
+        // P4.104: the D19 image comparand for the decodable row.
+        if c.image_facts {
+            let got = db
+                .read_mount_index(|mount| {
+                    Ok(blob_image_facts::blob_image_facts(
+                        &blob_image_facts::stored_blob_rows(
+                            mount,
+                            "WHERE l.relativePath LIKE 'photos/%' ORDER BY l.relativePath",
+                            &[],
+                        ),
+                        &c.data,
+                    ))
+                })
+                .unwrap();
+            let got = Value::Array(got);
+            match &want.image_facts {
+                Some(want_facts) if *want_facts == got => {
+                    eprintln!("[{}] imageFacts OK: {got}", c.name)
+                }
+                Some(want_facts) => failures.push(format!(
+                    "[{}] imageFacts: got {got} want {want_facts}",
+                    c.name
+                )),
+                None => failures.push(format!(
+                    "[{}] the oracle carries no imageFacts — regenerate",
+                    c.name
+                )),
+            }
         }
     }
 

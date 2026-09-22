@@ -14,12 +14,22 @@
  * case pins the UPLOAD-specific filename→path branches (dotless slug vs the
  * dotted sanitize) plus the dedup guard and the two 400-keyword arms.
  *
+ * P4.104: `upload_real_png` hands the gallery a DECODABLE 240×170 PNG (the
+ * `normalize-blob-image` seed). v4's `linkBlobContent` normalizes it with REAL
+ * sharp (bug 159, `186eb09cb`), so the stored row is WebP at `photos/*.webp`;
+ * its `imageFacts` (`../lib/blob-image-facts`) are the D19 comparand — never
+ * the WebP bytes, never the sha's value. The other rows' bytes are not an
+ * image, so sharp throws and the original is stored on both sides.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-photo-upload-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/character-photo-upload-tier2.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/characters.json"                   "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts"                     "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo.png"     "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
  *   QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
@@ -33,6 +43,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 interface Spec {
   testPepperBase64: string;
@@ -52,6 +63,8 @@ interface UploadCase {
   tags?: string[];
   /** For the dedup arm: upload once, then again with the same bytes. */
   twice?: boolean;
+  /** P4.104: emit the D19 `imageFacts` of the stored `photos/` blobs. */
+  imageFacts?: boolean;
 }
 
 async function runCase(
@@ -151,11 +164,34 @@ async function runCase(
         )
         .all(vault.mountPointId);
     }
+    let imageFacts: unknown;
+    if (c.imageFacts && vault) {
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const midb = getRawMountIndexDatabase() as unknown as {
+        prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+      };
+      const rows = midb
+        .prepare(
+          STORED_BLOB_SELECT +
+            "WHERE l.mountPointId = ? AND l.relativePath LIKE 'photos/%' ORDER BY l.relativePath",
+        )
+        .all(vault.mountPointId) as Parameters<typeof blobImageFacts>[0];
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+      imageFacts = await blobImageFacts(rows, buffer, sharpMeasure(sharp));
+    }
     // Blank the minted linkId in the OK body (the only nondeterministic field).
     if (body && typeof body === 'object' && 'linkId' in (body as Record<string, unknown>)) {
       (body as Record<string, unknown>).linkId = '<linkId>';
     }
-    return { name: c.name, ...(error ? { error } : { body }), savedLinks };
+    return {
+      name: c.name,
+      ...(error ? { error } : { body }),
+      savedLinks,
+      ...(imageFacts !== undefined ? { imageFacts } : {}),
+    };
   } finally {
     global.Date = RealDate;
     await closeDatabase();
@@ -191,6 +227,7 @@ async function main(): Promise<void> {
   const B = Buffer.from('upload-image-bytes-Bravo').toString('base64');
   const C = Buffer.from('upload-image-bytes-Charlie').toString('base64');
   const D = Buffer.from('upload-image-bytes-Delta').toString('base64');
+  const PNG = fs.readFileSync(join(here, '..', 'fixtures', 'photo.png')).toString('base64');
 
   const cases: UploadCase[] = [
     // Dotless filename → the timestamped slug branch.
@@ -216,6 +253,16 @@ async function main(): Promise<void> {
     // 400 arms.
     { name: 'err_empty', data: '', filename: 'empty.png', mimeType: 'image/png' },
     { name: 'err_nonimage', data: D, filename: 'notes.txt', mimeType: 'text/plain' },
+    // P4.104: a DECODABLE image — normalized to WebP by `linkBlobContent`.
+    {
+      name: 'upload_real_png',
+      data: PNG,
+      filename: 'Portrait.png',
+      mimeType: 'image/png',
+      caption: null,
+      tags: [],
+      imageFacts: true,
+    },
   ];
 
   const outLines: string[] = [];

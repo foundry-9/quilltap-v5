@@ -13,10 +13,20 @@
  * See [[jest-real-db-oracle]].
  *
  * TRANSCODE SEAM: `transcodeToWebP` is jest.mock'd to a PASSTHROUGH (store the raw
- * bytes unchanged, storedMimeType = the input mime, sha256 = sha256(raw)). The
- * Rust port has no sharp; its write handler does the same passthrough, so both
- * sides store byte-identical blobs. `normaliseBlobRelativePath` stays REAL both
- * sides. P4.32: `@/lib/doc-edit/reindex-file` is REAL — and this family is
+ * bytes unchanged, storedMimeType = the input mime, sha256 = sha256(raw)) for the
+ * op sequence. The mock is the WHOLE module's, so it also silences
+ * `linkBlobContent`'s normalization (`normalize-blob-image.ts` imports
+ * `transcodeToWebP` from the same module); the Rust family runs the same op
+ * sequence with no encoder wired, which passes the junk bytes through on both
+ * sides. `normaliseBlobRelativePath` stays REAL both sides.
+ *
+ * P4.104 — THE IMAGE PASS (line 3). A second run over a FRESH fixture copy
+ * flips `__qtRealTranscode`, so the mocked module delegates to the REAL
+ * `transcodeToWebP` (real sharp) — v4's pre-transcode AND its normalization —
+ * and writes the DECODABLE 240×170 `photo.png` seed through `doc_write_blob`.
+ * The comparand is D19 (`../lib/blob-image-facts`): the tool output with its
+ * encoder-specific `sha256`/`size_bytes` blanked, and the stored row's
+ * `imageFacts` — never the WebP bytes. P4.32: `@/lib/doc-edit/reindex-file` is REAL — and this family is
  * unmoved because the blob handlers never invoke it at all (no
  * `triggerReindexIfNeeded`, no `writeDatabaseDocument`; only transcode +
  * `linkBlobContent`), NOT because the pass short-circuits on the file type;
@@ -38,6 +48,9 @@
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
  *   cp $W/harness/oracle/cases/doc-blob.test.ts $STAGE/harness/oracle/cases/
  *   cp $W/harness/oracle/fixtures/doc-blob.json $STAGE/harness/oracle/fixtures/
+ *   mkdir -p $STAGE/harness/oracle/lib
+ *   cp $W/harness/oracle/lib/blob-image-facts.ts $STAGE/harness/oracle/lib/
+ *   cp $W/harness/oracle/fixtures/normalize-blob-image/photo.png $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DBLOB_MAIN=/tmp/qt-dblob-main.db QT_FIXTURE_DBLOB_MOUNT=/tmp/qt-dblob-mount.db \
  *     $N/node --import tsx $W/harness/oracle/fixtures/build-doc-blob-fixture.ts
@@ -56,6 +69,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 // Inlined canonicalizer (jest can't resolve the `.js` ESM specifier of
 // ../lib/tier2.ts). BLOBs -> lowercase hex, nulls explicit, everything else
@@ -109,12 +123,16 @@ jest.mock('@/lib/mount-index/blob-transcode', () => {
   return {
     __esModule: true,
     ...actual, // keeps the REAL normaliseBlobRelativePath
-    transcodeToWebP: async (input: Buffer, mime: string) => ({
-      data: input,
-      storedMimeType: mime,
-      sizeBytes: input.length,
-      sha256: ch('sha256').update(input).digest('hex'),
-    }),
+    // P4.104: the image pass flips `__qtRealTranscode` to reach REAL sharp.
+    transcodeToWebP: async (input: Buffer, mime: string) =>
+      (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode
+        ? actual.transcodeToWebP(input, mime)
+        : {
+            data: input,
+            storedMimeType: mime,
+            sizeBytes: input.length,
+            sha256: ch('sha256').update(input).digest('hex'),
+          },
   };
 });
 
@@ -287,8 +305,95 @@ async function main(): Promise<void> {
     rmSync(work, { recursive: true, force: true });
   }
 
+  // P4.104 — the image pass: a FRESH fixture copy, REAL sharp, one decodable
+  // write. The doMocks above survive `resetModules`, so the DB stack is real.
+  outLines.push(JSON.stringify(await imagePass(spec, here, scratch, mainFixture, mountFixture)));
+
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`doc-blob oracle wrote ${outPath} (${spec.ops.length} ops)\n`);
+}
+
+/** The P4.104 image pass's op — shared with the Rust family verbatim. */
+const IMAGE_PASS_ARGS = {
+  mount_point: 'self',
+  path: 'art/real-photo.png',
+  original_filename: 'real-photo.png',
+  mime_type: 'image/png',
+  description: 'a decodable picture',
+};
+
+async function imagePass(
+  spec: Spec,
+  here: string,
+  scratch: string,
+  mainFixture: string,
+  mountFixture: string,
+): Promise<Record<string, unknown>> {
+  jest.resetModules();
+  const work = mkdtempSync(join(scratch, 'image-'));
+  const mainWork = join(work, 'main.db');
+  const mountWork = join(work, 'mount.db');
+  copyFileSync(mainFixture, mainWork);
+  copyFileSync(mountFixture, mountWork);
+  process.env.SQLITE_PATH = mainWork;
+  process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const { executeDocEditTool } = await import('@/lib/tools/handlers/doc-edit-handler');
+  await initializeDatabase();
+
+  const png = fs.readFileSync(join(here, '..', 'fixtures', 'photo.png'));
+  const ctx = {
+    chatId: spec.chatId,
+    userId: spec.userId,
+    projectId: spec.projectId,
+    characterId: spec.characterId,
+  };
+  (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = true;
+  try {
+    const result = (await executeDocEditTool(
+      'doc_write_blob',
+      { ...IMAGE_PASS_ARGS, data_base64: png.toString('base64') },
+      ctx as never,
+    )) as Record<string, unknown>;
+    // The encoder's own bytes — never comparable across sharp and libwebp (D19):
+    // every `sha256` / `size_bytes`, and the byte count `formattedText` quotes.
+    const blank = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(blank);
+      if (v && typeof v === 'object') {
+        const o: Record<string, unknown> = {};
+        for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+          o[k] =
+            k === 'sha256' || k === 'size_bytes'
+              ? '<encoder>'
+              : typeof x === 'string'
+                ? x.replace(/\(\d+ bytes,/g, '(<encoder> bytes,')
+                : blank(x);
+        }
+        return o;
+      }
+      return v;
+    };
+    const output = blank(result);
+    const midb = getRawMountIndexDatabase() as unknown as {
+      prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+    };
+    const rows = midb
+      .prepare(STORED_BLOB_SELECT + "WHERE l.fileName LIKE 'real-photo%' ORDER BY l.relativePath")
+      .all() as Parameters<typeof blobImageFacts>[0];
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+    const imageFacts = await blobImageFacts(rows, png, sharpMeasure(sharp));
+    return { case: 'doc-blob-image', output, imageFacts };
+  } finally {
+    (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = false;
+    await closeDatabase();
+    closeMountIndexSQLiteClient();
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 test('doc-blob oracle', async () => {

@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): decodable-image rows for the doc-edit blob tool and the character gallery, and a shared D19 image comparand (P4.104 unit 3)
+
+_Versions: harness 0.0.892._
+
+`character_photo_upload_tier2` gains `upload_real_png` and `doc_blob` gains
+an image pass (a fresh fixture copy where v4's transcode mock delegates to the
+real module): both write a real 240×170 PNG, which v4 stores as WebP. Both
+compare the stored row through a new shared comparand
+(`harness/oracle/lib/blob-image-facts.ts` and
+`tests/blob_image_facts/mod.rs`): landing path, file name, stored mime,
+whether the sha changed, size direction, decoded dimensions, never the bytes.
+Both rows were red with no encoder wired and are green with the host encoder.
+
 #### 2026-09-22 — feat(mount-index): every blob write carries a WebP encoder, and a census keeps it that way (P4.104 unit 2)
 
 _Versions: core 0.0.994, harness 0.0.891, host 0.0.147, web 0.0.171._
