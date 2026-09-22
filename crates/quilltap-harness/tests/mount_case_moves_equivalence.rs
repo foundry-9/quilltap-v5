@@ -102,6 +102,7 @@ fn mount_case_moves_matches_oracle() {
             force: true,
         },
         &extractor,
+        &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
     )
     .expect_err("copy onto case-variant of self must be rejected");
     let MountFileError::FileOp(FileOpError { message, code }) = guard_err else {
@@ -110,8 +111,16 @@ fn mount_case_moves_matches_oracle() {
     let guard = json!({ "error": message, "code": code.as_str() });
 
     // 0b. moveFile case-only rename (guard.md → Guard.md on the same mount).
-    move_file(conn, STORE_ID, "guard.md", STORE_ID, "Guard.md", &extractor)
-        .expect("move file case-only");
+    move_file(
+        conn,
+        STORE_ID,
+        "guard.md",
+        STORE_ID,
+        "Guard.md",
+        &extractor,
+        &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+    )
+    .expect("move file case-only");
 
     // 1. case-only DOCUMENT rename (notes.md → Notes.md).
     move_database_document(conn, STORE_ID, "notes.md", "Notes.md").expect("move doc case-only");

@@ -29,7 +29,6 @@
 
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 
 use super::shared::{
     acting_character_is_opaque_to_vaults, arg_bool, arg_str, arg_str_ref,
@@ -214,15 +213,22 @@ pub fn handle_write_blob(
     }
 
     let mime_type = arg_str(args, "mime_type").unwrap_or_default();
-    // The transcode seam: PASSTHROUGH. Stored bytes/mime/sha == the raw upload.
-    let stored_mime_type = mime_type.clone();
-    let transcoded_sha = hex::encode(Sha256::digest(&raw_bytes));
+    // v4 `blob-handlers.ts:131`: `transcodeToWebP(rawBytes, input.mime_type)`
+    // through the host's encoder (P4.104 — this was a PASSTHROUGH seam until
+    // the encoder reached the tool context). An encoder failure, or no encoder
+    // wired, hands the raw bytes back — v4's `sharp`-threw arm.
+    let codec = ctx.blob_webp.get();
+    let transcoded = crate::services::mount_index::blob_transcode::transcode_to_webp(
+        &raw_bytes, &mime_type, codec,
+    );
+    let stored_mime_type = transcoded.stored_mime_type;
+    let transcoded_sha = transcoded.sha256;
     let final_path = normalise_blob_relative_path(&path, &stored_mime_type);
 
     let original_filename = arg_str(args, "original_filename").unwrap_or_default();
     let description = arg_str(args, "description").unwrap_or_default();
 
-    let stored = DocMountBlobsRepository::new(mount)
+    let stored = DocMountBlobsRepository::with_blob_codec(mount, codec)
         .create(&CreateBlobInput {
             mount_point_id: mp.id.clone(),
             relative_path: final_path,
@@ -230,16 +236,14 @@ pub fn handle_write_blob(
             original_mime_type: Some(mime_type),
             stored_mime_type,
             sha256: transcoded_sha,
-            data: raw_bytes,
+            data: transcoded.data,
             description: Some(description),
             file_name: None,
             file_type: None,
             // P4.D209: v4 `normalizeImages` defaults true (`186eb09cb`) — an
             // upload through the doc-edit tool is exactly what the chokepoint
-            // is for. ⚠ As wired today the flag reaches a repository built
-            // WITHOUT a codec (see `normalize_blob_image.rs`'s OPEN note), so
-            // this site still stores the raw upload — the PASSTHROUGH comment
-            // above is the truth of the tree until that seam is threaded.
+            // is for. After a successful lossy transcode above it declines;
+            // P4.104 wired the repository's encoder.
             normalize_images: true,
         })
         .map_err(|e| e.to_string())?;

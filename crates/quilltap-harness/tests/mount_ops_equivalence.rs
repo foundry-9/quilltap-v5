@@ -81,6 +81,7 @@ fn mount_ops_match_oracle() {
                     MP_EMPTY,
                     "notes/copied.md",
                     None,
+                    None,
                 ))
             }),
         ),
@@ -94,6 +95,7 @@ fn mount_ops_match_oracle() {
                     MP_EMPTY,
                     "notes/copied.md",
                     Some(true),
+                    None,
                 ))
             }),
         ),
@@ -106,6 +108,7 @@ fn mount_ops_match_oracle() {
                     "notes/intro.md",
                     MP_DB,
                     "reference.txt",
+                    None,
                     None,
                 ))
             }),
@@ -120,6 +123,7 @@ fn mount_ops_match_oracle() {
                     MP_DB,
                     "notes/intro.md",
                     None,
+                    None,
                 ))
             }),
         ),
@@ -132,6 +136,7 @@ fn mount_ops_match_oracle() {
                     "notes/alpha.md",
                     MP_FS,
                     "docs/alpha-copy.md",
+                    None,
                     None,
                 ))
             }),
@@ -146,6 +151,7 @@ fn mount_ops_match_oracle() {
                     MP_DB,
                     "imported/alpha.md",
                     None,
+                    None,
                 ))
             }),
         ),
@@ -158,6 +164,7 @@ fn mount_ops_match_oracle() {
                     "notes/intro.md",
                     MP_FS,
                     "out/intro.md",
+                    None,
                     None,
                 ))
             }),
@@ -172,6 +179,7 @@ fn mount_ops_match_oracle() {
                     MP_EMPTY,
                     "images/logo.png",
                     None,
+                    None,
                 ))
             }),
         ),
@@ -179,7 +187,7 @@ fn mount_ops_match_oracle() {
             "copy_missing_source",
             Box::new(|db, rt| {
                 rt.block_on(mf::mount_file_copy(
-                    db, MP_DB, "nope.md", MP_EMPTY, "x.md", None,
+                    db, MP_DB, "nope.md", MP_EMPTY, "x.md", None, None,
                 ))
             }),
         ),
@@ -193,6 +201,7 @@ fn mount_ops_match_oracle() {
                     "reference.txt",
                     MP_EMPTY,
                     "moved/reference.txt",
+                    None,
                 ))
             }),
         ),
@@ -205,6 +214,7 @@ fn mount_ops_match_oracle() {
                     "notes/beta.txt",
                     MP_FS,
                     "notes/beta-renamed.txt",
+                    None,
                 ))
             }),
         ),
@@ -217,6 +227,7 @@ fn mount_ops_match_oracle() {
                     "notes/intro.md",
                     MP_FS,
                     "moved-intro.md",
+                    None,
                 ))
             }),
         ),
@@ -229,6 +240,7 @@ fn mount_ops_match_oracle() {
                     "notes/intro.md",
                     MP_DB,
                     "reference.txt",
+                    None,
                 ))
             }),
         ),
@@ -340,6 +352,7 @@ fn mount_ops_match_oracle() {
                     "notes/intro.md",
                     None,
                     Some("notes/intro2.md".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -351,6 +364,7 @@ fn mount_ops_match_oracle() {
                     MP_DB,
                     "images/logo.png",
                     Some("A fresh caption.".to_string()),
+                    None,
                     None,
                 ))
             }),
@@ -364,6 +378,7 @@ fn mount_ops_match_oracle() {
                     "reference.txt",
                     Some("nope".to_string()),
                     None,
+                    None,
                 ))
             }),
         ),
@@ -376,6 +391,7 @@ fn mount_ops_match_oracle() {
                     "images/logo.png",
                     Some("Moved & described.".to_string()),
                     Some("images/badge.png".to_string()),
+                    None,
                 ))
             }),
         ),
@@ -386,6 +402,7 @@ fn mount_ops_match_oracle() {
                     db,
                     MP_DB,
                     "notes/intro.md",
+                    None,
                     None,
                     None,
                 ))
@@ -400,6 +417,7 @@ fn mount_ops_match_oracle() {
                     "ghost.md",
                     None,
                     Some("ghost2.md".to_string()),
+                    None,
                 ))
             }),
         ),

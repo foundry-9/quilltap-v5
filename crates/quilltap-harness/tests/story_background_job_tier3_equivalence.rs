@@ -698,6 +698,7 @@ fn story_background_job_matches_oracle() {
             executor: &executor,
             now_ms: spec.frozen_now_ms,
             declarations_for: &declarations_for,
+            blob_webp: None,
         };
         let payload = StoryBackgroundPayload {
             chat_id: case.id.clone(),
@@ -924,6 +925,7 @@ fn story_background_job_runner_registration_e2e() {
         executor: CheapLlmTaskExecutor::new(),
         now_ms: spec.frozen_now_ms,
         declarations_for,
+        blob_webp: None,
     };
     let mut reg = HandlerRegistry::new();
     reg.register("STORY_BACKGROUND_GENERATION", Box::new(handler));

@@ -949,7 +949,7 @@ fn characters_mutations_match_oracle() {
                 let mount = writers.mount_index().unwrap().connection();
                 let main = writers.main().connection();
                 let r = quilltap_core::photos::character_gallery_service::save_link_to_character_gallery(
-                    main, mount, ARIA, &source_link, None, &[], FIXED_KEPT_AT,
+                    main, mount, ARIA, &source_link, None, &[], FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
                 );
                 Ok(r.map_err(|e| format!("{e:?}")))
             }))
@@ -1051,7 +1051,7 @@ fn characters_mutations_match_oracle() {
                                 let mount = writers.mount_index().unwrap().connection();
                                 let main = writers.main().connection();
                                 let r = quilltap_core::photos::character_gallery_service::save_link_to_character_gallery(
-                                    main, mount, ARIA, &link, caption.as_deref(), &tags, FIXED_KEPT_AT,
+                                    main, mount, ARIA, &link, caption.as_deref(), &tags, FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
                                 );
                                 Ok(r.map_err(|e| format!("{e:?}")))
                             }))

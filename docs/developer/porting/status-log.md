@@ -142607,3 +142607,92 @@ with `Internal("Blob row not visible after upsert: mp-1/art/plate.png (link
 …)")`; green after. Two companion arms: no codec is byte-preserving; the
 `false` flag wins over a wired codec. The red-first IS the mutation proof
 for "read back by the pre-normalization path".
+
+### Unit 2 — the encoder threaded to all ten sites + the census (core 0.0.994, harness 0.0.891, host 0.0.147, web 0.0.171)
+
+**The measurement that shaped the threading (Tier 1 item 3, both sites).** At
+the pin every v4 upload bridge passes `transcodeImages: true`
+(`user-uploads-bridge.ts:116`, `project-store-bridge.ts:153`,
+`lantern-store-bridge.ts:116`, `character-vault-bridge.ts:224`), and
+`storeMountFile` transcodes (`store-file.ts:250`) and THEN hands the result to
+`linkBlobContent`, which normalizes (`doc-mount-file-links.repository.ts:934`).
+The doc-edit tool likewise transcodes (`blob-handlers.ts:131`) and then
+`docMountBlobs.create` normalizes. **So v4 runs BOTH, in that order, through
+ONE `sharp`.** Sites 8 and 9 keep their pre-transcode and gain the
+normalization after it; neither is retired and neither is a divergence. After
+a successful lossy encode the normalization declines (lossy → lossy is
+generation loss), so on those two sites it is observable only where the
+pre-transcode passes bytes through.
+
+**Where each site gets its encoder** (the closed record now lives in
+`normalize_blob_image.rs`'s module doc, replacing the OPEN note):
+
+| # | site | encoder source | callers edited |
+|---|---|---|---|
+| 1 | `doc_write_blob` | `DocEditToolContext.blob_webp` (NEW, `SharedBlobWebp`) ← the tool runner's byte store | `executor.rs` ×2; the tool's pre-transcode made REAL (it was a documented PASSTHROUGH seam) |
+| 2 | `save_to_character_gallery` (+ `save_link_…`, `commit_album_save`) | a `blob_webp` argument | `api/characters.rs` (the engine's `blob_webp` for save-by-id; the byte store's for the avatar-roll album save), the web routes' `HostImageCodec` |
+| 3 | `save_to_user_gallery` | `FileBytesStore::blob_webp()` (NEW default method, `None`) | none |
+| 4 | `save_image_to_album` | `FileBytesStore::blob_webp()` | none |
+| 5 | `write_main_avatar_to_vault` | `PixelCodecWebp` over its own `codec` | none |
+| 6 | `store_blob_to_mount` | a `blob_webp` argument on `write_character_avatar_to_vault` / `write_lantern_background_to_mount_store` | `api/wardrobe.rs` (engine), `api/images.rs` (`PixelCodecWebp` over the route's codec), the two job handlers' NEW `blob_webp` field (host spine wires `HostImageCodec`) |
+| 7 | `file_ops::write_dest_bytes` (copy / move / write) | a `webp` argument | the four `api/mount_files.rs` handlers + their engine arms (`ready_db` → `ready_db_and_blob_webp`) |
+| 8 | `store_mount_blob` | `PixelCodecWebp` over its own `codec` | none |
+| 9 | `store_mount_file` | its existing `webp` argument | none |
+| 10 | `save_generated_image` | `ImageGenDeps.blob_webp` (NEW) + `TypedImageGeneration.blob_webp` | host spine wires `HostImageCodec` |
+
+**Why an adapter over the site's own pixel codec, not the engine's
+`blob_webp`, at sites 5 and 8 (a measured deviation from the order's letter).**
+v4 has ONE `sharp`: the bridges' pre-transcode and the normalization encode
+through the same module. A site whose chain already carries a `PixelCodec`
+normalizing through a SECOND encoder could disagree with its own
+pre-transcode — and on every production path the pixel codec IS the host's
+`HostImageCodec`, the very encoder the engine's `blob_webp` holds. Threading
+the engine's `blob_webp` into `store_mount_blob` instead would have changed
+the signatures of `write_user_upload_to_mount_store` /
+`write_project_file_to_mount_store`, whose callers include
+`services/quilltap_import/**` (MUST-NOT-TOUCH). `PixelCodecWebp` encodes as
+`blob-transcode.ts` does: quality as given, `effort: 4`, never animated (a
+unit pin).
+
+**The `None` arm, decided ONCE (Tier 1 item 2).** `blob_codec_or_refusing`
+hands every site the `RefusingWebpTranscoder` when no encoder is wired — the
+`mount_files.rs:630` precedent. v4 has no encoder-less write path at all, so
+the refusing encoder's `Err` (v4's `sharp`-threw arm: the original bytes
+stored, the reason said aloud) is the only faithful choice.
+
+**Out-of-mandate edits, each marked in the code** (§R.10(j) and this lane's
+necessary composition wiring): `api/engine.rs` — the bodies of six EXISTING
+arms (`CharacterPhotoSaveById`, `WardrobePreviewAvatar`, `MountFileMove`,
+`MountFileCopy`, `MountFileUpdate`, `MountFileWriteRaw`), no variant, no fence;
+`crates/quilltap-host/src/spine.rs` — three `blob_webp: Some(Arc::new(
+HostImageCodec))` lines (the two job handlers and the image-generation deps:
+the production wiring cannot live anywhere else); `crates/quilltap-web/src/
+characters_routes.rs` — two call sites pass `&HostImageCodec`;
+`photos/avatar_rolls_service.rs` (a caller of site 2). Harness/web test files
+that construct the widened structs or call the widened functions pass "no
+encoder" in THIS commit (`RefusingWebpTranscoder` / `None` /
+`Default::default()`), so the commit is behaviour-neutral for every existing
+family; the decodable rows and the host encoder arrive per family after it.
+
+**Findings outside this lane's ownership (for the unifier / P4.106):**
+`quilltap_import/reset.rs:150` (`reset_builtins`) and `seed.rs:83`
+(`seed_from_imports`) call `execute_import(…, None)` — so their file imports
+reach `store_mount_blob` with `NotConfiguredPixelCodec` and, through the
+adapter, the refusing encoder: bundled sample images are stored un-normalized
+where v4 normalizes them. `reset_builtins` has a `codec` in scope and does not
+pass it. MUST-NOT-TOUCH here (`services/quilltap_import/**`); named for the
+owner. Likewise `api/files.rs` (`FileUpload`) and `api/almanack.rs` hand the
+user-uploads bridge `NotConfiguredPixelCodec` while v4's
+`writeUserUploadToMountStore` transcodes with real `sharp`
+(`user-uploads-bridge.ts:116`, `transcodeImages: true`) — the `files.rs:1116`
+comment's reasoning ("a document never transcodes") is refuted by that hunk;
+see the lane's later unit for what landed.
+
+**The census** — NEW `crates/quilltap-harness/tests/blob_write_sites_census.rs`:
+12 blob writes / 12 `with_blob_codec` across eleven files, plus the ONE
+EXEMPT file (`quilltap_import/document_stores.rs`, asserted still to pass
+`normalize_images: false`). Mutation proofs, each reverted by file backup:
+`generate_image.rs` built on `::new` → `tools/generate_image.rs: 1 blob writes
+/ 0 with_blob_codec — the census says 1 / 1`; the `file_ops.rs` row deleted →
+`… 1 blob write(s) the census does not know` + the arithmetic line; the
+import's `false` flipped → `(EXEMPT) no longer passes normalize_images: false`.

@@ -561,6 +561,11 @@ pub struct TypedImageGeneration<I, C, M, A, T, L, F> {
     pub now_ms: i64,
     /// `Fn(provider) -> ImageDeclarations` (the plugin-registry seam).
     pub declarations_for: F,
+    /// P4.104: the encoder the Lantern blob write normalizes through (v4
+    /// `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`.
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 impl<I, C, M, A, T, L, F> ImageGenerationRunner for TypedImageGeneration<I, C, M, A, T, L, F>
@@ -591,6 +596,7 @@ where
                 executor: &self.executor,
                 now_ms: self.now_ms,
                 declarations_for: &self.declarations_for,
+                blob_webp: self.blob_webp.clone(),
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })
@@ -618,6 +624,11 @@ pub struct ImageGenDeps<'a, I, C, M, A, T, L> {
     /// AND `resolveLoraSupport` — `84f33ce94` widened this seam from the
     /// orientation half to v4's whole declaration set.
     pub declarations_for: &'a ImageDeclarationsFn,
+    /// P4.104: the encoder the Lantern blob write normalizes through (v4
+    /// `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`.
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 // ===========================================================================
@@ -1199,6 +1210,7 @@ pub(crate) fn save_generated_image(
     user_id: &str,
     chat_id: Option<&str>,
     metadata: &SaveMetadata,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<GeneratedImageResult, String> {
     let mime_type = original_mime_type;
     let sha256 = sha256_of_buffer(&converted.bytes);
@@ -1219,7 +1231,12 @@ pub(crate) fn save_generated_image(
     let desired_path = format!("tool/{safe_name}");
     let final_path = normalise_blob_relative_path(&desired_path, &converted.mime_type);
 
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: `linkBlobContent` normalizes whatever arrives (v4's Lantern
+    // bridge runs `storeMountFile` with `transcodeImages: true`, then
+    // normalizes). The `converted` bytes are already lossy WebP, which the
+    // normalization declines; a provider's large LOSSLESS WebP — which the
+    // `convertToWebP` policy above skips as already-WebP — is what it moves.
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
     // `unique-suffix` collision strategy: pick a free path (v4 `resolveUniqueRelativePath`).
     let unique_path = resolve_unique_relative_path(mount, mount_point_id, &final_path)
         .map_err(|e| format!("Failed to save generated image: {e}"))?;
@@ -2696,6 +2713,7 @@ where
         let uid = ctx.user_id.clone();
         let chat_id = ctx.chat_id.clone();
         let lantern_mount = lantern_mount.clone();
+        let blob_webp = deps.blob_webp.clone();
         let result = db
             .write(move |writers| {
                 let Some(mount_w) = writers.mount_index() else {
@@ -2714,6 +2732,9 @@ where
                     &uid,
                     chat_id.as_deref(),
                     &metadata,
+                    crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                        blob_webp.as_deref(),
+                    ),
                 ))
             })
             .await
@@ -2920,6 +2941,7 @@ mod duration_tests {
             executor: &CheapLlmTaskExecutor::new(),
             now_ms: 1_700_000_000_000,
             declarations_for: &declarations,
+            blob_webp: None,
         };
         let tool_input = ImageGenerationToolInput {
             prompt: "a prompt".to_string(),

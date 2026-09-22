@@ -181,6 +181,9 @@ pub async fn mount_file_move(
     source_path: &str,
     dest_mount_point_id: &str,
     dest_path: &str,
+    // P4.104: the encoder the blob arm normalizes through (`None` → the
+    // refusing encoder, v4's `sharp`-threw arm).
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     let (mp, sp, dmp, dp) = (
         mount_point_id.to_string(),
@@ -197,6 +200,9 @@ pub async fn mount_file_move(
             &dmp,
             &dp,
             extractor.as_ref(),
+            crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                webp.as_deref(),
+            ),
         )
         .map(|r| r.to_json())
     })
@@ -219,6 +225,9 @@ pub async fn mount_file_copy(
     dest_mount_point_id: &str,
     dest_path: &str,
     force: Option<bool>,
+    // P4.104: the encoder the blob arm normalizes through (`None` → the
+    // refusing encoder, v4's `sharp`-threw arm).
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     let opts = crate::services::mount_index::file_ops::CopyOpts {
         source_mount_point_id: mount_point_id.to_string(),
@@ -229,8 +238,15 @@ pub async fn mount_file_copy(
     };
     let out = run_mount_op(db, move |conn| {
         let extractor = default_text_extractor();
-        crate::services::mount_index::file_ops::copy_file(conn, &opts, extractor.as_ref())
-            .map(|r| r.to_json())
+        crate::services::mount_index::file_ops::copy_file(
+            conn,
+            &opts,
+            extractor.as_ref(),
+            crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                webp.as_deref(),
+            ),
+        )
+        .map(|r| r.to_json())
     })
     .await;
     match out {
@@ -356,6 +372,9 @@ pub async fn mount_file_update(
     path: &str,
     description: Option<String>,
     rename: Option<String>,
+    // P4.104: the encoder the blob arm normalizes through (`None` → the
+    // refusing encoder, v4's `sharp`-threw arm).
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     if description.is_none() && rename.is_none() {
         // v4's zod `.refine` message, verbatim.
@@ -378,6 +397,9 @@ pub async fn mount_file_update(
                 &mp,
                 rename_to,
                 extractor.as_ref(),
+                crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                    webp.as_deref(),
+                ),
             )?;
             current_path = moved.dest_path;
         }
@@ -677,6 +699,9 @@ pub async fn mount_file_write_raw(
     path: &str,
     data_base64: &str,
     force: Option<bool>,
+    // P4.104: the encoder the blob arm normalizes through (`None` → the
+    // refusing encoder, v4's `sharp`-threw arm).
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 ) -> Response {
     let data = node_base64_decode(data_base64);
     let (mp, p) = (mount_point_id.to_string(), path.to_string());
@@ -690,6 +715,9 @@ pub async fn mount_file_write_raw(
             &data,
             force,
             extractor.as_ref(),
+            crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                webp.as_deref(),
+            ),
         )
     })
     .await;

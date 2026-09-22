@@ -79,6 +79,10 @@ pub struct DocEditToolContext {
     /// `None` preserves the historic FsSeam refusal (P4.6bg S2). Threaded straight
     /// into [`crate::doc_edit::path_resolver::resolve_doc_edit_path`].
     pub files_dir: Option<std::path::PathBuf>,
+    /// P4.104: the host encoder `doc_write_blob` transcodes and normalizes its
+    /// bytes through (v4 `blob-handlers.ts:131` + `linkBlobContent`). Default =
+    /// none wired → the refusing encoder, v4's `sharp`-threw arm.
+    pub blob_webp: crate::services::mount_index::normalize_blob_image::SharedBlobWebp,
 }
 
 /// Map a resolved [`DocEditScope`] to the announcement's [`LibrarianScope`]. v4's
@@ -978,6 +982,7 @@ mod tests {
             character_id: character_id.map(String::from),
             operator_override: false,
             files_dir: None,
+            blob_webp: Default::default(),
         }
     }
 

@@ -238,6 +238,7 @@ fn mount_write_matches_oracle() {
                     "raw/out.md",
                     &b64(b"# Raw\n\nbyte-preserving write\n"),
                     None,
+                    None,
                 ))
             }),
         ),
@@ -250,6 +251,7 @@ fn mount_write_matches_oracle() {
                     MP_DB,
                     "notes/intro.md",
                     &b64(b"overwrite attempt"),
+                    None,
                     None,
                 ))
             }),

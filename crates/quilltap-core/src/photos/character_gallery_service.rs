@@ -250,6 +250,7 @@ pub fn save_to_character_gallery(
     caption: Option<&str>,
     tags: &[String],
     kept_at: &str,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<Value, GalleryError> {
     let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
         return Err(GalleryError::CharacterNotFound);
@@ -324,7 +325,11 @@ pub fn save_to_character_gallery(
     };
     let desired_path = build_photos_relative_path(&desired_leaf);
     let relative_path = resolve_unique_relative_path(mount, &vault.mount_point_id, &desired_path)?;
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: normalized through the host's encoder (v4
+    // `character-gallery-service.ts:172` → `linkBlobContent`, default
+    // `normalizeImages`). v4 answers the PRE-normalization `relativePath` and
+    // `sha256` (its locals, not `link.*`) — so does this function.
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
     links.ensure_folder_path(&vault.mount_point_id, PHOTOS_FOLDER)?;
 
     let result = links.link_blob_content(&LinkBlobInput {
@@ -384,6 +389,7 @@ pub fn save_link_to_character_gallery(
     caption: Option<&str>,
     tags: &[String],
     kept_at: &str,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<Value, GalleryError> {
     let links = DocMountFileLinksRepository::new(mount);
     let Some(source_link) = links.find_by_id_with_content(source_link_id)? else {
@@ -421,6 +427,7 @@ pub fn save_link_to_character_gallery(
         caption,
         tags,
         kept_at,
+        blob_webp,
     )
 }
 

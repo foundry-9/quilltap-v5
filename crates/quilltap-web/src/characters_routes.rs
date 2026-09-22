@@ -202,7 +202,17 @@ async fn save_via_link(
     let cid = character_id.to_string();
     let lid = link_id.to_string();
     write_gallery(db, move |main, mount| {
-        save_link_to_character_gallery(main, mount, &cid, &lid, caption.as_deref(), &tags, &kept_at)
+        // P4.104: the album write normalizes through the host's encoder.
+        save_link_to_character_gallery(
+            main,
+            mount,
+            &cid,
+            &lid,
+            caption.as_deref(),
+            &tags,
+            &kept_at,
+            &HostImageCodec,
+        )
     })
     .await
 }
@@ -230,6 +240,8 @@ async fn save_bytes(
             caption.as_deref(),
             &tags,
             &kept_at,
+            // P4.104: the album write normalizes through the host's encoder.
+            &HostImageCodec,
         )
     })
     .await

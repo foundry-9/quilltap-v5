@@ -109,6 +109,7 @@ pub fn write_character_avatar_to_vault(
     content: &[u8],
     content_type: &str,
     description: Option<&str>,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<WrittenImage, DbError> {
     let Some(mount_point_id) = resolve_character_vault_mount(main, mount, character_id) else {
         return Err(DbError::Internal(format!(
@@ -125,6 +126,7 @@ pub fn write_character_avatar_to_vault(
         content_type,
         &safe,
         description,
+        blob_webp,
     )
 }
 
@@ -175,7 +177,11 @@ pub fn write_main_avatar_to_vault(
     );
 
     const MAIN_AVATAR_PATH: &str = "images/avatar.webp";
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: normalized through the SAME encoder as the transcode above — v4's
+    // one `sharp` (see `PixelCodecWebp`). v4 answers the pre-normalization
+    // mime/sha (the bridge's `transcoded`), and so does this function.
+    let blob_webp = crate::services::mount_index::normalize_blob_image::PixelCodecWebp(codec);
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, &blob_webp);
     links.ensure_folder_path(&mount_point_id, "images")?;
     // Drop any existing link at the canonical main path (GC-safe — takes the
     // blob when it was the last reference).
@@ -226,6 +232,7 @@ pub fn write_lantern_background_to_mount_store(
     content_type: &str,
     subfolder: &str,
     description: Option<&str>,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<WrittenImage, DbError> {
     let Some(mount_point_id) = resolve_lantern_backgrounds_mount(main, mount) else {
         return Err(DbError::Internal(
@@ -242,6 +249,7 @@ pub fn write_lantern_background_to_mount_store(
         content_type,
         &safe,
         description,
+        blob_webp,
     )
 }
 
@@ -259,6 +267,7 @@ fn store_blob_to_mount(
     content_type: &str,
     original_file_name: &str,
     description: Option<&str>,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<WrittenImage, DbError> {
     let rel = normalise_relative_path(desired_relative_path)?;
     // Pass-through transcode: storedMimeType == originalMimeType, sha over bytes.
@@ -269,7 +278,12 @@ fn store_blob_to_mount(
     // `unique-suffix` collision strategy.
     final_path = resolve_unique_relative_path(mount, mount_point_id, &final_path)?;
 
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: `linkBlobContent` normalizes whatever arrives (v4's bridges both
+    // pass `transcodeImages: true` and then normalize, `store-file.ts:250` +
+    // `:281`). The callers hand over already-converted WebP, which the
+    // normalization declines; a large lossless WebP or a bitmap the caller did
+    // not convert is what it moves.
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
     // ensureFolderPath when the path has a real parent folder.
     if let Some(dir) = posix_dirname(&final_path) {
         links.ensure_folder_path(mount_point_id, &dir)?;

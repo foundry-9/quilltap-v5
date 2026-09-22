@@ -457,7 +457,7 @@ async fn wardrobe_routes_equivalence() {
             "regenerateAvatar" => {
                 chat_regenerate_avatar(&db, user, case.chat_id.as_deref().unwrap(), body).await
             }
-            "previewAvatar" => wardrobe_preview_avatar(&db, &renderer, user, body, NOW).await,
+            "previewAvatar" => wardrobe_preview_avatar(&db, &renderer, user, body, NOW, None).await,
             "characterWardrobeList" => character_wardrobe_list(
                 &db,
                 user,

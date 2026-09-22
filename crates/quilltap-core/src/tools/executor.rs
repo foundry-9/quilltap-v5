@@ -1382,6 +1382,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // in U5 so character tools reach the general/legacy-project/fs-mount
             // branches; `None` preserves today's FsSeam refusal.
             files_dir: None,
+            // P4.104: the byte store is the host's image boundary.
+            blob_webp: crate::services::mount_index::normalize_blob_image::SharedBlobWebp(
+                self.file_bytes.blob_webp(),
+            ),
         }
     }
 
@@ -1727,6 +1731,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             character_id: ctx.character_id.clone(),
             operator_override: false,
             files_dir: None,
+            // P4.104: `doc_write_blob` normalizes through the host's encoder,
+            // reached through the byte store (the host's image boundary).
+            blob_webp: crate::services::mount_index::normalize_blob_image::SharedBlobWebp(
+                self.file_bytes.blob_webp(),
+            ),
         };
         let db = self.db.clone();
         let (tool_result, pending) = db

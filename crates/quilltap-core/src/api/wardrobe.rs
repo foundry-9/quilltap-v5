@@ -925,10 +925,15 @@ pub async fn wardrobe_preview_avatar(
     user_id: &str,
     body: Value,
     now: &str,
+    // P4.104: the encoder the `images/history/` vault write normalizes through
+    // (`None` → the refusing encoder, v4's `sharp`-threw arm).
+    blob_webp: Option<
+        std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+    >,
 ) -> Response {
     track_activity(
         ActivityKind::Image,
-        run_wardrobe_preview_avatar(db, renderer, user_id, body, now),
+        run_wardrobe_preview_avatar(db, renderer, user_id, body, now, blob_webp),
     )
     .await
 }
@@ -939,6 +944,9 @@ async fn run_wardrobe_preview_avatar(
     user_id: &str,
     body: Value,
     now: &str,
+    blob_webp: Option<
+        std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+    >,
 ) -> Response {
     let parsed = match parse_preview_body(&body) {
         Ok(p) => p,
@@ -1126,6 +1134,9 @@ async fn run_wardrobe_preview_avatar(
             &image_for_write.buffer,
             &image_for_write.mime_type,
             Some(&description),
+            crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                blob_webp.as_deref(),
+            ),
         )?;
         // The vault bridge transcodes bitmap uploads; the FileEntry records the
         // post-transcode mime/size (v4's comment, preserved).

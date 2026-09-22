@@ -457,6 +457,7 @@ fn doc_fs_matches_oracle() {
             character_id: op.ctx.character_id.clone(),
             operator_override: op.ctx.operator_override,
             files_dir: Some(files_dir.clone()),
+            blob_webp: Default::default(),
         };
         // The Librarian announcement is a documented seam — NOT posted (the oracle
         // mocks its poster to a no-op), so chat_messages stays untouched.

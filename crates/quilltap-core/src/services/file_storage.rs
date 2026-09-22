@@ -1139,7 +1139,15 @@ pub fn store_mount_blob(
     let mut final_path = normalise_blob_relative_path(&rel, &transcoded.stored_mime_type);
     final_path = resolve_unique_relative_path(mount, input.mount_point_id, &final_path)?;
 
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: `linkBlobContent` normalizes through the SAME encoder the
+    // pre-transcode above used — v4's one `sharp` (`store-file.ts:250` then
+    // `doc-mount-file-links.repository.ts:934`). After a successful lossy
+    // encode the normalization declines; it moves bytes only where the
+    // pre-transcode passed them through (a large lossless WebP's floor is the
+    // normalization's, not the bridge's — both run `transcodeToWebP`, so they
+    // agree).
+    let blob_webp = crate::services::mount_index::normalize_blob_image::PixelCodecWebp(codec);
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, &blob_webp);
     if let Some(dir) = final_path.rfind('/').and_then(|i| {
         if i > 0 {
             Some(final_path[..i].to_string())
@@ -1814,6 +1822,19 @@ impl crate::photos::save_image_to_album::FileBytesStore for ProductionFileBytes 
                     .map(|(entry, _)| entry)
             })
             .map_err(|e| e.to_string())
+    }
+
+    /// P4.104: the photo writes normalize through this store's own pixel codec
+    /// (the host's `HostImageCodec` in production) — see
+    /// [`crate::services::mount_index::normalize_blob_image::PixelCodecWebp`].
+    fn blob_webp(
+        &self,
+    ) -> Option<Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>> {
+        Some(Arc::new(
+            crate::services::mount_index::normalize_blob_image::PixelCodecWebp(Arc::clone(
+                &self.codec,
+            )),
+        ))
     }
 }
 

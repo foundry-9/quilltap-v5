@@ -259,6 +259,7 @@ fn doc_enum_matches_oracle() {
         character_id: Some(spec.character_id.clone()),
         operator_override: false,
         files_dir: None,
+        blob_webp: Default::default(),
     };
 
     for (i, op) in spec.ops.iter().enumerate() {

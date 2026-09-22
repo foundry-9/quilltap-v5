@@ -390,6 +390,7 @@ fn doc_opacity_matches_oracle() {
         }),
         operator_override: false,
         files_dir: None,
+        blob_webp: Default::default(),
     };
 
     let pool = TieredMountPool {

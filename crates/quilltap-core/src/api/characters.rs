@@ -1691,6 +1691,11 @@ pub async fn character_photo_save_by_id(
     character_id: &str,
     file_id: Option<&str>,
     link_id: Option<&str>,
+    // P4.104: the engine's `blob_webp` (`None` → the refusing encoder, v4's
+    // `sharp`-threw arm) — the album write normalizes its blob through it.
+    blob_webp: Option<
+        std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+    >,
 ) -> Response {
     // v4 `saveByIdSchema.refine`: exactly one of fileId/linkId.
     match (file_id, link_id) {
@@ -1720,6 +1725,9 @@ pub async fn character_photo_save_by_id(
                 None,
                 &[],
                 &kept_at,
+                crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                    blob_webp.as_deref(),
+                ),
             ),
         )
     })
@@ -1962,8 +1970,21 @@ async fn save_avatar_roll_to_album(
                 }
             };
             let main = w.main().connection();
+            // P4.104: the album write normalizes through the byte store's
+            // encoder (the host's image boundary — `ready_save_image`).
+            let blob_webp = bytes.blob_webp();
             Ok(svc::commit_album_save(
-                main, mount, &cid, &fid, &data, &name, &mime, &kept_at,
+                main,
+                mount,
+                &cid,
+                &fid,
+                &data,
+                &name,
+                &mime,
+                &kept_at,
+                crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                    blob_webp.as_deref(),
+                ),
             ))
         })
         .await;

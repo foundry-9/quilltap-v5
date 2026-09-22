@@ -395,6 +395,7 @@ fn write_dest_bytes(
     dest_rel: &str,
     bytes: &[u8],
     extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<String, MountFileError> {
     let sha = sha256_hex(bytes);
     let dest_file_name = node_basename(dest_rel).to_string();
@@ -403,7 +404,12 @@ fn write_dest_bytes(
         return Ok(write_fs_file_bytes(conn, dest_mount, dest_rel, bytes, extractor)?.0);
     }
 
-    let links = DocMountFileLinksRepository::new(conn);
+    // P4.104: the binary arm below reaches `linkBlobContent`, which normalizes
+    // (v4 `file-ops.ts:742`, default `normalizeImages`; `file-ops.ts` is on
+    // `normalize-blob-image.ts:11-15`'s own list of the paths that skipped
+    // transcoding). v4 still answers the PRE-normalization `sha` and emits the
+    // PRE-normalization path — so does this function.
+    let links = DocMountFileLinksRepository::with_blob_codec(conn, webp);
     if let Some(native) = detect_native_text(dest_rel) {
         // v4 `bytes.toString('utf-8')` — lossy.
         let text = String::from_utf8_lossy(bytes).into_owned();
@@ -632,6 +638,7 @@ pub fn copy_file(
     conn: &Connection,
     opts: &CopyOpts,
     extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<FileOpResult, MountFileError> {
     let source_mount = load_mount(conn, &opts.source_mount_point_id)?;
     let dest_mount = load_mount(conn, &opts.dest_mount_point_id)?;
@@ -680,7 +687,7 @@ pub fn copy_file(
         };
         if opts.force {
             let bytes = read_source_bytes(conn, &source_mount, &source_rel, &source_info)?;
-            dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor)?;
+            dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor, webp)?;
             strategy = FileOpStrategy::ByteCopy;
         } else {
             // No group: a copy is an independent file that merely starts out
@@ -739,7 +746,7 @@ pub fn copy_file(
     } else {
         // Cross-storage: byte copy through the appropriate writer.
         let bytes = read_source_bytes(conn, &source_mount, &source_rel, &source_info)?;
-        dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor)?;
+        dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor, webp)?;
         size_bytes = bytes.len() as i64;
         strategy = FileOpStrategy::ByteCopy;
     }
@@ -774,6 +781,7 @@ pub fn move_file(
     dest_mount_point_id: &str,
     dest_path: &str,
     extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<FileOpResult, MountFileError> {
     let source_mount = load_mount(conn, source_mount_point_id)?;
     let dest_mount = load_mount(conn, dest_mount_point_id)?;
@@ -860,7 +868,7 @@ pub fn move_file(
     } else {
         // Cross-storage move = copy then delete source.
         let bytes = read_source_bytes(conn, &source_mount, &source_rel, &source_info)?;
-        dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor)?;
+        dest_sha = write_dest_bytes(conn, &dest_mount, &dest_rel, &bytes, extractor, webp)?;
         size_bytes = bytes.len() as i64;
         delete_at_source(conn, &source_mount, &source_rel, &source_info)?;
         strategy = FileOpStrategy::ByteCopy;
@@ -1035,6 +1043,7 @@ pub fn write_file(
     data: &[u8],
     force: bool,
     extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<serde_json::Value, MountFileError> {
     let mp = load_mount(conn, mount_point_id)?;
     let rel = normalise_relative_path(relative_path)?;
@@ -1050,7 +1059,7 @@ pub fn write_file(
     }
 
     let source_sha = sha256_hex(data);
-    let dest_sha = write_dest_bytes(conn, &mp, &rel, data, extractor)?;
+    let dest_sha = write_dest_bytes(conn, &mp, &rel, data, extractor, webp)?;
     if dest_sha != source_sha {
         return Err(MountFileError::FileOp(FileOpError::new(
             format!("Checksum mismatch after write: source {source_sha} != dest {dest_sha}"),

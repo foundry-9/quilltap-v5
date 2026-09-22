@@ -570,10 +570,11 @@ pub struct DocMountFileLinksRepository<'c> {
     conn: &'c Connection,
     /// The WebP encoder [`Self::link_blob_content`] normalizes images through
     /// (v4 `186eb09cb`'s chokepoint). v4 imports `sharp` at module scope; v5
-    /// injects it, and `None` — the default every existing construction site
-    /// keeps — means this host has no encoder, so the write stores the original
-    /// bytes. That is byte-for-byte v4's own behaviour when `sharp` throws, so
-    /// the un-wired default is a faithful arm rather than a hole; see
+    /// injects it. `None` (the [`Self::new`] default) is for READS, deletes and
+    /// link-only writes: a blob WRITE built that way stores the original bytes
+    /// where v4 stores WebP, so every write site builds
+    /// [`Self::with_blob_codec`] instead (P4.104; enforced by the
+    /// `blob_write_sites_census`). See
     /// [`crate::services::mount_index::normalize_blob_image`].
     blob_codec: Option<&'c dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
 }

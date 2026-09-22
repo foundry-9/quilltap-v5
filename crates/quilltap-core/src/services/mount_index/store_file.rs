@@ -194,7 +194,13 @@ pub fn store_mount_file(
 ) -> Result<StoreFileResult, MountFileError> {
     let mp = load_mount(mount, &input.mount_point_id)?;
     let rel = normalise_relative_path(&input.relative_path)?;
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: the blob write below normalizes through the same encoder the
+    // pre-transcode uses — v4 runs BOTH (`store-file.ts:250` transcodes when
+    // `transcodeImages`, then `linkBlobContent` normalizes whatever arrives).
+    // After a successful pre-transcode the bytes are lossy WebP, which the
+    // normalization declines; with `transcode_images: false` it is the
+    // normalization alone that moves a PNG.
+    let links = DocMountFileLinksRepository::with_blob_codec(mount, webp);
 
     // ------------------------------------------------------------------
     // Filesystem mounts (auto storage): bytes to disk, indexed by the scanner.

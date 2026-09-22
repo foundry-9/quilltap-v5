@@ -2504,14 +2504,17 @@ impl CoreEngine {
                 character_id,
                 file_id,
                 link_id,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                // the album write normalizes through the engine's `blob_webp`.
+                Ok((db, blob_webp)) => {
                     super::characters::character_photo_save_by_id(
                         &db,
                         SINGLE_USER_ID,
                         &character_id,
                         file_id.as_deref(),
                         link_id.as_deref(),
+                        blob_webp,
                     )
                     .await
                 }
@@ -3943,14 +3946,17 @@ impl CoreEngine {
                 source_path,
                 dest_mount_point_id,
                 dest_path,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                // the blob arm normalizes through the engine's `blob_webp`.
+                Ok((db, blob_webp)) => {
                     super::mount_files::mount_file_move(
                         &db,
                         &mount_point_id,
                         &source_path,
                         &dest_mount_point_id,
                         &dest_path,
+                        blob_webp,
                     )
                     .await
                 }
@@ -3962,8 +3968,10 @@ impl CoreEngine {
                 dest_mount_point_id,
                 dest_path,
                 force,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                // the blob arm normalizes through the engine's `blob_webp`.
+                Ok((db, blob_webp)) => {
                     super::mount_files::mount_file_copy(
                         &db,
                         &mount_point_id,
@@ -3971,6 +3979,7 @@ impl CoreEngine {
                         &dest_mount_point_id,
                         &dest_path,
                         force,
+                        blob_webp,
                     )
                     .await
                 }
@@ -4031,14 +4040,17 @@ impl CoreEngine {
                 path,
                 description,
                 rename,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                // the blob arm normalizes through the engine's `blob_webp`.
+                Ok((db, blob_webp)) => {
                     super::mount_files::mount_file_update(
                         &db,
                         &mount_point_id,
                         &path,
                         description,
                         rename,
+                        blob_webp,
                     )
                     .await
                 }
@@ -4085,14 +4097,17 @@ impl CoreEngine {
                 path,
                 data,
                 force,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                // the blob arm normalizes through the engine's `blob_webp`.
+                Ok((db, blob_webp)) => {
                     super::mount_files::mount_file_write_raw(
                         &db,
                         &mount_point_id,
                         &path,
                         &data,
                         force,
+                        blob_webp,
                     )
                     .await
                 }
@@ -5341,12 +5356,16 @@ impl CoreEngine {
             },
             Request::WardrobePreviewAvatar { body } => match self.ready_avatar_preview() {
                 Ok((db, renderer)) => {
+                    // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING arm's body:
+                    // the vault write normalizes through the engine's `blob_webp`.
+                    let blob_webp = self.ready_db_and_blob_webp().ok().and_then(|(_, w)| w);
                     super::wardrobe::wardrobe_preview_avatar(
                         &db,
                         &renderer,
                         SINGLE_USER_ID,
                         body,
                         &crate::clock::now_iso(),
+                        blob_webp,
                     )
                     .await
                 }

@@ -924,6 +924,7 @@ fn photo_tools_matches_oracle() {
             character_id: Some(spec.char_a_id.clone()),
             operator_override: false,
             files_dir: None,
+            blob_webp: Default::default(),
         };
         let args = (op.build_args)(&meta);
 

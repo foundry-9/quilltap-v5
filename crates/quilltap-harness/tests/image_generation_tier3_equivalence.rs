@@ -816,6 +816,7 @@ fn image_generation_matches_oracle() {
                 executor: &executor,
                 now_ms: spec.frozen_now_ms,
                 declarations_for: &declarations_for,
+                blob_webp: None,
             };
             let input = match &case.tool_input {
                 // v4's dispatcher hands the model's arguments through untouched.

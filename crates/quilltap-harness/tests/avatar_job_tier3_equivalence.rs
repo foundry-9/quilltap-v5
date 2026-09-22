@@ -650,6 +650,7 @@ fn avatar_job_matches_oracle() {
             transcoder: &transcoder,
             now_ms: spec.frozen_now_ms,
             declarations_for: &declarations_for,
+            blob_webp: None,
         };
         let payload = CharacterAvatarPayload {
             chat_id: case.id.clone(),
@@ -1038,6 +1039,7 @@ fn avatar_job_runner_registration_e2e() {
         transcoder: PassthroughTranscoder,
         now_ms: spec.frozen_now_ms,
         declarations_for,
+        blob_webp: None,
     };
     let mut reg = HandlerRegistry::new();
     reg.register("CHARACTER_AVATAR_GENERATION", Box::new(handler));

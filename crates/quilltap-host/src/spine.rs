@@ -3156,6 +3156,9 @@ impl JobHandler for AvatarJobHandler {
                 // background job below still takes one.
                 now_ms: now_unix_ms(),
                 declarations_for: quilltap_core::image_gen_data::image_declarations_for,
+                // P4.104 OUT-OF-MANDATE (host wiring) — the blob write
+                // normalizes through the host's encoder (v4 `186eb09cb`).
+                blob_webp: Some(Arc::new(HostImageCodec)),
             };
             inner.handle(db, job).await
         })
@@ -3225,6 +3228,9 @@ impl JobHandler for StoryBackgroundJobHandler {
                 }),
                 now_ms: now_unix_ms(),
                 declarations_for: quilltap_core::image_gen_data::image_declarations_for,
+                // P4.104 OUT-OF-MANDATE (host wiring) — the blob write
+                // normalizes through the host's encoder (v4 `186eb09cb`).
+                blob_webp: Some(Arc::new(HostImageCodec)),
             };
             inner.handle(db, job).await
         })
@@ -3283,6 +3289,9 @@ impl ImageGenerationRunner for HostImageGenerationRunner {
                 executor: &executor,
                 now_ms: now_unix_ms(),
                 declarations_for: &declarations_fn,
+                // P4.104 OUT-OF-MANDATE (host wiring) — the blob write
+                // normalizes through the host's encoder (v4 `186eb09cb`).
+                blob_webp: Some(Arc::new(HostImageCodec)),
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })

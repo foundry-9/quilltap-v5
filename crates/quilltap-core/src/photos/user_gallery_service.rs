@@ -536,7 +536,16 @@ pub fn save_to_user_gallery(
     });
     let desired_path = build_photos_relative_path(&slug.filename);
     let relative_path = resolve_unique_relative_path(mount, &target_mount_point_id, &desired_path)?;
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: normalized through the host's encoder (v4
+    // `user-gallery-service.ts:201` → `linkBlobContent`, default
+    // `normalizeImages`); the byte store is the host's image boundary.
+    let blob_webp = bytes.blob_webp();
+    let links = DocMountFileLinksRepository::with_blob_codec(
+        mount,
+        crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+            blob_webp.as_deref(),
+        ),
+    );
     links.ensure_folder_path(&target_mount_point_id, PHOTOS_FOLDER)?;
 
     let result = links.link_blob_content(&LinkBlobInput {

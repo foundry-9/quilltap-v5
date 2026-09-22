@@ -293,6 +293,7 @@ impl ImageGenerationRunner for TestImageRunner {
                 executor: &executor,
                 now_ms: self.now_ms,
                 declarations_for: &declarations_fn,
+                blob_webp: None,
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })

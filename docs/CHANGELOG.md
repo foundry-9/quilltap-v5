@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(mount-index): every blob write carries a WebP encoder, and a census keeps it that way (P4.104 unit 2)
+
+_Versions: core 0.0.994, harness 0.0.891, host 0.0.147, web 0.0.171._
+
+v4's `linkBlobContent` normalizes image bytes to WebP on every write (bug 159,
+`186eb09cb`); v5 injects the encoder, and until now only the sync applier
+passed one, so ten write sites stored the original bytes where v4 stores
+WebP. Each site now builds its links repository `with_blob_codec`: the
+doc-edit blob tool (through a new `blob_webp` on its tool context, fed by the
+tool runner's byte store; its pre-transcode is now real too), the three photo
+galleries (a new `FileBytesStore::blob_webp`, or a `blob_webp` argument), the
+character-vault and Lantern writers (a `blob_webp` argument, and new fields on
+the two image-job handlers and the image-generation deps), in-store
+copy/move/write (a `webp` argument; the four mount-file dispatch arms now read
+the engine's `blob_webp`), and the two bridges that already transcode through
+a pixel codec (`PixelCodecWebp`, the same encoder as their own pre-transcode,
+as v4 uses one `sharp` for both). With no encoder wired, every site gets the
+refusing encoder, v4's `sharp`-threw arm. The `.qtap` import's
+`normalize_images: false` stays the only exception. A new
+`blob_write_sites_census` counts every blob write in the core and fails on one
+without an encoder. Test families pass "no encoder" in this commit, so it
+changes no existing differential; decodable-image rows follow.
+
 #### 2026-09-22 — fix(db): the blob facade reads back the row normalization moved, and carries the WebP encoder (P4.104 unit 1)
 
 _Versions: core 0.0.993._

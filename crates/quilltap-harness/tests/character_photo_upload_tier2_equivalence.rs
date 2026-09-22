@@ -200,7 +200,7 @@ fn photo_upload_matches_oracle() {
                         &mime,
                         caption.as_deref(),
                         &tags,
-                        FIXED_KEPT_AT,
+                        FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
                     );
                 }
                 Ok(save_to_character_gallery(
@@ -212,7 +212,7 @@ fn photo_upload_matches_oracle() {
                     &mime,
                     caption.as_deref(),
                     &tags,
-                    FIXED_KEPT_AT,
+                    FIXED_KEPT_AT, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
                 ))
             }))
             .unwrap();

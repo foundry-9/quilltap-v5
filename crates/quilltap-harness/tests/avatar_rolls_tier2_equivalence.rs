@@ -374,7 +374,7 @@ fn save_to_album(db: &Db, spec: &Spec, character_id: &str, file_id: &str) -> Res
                         .connection();
                     let main = w.main().connection();
                     Ok(svc::commit_album_save(
-                        main, mount, &cid, &fid, &data, &name, &mime, &kept_at,
+                        main, mount, &cid, &fid, &data, &name, &mime, &kept_at, &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
                     ))
                 })
                 .map_err(|e| e.to_string())?
@@ -781,6 +781,7 @@ fn the_three_avatar_rolls_log_lines_fire_with_v4s_fields() {
             &needs.original_filename,
             &needs.mime_type,
             &spec.kept_at,
+            &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
         )
         .expect("commit")
     });

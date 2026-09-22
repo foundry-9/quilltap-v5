@@ -157,6 +157,11 @@ pub struct AvatarJobDeps<'a, I, C, M, A, T> {
     /// The plugin-registry orientation seam (v4's `getImageGenerationModels` +
     /// `getImageProviderConstraints`).
     pub declarations_for: &'a common::ImageDeclarationsFn,
+    /// P4.104: the encoder the vault/Lantern blob write normalizes through
+    /// (v4 `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`.
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 /// v4 `handleCharacterAvatarGeneration`. Returns `Ok(())` on success or a benign
@@ -692,6 +697,7 @@ where
         generation_model,
         revised_prompt: image_data.revised_prompt.clone(),
         generation_key: cache_keys.key.clone(),
+        blob_webp: deps.blob_webp.clone(),
     };
     match common::with_both_conns(db, move |main, mount| {
         write_avatar_file(main, mount, &write)
@@ -860,6 +866,11 @@ pub struct CharacterAvatarGenerationHandler<I, C, M, A, T, F> {
     pub now_ms: i64,
     /// `Fn(provider) -> (models, provider-support)` (the plugin-registry seam).
     pub declarations_for: F,
+    /// P4.104: the encoder the vault/Lantern blob write normalizes through
+    /// (v4 `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`.
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 impl<I, C, M, A, T, F> crate::services::job_runner::JobHandler
@@ -891,6 +902,7 @@ where
                 transcoder: &self.transcoder,
                 now_ms: self.now_ms,
                 declarations_for: &self.declarations_for as &common::ImageDeclarationsFn,
+                blob_webp: self.blob_webp.clone(),
             };
             match handle_character_avatar_generation(db, &deps, &job.user_id, &payload, &job.id)
                 .await
@@ -920,6 +932,8 @@ struct AvatarWriteInput {
     /// The v1 cache key of the REQUESTED profile — bound to the new row so this
     /// configuration is served from cache next time (v4 `7fbf8a55b`).
     generation_key: String,
+    blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 /// The storage half of v4 `handleCharacterAvatarGeneration`: the character vault
@@ -960,6 +974,9 @@ fn write_avatar_file(
         // Bug 132: no label on the vault link either — see the note on the
         // `files` row below.
         None,
+        crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+            input.blob_webp.as_deref(),
+        ),
     )?;
     let (storage_key, stored_mime, stored_size) = (
         written.storage_key,
@@ -1445,6 +1462,7 @@ mod log_line_tests {
             transcoder: &transcoder,
             now_ms: 1_577_836_800_000,
             declarations_for: decl,
+            blob_webp: None,
         };
         let payload = CharacterAvatarPayload {
             chat_id: CHAT.to_string(),
@@ -1515,6 +1533,7 @@ mod log_line_tests {
             transcoder: &transcoder,
             now_ms: 1_577_836_800_000,
             declarations_for: decl,
+            blob_webp: None,
         };
         let payload = CharacterAvatarPayload {
             chat_id: "no-such-chat".to_string(),

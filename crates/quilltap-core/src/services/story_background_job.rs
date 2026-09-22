@@ -113,6 +113,12 @@ pub struct StoryJobDeps<'a, I, C, M, A, T, U> {
     pub executor: &'a CheapLlmTaskExecutor,
     pub now_ms: i64,
     pub declarations_for: &'a common::ImageDeclarationsFn,
+    /// P4.104: the encoder the Lantern blob write normalizes through (v4
+    /// `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`. (The project
+    /// branch's `upload` normalizes through its own pixel codec.)
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 /// The subset of a scene state the story handler reads.
@@ -774,6 +780,7 @@ where
         linked_to,
         project_id: payload.project_id.clone(),
         project_upload,
+        blob_webp: deps.blob_webp.clone(),
     };
     common::with_both_conns(db, move |main, mount| write_story_file(main, mount, &write))
         .await
@@ -855,6 +862,12 @@ pub struct StoryBackgroundGenerationHandler<I, C, M, A, T, U, F> {
     pub executor: CheapLlmTaskExecutor,
     pub now_ms: i64,
     pub declarations_for: F,
+    /// P4.104: the encoder the Lantern blob write normalizes through (v4
+    /// `linkBlobContent`, `186eb09cb`). `None` → the refusing encoder, v4's
+    /// `sharp`-threw arm; the host wires its `HostImageCodec`. (The project
+    /// branch's `upload` normalizes through its own pixel codec.)
+    pub blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 impl<I, C, M, A, T, U, F> crate::services::job_runner::JobHandler
@@ -889,6 +902,7 @@ where
                 executor: &self.executor,
                 now_ms: self.now_ms,
                 declarations_for: &self.declarations_for as &common::ImageDeclarationsFn,
+                blob_webp: self.blob_webp.clone(),
             };
             match handle_story_background_generation(db, &deps, &job.user_id, &payload, &job.id)
                 .await
@@ -916,6 +930,8 @@ struct StoryWriteInput {
     linked_to: Vec<String>,
     project_id: Option<String>,
     project_upload: Option<common::ProjectUploadResult>,
+    blob_webp:
+        Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
 }
 
 /// The storage half: the Lantern-vs-project branch (branch key: `payload.projectId`)
@@ -971,6 +987,9 @@ fn write_story_file(
                 // Bug 132: no label on the Scriptorium link either — see the
                 // note on the `files` row below.
                 None,
+                crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                    input.blob_webp.as_deref(),
+                ),
             )?;
             (
                 written.storage_key,

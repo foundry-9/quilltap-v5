@@ -128,6 +128,20 @@ pub trait FileBytesStore: Send + Sync {
     /// entry (its `id`/`sha256`/`mimeType`/`originalFilename` at least). Host-side
     /// in production.
     fn ingest_image_buffer(&self, req: &IngestImageRequest) -> Result<FileEntry, String>;
+
+    /// The WebP encoder the photo writes normalize their blob bytes through
+    /// (P4.104 — v4 `186eb09cb`'s `linkBlobContent` chokepoint). The store that
+    /// reads and ingests image bytes is the host's image boundary, so it is
+    /// also where the host's encoder lives. `None` (the default — a canned or
+    /// not-configured store) makes the write site fall back to
+    /// [`crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing`]'s
+    /// refusing encoder, v4's `sharp`-threw arm.
+    fn blob_webp(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>
+    {
+        None
+    }
 }
 
 /// The `ingestImageBuffer` request (v4's params subset the fallback uses).
@@ -223,7 +237,16 @@ pub fn save_image_to_album(
     kept_at: &str,
 ) -> Result<SaveImageToAlbumOutput, SaveImageToAlbumError> {
     let files = FilesRepository::new(main);
-    let links = DocMountFileLinksRepository::new(mount);
+    // P4.104: the album write normalizes its blob through the host's encoder
+    // (v4 `save-image-to-album.ts:294` → `linkBlobContent`, default
+    // `normalizeImages`); the byte store is the host's image boundary.
+    let blob_webp = bytes.blob_webp();
+    let links = DocMountFileLinksRepository::with_blob_codec(
+        mount,
+        crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+            blob_webp.as_deref(),
+        ),
+    );
     let blobs = DocMountBlobsRepository::new(mount);
     let points = DocMountPointsRepository::new(mount);
 

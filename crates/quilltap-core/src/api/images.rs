@@ -1826,6 +1826,7 @@ async fn run_images_generate(
     let model_for_row = model_name.map(str::to_string);
     let prompt_for_row = body.prompt.clone();
     let user = user_id.to_string();
+    let blob_codec = std::sync::Arc::clone(&seams.codec);
     let written = db
         .write(move |ws| {
             let main = ws.main().connection();
@@ -1837,6 +1838,11 @@ async fn run_images_generate(
                     )
                 })?
                 .connection();
+            // P4.104: the Lantern write normalizes through the SAME encoder
+            // `prepare_generated_image` converted with (v4's one `sharp`).
+            let blob_webp = crate::services::mount_index::normalize_blob_image::PixelCodecWebp(
+                std::sync::Arc::clone(&blob_codec),
+            );
             let mut out = Vec::with_capacity(prepared.len());
             for p in &prepared {
                 // v4 checks `getLanternBackgroundsStore()` first and throws its
@@ -1852,6 +1858,7 @@ async fn run_images_generate(
                         &p.mime_type,
                         "tool",
                         None,
+                        &blob_webp,
                     )?;
                 let inherited = crate::services::file_storage::get_inherited_tags(
                     main, mount, &linked_to, &user,

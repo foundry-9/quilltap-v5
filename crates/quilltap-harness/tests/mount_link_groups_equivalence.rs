@@ -157,6 +157,7 @@ fn link_binds_a_group_and_copy_does_not() {
             force: false,
         },
         &extractor,
+        &quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
     )
     .expect("copy_file");
     for dest in ["linked-origin.md", "third-origin.md"] {

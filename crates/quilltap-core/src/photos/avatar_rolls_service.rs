@@ -464,6 +464,7 @@ pub fn commit_album_save(
     filename: &str,
     mime_type: &str,
     kept_at: &str,
+    blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<String, AvatarRollError> {
     let saved = save_to_character_gallery(
         main,
@@ -475,6 +476,7 @@ pub fn commit_album_save(
         None,
         &[],
         kept_at,
+        blob_webp,
     )?;
     let link_id = saved
         .get("linkId")
