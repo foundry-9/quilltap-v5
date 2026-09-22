@@ -142890,3 +142890,59 @@ WebP, so — like sites 1 and 9, and like v4 — the normalization at sites 5 an
 8 is a no-op after its own pre-transcode, and the mutation of either site
 alone survives (re-run: both families green under it). The census guards both
 constructions.
+
+### Unit 6 — sites 6 and 10 proven; the vault/Lantern/generate writers' real pre-transcode (core 0.0.996, harness 0.0.895; families grown by a lane sub-agent, re-run green by the lane)
+
+Oracles from the pin, lane-private: `/tmp/p4104/{imggen,imgroute,avatar}/`
+(fixtures built at the pin, stage dirs, `oracle.ndjson` — each with exactly one
+`imageFacts` line). Zero `SKIP:`.
+
+The rows: the `photo-lossless.webp` seed (620×440, 748 KB) returned by the
+provider — `convertToWebP` skips WebP, so this is the input the bridge's
+transcode and the normalization move. **Site 10 — `image_generation_tier3`**
+`p4104_lossless_webp_normalized`: a NEW non-default profile (`gpt-image-1`,
+`output_format: webp` — the only setting under which the real OPENAI dialect
+reports `image/webp`); on the v4 side a flag switches BOTH transcode mocks
+(`convertToWebP`, `transcodeToWebP`) to the real modules for this case only;
+the Rust side gives this case alone the host `convertToWebP` and
+`blob_webp: Some(HostImageCodec)`. **Site 6 (Lantern) — `images_generate_route`**
+`generate_lossless_webp_normalized` (v4 runs real sharp in every case of this
+family; this case alone uses `seams.codec = HostImageCodec` — the family's
+byte-prefixing `PrefixCodec` cannot stand in for a real encoder: `size
+"larger"`, `width null`). **Site 6 (vault) — `avatar_job_tier3`**, a new case
+with an outfit no other case wears (its canned image key is unique). v4:
+`tool/generated_1735732800000.webp`, `tool/generated_1767225600000_0_3b86157d.webp`,
+`images/history/avatar_Aurora_1735732800000.webp` — all `image/webp`, changed,
+smaller, 620×440. Red-first (un-wired / the mutation for the route): `shaChanged
+false, size same` on each. Green.
+
+**A finding, fixed here: the writers recorded the INPUT's size.** v4's
+`writeLanternBackgroundToMountStore` / `writeCharacterAvatarToVault` run
+`storeMountFile` with `transcodeImages: true`; the generate-image handler
+builds `files.mimeType`/`size` (and its answer) from `written.storedMimeType` /
+`written.sizeBytes` (`image-generation-handler.ts`). v5's `store_blob_to_mount`
+PASSED THROUGH ("the caller already transcoded") and `save_generated_image`
+used `converted.bytes.len()` — right for a bitmap, wrong for a provider's large
+lossless WebP: v4 175300, v5 748872. Both now run the ported
+`blob_transcode::transcode_to_webp` through the site's encoder; `WrittenImage`
+and the generate-image `files` row / answer take mime + size from it; `sha256`
+stays the converted bytes' (v4's local). The sub-agent had BLANKED
+`files.size` (the value is the encoder's), which hid this; it is now replaced
+by the encoder-neutral RELATION `<the-stored-blob-size>` on both sides.
+**Red-first:** the pre-fix writers swapped back in →
+`NOT-the-stored-blob-size:748872` in all three families; green after.
+
+**Mutations.** Before this fix the sub-agent mutated `save_generated_image`'s
+and `store_blob_to_mount`'s `with_blob_codec` (→ `::new(mount)`): each family's
+image row went red (`shaChanged false, size same`), restored by `cp`,
+md5-verified. After it, the normalization at both sites follows a real
+pre-transcode through the same encoder — like sites 1, 5, 8 and 9, and like
+v4 — so those mutations alone now SURVIVE; the census guards both
+constructions.
+
+⚠ **A pre-existing oracle defect, fixed in the case:** `avatar-job.test.ts`
+read Lantern messages with a raw `SELECT content …`; at the baseline v4
+compresses `chat_messages.content` (P4.D203), so the raw read returned a
+Buffer and the WHOLE family failed to parse (`invalid type: map, expected a
+string`) — every case, not only the new one. It now reads `qt_text(content)`;
+the text comparison is unchanged.

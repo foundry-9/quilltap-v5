@@ -39,6 +39,21 @@
  *   - Date.now() frozen (spec.frozenNowMs) so the provider filename
  *     `generated_<ts>.<ext>` is pinned.
  *
+ * P4.104 — THE IMAGE ROW (bug 159's image half, v4 `186eb09cb`). A case with
+ * `imageSeed` flips `__qtRealTranscode` for its run, so BOTH mocked transcode
+ * modules delegate to the REAL ones (real sharp) — `convertToWebP` AND the
+ * store's `transcodeToWebP`, which is also what `linkBlobContent`'s
+ * normalization calls — and the image provider answers that seed's bytes (from
+ * `../fixtures/`). The seed is the 748 KB LOSSLESS `photo-lossless.webp`,
+ * served by a gpt-image profile asking `output_format: 'webp'` (the mime the
+ * real OPENAI dialect reports for that bag — the Rust side parses the SAME
+ * wire through the real dialect). `convertToWebP` skips an already-WebP input
+ * by policy, so the only thing that can move the bytes is the blob write's
+ * normalization: v4 re-encodes the lossless WebP lossy, same path, smaller.
+ * The comparand is D19 — `imageFacts` over the stored `tool/` row
+ * (`../lib/blob-image-facts`) — and the Rust family blanks every
+ * encoder-owned value of that case's dumps + result on both sides.
+ *
  * Emits one NDJSON line per RECORDED canned completion (kind:"canned"), one per
  * RECORDED canned image call (kind:"cannedImage"), and one per case
  * (kind:"result", { label, resultJson }); image-gen cases carry a `dumps`
@@ -54,6 +69,9 @@
  *   TMPO=/tmp/qt-imggen-oracle; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp $WT/harness/oracle/cases/image-generation.test.ts "$TMPO/cases/"
  *   cp $WT/harness/oracle/fixtures/image-generation.json "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp $WT/harness/oracle/lib/blob-image-facts.ts "$TMPO/lib/"
+ *   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp "$TMPO/fixtures/"
  *   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-image-generation.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -65,6 +83,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -102,6 +121,13 @@ interface ChatSpec {
    * here, identically on both sides). The story family's shape.
    */
   dangerousContentSettings?: Record<string, unknown>;
+  /** P4.104: the image profile this case generates through (default `spec.profileId`). */
+  profileId?: string;
+  /**
+   * P4.104: a seed image under `fixtures/` the provider answers with, and the
+   * switch that makes this case's transcode + blob normalization REAL.
+   */
+  imageSeed?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -212,7 +238,12 @@ async function main(): Promise<void> {
           generateImage: async (params: Record<string, unknown>, _key: string) => {
             const key = `${provider}|${params.model}|${JSON.stringify(params)}`;
             const prompt = String(params.prompt ?? '');
-            const images = [{ data: PNG_B64, mimeType: 'image/png', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }];
+            // P4.104: an `imageSeed` case answers the seed's bytes, with the
+            // mime the real OPENAI dialect reports for a webp `output_format`.
+            const seed = (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed;
+            const images = seed
+              ? [{ data: seed.toString('base64'), mimeType: 'image/webp', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }]
+              : [{ data: PNG_B64, mimeType: 'image/png', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }];
             if (!recordedImages.has(key)) {
               recordedImages.set(key, { provider, model: String(params.model), key, images });
             }
@@ -233,17 +264,23 @@ async function main(): Promise<void> {
       };
     });
 
-    // WebP transcode seams (pass-through both).
-    jest.doMock('@/lib/files/webp-conversion', () => ({
-      __esModule: true,
-      convertToWebP: async (buffer: Buffer, mimeType: string, filename: string) => ({
-        buffer,
-        mimeType,
-        filename,
-        width: null,
-        height: null,
-      }),
-    }));
+    // WebP transcode seams (pass-through both; P4.104: REAL under `__qtRealTranscode`).
+    jest.doMock('@/lib/files/webp-conversion', () => {
+      const actual = jest.requireActual('@/lib/files/webp-conversion');
+      return {
+        __esModule: true,
+        convertToWebP: async (buffer: Buffer, mimeType: string, filename: string) =>
+          (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode
+            ? actual.convertToWebP(buffer, mimeType, filename)
+            : {
+                buffer,
+                mimeType,
+                filename,
+                width: null,
+                height: null,
+              },
+      };
+    });
     jest.doMock('@/lib/mount-index/blob-transcode', () => {
       const actual = jest.requireActual('@/lib/mount-index/blob-transcode');
       const { sha256OfBuffer } = jest.requireActual('@/lib/utils/sha256');
@@ -251,12 +288,15 @@ async function main(): Promise<void> {
         __esModule: true,
         ...actual,
         // storeMountFile consumes { data, storedMimeType, sizeBytes, sha256 }.
-        transcodeToWebP: async (data: Buffer, originalMimeType: string) => ({
-          data,
-          storedMimeType: originalMimeType,
-          sizeBytes: data.length,
-          sha256: sha256OfBuffer(data),
-        }),
+        transcodeToWebP: async (data: Buffer, originalMimeType: string) =>
+          (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode
+            ? actual.transcodeToWebP(data, originalMimeType)
+            : {
+                data,
+                storedMimeType: originalMimeType,
+                sizeBytes: data.length,
+                sha256: sha256OfBuffer(data),
+              },
       };
     });
 
@@ -412,11 +452,18 @@ async function main(): Promise<void> {
         // pre-P4.70 row byte-identical.
         const toolInput =
           chat.toolInput ?? { prompt: chat.prompt, orientation: chat.orientation, count: 1 };
+        const seedBytes = chat.imageSeed
+          ? fs.readFileSync(join(here, '..', 'fixtures', chat.imageSeed))
+          : undefined;
+        if (seedBytes) {
+          (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = seedBytes;
+          (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = true;
+        }
         const out = await executeImageGenerationTool(
           toolInput,
           {
             userId: spec.userId,
-            profileId: spec.profileId,
+            profileId: chat.profileId ?? spec.profileId,
             chatId: chat.id,
             callingParticipantId: spec.callingParticipantId,
           },
@@ -452,6 +499,15 @@ async function main(): Promise<void> {
           [chat.id],
         )) as Array<{ content: string }>;
         record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
+        if (seedBytes) {
+          // P4.104 — D19: what the blob write did to the seed, never its bytes.
+          const rows = midb
+            .prepare(STORED_BLOB_SELECT + "WHERE l.relativePath LIKE 'tool/%' ORDER BY l.relativePath")
+            .all() as Parameters<typeof blobImageFacts>[0];
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+          record.imageFacts = await blobImageFacts(rows, seedBytes, sharpMeasure(sharp));
+        }
       } else {
         const { triggerAvatarGenerationIfEnabled } = await import('@/lib/wardrobe/avatar-generation');
         await triggerAvatarGenerationIfEnabled(repos, {
@@ -510,6 +566,8 @@ async function main(): Promise<void> {
 
       lines.push(JSON.stringify(record));
     } finally {
+      (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = undefined;
+      (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = false;
       global.Date = RealDate;
       await new Promise((resolve) => setTimeout(resolve, 50));
       await closeDatabase();

@@ -92,6 +92,18 @@
       "isDefault": true,
       "isDangerousCompatible": false,
       "tags": []
+    },
+    {
+      "id": "e0000000-0000-4000-8000-0000000000a2",
+      "name": "WebP Images",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": { "output_format": "webp" },
+      "isDefault": false,
+      "isDangerousCompatible": false,
+      "tags": []
     }
   ],
 
@@ -286,6 +298,15 @@
       "id": "aaaa0031-0000-4000-8000-000000000031",
       "op": "generate",
       "toolInput": "A serene mountain lake"
+    },
+    "p4104_lossless_webp_normalized": {
+      "$comment": "P4.104 / bug 159 (v4 `186eb09cb`): the provider answers the 748 KB LOSSLESS `photo-lossless.webp` seed. `convertToWebP` skips an already-WebP input by policy, so the ONLY step that can move the bytes is the Lantern blob write's normalization (`linkBlobContent`): v4 re-encodes it lossy — same `.webp` path, `image/webp`, smaller. Un-wired v5 stores it byte for byte. `imageSeed` makes this case's transcode + normalization REAL on both sides (the oracle's flag-gated mocks; the Rust family's host codecs); the comparand is D19 `imageFacts`, and every encoder-owned value in the case's result + dumps is blanked on both sides. Its profile (`e0000000-…-a2`, not the default) is a gpt-image model asking `output_format: webp`, so the real OPENAI dialect reports `image/webp` for the answer rather than dall-e-3's `image/png`.",
+      "id": "aaaa0040-0000-4000-8000-000000000040",
+      "op": "generate",
+      "prompt": "A brass orrery ticking in a lamplit study",
+      "orientation": "square",
+      "profileId": "e0000000-0000-4000-8000-0000000000a2",
+      "imageSeed": "photo-lossless.webp"
     },
     "unprovisioned": {
       "id": "aaaa0007-0000-4000-8000-000000000007",

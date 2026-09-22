@@ -33,6 +33,20 @@
 //!   - `now_ms` = the oracle's frozen `Date.now()` so the provider filename
 //!     `generated_<ts>.<ext>` is pinned.
 //!
+//! P4.104 — THE IMAGE ROW (bug 159's image half, v4 `186eb09cb`). A case with
+//! `imageSeed` (`p4104_lossless_webp_normalized`) runs REAL on both sides: the
+//! oracle flips its two transcode mocks to the real modules (real sharp) and
+//! its provider answers the seed; here the case's transcoder is the host's
+//! `convertToWebP` ([`CaseTranscoder`]) and the Lantern blob write gets the
+//! host encoder ([`blob_webp_for`]). The seed is the 748 KB LOSSLESS
+//! `photo-lossless.webp`, served through a gpt-image profile asking
+//! `output_format: webp` (so the real OPENAI dialect reports `image/webp`).
+//! `convertToWebP` skips an already-WebP input, so only the blob write's
+//! normalization can move it: v4 re-encodes it lossy — same path, smaller.
+//! Compared under D19: the stored `tool/` row's `imageFacts`
+//! (`blob_image_facts/mod.rs`), with every encoder-owned value of that case's
+//! result + dumps blanked on both sides ([`blank_encoder_dumps`]).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). The oracle case
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<this worktree root>
@@ -40,6 +54,9 @@
 //!   rm -rf $STAGE && mkdir -p $STAGE/cases $STAGE/fixtures
 //!   cp $WT/harness/oracle/cases/image-generation.test.ts $STAGE/cases/
 //!   cp $WT/harness/oracle/fixtures/image-generation.json  $STAGE/fixtures/
+//!   mkdir -p $STAGE/lib
+//!   cp $WT/harness/oracle/lib/blob-image-facts.ts $STAGE/lib/
+//!   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp $STAGE/fixtures/
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
 //!     $N/node --import tsx $WT/harness/oracle/fixtures/build-image-generation-fixture.ts
@@ -83,6 +100,130 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 mod common;
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// P4.104: the encoder an `imageSeed` case's Lantern blob write normalizes
+/// through — the host's, as the production tool runner wires it. Every other
+/// case stays un-wired (`None`), mirroring the oracle's pass-through mock.
+fn blob_webp_for(
+    case: &ChatSpec,
+) -> Option<std::sync::Arc<dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder>>
+{
+    case.image_seed
+        .as_ref()
+        .map(|_| std::sync::Arc::new(quilltap_host::HostImageCodec) as _)
+}
+
+/// P4.104: the `convertToWebP` seam per case — the host's REAL policy for an
+/// `imageSeed` case (the oracle's flag-gated real module), the pass-through
+/// for every other (the oracle's mock).
+struct CaseTranscoder(bool);
+impl quilltap_core::model::image::ImageTranscoder for CaseTranscoder {
+    fn transcode(
+        &self,
+        input: &quilltap_core::model::image::TranscodeInput,
+    ) -> quilltap_core::model::image::TranscodeOutput {
+        if self.0 {
+            quilltap_core::model::image::ImageTranscoder::transcode(
+                &quilltap_host::HostImageCodec,
+                input,
+            )
+        } else {
+            PassthroughTranscoder.transcode(input)
+        }
+    }
+}
+
+/// P4.104 (D19): blank every encoder-owned value of an `imageSeed` case's
+/// dumps — identically on both sides — then re-sort the rows the blank moved
+/// (`doc_mount_files` / `doc_mount_blobs` sort by the content sha, which is the
+/// encoder's), so the shared positional id map sees one order on both sides.
+/// `files.size` is v4's `written.sizeBytes` — the STORED size — and is
+/// compared as that RELATION, not blanked (see the body).
+fn blank_encoder_dumps(dumps: &mut [Value]) {
+    // P4.104: the `files` row's `size` is v4's `written.sizeBytes` — the
+    // STORED blob's size. Its value is the encoder's, but its RELATION to the
+    // stored blob is not: both sides must record the blob they stored. So the
+    // cell is replaced by that relation, not blanked (a plain blank hid v5
+    // writing the pre-transcode input length here — fixed in core).
+    let blob_sizes: Vec<f64> = IMG_TABLES
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.table == "doc_mount_blobs")
+        .flat_map(|(i, _)| {
+            dumps[i]
+                .get("rows")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter(|r| r.get("storedMimeType").and_then(Value::as_str) == Some("image/webp"))
+        .filter_map(|r| r.get("sizeBytes").and_then(Value::as_f64))
+        .collect();
+    for (i, spec) in IMG_TABLES.iter().enumerate() {
+        let cols: &[&str] = match spec.table {
+            "doc_mount_files" => &["sha256", "fileSizeBytes"],
+            "doc_mount_blobs" => &["sha256", "sizeBytes", "data"],
+            "files" => &["size"],
+            _ => &[],
+        };
+        let Some(rows) = dumps[i].get_mut("rows").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for row in rows.iter_mut() {
+            let Some(obj) = row.as_object_mut() else {
+                continue;
+            };
+            // Only the image's own rows carry the encoder's bytes.
+            let is_image = obj.get("fileType").and_then(Value::as_str) == Some("blob")
+                || obj.get("storedMimeType").and_then(Value::as_str) == Some("image/webp")
+                || obj.get("mimeType").and_then(Value::as_str) == Some("image/webp");
+            if !is_image {
+                continue;
+            }
+            for c in cols {
+                if spec.table == "files" && *c == "size" {
+                    if let Some(size) = obj.get("size").and_then(Value::as_f64) {
+                        let token = if blob_sizes.contains(&size) {
+                            "<the-stored-blob-size>".to_string()
+                        } else {
+                            format!("<NOT-the-stored-blob-size:{size}>")
+                        };
+                        obj.insert("size".to_string(), Value::String(token));
+                    }
+                    continue;
+                }
+                if obj.contains_key(*c) {
+                    obj.insert((*c).to_string(), Value::String("<encoder>".to_string()));
+                }
+            }
+        }
+        let ob = spec.order_by;
+        rows.sort_by(|a, b| {
+            let key = |v: &Value| match v.get(ob) {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Null) | None => String::new(),
+                Some(other) => other.to_string(),
+            };
+            key(a).cmp(&key(b))
+        });
+    }
+}
+
+/// P4.104 (D19): the result's `images[].size` is the stored (encoder) size.
+fn blank_result_size(v: &mut Value) {
+    if let Some(imgs) = v.get_mut("images").and_then(Value::as_array_mut) {
+        for img in imgs {
+            if let Some(o) = img.as_object_mut() {
+                if o.contains_key("size") {
+                    o.insert("size".into(), Value::String("<encoder>".into()));
+                }
+            }
+        }
+    }
+}
 
 // ===========================================================================
 // Spec + oracle rows
@@ -134,6 +275,15 @@ struct ChatSpec {
     /// state applied identically on both sides (the story family's shape).
     #[serde(default, rename = "dangerousContentSettings")]
     danger_settings: Option<Value>,
+    /// P4.104: the image profile this case generates through (default
+    /// `spec.profileId`).
+    #[serde(default, rename = "profileId")]
+    profile_id: Option<String>,
+    /// P4.104: the seed image (under `normalize-blob-image/`) the provider
+    /// answers — and the switch that makes this case's transcode + blob
+    /// normalization REAL.
+    #[serde(default, rename = "imageSeed")]
+    image_seed: Option<String>,
 }
 
 /// [cc65d6bfc] The per-case `dangerousContentSettings` patch, mirroring the
@@ -287,6 +437,9 @@ struct ResultRow {
     /// avatar cases carry an empty list.
     #[serde(default, rename = "llmLogs")]
     llm_logs: Option<Value>,
+    /// P4.104: the D19 comparand of an `imageSeed` case's stored `tool/` row.
+    #[serde(default, rename = "imageFacts")]
+    image_facts: Option<Value>,
 }
 
 // ===========================================================================
@@ -743,7 +896,6 @@ fn image_generation_matches_oracle() {
     let image_provider = RealImageProvider::new(image_transport);
     let api_keys = CannedApiKeys(spec.api_keys.clone());
     let moderation = NoModerationProvider;
-    let transcoder = PassthroughTranscoder;
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -806,6 +958,7 @@ fn image_generation_matches_oracle() {
             // Round-3 Group 4: the REAL Lantern sink posts the character-image
             // notification to this chat; its persisted content is diffed below.
             let lantern = RealLanternNotification { db: &db };
+            let transcoder = CaseTranscoder(case.image_seed.is_some());
             let deps = ImageGenDeps {
                 image_provider: &image_provider,
                 completion: &completion,
@@ -816,7 +969,7 @@ fn image_generation_matches_oracle() {
                 executor: &executor,
                 now_ms: spec.frozen_now_ms,
                 declarations_for: &declarations_for,
-                blob_webp: None,
+                blob_webp: blob_webp_for(case),
             };
             let input = match &case.tool_input {
                 // v4's dispatcher hands the model's arguments through untouched.
@@ -835,17 +988,31 @@ fn image_generation_matches_oracle() {
             };
             let ctx = ImageToolExecutionContext {
                 user_id: spec.user_id.clone(),
-                profile_id: spec.profile_id.clone(),
+                profile_id: case
+                    .profile_id
+                    .clone()
+                    .unwrap_or_else(|| spec.profile_id.clone()),
                 chat_id: Some(chat_id.clone()),
                 calling_participant_id: Some(spec.calling_participant_id.clone()),
             };
 
             let out = rt.block_on(execute_image_generation_tool(&db, &deps, &input, &ctx));
-            let got_result = result_output_to_value(&out);
+            let mut got_result = result_output_to_value(&out);
+            // The oracle's bytes stay the comparand; only an `imageSeed` case
+            // round-trips them to blank the encoder-owned `size` (D19).
+            let want_raw = if case.image_seed.is_some() {
+                blank_result_size(&mut got_result);
+                let mut want_result: Value =
+                    serde_json::from_str(&want.result_json).expect("parse oracle resultJson");
+                blank_result_size(&mut want_result);
+                serde_json::to_string(&want_result).unwrap()
+            } else {
+                want.result_json.clone()
+            };
 
             // Compare the result object (positional-UUID normalized for the minted file id).
             let got_json = norm_uuids_in_string(&serde_json::to_string(&got_result).unwrap());
-            let want_json = norm_uuids_in_string(&want.result_json);
+            let want_json = norm_uuids_in_string(&want_raw);
             assert_eq!(
                 got_json, want_json,
                 "resultJson diverged for {}\n  rust:   {}\n  oracle: {}",
@@ -879,6 +1046,10 @@ fn image_generation_matches_oracle() {
                         .unwrap_or_else(|| panic!("oracle {} missing dump {}", label, s.table))
                 })
                 .collect();
+            if case.image_seed.is_some() {
+                blank_encoder_dumps(&mut got_dumps);
+                blank_encoder_dumps(&mut want_dumps);
+            }
             normalize_dumps(&mut got_dumps);
             normalize_dumps(&mut want_dumps);
             for (i, s) in IMG_TABLES.iter().enumerate() {
@@ -887,6 +1058,30 @@ fn image_generation_matches_oracle() {
                     "{}: {} rows diverged\n  rust:   {}\n  oracle: {}",
                     label, s.table, got_dumps[i]["rows"], want_dumps[i]["rows"]
                 );
+            }
+
+            // P4.104 — D19: what the blob write did to the seed, never its bytes.
+            if let Some(seed_name) = &case.image_seed {
+                let seed = blob_image_facts::seed_image(seed_name);
+                let rows = db
+                    .read_mount_index(|c| {
+                        Ok(blob_image_facts::stored_blob_rows(
+                            c,
+                            "WHERE l.relativePath LIKE 'tool/%' ORDER BY l.relativePath",
+                            &[],
+                        ))
+                    })
+                    .expect("read stored tool/ rows");
+                let got_facts = Value::Array(blob_image_facts::blob_image_facts(&rows, &seed));
+                let want_facts = want
+                    .image_facts
+                    .clone()
+                    .unwrap_or_else(|| panic!("oracle {label} has no imageFacts — regenerate"));
+                assert_eq!(
+                    got_facts, want_facts,
+                    "{label}: imageFacts diverged\n  rust:   {got_facts}\n  oracle: {want_facts}"
+                );
+                eprintln!("[{label}] imageFacts OK: {got_facts}");
             }
 
             // Round-3 Group 4: the persisted Lantern character-image notification

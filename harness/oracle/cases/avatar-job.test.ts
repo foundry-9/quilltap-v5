@@ -31,6 +31,18 @@
  *   - Date.now() frozen (spec.frozenNowMs) so the provider filename + the frozen
  *     characterAvatars.generatedAt are pinned.
  *
+ * P4.104 — THE IMAGE ROW (bug 159's image half, v4 `186eb09cb`). A case with
+ * `imageSeed` flips `__qtRealTranscode` for its run, so BOTH mocked transcode
+ * modules delegate to the REAL ones (real sharp) — `convertToWebP` AND the
+ * vault bridge's `transcodeToWebP`, which is also what `linkBlobContent`'s
+ * normalization calls — and the provider answers that seed (`../fixtures/`)
+ * as `image/webp`. The seed is the 748 KB LOSSLESS `photo-lossless.webp`:
+ * `convertToWebP` skips an already-WebP input, so the only step that can move
+ * it is the vault write's normalization — v4 re-encodes it lossy, same path,
+ * smaller. The comparand is D19 — `imageFacts` over the written
+ * `images/history/` row (`../lib/blob-image-facts`); the Rust family blanks
+ * that case's encoder-owned values on both sides.
+ *
  * Emits one NDJSON line per RECORDED canned image call / failure, and one per case
  * (kind:"result", { label, threw, dumps, lanternContent, characterAvatars,
  * avatarOverrides }).
@@ -43,6 +55,9 @@
  *   TMPO=/tmp/qt-avatar-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp $WT/harness/oracle/cases/avatar-job.test.ts "$TMPO/cases/"
  *   cp $WT/harness/oracle/fixtures/avatar-job.json "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp $WT/harness/oracle/lib/blob-image-facts.ts "$TMPO/lib/"
+ *   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp "$TMPO/fixtures/"
  *   QT_FIXTURE_AVATAR_MAIN=/tmp/qt-avatar-main.db QT_FIXTURE_AVATAR_MOUNT=/tmp/qt-avatar-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-avatar-job.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -54,6 +69,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
@@ -105,6 +121,11 @@ interface ChatSpec {
    *                     key must never hand one character another's face).
    */
   mutateBetweenRuns?: 'blob-gone' | 'legacy-key' | 'cross-character';
+  /**
+   * P4.104: a seed image under `fixtures/` the provider answers with, and the
+   * switch that makes this case's transcode + blob normalization REAL.
+   */
+  imageSeed?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -225,7 +246,11 @@ async function main(): Promise<void> {
               throw new Error('content policy violation on this prompt');
             }
             const prompt = String(params.prompt ?? '');
-            const images = [{ data: PNG_B64, mimeType: 'image/png', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }];
+            // P4.104: an `imageSeed` case answers the seed's bytes as WebP.
+            const seed = (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed;
+            const images = seed
+              ? [{ data: seed.toString('base64'), mimeType: 'image/webp', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }]
+              : [{ data: PNG_B64, mimeType: 'image/png', revisedPrompt: `revised: ${prompt.slice(0, 48)}` }];
             if (!recordedImages.has(key)) {
               recordedImages.set(key, { provider, model: String(params.model), key, images });
             }
@@ -245,28 +270,38 @@ async function main(): Promise<void> {
       };
     });
 
-    jest.doMock('@/lib/files/webp-conversion', () => ({
-      __esModule: true,
-      convertToWebP: async (buffer: Buffer, mimeType: string, filename: string) => ({
-        buffer,
-        mimeType,
-        filename,
-        width: null,
-        height: null,
-      }),
-    }));
+    // P4.104: pass-through, or REAL under `__qtRealTranscode`.
+    jest.doMock('@/lib/files/webp-conversion', () => {
+      const actual = jest.requireActual('@/lib/files/webp-conversion');
+      return {
+        __esModule: true,
+        convertToWebP: async (buffer: Buffer, mimeType: string, filename: string) =>
+          (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode
+            ? actual.convertToWebP(buffer, mimeType, filename)
+            : {
+                buffer,
+                mimeType,
+                filename,
+                width: null,
+                height: null,
+              },
+      };
+    });
     jest.doMock('@/lib/mount-index/blob-transcode', () => {
       const actual = jest.requireActual('@/lib/mount-index/blob-transcode');
       const { sha256OfBuffer } = jest.requireActual('@/lib/utils/sha256');
       return {
         __esModule: true,
         ...actual,
-        transcodeToWebP: async (data: Buffer, originalMimeType: string) => ({
-          data,
-          storedMimeType: originalMimeType,
-          sizeBytes: data.length,
-          sha256: sha256OfBuffer(data),
-        }),
+        transcodeToWebP: async (data: Buffer, originalMimeType: string) =>
+          (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode
+            ? actual.transcodeToWebP(data, originalMimeType)
+            : {
+                data,
+                storedMimeType: originalMimeType,
+                sizeBytes: data.length,
+                sha256: sha256OfBuffer(data),
+              },
       };
     });
 
@@ -330,6 +365,14 @@ async function main(): Promise<void> {
         return frozen;
       }
     } as unknown as DateConstructor;
+
+    const seedBytes = chat.imageSeed
+      ? fs.readFileSync(join(here, '..', 'fixtures', chat.imageSeed))
+      : undefined;
+    if (seedBytes) {
+      (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = seedBytes;
+      (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = true;
+    }
 
     try {
       const record: Record<string, unknown> = { kind: 'result', label };
@@ -433,8 +476,14 @@ async function main(): Promise<void> {
       };
 
       // The Lantern avatar notification (sender aurora, systemKind avatar).
+      // `f45a517a9` compresses `chat_messages.content`/`opaqueContent` at rest
+      // (a BLOB above the codec's threshold), so a raw SELECT answers a Buffer
+      // the Rust side cannot parse as the string it compares. Read them through
+      // `qt_text()`, which v4 registers on every connection and which is total
+      // (a plaintext cell decodes to itself) — the comparand is the TEXT, as the
+      // Rust side's `get_messages` decodes it.
       const lanternRows = (await rawQuery(
-        `SELECT content, opaqueContent FROM chat_messages WHERE chatId = ? AND systemSender = 'aurora' AND systemKind = 'avatar'`,
+        `SELECT qt_text(content) AS content, qt_text(opaqueContent) AS opaqueContent FROM chat_messages WHERE chatId = ? AND systemSender = 'aurora' AND systemKind = 'avatar'`,
         [chat.id],
       )) as Array<{ content: string; opaqueContent: string }>;
       record.lanternContent = lanternRows.length > 0 ? lanternRows[0].content : null;
@@ -443,6 +492,16 @@ async function main(): Promise<void> {
       // and on a `runTwice` case run 1's own notification is still there. The
       // COUNT is what tells the two apart; the content of the first row cannot.
       record.lanternCount = lanternRows.length;
+
+      if (seedBytes) {
+        // P4.104 — D19: what the vault write did to the seed, never its bytes.
+        const rows = midb
+          .prepare(STORED_BLOB_SELECT + 'WHERE l.relativePath LIKE ? ORDER BY l.relativePath')
+          .all(`images/history/avatar_%_${frozen}.%`) as Parameters<typeof blobImageFacts>[0];
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+        record.imageFacts = await blobImageFacts(rows, seedBytes, sharpMeasure(sharp));
+      }
 
       // chat.characterAvatars + character.avatarOverrides (the two JSON updates).
       const chatRows = (await rawQuery(`SELECT characterAvatars FROM chats WHERE id = ?`, [chat.id])) as Array<{ characterAvatars: string | null }>;
@@ -489,6 +548,8 @@ async function main(): Promise<void> {
 
       lines.push(JSON.stringify(record));
     } finally {
+      (globalThis as { __qtImageSeed?: Buffer }).__qtImageSeed = undefined;
+      (globalThis as { __qtRealTranscode?: boolean }).__qtRealTranscode = false;
       global.Date = RealDate;
       await new Promise((resolve) => setTimeout(resolve, 50));
       await closeDatabase();

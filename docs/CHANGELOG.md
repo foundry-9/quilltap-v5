@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(images): the vault, Lantern and generate-image writers transcode for real, and decodable rows for the generated-image sites (P4.104 unit 6)
+
+_Versions: core 0.0.996, harness 0.0.895._
+
+v4's character-vault and Lantern bridges run `storeMountFile` with
+`transcodeImages: true`, and the generate-image tool and image jobs take the
+`files` row's mime and size from that bridge's answer. v5's writers passed the
+bytes through, assuming the caller had already converted them. That holds for
+a bitmap but not for a large lossless WebP from a provider: v4 re-encodes it,
+v5 recorded the input's length (748872 where v4 records 175300). Both writers
+now run the one ported transcode through their encoder. Decodable-image rows
+added and proven for `image_generation_tier3`, `images_generate_route` and
+`avatar_job_tier3`, with `files.size` compared as "the stored blob's size"
+rather than blanked. The avatar-job oracle now reads Lantern messages through
+`qt_text()`, since v4 compresses `chat_messages.content` at the baseline.
+
 #### 2026-09-22 — style(harness): rustfmt the two P4.104 unit-3 family files
 
 _No crate versions bumped._

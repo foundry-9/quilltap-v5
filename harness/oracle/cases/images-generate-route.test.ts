@@ -39,6 +39,16 @@
  * comparands rather than blanked ones. The one `image/png` case exists to
  * exercise the transcode POLICY (D19: compare the mime, never sharp's bytes).
  *
+ * P4.104 — THE IMAGE ROW (bug 159's image half, v4 `186eb09cb`).
+ * `generate_lossless_webp_normalized` has the provider answer the 748 KB
+ * LOSSLESS `photo-lossless.webp` seed. `convertToWebP` passes an `image/webp`
+ * through (it only measures it), so the ONLY step that can move those bytes is
+ * the Lantern bridge's blob write — `linkBlobContent`'s normalization, real
+ * sharp here as everywhere in this case: v4 re-encodes it lossy, same path,
+ * smaller. The comparand is D19 — `imageFacts` over the minted `tool/` row
+ * (`../lib/blob-image-facts`); the Rust family blanks the encoder-owned
+ * size/sha columns of that case on both sides.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -46,6 +56,9 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/images-generate-route.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/images-collection.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts" "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp" "$TMPO/fixtures/"
  *   cp "$V5W/crates/quilltap-web/tests/fixtures/images-main.db"  /tmp/qt-imgcol-main.db
  *   cp "$V5W/crates/quilltap-web/tests/fixtures/images-mount.db" /tmp/qt-imgcol-mount.db
  *   cd ~/source/quilltap-server
@@ -60,6 +73,7 @@ import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 interface Spec {
   testPepperBase64: string;
@@ -90,7 +104,10 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-type ProviderMode = 'webp' | 'png' | 'throw' | 'nodata';
+type ProviderMode = 'webp' | 'png' | 'throw' | 'nodata' | 'lossless';
+
+/** P4.104: the 748 KB LOSSLESS WebP seed (`fixtures/photo-lossless.webp`). */
+const LOSSLESS_WEBP = readFileSync(join(__dirname, '..', 'fixtures', 'photo-lossless.webp'));
 
 interface CannedClassification {
   isDangerous: boolean;
@@ -137,6 +154,14 @@ function cannedImages(n: number): Array<Record<string, unknown>> {
   for (let i = 0; i < n; i += 1) {
     if (providerMode === 'nodata') {
       out.push({ mimeType: 'image/webp', revisedPrompt: `revised ${i}` });
+      continue;
+    }
+    if (providerMode === 'lossless') {
+      out.push({
+        data: LOSSLESS_WEBP.toString('base64'),
+        mimeType: 'image/webp',
+        revisedPrompt: `revised ${i}`,
+      });
       continue;
     }
     if (providerMode === 'png') {
@@ -383,6 +408,13 @@ function buildCases(): CaseSpec[] {
       body: { prompt, profileId: PROFILE_MAIN },
       provider: 'png',
     },
+    // P4.104 — a LOSSLESS WebP from the provider: `convertToWebP` passes it
+    // through, so only the blob write's normalization can re-encode it (D19).
+    {
+      name: 'generate_lossless_webp_normalized',
+      body: { prompt, profileId: PROFILE_MAIN },
+      provider: 'lossless',
+    },
 
     // ── the Concierge gate ──────────────────────────────────────────────────
     // DETECT_ONLY + dangerous: classified, logged, but NOT rerouted.
@@ -609,7 +641,7 @@ async function runCase(
     };
     const resp = await route.POST(mockGeneratePost(c.body));
     const body = await resp.json();
-    return {
+    const record: Record<string, unknown> = {
       name: c.name,
       status: resp.status,
       body,
@@ -617,6 +649,24 @@ async function runCase(
       classifyCalls,
       tables: await dumpTables(spec),
     };
+    if (providerMode === 'lossless') {
+      // P4.104 — D19: what the blob write did to the seed, never its bytes.
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const midb = getRawMountIndexDatabase() as unknown as {
+        prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+      };
+      const rows = midb
+        .prepare(STORED_BLOB_SELECT + 'WHERE l.mountPointId = ? AND l.relativePath LIKE ? ORDER BY l.relativePath')
+        .all(spec.lanternMountPointId, `tool/generated_${spec.frozenNowMs}_%`) as Parameters<
+        typeof blobImageFacts
+      >[0];
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+      record.imageFacts = await blobImageFacts(rows, LOSSLESS_WEBP, sharpMeasure(sharp));
+    }
+    return record;
   } finally {
     global.Date = RealDate;
     await closeDatabase();

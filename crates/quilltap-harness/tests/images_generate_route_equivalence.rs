@@ -33,6 +33,22 @@
 //! the mime, never sharp's bytes), with the codec-dependent fields blanked on
 //! both sides.
 //!
+//! P4.104 — THE IMAGE ROW (bug 159's image half, v4 `186eb09cb`).
+//! `generate_lossless_webp_normalized` has the provider answer the 748 KB
+//! LOSSLESS `photo-lossless.webp` seed. `convertToWebP` passes an `image/webp`
+//! through, so the only step that can move those bytes is the Lantern blob
+//! write's normalization (`store_blob_to_mount`, encoder = `PixelCodecWebp`
+//! over the route's `seams.codec`). v4 runs REAL sharp for every case of this
+//! family, so this one case runs the route over the host's REAL codec
+//! ([`quilltap_host::HostImageCodec`]) instead of [`PrefixCodec`] — a
+//! byte-prefixing fake cannot re-encode a WebP smaller, and D19's comparand
+//! (`imageFacts`: the stored path/mime, `shaChanged`, the size direction, the
+//! DECODED dimensions — `blob_image_facts/mod.rs`) is only meaningful over a
+//! real encoder. The encoder-owned link `sha256`/`fileSizeBytes` and receipt
+//! `size` are blanked on both sides, and `files.size` is compared as "the
+//! stored blob's size" (a relation both encoders must satisfy); the filename's `_<sha8>_` is
+//! the PRE-normalization sha on both sides, so it stays a real comparand.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — the full recipe lives
 //! in the .test.ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -41,6 +57,9 @@
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
 //!   cp "$V5W/harness/oracle/cases/images-generate-route.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/images-collection.json" "$TMPO/fixtures/"
+//!   mkdir -p "$TMPO/lib"
+//!   cp "$V5W/harness/oracle/lib/blob-image-facts.ts" "$TMPO/lib/"
+//!   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp" "$TMPO/fixtures/"
 //!   cp "$V5W/crates/quilltap-web/tests/fixtures/images-main.db"  /tmp/qt-imgcol-main.db
 //!   cp "$V5W/crates/quilltap-web/tests/fixtures/images-mount.db" /tmp/qt-imgcol-mount.db
 //!   cd ~/source/quilltap-server
@@ -72,6 +91,12 @@ use quilltap_core::model::image::{
 use quilltap_core::services::dangerous_content::gatekeeper::{
     DangerCategory, DangerClassificationResult,
 };
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// P4.104: the seed a [`ProviderMode::Lossless`] provider answers.
+const LOSSLESS_SEED: &str = "photo-lossless.webp";
 
 /// v5's `SINGLE_USER_ID` — the fixture's owner.
 const USER_A: &str = "11111111-1111-4111-8111-111111111111";
@@ -126,6 +151,8 @@ enum ProviderMode {
     Png,
     Throw,
     NoData,
+    /// P4.104: the 748 KB LOSSLESS WebP seed, as `image/webp`.
+    Lossless,
 }
 
 /// The image-provider seam: behavioural (answers `params.n` images built from
@@ -161,6 +188,16 @@ impl ImageProvider for RecordingImageProvider {
             .map(|i| match self.mode {
                 ProviderMode::NoData => GeneratedImageData {
                     data: None,
+                    url: None,
+                    mime_type: Some("image/webp".into()),
+                    revised_prompt: Some(format!("revised {i}")),
+                },
+                ProviderMode::Lossless => GeneratedImageData {
+                    data: Some({
+                        use base64::Engine;
+                        base64::engine::general_purpose::STANDARD
+                            .encode(blob_image_facts::seed_image(LOSSLESS_SEED))
+                    }),
                     url: None,
                     mime_type: Some("image/webp".into()),
                     revised_prompt: Some(format!("revised {i}")),
@@ -419,6 +456,60 @@ fn blank(row: &mut Value, key: &str) {
 /// The seeded GENERATED row (`F_GENERATED`) — never minted, never blanked.
 const SEEDED_GENERATED: &str = "f0000000-0000-4000-8000-000000000003";
 
+/// P4.104 (D19): the encoder-owned values of the normalized case, on both
+/// sides — `files.size` (v4's `written.sizeBytes`) replaced by its relation to
+/// the stored blob, the stored file's sha/size blanked. Path, filename and
+/// mime stay comparands.
+fn blank_normalized(v: &mut Value) {
+    // The `files` row's `size` is v4's `written.sizeBytes` — the STORED blob's
+    // size. Compared as that RELATION (the link's `fileSizeBytes`), not blanked:
+    // a plain blank hid v5 writing the pre-transcode input length (P4.104).
+    let stored: Vec<f64> = v
+        .get("links")
+        .and_then(Value::as_array)
+        .map(|links| {
+            links
+                .iter()
+                .filter(|r| {
+                    r.get("relativePath")
+                        .and_then(Value::as_str)
+                        .is_some_and(|p| p.starts_with("tool/generated_"))
+                })
+                .filter_map(|r| r.get("fileSizeBytes").and_then(Value::as_f64))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(files) = v.get_mut("files").and_then(Value::as_array_mut) {
+        for row in files.iter_mut() {
+            if row.get("id").and_then(Value::as_str) == Some(SEEDED_GENERATED) {
+                continue;
+            }
+            if let Some(size) = row.get("size").and_then(Value::as_f64) {
+                let token = if stored.contains(&size) {
+                    "<the-stored-blob-size>".to_string()
+                } else {
+                    format!("<NOT-the-stored-blob-size:{size}>")
+                };
+                row.as_object_mut()
+                    .unwrap()
+                    .insert("size".to_string(), Value::String(token));
+            }
+        }
+    }
+    if let Some(links) = v.get_mut("links").and_then(Value::as_array_mut) {
+        for row in links.iter_mut() {
+            if row
+                .get("relativePath")
+                .and_then(Value::as_str)
+                .is_some_and(|p| p.starts_with("tool/generated_"))
+            {
+                blank(row, "sha256");
+                blank(row, "fileSizeBytes");
+            }
+        }
+    }
+}
+
 /// Blank what the CASE minted: the row id and the blob id inside its storage
 /// key, on both sides. `transcoded` additionally blanks the codec-dependent
 /// fields — the WebP bytes are sharp's on one side and [`PrefixCodec`]'s on the
@@ -555,6 +646,11 @@ fn cases() -> Vec<Case> {
         Case {
             provider: ProviderMode::Png,
             ..ok("generate_png_transcode")
+        },
+        // P4.104: a LOSSLESS WebP — only the blob write's normalization moves it.
+        Case {
+            provider: ProviderMode::Lossless,
+            ..ok("generate_lossless_webp_normalized")
         },
         // ── the Concierge gate ──
         // DETECT_ONLY + dangerous: classified and logged, never rerouted.
@@ -811,7 +907,14 @@ fn images_generate_matches_oracle() {
                 canned: c.classify.clone(),
                 calls: classify_calls.clone(),
             }),
-            codec: Arc::new(PrefixCodec),
+            // P4.104: the normalized case runs over the REAL codec (v4 is
+            // real sharp throughout — see the header).
+            codec: if c.provider == ProviderMode::Lossless {
+                Arc::new(quilltap_host::HostImageCodec)
+                    as Arc<dyn quilltap_core::services::file_storage::PixelCodec>
+            } else {
+                Arc::new(PrefixCodec)
+            },
         };
 
         let resp = rt.block_on(quilltap_core::api::images::images_generate(
@@ -849,10 +952,18 @@ fn images_generate_matches_oracle() {
         }
 
         let transcoded = c.provider == ProviderMode::Png;
+        let normalized = c.provider == ProviderMode::Lossless;
         let mut want_body = canon(&drop_zod_details(&want["body"]));
         let mut got_body = canon(&body);
         blank_receipt(&mut want_body, transcoded);
         blank_receipt(&mut got_body, transcoded);
+        if normalized {
+            for b in [&mut want_body, &mut got_body] {
+                if let Some(data) = b.get_mut("data").and_then(Value::as_array_mut) {
+                    data.iter_mut().for_each(|row| blank(row, "size"));
+                }
+            }
+        }
         if got_body != want_body {
             failed.push(format!(
                 "{}: body\n  want {want_body}\n  got  {got_body}",
@@ -895,11 +1006,41 @@ fn images_generate_matches_oracle() {
         let mut want_tables = canon(&want["tables"]);
         blank_minted(&mut got_tables, transcoded);
         blank_minted(&mut want_tables, transcoded);
+        if normalized {
+            blank_normalized(&mut got_tables);
+            blank_normalized(&mut want_tables);
+        }
         if got_tables != want_tables {
             failed.push(format!(
                 "{}: tables\n  want {want_tables}\n  got  {got_tables}",
                 c.name
             ));
+        }
+
+        // P4.104 — D19: what the blob write did to the seed, never its bytes.
+        if normalized {
+            let seed = blob_image_facts::seed_image(LOSSLESS_SEED);
+            let like = format!("tool/generated_{}_%", spec.frozen_now_ms);
+            let rows = db
+                .read_mount_index(move |conn| {
+                    Ok(blob_image_facts::stored_blob_rows(
+                        conn,
+                        "WHERE l.mountPointId = ?1 AND l.relativePath LIKE ?2 \
+                         ORDER BY l.relativePath",
+                        &[&LANTERN_MP as &dyn rusqlite::ToSql, &like],
+                    ))
+                })
+                .expect("read the stored tool/ rows");
+            let got_facts = Value::Array(blob_image_facts::blob_image_facts(&rows, &seed));
+            let want_facts = want["imageFacts"].clone();
+            if got_facts != want_facts {
+                failed.push(format!(
+                    "{}: imageFacts diverged\n  want {want_facts}\n  got  {got_facts}",
+                    c.name
+                ));
+            } else {
+                eprintln!("[{}] imageFacts OK: {got_facts}", c.name);
+            }
         }
     }
 

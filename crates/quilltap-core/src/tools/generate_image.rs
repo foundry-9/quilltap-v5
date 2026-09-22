@@ -1229,13 +1229,23 @@ pub(crate) fn save_generated_image(
     // (the injected seam), so the blob relative path takes the `.webp` extension.
     let safe_name = sanitize_leaf_name(&converted.filename);
     let desired_path = format!("tool/{safe_name}");
-    let final_path = normalise_blob_relative_path(&desired_path, &converted.mime_type);
+    // P4.104: v4's `writeLanternBackgroundToMountStore` runs `storeMountFile`
+    // with `transcodeImages: true` — the REAL `transcodeToWebP` — and v4's
+    // `files` row and answer take their mime and size from THAT
+    // (`image-generation-handler.ts`: `written.storedMimeType`,
+    // `written.sizeBytes`). The `converted` bytes are usually lossy WebP, which
+    // passes through; a provider's large LOSSLESS WebP (which `convertToWebP`
+    // skips as already-WebP) is re-encoded here, as v4's bridge does. The
+    // `sha256` stays the converted bytes' (v4's `sha256` local).
+    let stored = crate::services::mount_index::blob_transcode::transcode_to_webp(
+        &converted.bytes,
+        &converted.mime_type,
+        blob_webp,
+    );
+    let final_path = normalise_blob_relative_path(&desired_path, &stored.stored_mime_type);
 
-    // P4.104: `linkBlobContent` normalizes whatever arrives (v4's Lantern
-    // bridge runs `storeMountFile` with `transcodeImages: true`, then
-    // normalizes). The `converted` bytes are already lossy WebP, which the
-    // normalization declines; a provider's large LOSSLESS WebP — which the
-    // `convertToWebP` policy above skips as already-WebP — is what it moves.
+    // `linkBlobContent` then normalizes whatever arrives (v4
+    // `store-file.ts:281`) — after the transcode above, a no-op.
     let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
     // `unique-suffix` collision strategy: pick a free path (v4 `resolveUniqueRelativePath`).
     let unique_path = resolve_unique_relative_path(mount, mount_point_id, &final_path)
@@ -1261,9 +1271,9 @@ pub(crate) fn save_generated_image(
             file_type: Some("blob".to_string()),
             original_file_name: Some(safe_name.clone()),
             original_mime_type: Some(mime_type.to_string()),
-            stored_mime_type: converted.mime_type.clone(),
-            sha256: sha256.clone(),
-            data: converted.bytes.clone(),
+            stored_mime_type: stored.stored_mime_type.clone(),
+            sha256: stored.sha256.clone(),
+            data: stored.data.clone(),
             // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
             // chokepoint, default true.
             normalize_images: true,
@@ -1291,8 +1301,8 @@ pub(crate) fn save_generated_image(
                 user_id: user_id.to_string(),
                 sha256: sha256.clone(),
                 original_filename: safe_name.clone(),
-                mime_type: converted.mime_type.clone(),
-                size: converted.bytes.len() as f64,
+                mime_type: stored.stored_mime_type.clone(),
+                size: stored.size_bytes as f64,
                 width: converted.width,
                 height: converted.height,
                 is_plain_text: None,
@@ -1328,8 +1338,8 @@ pub(crate) fn save_generated_image(
         filename: safe_name,
         revised_prompt: metadata.revised_prompt.clone(),
         filepath: Some(format!("/api/v1/files/{file_id}")),
-        mime_type: Some(converted.mime_type.clone()),
-        size: Some(converted.bytes.len() as f64),
+        mime_type: Some(stored.stored_mime_type.clone()),
+        size: Some(stored.size_bytes as f64),
         width: converted.width,
         height: converted.height,
         sha256: Some(sha256),

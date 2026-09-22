@@ -272,19 +272,29 @@ fn store_blob_to_mount(
     blob_webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
 ) -> Result<WrittenImage, DbError> {
     let rel = normalise_relative_path(desired_relative_path)?;
-    // Pass-through transcode: storedMimeType == originalMimeType, sha over bytes.
-    let stored_mime_type = content_type.to_string();
-    let sha256 = sha256_of_buffer(content);
+    // v4's bridges call `storeMountFile` with `transcodeImages: true`
+    // (`character-vault-bridge.ts:224`, `lantern-store-bridge.ts:116`), so this
+    // is the REAL `transcodeToWebP` through the site's encoder (P4.104 — it was
+    // a pass-through "because the caller already transcoded", which holds for a
+    // bitmap but not for a large LOSSLESS WebP: `convertToWebP` skips WebP, the
+    // bridge re-encodes it, and v4's answer — the `files` row's mime and size —
+    // describes the re-encoded bytes). A caller's already-lossy WebP passes
+    // through unchanged, exactly as before.
+    let transcoded = crate::services::mount_index::blob_transcode::transcode_to_webp(
+        content,
+        content_type,
+        blob_webp,
+    );
+    let stored_mime_type = transcoded.stored_mime_type.clone();
+    let sha256 = transcoded.sha256.clone();
 
     let mut final_path = normalise_blob_relative_path(&rel, &stored_mime_type);
     // `unique-suffix` collision strategy.
     final_path = resolve_unique_relative_path(mount, mount_point_id, &final_path)?;
 
-    // P4.104: `linkBlobContent` normalizes whatever arrives (v4's bridges both
-    // pass `transcodeImages: true` and then normalize, `store-file.ts:250` +
-    // `:281`). The callers hand over already-converted WebP, which the
-    // normalization declines; a large lossless WebP or a bitmap the caller did
-    // not convert is what it moves.
+    // P4.104: `linkBlobContent` then normalizes whatever arrives (v4
+    // `store-file.ts:281`) — after the transcode above, through the same
+    // encoder, a no-op; kept because v4 runs both.
     let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
     // ensureFolderPath when the path has a real parent folder.
     if let Some(dir) = posix_dirname(&final_path) {
@@ -302,7 +312,7 @@ fn store_blob_to_mount(
         original_mime_type: Some(content_type.to_string()),
         stored_mime_type: stored_mime_type.clone(),
         sha256: sha256.clone(),
-        data: content.to_vec(),
+        data: transcoded.data.clone(),
         // P4.D209: v4 `normalizeImages` (`186eb09cb`) — the write-side
         // chokepoint, default true.
         normalize_images: true,
@@ -321,7 +331,7 @@ fn store_blob_to_mount(
         blob_id: written.blob_id,
         relative_path: final_path,
         stored_mime_type,
-        size_bytes: content.len(),
+        size_bytes: transcoded.size_bytes as usize,
         sha256,
     })
 }
@@ -396,18 +406,6 @@ fn is_unsafe_leaf_char(c: char) -> bool {
     matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
         || (c as u32) <= 0x1F
         || (c as u32) == 0x7F
-}
-
-/// v4 `sha256OfBuffer`: lowercase hex SHA-256.
-fn sha256_of_buffer(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }
 
 /// POSIX `path.dirname` for a blob path (`None` when there's no folder segment —

@@ -592,6 +592,16 @@
       "expectWrite": true,
       "$note": "v4 MISSES here, measured: the params builder APPENDS the LoRA trigger phrase to params.prompt, and files.generationPrompt is the prompt BEFORE that append — so the v0 key a collapse writes from the stored columns can never equal the v0 key a lookup derives from the params. For any profile carrying a trigger phrase v4's legacy fallback is unreachable; this case pins that rather than pretending otherwise. The sibling case below uses a trigger-free profile, where the two prompts agree and the fallback does hit."
     },
+    "p4104_lossless_webp_normalized": {
+      "$comment": "P4.104 / bug 159 (v4 `186eb09cb`): the provider answers the 748 KB LOSSLESS `photo-lossless.webp` seed as `image/webp`. `convertToWebP` skips an already-WebP input by policy, so the ONLY step that can move the bytes is the vault write's normalization (`linkBlobContent`): v4 re-encodes it lossy — same `.webp` path, `image/webp`, smaller. `imageSeed` makes this case's transcode + normalization REAL on both sides (the oracle's flag-gated mocks; the Rust family's host codecs); the comparand is D19 `imageFacts`, with every encoder-owned value in the case's dumps blanked on both sides. The accessories + hair outfit is one no sibling wears, so its canned image key is its own.",
+      "id": "ca000040-0000-4000-8000-000000000040",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": { "accessories": ["a1000000-0000-4000-8000-000000000004"], "hair": ["a1000000-0000-4000-8000-000000000006"] },
+      "imageSeed": "photo-lossless.webp",
+      "expectWrite": true
+    },
     "cache_legacy_key_hit": {
       "id": "cb000014-0000-4000-8000-000000000014",
       "userId": "bb000000-0000-4000-8000-0000000000bb",
