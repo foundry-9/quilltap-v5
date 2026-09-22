@@ -141251,3 +141251,171 @@ QT_FIXTURE_PROFILE_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/profile-mount.d
 QT_ORACLE_OUT=/tmp/oracle-profile.ndjson \
   $N/npx jest --silent --watchman=false --testTimeout=120000 --roots "$TMPO/cases" -- profile-routes
 ```
+
+## Lane record — P4.D211, out of mandate: `main` was clippy-red before this lane began (2026-09-21)
+
+Gate step 3 (`cargo clippy --workspace --all-targets -- -D warnings`, both
+feature sets) failed on the lane's FIRST run with ten
+`doc list item without indentation` errors in a file this lane never touched:
+`crates/quilltap-web/tests/character_prompt_set_default_dispatch_wire.rs`
+(P4.D201's, landed at the `baa85e19b` unification).
+
+**Measured pre-existing, not inferred:** `cargo clippy -p quilltap-web --test
+character_prompt_set_default_dispatch_wire -- -D warnings` on the **clean main
+checkout** at `c3a615da` exits 101 with the same eleven error lines. The
+previous round's gate recorded clippy clean, so the file most likely landed in
+that round's final unify commit after its clippy step ran.
+
+**Cause: the `doc-comment-plus-starts-a-markdown-list` trap, verbatim.** The
+module doc's seventh line began ``//! + `post` on `/api/v1/characters/{id}` …``,
+and a line-initial `+` opens a markdown list — so lines 8–17 were read as lazy
+continuations of a list item and each drew its own error. Clippy points at line
+8, not at line 7, which is what makes it hard to see.
+
+**Fixed here, loudly, out of mandate:** one reflowed line moves that `+` off
+the line start. Three lines change, no prose is altered, nothing behavioural
+moves. Taken rather than reported because it blocks gate step 3 for **every**
+lane in a nine-lane round and **no lane owns the file** (§R.10(f) does not fence
+it; the nearest owner, P4.D205/D207/D210, own `dispatch_wrong_type_census.rs`,
+not this one). `web` bumped 0.0.158 → 0.0.159 for it.
+
+**For the unifier:** if a sibling lane fixed the same line, the two edits are
+identical and merge as one; audit `git diff <base> -- crates/quilltap-web/tests/
+character_prompt_set_default_dispatch_wire.rs` and keep either.
+
+## Lane record — P4.D211 items 5–7: the prefault pins, Tier R, the mirrors (2026-09-21)
+
+### Item 5 — the four prefault pins re-run at the target, and the fifth site's NO-COUNTERPART
+
+`6b0615807` drops `.optional()` from five `.prefault(…)` fields. The hunks,
+re-read rather than taken from the ledger's prose (each a one-token deletion,
+nothing else in any of the four files):
+
+| v4 site | field |
+|---|---|
+| `app/api/v1/characters/[id]/prompts/route.ts` | `isDefault: z.boolean().prefault(false)` |
+| `app/api/v1/image-profiles/[id]/route.ts` | `count: z.int().min(1).max(10).prefault(1)` |
+| `app/api/v1/projects/schemas.ts` | `allowAnyCharacter: z.boolean().prefault(false)` |
+| `app/api/v1/projects/schemas.ts` | `characterRoster: z.array(z.uuid()).prefault([])` |
+| `app/api/v1/plugins/route.ts` | `type: z.enum([…]).prefault('all')` |
+
+**TYPE-LEVEL ONLY, and the pins prove it — all green, by name:**
+
+- `api::projects::tests::the_prefaulted_fields_are_not_nullable` — **ok**. An
+  explicit `null` still refuses for both project fields.
+- `projects_routes_equivalence`, regenerated at the TARGET pin: the four
+  prefault rows pass **individually by name** —
+  `[create_roster_null] OK (400)`, `[create_roster_non_uuid] OK (400)`,
+  `[create_allow_any_null] OK (400)`, `[create_allow_any_wrong_type] OK (400)`.
+  Also green on clean `main` with the same fresh oracle, so the rows are not
+  merely green here.
+- `dispatch_wrong_type_census` — **8/8 ok**, including the two `count`
+  `.prefault(1)` rows whose notes state the rule ("substitutes only on
+  `undefined`, so a wrong type still fails").
+
+**The fifth site has NO v5 counterpart, measured rather than assumed:** v5 has
+no plugin runtime (the standing deferral, named at `services/tools_inventory
+.rs`'s "the plugin arm"), no `/api/v1/plugins` route, and no `Plugin*` Request
+variant. The only `crates/` hit for a plugin list is
+`provider_manifest/search.rs`'s unrelated `parsePluginList` port. **NO-COUNTERPART.**
+
+### ⚠ A TWELFTH fixture-vintage family, found by re-running the prefault pins
+
+`projects_routes_equivalence` at the target pin is **RED on 17 of its cases** —
+`list`, `get_iota`, `get_kappa`, the five `list_chats*`,
+`background_iota_latest_chat`, `delete`, `delete_tables`, `add_chat`,
+`remove_chat`, `remove_chat_tables`, `add_file`, `add_file_tables`,
+`add_file_missing`. The named cause surfaces on the last one:
+`got 500:'sqlite error: no such column: generationKey' want 404:'File not
+found'`. The rest go `"kind": "internal"` for the same reason (the project read
+touches `files`), and `delete`/`remove_chat` invert — v4's side ALSO fails on
+the same fixture, so v4 answers `Failed to delete project` where v5 succeeds.
+
+**Proven PRE-EXISTING on clean `main` at `c3a615da`** with this same fresh
+oracle: the identical 17-case list, and the four prefault rows green there too.
+
+So this round's fixture-vintage tally, as measured by this lane:
+
+| family | pair | missing column |
+|---|---|---|
+| `profile_routes_equivalence` (unit 3) | `profile-{main,mount}.db` | `files.generationKey` |
+| `projects_routes_equivalence` (this item) | `groups-projects-{main,mount}.db` | `files.generationKey` |
+
+Both are **new to the heal order's list** (nine families on four pairs) —
+making it **eleven families on six pairs**. Both were invisible because their
+`QT_ORACLE_*` vars sit outside the gate's env block, so the families SKIP.
+§R.12 forbids widening a committed pair this round; nothing was widened.
+
+### Item 6 — Tier R at the pin, and the order's own expectation corrected
+
+Run from this worktree against **both** pins (`QT_V4_CHECKOUT=<pin>
+QT_NODE=…/v24.13.1/bin/node cargo test -p quilltap-cli --test cli_differential
+-- --nocapture`). ~8.5 minutes per run; the family prints only a final summary,
+so a silent log is normal and not a hang.
+
+| pin | result |
+|---|---|
+| **target `f45a517a9`** | **223 cases, 4 failures** — `[main help]`, `[completion bash]`, `[completion zsh]`, `[completion fish]` |
+| **baseline `baa85e19b`** | **223 cases, 0 failures** (534.79 s) |
+
+**That pair is the proof, and it is what makes item 6 worth running twice:** the
+same v5 tree answers 223/0 against the baseline and 223/4 against the target, so
+the four reds are v4 DRIFT — not v5 regressions, and not the stamp.
+
+**The four reds are P4.D210's designed reds, exactly as §R.5 predicts**, and the
+diff names the cause: v4's `main help` at the target carries
+`sync <store> <path>           Mirror a database-backed store to a directory`,
+which v5 has not got because **P4.D210 is the lane landing the verb**. The three
+completion templates fail for the same missing verb.
+
+⚠ **Item 6's own expectation is wrong and §R.5 is right.** Item 6 says "223/0
+expected on a tree without P4.D210"; that holds only at the BASELINE pin, since
+the target pin is precisely where v4 grew the verb. A lane reading item 6 alone
+would file four v5 regressions. Recorded so the next order does not repeat it.
+
+**Nothing in the stamp commit's own content moves Tier R**: `packages/quilltap/
+package.json` changed by its version field, and no Tier R case reads it (the
+four reds are the sync verb, not the stamp).
+
+### Item 7 — the mirrors, pre-listed with byte counts at the target pin
+
+For the unifier (§R.9 — the mirror is the unifier's, not a lane's):
+
+| mirror path in v5 | source at `f45a517a9` | bytes | md5 |
+|---|---|---|---|
+| `docs/v4/developer/CLI.md` (RE-MIRROR) | `docs/developer/CLI.md` | **6,542** | `d6d04e81bbca45ffa01478ea10eeda7d` |
+| `docs/v4/packages-quilltap-README.md` (**NEW**) | `packages/quilltap/README.md` | **34,707** | `02ebb359f6affeebe3acaf8f8e5edd2b` |
+| `docs/v4/developer/features/complete/cli-comprehensive-help.md` (**NEW**) | `docs/developer/features/complete/cli-comprehensive-help.md` | **9,986** | `3d18544027dcfae52d3f7189db61dfd6` |
+
+Three facts the unifier needs, all measured:
+
+1. **The re-mirror SHRINKS the port's CLI reference**, which is why the README
+   mirror is not optional. v4's `CLI.md` went 28,099 → 6,542 bytes at
+   `e11a51f44` (the pre-gut size read from `5e4252898^`), with the content moved
+   into `packages/quilltap/README.md`. v5's mirror tree has **no `packages/`
+   subtree**, hence the flat `packages-quilltap-README.md` name the order
+   prescribes.
+2. **v5's mirror was ALREADY stale before this commit** — `docs/v4/developer/
+   CLI.md` is **24,663** bytes, not 28,099, so it was mirroring an older vintage.
+   Worth noting because "24,663 → 6,542" will look like a bigger loss than the
+   17.5 KB the commit actually moved.
+3. **Nothing in v5 reads `CLI.md` programmatically** — the only hits across
+   `crates/`, `apps/web/src` and `harness/` are three porting docs
+   (`drift-ledger.md`, `phase-4.md`, `status-log.md`) citing it as prose.
+   `features/complete/` already holds 92 files, so the plan file joins an
+   existing subtree at its POST-`e11a51f44` path (never the birth path).
+
+**The phase-4.md `npm install` item — retirement text for the unifier** (item 5
+of the `baa85e19b` round's §7 bank, at `phase-4.md:7357-7358`, currently "the
+four SDK-bundling plugin dirs in the v4 checkout declare `openai ^7.15.0` but
+still have 7.10.0 installed"). **Strike it with this correction:**
+
+> **RESOLVED by `6b0615807`** (P4.D211, measured 2026-09-21). The item's count
+> was wrong twice over: **six** plugin dirs bundle `openai`, not four
+> (`deepseek`, `grok`, `nanogpt`, `openai-compatible`, `openai`, `z-ai`), and
+> they sat at **two different versions** — the old `qtap-plugin-openai` bundle
+> carried `VERSION = "7.10.0"` and the old `qtap-plugin-openrouter` bundle
+> `"7.15.0"`. All six now have `openai@7.20.0` installed against `^7.20.0`
+> declared, and `@anthropic-ai/sdk@0.115.0`, `@google/genai@1.52.0` and
+> `@openrouter/sdk@1.3.11` all match their declarations. No `npm install` is
+> owed.

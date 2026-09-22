@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(clippy): a doc comment's line-initial `+` was opening a markdown list, and main was red
+
+_Versions: web 0.0.159._
+
+`cargo clippy --workspace --all-targets -- -D warnings` fails on clean `main`
+with ten `doc list item without indentation` errors in
+`crates/quilltap-web/tests/character_prompt_set_default_dispatch_wire.rs`
+(verified by running it on the main checkout, not inferred). One reflowed line
+fixes all ten: the doc comment's seventh line began `//! + `post` on …`, and a
+line-initial `+` opens a markdown list, so every line after it read as a lazy
+continuation. Moving that `+` off the line start is the whole change — no
+prose, no behaviour.
+
+Out of this lane's mandate and fixed anyway: it blocks gate step 3 for every
+lane in the round, and no lane owns the file.
+
 #### 2026-09-21 — fix(profile): `is_zod_email` becomes the regex it claimed to be — 288 of 1,014 addresses were judged wrong
 
 _Versions: core 0.0.968, harness 0.0.860._
