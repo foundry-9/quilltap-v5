@@ -143187,3 +143187,60 @@ the REST arm, above); v5's `delete_pending_for_participant` call replaced by
 red. Red-first availability: none (ported behaviour); the mutations are the
 proofs. The inverse (a drop sited in the bag) is `inform_drop_lives_on_the_
 action.rs`'s, unchanged.
+
+### Unit 5 — items 1 + 7: `build_context_tier3`'s Inform arms + the read-count assert
+
+Corpus 40 → 45 ops; NEW top-level `informs[]` (12 rows) planted by
+`build-context-tier3-fixture.ts` through v4's REAL `ensureCollection` +
+`ChatInformsRepository.create` (ids/stamps pinned; SPEC order ≠ delivery
+order). Seats: `f1` (the older ops' responding seat — owed NOTHING, so the
+forty older ops are provably unmoved), `f7` (one pending, with surrounding
+whitespace), `f8` (three pending — `0x04`/`0x02`/`0x03` inserted, delivered
+`0x02, 0x03, 0x04` by createdAt-then-id with a tie at 00:07 — plus a
+whitespace-only pending `0x05` and a consumed `0x06`), `f9` (swipe: two rows
+consumed by the target's group `e6`/`e7`, one consumed by `e8`, one
+pending), `fa` (whitespace-only pending only), `fb` (a bystander no op
+responds as). New op key `regenerationOfMessageIds` (case + Rust `SpecOp`).
+Ops cloned from `multi_character_turn` with the responding seat swapped and
+`skipMemories: true` (no new canned embeddings needed).
+
+v4 measured (the oracle, not the tests' prose): `inform_seat_owed_nothing`
+→ no block, `informRowIds: []`; `inform_one_pending` → block at index 2
+(after the Identity Reminder), trimmed, `informRowIds: [01]`;
+`inform_several_pending` → `First…\n\n---\n\nSecond…\n\n---\n\nThird…`,
+`informRowIds: [02, 03, 04, 05]` — **the whitespace-only row's id IS
+carried** (v4 filters bodies, not rows; the finalizer will consume it);
+`inform_swipe` → `Swipe-group passage one.\n\n---\n\nSwipe-group passage
+two.`, `informRowIds: []`; `inform_whitespace_only` → no block AND
+`informRowIds: []` (the all-empty early return). v5 matched every arm on
+arrival — all five are neutrality arms (red-first unavailable; the
+mutations below are the proofs).
+
+Item 7 — the seam, harness-only (no production counter, no Cargo feature —
+rusqlite's `trace` feature is off and a non-version `Cargo.toml` delta is
+forbidden by §R.8): `sqlite3_auto_extension` (via `rusqlite::ffi`) installs
+`sqlite3_trace_v2(SQLITE_TRACE_STMT)` on every connection the process opens
+(the `Db` read pool opens lazily and privately). Counts statements by SQL
+text. **Order correction:** `find_pending_for_participant` and
+`find_consumed_by_messages` issue BYTE-IDENTICAL SQL, so the count is "one
+per-seat `chat_informs` read per turn" (and zero with no responding seat,
+zero other `chat_informs` statements) — which of the two ran is proven by
+the swipe op's CONTENT. Asserted on all 45 ops (13 expect 1).
+
+Regen AS RUN (§R.2 probe re-run first: PASS): `TMPO=/tmp/p4106/qt-bc-oracle`
+(case + corpus staged), cwd the pin, `TZ=UTC QT_FIXTURE_OUT=/tmp/p4106/qt-
+build-context-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4106/qt-build-context-
+mount.db npx tsx <v5w>/harness/oracle/fixtures/build-context-tier3-fixture.ts`
+→ "… 4 seeded messages, 12 informs"; then the jest line with
+`QT_FIXTURE_BC_*` at those paths, `QT_ORACLE_OUT=/tmp/p4106/oracle-build-
+context.ndjson`, `-- "build-context-tier3\.test\.ts$"` → 97 rows, `grep -c
+"quarter past three"` = 1. Green, 1.01 s.
+
+Mutations (file-backup reverts, `inform_block.rs`): a second
+`find_pending_for_participant` per turn → `multi_character_turn: … (2, 0)
+vs (1, 0)` (the first op with a seat); the swipe arm reading PENDING →
+`inform_swipe_reapplies_the_groups_consumed_rows: built context diverges`.
+
+⚠ For the unifier: this family is NOT one of the three that move at
+`a2db63da7` (it reaches no fold), and its informs comparand never reads a
+fold prompt.

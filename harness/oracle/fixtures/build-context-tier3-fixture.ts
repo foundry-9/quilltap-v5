@@ -139,6 +139,19 @@ interface Spec {
   standingInstructions: StandingInstructionsSpec;
   vaultConversationSummaries?: VaultConversationSummary[];
   seedMessages?: SeedMessage[];
+  /** P4.106 item 1: `chat_informs` rows planted through v4's REAL repository
+   *  (ids + stamps pinned). Keyed on seat ids no pre-existing op responds as,
+   *  so the forty older ops read nothing and stay byte-identical. */
+  informs?: InformSpec[];
+}
+interface InformSpec {
+  id: string;
+  batchId: string;
+  participantId: string;
+  contentMarkdown: string;
+  createdAt: string;
+  consumedAt?: string | null;
+  consumedByMessageId?: string | null;
 }
 
 async function main(): Promise<void> {
@@ -516,6 +529,35 @@ async function main(): Promise<void> {
     seededMessages++;
   }
 
+  // P4.106 item 1: the inform plant — the `build-chat-informs-fixture.ts`
+  // shape (v4's own `ensureCollection` + `ChatInformsRepository.create` with
+  // id + timestamps pinned). Inserted in SPEC order, which is deliberately not
+  // the delivery order (createdAt, then id), so the sort is under test.
+  let informCount = 0;
+  if ((spec.informs ?? []).length > 0) {
+    const { ChatInformsRepository } = await import(
+      '@/lib/database/repositories/chat-informs.repository'
+    );
+    const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+    await ensureCollection('chat_informs', ChatInformSchema);
+    const informRepo = new ChatInformsRepository();
+    for (const row of spec.informs ?? []) {
+      await informRepo.create(
+        {
+          chatId: spec.chat.id,
+          batchId: row.batchId,
+          participantId: row.participantId,
+          contentMarkdown: row.contentMarkdown,
+          recordMessageId: null,
+          consumedAt: row.consumedAt ?? null,
+          consumedByMessageId: row.consumedByMessageId ?? null,
+        } as never,
+        { id: row.id, createdAt: row.createdAt, updatedAt: row.createdAt }
+      );
+      informCount++;
+    }
+  }
+
   // P4.d15: dated vault conversation summaries in the participants' vaults, via
   // v4's REAL writer, then one baked chunk per summary file (embedding is a
   // background job in v4, so the vectors are pinned here).
@@ -587,7 +629,7 @@ async function main(): Promise<void> {
   process.stderr.write(
     `built build-context fixture: ${outMain} + ${outMount} ` +
       `(${spec.characters.length} chars, ${fileCount} knowledge files, ${chunkCount} chunks, ` +
-      `${memoryCount} memories, ${summaryCount} vault summaries, ${seededMessages} seeded messages)\n`
+      `${memoryCount} memories, ${summaryCount} vault summaries, ${seededMessages} seeded messages, ${informCount} informs)\n`
   );
   process.exit(0);
 }

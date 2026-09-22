@@ -85,6 +85,9 @@ interface Op {
     commonplaceRecallHistory?: unknown;
   };
   respondingParticipantId?: string;
+  /** P4.106 item 1: the swipe re-apply arm — `buildContext`'s
+   *  `regenerationOfMessageIds` (the target + its swipe group). */
+  regenerationOfMessageIds?: string[];
   activeUserParticipantId?: string;
   participants?: Array<{
     id: string;
@@ -425,6 +428,9 @@ async function main(): Promise<void> {
       options.participantCharacters = participantCharacters;
       options.messagesWithParticipants = op.messagesWithParticipants;
       options.activeUserParticipantId = op.activeUserParticipantId ?? null;
+    }
+    if (op.regenerationOfMessageIds) {
+      options.regenerationOfMessageIds = op.regenerationOfMessageIds;
     }
     if (op.distillEnabled) {
       options.cheapLLMSelection = cheapLLMSelection;

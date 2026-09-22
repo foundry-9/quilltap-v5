@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): build_context_tier3's Inform arms over planted rows + the one-read-per-turn assert (P4.106 items 1, 7)
+
+_Versions: harness 0.0.895._
+
+P4.106 items 1 and 7. `build_context_tier3` grows from 40 to 45 ops over
+twelve `chat_informs` rows planted in the builder through v4's real
+repository, keyed on seats no older op responds as. The five ops mirror v4's
+three `context-management.test.ts` arms with real rows instead of the mocked
+reads: a seat owed nothing, one pending passage (trimmed, placed right after
+the identity reminder), several pending passages stacked in createdAt-then-id
+order with a consumed row and a whitespace-only body excluded, the swipe
+re-apply of the target group's consumed rows (new `regenerationOfMessageIds`
+op key), and a whitespace-only-only seat that delivers nothing.
+
+Item 7's read-count assert lives in the harness only: an
+`sqlite3_auto_extension` installs a `sqlite3_trace_v2` statement hook on every
+connection, and each op must issue exactly one per-seat `chat_informs` read
+when it has a responding seat, none otherwise, and no other `chat_informs`
+statement. Reading pending informs twice fails it at the first multi-seat
+op; reading pending instead of consumed on a swipe fails the swipe op.
+
 #### 2026-09-22 — test(web,harness): the Inform dispatch wire test + the salon participant-removal rows (P4.106 item 5)
 
 _Versions: harness 0.0.894, web 0.0.171._

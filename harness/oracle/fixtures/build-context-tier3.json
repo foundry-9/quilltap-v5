@@ -1830,6 +1830,490 @@
           "createdAt": "2024-06-14T18:00:00.000Z"
         }
       ]
+    },
+    {
+      "name": "inform_seat_owed_nothing_adds_nothing",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f1"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "inform_one_pending_slots_after_identity_reminder",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f7",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f7",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f7",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f7"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "inform_several_pending_stack_in_posting_order",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f8",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f8",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f8",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f8"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "inform_swipe_reapplies_the_groups_consumed_rows",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f9",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f9",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f9",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f9"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "regenerationOfMessageIds": [
+        "e0000000-0000-4000-8000-0000000000e6",
+        "e0000000-0000-4000-8000-0000000000e7"
+      ]
+    },
+    {
+      "name": "inform_whitespace_only_delivers_nothing",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fa",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fa",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000fa",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000fa"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
     }
   ],
   "vaultConversationSummaries": [
@@ -1964,5 +2448,99 @@
     "groupSilentName": "Silent Order",
     "groupSilentInstructions": "   ",
     "memberCharacterId": "ca000000-0000-4000-8000-0000000000a1"
-  }
+  },
+  "informs": [
+    {
+      "id": "1f000000-0000-4000-8000-000000000001",
+      "batchId": "bb000000-0000-4000-8000-0000000000b1",
+      "participantId": "ba000000-0000-4000-8000-0000000000f7",
+      "contentMarkdown": "  The clock in the hall has stopped at a quarter past three.\n",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000004",
+      "batchId": "bb000000-0000-4000-8000-0000000000b4",
+      "participantId": "ba000000-0000-4000-8000-0000000000f8",
+      "contentMarkdown": "Third: *someone* has left the gate **open**.",
+      "createdAt": "2024-01-02T00:07:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000002",
+      "batchId": "bb000000-0000-4000-8000-0000000000b2",
+      "participantId": "ba000000-0000-4000-8000-0000000000f8",
+      "contentMarkdown": "First: the lamps are lit early tonight.",
+      "createdAt": "2024-01-02T00:06:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000003",
+      "batchId": "bb000000-0000-4000-8000-0000000000b3",
+      "participantId": "ba000000-0000-4000-8000-0000000000f8",
+      "contentMarkdown": "Second: a letter waits on the silver tray.",
+      "createdAt": "2024-01-02T00:07:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000005",
+      "batchId": "bb000000-0000-4000-8000-0000000000b5",
+      "participantId": "ba000000-0000-4000-8000-0000000000f8",
+      "contentMarkdown": "   \n\t ",
+      "createdAt": "2024-01-02T00:08:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000006",
+      "batchId": "bb000000-0000-4000-8000-0000000000b6",
+      "participantId": "ba000000-0000-4000-8000-0000000000f8",
+      "contentMarkdown": "Already delivered: the dog barked.",
+      "createdAt": "2024-01-02T00:01:00.000Z",
+      "consumedAt": "2024-01-02T00:02:00.000Z",
+      "consumedByMessageId": "e0000000-0000-4000-8000-0000000000e8"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000007",
+      "batchId": "bb000000-0000-4000-8000-0000000000b7",
+      "participantId": "ba000000-0000-4000-8000-0000000000f9",
+      "contentMarkdown": "Swipe-group passage one.",
+      "createdAt": "2024-01-02T00:01:00.000Z",
+      "consumedAt": "2024-01-02T00:03:00.000Z",
+      "consumedByMessageId": "e0000000-0000-4000-8000-0000000000e7"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000008",
+      "batchId": "bb000000-0000-4000-8000-0000000000b8",
+      "participantId": "ba000000-0000-4000-8000-0000000000f9",
+      "contentMarkdown": "Swipe-group passage two.",
+      "createdAt": "2024-01-02T00:02:00.000Z",
+      "consumedAt": "2024-01-02T00:03:00.000Z",
+      "consumedByMessageId": "e0000000-0000-4000-8000-0000000000e6"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-000000000009",
+      "batchId": "bb000000-0000-4000-8000-0000000000b9",
+      "participantId": "ba000000-0000-4000-8000-0000000000f9",
+      "contentMarkdown": "Consumed by some other line.",
+      "createdAt": "2024-01-02T00:00:30.000Z",
+      "consumedAt": "2024-01-02T00:01:00.000Z",
+      "consumedByMessageId": "e0000000-0000-4000-8000-0000000000e8"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-00000000000a",
+      "batchId": "bb000000-0000-4000-8000-0000000000ba",
+      "participantId": "ba000000-0000-4000-8000-0000000000f9",
+      "contentMarkdown": "Pending, and never delivered to a swipe.",
+      "createdAt": "2024-01-02T00:04:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-00000000000b",
+      "batchId": "bb000000-0000-4000-8000-0000000000bb",
+      "participantId": "ba000000-0000-4000-8000-0000000000fa",
+      "contentMarkdown": "\n\n   ",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    },
+    {
+      "id": "1f000000-0000-4000-8000-00000000000c",
+      "batchId": "bb000000-0000-4000-8000-0000000000bc",
+      "participantId": "ba000000-0000-4000-8000-0000000000fb",
+      "contentMarkdown": "Bystander passage.",
+      "createdAt": "2024-01-02T00:05:00.000Z"
+    }
+  ]
 }

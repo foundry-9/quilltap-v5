@@ -117,6 +117,9 @@ struct SpecOp {
     chat_overrides: Option<SpecChatOverrides>,
     #[serde(default)]
     responding_participant_id: Option<String>,
+    /// P4.106 item 1: the swipe re-apply arm (`regenerationOfMessageIds`).
+    #[serde(default)]
+    regeneration_of_message_ids: Option<Vec<String>>,
     /// P4.D164: what `getCompiledIdentityStack` answers for this op (absent =
     /// the fresh build). The whitespace arm pins v4's truthiness asymmetry.
     #[serde(default)]
@@ -382,8 +385,92 @@ fn build_existing(op: &SpecOp) -> Vec<ExistingMessage> {
     }
 }
 
+/// P4.106 item 7 — the read-count seam, harness-side only (no production
+/// counter, no Cargo feature): `sqlite3_auto_extension` installs a
+/// `sqlite3_trace_v2(SQLITE_TRACE_STMT)` hook on EVERY connection this process
+/// opens — the `Db` read pool opens its connections lazily and privately, so a
+/// per-connection hook set from outside could miss one. The hook counts
+/// statements by SQL text: the per-seat read `find_pending_for_participant` /
+/// `find_consumed_by_messages` issue (byte-identical SQL — which of the two ran
+/// is proven by the block's CONTENT in the comparand), and any other statement
+/// naming `chat_informs`. This binary holds ONE test, so the process-global
+/// counter cannot see another test's statements.
+mod inform_read_counter {
+    use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Once;
+
+    use rusqlite::ffi;
+
+    static SEAT_READS: AtomicUsize = AtomicUsize::new(0);
+    static OTHER_READS: AtomicUsize = AtomicUsize::new(0);
+    static INSTALL: Once = Once::new();
+
+    const SEAT_READ_SQL: &str = "FROM chat_informs WHERE chatId = ?1 AND participantId = ?2";
+
+    unsafe extern "C" fn on_trace(
+        kind: c_uint,
+        _ctx: *mut c_void,
+        _stmt: *mut c_void,
+        x: *mut c_void,
+    ) -> c_int {
+        if kind == ffi::SQLITE_TRACE_STMT && !x.is_null() {
+            // SAFETY: for SQLITE_TRACE_STMT, X is the statement's unexpanded
+            // SQL text, a NUL-terminated C string SQLite owns for the call.
+            let sql = unsafe { CStr::from_ptr(x as *const c_char) }.to_string_lossy();
+            if sql.contains(SEAT_READ_SQL) {
+                SEAT_READS.fetch_add(1, Ordering::SeqCst);
+            } else if sql.contains("chat_informs") {
+                OTHER_READS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        0
+    }
+
+    unsafe extern "C" fn install_on(
+        db: *mut ffi::sqlite3,
+        _err: *mut *mut c_char,
+        _api: *const ffi::sqlite3_api_routines,
+    ) -> c_int {
+        // SAFETY: `db` is the connection SQLite is opening; the callback is a
+        // plain `extern "C"` fn with no context pointer.
+        unsafe {
+            ffi::sqlite3_trace_v2(
+                db,
+                ffi::SQLITE_TRACE_STMT,
+                Some(on_trace),
+                std::ptr::null_mut(),
+            );
+        }
+        ffi::SQLITE_OK
+    }
+
+    /// Register the hook for every connection opened from now on.
+    pub fn install() {
+        INSTALL.call_once(|| {
+            // SAFETY: registering a process-wide auto-extension entry point.
+            let rc = unsafe { ffi::sqlite3_auto_extension(Some(install_on)) };
+            assert_eq!(rc, ffi::SQLITE_OK, "sqlite3_auto_extension failed");
+        });
+    }
+
+    pub fn reset() {
+        SEAT_READS.store(0, Ordering::SeqCst);
+        OTHER_READS.store(0, Ordering::SeqCst);
+    }
+
+    /// (per-seat reads, other `chat_informs` statements) since the last reset.
+    pub fn take() -> (usize, usize) {
+        (
+            SEAT_READS.swap(0, Ordering::SeqCst),
+            OTHER_READS.swap(0, Ordering::SeqCst),
+        )
+    }
+}
+
 #[tokio::test]
 async fn build_context_tier3_matches_oracle() {
+    inform_read_counter::install();
     let oracle_path = match std::env::var("QT_ORACLE_BUILD_CONTEXT") {
         Ok(p) => p,
         Err(_) => {
@@ -706,10 +793,11 @@ async fn build_context_tier3_matches_oracle() {
         };
 
         let input = BuildContextInput {
-            // P4.D205: not a swipe, so the inform block reads the PENDING set.
-            // The corpus plants no `chat_informs` rows, so the block is absent
-            // and this family is the byte-identical neutrality leg.
-            regeneration_of_message_ids: None,
+            // P4.D205 / P4.106 item 1: absent = a fresh turn (the PENDING set);
+            // the swipe op passes the target + its group (the CONSUMED set). The
+            // corpus plants `chat_informs` rows only for seats no pre-P4.106 op
+            // responds as, so the forty older ops stay the neutrality leg.
+            regeneration_of_message_ids: op.regeneration_of_message_ids.clone(),
             // U4.4: the enclave per-turn clamp — None on this corpus (inert).
             autonomous_context_cap: None,
             turn_skip: op.turn_skip.as_ref().map(|t| {
@@ -905,9 +993,22 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("{}: seed fold whisper failed", op.name));
         }
 
+        inform_read_counter::reset();
         let built = build_context(&db, &embedding, &completion, &executor, &seams, &input)
             .await
             .unwrap_or_else(|e| panic!("{}: build_context failed: {e}", op.name));
+        // P4.106 item 7: ONE per-seat `chat_informs` read per turn — the inform
+        // block's (pending on a fresh turn, consumed on a swipe; the two share
+        // their SQL) — and NONE when there is no responding seat (v4 gates the
+        // read on `respondingParticipant`). No other `chat_informs` statement.
+        let (seat_reads, other_reads) = inform_read_counter::take();
+        let want_seat_reads = usize::from(op.responding_participant_id.is_some());
+        assert_eq!(
+            (seat_reads, other_reads),
+            (want_seat_reads, 0),
+            "{}: chat_informs reads during ONE build_context (per-seat, other)",
+            op.name
+        );
 
         // Serialize then RE-PARSE the Rust result so both sides pass through the
         // same serde_json float parse. Without the `float_roundtrip` feature
