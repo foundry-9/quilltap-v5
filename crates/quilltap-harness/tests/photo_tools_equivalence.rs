@@ -33,6 +33,20 @@
 //! so the keep dumps need remap only for the minted UUIDs + `createdAt`/`updatedAt`
 //! (chunkCount diffs exactly since P4.6BK — v5 chunks on write).
 //!
+//! P4.104 — `keep_real_png`: v4's `linkBlobContent` normalizes image bytes to
+//! WebP (bug 159, `186eb09cb`); v5's `save_image_to_album` normalizes through the
+//! encoder its `FileBytesStore` carries ([`FileBytesStore::blob_webp`] —
+//! [`CannedBytes`] hands it the host's, as production wires it). Every corpus
+//! image is synthetic bytes no decoder reads, so the op PLANTS an IMAGE `files`
+//! row (`REAL_PNG_FILE_ID`) on its own per-op copy (both sides) whose bytes are
+//! the 240×170 `normalize-blob-image/photo.png` seed, and compares the kept
+//! row's D19 `imageFacts` (`blob_image_facts/mod.rs`) plus the exact
+//! `resultJson` (the PRE-normalization `relative_path`, the SOURCE sha256). It
+//! does not dump the six tables: the new row's differing cells are encoder
+//! output, which D19 forbids comparing. Red-first with no `blob_webp` override
+//! (the refusing encoder): `…-a-real-photograph.png`, `image/png`, the sha
+//! unchanged, where v4 answers `.webp` / `image/webp` / changed.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). The oracle case
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -41,6 +55,9 @@
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $WT/harness/oracle/cases/photo-tools.test.ts $STAGE/harness/oracle/cases/
 //!   cp $WT/harness/oracle/fixtures/photo-tools.json  $STAGE/harness/oracle/fixtures/
+//!   mkdir -p $STAGE/harness/oracle/lib
+//!   cp $WT/harness/oracle/lib/blob-image-facts.ts $STAGE/harness/oracle/lib/
+//!   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo.png $STAGE/harness/oracle/fixtures/
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_PHOTO_MAIN=/tmp/qt-photo-main.db QT_FIXTURE_PHOTO_MOUNT=/tmp/qt-photo-mount.db \
 //!     $N/node --import tsx $WT/harness/oracle/fixtures/build-photo-tools-fixture.ts
@@ -73,6 +90,14 @@ use quilltap_core::tools::photo::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// P4.104: the planted decodable keep source — the same id the oracle plants.
+const REAL_PNG_FILE_ID: &str = "c3000000-0000-4000-8000-000000000001";
+const REAL_PNG_PLANT_TS: &str = "2026-01-01T00:00:00.000Z";
+const KEEP_REAL_PNG: &str = "keep_real_png";
+
 // ===========================================================================
 // Spec + sidecar
 // ===========================================================================
@@ -97,6 +122,8 @@ struct Spec {
 
 #[derive(Deserialize)]
 struct Meta {
+    #[serde(rename = "charAVault")]
+    char_a_vault: String,
     #[serde(rename = "realFileIdByKey")]
     real_file_id_by_key: HashMap<String, String>,
     #[serde(rename = "realBytesByKey")]
@@ -124,6 +151,9 @@ struct OracleRow {
     formatted: String,
     #[serde(default)]
     dumps: Option<HashMap<String, Value>>,
+    /// P4.104: the D19 facts of `keep_real_png`'s kept row.
+    #[serde(default, rename = "imageFacts")]
+    image_facts: Option<Value>,
 }
 
 // ===========================================================================
@@ -145,6 +175,54 @@ impl FileBytesStore for CannedBytes {
     fn ingest_image_buffer(&self, _req: &IngestImageRequest) -> Result<FileEntry, String> {
         Err("mount-blob fallback ingest not used by the photo-tools corpus".to_string())
     }
+    /// P4.104: the host's WebP encoder, as production wires the image boundary.
+    fn blob_webp(
+        &self,
+    ) -> Option<
+        std::sync::Arc<dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder>,
+    > {
+        Some(std::sync::Arc::new(quilltap_host::HostImageCodec))
+    }
+}
+
+/// P4.104: plant the decodable keep source's `files` row on this op's copy (the
+/// oracle plants the identical row; its bytes come from [`CannedBytes`]).
+fn plant_real_png(main: &rusqlite::Connection, user_id: &str) {
+    use quilltap_core::db::files::{CreateOptions, FileCreate, FilesRepository};
+    use sha2::{Digest, Sha256};
+    let png = blob_image_facts::seed_image("photo.png");
+    FilesRepository::new(main)
+        .create(
+            &FileCreate {
+                user_id: user_id.to_string(),
+                sha256: hex::encode(Sha256::digest(&png)),
+                original_filename: "real-photo.png".to_string(),
+                mime_type: "image/png".to_string(),
+                size: png.len() as f64,
+                width: None,
+                height: None,
+                is_plain_text: None,
+                linked_to: vec![],
+                source: "UPLOADED".to_string(),
+                category: "IMAGE".to_string(),
+                generation_prompt: None,
+                generation_model: None,
+                generation_revised_prompt: None,
+                generation_key: None,
+                description: None,
+                tags: vec![],
+                project_id: None,
+                folder_path: None,
+                storage_key: None,
+                file_status: "ok".to_string(),
+            },
+            &CreateOptions {
+                id: REAL_PNG_FILE_ID.to_string(),
+                created_at: REAL_PNG_PLANT_TS.to_string(),
+                updated_at: REAL_PNG_PLANT_TS.to_string(),
+            },
+        )
+        .expect("plant the real-PNG files row");
 }
 
 // ===========================================================================
@@ -436,6 +514,16 @@ fn corpus() -> Vec<Op> {
             build_args: |m| json!({ "uuid": m.real_file_id_by_key["fresh"] }),
             kept_at: Some("2026-04-02T12:00:00.000Z"),
             dumps: true,
+        },
+        // P4.104: a DECODABLE source — normalized to WebP by `link_blob_content`
+        // (the `imageFacts` comparand is keyed on the label, see the loop).
+        Op {
+            label: KEEP_REAL_PNG,
+            tool: "keep_image",
+            chat: Chat::Main,
+            build_args: |_| json!({ "uuid": REAL_PNG_FILE_ID, "caption": "a real photograph" }),
+            kept_at: Some("2026-04-05T12:00:00.000Z"),
+            dumps: false,
         },
         Op {
             label: "list_plain",
@@ -894,6 +982,11 @@ fn photo_tools_matches_oracle() {
             by_file_id.insert(id.clone(), b.clone());
         }
     }
+    // P4.104: the planted source's bytes — the decodable seed PNG.
+    by_file_id.insert(
+        REAL_PNG_FILE_ID.to_string(),
+        blob_image_facts::seed_image("photo.png"),
+    );
     let bytes = CannedBytes { by_file_id };
     let side_effects = NoSideEffects;
 
@@ -927,6 +1020,9 @@ fn photo_tools_matches_oracle() {
             blob_webp: Default::default(),
         };
         let args = (op.build_args)(&meta);
+        if op.label == KEEP_REAL_PNG {
+            plant_real_png(main.connection(), &spec.user_id);
+        }
 
         let out = match op.tool {
             "keep_image" => handle_keep_image(
@@ -991,7 +1087,8 @@ fn photo_tools_matches_oracle() {
         // identical. Normalize every UUID positionally (first-appearance `<uuid-N>`,
         // one map per compared string) so the minted link id maps to the same token
         // while the pinned ids diff exactly. list/attach mint nothing → no normalize.
-        let normalize = op.dumps;
+        // P4.104: `keep_real_png` mints a link id too (it just does not dump).
+        let normalize = op.dumps || op.label == KEEP_REAL_PNG;
         let got_json = maybe_norm_uuids(
             &serde_json::to_string(&raw_result_json(&out)).unwrap(),
             normalize,
@@ -1004,6 +1101,29 @@ fn photo_tools_matches_oracle() {
             "formatted diverged for {}",
             op.label
         );
+
+        // P4.104: the D19 image comparand for the decodable keep.
+        if op.label == KEEP_REAL_PNG {
+            let got = Value::Array(blob_image_facts::blob_image_facts(
+                &blob_image_facts::stored_blob_rows(
+                    mount.connection(),
+                    "WHERE l.mountPointId = ?1 \
+                     AND l.relativePath LIKE 'photos/%-a-real-photograph.%' \
+                     ORDER BY l.relativePath",
+                    &[&meta.char_a_vault],
+                ),
+                &blob_image_facts::seed_image("photo.png"),
+            ));
+            let want_facts = want.image_facts.as_ref().unwrap_or_else(|| {
+                panic!("oracle {} carries no imageFacts — regenerate", op.label)
+            });
+            assert_eq!(
+                &got, want_facts,
+                "{}: imageFacts diverged\n  rust:   {got}\n  oracle: {want_facts}",
+                op.label
+            );
+            eprintln!("[{}] imageFacts OK: {got}", op.label);
+        }
 
         // Keep cases: dump + diff the 6 tables (shared-id-map remap form).
         if op.dumps {

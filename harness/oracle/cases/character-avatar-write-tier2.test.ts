@@ -15,12 +15,28 @@
  * originalMimeType / storedMimeType) and the blob's decoded metadata
  * (width / height / format) are diffed exactly.
  *
+ * P4.104 (v4 bug 159, `186eb09cb`): two more lines, written in sequence over
+ * the SAME copy (each a delete-then-insert of Aria's main avatar), carry the D19
+ * `imageFacts` (`../lib/blob-image-facts`) of the stored row — never the WebP
+ * bytes, never the sha's value:
+ *   - `avatar_write_photo_png` — the 240×170 `photo.png` seed as `image/png`:
+ *     the bridge's pre-transcode moves it, the normalization then declines.
+ *   - `avatar_write_lossless_webp` — the 748 KB `photo-lossless.webp` seed as
+ *     `image/webp`. v4's ONE `transcodeToWebP` re-encodes it in the bridge; v5's
+ *     bridge copy (`file_storage::transcode_to_webp`) passes image/webp through
+ *     and `linkBlobContent`'s normalization is what moves it — the row that
+ *     isolates the site's `with_blob_codec`.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-avatar-write-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/character-avatar-write-tier2.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/characters.json"                   "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts"                     "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo.png"     "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CHARACTERS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/characters-main.db \
  *   QT_FIXTURE_CHARACTERS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/characters-mount.db \
@@ -34,6 +50,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 interface Spec {
   testPepperBase64: string;
@@ -163,7 +180,44 @@ async function main(): Promise<void> {
       storedMimeType: written.storedMimeType,
       meta,
     };
-    fs.writeFileSync(outPath, JSON.stringify(payload) + '\n');
+    const lines = [JSON.stringify(payload)];
+
+    // P4.104: the image rows — each replaces the main avatar in turn.
+    const imageRows: Array<{ name: string; file: string; filename: string; mime: string }> = [
+      { name: 'avatar_write_photo_png', file: 'photo.png', filename: 'photo.png', mime: 'image/png' },
+      {
+        name: 'avatar_write_lossless_webp',
+        file: 'photo-lossless.webp',
+        filename: 'photo-lossless.webp',
+        mime: 'image/webp',
+      },
+    ];
+    for (const r of imageRows) {
+      const input = fs.readFileSync(join(here, '..', 'fixtures', r.file));
+      const w = await writeCharacterAvatarToVault({
+        characterId: ARIA,
+        kind: 'main',
+        filename: r.filename,
+        content: input,
+        contentType: r.mime,
+      });
+      const rows = midb
+        .prepare(
+          STORED_BLOB_SELECT +
+            "WHERE l.mountPointId = ? AND l.relativePath = 'images/avatar.webp' ORDER BY l.relativePath",
+        )
+        .all(vault.mountPointId) as Parameters<typeof blobImageFacts>[0];
+      const imageFacts = await blobImageFacts(rows, input, sharpMeasure(sharp));
+      lines.push(
+        JSON.stringify({
+          name: r.name,
+          storedMimeType: w.storedMimeType,
+          linkCount: rows.length,
+          imageFacts,
+        }),
+      );
+    }
+    fs.writeFileSync(outPath, lines.join('\n') + '\n');
     process.stderr.write(`avatar-write oracle wrote ${outPath}\n`);
   } finally {
     await closeDatabase();

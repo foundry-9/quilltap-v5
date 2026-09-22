@@ -478,20 +478,6 @@ pub fn convert_to_webp(
     }
 }
 
-/// v4 `TRANSCODABLE_MIME_TYPES` (`blob-transcode.ts`) — matched on the
-/// LOWERCASED input mime (faithful to `originalMimeType.toLowerCase()`);
-/// `image/webp` deliberately absent (already-WebP stored as-is).
-const TRANSCODABLE_MIME_TYPES: &[&str] = &[
-    "image/png",
-    "image/jpeg",
-    "image/jpg",
-    "image/gif",
-    "image/heic",
-    "image/heif",
-    "image/tiff",
-    "image/avif",
-];
-
 /// v4 `TranscodeResult` (`blob-transcode.ts`).
 #[derive(Clone, Debug)]
 pub struct BlobTranscodeResult {
@@ -512,24 +498,35 @@ pub fn transcode_to_webp(
     original_mime_type: &str,
     quality: i64,
 ) -> BlobTranscodeResult {
-    let passthrough = |bytes: &[u8]| BlobTranscodeResult {
-        data: bytes.to_vec(),
-        stored_mime_type: original_mime_type.to_string(),
-        size_bytes: bytes.len(),
-        sha256: sha256_hex(bytes),
-    };
-
-    if !TRANSCODABLE_MIME_TYPES.contains(&original_mime_type.to_lowercase().as_str()) {
-        return passthrough(input);
+    // P4.104: v4 has ONE `transcodeToWebP`, and since `186eb09cb` it also
+    // re-encodes a large LOSSLESS WebP and reads the mime through
+    // `.trim().toLowerCase().split(';')[0]`. This copy predated that commit —
+    // a lossless chat upload came back byte-for-byte while the normalization
+    // behind it re-encoded, so the files row described bytes the store did
+    // not hold (bug 117's shape, measured by `files_routes_equivalence`). It
+    // now IS the ported policy (`blob_transcode::transcode_to_webp`), with
+    // this caller's `quality` (v4 `options.quality`) and the codec's encode
+    // (`sharp(input, { animated: true }).webp({ quality, effort: 4 })`).
+    struct AtQuality<'a> {
+        codec: &'a dyn PixelCodec,
+        quality: i64,
     }
-    match codec.encode_webp(input, quality, Some(TRANSCODE_WEBP_EFFORT), true) {
-        Ok(webp) => BlobTranscodeResult {
-            sha256: sha256_hex(&webp),
-            size_bytes: webp.len(),
-            stored_mime_type: "image/webp".to_string(),
-            data: webp,
-        },
-        Err(_) => passthrough(input),
+    impl crate::services::mount_index::blob_transcode::WebpTranscoder for AtQuality<'_> {
+        fn encode_webp(&self, bytes: &[u8], _quality: u8) -> Result<Vec<u8>, String> {
+            self.codec
+                .encode_webp(bytes, self.quality, Some(TRANSCODE_WEBP_EFFORT), true)
+        }
+    }
+    let r = crate::services::mount_index::blob_transcode::transcode_to_webp(
+        input,
+        original_mime_type,
+        &AtQuality { codec, quality },
+    );
+    BlobTranscodeResult {
+        data: r.data,
+        stored_mime_type: r.stored_mime_type,
+        size_bytes: r.size_bytes as usize,
+        sha256: r.sha256,
     }
 }
 
@@ -1143,9 +1140,9 @@ pub fn store_mount_blob(
     // pre-transcode above used — v4's one `sharp` (`store-file.ts:250` then
     // `doc-mount-file-links.repository.ts:934`). After a successful lossy
     // encode the normalization declines; it moves bytes only where the
-    // pre-transcode passed them through (a large lossless WebP's floor is the
-    // normalization's, not the bridge's — both run `transcodeToWebP`, so they
-    // agree).
+    // pre-transcode passed them through or failed on (both run the one ported
+    // `transcodeToWebP` policy with the same encoder, so after a successful
+    // pre-transcode they agree and the normalization is a no-op).
     let blob_webp = crate::services::mount_index::normalize_blob_image::PixelCodecWebp(codec);
     let links = DocMountFileLinksRepository::with_blob_codec(mount, &blob_webp);
     if let Some(dir) = final_path.rfind('/').and_then(|i| {

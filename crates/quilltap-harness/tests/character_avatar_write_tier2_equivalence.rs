@@ -9,6 +9,15 @@
 //! (relativePath / fileName / originalMimeType / storedMimeType) and the blob's
 //! decoded metadata (width / height / format / non-empty) are diffed exactly.
 //!
+//! P4.104 (v4 bug 159): two image rows over the same copy, each a further
+//! delete-then-insert, compare the stored row's D19 `imageFacts`
+//! (`blob_image_facts/mod.rs`). `avatar_write_lossless_webp` is the row that
+//! isolates the site's `with_blob_codec` from the pre-transcode: v5's bridge
+//! transcode passes `image/webp` through, so only the normalization (through
+//! the SAME [`CODEC`], v4's one sharp) re-encodes the 748 KB lossless WebP.
+//! A write that does not normalize stores it unchanged (`shaChanged: false`,
+//! `size: "same"`), where v4 answers changed / smaller.
+//!
 //! Generate the oracle (see the .ts header) then run:
 //!   QT_ORACLE_AVATAR_WRITE=/tmp/oracle-avatar-write.ndjson \
 //!     cargo test -p quilltap-harness --test character_avatar_write_tier2_equivalence
@@ -21,6 +30,13 @@ use quilltap_core::services::image_job_storage::write_main_avatar_to_vault;
 use quilltap_host::HostImageCodec;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// The pixel codec this family hands the site — it both pre-transcodes and
+/// (through `PixelCodecWebp`) normalizes, as production wires it (P4.104).
+const CODEC: &HostImageCodec = &HostImageCodec;
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const AVATAR_PNG_B64: &str =
@@ -82,14 +98,20 @@ fn avatar_write_matches_oracle() {
     };
     let spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).expect("spec");
-    let oracle: Value = serde_json::from_str(
-        std::fs::read_to_string(&oracle_path)
-            .expect("read oracle")
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .expect("one oracle line"),
-    )
-    .expect("parse oracle");
+    let oracle_lines: Vec<Value> = std::fs::read_to_string(&oracle_path)
+        .expect("read oracle")
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("parse oracle"))
+        .collect();
+    let oracle_named = |name: &str| -> Value {
+        oracle_lines
+            .iter()
+            .find(|v| v["name"] == name)
+            .unwrap_or_else(|| panic!("the oracle carries no `{name}` line — regenerate"))
+            .clone()
+    };
+    let oracle = oracle_named("avatar_write_main");
 
     let png = {
         use base64::Engine;
@@ -109,7 +131,7 @@ fn avatar_write_matches_oracle() {
             Ok(write_main_avatar_to_vault(
                 main,
                 mount,
-                &HostImageCodec,
+                CODEC,
                 ARIA,
                 "hero.png",
                 &png,
@@ -178,4 +200,50 @@ fn avatar_write_matches_oracle() {
     assert_eq!(written.stored_mime_type, oracle["storedMimeType"]);
     assert_eq!(meta, oracle["meta"], "blob metadata differs");
     eprintln!("OK: write_main_avatar_to_vault matched oracle (16×16 webp, replaced).");
+
+    // P4.104: the image rows, each a further delete-then-insert over the same copy.
+    let mut failures = Vec::new();
+    for (name, file, mime) in [
+        ("avatar_write_photo_png", "photo.png", "image/png"),
+        (
+            "avatar_write_lossless_webp",
+            "photo-lossless.webp",
+            "image/webp",
+        ),
+    ] {
+        let want = oracle_named(name);
+        let input = blob_image_facts::seed_image(file);
+        let bytes = input.clone();
+        let written = rt
+            .block_on(db.write(move |writers| {
+                let mount = writers.mount_index().unwrap().connection();
+                let main = writers.main().connection();
+                Ok(write_main_avatar_to_vault(
+                    main, mount, CODEC, ARIA, file, &bytes, mime, None,
+                ))
+            }))
+            .unwrap()
+            .expect("avatar write ok");
+        let rows = db
+            .read_mount_index(|mount| {
+                Ok(blob_image_facts::stored_blob_rows(
+                    mount,
+                    "WHERE l.relativePath = 'images/avatar.webp' ORDER BY l.relativePath",
+                    &[],
+                ))
+            })
+            .unwrap();
+        let got = json!({
+            "name": name,
+            "storedMimeType": written.stored_mime_type,
+            "linkCount": rows.len(),
+            "imageFacts": blob_image_facts::blob_image_facts(&rows, &input),
+        });
+        if got == want {
+            eprintln!("[{name}] imageFacts OK: {}", got["imageFacts"]);
+        } else {
+            failures.push(format!("[{name}] got {got} want {want}"));
+        }
+    }
+    assert!(failures.is_empty(), "mismatches:\n{}", failures.join("\n"));
 }

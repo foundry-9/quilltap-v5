@@ -101,6 +101,7 @@ pub fn resolve_lantern_backgrounds_mount(main: &Connection, mount: &Connection) 
 /// avatar under `images/history/` with unique-suffix collision bumping. Throws
 /// (`Err`) when the character has no linked database-backed vault. The bytes are
 /// the already-transcoded (WebP-seam) image; `content_type` is their mime.
+#[allow(clippy::too_many_arguments)]
 pub fn write_character_avatar_to_vault(
     main: &Connection,
     mount: &Connection,
@@ -224,6 +225,7 @@ pub fn write_main_avatar_to_vault(
 
 /// v4 `writeLanternBackgroundToMountStore`: write into the Lantern Backgrounds
 /// mount under `<subfolder>/`. Throws (`Err`) when the mount is unprovisioned.
+#[allow(clippy::too_many_arguments)]
 pub fn write_lantern_background_to_mount_store(
     main: &Connection,
     mount: &Connection,

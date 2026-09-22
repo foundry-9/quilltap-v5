@@ -21,6 +21,20 @@
  * whitespace-only truthiness-then-trim quirk in both directions (a stored
  * whitespace description, and a whitespace vision result that persists `''`).
  *
+ * P4.104 adds `keep_real_png`: v4's `linkBlobContent` normalizes image bytes to
+ * WebP with REAL sharp (bug 159, `186eb09cb` — sharp is NOT mocked here), but
+ * every corpus image is synthetic bytes sharp cannot decode, so no existing keep
+ * can see it. The op PLANTS, on its own per-op copy, an IMAGE `files` row
+ * (`REAL_PNG_FILE_ID`, `image/png`) whose `readImageBuffer` bytes are the
+ * 240×170 `normalize-blob-image/photo.png` seed (the builder's ingest would
+ * transcode it at ingest time, so it cannot be the source). v4 stores the kept
+ * row as `photos/*.webp` / `image/webp`; the D19 `imageFacts`
+ * (`../lib/blob-image-facts`) of that row are the image comparand. The op does
+ * NOT dump the six tables — every one of the new row's blob / file / link cells
+ * that differs from a PNG keep (bytes, sha256, sizes) is encoder output, which
+ * D19 forbids comparing; `imageFacts` + the exact `resultJson` (v4 returns the
+ * PRE-normalization `relative_path` and the SOURCE sha256) are the comparand.
+ *
  * Model boundary pinned: `generateEmbeddingForUser` is jest.mocked to the corpus
  * canned vectors (keyed by exact query text; failures in cannedFailures throw an
  * EmbeddingError → the semantic branch's silent fallback to plain listing). Date
@@ -63,6 +77,9 @@
  *   mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp $V5/harness/oracle/cases/photo-tools.test.ts "$TMPO/cases/"
  *   cp $V5/harness/oracle/fixtures/photo-tools.json  "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp $V5/harness/oracle/lib/blob-image-facts.ts                 "$TMPO/lib/"
+ *   cp $V5/harness/oracle/fixtures/normalize-blob-image/photo.png "$TMPO/fixtures/"
  *   QT_FIXTURE_PHOTO_MAIN=/tmp/qt-photo-main.db QT_FIXTURE_PHOTO_MOUNT=/tmp/qt-photo-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-photo-tools.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -74,6 +91,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
+
+/** P4.104: the planted decodable keep source (see the header). */
+const REAL_PNG_FILE_ID = 'c3000000-0000-4000-8000-000000000001';
+const REAL_PNG_PLANT_TS = '2026-01-01T00:00:00.000Z';
 
 // Inlined canonicalizer (jest can't resolve the `.js` ESM specifier of
 // ../lib/tier2.ts). BLOBs -> lowercase hex, nulls explicit, everything else as-is,
@@ -152,6 +175,9 @@ async function main(): Promise<void> {
   for (const [key, id] of Object.entries(meta.realFileIdByKey)) {
     bytesByFileId[id] = meta.realBytesByKey[key];
   }
+  // P4.104: the planted source's bytes — the decodable seed PNG.
+  const realPng = fs.readFileSync(join(here, '..', 'fixtures', 'photo.png'));
+  bytesByFileId[REAL_PNG_FILE_ID] = Array.from(realPng);
 
   interface Op {
     label: string;
@@ -185,6 +211,9 @@ async function main(): Promise<void> {
     /** auto_describe ops: dump files + doc_mount_file_links + doc_mount_chunks
      * (the module's three sinks). */
     dumpModule?: boolean;
+    /** P4.104: plant the decodable `REAL_PNG_FILE_ID` source on this op's
+     * copy and emit the kept row's D19 `imageFacts`. */
+    realPng?: boolean;
   }
 
   const CANNED_VISION_DESCRIPTION = 'A copper kettle steams on a windowsill at dusk.';
@@ -222,6 +251,16 @@ async function main(): Promise<void> {
       args: { uuid: fid('fresh') },
       keptAt: '2026-04-02T12:00:00.000Z',
       dump: true,
+    },
+    // P4.104: a DECODABLE source — `linkBlobContent` normalizes it to WebP.
+    {
+      label: 'keep_real_png',
+      tool: 'keep_image',
+      who: 'A',
+      chatId: spec.chatId,
+      args: { uuid: REAL_PNG_FILE_ID, caption: 'a real photograph' },
+      keptAt: '2026-04-05T12:00:00.000Z',
+      realPng: true,
     },
     // ---- list_images (read-only) ----
     { label: 'list_plain', tool: 'list_images', who: 'A', args: {} },
@@ -502,6 +541,23 @@ async function main(): Promise<void> {
     }
 
     try {
+      if (op.realPng) {
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        await getRepositories().files.create(
+          {
+            userId: spec.userId,
+            linkedTo: [],
+            tags: [],
+            sha256: createHash('sha256').update(realPng).digest('hex'),
+            originalFilename: 'real-photo.png',
+            mimeType: 'image/png',
+            size: realPng.length,
+            source: 'UPLOADED',
+            category: 'IMAGE',
+          } as never,
+          { id: REAL_PNG_FILE_ID, createdAt: REAL_PNG_PLANT_TS, updatedAt: REAL_PNG_PLANT_TS } as never,
+        );
+      }
       const characterId = op.who === 'A' ? spec.charAId : spec.charBId;
       const context = {
         userId: spec.userId,
@@ -528,6 +584,22 @@ async function main(): Promise<void> {
       }
 
       const record: Record<string, unknown> = { label: op.label, resultJson, formatted };
+
+      if (op.realPng) {
+        const midb = getRawMountIndexDatabase() as unknown as {
+          prepare: (q: string) => { all: (...a: unknown[]) => unknown };
+        };
+        const rows = midb
+          .prepare(
+            STORED_BLOB_SELECT +
+              "WHERE l.mountPointId = ? AND l.relativePath LIKE 'photos/%-a-real-photograph.%' " +
+              'ORDER BY l.relativePath',
+          )
+          .all(meta.charAVault) as Parameters<typeof blobImageFacts>[0];
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+        record.imageFacts = await blobImageFacts(rows, realPng, sharpMeasure(sharp));
+      }
 
       if (op.dump || op.dumpModule) {
         const midb = getRawMountIndexDatabase();

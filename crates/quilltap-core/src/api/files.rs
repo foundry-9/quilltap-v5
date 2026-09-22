@@ -1113,13 +1113,18 @@ pub async fn files_folder_delete(
 /// `tags.map(t => t.tagId)` — used for BOTH `linkedTo` AND the file's `tags`
 /// column (`upload.ts:55,66`).
 ///
-/// The pixel work uses [`NotConfiguredPixelCodec`] — deliberately, and NOT the
-/// divergence P4.73 closed for chat uploads. This is the general FILES upload
-/// leg, which v4 hard-codes to `category: 'DOCUMENT'`, and a document never
-/// transcodes; the images-category ingest paths (`api::images`, chat media)
-/// each thread the host codec. If this path ever grows an IMAGE arm it needs
-/// the codec too, and would take v4's sharp-unavailable passthrough until it
-/// does.
+/// The pixel work uses `codec` — the host's (`None` → [`NotConfiguredPixelCodec`],
+/// v4's `sharp`-unavailable passthrough). P4.104 RETIRED the old
+/// `NotConfiguredPixelCodec`-by-design note here: its reasoning ("a document
+/// never transcodes") was refuted by the hunk. `category: 'DOCUMENT'` only
+/// picks the subfolder; v4's `writeUserUploadToMountStore` (and the project
+/// bridge) pass `transcodeImages: true` unconditionally
+/// (`user-uploads-bridge.ts:116`, `project-store-bridge.ts:153`), and
+/// `linkBlobContent` normalizes whatever arrives — so a PNG uploaded here is
+/// stored as WebP by v4 (measured, `files_routes_equivalence`
+/// `file_upload_real_png`). The files row keeps v4's shape: `sha256` over the
+/// INPUT bytes (`shared.ts`'s `sha256OfBuffer(contentBuffer)`), mime/size from
+/// the bridge.
 #[allow(clippy::too_many_arguments)]
 pub async fn file_upload(
     db: &Db,
@@ -1134,6 +1139,8 @@ pub async fn file_upload(
     project_id: Option<String>,
     folder_path_raw: Option<String>,
     backend: Option<&dyn StorageBackend>,
+    // P4.104: the host pixel codec (the engine's `qtap_pixel_codec`).
+    codec: Option<std::sync::Arc<dyn crate::services::file_storage::PixelCodec>>,
 ) -> Response {
     let folder_path = match normalize_and_validate_folder_path(folder_path_raw.as_deref()) {
         Ok(p) => p,
@@ -1163,6 +1170,10 @@ pub async fn file_upload(
                     &folder_path,
                     "DOCUMENT",
                     &link_ids,
+                    match &codec {
+                        Some(c) => c.as_ref(),
+                        None => &NotConfiguredPixelCodec,
+                    },
                 )
             },
         )
@@ -1216,6 +1227,7 @@ fn save_file_entry(
     folder_path: &str,
     category: &str,
     link_ids: &[Value],
+    codec: &dyn crate::services::file_storage::PixelCodec,
 ) -> Result<(Response, Option<Overwritten>), DbError> {
     let sanitized = sanitize_filename(filename);
     let sha256 = sha256_of_buffer(data);
@@ -1239,11 +1251,10 @@ fn save_file_entry(
     });
 
     // Write the bytes (project store vs the Quilltap Uploads mount).
-    let codec = NotConfiguredPixelCodec;
     let stored: StoredBlob = if let Some(pid) = project_id {
         write_project_file_to_mount_store(
             mount,
-            &codec,
+            codec,
             pid,
             &sanitized,
             data,
@@ -1259,7 +1270,7 @@ fn save_file_entry(
             "uploads"
         };
         write_user_upload_to_mount_store(
-            main, mount, &codec, &sanitized, data, mime_type, subfolder, None,
+            main, mount, codec, &sanitized, data, mime_type, subfolder, None,
         )?
     };
     let storage_key = stored.storage_key();

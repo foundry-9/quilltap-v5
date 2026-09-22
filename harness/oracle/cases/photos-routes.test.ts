@@ -22,7 +22,7 @@
  *     `*_bytes` cases emit those bytes so the Rust canned `FileBytesStore`
  *     replays them exactly and the computed sha256 agrees.
  *
- * ── CASE COVERAGE (41) ───────────────────────────────────────────────────────
+ * ── CASE COVERAGE (43) ───────────────────────────────────────────────────────
  *   - the ROUTE envelope cases (list / entry / save / delete) — v4's
  *     `successResponse` is the RAW payload and `created` is RAW at 201;
  *   - list: default order (dedup collapse + the linkSummary counts), the three
@@ -47,12 +47,30 @@
  *     LAST-link removal (fileGC true), the non-gallery link (400) and an unknown
  *     id (404).
  *
+ * ── P4.104: THE DECODABLE SAVE (`save_real_png`) ─────────────────────────────
+ * v4's `linkBlobContent` normalizes image bytes to WebP with REAL sharp (bug
+ * 159, `186eb09cb`), so a gallery save of a DECODABLE PNG stores `photos/*.webp`
+ * / `image/webp`. The fixture's save sources are 1×1 stubs, so this case PLANTS
+ * a source on its own per-case copy: the 240×170 `normalize-blob-image`
+ * `photo.png` seed linked into the Uploads mount at `images/` through v4's own
+ * `linkBlobContent` with `normalizeImages: false` (so the source stays a PNG),
+ * plus an IMAGE `files` row (`REAL_PNG_FILE_ID`) whose `mount-blob:` storageKey
+ * points at it — the committed `photos-*.db` pair is never edited. The Rust
+ * side plants the same `files` row and replays the seed through its canned
+ * `FileBytesStore`. The receipt diffs exact (v4 returns the PRE-normalization
+ * `relativePath` and the SOURCE sha256); the stored row's D19 `imageFacts`
+ * (`../lib/blob-image-facts`) are the image comparand — never the WebP bytes,
+ * never the sha's value.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-photos-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/photos-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/photos-web.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts"                 "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo.png" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_PHOTOS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/photos-main.db \
  *   QT_FIXTURE_PHOTOS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/photos-mount.db \
@@ -66,6 +84,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
+
+/** P4.104: the planted decodable save source (see the header). */
+const REAL_PNG_FILE_ID = 'f3000000-0000-4000-8000-000000000001';
+const REAL_PNG_CAPTION = 'A real photograph';
+const PLANT_TS = '2026-01-01T00:00:00.000Z';
 
 interface Spec {
   testPepperBase64: string;
@@ -213,7 +238,73 @@ async function imageRoute(id: string): Promise<{ status: number; body: unknown }
 
 interface CaseSpec {
   name: string;
-  run: (s: Spec, m: Meta) => Promise<{ status: number; body: unknown }>;
+  run: (s: Spec, m: Meta) => Promise<{ status: number; body: unknown; imageFacts?: unknown }>;
+}
+
+/** The seed PNG (staged beside the corpus in the mirror's fixtures dir). */
+function realPng(): Buffer {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return readFileSync(join(here, '..', 'fixtures', 'photo.png'));
+}
+
+/**
+ * P4.104: plant the decodable save source on THIS case's copy — the seed PNG
+ * linked into the Uploads mount through v4's own `linkBlobContent` with
+ * `normalizeImages: false` (the source must stay a PNG), and an IMAGE `files`
+ * row whose `mount-blob:` storageKey resolves to that blob.
+ */
+async function plantRealPng(s: Spec, m: Meta): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const repos = getRepositories();
+  const png = realPng();
+  const sha256 = createHash('sha256').update(png).digest('hex');
+  const { blobId } = await repos.docMountFileLinks.linkBlobContent({
+    mountPointId: m.uploadsMp,
+    relativePath: 'images/real-photo.png',
+    fileName: 'real-photo.png',
+    folderId: null,
+    originalFileName: 'real-photo.png',
+    originalMimeType: 'image/png',
+    storedMimeType: 'image/png',
+    sha256,
+    data: png,
+    normalizeImages: false,
+  } as never);
+  await repos.files.create(
+    {
+      userId: s.userId,
+      linkedTo: [],
+      tags: [],
+      sha256,
+      originalFilename: 'real-photo.png',
+      mimeType: 'image/png',
+      size: png.length,
+      source: 'UPLOADED',
+      category: 'IMAGE',
+      storageKey: `mount-blob:${m.uploadsMp}:${blobId}`,
+    } as never,
+    { id: REAL_PNG_FILE_ID, createdAt: PLANT_TS, updatedAt: PLANT_TS } as never,
+  );
+}
+
+/** P4.104: the D19 facts of the gallery row the decodable save wrote. */
+async function realPngImageFacts(m: Meta): Promise<unknown> {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const midb = getRawMountIndexDatabase() as unknown as {
+    prepare: (q: string) => { all: (...a: unknown[]) => unknown };
+  };
+  const rows = midb
+    .prepare(
+      STORED_BLOB_SELECT +
+        "WHERE l.mountPointId = ? AND l.relativePath LIKE 'photos/%-a-real-photograph.%' " +
+        'ORDER BY l.relativePath',
+    )
+    .all(m.uploadsMp) as Parameters<typeof blobImageFacts>[0];
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+  return blobImageFacts(rows, realPng(), sharpMeasure(sharp));
 }
 
 function buildCases(): CaseSpec[] {
@@ -273,6 +364,15 @@ function buildCases(): CaseSpec[] {
     { name: 'save_missing_file', run: (_s, m) => saveRoute({ fileId: m.missingFileId }) },
     { name: 'save_absent_field', run: () => saveRoute({}) },
     { name: 'save_empty_field', run: () => saveRoute({ fileId: '' }) },
+    // P4.104: a DECODABLE source — `linkBlobContent` normalizes it to WebP.
+    {
+      name: 'save_real_png',
+      run: async (s, m) => {
+        await plantRealPng(s, m);
+        const out = await saveRoute({ fileId: REAL_PNG_FILE_ID, caption: REAL_PNG_CAPTION });
+        return { ...out, imageFacts: await realPngImageFacts(m) };
+      },
+    },
 
     // ── IMAGE INFO (P4.9a2 — read-only; `GET /api/v1/images/[id]`) ──
     // sha A → the two vault links pass the character+isPhotoAlbum gate; the
@@ -340,7 +440,12 @@ async function runCase(
     // as a bogus "Quilltap Uploads mount has not been provisioned" on whichever
     // case happens to follow a mutating one. Drain before closing.
     await new Promise((r) => setTimeout(r, 250));
-    return { name: c.name, status: out.status, body: out.body };
+    return {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+      ...(out.imageFacts !== undefined ? { imageFacts: out.imageFacts } : {}),
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();

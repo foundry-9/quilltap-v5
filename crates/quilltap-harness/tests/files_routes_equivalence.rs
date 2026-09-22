@@ -5,6 +5,15 @@
 //! `data` body (+ a post-mutation `files`/`folders` table dump); error cases diff
 //! status + message.
 //!
+//! P4.104 (v4 bug 159): `chat_upload_real_png` and `chat_upload_lossless_webp`
+//! hand the chat upload the DECODABLE `normalize-blob-image` seeds and compare
+//! the stored row's D19 `imageFacts` (`blob_image_facts/mod.rs`) plus the
+//! files row's encoder-neutral `fileFacts`. They drive [`IMAGE_CODEC`] (the
+//! host codec — what `api::engine`'s `ChatFileUpload` arm hands production);
+//! `store_mount_blob` normalizes through `PixelCodecWebp` over it. The lossless
+//! row is the one that isolates that normalization: v5's route and bridge
+//! transcode pass `image/webp` through, so only `linkBlobContent` moves it.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-files-routes.ndjson npx jest -- files-routes
 //! Run:
@@ -20,6 +29,64 @@ use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// P4.104 — the codec the decodable-image chat rows drive: the host's, as
+/// production's `ChatFileUpload` arm hands it (the bridge normalizes through
+/// `PixelCodecWebp` over this same codec).
+fn image_codec() -> std::sync::Arc<dyn quilltap_core::services::file_storage::PixelCodec> {
+    std::sync::Arc::new(quilltap_host::HostImageCodec)
+}
+
+/// P4.104 — the files row's encoder-NEUTRAL agreement with the blob its storage
+/// key names (the oracle's `dumpFileFacts`): its mime, whether its `size` and
+/// `sha256` describe the STORED bytes, and whether its `sha256` is still the
+/// INPUT's. Never the values themselves.
+fn dump_file_facts(db: &Db, filename: &str, input: &[u8]) -> Value {
+    use sha2::{Digest, Sha256};
+    let input_sha = hex::encode(Sha256::digest(input));
+    let name = filename.to_string();
+    let rows: Vec<(String, f64, String, String)> = db
+        .read_main(move |c| {
+            let mut stmt = c.prepare(
+                "SELECT mimeType, size, sha256, storageKey FROM files \
+                  WHERE originalFilename = ?1 ORDER BY id",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![name], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .expect("file-facts main read");
+    let out: Vec<Value> = rows
+        .into_iter()
+        .map(|(mime, size, sha, key)| {
+            let blob_id = quilltap_core::services::file_storage::parse_mount_blob_storage_key(&key)
+                .map(|(_, b)| b);
+            let blob: Option<(String, i64)> = blob_id.and_then(|id| {
+                db.read_mount_index(move |c| {
+                    Ok(c.query_row(
+                        "SELECT sha256, length(data) FROM doc_mount_blobs WHERE id = ?1",
+                        rusqlite::params![id],
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+                    )
+                    .ok())
+                })
+                .expect("file-facts mount read")
+            });
+            json!({
+                "mimeType": mime,
+                "blobFound": blob.is_some(),
+                "sizeMatchesBlob": blob.as_ref().is_some_and(|(_, len)| size == *len as f64),
+                "shaMatchesBlob": blob.as_ref().is_some_and(|(bs, _)| *bs == sha),
+                "shaIsInput": sha == input_sha,
+            })
+        })
+        .collect();
+    Value::Array(out)
+}
 
 const USER_A: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 const PROJECT: &str = "90000000-0000-4000-8000-000000000001";
@@ -1096,6 +1163,7 @@ fn files_routes_match_oracle() {
             Some(PROJECT.to_string()),
             None,
             None,
+            None,
         ));
         check_ok(
             "upload_new_project",
@@ -1117,6 +1185,7 @@ fn files_routes_match_oracle() {
             Some(PROJECT.to_string()),
             None,
             None,
+            None,
         ));
         check_ok(
             "upload_overwrite_project",
@@ -1135,6 +1204,7 @@ fn files_routes_match_oracle() {
             "text/plain",
             b"general upload body".to_vec(),
             vec![],
+            None,
             None,
             None,
             None,
@@ -1220,6 +1290,7 @@ fn files_routes_match_oracle() {
                 c.body.to_vec(),
                 c.tags,
                 c.project.map(str::to_string),
+                None,
                 None,
                 None,
             ));
@@ -1490,6 +1561,142 @@ fn files_routes_match_oracle() {
             j["matching"].as_i64().unwrap_or(0) >= 1 && j["notMatching"].as_i64().unwrap_or(0) >= 1,
             "{label}: both sha-join buckets must be populated (got {j})"
         );
+    }
+
+    // ── P4.104 (bug 159): DECODABLE images through the chat upload ──
+    //
+    // The response `size` is blanked (the byte COUNT is the encoder's — sharp
+    // vs libwebp); `mimeType` is not. `imageFacts` and `fileFacts` are the
+    // encoder-neutral comparands.
+    for (tag, oracle_name, filename, content_type, seed, where_clause) in [
+        (
+            "cip",
+            "chat_upload_real_png",
+            "photo.png",
+            "image/png",
+            "photo.png",
+            "WHERE l.relativePath LIKE 'chat/photo%' ORDER BY l.relativePath",
+        ),
+        (
+            "ciw",
+            "chat_upload_lossless_webp",
+            "photo-lossless.webp",
+            "image/webp",
+            "photo-lossless.webp",
+            "WHERE l.relativePath LIKE 'chat/photo-lossless%' ORDER BY l.relativePath",
+        ),
+    ] {
+        use base64::Engine;
+        let input = blob_image_facts::seed_image(seed);
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(chat_media::chat_file_upload(
+            &db,
+            image_codec(),
+            USER_A,
+            CHAT_G,
+            ChatFileUploadInput {
+                filename: filename.to_string(),
+                content_type: content_type.to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&input),
+                resolution: None,
+                conflicting_file_id: None,
+            },
+        ));
+        check_ok(
+            oracle_name,
+            response_data(&resp),
+            &["id", "filepath", "url", "size"],
+            None,
+            &mut failed,
+        );
+        let got_facts = Value::Array(
+            db.read_mount_index(|mount| {
+                Ok(blob_image_facts::blob_image_facts(
+                    &blob_image_facts::stored_blob_rows(mount, where_clause, &[]),
+                    &input,
+                ))
+            })
+            .unwrap(),
+        );
+        let want_facts = oracle[oracle_name]["imageFacts"].clone();
+        if want_facts.is_null() {
+            eprintln!("[{oracle_name} imageFacts] the oracle carries none — regenerate");
+            failed.push(format!("{oracle_name}:imageFacts"));
+        } else if got_facts != want_facts {
+            eprintln!("[{oracle_name} imageFacts] MISMATCH:\n got {got_facts}\n want {want_facts}");
+            failed.push(format!("{oracle_name}:imageFacts"));
+        } else {
+            eprintln!("[{oracle_name} imageFacts] OK: {got_facts}");
+        }
+        let got_file = dump_file_facts(&db, filename, &input);
+        let want_file = oracle[oracle_name]["fileFacts"].clone();
+        if got_file != want_file {
+            eprintln!("[{oracle_name} fileFacts] MISMATCH:\n got {got_file}\n want {want_file}");
+            failed.push(format!("{oracle_name}:fileFacts"));
+        } else {
+            eprintln!("[{oracle_name} fileFacts] OK: {got_file}");
+        }
+    }
+
+    // ── P4.104: the general FILES upload leg with a DECODABLE PNG ──
+    //
+    // `file_upload` → `save_file_entry` → the user-uploads bridge, which v4
+    // runs with `transcodeImages: true` and real sharp; v5 hands it the host
+    // codec the engine's `FileUpload` arm passes (it used to hand it
+    // `NotConfiguredPixelCodec`, storing the PNG). The response's `size`/`sha256`
+    // are the encoder's and the input's respectively — blanked / compared by
+    // `fileFacts` (`shaIsInput`: v4 hashes the INPUT, `shared.ts`).
+    {
+        let oracle_name = "file_upload_real_png";
+        let input = blob_image_facts::seed_image("photo.png");
+        let db = fresh_db(&spec, "fup");
+        let resp = rt.block_on(files::file_upload(
+            &db,
+            USER_A,
+            "photo.png",
+            "image/png",
+            input.clone(),
+            vec![],
+            None,
+            None,
+            None,
+            Some(image_codec()),
+        ));
+        check_ok(
+            oracle_name,
+            response_data(&resp),
+            &["id", "filepath", "createdAt", "updatedAt", "size"],
+            None,
+            &mut failed,
+        );
+        let got_facts = Value::Array(
+            db.read_mount_index(|mount| {
+                Ok(blob_image_facts::blob_image_facts(
+                    &blob_image_facts::stored_blob_rows(
+                        mount,
+                        "WHERE l.relativePath LIKE 'uploads/photo%' ORDER BY l.relativePath",
+                        &[],
+                    ),
+                    &input,
+                ))
+            })
+            .unwrap(),
+        );
+        let want_facts = oracle[oracle_name]["imageFacts"].clone();
+        if got_facts != want_facts {
+            eprintln!("[{oracle_name} imageFacts] MISMATCH:\n got {got_facts}\n want {want_facts}");
+            failed.push(format!("{oracle_name}:imageFacts"));
+        } else {
+            eprintln!("[{oracle_name} imageFacts] OK: {got_facts}");
+        }
+        let got_file = dump_file_facts(&db, "photo.png", &input);
+        let want_file = oracle[oracle_name]["fileFacts"].clone();
+        if got_file != want_file {
+            eprintln!("[{oracle_name} fileFacts] MISMATCH:\n got {got_file}\n want {want_file}");
+            failed.push(format!("{oracle_name}:fileFacts"));
+        } else {
+            eprintln!("[{oracle_name} fileFacts] OK: {got_file}");
+        }
     }
 
     assert!(failed.is_empty(), "files-routes mismatches: {failed:?}");

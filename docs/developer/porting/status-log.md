@@ -142794,3 +142794,99 @@ restored by `cp`, md5-identical. The census guards the site's
 Neutrality legs re-run from the pin, unchanged and green, zero SKIP:
 `mount_ops_equivalence` (42 cases), `mount_case_moves_equivalence`,
 `mount_link_groups_equivalence`.
+
+### Unit 5 — sites 3, 4, 5, 8 proven; the stale transcode copy retired; the general upload's codec (core 0.0.995, harness 0.0.894, web 0.0.172; families grown by two lane sub-agents, every one re-run green by the lane)
+
+Every oracle regenerated from the pin (`f45a517a9`) with lane-private mirrors
+and outputs under `/tmp/p4104/<family>/`; the §R.2 probe re-run before each
+batch (empty log, clean tree). Zero `SKIP:` in every run.
+
+**Site 3 — `photos_routes_equivalence` (web)**, case `save_real_png`: on its
+own per-case copy the oracle links `photo.png` into the Uploads mount at
+`images/` through v4's own `linkBlobContent` with `normalizeImages: false`
+(the SOURCE stays a PNG) and plants an IMAGE `files` row `f3000000-…0001`; the
+Rust side plants the same row and `CannedBytes` replays the seed.
+`CannedBytes::blob_webp()` returns `HostImageCodec` for GREEN. Oracle
+`/tmp/p4104/photos_routes/oracle-photos.ndjson` (43 rows). v4:
+`photos/<keptAt>-a-real-photograph.webp`, `image/webp`, smaller, 240×170 —
+its receipt keeps the PRE-normalization `.png` path and source sha. Red-first
+(no override): `.png` / `image/png` / sha unchanged. Green. Mutation (site on
+`::new`): the same red; restored by `cp`, `cmp` identical. The header's case
+count corrected 41 → 43 (it was already off by one).
+
+⚠ **A PRE-EXISTING red, recorded by name, NOT this lane's:**
+`photos_routes_equivalence` fails on `save_ok`, `save_duplicate`,
+`save_not_an_image`, `save_not_owned`, `save_missing_file` (500 "Failed to
+save image") — the committed `crates/quilltap-web/tests/fixtures/photos-main.db`
+(last touched `ae1e917c`) lacks `files.generationKey` (breaks the save leg's
+files read), `characters.{archivedAt, archiveFileId, archivedAvatarFileId,
+canChooseOutfit}` and `chats.cycleOrderParticipantIds` (measured against
+`fresh_schema.json`; the mount db has no gap). A diagnostic ALTER on every
+save copy turned the family fully green (41 checks), then reverted. **This
+pair is NOT on P4.103's heal list — a NEW fixture-vintage family for the
+heal.** `save_real_png`'s copy alone gets v4's own `generationKey` ALTER,
+guarded on `pragma_table_info` (a no-op once the pair is healed), so the five
+reds stay visible.
+
+**Site 4 — `photo_tools_equivalence`**, op `keep_real_png`: both sides plant an
+IMAGE `files` row `c3000000-…0001` whose bytes are the seed (the builder's
+ingest turns every image into WebP, so it could not supply a PNG source). The
+op compares the exact `resultJson` (link id normalized) + `imageFacts`, not
+the six-table dump (its differing cells are all encoder output). Fixture built
+at the pin into `/tmp/p4104/photo_tools/photo-{main,mount}.db`; oracle
+`/tmp/p4104/photo_tools/oracle-photo-tools.ndjson` (36 rows). v4:
+`photos/2026-04-05T12-00-00.000Z-a-real-photograph.webp`, `image/webp`,
+smaller, 240×170. Red-first: `.png` / `image/png` / unchanged. Green (1/1).
+Mutation: the same red; restored, `cmp` identical.
+
+**The stale transcode copy (a sub-agent's measured finding, fixed here).**
+`file_storage::transcode_to_webp` — the bridges', the chat route's and the
+main-avatar writer's pre-transcode — was a second copy of v4's
+`transcodeToWebP` predating `186eb09cb`: no ≥ 512 KiB lossless-WebP re-encode,
+no `.trim().split(';')[0]` on the mime, no failure warn. v4 has ONE. A
+lossless chat upload therefore came back from the bridge byte-for-byte while
+the normalization re-encoded the stored bytes, and the files row recorded the
+INPUT's size and sha (748872) where v4 records the stored bytes' (175300) —
+bug 117's shape through a new door. It now IS the ported
+`blob_transcode::transcode_to_webp`, through a private at-quality adapter (v4's
+`options.quality`; `sharp(input, { animated: true }).webp({ quality, effort:
+4 })`); its dead `TRANSCODABLE_MIME_TYPES` copy deleted. **Red-first:** the
+pre-fix `file_storage.rs` swapped back in → `[chat_upload_lossless_webp
+fileFacts] MISMATCH: got [{…sizeMatchesBlob false, shaMatchesBlob false,
+shaIsInput true}]`; green after. The sub-agent had pinned the divergence
+"both ways"; that pin is replaced by the plain compare. `PixelCodecWebp` was
+corrected to `animated: true` for the same reason (`HostImageCodec` ignores
+the flag; the adapter must still say what v4 says; its unit pin updated).
+
+**The general FILES upload's codec.** `api/files.rs::save_file_entry` handed
+both bridges `NotConfiguredPixelCodec` "deliberately" — the note's reasoning
+("a document never transcodes") is refuted by the hunk: `category` only picks
+the subfolder, and v4's `writeUserUploadToMountStore` / project bridge pass
+`transcodeImages: true` unconditionally (`user-uploads-bridge.ts:116`,
+`project-store-bridge.ts:153`). `file_upload` now takes the host pixel codec
+(the engine's `FileUpload` arm passes `qtap_pixel_codec()` — an existing arm's
+body, §R.10(j)); `None` keeps the not-configured codec. New row
+`file_upload_real_png`: v4 `uploads/photo.webp`, the files row `image/webp`,
+size 16160, `sha256` = the INPUT's (`shared.ts`: `sha256OfBuffer(contentBuffer)`
+— v4's own bug-117 shape on this leg, which v5 now matches:
+`shaMatchesBlob false, shaIsInput true`). Red-first (codec `None`): body
+`image/png`, `imageFacts` `uploads/photo.png` / `image/png`, `fileFacts`
+`image/png`. Green. (`api/almanack.rs` also passes `NotConfiguredPixelCodec`,
+but writes only a Markdown document — no image can reach it; left as is.)
+
+**Sites 5 and 8 — `character_avatar_write_tier2` (`avatar_write_photo_png`,
+`avatar_write_lossless_webp`) and `files_routes` (`chat_upload_real_png`,
+`chat_upload_lossless_webp`).** Oracles `/tmp/p4104/avatar-write/oracle.ndjson`
+(3 lines) and `/tmp/p4104/files-routes/oracle.ndjson` (53 lines, 3 with
+`imageFacts`). v4: `images/avatar.webp` 240×170 and 620×440; `chat/photo.webp`
+and `chat/photo-lossless.webp`, all `image/webp`, smaller. Red-first (the
+family's codec = `NotConfiguredPixelCodec`, the production fallback): the
+image rows `.png` / `image/png` / unchanged. Green. **Mutations — measured,
+and they now SURVIVE:** before the transcode fix, the lossless rows isolated
+each site's normalization (the stale copy passed lossless WebP through), and
+the sub-agent's mutation of each `with_blob_codec` reddened exactly that row.
+With the one policy in place the pre-transcode already re-encodes the lossless
+WebP, so — like sites 1 and 9, and like v4 — the normalization at sites 5 and
+8 is a no-op after its own pre-transcode, and the mutation of either site
+alone survives (re-run: both families green under it). The census guards both
+constructions.

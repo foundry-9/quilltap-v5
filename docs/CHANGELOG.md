@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(files): one transcode policy for every blob write, the general upload transcodes, and decodable rows for the galleries, avatars and uploads (P4.104 unit 5)
+
+_Versions: core 0.0.995, harness 0.0.894, web 0.0.172._
+
+`file_storage::transcode_to_webp` was a second copy of v4's `transcodeToWebP`
+from before bug 159, missing the re-encode of large lossless WebP and v4's
+mime trimming. A lossless chat upload was therefore stored re-encoded (by the
+normalization) while its files row still recorded the input's size and sha.
+It now runs the one ported policy. The general FILES upload (`file_upload`)
+handed the user-uploads bridge a not-configured codec, so a PNG uploaded there
+was stored as PNG; v4's bridge transcodes it, and v5 now passes the host
+codec from the engine. Decodable-image rows added and proven for the user
+gallery (`photos_routes`), the album save (`photo_tools`), the main avatar
+(`character_avatar_write_tier2`) and the chat and general uploads
+(`files_routes`). The encoder adapter now passes `animated: true`, as v4 does.
+
 #### 2026-09-22 — test(harness): decodable-image rows for the in-store write-file and the blob upload (P4.104 unit 4)
 
 _Versions: harness 0.0.893._

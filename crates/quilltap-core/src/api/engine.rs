@@ -4845,6 +4845,10 @@ impl CoreEngine {
                                 project_id,
                                 folder_path,
                                 storage.as_deref(),
+                                // P4.104 OUT-OF-MANDATE (§R.10(j)) — an EXISTING
+                                // arm's body: v4's user-uploads bridge transcodes
+                                // with real `sharp`; so does this upload now.
+                                self.qtap_pixel_codec(),
                             )
                             .await
                         }

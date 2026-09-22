@@ -118,8 +118,8 @@ impl std::fmt::Debug for SharedBlobWebp {
 /// A [`crate::services::file_storage::PixelCodec`] seen as the blob
 /// [`WebpTranscoder`] (P4.104). v4 has ONE `sharp`: the bridges' pre-transcode
 /// (`storeMountFile`'s `transcodeToWebP`) and `linkBlobContent`'s normalization
-/// both encode through it, as `sharp(input).webp({ quality, effort: 4 })`
-/// (`blob-transcode.ts`). A write site whose chain already carries a pixel
+/// both encode through it, as `sharp(input, { animated: true }).webp({ quality,
+/// effort: 4 })` (`blob-transcode.ts`). A write site whose chain already carries a pixel
 /// codec therefore normalizes through THAT codec — the same encoder as its own
 /// pre-transcode, never a second one that could disagree with it. On every
 /// production path the codec is the host's `HostImageCodec`, the same encoder
@@ -132,13 +132,14 @@ where
     P::Target: crate::services::file_storage::PixelCodec,
 {
     fn encode_webp(&self, bytes: &[u8], quality: u8) -> Result<Vec<u8>, String> {
-        // v4 `blob-transcode.ts`: `.webp({ quality, effort: 4 })`, never animated.
+        // v4 `blob-transcode.ts`: `sharp(input, { animated: true })
+        // .webp({ quality, effort: 4 })`.
         crate::services::file_storage::PixelCodec::encode_webp(
             &*self.0,
             bytes,
             quality as i64,
             Some(4),
-            false,
+            true,
         )
     }
 }
@@ -261,15 +262,15 @@ mod encoder_choice_tests {
         }
     }
 
-    /// v4 `blob-transcode.ts`: `sharp(input).webp({ quality, effort: 4 })`,
-    /// never animated — the adapter must pass exactly that, whatever the
-    /// pixel codec's other callers ask of it.
+    /// v4 `blob-transcode.ts`: `sharp(input, { animated: true }).webp({
+    /// quality, effort: 4 })` — the adapter must pass exactly that, whatever
+    /// the pixel codec's other callers ask of it.
     #[test]
     fn the_pixel_codec_adapter_encodes_as_v4s_blob_transcode_does() {
         let codec = Recording::default();
         let adapter = PixelCodecWebp(&codec as &dyn PixelCodec);
         assert_eq!(adapter.encode_webp(b"x", 85).unwrap(), b"ENCODED");
-        assert_eq!(*codec.0.lock().unwrap(), vec![(85, Some(4), false)]);
+        assert_eq!(*codec.0.lock().unwrap(), vec![(85, Some(4), true)]);
     }
 
     /// No encoder wired → the refusing encoder, whose `Err` takes v4's
@@ -282,7 +283,10 @@ mod encoder_choice_tests {
         assert!(blob_codec_or_refusing(Some(&adapter))
             .encode_webp(b"x", 85)
             .is_ok());
-        assert!(SharedBlobWebp::default().get().encode_webp(b"x", 85).is_err());
+        assert!(SharedBlobWebp::default()
+            .get()
+            .encode_webp(b"x", 85)
+            .is_err());
         assert_eq!(
             format!("{:?}", SharedBlobWebp::default()),
             "SharedBlobWebp(none)"

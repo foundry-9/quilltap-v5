@@ -9,12 +9,25 @@
  * Only the seams the Rust harness also neutralizes are mocked (auth session +
  * startup gate); the DB stack is doMocked to the REAL modules past jest.setup.
  *
+ * P4.104 (v4 bug 159, `186eb09cb`): the chat-upload image rows hand the route
+ * the DECODABLE `normalize-blob-image` seeds with REAL sharp (nothing here mocks
+ * it) and emit the stored row's D19 `imageFacts` (`../lib/blob-image-facts`) —
+ * never the WebP bytes, never the sha's value — plus `fileFacts`, the files
+ * row's encoder-neutral agreement with the blob it names. The Rust family drives
+ * these rows with the HOST codec (the bridge's `store_mount_blob` normalizes
+ * through `PixelCodecWebp` over it); every other chat row keeps the prefixing
+ * codec.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-files-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/files-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/files-web.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts"                     "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo.png"     "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_FILES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/files-main.db \
  *   QT_FIXTURE_FILES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/files-mount.db \
@@ -28,6 +41,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 interface Spec {
   testPepperBase64: string;
@@ -183,7 +198,52 @@ interface CaseSpec {
   assoc?: boolean;
   /** P4.D152 — dump the files ↔ doc_mount_blobs sha join (bug 117). */
   shaJoin?: boolean;
+  /**
+   * P4.104 — the D19 `imageFacts` of the stored rows matching `where` (an
+   * `l.*` filter), measured against `input`, plus `fileFacts` for the files
+   * rows whose `originalFilename` is `filename`.
+   */
+  image?: { where: string; input: Buffer; filename: string };
   run: () => Promise<{ status: number; body: unknown }>;
+}
+
+/**
+ * P4.104 — the files row's encoder-NEUTRAL agreement with the blob its
+ * storage key names: its mime, whether its `size` and `sha256` describe the
+ * STORED bytes, and whether its `sha256` is still the INPUT's. Never the
+ * values themselves (sharp vs libwebp).
+ */
+async function dumpFileFacts(filename: string, input: Buffer): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const main = getRawDatabase() as unknown as {
+    prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+  };
+  const mount = getRawMountIndexDatabase();
+  if (!mount) throw new Error('mount-index DB handle unavailable for the file facts');
+  const inputSha = createHash('sha256').update(input).digest('hex');
+  const rows = main
+    .prepare(
+      'SELECT mimeType, size, sha256, storageKey FROM files WHERE originalFilename = ? ORDER BY id',
+    )
+    .all(filename) as Array<Record<string, unknown>>;
+  const findBlob = mount.prepare('SELECT sha256, length(data) AS len FROM doc_mount_blobs WHERE id = ?');
+  return rows.map((r) => {
+    const key = String(r.storageKey);
+    const blobId = key.startsWith('mount-blob:') ? key.slice(key.lastIndexOf(':') + 1) : null;
+    const blob = blobId
+      ? (findBlob.get(blobId) as { sha256: string; len: number } | undefined)
+      : undefined;
+    return {
+      mimeType: r.mimeType,
+      blobFound: !!blob,
+      sizeMatchesBlob: !!blob && Number(r.size) === Number(blob.len),
+      shaMatchesBlob: !!blob && blob.sha256 === r.sha256,
+      shaIsInput: r.sha256 === inputSha,
+    };
+  });
 }
 
 /**
@@ -353,6 +413,21 @@ async function runCase(
     if (c.dump) payload.tables = await dumpTables();
     if (c.assoc) payload.assoc = await dumpAssoc();
     if (c.shaJoin) payload.shaJoin = await dumpShaJoin();
+    if (c.image) {
+      const { getRawMountIndexDatabase } = await import(
+        '@/lib/database/backends/sqlite/mount-index-client'
+      );
+      const midb = getRawMountIndexDatabase() as unknown as {
+        prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+      };
+      const rows = midb
+        .prepare(STORED_BLOB_SELECT + c.image.where)
+        .all() as Parameters<typeof blobImageFacts>[0];
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+      payload.imageFacts = await blobImageFacts(rows, c.image.input, sharpMeasure(sharp));
+      payload.fileFacts = await dumpFileFacts(c.image.filename, c.image.input);
+    }
     return payload;
   } finally {
     await closeDatabase();
@@ -383,6 +458,10 @@ async function main(): Promise<void> {
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
+
+  // P4.104: the decodable seeds (staged beside the spec in the mirror).
+  const PHOTO_PNG = fs.readFileSync(join(here, '..', 'fixtures', 'photo.png'));
+  const PHOTO_LOSSLESS = fs.readFileSync(join(here, '..', 'fixtures', 'photo-lossless.webp'));
 
   const cases: CaseSpec[] = [
     // ── reads ──
@@ -506,6 +585,48 @@ async function main(): Promise<void> {
       run: chatFilesUpload(CHAT_G, {
         file: { name: 'plain.txt', type: 'text/plain', bytes: Buffer.from('a chat note, hashed once') },
       }),
+    },
+    // ── P4.104 (bug 159): DECODABLE images through the chat upload ──
+    // The 240×170 PNG: the route's own transcode moves it, the bridge's
+    // pre-transcode then passes the WebP through, and `linkBlobContent`'s
+    // normalization declines.
+    {
+      name: 'chat_upload_real_png',
+      image: {
+        where: "WHERE l.relativePath LIKE 'chat/photo%' ORDER BY l.relativePath",
+        input: PHOTO_PNG,
+        filename: 'photo.png',
+      },
+      run: chatFilesUpload(CHAT_G, {
+        file: { name: 'photo.png', type: 'image/png', bytes: PHOTO_PNG },
+      }),
+    },
+    // The 748 KB lossless WebP: v4's ONE `transcodeToWebP` re-encodes it lossy
+    // at the route; v5's route + bridge transcode copy passes image/webp
+    // through, so `linkBlobContent`'s normalization is what moves the stored
+    // bytes there — the row that isolates `store_mount_blob`'s encoder.
+    {
+      name: 'chat_upload_lossless_webp',
+      image: {
+        where: "WHERE l.relativePath LIKE 'chat/photo-lossless%' ORDER BY l.relativePath",
+        input: PHOTO_LOSSLESS,
+        filename: 'photo-lossless.webp',
+      },
+      run: chatFilesUpload(CHAT_G, {
+        file: { name: 'photo-lossless.webp', type: 'image/webp', bytes: PHOTO_LOSSLESS },
+      }),
+    },
+    // The general FILES upload leg (`saveFileEntry` → the user-uploads bridge,
+    // `transcodeImages: true`, then `linkBlobContent`): v4 stores the PNG as
+    // WebP under `uploads/` and records the INPUT sha on the files row.
+    {
+      name: 'file_upload_real_png',
+      image: {
+        where: "WHERE l.relativePath LIKE 'uploads/photo%' ORDER BY l.relativePath",
+        input: PHOTO_PNG,
+        filename: 'photo.png',
+      },
+      run: filesUpload({ file: { name: 'photo.png', type: 'image/png', bytes: PHOTO_PNG } }),
     },
   ];
 

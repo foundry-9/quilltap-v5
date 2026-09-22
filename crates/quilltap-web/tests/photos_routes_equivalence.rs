@@ -30,6 +30,20 @@
 //!   time. Replaying those exact bytes is what makes the save leg's recomputed
 //!   sha256 — and therefore the duplicate guard — comparable at all.
 //!
+//! ## P4.104 — the decodable save (`save_real_png`)
+//!
+//! v4's `linkBlobContent` normalizes image bytes to WebP (bug 159,
+//! `186eb09cb`); v5's `save_to_user_gallery` normalizes through the encoder
+//! its `FileBytesStore` carries ([`FileBytesStore::blob_webp`]). The case
+//! plants an IMAGE `files` row (`REAL_PNG_FILE_ID`) on its OWN copy — the
+//! committed pair is never edited — and [`CannedBytes`] replays the 240×170
+//! `normalize-blob-image/photo.png` seed for it (the oracle plants the same
+//! row over a real Uploads-mount blob). The receipt diffs exact (v4 returns
+//! the PRE-normalization path and the SOURCE sha256); the stored row's D19
+//! `imageFacts` (`blob_image_facts/mod.rs`) are the image comparand. Red-first
+//! with no `blob_webp` override (the refusing encoder): `…-a-real-photograph.png`,
+//! `image/png`, the sha unchanged, where v4 answers `.webp` / `image/webp`.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-photos.ndjson npx jest -- photos-routes
 //! Run:
@@ -54,6 +68,13 @@ use quilltap_core::photos::save_image_to_album::{FileBytesStore, IngestImageRequ
 use serde::Deserialize;
 use serde_json::Value;
 
+#[path = "../../quilltap-harness/tests/blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
+/// P4.104: the planted decodable save source — the same id the oracle plants.
+const REAL_PNG_FILE_ID: &str = "f3000000-0000-4000-8000-000000000001";
+const PLANT_TS: &str = "2026-01-01T00:00:00.000Z";
+
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
 #[derive(Deserialize)]
@@ -66,6 +87,7 @@ struct Spec {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Meta {
+    uploads_mp: String,
     link_ids: HashMap<String, Vec<String>>,
     notes_link_id: String,
     save_ok_file_id: String,
@@ -147,7 +169,9 @@ impl EmbeddingProvider for CannedEmbedding {
 }
 
 /// The canned bytes seam — replays exactly what the oracle reported v4's real
-/// storage manager read for each source file id.
+/// storage manager read for each source file id. It is also the host image
+/// boundary the gallery write takes its WebP encoder from (P4.104) — the
+/// host's, as production wires it.
 struct CannedBytes {
     table: HashMap<String, Vec<u8>>,
 }
@@ -158,6 +182,70 @@ impl FileBytesStore for CannedBytes {
     fn ingest_image_buffer(&self, _req: &IngestImageRequest) -> Result<FileEntry, String> {
         Err("the photos differential never re-ingests".to_string())
     }
+    fn blob_webp(
+        &self,
+    ) -> Option<Arc<dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder>> {
+        Some(Arc::new(quilltap_host::HostImageCodec))
+    }
+}
+
+/// P4.104: plant the decodable save source's `files` row on this case's copy
+/// (the oracle plants the identical row; its bytes come from [`CannedBytes`]).
+async fn plant_real_png(db: &Db, user: &str) {
+    use quilltap_core::db::files::{CreateOptions, FileCreate, FilesRepository};
+    use sha2::{Digest, Sha256};
+    let png = blob_image_facts::seed_image("photo.png");
+    let data = FileCreate {
+        user_id: user.to_string(),
+        sha256: hex::encode(Sha256::digest(&png)),
+        original_filename: "real-photo.png".to_string(),
+        mime_type: "image/png".to_string(),
+        size: png.len() as f64,
+        width: None,
+        height: None,
+        is_plain_text: None,
+        linked_to: vec![],
+        source: "UPLOADED".to_string(),
+        category: "IMAGE".to_string(),
+        generation_prompt: None,
+        generation_model: None,
+        generation_revised_prompt: None,
+        generation_key: None,
+        description: None,
+        tags: vec![],
+        project_id: None,
+        folder_path: None,
+        storage_key: None,
+        file_status: "ok".to_string(),
+    };
+    db.write(move |w| {
+        // The committed `photos-main.db` predates v4 `7fbf8a55b`'s
+        // `files.generationKey` (a fixture-vintage gap: v4's `initializeDatabase`
+        // migrates ITS copy on open, v5 runs no migrations). Widen THIS case's
+        // copy through v4's own migration step (`add-file-generation-key-
+        // column-v1.ts`: `addColumnIfMissing('files', 'generationKey', 'TEXT')`)
+        // so the planted row and the save leg's `files` read can run; guarded,
+        // so it no-ops once the pair is healed. The committed pair is untouched.
+        let conn = w.main().connection();
+        let has: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('files') WHERE name = 'generationKey'",
+            [],
+            |r| r.get(0),
+        )?;
+        if has == 0 {
+            conn.execute("ALTER TABLE files ADD COLUMN generationKey TEXT", [])?;
+        }
+        FilesRepository::new(conn).create(
+            &data,
+            &CreateOptions {
+                id: REAL_PNG_FILE_ID.to_string(),
+                created_at: PLANT_TS.to_string(),
+                updated_at: PLANT_TS.to_string(),
+            },
+        )
+    })
+    .await
+    .expect("plant the real-PNG files row");
 }
 
 // ── JSON canonicalization ──────────────────────────────────────────────────
@@ -206,7 +294,8 @@ fn success_body(r: &Response) -> Option<Value> {
 /// REST of the receipt (mount, resolved path, recomputed sha256, keptAt) still
 /// diffs exact.
 fn blank_minted(name: &str, v: &Value) -> Value {
-    if name != "save_ok" {
+    // P4.104: `save_real_png` is the second mutating save (its own copy).
+    if name != "save_ok" && name != "save_real_png" {
         return v.clone();
     }
     let mut out = v.clone();
@@ -402,6 +491,10 @@ async fn photos_routes_equivalence() {
                 meta.save_dupe_file_id.clone(),
                 decode_bytes(&oracle, "save_dupe_bytes"),
             ),
+            (
+                REAL_PNG_FILE_ID.to_string(),
+                blob_image_facts::seed_image("photo.png"),
+            ),
         ]),
     });
     let user = spec.user_id.as_str();
@@ -552,8 +645,18 @@ async fn photos_routes_equivalence() {
             None,
             None,
         ),
+        // P4.104: a DECODABLE source — normalized to WebP by `link_blob_content`.
+        (
+            "save_real_png",
+            Some(Some(Value::String(REAL_PNG_FILE_ID.to_string()))),
+            Some("A real photograph".to_string()),
+            None,
+        ),
     ] {
         let db = fresh_db(name);
+        if name == "save_real_png" {
+            plant_real_png(&db, user).await;
+        }
         // The oracle's own receipt carries the keptAt v4 minted; replay it so the
         // markdown (and therefore the extractedText sha) is byte-identical.
         let kept_at = oracle[name]["body"]["keptAt"]
@@ -572,6 +675,37 @@ async fn photos_routes_equivalence() {
         )
         .await;
         check(&oracle, name, &resp, &mut failed);
+
+        // P4.104: the D19 image comparand for the decodable row.
+        if name == "save_real_png" {
+            let uploads_mp = meta.uploads_mp.clone();
+            let got = db
+                .read_mount_index(|mount| {
+                    Ok(blob_image_facts::blob_image_facts(
+                        &blob_image_facts::stored_blob_rows(
+                            mount,
+                            "WHERE l.mountPointId = ?1 \
+                             AND l.relativePath LIKE 'photos/%-a-real-photograph.%' \
+                             ORDER BY l.relativePath",
+                            &[&uploads_mp],
+                        ),
+                        &blob_image_facts::seed_image("photo.png"),
+                    ))
+                })
+                .unwrap();
+            let got = Value::Array(got);
+            match oracle[name].get("imageFacts") {
+                Some(want) if *want == got => eprintln!("[{name}] imageFacts OK: {got}"),
+                Some(want) => {
+                    eprintln!("[{name}] imageFacts MISMATCH:\n got  {got}\n want {want}");
+                    failed.push(format!("{name}_imageFacts"));
+                }
+                None => {
+                    eprintln!("[{name}] the oracle carries no imageFacts — regenerate");
+                    failed.push(format!("{name}_imageFacts"));
+                }
+            }
+        }
     }
 
     // ── DELETE (each on its OWN copy) ─────────────────────────────────────
@@ -593,5 +727,5 @@ async fn photos_routes_equivalence() {
         failed.is_empty(),
         "photos routes differential failures: {failed:?}"
     );
-    eprintln!("photos_routes_equivalence: 40 checks green (+ the two key-order claims)");
+    eprintln!("photos_routes_equivalence: 41 checks green (+ the two key-order claims + the save_real_png imageFacts)");
 }
