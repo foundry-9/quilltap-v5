@@ -1317,7 +1317,7 @@ fn assert_pre_410_archive_restores_no_informs(
         Some(_) => {}
     }
     let got_n = serde_json::to_value(summary).expect("summary")["chatInforms"].clone();
-    if got_n != Value::from(0) || want_summary["chatInforms"] != Value::from(0) {
+    if got_n != 0 || want_summary["chatInforms"] != 0 {
         failures.push(format!(
             "[{name}] summary chatInforms: v5 {got_n}, v4 {} (both must be 0)",
             want_summary["chatInforms"]

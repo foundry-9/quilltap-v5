@@ -178,9 +178,11 @@ async fn post_list_and_cancel_round_trip_over_dispatch() {
     assert_eq!(v["data"]["targetParticipantIds"], json!([SEAT_ARIA]));
     let whisper_batch = v["data"]["batchId"].as_str().expect("batchId").to_string();
 
-    // ---- chatInformsList: both batches, oldest first, each with the seats it
-    //      is still owed (Everyone resolved to the two LLM seats; the user seat
-    //      is never owed an inform).
+    // ---- chatInformsList: both batches, each with the seats it is still owed
+    //      (Everyone resolved to the two LLM seats; the user seat is never owed
+    //      an inform). Batch and seat ORDER are createdAt-then-id, and rows
+    //      minted in the same millisecond tie-break on random ids — measured
+    //      flaky on the first workspace gate — so both are compared as sets.
     let (status, v) = wire
         .post(json!({ "type": "chatInformsList", "chatId": CHAT }))
         .await;
@@ -188,13 +190,24 @@ async fn post_list_and_cancel_round_trip_over_dispatch() {
     assert_eq!(v["type"], json!("chatInforms"));
     let batches = v["data"]["batches"].as_array().expect("batches");
     assert_eq!(batches.len(), 2, "{v}");
-    assert_eq!(batches[0]["batchId"], json!(everyone_batch));
-    assert_eq!(
-        batches[0]["pendingParticipantIds"],
-        json!([SEAT_ARIA, SEAT_TWO])
-    );
-    assert_eq!(batches[1]["batchId"], json!(whisper_batch));
-    assert_eq!(batches[1]["pendingParticipantIds"], json!([SEAT_ARIA]));
+    let batch = |id: &str| {
+        batches
+            .iter()
+            .find(|b| b["batchId"] == json!(id))
+            .unwrap_or_else(|| panic!("batch {id} missing: {v}"))
+    };
+    let seats = |b: &Value| {
+        let mut s: Vec<String> = b["pendingParticipantIds"]
+            .as_array()
+            .expect("pendingParticipantIds")
+            .iter()
+            .map(|x| x.as_str().unwrap().to_string())
+            .collect();
+        s.sort();
+        s
+    };
+    assert_eq!(seats(batch(&everyone_batch)), [SEAT_ARIA, SEAT_TWO]);
+    assert_eq!(seats(batch(&whisper_batch)), [SEAT_ARIA]);
     for b in batches {
         let keys: Vec<&String> = b.as_object().unwrap().keys().collect();
         assert_eq!(

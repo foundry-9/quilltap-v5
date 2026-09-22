@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — fix(test): P4.106 gate fixes — the Inform wire test's tie-order flake, a clippy cmp_owned
+
+_Versions: harness 0.0.902, web 0.0.172._
+
+Gate fixes for the P4.106 lane. The Inform dispatch wire test compared the
+list's batch and seat order, which is createdAt-then-id and tie-breaks on
+random row ids within one millisecond; it failed once in the first
+workspace gate. Batches are now looked up by id and seats compared as sets.
+`system_restore_state`'s pre-4.10 assert compared against an owned
+`Value::from(0)`, which clippy rejects; it now compares against `0`.
+
 #### 2026-09-22 — test(harness): the chat export surfaces over a planted Inform (P4.106 item 6, part 3)
 
 _Versions: harness 0.0.901._
