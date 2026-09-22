@@ -142752,3 +142752,45 @@ half alone produces the WebP; only removing both (the red-first) reddens. The
 facade half is therefore guarded by the census and unit 1's tests, and
 mutation (b) is itself the end-to-end proof of unit 1's readback: the
 normalization lands `art/real-photo.webp` and the facade reads that row back.
+
+### Unit 4 — site 7 proven, site 9 measured (harness 0.0.893; family grown by a lane sub-agent, re-run green by the lane)
+
+`mount_write_equivalence` 23 → 25 rows: `write_raw_real_png` (`photo.png` to
+`images/raw.png` via `mount_file_write_raw` = v4 `?action=write-file`) and
+`blob_upload_real_png` (the blobs POST to `images/photo.png`). The stored
+image row's file/blob sha + size cells and the upload body's
+`blob.sha256`/`sizeBytes` are replaced with `<encoded>` on both sides (the
+`files`/`blobs` dumps re-sorted so the uuid remap stays aligned); the
+write-file BODY is compared whole — v4 and v5 both answer the
+PRE-normalization sha, size and `images/raw.png` (v4 `file-ops.ts` returns its
+local `sha`). Regen AS RUN from the pin: mirror `/tmp/p4104/mount_write/mirror/
+{cases,fixtures,lib}`, the recipe's `QT_FIXTURE_MOUNTS_{MAIN,MOUNT}` +
+`QT_MOUNTS_FS_TREE`, out `/tmp/p4104/mount_write/oracle-mount-write.ndjson`
+(25 lines, 2 carrying `imageFacts`; nothing mocks sharp). v4: `images/raw.webp`
+and `images/photo.webp`, `image/webp`, smaller, 240×170.
+
+**Site 7 (`file_ops::write_dest_bytes`).** Red-first (encoder `None`):
+`case write_raw_real_png: imageFacts left: [{images/raw.png, image/png,
+shaChanged false, same …}] right: [{images/raw.webp, image/webp, true,
+smaller …}]`. Green with `Some(Arc::new(HostImageCodec))`: `OK: mount-write
+matched oracle (25 cases).`, zero SKIP. Mutation (`with_blob_codec(conn,
+webp)` → `::new(conn)`, restored by `cp`, md5-verified): the same red.
+
+**Site 9 (`store_mount_file`) — the normalization is REDUNDANT on every v5
+route, as in v4.** M1 (`with_blob_codec` → `::new`) SURVIVES (25/25; the row
+still `.webp`): the pre-transcode (`store-file.ts:250`) already produced lossy
+WebP, which the normalization declines. Both stages decide from the same mime
+with the same encoder, so the normalization can move bytes only under
+`transcode_images: false`, which no v5 caller passes (v4's bridges all pass
+`true`). M2 (pre-transcode alone refused) keeps the stored facts green — the
+normalization catches it — but the row reddens on the body (`"blob": null`):
+`store_mount_file` answers the PRE-normalization path and the upload route
+reads the row back by it — v4 identical (`store-file.ts` returns `finalPath`;
+`blobs/route.ts:116` looks up `result.relativePath`), unreachable while the
+two stages agree. M1+M2 together: red (`images/photo.png`, `image/png`). Both
+restored by `cp`, md5-identical. The census guards the site's
+`with_blob_codec`.
+
+Neutrality legs re-run from the pin, unchanged and green, zero SKIP:
+`mount_ops_equivalence` (42 cases), `mount_case_moves_equivalence`,
+`mount_link_groups_equivalence`.

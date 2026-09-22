@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): decodable-image rows for the in-store write-file and the blob upload (P4.104 unit 4)
+
+_Versions: harness 0.0.893._
+
+`mount_write` gains `write_raw_real_png` (`?action=write-file`, the
+`file_ops` writer) and `blob_upload_real_png` (the blobs POST, through
+`store_mount_file`), each writing a real PNG into a database store; v4 stores
+both as WebP. The write-file row was red with no encoder and is green with
+the host encoder; building its site without the encoder turns it red again.
+For the blob upload, the normalization in `store_mount_file` is measured as
+redundant: its pre-transcode already produces the WebP with the same encoder
+and the same mime, exactly as v4's `storeMountFile` does.
+
 #### 2026-09-22 — test(harness): decodable-image rows for the doc-edit blob tool and the character gallery, and a shared D19 image comparand (P4.104 unit 3)
 
 _Versions: harness 0.0.892._

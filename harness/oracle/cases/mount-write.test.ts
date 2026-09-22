@@ -12,12 +12,27 @@
  * runs REAL and is drained (setImmediate x60) before the dump — the in-process
  * job dispatcher stays mocked OFF so enqueued rows stay PENDING.
  *
+ * P4.104 (bug 159's image half, v4 `186eb09cb`): two rows hand the write a
+ * DECODABLE 240×170 PNG (the `normalize-blob-image` seed) and emit the stored
+ * row's D19 `imageFacts` (`../lib/blob-image-facts`) — never the WebP bytes,
+ * never the sha's value. `write_raw_real_png` drives `?action=write-file`
+ * (`file-ops.ts writeFile` → `linkBlobContent`, whose normalization is the
+ * ONLY encoder on that path: the body still answers the PRE-normalization sha
+ * and `.png` path while the stored row is `.webp`). `blob_upload_real_png`
+ * drives the blobs POST (`storeMountFile`: the `transcodeImages` pre-transcode
+ * at `store-file.ts:250`, then `linkBlobContent`'s normalization at `:281`).
+ * sharp is REAL here (nothing in this case or jest.setup mocks it). The Rust
+ * side blanks the encoder-owned sha/size cells of those rows on both sides.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-mount-write-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/mount-write.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/mounts.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/blob-image-facts.ts"                 "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/fixtures/normalize-blob-image/photo.png" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_MOUNTS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/mounts-main.db \
  *   QT_FIXTURE_MOUNTS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/mounts-mount.db \
@@ -32,6 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, cpSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { blobImageFacts, sharpMeasure, STORED_BLOB_SELECT } from '../lib/blob-image-facts';
 
 interface Spec {
   testPepperBase64: string;
@@ -185,6 +201,11 @@ interface RunCtx {
 interface CaseSpec {
   name: string;
   run: (ctx: RunCtx) => Promise<{ status: number; body: unknown }>;
+  /**
+   * P4.104: emit the D19 `imageFacts` of the stored rows matching `where`
+   * (over `l.*`), relative to `input` — the bytes the write was handed.
+   */
+  imageFacts?: { where: string; input: Buffer };
 }
 
 async function loadRoute(
@@ -251,7 +272,26 @@ async function runCase(
     const out = await c.run(ctx);
     await drain();
     const tables = await dumpTables();
-    return { name: c.name, status: out.status, body: out.body, tables };
+    let imageFacts: unknown;
+    if (c.imageFacts) {
+      const rows = (
+        getRawMountIndexDatabase() as never as {
+          prepare: (s: string) => { all: () => unknown[] };
+        }
+      )
+        .prepare(STORED_BLOB_SELECT + c.imageFacts.where)
+        .all() as Parameters<typeof blobImageFacts>[0];
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sharp = require(require('node:path').join(process.cwd(), 'node_modules/sharp'));
+      imageFacts = await blobImageFacts(rows, c.imageFacts.input, sharpMeasure(sharp));
+    }
+    return {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+      tables,
+      ...(imageFacts !== undefined ? { imageFacts } : {}),
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -285,6 +325,10 @@ const GARBAGE_PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 9, 9, 9, 9]);
 const TWIN_BYTES = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 7, 7, 7, 7, 7]);
 const FAKE_WEBP = Buffer.from('RIFF0000WEBPVP8 fake-but-webp-typed', 'utf8');
 const GARBAGE_PDF = Buffer.from('definitely not a pdf either', 'utf8');
+/** P4.104: the decodable seed (staged beside mounts.json in the mirror). */
+const REAL_PNG = fs.readFileSync(
+  join(dirname(fileURLToPath(new URL(`file://${__filename}`).href)), '..', 'fixtures', 'photo.png'),
+);
 
 function cases(): CaseSpec[] {
   return [
@@ -365,6 +409,28 @@ function cases(): CaseSpec[] {
           ),
         ),
     },
+    // P4.104: a DECODABLE PNG through the byte-preserving verb. `writeFile`
+    // verifies the PRE-normalization sha and answers it; `linkBlobContent`
+    // then stores WebP at `images/raw.webp` — the normalization is the only
+    // encoder on this path.
+    {
+      name: 'write_raw_real_png',
+      run: async () =>
+        respond(
+          await (await idRoute()).POST(
+            multipartRequest(`${B}/${MP_DB}?action=write-file`, { path: 'images/raw.png' }, {
+              name: 'raw.png',
+              type: 'image/png',
+              bytes: REAL_PNG,
+            }),
+            params(MP_DB),
+          ),
+        ),
+      imageFacts: {
+        where: "WHERE l.relativePath LIKE 'images/raw.%' ORDER BY l.relativePath",
+        input: REAL_PNG,
+      },
+    },
     // ── blobs collection ──
     {
       name: 'blob_upload_png',
@@ -379,6 +445,26 @@ function cases(): CaseSpec[] {
             params(MP_DB),
           ),
         ),
+    },
+    // P4.104: a DECODABLE PNG through the ingest pipeline — the pre-transcode
+    // AND the normalization both run on it (in that order).
+    {
+      name: 'blob_upload_real_png',
+      run: async () =>
+        respond(
+          await (await blobsRoute()).POST(
+            multipartRequest(`${B}/${MP_DB}/blobs`, { path: 'images/photo.png' }, {
+              name: 'photo.png',
+              type: 'image/png',
+              bytes: REAL_PNG,
+            }),
+            params(MP_DB),
+          ),
+        ),
+      imageFacts: {
+        where: "WHERE l.relativePath LIKE 'images/photo.%' ORDER BY l.relativePath",
+        input: REAL_PNG,
+      },
     },
     {
       name: 'blob_upload_webp',

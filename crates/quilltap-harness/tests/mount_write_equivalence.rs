@@ -10,12 +10,33 @@
 //! envelope is 200 and the web edge's blobs POST route maps to 201 — the
 //! runner pins that mapping per case.
 //!
+//! P4.104 (bug 159's image half, v4 `186eb09cb`): two rows hand the write a
+//! DECODABLE PNG (the `normalize-blob-image` seed) and compare the stored
+//! row's D19 `imageFacts` (`blob_image_facts/mod.rs`); the encoder-owned
+//! cells of that row (the file/blob sha + size, the upload body's sha + size)
+//! are blanked on BOTH sides and the sha-ordered tables re-sorted — sharp and
+//! the host encoder never produce the same WebP bytes. Both rows run under
+//! [`blob_webp`], the host encoder production wires:
+//!  - `write_raw_real_png` → `file_ops::write_dest_bytes`'s blob arm (v4
+//!    `writeFile` → `linkBlobContent`): the normalization is the ONLY encoder
+//!    on this path. The body stays compared whole — it answers the
+//!    PRE-normalization sha and `.png` path on both sides.
+//!  - `blob_upload_real_png` → `store_mount_file` (v4 `store-file.ts:250`'s
+//!    pre-transcode, then `linkBlobContent`'s normalization at `:281`). The
+//!    pre-transcode already yields lossy WebP, which the normalization then
+//!    declines — both key on the same mime with the same encoder, so on this
+//!    route (every v5 caller passes `transcode_images: true`) the
+//!    normalization is redundant and a mutation of it alone survives; the row
+//!    pins the pipeline's OUTPUT, not which of the two stages produced it.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — /tmp mirror; jest
 //! ignores .claude/ paths):
 //!   TMPO=/tmp/qt-mount-write-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp harness/oracle/cases/mount-write.test.ts "$TMPO/cases/"
 //!   cp harness/oracle/fixtures/mounts.json "$TMPO/fixtures/"
+//!   cp harness/oracle/lib/blob-image-facts.ts "$TMPO/lib/"
+//!   cp harness/oracle/fixtures/normalize-blob-image/photo.png "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_MOUNTS_MAIN=<v5>/crates/quilltap-web/tests/fixtures/mounts-main.db \
 //!   QT_FIXTURE_MOUNTS_MOUNT=<v5>/crates/quilltap-web/tests/fixtures/mounts-mount.db \
@@ -30,12 +51,83 @@
 #[path = "mount_common/mod.rs"]
 mod mount_common;
 
+#[path = "blob_image_facts/mod.rs"]
+mod blob_image_facts;
+
 use base64::Engine;
 use mount_common::*;
 use quilltap_core::api::mount_files as mf;
 use quilltap_core::api::types::Response;
 use quilltap_core::db::runtime::Db;
-use serde_json::json;
+use serde_json::{json, Value};
+
+/// The encoder the image rows normalize through — the host's, as production
+/// wires it (P4.104).
+fn blob_webp(
+) -> Option<std::sync::Arc<dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder>>
+{
+    Some(std::sync::Arc::new(quilltap_host::HostImageCodec))
+}
+
+/// P4.104: the image rows — `(case, the stored-row filter over l.*, the
+/// normalized path whose encoder-owned cells are blanked)`.
+const IMAGE_ROWS: &[(&str, &str, &str)] = &[
+    (
+        "write_raw_real_png",
+        "WHERE l.relativePath LIKE 'images/raw.%' ORDER BY l.relativePath",
+        "images/raw.webp",
+    ),
+    (
+        "blob_upload_real_png",
+        "WHERE l.relativePath LIKE 'images/photo.%' ORDER BY l.relativePath",
+        "images/photo.webp",
+    ),
+];
+
+/// Blank the encoder-owned cells of the row stored at `rel` (the file + blob
+/// sha and size, and a `{blob}` body's) and re-sort the two sha-ordered tables
+/// by the blanked key, so the remap walks both sides in the same order. The
+/// D19 `imageFacts` carry the comparand instead. Applied identically to both
+/// sides; a side with no row at `rel` is left alone (and then differs).
+fn blank_encoded(case: &mut Value, rel: &str) {
+    const ENC: &str = "<encoded>";
+    let Some(file_id) = case["tables"]["links"].as_array().and_then(|links| {
+        links
+            .iter()
+            .find(|l| l["relativePath"] == rel)
+            .map(|l| l["fileId"].clone())
+    }) else {
+        return;
+    };
+    let tables = &mut case["tables"];
+    if let Some(files) = tables["files"].as_array_mut() {
+        for f in files.iter_mut().filter(|f| f["id"] == file_id) {
+            f["sha256"] = json!(ENC);
+            f["fileSizeBytes"] = json!(ENC);
+        }
+        files.sort_by_key(|f| {
+            format!(
+                "{}\u{0}{}",
+                f["sha256"].as_str().unwrap_or(""),
+                f["source"].as_str().unwrap_or("")
+            )
+        });
+    }
+    if let Some(blobs) = tables["blobs"].as_array_mut() {
+        for b in blobs.iter_mut().filter(|b| b["fileId"] == file_id) {
+            b["sha256"] = json!(ENC);
+            b["sizeBytes"] = json!(ENC);
+            b["dataLength"] = json!(ENC);
+        }
+        blobs.sort_by_key(|b| b["sha256"].as_str().unwrap_or("").to_string());
+    }
+    if let Some(blob) = case.get_mut("body").and_then(|b| b.get_mut("blob")) {
+        if blob["fileId"] == file_id {
+            blob["sha256"] = json!(ENC);
+            blob["sizeBytes"] = json!(ENC);
+        }
+    }
+}
 
 /// Bug 157's bytes (P4.D209): uploaded to two paths they dedup onto ONE file
 /// row with ONE blob and TWO links — a character vault's shape for every avatar
@@ -256,6 +348,22 @@ fn mount_write_matches_oracle() {
                 ))
             }),
         ),
+        // P4.104: a DECODABLE PNG through the byte-preserving verb — stored
+        // as WebP by `write_dest_bytes`'s blob arm (see the module doc).
+        (
+            "write_raw_real_png",
+            200,
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_file_write_raw(
+                    db,
+                    MP_DB,
+                    "images/raw.png",
+                    &b64(&blob_image_facts::seed_image("photo.png")),
+                    None,
+                    blob_webp(),
+                ))
+            }),
+        ),
         (
             "blob_upload_png",
             201,
@@ -269,6 +377,24 @@ fn mount_write_matches_oracle() {
                     Some("image/png".to_string()),
                     Some("upload.png".to_string()),
                     None,
+                ))
+            }),
+        ),
+        // P4.104: a DECODABLE PNG through the ingest pipeline — the
+        // pre-transcode AND the normalization (see the module doc).
+        (
+            "blob_upload_real_png",
+            201,
+            Box::new(|db, rt| {
+                rt.block_on(mf::mount_blob_upload(
+                    db,
+                    MP_DB,
+                    "images/photo.png",
+                    None,
+                    &b64(&blob_image_facts::seed_image("photo.png")),
+                    Some("image/png".to_string()),
+                    Some("photo.png".to_string()),
+                    blob_webp(),
                 ))
             }),
         ),
@@ -449,7 +575,31 @@ fn mount_write_matches_oracle() {
             status = 201;
         }
         let tables = dump_tables(&db);
-        let got = json!({ "name": name, "status": status, "body": body, "tables": tables });
+        let mut got = json!({ "name": name, "status": status, "body": body, "tables": tables });
+        let mut want = want.clone();
+        let image_row = IMAGE_ROWS.iter().find(|(n, _, _)| n == name);
+        if let Some((_, filter, rel)) = image_row {
+            // P4.104: the D19 comparand for the decodable row.
+            let input = blob_image_facts::seed_image("photo.png");
+            let facts = db
+                .read_mount_index(|mount| {
+                    Ok(blob_image_facts::blob_image_facts(
+                        &blob_image_facts::stored_blob_rows(mount, filter, &[]),
+                        &input,
+                    ))
+                })
+                .unwrap();
+            let got_facts = Value::Array(facts);
+            let want_facts = want.get("imageFacts").cloned().unwrap_or_else(|| {
+                panic!("case {name}: the oracle carries no imageFacts — regenerate")
+            });
+            assert_eq!(got_facts, want_facts, "case {name}: imageFacts");
+            eprintln!("[{name}] imageFacts OK: {got_facts}");
+            want.as_object_mut().unwrap().remove("imageFacts");
+            blank_encoded(&mut got, rel);
+            blank_encoded(&mut want, rel);
+        }
+        let want = &want;
         assert_eq!(
             norm(&got),
             norm(want),
@@ -461,7 +611,8 @@ fn mount_write_matches_oracle() {
         checked += 1;
     }
 
-    // 22 + 1 (P4.D209 added `blob_patch_twin_pair`, bug 157's instrument).
-    assert_eq!(checked, 23, "expected the 23 mount-write cases");
+    // 22 + 1 (P4.D209 added `blob_patch_twin_pair`, bug 157's instrument)
+    // + 2 (P4.104's decodable-image rows).
+    assert_eq!(checked, 25, "expected the 25 mount-write cases");
     eprintln!("OK: mount-write matched oracle ({checked} cases).");
 }
