@@ -140995,3 +140995,133 @@ cd <PIN-or-CONTROL> && TZ=UTC npx tsx \
 QT_ORACLE_PASCAL_DEFINITION=/tmp/p4d211/oracles/pascal-definition-f45a517a9.ndjson \
   cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
 ```
+
+## Lane record — P4.D211 unit 2: all nine provider recorders re-run at the target pin (2026-09-21)
+
+The ledger's `6b0615807` item (4) predicted a real wire-decode risk: all four
+SDK-bundling plugins gained openai-node 7.17.0's terminal-SSE flush arm
+(`if (signal.aborted) return; const pending = sseDecoder.flush(); if (pending)
+yield pending;`), and six committed transcripts end `data: [DONE]` with no
+trailing blank line. Reasoning said neutral; the house rule says measure. Both
+were done, and the measurement found something the item did not.
+
+§2 probe re-run before the regen batch: **PASS**.
+
+### What the nine recorders produced
+
+Run three times over the twelve committed corpus files — at the TARGET pin, at
+the BASELINE pin, and at the zod-4.5.4 control — each into its own lane-private
+staging tree (`/tmp/p4d211/stage-{tgt,base,ctl}`), all nine exiting 0 every time.
+
+| corpus | target vs committed |
+|---|---|
+| `streams/chat_completions_sse/{deepseek,z-ai,openrouter,openai-compatible,nanogpt}` | **IDENTICAL** |
+| `streams/responses_api_sse/{openai,grok}` | **IDENTICAL** |
+| `streams/anthropic_sse/anthropic`, `streams/google_parts/google`, `streams/ollama_ndjson/ollama` | **IDENTICAL** |
+| `response-bodies`, `tool-wire`, `moderation-wire`, `web-search-wire`, `request-envelopes/google-request`, `request-envelopes/google-wire` | **IDENTICAL** |
+| the eleven provider manifests | **IDENTICAL** |
+| `image-dialects` | **MOVED** — 11 line pairs |
+| `request-envelopes` | **MOVED** — 230 line pairs |
+
+**The entire delta is two SDK version stamps in request headers**, proven by
+normalizing exactly those two tokens and re-`cmp`ing to identity:
+
+- `x-stainless-package-version`: `7.10.0` → `7.20.0`, **224 occurrences** (both
+  the bare and the JSON-escaped spelling; the escaped form is why a first
+  normalizer left a residual and the delta looked wider than it is).
+  `0.115.0` (anthropic) is unchanged in all 44 of its rows.
+- the OpenRouter user-agent: `speakeasy-sdk/typescript 1.2.106 …` →
+  `1.3.11 …`, **17 occurrences**.
+
+**Neither stamp is compared by any reader**, measured rather than assumed:
+`request_builder_equivalence`'s header check is a documented SUBSET over the
+headers v5 models (v5's single reqwest transport sends no `x-stainless-*` at
+all), and the OpenRouter SDK-path divergence is detected by "the recorded UA
+does not start with `Quilltap/`" — version-blind. So the committed corpora were
+updated to the target's bytes (the order's rule: update only where the target
+measurably differs, with the reason named) and all five reading families stay
+green: `request_builder_equivalence`, `image_dialects_equivalence`,
+`tool_wire_call_site`, `request_builder_google_wire_equivalence`,
+`stream_decoders_equivalence`.
+
+### ⚠ The recorders do not load the rebuilt bundles — the item's premise, corrected
+
+`6b0615807`'s hunks are in `plugins/dist/*/index.js`, and the ledger reasons
+about those bundles because "a pin at the target DOES carry the new bundles".
+True, but **no recorder loads them.** `record-stream-fixtures.mjs` and its eight
+siblings instantiate the provider from the plugin's TypeScript SOURCE
+(`await import(resolve('provider.ts'))`), and `provider.ts`'s `import OpenAI from
+'openai'` resolves through `plugins/dist/<dir>/node_modules`. Measured three
+ways: the baseline-pinned run emits the NEW `7.20.0` stamp (so it is not reading
+the baseline's bundle, whose `VERSION = "7.10.0"` — the two bundles' md5s
+differ); `provider.ts` and `index.ts` are byte-identical across the two pins; and
+`require.resolve('openai')` from the plugin dir lands on the plugin's own
+`node_modules/openai`, which is a symlink into the live checkout.
+
+**Consequences, both load-bearing.**
+
+1. **The baseline pin is not a baseline recording for a dependency bump.** The
+   honest comparison is COMMITTED (recorded pre-bump, as its `7.10.0` stamps
+   attest) against FRESH (post-bump) — which is what the table above is. The
+   `regenerate-at-both-pins-and-cmp-is-not-universal` note gains a second
+   reason: not just minted ids and clocks, but shared `node_modules`.
+2. **The bundle diff is what SHIPS; the source + installed SDK is what the
+   ORACLE RUNS.** Here they agree (the installed 7.20.0 is what the new bundle
+   inlines), so the recording is faithful to the target. At any past pin they do
+   not.
+
+### The flush arm, measured in both directions
+
+Because the corpora could not answer it (the SDK is the same in every run), the
+SDK's own parser was driven directly: the same line-aligned `ReadableStream` the
+recorder builds, into `Stream.fromSSEResponse` from each version, printing what
+it yields (`/tmp/p4d211/sse/probe.mjs`).
+
+- **The arm is REAL and WORKING.** On a transcript whose terminal `data:` event
+  carries no trailing newline at all: **7.10.0 yields 2 events, 7.20.0 yields 3**
+  — the third being the terminal delta. 7.10.0 already flushes the *line*
+  decoder, so the lost event is specifically one the *SSE* decoder accumulated
+  and never got a blank line to terminate.
+- **The arm is NEUTRAL on every committed transcript: 27 of 27 identical**
+  across the two versions (all 22 `chat_completions_sse` + all 5
+  `responses_api_sse`). The six at-risk files end `data: [DONE]\n` — newline
+  terminated, and `[DONE]` is the SDK's end sentinel either way.
+
+**The at-risk set is 6, and the order's "6 of 33" arithmetic needs restating:**
+there are **43** `.wire` files now, of which **16** lack a trailing blank line —
+but ten of those are `ollama_ndjson`, which is NDJSON and never touches an SSE
+decoder. The six `nanogpt-cache-{no-usage,openai-dialect,write-only,clamp,
+anthropic,read-zero-present}.wire` the order names are exactly the SSE set.
+
+### Mutation proofs
+
+| proof | result |
+|---|---|
+| truncate `nanogpt-cache-no-usage.wire`'s `data: [DONE]` line (the order's prescribed proof) | **SURVIVED — the proof is vacuous by construction.** `data: [DONE]` emits NO chunk, so removing it leaves the chunk sequence identical. Recorded per §R.6 rather than deleted. |
+| mutate that transcript's delta content (`No usage frame.` → `MUTATED usage frame.`) | **`chat_completions_sse_matches_v4` FAILED by name**: `nanogpt/nanogpt-cache-no-usage [whole]: chunk 0 mismatch`. The row IS live. Reverted by file backup; green again. |
+
+### Regen recipe, as run
+
+```bash
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+V4=/tmp/qt-v4-pin-p4d211-f45a517a9   # the pin; see unit 1 for the symlink classes
+V5=<a staging tree holding a copy of harness/>
+for s in regenerate-stream-fixtures regenerate-request-envelopes regenerate-google-wire \
+         regenerate-response-bodies regenerate-tool-wire regenerate-image-fixtures; do
+  V4="$V4" V5="$V5" bash "$V5/harness/oracle/providers/$s.sh"
+done
+( cd "$V4/plugins/dist/qtap-plugin-openai" && \
+  npx tsx "$V5/harness/oracle/providers/record-moderation-wire.mjs" \
+    --out "$V5/harness/oracle/fixtures/moderation-wire/moderation-wire.recorded.ndjson" )
+( cd "$V4/plugins/dist/qtap-plugin-search-serper" && TZ=UTC \
+  npx tsx "$V5/harness/oracle/providers/record-web-search-wire.mjs" \
+    --out "$V5/harness/oracle/fixtures/web-search-wire/web-search-wire.recorded.ndjson" )
+( cd "$V4" && node "$V5/harness/oracle/providers/gen-provider-manifests.mjs" <manifests dir> )
+```
+
+### Carried forward
+
+- **A candidate, not built** (out of mandate): nothing guards the provider-SDK
+  versions the way `zod_version_guard` guards zod. The stamps now sit in two
+  corpora that no reader compares, so the next SDK bump re-records silently.
+  `x-stainless-package-version` is the natural constant to pin.

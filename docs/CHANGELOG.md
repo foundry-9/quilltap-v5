@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(providers): re-record all nine provider corpora at `f45a517a9` — the rebuilt SDKs moved two version stamps and nothing else
+
+_Versions: harness 0.0.859._
+
+`6b0615807` rebuilt all four SDK-bundling plugins, which gained openai-node
+7.17.0's terminal-SSE flush arm. All nine recorders were re-run at the target
+pin and every corpus compared row by row against the committed bytes.
+
+Ten of the twelve corpora are byte-identical, including all ten stream-decoder
+transcript sets. Two moved, and the whole delta is two SDK version stamps in
+request headers: `x-stainless-package-version` 7.10.0 -> 7.20.0 (224
+occurrences) and the OpenRouter user-agent's `speakeasy-sdk/typescript 1.2.106`
+-> `1.3.11` (17). Normalizing those two tokens makes both files identical.
+Neither is compared by any reader — the header check is a subset over the
+headers v5 models, and the OpenRouter SDK-path divergence is detected by the
+user-agent not starting with `Quilltap/`, which is version-blind.
+
+The flush arm was measured rather than reasoned about, in both directions. It
+is real and working: feeding the SDK's own SSE parser a transcript whose
+terminal `data:` event has no trailing newline yields 2 events under 7.10.0 and
+3 under 7.20.0. It is also neutral on every committed transcript — 27 of 27
+byte-identical across the two versions — because the six transcripts that lack
+a trailing blank line end on `data: [DONE]`, which is newline-terminated and is
+the SDK's own end sentinel.
+
+Two facts worth carrying. First, the recorders never load the rebuilt
+`plugins/dist/*/index.js` bundles at all: they import each plugin's TypeScript
+`provider.ts`, whose `import OpenAI from 'openai'` resolves through the plugin
+dir's `node_modules`. So the honest comparison for an SDK bump is committed
+(pre-bump) against fresh (post-bump), not baseline-pin against target-pin — a
+pinned worktree's `node_modules` are symlinks into the live checkout and cannot
+reproduce a past dependency state. Second, the `[DONE]`-truncation mutation
+prescribed for proving these rows live is vacuous: `data: [DONE]` emits no
+chunk, so removing it changes nothing. Mutating a delta's content instead
+reddens `chat_completions_sse_matches_v4` on that row by name.
+
 #### 2026-09-21 — chore(deps): the Zod 4.5.4 -> 4.6.5 re-measurement, and the six version claims it made false
 
 _Versions: core 0.0.967, harness 0.0.858, web 0.0.158, SPA 0.5.742._
