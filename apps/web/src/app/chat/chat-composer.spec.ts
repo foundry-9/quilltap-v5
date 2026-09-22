@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { coreStreamStub } from '../core/core-client.testing';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
 import { ChatComposer, type ComposerSend, type PendingToolResultChip } from './chat-composer';
@@ -16,9 +17,18 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as unknown as Response;
 }
 
-/** The embedded custom-tools popup dispatches a roster on mount; an empty one
- *  keeps its button hidden so it never interferes with the composer's own tests. */
+/**
+ * The embedded custom-tools popup dispatches a roster on mount; an empty one
+ * keeps its button hidden so it never interferes with the composer's own tests.
+ *
+ * The stream surface joined it with P4.D206: the composer now hosts
+ * `qt-pending-inform-chips`, whose read is gated by the realtime hub — a root
+ * service that reads `CoreClient.events$` and its two stream signals the moment
+ * anything constructs it (`core-client.testing.ts`). The chips' own
+ * `chatInformsList` falls through to the same empty answer, which draws nothing.
+ */
 const emptyRosterClient = {
+  ...coreStreamStub(),
   dispatchData: vi.fn(async () => ({ tools: [], errors: [] })),
 } as unknown as CoreClient;
 
@@ -354,6 +364,40 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
       'Generate image',
       'Attach file',
     ]);
+  });
+
+  it('raises openInform from the gutter’s Inform button, titled v4’s way', () => {
+    // v4 `ComposerGutterTools.tsx:157-169` (`e7d77bb60`): title and aria-label
+    // both "Inform the cast", the `info` glyph, and the button placed LAST in
+    // the gutter — v4's Row 4 Col 2, straight after the optional Pascal button.
+    // v5's Row 4 Col 2 is already the v5-only Continue, so Inform takes the
+    // next free cell and keeps v4's order rather than v4's coordinates.
+    const fixture = render();
+    const seen: string[] = [];
+    fixture.componentInstance.openInform.subscribe(() => seen.push('inform'));
+    const button = fixture.nativeElement.querySelector(
+      'button[aria-label="Inform the cast"]',
+    ) as HTMLButtonElement;
+    expect(button.title).toBe('Inform the cast');
+    button.click();
+    expect(seen).toEqual(['inform']);
+
+    const all = [
+      ...fixture.nativeElement.querySelectorAll('.qt-composer-gutter-tools button'),
+    ] as HTMLButtonElement[];
+    expect(all[all.length - 1]).toBe(button);
+  });
+
+  it('shuts the Inform button with the rest of the gutter', () => {
+    const fixture = render();
+    const inform = () =>
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Inform the cast"]',
+      ) as HTMLButtonElement;
+    expect(inform().disabled).toBe(false);
+    fixture.componentRef.setInput('disabled', true);
+    fixture.detectChanges();
+    expect(inform().disabled).toBe(true);
   });
 
   it('raises openLibrary from v4’s row-2 col-1 button, titled v4’s way', () => {

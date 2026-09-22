@@ -5,6 +5,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { coreStreamStub } from '../core/core-client.testing';
 import type { TemplateDelimiter } from '../core/core-contract';
 import { RichEditor } from '../editor/rich-editor';
 import { ChatComposer, type ComposerSend } from './chat-composer';
@@ -25,7 +26,13 @@ import { ChatComposer, type ComposerSend } from './chat-composer';
 
 beforeEach(() => localStorage.clear());
 
+/**
+ * The custom-tools roster AND (since P4.D206) the stream surface the realtime
+ * hub reads: the composer hosts `qt-pending-inform-chips`, whose fallback poll
+ * is gated by that hub. See `chat-composer.spec.ts`'s copy of this note.
+ */
 const emptyRosterClient = {
+  ...coreStreamStub(),
   dispatchData: vi.fn(async () => ({ tools: [], errors: [] })),
 } as unknown as CoreClient;
 

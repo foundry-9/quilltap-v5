@@ -40,6 +40,7 @@ import {
 import { CustomToolsPopup } from './custom-tools-popup';
 import { RngDropdown, type RngPendingResult } from './rng-dropdown';
 import { FileConflictDialog } from './file-conflict-dialog';
+import { PendingInformChips } from './pending-inform-chips';
 import { SpeakingAsAvatar } from './speaking-as-avatar';
 import { ToastService } from '../ui/toast.service';
 
@@ -131,6 +132,7 @@ export interface PendingToolResultChip extends RngPendingResult {
     Icon,
     FileConflictDialog,
     FormattingToolbar,
+    PendingInformChips,
     RichEditor,
     CustomToolsPopup,
     RngDropdown,
@@ -183,6 +185,15 @@ export interface PendingToolResultChip extends RngPendingResult {
           </button>
         </div>
       }
+      <!-- Pending Informs — notes waiting on a seat's next turn. Sits with the
+           attachment chips, one row above the form and directly over the
+           gutter, rather than inside the gutter column: a chip beside the tools
+           would narrow the editor every time one appeared (v4 ChatComposer
+           :299-305's own reasoning). v4 gates the render on the names map being
+           passed at all; v5's input defaults to an empty map and the component
+           draws nothing without a batch, so the gate is the component's own. -->
+      <qt-pending-inform-chips [chatId]="chatId()" [participantNames]="informParticipantNames()" />
+
       @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
         <div class="qt-chat-attachment-list mb-2">
           @for (file of attachedFiles(); track file.id) {
@@ -384,6 +395,24 @@ export interface PendingToolResultChip extends RngPendingResult {
               >
                 <qt-icon name="arrow-right" class="w-5 h-5" />
               </button>
+
+              <!-- Inform — a quiet word out of character, delivered to a seat
+                   before it next speaks (v4 ComposerGutterTools :157-169,
+                   e7d77bb60). v4 puts it at Row 4 Col 2, straight after the
+                   optional Pascal button; v5's Row 4 Col 2 is already the
+                   v5-only Continue, so Inform takes the next free cell (Row 5
+                   Col 1) and keeps v4's ORDER — last in the gutter, after
+                   Pascal — rather than v4's exact coordinates. -->
+              <button
+                type="button"
+                class="qt-composer-gutter-button"
+                title="Inform the cast"
+                aria-label="Inform the cast"
+                [disabled]="disabled()"
+                (click)="openInform.emit()"
+              >
+                <qt-icon name="info" class="w-5 h-5" />
+              </button>
             </div>
           </div>
 
@@ -543,6 +572,13 @@ export class ChatComposer implements OnInit {
    */
   readonly composerSpellcheck = input(true);
   /**
+   * Seat display names keyed by chat participant id, so the pending-inform
+   * chips can name who is still to be told (v4 `informParticipantNames`).
+   * Empty and the chips stay silent — a batch whose seats it cannot name is
+   * skipped by the chips component itself.
+   */
+  readonly informParticipantNames = input<Record<string, string>>({});
+  /**
    * Rolled-but-unsent tool results, shown as chips above the box (v4
    * `SalonView.pendingToolResults` → `ChatComposer`). The Salon owns the list —
    * v4 does too — because the results outlive the composer's own reset and ride
@@ -593,6 +629,8 @@ export class ChatComposer implements OnInit {
   readonly openAnnouncement = output<void>();
   /** The envelope — the Salon answers with the Compose Mail dialog. */
   readonly openMail = output<void>();
+  /** Open the Inform dialog — a word out of character to one or more seats. */
+  readonly openInform = output<void>();
   /** A manual custom-tool run landed — the salon refetches the chat (v4 `onRan`). */
   readonly customToolRan = output<void>();
   /** The user flipped the mode via the toolbar toggle; the salon persists it. */

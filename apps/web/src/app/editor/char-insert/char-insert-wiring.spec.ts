@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChatComposer } from '../../chat/chat-composer';
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import { DocumentPane } from '../../documents/document-pane';
 import type { ActiveDocument } from '../../documents/document-api';
 import type { OpenDocEntry } from '../../documents/document-mode';
@@ -28,6 +29,11 @@ import { UNICODE_PROFILE } from './profiles/unicode';
 
 function settingsClient(settings: Record<string, unknown>): CoreClient {
   return {
+    // The stream surface joined the stub with P4.D206: the composer host below
+    // now mounts `qt-pending-inform-chips`, whose fallback poll is gated by the
+    // realtime hub — a root service that reads `CoreClient.events$` and its two
+    // stream signals as soon as anything constructs it.
+    ...coreStreamStub(),
     dispatchExpect: vi.fn(async () => ({ type: 'chatSettings', data: settings })),
     dispatchData: vi.fn(async () => ({ tools: [], errors: [] })),
   } as unknown as CoreClient;

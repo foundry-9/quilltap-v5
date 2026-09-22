@@ -140467,3 +140467,79 @@ change into a 254-line one. Reverted and re-applied by hand, with the added
 lines written prettier-clean and checked by diffing `npx prettier <file>`
 against the working copy (every remaining difference is on a line this lane
 never touched). Prettier is not in the SPA gate, so the churn buys nothing.
+
+### Units 2–4 — the Inform vertical, client side (v4 `e7d77bb60`)
+
+v4 sources read at `f45a517a9`: `components/chat/InformDialog.tsx` (290),
+`components/chat/PendingInformChips.tsx` (123),
+`components/chat/ComposerGutterTools.tsx`,
+`app/salon/[id]/hooks/useModalState.ts`, `app/salon/[id]/SalonView.tsx`,
+`app/salon/[id]/components/{ChatComposer,ChatModals}.tsx`, and both v4 spec
+files (`__tests__/unit/components/chat/InformDialog.test.tsx`, 9 cases;
+`…/PendingInformChips.test.tsx`, 5).
+
+Landed: NEW `chat/inform-dialog.ts` + spec (v4's nine cases, v4's order, v4's
+own case names, v4's fixture ids); NEW `chat/pending-inform-chips.ts` + spec
+(v4's five, plus two `firstInformLine` edges); the gutter *i* and the chips
+host in `chat/chat-composer.ts` (+ `openInform` output, +
+`informParticipantNames` input, + 2 spec cases); the dialog mount,
+`informCandidates`, `informParticipantNames` and `onInformPosted` in
+`screens/salon/salon-conversation.ts`.
+
+**Two recorded divergences, both forced, both v5 precedent:**
+
+1. **No `FloatingDialog`.** v4's dialog is draggable with persisted geometry
+   (`storageKey="quilltap:inform-geometry"`, `minWidth 720` derived from the
+   formatting toolbar's own CSS so it cannot wrap, `minHeight 460`, opened
+   780×620). v5 has no draggable-dialog primitive — the
+   `insert-announcement-dialog.ts` / `brahma-console-dialog.ts` ruling — so
+   this is a centered `qt-modal` at the `4xl` token (56rem = 896px, past v4's
+   780 with room), and **the geometry store is NOT ported** (Tier 2 item 6 of
+   the order: there is nothing to persist without a draggable frame). Recorded
+   rather than invented.
+2. **The gutter cell.** v4 puts Inform at Row 4 Col 2, straight after the
+   optional Pascal button, and says so in its own comment ("With Pascal in the
+   roster row 4 reads *Pascal, Inform*"). v5's Row 4 Col 2 is already the
+   **v5-only Continue** button (v4 has no composer Continue at all — its home
+   there is the ParticipantCard). So Inform takes the next free cell and keeps
+   v4's ORDER — last in the gutter, after Pascal — rather than v4's
+   coordinates. Pinned by a spec case that asserts it is the LAST button in
+   `.qt-composer-gutter-tools`.
+
+**Measured, worth a note:** v5's `audienceCandidates()` in the salon already
+computes EXACTLY v4's `InformAudienceCandidate` mapping — v4's `ChatModals.tsx`
+inform block and its announcement block share the same filter
+(`type === 'CHARACTER' && !removedAt && status !== 'removed' && character`) and
+the same five fields. `informCandidates` therefore reads that computed rather
+than re-deriving it; two computeds over one filter is how they come to
+disagree. `InformAudienceCandidate` is still declared under v4's own name in
+`inform-dialog.ts` (v4 declares its own type too) rather than aliasing the Post
+Office's structurally identical `AudienceCandidate`.
+
+**Collateral, and the trap in it:** three existing specs that mount
+`ChatComposer` (`chat-composer.spec.ts`, `chat-composer.toolbar.spec.ts`,
+`editor/char-insert/char-insert-wiring.spec.ts`) went RED the moment the
+composer hosted the chips — 47 failures across 3 files, all of them
+`TypeError: Cannot read properties of undefined (reading 'subscribe')` from
+`RealtimeService`'s constructor. The chips' fallback poll is gated by the
+realtime hub, a ROOT service that reads `CoreClient.events$` and its two stream
+signals as soon as anything constructs it, and those three stubs were
+`dispatchData`-only. Each gained `...coreStreamStub()` with the reason in a
+comment. **A composer-hosted component that injects a root service reaches
+every spec that mounts the composer, however far away it lives** — the
+char-insert wiring spec, two directories over, is the one that proves it.
+
+**Also:** a backtick inside an HTML comment in an Angular inline template is a
+template-literal terminator, not a comment. `ChatModals.tsx:351-370,
+` + "`e7d77bb60`" + `` broke the file at `TS1005: ',' expected` and took the whole
+component's closing brace with it. Sha references inside template comments go
+bare.
+
+Mutation proof (by file backup, never `git checkout`): narrowing `everyone` to
+`selected().length === 0` — dropping the full-selection disjunct — reddens
+EXACTLY `collapses a full hand-picked selection back to null` (1 failed / 8
+passed), which is the case it is written against. Reverted from the backup and
+re-verified 9/9.
+
+Gate: `npm test` 439 files / **7,438 passed** / 0 failed; `npm run build`
+clean; `npm run lint` clean. SPA 0.5.743.

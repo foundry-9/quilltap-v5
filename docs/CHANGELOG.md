@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(salon): Inform — the dialog, the pending chips, the gutter i and the salon wiring (P4.D206 units 2–4)
+
+_Versions: SPA 0.5.743._
+
+The client half of v4's `e7d77bb60`. `chat/inform-dialog.ts` offers every
+LLM-controlled seat (never the one the human plays — a seat with no generation
+has nowhere to put the passage), starts on Everyone, and collapses a full
+hand-picked selection back to `targetParticipantIds: null` before it posts,
+because actual coverage decides whether the Host record is public or a whisper.
+v4's guidance copy, toasts and button labels are carried verbatim.
+
+`chat/pending-inform-chips.ts` draws one chip per pending batch — *Informing
+Alice, Bob before their next turn* — with the passage's first line as its hover
+title and a cross that withdraws the batch. A batch whose seats have all left
+is skipped rather than shown nameless. The 60s poll is only the offline
+fallback, gated by `RealtimeService.refetchInterval`: the `chats` topic already
+reaches the informs key through the `['chat', id]` prefix.
+
+The composer grows the gutter's Inform button and hosts the chips above the
+form; the salon mounts the dialog beside the post-office ones, feeds it the
+same participant list the announcement audience uses, and refetches the
+transcript when a batch lands.
+
+Two recorded divergences. v4 hangs the dialog off a draggable `FloatingDialog`
+with persisted geometry sized so the formatting toolbar cannot wrap; v5 has no
+such primitive, so it is a centered `qt-modal` at the 4xl token (wider than
+v4's 780px open width) and the geometry store is not ported. And v4 puts the
+Inform button at the gutter's Row 4 Col 2, straight after the optional Pascal
+button; v5's Row 4 Col 2 is already the v5-only Continue, so Inform takes the
+next free cell and keeps v4's ORDER — last in the gutter — rather than v4's
+coordinates.
+
+Three existing specs that mount the composer gained the stream half of their
+`CoreClient` stub, because the chips' read is gated by the realtime hub.
+
 #### 2026-09-21 — feat(salon): the Inform contract, its query key and the record's chip label (P4.D206 unit 1)
 
 _Versions: SPA 0.5.742._

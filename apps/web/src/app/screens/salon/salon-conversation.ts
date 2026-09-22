@@ -60,6 +60,7 @@ import {
   type RehearsalTarget,
 } from '../../chat/impersonation-voice/impersonation-voice.state';
 import { ComposeMailDialog, type ComposeMailParticipant } from '../../chat/post-office/compose-mail-dialog';
+import { InformDialog, type InformAudienceCandidate } from '../../chat/inform-dialog';
 import { InsertAnnouncementDialog } from '../../chat/post-office/insert-announcement-dialog';
 import type { AudienceCandidate } from '../../chat/post-office/post-office.api';
 import { WhisperDialog } from '../../chat/post-office/whisper-dialog';
@@ -270,6 +271,7 @@ interface CascadePrompt {
     StateEditorModal,
     LLMInspectorPanel,
     ChatSidebar,
+    InformDialog,
     InsertAnnouncementDialog,
     ImpersonationVoiceDialog,
     ComposeMailDialog,
@@ -446,6 +448,7 @@ interface CascadePrompt {
         [speakingAs]="speakingAsSeat()"
         [voiceRehearsalArmed]="impersonationVoiceArmed()"
         [hasActiveCharacters]="hasAnyActiveCharacter()"
+        [informParticipantNames]="informParticipantNames()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
         [compositionMode]="compositionMode()"
@@ -469,6 +472,7 @@ interface CascadePrompt {
         (openLibrary)="showLibraryPicker.set(true)"
         (openAnnouncement)="showAnnouncement.set(true)"
         (openMail)="showComposeMail.set(true)"
+        (openInform)="showInform.set(true)"
         (customToolRan)="onCustomToolRan()"
       />
     </ng-template>
@@ -606,6 +610,18 @@ interface CascadePrompt {
         (changeSystemPrompt)="impersonationVoice.changeSystemPrompt($event)"
         (editOriginal)="impersonationVoice.editOriginal()"
         (cancel)="impersonationVoice.cancel()"
+      />
+    }
+
+    <!-- Inform (v4 ChatModals.tsx:351-370, e7d77bb60). A FRESH mount per open,
+         as v4's is: the dialog's own state resets because the host renders it
+         conditionally, which is what v4's component comment leans on. -->
+    @if (showInform() && chatId(); as id) {
+      <qt-inform-dialog
+        [chatId]="id"
+        [audienceCandidates]="informCandidates()"
+        (posted)="onInformPosted()"
+        (close)="showInform.set(false)"
       />
     }
 
@@ -1724,6 +1740,7 @@ export class SalonConversation {
   protected readonly showAnnouncement = signal(false);
   /** The Compose Mail dialog (v4 `ChatModals.tsx:332`). */
   protected readonly showComposeMail = signal(false);
+  protected readonly showInform = signal(false);
   /** The whisper target (v4 `SalonView.tsx:150` `whisperTarget`). */
   protected readonly whisperTarget = signal<{ participantId: string; name: string } | null>(null);
 
@@ -1764,6 +1781,37 @@ export class SalonConversation {
         status: p.status,
       })),
   );
+
+  /**
+   * The same participants, as the Inform dialog wants them (v4 `ChatModals.tsx:
+   * 354-365`). v4 maps them from the SAME filter the announcement audience uses
+   * — `type === 'CHARACTER' && !removedAt && status !== 'removed' && character`
+   * — into the identically-shaped `InformAudienceCandidate`, and the dialog
+   * then drops the user-controlled seats itself. So this reads
+   * {@link audienceCandidates} rather than re-deriving it: two computeds over
+   * one filter is how they came to disagree in the first place.
+   */
+  protected readonly informCandidates = computed<InformAudienceCandidate[]>(
+    () => this.audienceCandidates() as InformAudienceCandidate[],
+  );
+
+  /**
+   * Seat display names keyed by CHAT PARTICIPANT id, for the composer's
+   * pending-inform chips (v4 `SalonView.tsx:181`'s `participantNames`, which it
+   * passes to the composer as `informParticipantNames`).
+   *
+   * Every CHARACTER participant with a character, including the ones the human
+   * plays and the ones who have left: a batch pending on a seat that has since
+   * gone silent still has a name to show, and the server has already dropped
+   * the ones it considers gone.
+   */
+  protected readonly informParticipantNames = computed<Record<string, string>>(() => {
+    const names: Record<string, string> = {};
+    for (const p of this.chat()?.participants ?? []) {
+      if (p.character?.name) names[p.id] = p.character.name;
+    }
+    return names;
+  });
 
   /**
    * The chat's CHARACTER participants as Compose Mail wants them: the workspace
@@ -1841,6 +1889,16 @@ export class SalonConversation {
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   protected async onAnnouncementPosted(): Promise<void> {
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
+  }
+
+  /**
+   * An inform writes a Host record into the transcript — refetch (v4's
+   * `onPosted={() => { fetchChat() }}`, `ChatModals.tsx:366-368`). The dialog
+   * has already invalidated the pending-informs key itself, so the chips are
+   * the dialog's business and the transcript is this handler's.
+   */
+  protected async onInformPosted(): Promise<void> {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
