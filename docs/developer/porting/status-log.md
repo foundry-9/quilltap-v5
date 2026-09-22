@@ -139791,3 +139791,506 @@ next `/setupphase` knowing.
 | `tri_state_edges_share_the_decoder` | +1 file row (3); total **109 → 112** |
 | `help_tree_embed_guard` / `host_help_docs_boot` | **unmoved** — this lane adds no help FILE, only re-vendors one |
 | `qtap_schema_embed_guard` | not this lane's (above) |
+
+## P4.D208 — bug 158: a scenario is not a summary (v4 `da9c4f34f`)
+
+Lane branch `claude/p4-d208-scenario-seeded-f8debc`, stacked on P4.D203's tip
+(see §0 below). v4 target pin `/tmp/qt-v4-pin-p4d208-f45a517a9`; baseline pin
+`/tmp/qt-v4-pin-p4d208-baa85e19b`. Both verified by `rev-parse` AND by the §R.3
+marker (`How the Message Search Reads Your Words`: 2 hits in the target's
+`help/search.md`, 0 in the baseline's).
+
+### §0 — the opening probe, the waiver, and the branch base
+
+**The §R.2 probe FAILED at first pickup and the lane STOPPED, as ordered.** v4
+`main` had moved two commits past the round's target `f45a517a9`:
+`4e1a8e061` (docs: the summarizer plan, bugs 161/162 filed) and `e7821606f`
+(bug 161, the fold transcript's speaker names). The lane reported and did
+nothing else — it did not run `/driftcheck` and did not touch the ledger.
+
+The human then ran `/driftcheck` (main-checkout commit `f05cb56a`), which
+re-recorded §1 at `a2db63da7` — SIXTEEN commits, thirteen ORDERED and three
+NEW — and ruled, in §1 itself: *"The three new rows are OUTSIDE that round's
+scope and must not be added to a running lane."* **That is the waiver this lane
+resumed on**, and the re-run probe PASSED against the refreshed §1 (branch
+`main`, HEAD `a2db63da7`, tree CLEAN, both logs empty). Re-probed before the
+regen batch; unchanged.
+
+Measured before resuming, read-only, so the human's waiver had the facts:
+`f45a517a9..e7821606f` touches **ZERO** of this order's v4 spec paths (the
+predicate, `app/api/v1/chats/route.ts`, `memory-recap.ts`,
+`conversation-summary-search.ts`, the three Concierge sites, `import-entities.ts`,
+`restore.ts`, the migrations tree, `help/dangerous-content.md` — empty diff on
+every one). The only `help/` file that moved after the target is `help/chats.md`,
+which belongs to no lane in this round.
+
+**⚠ The branch base is P4.D203's TIP (`7903d46f`), not S (`144a0e80`).** The
+harness created the worktree there, and every sibling lane worktree (D204, D205,
+D207, D209) sits at the same commit, so it is the round's de facto base. It is a
+strict superset of S and this lane edited none of P4.D203's files — but the
+unifier's §R.10(f) fence assertions must run `git diff 7903d46f...<lane>`, not
+`git diff 144a0e80...<lane>`, or every lane will appear to carry all of
+P4.D203's work.
+
+### Unit 1 — the predicate (`486902f3`)
+
+v4's `lib/chat/scenario-seeded-summary.ts` as
+`services::scenario_seeded_summary`. v4's `ScenarioSeededSummaryFields` is a
+STRUCTURAL interface and `stripScenarioSeededSummary` is generic over it, so
+v5's is a **trait**, implemented for the raw `Value` the `.qtap` import carries
+and the `ChatCreate` the restore deserializes — one predicate, not two copies
+that can drift. `None` covers v4's `undefined`, its `null` AND a non-string
+cell alike, which is exactly what `typeof scenario !== 'string'` plus a strict
+`===` do with all three.
+
+NEW tier-1 `scenario_seeded_summary_equivalence` over v4's REAL module: its own
+nine cases plus the `''`/`null`/absent permutations it does not enumerate, **27
+rows**, each driven through BOTH trait implementations (25 reach the typed leg;
+the two non-string rows cannot be held by the struct and are proven on the
+`Value` leg alone, with a floor asserting the typed leg was reached at all).
+**The pin proof for this family is structural** — the v4 module does not exist
+at the baseline (`test -f` on both pins).
+
+v4's identity contract (an untouched row comes back by reference, never copied)
+is carried as the stronger in-place claim and pinned BY POINTER: the untouched
+arm does not reallocate the summary string it was handed. The oracle also emits
+`inputUnmutated` per row and the Rust side asserts it, so a corpus that mutated
+its own input would be caught as a corpus fault rather than a port fault.
+
+| mutation | expected | result |
+|---|---|---|
+| M1 compare with `.trim()` | `whitespace-difference` reddens | RED ✓ |
+| M2 clear `scenarioText` alongside the summary | a seeded row's surviving scenario reddens | RED ✓ (on `seeded-byte-identical`, the first seeded row) |
+
+Both green on revert.
+
+### Unit 2+3 — the seed and the greeting block (`d62d22cd`)
+
+**The seed.** `chat_create.rs:1419` → `Value::Null` with v4's seven-line
+why-comment. `chat_create_capstone_equivalence` regenerated at the target
+RED-FIRST. The oracle writes `contextSummary: null` on **all 182 chat rows**
+across the corpus; exactly one row (`two_char_scenario`) carries a
+`scenarioText`, which is v4's three `route.scenario-seed.test.ts` cases
+structurally — a scenario chosen → scenario set + summary null; no scenario →
+both null.
+
+v4's THIRD case ("never writes the scenario text into contextSummary, whatever
+the scenario is") lands as a **named invariant** over every chat each case
+writes, rather than as a row comparison that only fires where the corpus
+happens to carry a scenario. Restoring the seed reddens it by name (M3), on
+`two_char_scenario`.
+
+⚠ **The first red-first regen did NOT show the `contextSummary` red — it was
+masked by a P4.D203-class failure the codec census did not reach**, because
+that read site is in the harness rather than in `db/`:
+`dump_message_order` bound `content` as `Option<String>` and a target-pinned
+fixture stores every cell over 512 bytes as a brotli BLOB
+(`InvalidColumnType(5, "content", Blob)`). The cell is now **RENDERED as hex,
+not decoded** — v4's `canonValue` and v5's `cell_to_json` both hex a BLOB, so
+the sibling `chatMessages` section already compares the STORED form and this
+one must agree with it. Decoding would also have cost the comparand that
+storage form, which P4.D203 measured the hard way. The `contextSummary` red is
+therefore established by M3 rather than by the first regen, and this record
+says so rather than claiming a red-first it did not observe.
+
+**The greeting block.** `truncate_gist` → `pub(crate)` (visibility only; the
+`:530` caller untouched), the empty arm, the 280 cap, the
+`READ_CONVERSATION_CALL_NOTE` tail. Both recorded divergences in the helper are
+preserved byte-for-byte: P4.90's `:692` warn block and the `tracing::warn!` arm
+v4 has no twin for.
+
+`initial_greeting_equivalence` is **NOT** the instrument the order expected:
+measured, it takes `recentConversationsBlock` as an INPUT (a pre-built string
+handed to the greeting builder), so it consumes the block and can never
+exercise the builder. A NEW family was written instead —
+`recent_conversations_block_equivalence`, over a nine-chat fixture built by v4's
+REAL repository, driving v4's REAL `buildRecentConversationsBlock` through its
+REAL repository rather than a mock. That is stronger than v4's own new test
+file, which mocks `findRecentSummarizedByCharacter` and so pins the render but
+not the read — and the read is what makes the empty-gist arm reachable at all:
+`contextSummary IS NOT NULL` admits a whitespace-only summary and excludes a
+NULL one, so only the first renders a heading alone.
+
+The corpus (8 calls over 9 chats) covers the 445-character scenario capped with
+an ellipsis (the bug's own shape), **280 exactly against 281**, a padded summary
+trimmed before measuring, a short summary left whole, a heading rendered alone,
+another character's chats, the excluded greeted chat, and a character with none.
+
+v4's `limit <= 0` short circuit — `''` **without asking the repository
+anything** — is instrumented on the oracle side by a PROTOTYPE patch that counts
+calls without standing in for them (a module-namespace patch would not be seen:
+`memory-recap.ts` imports `getRepositories` as a named binding), with a liveness
+guard that throws if the counter never moves, so a dead patch cannot pass every
+row off as a short circuit. v5's analogue is proven by SILENCE: the read is
+handed a connection with no `chats` table, so reaching it would warn — with a
+firing pin at a positive limit over the same broken connection, which does.
+
+| mutation | expected | result |
+|---|---|---|
+| M3 restore the seed | the named invariant reddens | RED ✓ (`two_char_scenario`) |
+| M4 cap at 281 | the 281-char row reddens | RED ✓ |
+| M5 render a body line for an empty gist | the heading-alone row reddens | RED ✓ |
+| M6 drop the closing note | every non-empty block reddens | RED ✓ |
+| M7 drop the trim | the padded row reddens | RED ✓ |
+
+All green on revert. M4–M7 each redden on the FIRST corpus row, which is the
+one carrying every arm — the attribution comes from the mutation, not the row.
+
+### Unit 4 — the three Concierge sites
+
+`gatekeeper_job.rs`'s `else if scenario` between the summary arm and the raw
+messages; `danger_scan.rs`'s widened first branch; `message_finalizer.rs`'s
+widened gate (the pre-declared out-of-mandate hunk in P4.D205's file, marked
+`// P4.D208 OUT-OF-MANDATE — P4.D205 preserves`).
+
+**`da9c4f34f`'s "Behavior unchanged" on these three is false in two measurable
+ways, and the order's §R.4(f) was right to flag it:** the reported source moves,
+and a chat with a `scenarioText` and no summary now takes the scenario arm. A
+v5-side comment carries the sha and says what the prose did not.
+
+**The `input_source` question, DECIDED BY MEASUREMENT.** `inputSource` reaches
+exactly ONE place in v4's handler — `logger.info('[ChatDangerClassification]
+Chat classified', {...})` at `chat-danger-classification.ts:232`. It is never
+persisted. So the order's "if a log line — port it" arm applies, and it is
+ported with v4's fields in v4's order. The line PREDATES bug 158 (it is at
+`:218` on the baseline pin with the same seven fields) and v5 never carried it,
+so this is the #103/#110 absent-line class as well as the fix's only
+observability.
+
+⚠ **Three SIBLING lines in the same v4 handler remain absent in v5** — the
+chat-not-found warn (`:40`), the connection-profile fallback warn (`:145`) and
+the no-available-profiles warn (`:154`). They are outside this order's mandate
+and are RECORDED here rather than smuggled in; a future order can take them
+with their silence legs.
+
+**The log line's capture pin** rides the existing
+`danger_gatekeeper_tier3_equivalence` run: the whole case loop runs under a
+`CaptureLayer` guard. Four legs — the line is emitted; some case reports
+`input_source=scenario`; some case still reports `input_source=summary`;
+and the SILENCE leg, that the line count is strictly LESS than the case count,
+so the sticky-dangerous and mode-OFF early returns are proven to emit nothing.
+
+⚠ **The pin's first draft used `global_capture` and was BLIND by construction.**
+Its `MessageVisitor` records only the `message` field and discards every
+structured one, so `input_source` — the entire point of the pin — could never
+appear in what it captured. The first run caught it (the line-present leg passed
+while the `scenario` leg failed against an empty haystack), and the rig moved to
+`CaptureLayer`, whose `FieldVisitor` DOES render the fields. This is the
+tautological-recorder class: an
+instrument that cannot observe the thing it is pointed at fails in a way that
+reads like a port defect. The two rigs are NOT interchangeable, and which one a
+log pin needs depends on whether it asserts on the MESSAGE or on a FIELD.
+
+⚠ **A second instrument error on the same pin, worth its own line:** the
+assertion was then written against `input_source="scenario"` because
+`FieldVisitor`'s `record_debug` renders `{value:?}`. But a `&str` field goes
+through `record_str`, which renders it UNQUOTED — so the assert failed against
+a capture that had the line all along, and the truncated failure message made
+it look as though the `scenario-only` case had never classified. Read the
+renderer for the field's ACTUAL type before writing the needle, and never
+diagnose a log assert from a `head`-truncated haystack.
+
+**The trio was GREEN BY LUCK and is now grown.** No chat in any of the three
+corpora carried a `scenarioText`, so the widened conjunction was
+indistinguishable from the old single test:
+
+- `danger_trigger` gains `scenario_only_summary_none` (runs),
+  `scenario_only_summary_empty` (runs — the empty string is JS-falsy on
+  `contextSummary` and truthy on `scenarioText`) and
+  `skips_when_scenario_is_empty_string` (skips — the arm that catches an
+  `is_some()` port). RED-FIRST on unported v5. The Rust family's seed SQL had to
+  gain the column too.
+- `danger_scan_tier2` gains a scenario-only chat with **`messageCount: 100`**.
+  The length is what makes the change observable at all: for a SHORT chat both
+  the old tree and the new one enqueue `CHAT_DANGER_CLASSIFICATION`, just by
+  different branches, so `da9c4f34f`'s "Behavior unchanged" holds there and
+  nothing is proven. Over 50 messages the old tree enqueues `CONTEXT_SUMMARY`
+  and the new one classifies directly. `expected.chatsEnqueued` 4 → 5.
+- `danger_gatekeeper_tier3` gains a scenario-only chat whose SCENARIO carries
+  the `token=scenario-only` marker the canned classifier keys on — so the row
+  is a comparand on the PROMPT TEXT: a port that ignored `scenarioText` would
+  fall through to raw messages, the token would never reach the classify call,
+  and the canned rule would miss outright.
+
+| mutation | expected | result |
+|---|---|---|
+| M8 `\|\|` instead of `&&` on the gate's negations | `enqueues_when_conditions_met` reddens | RED ✓ |
+| M9 the gate reads `is_some()` on the scenario | `skips_when_scenario_is_empty_string` reddens | RED ✓ |
+| M10 drop the scan's scenario disjunct | the long scenario-only chat's job type reddens (`CONTEXT_SUMMARY` vs v4's `CHAT_DANGER_CLASSIFICATION`) | RED ✓ |
+| M11 blank the gatekeeper's scenario input | the llm_logs row count reddens (6 vs 7) | RED ✓ |
+
+All green on revert. ⚠ **M9's first run was recorded as SURVIVING and that was
+an instrument error, not a finding**: the run's `head -3` filter cut the
+`test result` line off. Re-run alone with the full output, it reddens on exactly
+the case written for it. The lesson is the standing one — never read a mutation
+proof through a truncating filter.
+
+### Two PRE-EXISTING reds found and CLOSED on the way, neither this lane's
+
+**(a) `danger_trigger_equivalence`: `no such column: cycleOrderParticipantIds`.**
+Measured pre-existing — the same failure with BOTH of this lane's edits backed
+out and the pre-growth oracle regenerated from the committed corpus. It was
+never a committed-pair heal: `chat-scenario-main.db` predates the `78b381a96`
+round, `test_support::ensure_p4d171_columns` is the sanctioned
+repaired-at-boot helper for exactly this, and the family simply never called
+it. The WORKING COPY is now healed at open; the committed pair is untouched
+(§R.12 intact).
+
+**(b) `dump_llm_logs` (shared `tests/common/mod.rs`):
+`InvalidColumnType(11, "request", Blob)`.** P4.D203's write-side codec means v5
+now STORES `llm_logs.request`/`response` compressed, and this shared helper
+bound every column as `Option<String>` — so ANY tier-3 family whose run logs a
+payload of 512 bytes or more dies here. **~19 families route through this
+helper**, so the unifier should expect it to have been latent in several. A
+read site P4.D203's census did not reach, because it is harness code rather
+than `db/`. Rendered as hex, not decoded — the oracle hexes its own BLOB the
+same way (verified: the oracle's `request` begins `5101011b…`, the codec magic),
+so both sides compare the STORED form, which P4.D203 measured byte-identical
+across the two brotli encoders on all 35 probe rows.
+
+Both are reported for the unifier as findings that belong to other lanes'
+subject matter, fixed here only because they blocked this lane's named families.
+
+### Unit 5 — the ingest strips
+
+`entities.rs`'s single `create_chat` (the comment naming BOTH v4 sites — v4
+strips at the duplicate-rename create AND the preserve-ids create; v5 forked
+those into one under the `DUPLICATE_MINTS` sentinel) and
+`restore/orchestrator.rs`'s section-7 create (the pre-declared out-of-mandate
+hunk in P4.D205's file, marked as such).
+
+**`qtap_import_equivalence`: a NEW committed bundle, `qtap-import-bug158.qtap`,
+imported on a THIRD isolated pair** (the bug117 reason — three new chats in the
+shared pair would move the dumps the main diff asserts as multisets). The bundle
+carries three chats so the predicate is proven in BOTH directions on one import:
+the seeded row (`contextSummary` byte-identical to its own `scenarioText`)
+arrives with a NULL summary and its scenario untouched; a real summary that
+QUOTES the scenario arrives whole; the scenario-only row has nothing to strip.
+A floor asserts the seeded row is IN the comparand and WAS stripped, so the arm
+cannot quietly stop asking. **GREEN.**
+
+⚠ The bundle's first draft carried a minimal character, which failed v4's Zod
+(`scenarios`/`systemPrompts`/`tags`/… arrive as strings from the schema
+defaults) and put a seven-issue validation sentence in the `warnings` comparand
+— a v4-side message v5 has no reason to reproduce. The character was dropped;
+the chats import fine without one, and `warnings` is now `[]` on both sides.
+
+**`system_restore_state`: a NEW committed archive,
+`restore-archive-bug158.zip`** — `restore-archive.zip`'s instance with its two
+chats given the two columns (the first SEEDED, the second a real summary that
+quotes the scenario). A DERIVATION for the same reason
+`restore-archive-legacy-profiles.zip` is one: measured, every other committed
+archive carries `contextSummary: null` AND `scenarioText: null` on both its
+chats, so the strip is invisible in all of them. This ADDS an archive and
+rebuilds none (§R.12 intact). Case-count constant 18 → 19, arithmetic in the
+comment.
+
+**⛔ `system_restore_equivalence` is RED at the target pin, and it is P4.D205's
+designed red, not this lane's.** Four cases fail — `preview_full`,
+`preview_legacy`, `preview_minimal`, `preview_compact` — and in every one the
+ONLY differing key is **`chatInforms: 0`**, the preview-summary key v4's Inform
+commit `e7d77bb60` adds and which is ORDERED to P4.D205. `restore_bug158_replace`
+is not among the failures. Measured by diffing the two summary objects key by
+key rather than by reading the blob. The family goes green when P4.D205's
+`chatInforms` collector lands; nothing here to fix, and the unifier should
+expect it.
+
+### Unit 6 — the boot heal
+
+NEW `db/scenario_seeded_summary_heal.rs`, on the P4.D97/P4.D140 template, wired
+into `seed_built_ins` in ONE fenced block (`// === P4.D208 ===`) after P4.D145's.
+
+`SEEDED_WHERE` is **ONE string** shared by the count and the UPDATE, as v4 keeps
+it "so the count and the UPDATE can never disagree about what they are
+addressing" — with a unit test that compares the BYTES both statements embed
+rather than trusting they were written from the same constant. A second unit
+test, `the_sql_and_the_predicate_agree`, drives ten rows through BOTH the SQL and
+the Rust predicate and requires the same answer, so v4's "change both or
+neither" is under test rather than in a comment.
+
+Once-only through v4's own `migrations_state` ledger; a clean boot writes NO
+ledger row, exactly as v4's `shouldRun()` (which COUNTS the seeded rows) makes
+its runner behave — a stamp on a clean boot would make a later v4 boot skip a
+migration it never ran.
+
+Host boot test over a COPY of the committed `chat-scenario-{main,mount}.db` pair
+with FOUR chats planted (two seeded with different bytes so `cleared` is 2 and
+v4's plural arm is the one that fires; a real summary that quotes the scenario;
+a whitespace DIFFERENCE that a `TRIM()` in the SQL would wrongly take). Three
+tests, all green:
+
+- the boot clears both seeds, leaves the other two, moves `updatedAt` on
+  EXACTLY the cleared rows, and stamps the ledger with v4's own sentence and
+  count (`Cleared the scenario standing in as a summary on 2 conversations`);
+- a second boot is a no-op, and a seed planted AFTER the first boot survives —
+  which is also why the ingest strip exists;
+- a clean boot stamps NOTHING.
+
+### Unit 7 — the help page
+
+`help/dangerous-content.md` byte-copied at the target pin (`cmp`-identical).
+Verified by a whole-tree `cmp`: `dangerous-content.md` is now ABSENT from the
+differing list, which holds exactly the six pages §R.11 assigns to other lanes
+(`chat-message-actions.md`, `cli-docs.md`, `insert-announcement.md`,
+`mount-points.md`, `scriptorium.md`, `search.md`). The vendored count stays
+**124** — this lane adds no file and moves neither literal.
+
+| mutation | expected | result |
+|---|---|---|
+| M12 drop the `.qtap` import's strip | `qtap_import`'s bug158 chats reddens | RED ✓ |
+| M13 drop the restore's strip | `system_restore_state`'s bug158 case reddens | RED ✓ — and the ONLY differing field in the 100-column row is `contextSummary` |
+| M14 drop `"scenarioText" <> ''` from `SEEDED_WHERE` | `the_sql_and_the_predicate_agree` reddens on `both-empty` | RED ✓ |
+| M15 skip the `updatedAt` bump | the boot row's timestamp assert reddens | RED ✓ |
+
+⚠ **M14 and M15 were re-run SERIALLY and it is the second run this record
+reports.** Their first run overlapped M12/M13 in wall-clock — two background
+chains mutating source against one `target/` — which is a contamination risk
+whatever the outcome. Re-inspected afterwards, the overlap could not have
+reached them (M14 is a core lib test and M15 a host boot test; neither reads
+`entities.rs` or `restore/orchestrator.rs`, and both mutations compile either
+way), but a proof that MIGHT have been contaminated is not a proof. The
+standing lesson: one mutation chain at a time, and never start a second while
+the first still holds the source.
+
+### The regen recipes AS RUN
+
+All from the lane-unique pinned worktrees; all outputs staged under
+`/tmp/p4d208/` (LANE-PRIVATE, §R.3), with the committed recipe headers left
+canonical — no committed recipe names a `/tmp` pin.
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d208-f45a517a9        # the TARGET
+N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+
+# NEW tier-1: the predicate
+cd "$PIN"
+$N/npx tsx "$V5W/harness/oracle/cases/scenario-seeded-summary.ts" \
+  > /tmp/p4d208/oracle-scenario-seeded-summary.ndjson     # 27 rows
+# run: QT_ORACLE_SCENARIO_SEEDED=… cargo test -p quilltap-harness \
+#        --test scenario_seeded_summary_equivalence
+
+# NEW: the greeting block (fixture THEN oracle, each its own invocation)
+QT_FIXTURE_RECENT_CONVS=/tmp/p4d208/qt-recent-convs.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-recent-conversations-fixture.ts"
+QT_FIXTURE_RECENT_CONVS=/tmp/p4d208/qt-recent-convs.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/recent-conversations-block.ts" \
+  > /tmp/p4d208/oracle-recent-conversations-block.ndjson  # 8 calls
+# run: QT_ORACLE_RECENT_CONVS=… QT_FIXTURE_RECENT_CONVS=… cargo test \
+#        -p quilltap-harness --test recent_conversations_block_equivalence
+
+# the capstone, through the sweep driver (the sanctioned per-family path)
+python3 harness/tools/recipe_sweep.py --run chat_create_capstone_equivalence \
+  --v4 "$PIN" --v5w "$V5W"
+
+# the danger trio
+TMPO=/tmp/p4d208/qt-danger-trigger-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/danger-trigger.test.ts" "$TMPO/cases/"
+cd "$PIN" && QT_ORACLE_OUT=/tmp/p4d208/oracle-danger-trigger.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+  -- "danger-trigger\.test\.ts$"                          # 12 -> 15 rows
+QT_FIXTURE_OUT=/tmp/p4d208/qt-danger-scan.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-danger-scan-fixture.ts"
+QT_FIXTURE_DANGER_SCAN=/tmp/p4d208/qt-danger-scan.db \
+  $N/node --import tsx "$V5W/harness/oracle/cases/danger-scan-tier2.ts" \
+  > /tmp/p4d208/oracle-danger-scan.ndjson                 # 11 -> 12 chats
+TMPO=/tmp/p4d208/qt-gatekeeper-oracle; rm -rf "$TMPO"
+mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/danger-gatekeeper.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/danger-gatekeeper.json" "$TMPO/fixtures/"
+QT_FIXTURE_OUT=/tmp/p4d208/qt-danger-gatekeeper.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-danger-gatekeeper-fixture.ts"
+QT_FIXTURE_GATEKEEPER=/tmp/p4d208/qt-danger-gatekeeper.db \
+QT_ORACLE_OUT=/tmp/p4d208/oracle-danger-gatekeeper.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+  -- danger-gatekeeper                                    # 12 -> 13 cases
+
+# the ingest pair
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/p4d208/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/p4d208/qt-qtapimport-mount.db \
+  $N/npx tsx "$V5W/harness/oracle/fixtures/build-qtap-import-fixture.ts"
+QT_FIXTURE_QTAPIMPORT_MAIN=/tmp/p4d208/qt-qtapimport-main.db \
+QT_FIXTURE_QTAPIMPORT_MOUNT=/tmp/p4d208/qt-qtapimport-mount.db \
+  $N/npx tsx "$V5W/harness/oracle/cases/qtap-import.ts" \
+  > /tmp/p4d208/oracle-qtap-import.ndjson
+TMPO=/tmp/p4d208/qt-sysrestore-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+QT_ORACLE_OUT=/tmp/p4d208/oracle-system-restore.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+  --roots "$PWD" --roots "$TMPO/cases" -- system-restore  # 24 -> 25 rows
+
+# the help tree
+TMPO=/tmp/p4d208/qt-help-tree-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/help-tree-sync.test.ts" "$TMPO/cases/"
+QT_ORACLE_OUT=/tmp/p4d208/oracle-help-tree.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+  --roots "$PWD" --roots "$TMPO/cases" -- help-tree-sync
+```
+
+§5.2 verification on every regen: the fixture `rm -f`'d first, the builder's
+last line read, and the fresh NDJSON grepped for the CHANGED bytes — the three
+new danger-trigger case names (3 hits), the scan's new chat id (1), the
+gatekeeper's `scenario-only` (2), `restore_bug158_replace` (1), the help page's
+new sentence (1), and the help pin marker (1, target-only).
+
+### Tier 2 — the incidental-movement checks
+
+The five `contextSummary`-carrying families the order names (`salon_mutations`,
+`courier_images_routes`, `context_summary_service_tier3`, `orchestrator_tier3`,
+`salon_reads`) are regenerated at the BASELINE pin and recorded in the gate
+section below. Expected NO movement from this commit: none of the five creates
+a chat or builds a greeting, which are the only two behaviours this lane moved
+in production code.
+
+⚠ **One caveat the order did not anticipate:** `orchestrator_tier3` and
+`context_summary_service_tier3` DO route through `common::dump_llm_logs`, whose
+bind this lane changed (the P4.D203-class fix above). That change is
+behaviour-neutral for a payload under 512 bytes (plain TEXT passes through the
+same arm) and turns a hard `InvalidColumnType` into a hex comparand above it —
+so where it moves anything at all, it moves a family from RED to comparable.
+Recorded rather than assumed.
+
+### What this lane did NOT do — deferred loudly
+
+1. **Tier 3, the order's own deferral, DISCHARGED not deferred.** `inputSource`
+   was measured to reach a log line, so it is ported as one with a capture pin
+   rather than recorded as a divergence. Nothing is owed here.
+2. **Three sibling v4 log lines in `chat-danger-classification.ts` stay absent
+   in v5** (`:40`, `:145`, `:154`) — out of mandate, named above, for a future
+   order.
+3. **`system_restore_equivalence` stays RED at the target pin** on P4.D205's
+   `chatInforms` key. Not this lane's to fix; measured key-by-key rather than
+   asserted.
+
+### Version bumps (§R.8)
+
+This lane bumps, across its three commits: **core** 0.0.969 → 0.0.972,
+**harness** 0.0.862 → 0.0.865, **host** 0.0.139 → 0.0.140. (The starting
+numbers are P4.D203's tip, not the order's planning base of core 0.0.966 /
+harness 0.0.857 / host 0.0.139 — this lane branched from P4.D203's tip, so its
+bumps are already included. The unifier should count **+3 core, +3 harness,
++1 host** from this lane, not the absolute numbers.) No web, cli, tauri,
+fixture-sanitizer or SPA change.
+
+### Fixtures delivered, and what they invalidate
+
+| fixture | kind | invalidates |
+|---|---|---|
+| `harness/oracle/fixtures/recent-conversations-block.json` + its builder | NEW `/tmp`-built | nothing — new family |
+| `harness/oracle/fixtures/qtap-import-bug158.qtap` | NEW committed bundle | `qtap_import_equivalence` only (its own new leg) |
+| `crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-bug158.zip` | NEW committed archive | `system_restore_state` + `system_restore_equivalence` (both regenerated) |
+| `harness/oracle/fixtures/danger-scan.json` + its builder | GROWN | `danger_scan_tier2_equivalence` |
+| `harness/oracle/fixtures/danger-gatekeeper.json` | GROWN | `danger_gatekeeper_tier3_equivalence` |
+| `harness/oracle/cases/danger-trigger.test.ts` | GROWN corpus | `danger_trigger_equivalence` |
+
+**NO committed pair was rebuilt** (§R.12 intact). The two new committed
+fixtures are an archive and a JSON bundle — neither is a DB pair, so neither
+can acquire compression or FTS objects.
+
+### The §R.2 probe, re-run before the regen batch
+
+PASS, unchanged: branch `main`, HEAD `a2db63da7`, tree CLEAN, `a2db63da7..main`
+and `1a2b2164c..bugfix` both empty. Both pins re-verified by `rev-parse` at the
+same moment (`f45a517a992bf94fdc6ae34b96791ef1d3538870` and
+`baa85e19b9d904354b999924e3aa8c12f8130811`).

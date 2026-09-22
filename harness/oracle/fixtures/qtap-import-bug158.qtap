@@ -1,0 +1,100 @@
+{
+  "manifest": {
+    "format": "quilltap-export",
+    "version": "1.0",
+    "exportType": "chats",
+    "createdAt": "2026-03-01T00:00:00.000Z",
+    "appVersion": "4.9.0",
+    "settings": {
+      "includeMemories": false,
+      "scope": "selected",
+      "selectedIds": [
+        "c1580000-0000-4000-8000-000000000001",
+        "c1580000-0000-4000-8000-000000000002",
+        "c1580000-0000-4000-8000-000000000003"
+      ]
+    },
+    "counts": {
+      "chats": 3
+    }
+  },
+  "data": {
+    "chats": [
+      {
+        "id": "c1580000-0000-4000-8000-000000000001",
+        "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "title": "Seeded By A Pre-Fix Export",
+        "chatType": "salon",
+        "createdAt": "2026-03-01T00:00:00.000Z",
+        "updatedAt": "2026-03-01T00:00:00.000Z",
+        "messageCount": 0,
+        "contextSummary": "# Scenario: Amy's Pool\n\nAmy is in her pool, and Charlie walks up the path.",
+        "scenarioText": "# Scenario: Amy's Pool\n\nAmy is in her pool, and Charlie walks up the path.",
+        "participants": [
+          {
+            "id": "fb158000-0000-4000-8000-000000000001",
+            "type": "CHARACTER",
+            "characterId": "c0158000-0000-4000-8000-000000000001",
+            "controlledBy": "llm",
+            "displayOrder": 0,
+            "isActive": true,
+            "status": "active",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "messages": []
+      },
+      {
+        "id": "c1580000-0000-4000-8000-000000000002",
+        "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "title": "A Real Summary",
+        "chatType": "salon",
+        "createdAt": "2026-03-01T00:00:00.000Z",
+        "updatedAt": "2026-03-01T00:00:00.000Z",
+        "messageCount": 0,
+        "contextSummary": "# Scenario: Amy's Pool\n\nAmy is in her pool, and Charlie walks up the path.\n\nThen they argued about the spyglass.",
+        "scenarioText": "# Scenario: Amy's Pool\n\nAmy is in her pool, and Charlie walks up the path.",
+        "participants": [
+          {
+            "id": "fb158000-0000-4000-8000-000000000002",
+            "type": "CHARACTER",
+            "characterId": "c0158000-0000-4000-8000-000000000001",
+            "controlledBy": "llm",
+            "displayOrder": 0,
+            "isActive": true,
+            "status": "active",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "messages": []
+      },
+      {
+        "id": "c1580000-0000-4000-8000-000000000003",
+        "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "title": "Scenario Only",
+        "chatType": "salon",
+        "createdAt": "2026-03-01T00:00:00.000Z",
+        "updatedAt": "2026-03-01T00:00:00.000Z",
+        "messageCount": 0,
+        "contextSummary": null,
+        "scenarioText": "# Scenario: Amy's Pool\n\nAmy is in her pool, and Charlie walks up the path.",
+        "participants": [
+          {
+            "id": "fb158000-0000-4000-8000-000000000003",
+            "type": "CHARACTER",
+            "characterId": "c0158000-0000-4000-8000-000000000001",
+            "controlledBy": "llm",
+            "displayOrder": 0,
+            "isActive": true,
+            "status": "active",
+            "createdAt": "2026-03-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ],
+        "messages": []
+      }
+    ]
+  }
+}

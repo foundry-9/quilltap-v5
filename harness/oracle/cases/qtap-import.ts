@@ -272,6 +272,52 @@ async function main(): Promise<void> {
     };
   })();
 
+  // ── P4.D208: the bug-158 strip on the way in ────────────────────────────
+  //
+  // A pre-fix export carries the chat's scenario in `contextSummary` as well as
+  // `scenarioText`. The heal that cleared those rows has long since run in the
+  // receiving instance, so the import is the only thing standing between a
+  // stale bundle and the bug coming back. `importChats` runs every incoming row
+  // through `stripScenarioSeededSummary` at BOTH of v4's create sites; v5 has
+  // ONE create under its `DUPLICATE_MINTS` sentinel, so one strip covers both.
+  //
+  // Three rows, so the predicate is proven in both directions on one import:
+  // the seeded row must arrive with a NULL summary and its scenario UNTOUCHED;
+  // the real summary that QUOTES the scenario must arrive whole; the
+  // scenario-only row has nothing to strip.
+  //
+  // A THIRD isolated pair, for the bug117 reason: three new chats in the shared
+  // pair would move the dumps the main diff asserts as multisets.
+  const bug158 = await (async () => {
+    const scratch3 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-bug158-'));
+    mkdirSync(join(scratch3, 'data'), { recursive: true });
+    const main3 = join(scratch3, 'bug158-main.db');
+    const mount3 = join(scratch3, 'bug158-mount.db');
+    copyFileSync(mainFixture, main3);
+    copyFileSync(mountFixture, mount3);
+    process.env.SQLITE_PATH = main3;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mount3;
+    process.env.QUILLTAP_DATA_DIR = scratch3;
+
+    await initializeDatabase();
+
+    const data158 = JSON.parse(
+      readFileSync(join(here, '..', 'fixtures', 'qtap-import-bug158.qtap'), 'utf8')
+    );
+    const r158 = await executeImport(SINGLE_USER_ID, data158, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    });
+    const chats = (await rawQuery(
+      'SELECT title, contextSummary, scenarioText FROM chats ORDER BY title'
+    )) as Array<Record<string, unknown>>;
+
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+    return { success: r158.success, warnings: r158.warnings, chats };
+  })();
+
   process.stdout.write(
     JSON.stringify({
       case: 'qtap-import-tier2',
@@ -295,6 +341,7 @@ async function main(): Promise<void> {
         items: bug75Items,
       },
       bug117,
+      bug158,
     }) + '\n'
   );
   process.exit(0);

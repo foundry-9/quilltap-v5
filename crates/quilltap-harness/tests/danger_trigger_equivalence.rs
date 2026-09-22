@@ -142,6 +142,20 @@ fn danger_trigger_gate_chain_matches_oracle() {
         )
         .expect("open db");
 
+        // P4.D208: `chat-scenario-main.db` predates the `78b381a96` round, so
+        // its `chats` lacks `cycleOrderParticipantIds` and v5's fixed-column
+        // read answers `no such column` — a PRE-EXISTING red, measured with
+        // every one of this order's edits backed out. It was never a
+        // committed-pair heal: `ensure_p4d171_columns` is the sanctioned
+        // repaired-at-boot helper for exactly this and the family simply never
+        // called it. The WORKING COPY is healed; the committed pair is
+        // untouched (§R.12).
+        rt.block_on(db.write(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        }))
+        .expect("heal the fixture copy's P4.D171 columns");
+
         // Clear the fixture's own rows and seed exactly v4's mocked chat (or
         // nothing at all, for the chat-not-found arm).
         let seed = match &case.chat {
@@ -154,11 +168,17 @@ fn danger_trigger_gate_chain_matches_oracle() {
                 "DELETE FROM \"background_jobs\"; DELETE FROM \"chat_messages\"; \
                  DELETE FROM \"chats\"; \
                  INSERT INTO \"chats\" (\"id\", \"userId\", \"title\", \"createdAt\", \"updatedAt\", \
-                 \"contextSummary\", \"messageCount\", \"isDangerousChat\", \"dangerClassifiedAt\", \
+                 \"contextSummary\", \"scenarioText\", \"messageCount\", \"isDangerousChat\", \
+                 \"dangerClassifiedAt\", \
                  \"dangerClassifiedAtMessageCount\", \"conciergeOverride\") VALUES \
                  ('{CHAT_ID}', '{USER_ID}', 'Trigger corpus', '2026-01-01T00:00:00.000Z', \
-                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {});",
+                 '2026-01-01T00:00:00.000Z', {}, {}, {}, {}, {}, {}, {});",
                 lit(chat.get("contextSummary")),
+                // P4.D208: the gate reads BOTH columns since v4 bug 158. Before
+                // this the column was never seeded, so the two `skips_when_*`
+                // cases were green by luck — the widened conjunction was
+                // indistinguishable from the old single test.
+                lit(chat.get("scenarioText")),
                 lit(chat.get("messageCount")),
                 lit(chat.get("isDangerousChat")),
                 lit(chat.get("dangerClassifiedAt")),

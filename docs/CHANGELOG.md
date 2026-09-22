@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(concierge): the scenario arm, the ingest strips, and the boot heal for bug 158 (P4.D208)
+
+_Versions: core 0.0.972, harness 0.0.865, host 0.0.140._
+
+The rest of v4 bug 158 (`da9c4f34f`): the three Concierge sites now read
+`scenarioText` deliberately, both ingest paths strip a scenario-seeded summary
+on the way in, and a ledger-guarded boot heal clears the rows already on disk.
+
+`da9c4f34f`'s "Behavior unchanged" on the Concierge sites is false in two
+measurable ways, and a v5-side comment names the sha and says so: the reported
+source moves, and a chat with a scenario and no summary now takes the scenario
+arm. `inputSource` was measured to reach exactly one place — v4's closing
+`[ChatDangerClassification] Chat classified` line, never a persisted row — so
+that line is ported with v4's fields in v4's order, which also closes a
+pre-existing absent-line gap. Three sibling warns in the same handler stay
+absent and are recorded rather than smuggled in.
+
+The danger trio was green by luck (no corpus chat carried a `scenarioText`) and
+is grown red-first: `danger_trigger` gains three cases including the
+empty-scenario one that catches an `is_some()` port; `danger_scan_tier2` gains a
+scenario-only chat with 100 messages, because for a short chat both trees
+enqueue the same job and nothing is proven; `danger_gatekeeper_tier3` gains a
+chat whose SCENARIO carries the token the canned classifier keys on, making the
+row a comparand on the prompt text.
+
+The ingest strips land with planted fixtures: a new `.qtap` bundle imported on
+its own isolated pair, and a new `restore-archive-bug158.zip` derived from
+`restore-archive.zip` because every other committed archive has both columns
+NULL on both chats. Both carry a seeded row AND a real summary that quotes the
+scenario, so the predicate is proven in both directions.
+
+The boot heal keeps v4's `SEEDED_WHERE` as one string shared by the count and
+the UPDATE, with a test comparing the bytes both statements embed, and a second
+test driving ten rows through both the SQL and the Rust predicate so v4's
+"change both or neither" is under test. Three host boot tests: the pass clears
+both planted seeds and moves `updatedAt` on exactly those; a second boot is a
+no-op; a clean boot stamps nothing.
+
+Also fixes two pre-existing reds found on the way, neither from this change.
+`danger_trigger_equivalence` never called the existing `ensure_p4d171_columns`
+helper, so its working copy lacked `cycleOrderParticipantIds`. And
+`common::dump_llm_logs` bound every column as a String, which P4.D203's
+write-side codec breaks for any tier-3 family logging a payload over 512 bytes
+— about nineteen families route through it. Both are harness-side; no committed
+fixture was rebuilt.
+
 #### 2026-09-21 — fix(salon): a scenario is not a summary, and the greeting stops opening from one (P4.D208)
 
 _Versions: core 0.0.971, harness 0.0.864._

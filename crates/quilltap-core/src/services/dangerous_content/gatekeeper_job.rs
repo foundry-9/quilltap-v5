@@ -152,31 +152,53 @@ where
         }
     }
 
-    // Determine classification input: prefer context summary, else raw messages.
-    let classification_input = match chat
+    // Determine classification input: prefer the context summary, then the chosen
+    // scenario, then raw messages.
+    //
+    // The scenario arm is deliberate and it is not new — it is what this branch
+    // was already doing, unknowingly. Until v4's bug 158 (`da9c4f34f`), chat
+    // creation seeded `contextSummary` with the scenario, so a pre-fold chat took
+    // the first arm and was classified on its stage direction while the log said
+    // `summary`. The seed is gone; the bootstrap is KEPT, because a scenario is a
+    // real and early signal about where a chat is going and waiting for the first
+    // fold would leave the Concierge blind for the turns that need it most. It
+    // now reads its source on purpose and says which one it used.
+    //
+    // ⚠ `da9c4f34f`'s message says "Behavior unchanged" of the three Concierge
+    // sites. That is true of the INPUT TEXT and false in two measurable ways:
+    // the reported source moves, and a chat with a `scenarioText` and no summary
+    // now takes the scenario arm where it used to concatenate raw messages.
+    let (classification_input, input_source) = match chat
         .get("contextSummary")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
     {
-        Some(summary) => summary.to_string(),
-        None => {
-            let all = db.read_main(|c| chats_messages_read::get_messages(c, &chat_id))?;
-            let events: Vec<&Value> = all
-                .iter()
-                .filter(|m| {
-                    m.get("type").and_then(Value::as_str) == Some("message")
-                        && m.get("role").and_then(Value::as_str) != Some("SYSTEM")
-                        && m.get("role").and_then(Value::as_str) != Some("TOOL")
-                        // `systemSender == null` — absent (net-read omits NULL) or
-                        // explicit null.
-                        && m.get("systemSender").is_none_or(Value::is_null)
-                })
-                .collect();
-            if events.is_empty() {
-                return Ok(());
+        Some(summary) => (summary.to_string(), "summary"),
+        None => match chat
+            .get("scenarioText")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            Some(scenario) => (scenario.to_string(), "scenario"),
+            None => {
+                let all = db.read_main(|c| chats_messages_read::get_messages(c, &chat_id))?;
+                let events: Vec<&Value> = all
+                    .iter()
+                    .filter(|m| {
+                        m.get("type").and_then(Value::as_str) == Some("message")
+                            && m.get("role").and_then(Value::as_str) != Some("SYSTEM")
+                            && m.get("role").and_then(Value::as_str) != Some("TOOL")
+                            // `systemSender == null` — absent (net-read omits NULL)
+                            // or explicit null.
+                            && m.get("systemSender").is_none_or(Value::is_null)
+                    })
+                    .collect();
+                if events.is_empty() {
+                    return Ok(());
+                }
+                (concatenate_messages(&events), "messages")
             }
-            concatenate_messages(&events)
-        }
+        },
     };
 
     // User's chat settings for the danger mode + cheap-LLM config.
@@ -338,6 +360,32 @@ where
             )
             .await;
     }
+
+    // v4 `chat-danger-classification.ts:232`, verbatim in fields and order. The
+    // line predates bug 158 and v5 never carried it; `inputSource` is the only
+    // place `da9c4f34f`'s third bullet is observable at all — it reaches no
+    // persisted row, measured at the target pin, so without this the scenario
+    // arm would be invisible to every instrument.
+    //
+    // Three SIBLING lines in the same v4 handler are still absent in v5 and are
+    // out of this order's mandate, recorded rather than smuggled in: the
+    // chat-not-found warn (`:40`), the connection-profile fallback warn
+    // (`:145`), and the no-available-profiles warn (`:154`).
+    tracing::info!(
+        target: "quilltap::dangerous_content",
+        job_id = %job.id,
+        chat_id = %chat_id,
+        is_dangerous = result.is_dangerous,
+        score = result.score,
+        categories = ?result
+            .categories
+            .iter()
+            .map(|c| c.category.clone())
+            .collect::<Vec<_>>(),
+        message_count = message_count,
+        input_source = input_source,
+        "[ChatDangerClassification] Chat classified"
+    );
 
     Ok(())
 }

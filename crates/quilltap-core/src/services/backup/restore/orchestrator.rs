@@ -478,6 +478,15 @@ fn restore_on_writer(
                 };
             // The user-scoped `create` re-owns the chat (see phase 1).
             create.user_id = target_user_id.to_string();
+            // P4.D208 OUT-OF-MANDATE — P4.D205 preserves. v4 bug 158
+            // (`da9c4f34f`), `lib/backup/restore/restore.ts:199`; this call only.
+            //
+            // A backup taken before bug 158 holds the chat's scenario in
+            // `contextSummary` as well as `scenarioText`. Restoring the instance
+            // exactly would restore the defect with it, and the heal that
+            // cleared those rows will not run again — so it is corrected on the
+            // way in. The scenario itself is untouched.
+            crate::services::scenario_seeded_summary::strip_scenario_seeded_summary(&mut create);
             if let Err(e) = chats.create(
                 &create,
                 &copts!(id.clone(), crate::db::chats::CreateOptions),

@@ -759,8 +759,18 @@ fn create_chat(
     obj.remove("messages");
     obj.remove("createdAt");
     obj.remove("updatedAt");
-    let create: ChatCreate =
+    let mut create: ChatCreate =
         serde_json::from_value(Value::Object(obj)).map_err(|e| e.to_string())?;
+    // v4 bug 158 (`da9c4f34f`): a pre-fix export carries the chat's scenario in
+    // `contextSummary` as well as `scenarioText`; the boot heal that cleared
+    // those rows has long since run in this instance, so the import is the only
+    // thing standing between a stale bundle and the bug coming back.
+    //
+    // v4 strips at BOTH of its `repos.chats.create` sites in `importChats` (the
+    // duplicate-rename create and the preserve-ids create). v5 forked those two
+    // into ONE `create_chat` under the `DUPLICATE_MINTS` sentinel, so this one
+    // call covers both.
+    crate::services::scenario_seeded_summary::strip_scenario_seeded_summary(&mut create);
     let (id, now) = mint_or_preserve(options, source_id);
     repo.create(
         &create,

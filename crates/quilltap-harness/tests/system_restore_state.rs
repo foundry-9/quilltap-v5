@@ -897,6 +897,12 @@ fn read_cases() -> Option<Vec<Value>> {
 fn archive_for(name: &str) -> &'static str {
     match name {
         "restore_replace" => "restore-archive.zip",
+        // P4.D208 (v4 bug 158, `da9c4f34f`): `restore-archive.zip`'s instance
+        // with its two chats given the two columns — the first SEEDED, the
+        // second a real summary that quotes the scenario. A derivation, because
+        // every other committed archive has both columns NULL on both chats and
+        // cannot see the strip at all.
+        "restore_bug158_replace" => "restore-archive-bug158.zip",
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -1247,12 +1253,14 @@ fn system_restore_state_equivalence() {
         );
     }
 
+    // 18 + 1 = 19: P4.D208's bug-158 arm (the seeded summary a stale backup
+    // carries, stripped on the way in).
     assert_eq!(
-        seen, 18,
-        "expected all eighteen restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 19,
+        "expected all nineteen restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
-         + P4.D158's two bag-key arms)"
+         + P4.D158's two bag-key arms + P4.D208's bug-158 arm)"
     );
     assert!(
         failures.is_empty(),

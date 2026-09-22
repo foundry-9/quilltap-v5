@@ -189,9 +189,30 @@ pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
                                 None => Value::Null,
                             }
                         } else {
-                            match row.get::<_, Option<String>>(i)? {
-                                Some(s) => Value::String(s),
-                                None => Value::Null,
+                            // P4.D208: `llm_logs.request`/`response` are
+                            // compressed columns since v4 `f45a517a9`, and
+                            // P4.D203's write-side codec means v5 now STORES
+                            // the brotli BLOB — so an `Option<String>` bind
+                            // raised `InvalidColumnType(11, "request", Blob)`
+                            // for every tier-3 family whose run logs a payload
+                            // of 512 bytes or more. (A read site P4.D203's
+                            // census did not reach, because it is shared
+                            // harness code rather than `db/`; ~19 families
+                            // route through this helper.)
+                            //
+                            // RENDERED as hex, not decoded: the oracle hexes
+                            // its own BLOB the same way, so both sides compare
+                            // the STORED form — which P4.D203 measured to be
+                            // byte-identical across the two brotli encoders on
+                            // all 35 probe rows. A decoded comparand would
+                            // throw that proof away.
+                            match row.get_ref(i)? {
+                                rusqlite::types::ValueRef::Null => Value::Null,
+                                rusqlite::types::ValueRef::Text(b) => {
+                                    Value::String(String::from_utf8_lossy(b).into_owned())
+                                }
+                                rusqlite::types::ValueRef::Blob(b) => Value::String(hex::encode(b)),
+                                other => panic!("unexpected llm_logs cell kind: {other:?}"),
                             }
                         };
                         m.insert((*col).to_string(), v);

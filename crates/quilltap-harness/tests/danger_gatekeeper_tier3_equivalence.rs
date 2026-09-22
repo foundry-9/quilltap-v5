@@ -400,25 +400,88 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
         tokens,
     };
 
-    for c in &spec.cases {
-        let job = ChatDangerClassificationJob {
-            id: format!("job-{}", c.name),
-            user_id: uid(&c.user),
-            chat_id: c.chat_id.clone(),
-            connection_profile_id: c.connection_profile_id.clone(),
-        };
-        // The real Concierge announcer posts the danger bubble to `chat_messages`
-        // on a NEW flip to dangerous (W4.6b), matching v4's un-mocked writer.
-        handle_chat_danger_classification(
-            &db,
-            &moderation,
-            &completion,
-            &RealDangerAnnouncer { db: &db },
-            &job,
-        )
-        .await
-        .unwrap_or_else(|e| panic!("gatekeeper {}: {e:?}", c.name));
+    // P4.D208: the whole case loop runs under a capturing subscriber, so v4's
+    // closing `[ChatDangerClassification] Chat classified` line is pinned here
+    // rather than in a separate run that would have to seed the fixture twice.
+    //
+    // `CaptureLayer` and NOT `global_capture`: the latter's `MessageVisitor`
+    // records only the `message` field and discards every structured one, so it
+    // can never see `input_source` — which is the whole point of the pin.
+    // `set_default` is thread-scoped, and this is a current-thread
+    // `#[tokio::test]`, so every poll of the loop below happens on this thread
+    // and the guard covers all of it.
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(captured.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        for c in &spec.cases {
+            let job = ChatDangerClassificationJob {
+                id: format!("job-{}", c.name),
+                user_id: uid(&c.user),
+                chat_id: c.chat_id.clone(),
+                connection_profile_id: c.connection_profile_id.clone(),
+            };
+            // The real Concierge announcer posts the danger bubble to
+            // `chat_messages` on a NEW flip to dangerous (W4.6b), matching v4's
+            // un-mocked writer.
+            handle_chat_danger_classification(
+                &db,
+                &moderation,
+                &completion,
+                &RealDangerAnnouncer { db: &db },
+                &job,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("gatekeeper {}: {e:?}", c.name));
+        }
     }
+    let logs = captured.lock().unwrap().clone();
+
+    // v4 `chat-danger-classification.ts:232`. `inputSource` is the ONLY place
+    // bug 158's third bullet is observable — it reaches no persisted row — so
+    // the line and its values are the instrument, and this is their pin.
+    //
+    // UNQUOTED: `FieldVisitor` renders a `&str` field through `record_str`, so
+    // it is `input_source=scenario`, not `input_source="scenario"`. Measured,
+    // not assumed — the first draft asserted the quoted form and failed against
+    // a haystack that had the line all along.
+    let classified: Vec<&String> = logs
+        .iter()
+        .filter(|l| l.contains("[ChatDangerClassification] Chat classified"))
+        .collect();
+    assert!(
+        !classified.is_empty(),
+        "v4's closing line must be emitted at least once:\n{}",
+        logs.join("\n")
+    );
+    assert!(
+        classified
+            .iter()
+            .any(|l| l.contains("input_source=scenario")),
+        "the scenario arm must REPORT itself as `scenario` (v4's `inputSource`), \
+         not inherit `summary` the way the pre-bug-158 seed made it:\n{}",
+        logs.join("\n")
+    );
+    assert!(
+        classified
+            .iter()
+            .any(|l| l.contains("input_source=summary")),
+        "the summary arm must still say `summary`"
+    );
+    // The SILENCE leg: a chat the handler bails on (sticky-dangerous, mode OFF)
+    // reaches no classify call, so it must emit no line. The corpus carries
+    // `skip-sticky` and `skip-mode-off`, and the count is the witness — a line
+    // per case would mean the early returns stopped returning early.
+    assert!(
+        classified.len() < spec.cases.len(),
+        "every case emitted the line, so the early-return arms are not silent \
+         ({} lines for {} cases)",
+        classified.len(),
+        spec.cases.len()
+    );
 
     let mut got_chats = db
         .read_main(|conn| dump_table_json_conn(conn, "chats", "id"))

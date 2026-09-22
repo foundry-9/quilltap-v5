@@ -229,6 +229,22 @@ const RESTORE_CASES: Array<{
   { name: 'restore_compact_replace', archive: 'restore-archive-compact.zip', alignUploadsPointer: true },
   { name: 'restore_compact_new_account', archive: 'restore-archive-compact.zip', mode: 'new-account' },
 
+  // ── P4.D208 (`da9c4f34f`, bug 158): the seed a stale backup carries ──────
+  //
+  // `restore-archive-bug158.zip` is `restore-archive.zip` with its two chats
+  // given the two columns: the first SEEDED (`contextSummary` byte-identical to
+  // its own `scenarioText`, the shape pre-fix creation produced) and the second
+  // a real summary that QUOTES the scenario. It is a DERIVATION for the same
+  // reason `restore-archive-legacy-profiles.zip` is one — every other committed
+  // archive carries `contextSummary: null` and `scenarioText: null` on both its
+  // chats, so the strip is invisible in all of them.
+  //
+  // The restore corrects the seed on the way in: the heal that cleared those
+  // rows will not run again, so restoring the instance EXACTLY would restore
+  // the defect with it. The second chat is the other direction — a real summary
+  // is not the seed, however much of the scenario it quotes.
+  { name: 'restore_bug158_replace', archive: 'restore-archive-bug158.zip' },
+
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //
   // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the

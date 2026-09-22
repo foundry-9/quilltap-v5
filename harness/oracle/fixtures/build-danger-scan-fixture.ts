@@ -203,6 +203,24 @@ async function main(): Promise<void> {
       },
     },
     {
+      // P4.D208 (v4 bug 158, `da9c4f34f`): a chat with a SCENARIO and no
+      // summary, and LONG. The length is what makes the change observable at
+      // all — for a short chat both the old tree and the new one enqueue
+      // CHAT_DANGER_CLASSIFICATION, just by different branches, so
+      // `da9c4f34f`'s "Behavior unchanged" holds there and nothing is proven.
+      // Over 50 messages the old tree summarizes FIRST (CONTEXT_SUMMARY) and
+      // the new one classifies directly from the scenario, which is a different
+      // job row.
+      id: 'c0000000-0000-4000-8000-0000000000cc',
+      user: spec.userOn,
+      data: {
+        chatType: 'salon',
+        scenarioText: 'A scene at the pool, before anyone has said anything.',
+        messageCount: 100,
+        participants: [participant('llm', spec.profileP1)],
+      },
+    },
+    {
       id: 'c0000000-0000-4000-8000-0000000000c7',
       user: spec.userOn,
       data: {

@@ -70,6 +70,28 @@ const CASES: CaseSpec[] = [
   },
   { name: 'skips_when_no_context_summary', chat: { ...BASE_CHAT, contextSummary: null }, mode: 'DETECT_ONLY' },
   { name: 'skips_when_empty_context_summary', chat: { ...BASE_CHAT, contextSummary: '' }, mode: 'DETECT_ONLY' },
+  // --- the scenario arm `da9c4f34f` added (bug 158). The two cases above are
+  //     GREEN BY LUCK without these: no chat in v4's corpus carries a
+  //     `scenarioText` at all, so the widened gate `!contextSummary &&
+  //     !scenarioText` is indistinguishable from the old `!contextSummary`.
+  //     These three make the conjunction observable. The gate is JS
+  //     truthiness on BOTH columns, so an empty scenario is no scenario —
+  //     a port reading `scenarioText.is_some()` enqueues on the third.
+  {
+    name: 'scenario_only_summary_none',
+    chat: { ...BASE_CHAT, contextSummary: null, scenarioText: 'A scene at the pool.' },
+    mode: 'DETECT_ONLY',
+  },
+  {
+    name: 'scenario_only_summary_empty',
+    chat: { ...BASE_CHAT, contextSummary: '', scenarioText: 'A scene at the pool.' },
+    mode: 'DETECT_ONLY',
+  },
+  {
+    name: 'skips_when_scenario_is_empty_string',
+    chat: { ...BASE_CHAT, contextSummary: null, scenarioText: '' },
+    mode: 'DETECT_ONLY',
+  },
   // --- the two operator arms `c43d3b1b4` added. The label underneath is
   //     FALSE on purpose: the chat was scanned and found safe before the
   //     operator spoke, so no other guard would catch these.

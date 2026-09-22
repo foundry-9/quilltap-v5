@@ -1600,13 +1600,29 @@ pub async fn trigger_chat_danger_classification(
     if classified_at.is_some() && classified_count == message_count {
         return Ok(());
     }
-    // No context summary → nothing to classify yet.
+    // P4.D208 OUT-OF-MANDATE — P4.D205 preserves. v4 bug 158 (`da9c4f34f`),
+    // `memory-trigger.service.ts:192-201`; this gate hunk only.
+    //
+    // Nothing to classify yet. The handler takes a summary, then the chosen
+    // scenario, then raw messages; this gate asks the first two, because a chat
+    // with neither has nothing the classifier can act on early. The scenario arm
+    // keeps the pre-fold behaviour the seed used to give us for free — before
+    // bug 158 a new chat's `contextSummary` WAS its scenario, so this gate passed
+    // from the first turn.
+    //
+    // Both tests are JS truthiness, so an empty scenario is no scenario: the
+    // conjunction is over the two NEGATIONS, not over `is_some()`.
     let has_summary = chat
         .get("contextSummary")
         .and_then(Value::as_str)
         .map(|s| !s.is_empty())
         .unwrap_or(false);
-    if !has_summary {
+    let has_scenario = chat
+        .get("scenarioText")
+        .and_then(Value::as_str)
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_summary && !has_scenario {
         return Ok(());
     }
 

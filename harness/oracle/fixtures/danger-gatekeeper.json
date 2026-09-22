@@ -150,6 +150,13 @@
       "chatType": "salon",
       "messageCount": 2,
       "contextSummary": "Mode off globally. token=skip-mode-off"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-00000000000d",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 2,
+      "scenarioText": "A scene at the pool, before anyone has said anything. token=scenario-only"
     }
   ],
   "llmRules": {
@@ -183,6 +190,14 @@
         "promptTokens": 90,
         "completionTokens": 5,
         "totalTokens": 95
+      }
+    },
+    "scenario-only": {
+      "response": "{\"isDangerous\":false,\"score\":0.1,\"categories\":[]}",
+      "usage": {
+        "promptTokens": 90,
+        "completionTokens": 8,
+        "totalTokens": 98
       }
     }
   },
@@ -279,6 +294,12 @@
       "chatId": "d0000000-0000-4000-8000-00000000000b",
       "user": "B",
       "connectionProfileId": "c0000000-0000-4000-8000-0000000000b1"
+    },
+    {
+      "name": "scenario-only",
+      "chatId": "d0000000-0000-4000-8000-00000000000d",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
     }
   ],
   "moderationWire": {

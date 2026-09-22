@@ -1308,6 +1308,40 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 }
             }
             // === end P4.D145 ===
+            // === P4.D208 (v4 `da9c4f34f`, migration
+            // `clear-scenario-seeded-chat-summaries-v1`, bug 158) ===
+            // Bug 158's data pass. Chat creation used to write the chosen
+            // scenario into `contextSummary` as well as `scenarioText`, so
+            // every reader of the summary column believed a brand-new chat had
+            // already been summarized — and the greeting's "Recent
+            // Conversations" block handed the next character a stage direction
+            // to open from. 186 of 712 chats were in that state on v4's own
+            // live instance. This nulls the summary wherever it is
+            // byte-identical to the row's own non-empty scenario, and bumps
+            // `updatedAt` on exactly those rows.
+            //
+            // DATA-only like the P4.D97 and P4.D140 passes above, so its
+            // once-only guard is v4's own `migrations_state` ledger — and, as
+            // v4's runner does, a boot that finds NO seeded row writes NO
+            // ledger row and simply re-checks next time (a stamp on a clean
+            // boot would make a later v4 boot skip a migration it never ran).
+            //
+            // Ordered AFTER the P4.D145 collapse for no reason but the fence
+            // convention; it reads and writes only `chats` and shares nothing
+            // with its neighbours.
+            if let quilltap_core::db::scenario_seeded_summary_heal::SeededSummaryHealOutcome::Ran {
+                cleared,
+            } = quilltap_core::db::scenario_seeded_summary_heal::clear_scenario_seeded_chat_summaries(
+                main,
+                &quilltap_core::clock::now_iso(),
+            )? {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    cleared,
+                    "Cleared the scenario standing in as a summary"
+                );
+            }
+            // === end P4.D208 ===
             // === P4.D77 (v4 `24633026`, migration
             // `create-help-doc-chunks-table-v1`) ===
             // The `help_doc_chunks` table itself, re-homed from v4's migration

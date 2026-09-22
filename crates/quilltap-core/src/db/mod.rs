@@ -115,6 +115,7 @@ pub mod prompt_templates;
 pub mod provider_models;
 pub mod roleplay_templates;
 pub mod runtime;
+pub mod scenario_seeded_summary_heal;
 pub mod scenarios;
 pub mod sqlite_errors;
 pub mod store_backed;

@@ -228,9 +228,21 @@ pub async fn run_scheduled_danger_scan(db: &Db) -> Result<(usize, usize), DbErro
             };
 
             // JS truthiness on `chat.contextSummary`: absent / null / empty
-            // string are all falsy.
+            // string are all falsy. Since v4's bug 158 (`da9c4f34f`) the same
+            // test runs on `chat.scenarioText` beside it — a scenario stands in
+            // for a summary until the first fold. Before bug 158 the scenario
+            // arrived here disguised as a summary, so this branch already took
+            // every scenario-bearing chat; naming it changes nothing for a SHORT
+            // chat, which the `else` reaches by a different route to the same
+            // job. What moves is the LONG one: over 50 messages the old tree
+            // summarized first and this one classifies directly.
             let has_summary = chat
                 .get("contextSummary")
+                .and_then(Value::as_str)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false);
+            let has_scenario = chat
+                .get("scenarioText")
                 .and_then(Value::as_str)
                 .map(|s| !s.is_empty())
                 .unwrap_or(false);
@@ -239,7 +251,7 @@ pub async fn run_scheduled_danger_scan(db: &Db) -> Result<(usize, usize), DbErro
                 .and_then(Value::as_f64)
                 .unwrap_or(0.0);
 
-            let enqueued = if has_summary {
+            let enqueued = if has_summary || has_scenario {
                 enqueue_chat_danger_classification_with_priority(
                     db,
                     &settings.user_id,

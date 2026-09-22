@@ -178,6 +178,11 @@ fn bug75_qtap_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/qtap-import-bug75.qtap")
 }
 
+fn bug158_qtap_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/qtap-import-bug158.qtap")
+}
+
 fn bug117_qtap_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/qtap-import-bug117.qtap")
@@ -744,12 +749,117 @@ fn qtap_import_tier2_matches_oracle() {
         let _ = std::fs::remove_file(&mount2_path);
     }
 
+    // ── P4.D208 / bug 158 (v4 `da9c4f34f`) — a THIRD isolated pair ───────────
+    //
+    // A pre-fix export carries the chat's scenario in `contextSummary` as well
+    // as `scenarioText`. The boot heal that clears those rows has long since run
+    // in the receiving instance, so the import is the only thing standing
+    // between a stale bundle and the bug coming back.
+    //
+    // The bundle carries three chats so the predicate is proven in BOTH
+    // directions on one import: the seeded row arrives with a NULL summary and
+    // its scenario untouched; a real summary that QUOTES the scenario arrives
+    // whole; the scenario-only row has nothing to strip. Isolated for the
+    // bug117 reason — three new chats in the shared pair would move the dumps
+    // the main diff asserts as multisets.
+    {
+        let pid = std::process::id();
+        let main3_path = std::env::temp_dir().join(format!("qt-qtapimport-b158-main-{pid}.db"));
+        let mount3_path = std::env::temp_dir().join(format!("qt-qtapimport-b158-mount-{pid}.db"));
+        let _ = std::fs::remove_file(&main3_path);
+        let _ = std::fs::remove_file(&mount3_path);
+        std::fs::copy(&main_fixture, &main3_path).unwrap_or_else(|e| panic!("copy main3: {e}"));
+        std::fs::copy(&mount_fixture, &mount3_path).unwrap_or_else(|e| panic!("copy mount3: {e}"));
+        let main3 = Writer::open_writable(&main3_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main3: {e}"));
+        let mount3 = Writer::open_writable(&mount3_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount3: {e}"));
+
+        let b158_qtap =
+            std::fs::read_to_string(bug158_qtap_path()).expect("read committed bug158 .qtap");
+        let b158_export = parse_export_file(&b158_qtap).expect("parse bug158 .qtap");
+        let b158 = execute_import(
+            main3.connection(),
+            mount3.connection(),
+            SINGLE_USER_ID,
+            &b158_export,
+            &ImportOptions::seed_defaults(),
+            None,
+        )
+        .expect("bug158 execute_import");
+
+        let want158 = &oracle["bug158"];
+        assert_eq!(
+            Value::Bool(b158.success),
+            want158["success"],
+            "bug158 import success"
+        );
+        assert_eq!(
+            serde_json::to_value(&b158.warnings).unwrap(),
+            want158["warnings"],
+            "bug158 warnings"
+        );
+
+        let got158 = dump_bug158_chats(&main3);
+        assert_eq!(got158, want158["chats"], "bug158 chats after import");
+
+        // The floor: the seeded row must actually be IN the comparand and must
+        // have been stripped, or the arm has stopped asking anything.
+        let rows = got158.as_array().expect("bug158 chats array");
+        let seeded = rows
+            .iter()
+            .find(|r| r["title"].as_str() == Some("Seeded By A Pre-Fix Export"))
+            .expect("the seeded chat row");
+        assert_eq!(
+            seeded["contextSummary"],
+            Value::Null,
+            "bug 158: a scenario-seeded summary must arrive NULL"
+        );
+        assert!(
+            seeded["scenarioText"]
+                .as_str()
+                .is_some_and(|s| !s.is_empty()),
+            "bug 158: the scenario itself is never touched"
+        );
+
+        drop(main3);
+        drop(mount3);
+        let _ = std::fs::remove_file(&main3_path);
+        let _ = std::fs::remove_file(&mount3_path);
+    }
+
     let _ = std::fs::remove_file(&main_work);
     let _ = std::fs::remove_file(&mount_work);
 
     eprintln!(
-        "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join."
+        "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join \
+         + bug-158 strip."
     );
+}
+
+/// The bug-158 comparand, in the oracle case's shape: every chat's title and its
+/// two summary/scenario columns, ordered by title.
+fn dump_bug158_chats(main: &Writer) -> Value {
+    let mut stmt = main
+        .connection()
+        .prepare("SELECT title, contextSummary, scenarioText FROM chats ORDER BY title")
+        .expect("prepare bug158 chats");
+    let rows: Vec<Value> = stmt
+        .query_map([], |r| {
+            let cell = |v: Option<String>| match v {
+                Some(s) => Value::String(s),
+                None => Value::Null,
+            };
+            Ok(serde_json::json!({
+                "title": r.get::<_, String>(0)?,
+                "contextSummary": cell(r.get::<_, Option<String>>(1)?),
+                "scenarioText": cell(r.get::<_, Option<String>>(2)?),
+            }))
+        })
+        .expect("query bug158 chats")
+        .collect::<Result<_, _>>()
+        .expect("collect bug158 chats");
+    Value::Array(rows)
 }
 
 /// The bug-117 comparand, in the oracle case's shape: every `files` row with a
