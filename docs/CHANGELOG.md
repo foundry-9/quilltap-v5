@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — feat(scriptorium): `Request::MountSync` — the sync action, its Zod-faithful schema half and its refusal ladder (P4.D210)
+
+_Versions: core 0.0.975, harness 0.0.869, web 0.0.160._
+
+v4 `POST /api/v1/mount-points/[id]?action=sync` (`23da0b322`), over dispatch and
+over v4's own URL. The CLI is a thin client that re-validates nothing, so this
+schema is the single source of truth for every one of its flags.
+
+All six body keys are `Option<Option<Value>>` tri-states. v4's `syncSchema`
+spells the five defaulted ones `.optional().default(x)`, which accepts an ABSENT
+key and refuses a present `null` — so a plain `Option<Value>` would decode
+`{"propagateDeletes": null}` to the same request as an absent key, take the
+default `true`, and **run a sync that deletes** where v4 answers 400 and does
+nothing. Only a dispatch wire test sees that, and `mount_sync_dispatch_wire`
+is it.
+
+Measured corrections to the order's own §S.3, both from the hunks: the response
+body is the report BARE, not `{data: report}` (`successResponse` is
+`NextResponse.json(data)`); and a body that is valid JSON but not an object
+reaches Zod's empty-path issue, whose message carries a double space where the
+field name would be — an arm only the REST edge can reach.
+
+`sync` also joins the edge's `availableActions` envelope at v4's own index 3,
+confirmed against a target-pinned regen of `query_param_semantics_equivalence`
+rather than inferred; the list is thirteen keys now, which moved
+`mount_multipart_routes`'s index assertions.
+
 #### 2026-09-22 — docs(help): the four help pages `quilltap sync` moves (P4.D210)
 
 _Versions: harness 0.0.868, host 0.0.140._

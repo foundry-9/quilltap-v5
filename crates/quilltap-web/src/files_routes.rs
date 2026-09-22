@@ -866,6 +866,9 @@ pub async fn mount_point_action_post(
         "scan",
         "convert",
         "deconvert",
+        // v4 `23da0b322` inserts `sync` HERE, and the position is the envelope's
+        // — `availableActions` is `Object.keys(actions)` in literal order.
+        "sync",
         "move-file",
         "copy-file",
         "link-file",
@@ -877,6 +880,15 @@ pub async fn mount_point_action_post(
         "embed",
     ];
     const PATH: &str = "/api/v1/mount-points/[id]";
+    // === P4.D210 ===
+    // `sync` is the one JSON action this edge DOES serve, and deliberately: the
+    // CLI is a thin HTTP client posting v4's own URL, so serving it here keeps
+    // the two launchers' transports identical and spares Tier R a normalizer.
+    // Its body is JSON, so it is taken before the multipart gate below.
+    if crate::query::action(&query) == Some("sync") {
+        return mount_point_sync_post(state, id, req).await;
+    }
+    // === end P4.D210 ===
     match crate::query::action(&query) {
         Some("write-file") => {}
         // A v4-KNOWN action this edge does not serve: v4 would DISPATCH it (the
@@ -1337,3 +1349,69 @@ mod upload_tags_tests {
         );
     }
 }
+
+// === P4.D210 ===
+
+/// `POST /api/v1/mount-points/{id}?action=sync` — v4 `handleSync`
+/// (`23da0b322`).
+///
+/// The body is decoded through [`CoreRequest`]'s own serde so the five
+/// defaulted keys keep their absent / explicit-`null` / value tri-state all the
+/// way to the handler; a hand-built variant here would collapse absent into null
+/// and make v4's Zod 400 unreachable. v4's own `req.json().catch(() => ({}))`
+/// means a body that is not JSON at all is judged as `{}` — an empty object,
+/// which fails on the required `targetPath` — rather than answering a parse
+/// error, so the same fallback is spelled out.
+async fn mount_point_sync_post(
+    state: SharedState,
+    id: String,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    let bytes = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => axum::body::Bytes::new(),
+    };
+    // v4 `await req.json().catch(() => ({}))` — UNPARSEABLE JSON becomes an
+    // empty object and fails on the required `targetPath`.
+    let body: serde_json::Value =
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Object(Default::default()));
+    // …but JSON that PARSES and is not an object reaches Zod's own
+    // `expected object, received <type>` with an empty path, which is a
+    // different sentence and only reachable here.
+    let mut map = match body {
+        serde_json::Value::Object(o) => o,
+        other => {
+            return crate::text_replacements_routes::error_to_http(
+                match quilltap_core::api::mount_points::sync_non_object_body(&other) {
+                    CoreResponse::Error(e) => e,
+                    _ => unreachable!("sync_non_object_body always errors"),
+                },
+            )
+        }
+    };
+    map.insert("type".into(), serde_json::Value::String("mountSync".into()));
+    map.insert("mountPointId".into(), serde_json::Value::String(id));
+    let Ok(request) = serde_json::from_value::<CoreRequest>(serde_json::Value::Object(map)) else {
+        // A key whose JSON type the variant cannot hold at all (the id, which is
+        // a path segment and so always a string, is the only such field). v4
+        // reaches its Zod 400 instead, so this arm is unreachable in practice
+        // and refuses rather than guessing.
+        return error_json(StatusCode::BAD_REQUEST, "Invalid sync request");
+    };
+    match dispatch_core(&state, request).await {
+        Ok(CoreResponse::MountSync(v)) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        Ok(CoreResponse::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(r) => r,
+    }
+}
+
+// === end P4.D210 ===

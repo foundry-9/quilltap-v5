@@ -637,6 +637,341 @@ fn mount_conn(ws: &crate::db::runtime::WriterSet) -> Result<&Connection, DbError
         .connection())
 }
 
+// ===========================================================================
+// === P4.D210 === `?action=sync` — the document-store sync
+// ===========================================================================
+
+/// v4 `POST /api/v1/mount-points/[id]?action=sync` — mirror a database-backed
+/// store and a server-local directory (`23da0b322`, `handleSync`).
+///
+/// ⚠ **The body is BARE, not `{data: report}`.** v4's `successResponse(data)` is
+/// `NextResponse.json(data)` (`lib/api/responses.ts:63-68`), so the report goes
+/// on the wire as itself. The P4.D210 order's §S.3 says `{ data: SyncReport }`;
+/// that is order prose, and the hunks say otherwise (the CLI's
+/// `payload.data !== undefined ? payload.data : payload` reads both, which is
+/// why the mistake is invisible from the client side).
+///
+/// The five optional keys are decoded as `Option<Option<Value>>` tri-states so
+/// an explicit `null` reaches v4's Zod 400 rather than silently taking the
+/// default — `.optional().default(x)` accepts an ABSENT key and `undefined`,
+/// and refuses `null`.
+/// v4 `syncSchema.safeParse(body)` — the whole of the route's schema half,
+/// separable because the engine is separable: this is exactly what v4's own
+/// `sync-action.test.ts` measures with `syncMountPoint` mocked, and it is what
+/// `mount_sync_action_equivalence` drives.
+///
+/// `Err` carries the finished 400 (v4's `Invalid sync request: <path> <message>`
+/// list, joined by `'; '` in the schema's key order).
+pub fn decode_sync_options(
+    target_path: Option<Option<Value>>,
+    dry_run: Option<Option<Value>>,
+    direction: Option<Option<Value>>,
+    prefer: Option<Option<Value>>,
+    propagate_deletes: Option<Option<Value>>,
+    use_manifest: Option<Option<Value>>,
+) -> Result<crate::services::mount_index::sync::types::SyncOptions, Response> {
+    use super::zod_issues::{key, zod_issue_lines, ZodIssue};
+    use crate::services::mount_index::sync::types::{SyncDirection, SyncOptions, SyncPreference};
+
+    // ---- the schema, in its declared key order -----------------------------
+    let mut issues: Vec<ZodIssue> = Vec::new();
+
+    /// `z.boolean().optional().default(d)` — absent takes the default, an
+    /// explicit `null` or a wrong type is an issue.
+    fn boolean(
+        issues: &mut Vec<ZodIssue>,
+        field: &'static str,
+        raw: &Option<Option<Value>>,
+        default: bool,
+    ) -> bool {
+        match raw {
+            None => default,
+            Some(None) => {
+                issues.push(ZodIssue::invalid_type(
+                    "boolean",
+                    vec![key(field)],
+                    Some(&Value::Null),
+                ));
+                default
+            }
+            Some(Some(Value::Bool(b))) => *b,
+            Some(Some(other)) => {
+                issues.push(ZodIssue::invalid_type(
+                    "boolean",
+                    vec![key(field)],
+                    Some(other),
+                ));
+                default
+            }
+        }
+    }
+
+    /// `z.enum([...]).optional().default(d)` — an enum answers `invalid_value`
+    /// for anything it does not recognize, `null` included.
+    fn enumerated(
+        issues: &mut Vec<ZodIssue>,
+        field: &'static str,
+        raw: &Option<Option<Value>>,
+        values: &[&'static str],
+    ) -> Option<String> {
+        match raw {
+            None => None,
+            Some(Some(Value::String(s))) if values.contains(&s.as_str()) => Some(s.clone()),
+            Some(_) => {
+                issues.push(ZodIssue::invalid_value(values, vec![key(field)]));
+                None
+            }
+        }
+    }
+
+    // ⚠ The tri-state is matched DIRECTLY here rather than flattened. An earlier
+    // draft went through an `Option<&Value>` helper, which maps an explicit
+    // `null` onto the same `None` as an absent key — and `zod_parsed_type` then
+    // says `undefined` where v4 says `null`. That is the exact collapse the
+    // tri-state exists to prevent, on the one REQUIRED key, and the route family
+    // caught it.
+    let target = match &target_path {
+        Some(Some(Value::String(s))) if !s.is_empty() => Some(s.clone()),
+        Some(Some(Value::String(_))) => {
+            issues.push(ZodIssue::too_small_string(
+                json!(1),
+                vec![key("targetPath")],
+            ));
+            None
+        }
+        Some(Some(other)) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![key("targetPath")],
+                Some(other),
+            ));
+            None
+        }
+        Some(None) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![key("targetPath")],
+                Some(&Value::Null),
+            ));
+            None
+        }
+        None => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![key("targetPath")],
+                None,
+            ));
+            None
+        }
+    };
+
+    let dry_run_value = boolean(&mut issues, "dryRun", &dry_run, false);
+    let direction_value = enumerated(
+        &mut issues,
+        "direction",
+        &direction,
+        &["both", "to-disk", "to-store"],
+    );
+    let prefer_value = enumerated(&mut issues, "prefer", &prefer, &["newer", "store", "disk"]);
+    let propagate_value = boolean(&mut issues, "propagateDeletes", &propagate_deletes, true);
+    let manifest_value = boolean(&mut issues, "useManifest", &use_manifest, true);
+
+    if !issues.is_empty() {
+        // v4 `issues.map(i => `${i.path.join('.')} ${i.message}`).join('; ')`.
+        return Err(bad_request(format!(
+            "Invalid sync request: {}",
+            zod_issue_lines(&issues, " ").join("; ")
+        )));
+    }
+
+    Ok(SyncOptions {
+        target_path: target.expect("a target path, since there are no issues"),
+        dry_run: dry_run_value,
+        direction: direction_value
+            .as_deref()
+            .and_then(SyncDirection::parse)
+            .unwrap_or(SyncDirection::Both),
+        prefer: prefer_value
+            .as_deref()
+            .and_then(SyncPreference::parse)
+            .unwrap_or(SyncPreference::Newer),
+        propagate_deletes: propagate_value,
+        use_manifest: manifest_value,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn mount_point_sync(
+    db: &Db,
+    mount_point_id: &str,
+    target_path: Option<Option<Value>>,
+    dry_run: Option<Option<Value>>,
+    direction: Option<Option<Value>>,
+    prefer: Option<Option<Value>>,
+    propagate_deletes: Option<Option<Value>>,
+    use_manifest: Option<Option<Value>>,
+    webp: Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>,
+) -> Response {
+    let options = match decode_sync_options(
+        target_path,
+        dry_run,
+        direction,
+        prefer,
+        propagate_deletes,
+        use_manifest,
+    ) {
+        Ok(o) => o,
+        Err(r) => return r,
+    };
+
+    // ---- the store ---------------------------------------------------------
+    let dto = db.read_mount_index(|conn| {
+        DocMountPointsRepository::new(conn).find_full_json_by_id(mount_point_id)
+    });
+    let mount_point = match dto {
+        Ok(Some(v)) => sync_mount_point_from_dto(&v),
+        Ok(None) => return not_found("Mount point"),
+        Err(e) => return internal(e),
+    };
+
+    tracing::info!(
+        target: "quilltap::api",
+        mount_point_id = %mount_point_id,
+        name = %mount_point.name,
+        target_path = %options.target_path,
+        dry_run = options.dry_run,
+        direction = %options.direction.as_str(),
+        prefer = %options.prefer.as_str(),
+        "[Mount Points v1] Sync requested",
+    );
+
+    // ---- the run -----------------------------------------------------------
+    let id = mount_point_id.to_string();
+    let run = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let main = ws.main().connection();
+            let refusing = crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+            let transcoder: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder =
+                match &webp {
+                    Some(w) => w.as_ref(),
+                    None => &refusing,
+                };
+            Ok(crate::services::mount_index::sync::sync_mount_point(
+                mount,
+                main,
+                &mount_point,
+                &options,
+                &crate::services::mount_index::sync::SyncDeps {
+                    transcoder: Some(transcoder),
+                },
+            ))
+        })
+        .await;
+
+    let report = match run {
+        Ok(Ok(report)) => report,
+        Ok(Err(e)) => return sync_error_response(e),
+        Err(e) => return internal(e),
+    };
+    let _ = id;
+
+    tracing::info!(
+        target: "quilltap::api",
+        mount_point_id = %mount_point_id,
+        target_path = %report.target_path,
+        dry_run = report.dry_run,
+        created = report.summary.created,
+        modified = report.summary.modified,
+        deleted = report.summary.deleted,
+        touched = report.summary.touched,
+        described = report.summary.described,
+        conflicts = report.summary.conflicts,
+        skipped = report.summary.skipped,
+        failed = report.summary.failed,
+        elapsed_ms = report.elapsed_ms,
+        "[Mount Points v1] Sync complete",
+    );
+
+    match serde_json::to_value(&report) {
+        Ok(v) => Response::MountSync(v),
+        Err(e) => internal(e),
+    }
+}
+
+/// v4's `syncSchema.safeParse` over a body that is VALID JSON but not an object
+/// — `[]`, `null`, `42`, `"x"`. Zod's issue then has an EMPTY path, so the
+/// message carries a double space where the field name would be, and the port
+/// reproduces that rather than tidying it.
+///
+/// Only the REST edge can reach this: over `POST /api/dispatch` a non-object
+/// body cannot carry the `type` tag, so the verb is never selected. v4's own
+/// `req.json().catch(() => ({}))` means UNPARSEABLE JSON is a different arm —
+/// it becomes `{}` and fails on the required `targetPath` instead.
+pub fn sync_non_object_body(value: &Value) -> Response {
+    use super::zod_issues::{zod_issue_lines, ZodIssue};
+    let issue = ZodIssue::invalid_type("object", vec![], Some(value));
+    bad_request(format!(
+        "Invalid sync request: {}",
+        zod_issue_lines(&[issue], " ").join("; ")
+    ))
+}
+
+/// Build the sync's scoped mount-point row out of the DTO the repo already
+/// returns, rather than minting new SQL for six columns.
+fn sync_mount_point_from_dto(dto: &Value) -> crate::services::mount_index::sync::SyncMountPoint {
+    let s = |k: &str| -> String {
+        dto.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    crate::services::mount_index::sync::SyncMountPoint {
+        id: s("id"),
+        name: s("name"),
+        mount_type: s("mountType"),
+        base_path: s("basePath"),
+        store_type: s("storeType"),
+        scan_status: s("scanStatus"),
+        conversion_status: s("conversionStatus"),
+        exclude_patterns: dto
+            .get("excludePatterns")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|p| p.as_str().unwrap_or_default().to_string())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// v4's `catch` ladder, in its order: a refusal by code, then the manifest
+/// mismatch, then `ENOENT`'s own sentence, then the 500.
+pub fn sync_error_response(e: crate::services::mount_index::sync::SyncError) -> Response {
+    use crate::services::mount_index::sync::SyncError;
+    match e {
+        SyncError::Refused(refusal) => {
+            // The store is the wrong kind, archived, or busy — all of which the
+            // operator can act on, none of which is a server fault.
+            if refusal.code.is_conflict() {
+                conflict(refusal.message)
+            } else {
+                bad_request(refusal.message)
+            }
+        }
+        SyncError::ManifestMismatch(m) => conflict(m.to_string()),
+        SyncError::NotFound(message) => bad_request(format!(
+            "{message}. The path is resolved on the server: under Docker it must sit inside a \
+             bind mount (see 'quilltap docs docker-mounts')."
+        )),
+        SyncError::Io(message) => internal(format!("Failed to sync mount point: {message}")),
+        SyncError::Db(e) => internal(format!("Failed to sync mount point: {e}")),
+    }
+}
+
+// === end P4.D210 ===
+
 #[cfg(test)]
 mod tests {
     use super::{cascade_delete, derive_mount_capabilities};

@@ -3879,6 +3879,42 @@ pub enum Request {
         id: String,
     },
     // === end P4.83 ===
+
+    // === P4.D210 ===
+    /// v4 `POST /api/v1/mount-points/[id]?action=sync` (`23da0b322`) — mirror a
+    /// database-backed store and a server-local directory.
+    ///
+    /// The five defaulted keys carry the `double_option` tri-state because v4's
+    /// `syncSchema` spells them `.optional().default(x)`: an ABSENT key and
+    /// `undefined` take the default, and an explicit `null` is a Zod 400. A
+    /// plain `Option` would answer 200 on the `null` and the divergence would be
+    /// invisible to any family that calls the handler directly — only a dispatch
+    /// WIRE test sees a serde collapse.
+    #[serde(rename_all = "camelCase")]
+    MountSync {
+        mount_point_id: String,
+        /// `z.string().min(1)`, REQUIRED — raw so an absent key, a `null` and a
+        /// wrong type each reach v4's own issue wording.
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        target_path: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        dry_run: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        direction: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        prefer: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        propagate_deletes: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        use_manifest: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D210 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -4393,6 +4429,18 @@ pub enum Response {
     PromptTemplateDeleted(serde_json::Value),
     // === end P4.83 ===
     Error(CoreError),
+
+    // === P4.D210 ===
+    /// v4 `handleSync`'s body — the `SyncReport`, BARE.
+    ///
+    /// ⚠ v4's `successResponse(data)` is `NextResponse.json(data)`
+    /// (`lib/api/responses.ts:63-68`), so the report is NOT wrapped in
+    /// `{data: …}` — the P4.D210 order's §S.3 says it is, and the hunks say
+    /// otherwise. The CLI's `payload.data !== undefined ? payload.data : payload`
+    /// reads either shape, which is exactly why the mistake is invisible from
+    /// the client side.
+    MountSync(serde_json::Value),
+    // === end P4.D210 ===
 }
 
 impl Response {

@@ -138704,3 +138704,53 @@ P4.D203, `search` → P4.D204, `inform` + `insert-announcement` → P4.D205,
 
 Versions: harness 0.0.868, host 0.0.140.
 
+
+### Unit 4 — the verb (`Request::MountSync`), and two measured corrections to §S.3
+
+The fenced variant, the handler, the engine dispatch arm and the REST arm, plus
+`mount_sync_action_equivalence` (36 rows over v4's REAL `handleSync` with
+`syncMountPoint` mocked, as v4's own `sync-action.test.ts` mocks it) and
+`mount_sync_dispatch_wire`.
+
+**Two corrections to the order's §S.3, both from the hunks (§R.4):**
+
+1. **The response body is the report BARE, not `{data: SyncReport}`.** v4's
+   `successResponse(data)` is `NextResponse.json(data)`
+   (`lib/api/responses.ts:63-68`). The CLI's
+   `payload.data !== undefined ? payload.data : payload` reads either shape,
+   which is exactly why the mistake is invisible from the client side; the
+   oracle's `the-report-is-the-body` row is the measurement.
+2. **A body that is valid JSON but NOT an object is its own arm**, with Zod's
+   empty-path issue: `Invalid sync request:  Invalid input: expected object,
+   received array` — note the double space. Only the REST edge can reach it (a
+   non-object body cannot carry the dispatch `type` tag), and v4's
+   `req.json().catch(() => ({}))` makes UNPARSEABLE JSON a different arm again
+   (an empty object, failing on the required `targetPath`). All three are pinned.
+
+**One defect the route family caught, on the one REQUIRED key.** The first draft
+flattened the tri-state through an `Option<&Value>` helper before testing it, so
+an explicit `targetPath: null` reported `received undefined` where v4 says
+`received null`. That is precisely the collapse the tri-state exists to prevent,
+on the one key where it is visible, and it is now matched directly with the
+`Some(None)` arm spelled out. The wire test carries the same pin from the other
+side.
+
+**`sync` joins the edge's `availableActions` envelope at v4's index 3.** That
+position was CONFIRMED by regenerating `query_param_semantics_equivalence` at
+the target pin — v4's list is now
+`scan, convert, deconvert, sync, move-file, copy-file, link-file, write-file,
+delete-file, delete-folder, move-folder, reindex, embed`, thirteen keys — not
+inferred from the source read. It moved `mount_multipart_routes`'s index
+assertions (`write-file` was index 6 and is now 7, and the length is 13);
+`crates/quilltap-web/tests/mount_multipart_routes.rs` is not in this lane's
+ownership table by name, and the edit is named here for the unifier.
+
+**Census:** `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 441 → **442**, the one typed
+field the verb carries (`mount_point_id`, a genuine route identifier). The other
+six are raw tri-states and never enter the typed set; `MOUNT_SYNC_RAW_SIX`
+adjudicates them, with a decode test that proves every wrong type is ACCEPTED at
+the dispatch boundary (so the handler refuses with v4's sentence on both
+transports) and that absent and explicit-`null` stay apart.
+
+Versions: core 0.0.975, harness 0.0.869, web 0.0.160.
+

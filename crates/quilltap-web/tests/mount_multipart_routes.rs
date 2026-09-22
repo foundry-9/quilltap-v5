@@ -193,8 +193,12 @@ async fn mount_write_and_read_edges() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Unknown action: zzz-not-an-action");
     assert_eq!(body["availableActions"][0], "scan");
-    assert_eq!(body["availableActions"][6], "write-file");
-    assert_eq!(body["availableActions"].as_array().unwrap().len(), 12);
+    // P4.D210: v4 `23da0b322` inserts `sync` at index 3, so the map is THIRTEEN
+    // keys and everything after `deconvert` shifts by one. `write-file` was
+    // index 6 and is now 7.
+    assert_eq!(body["availableActions"][3], "sync");
+    assert_eq!(body["availableActions"][7], "write-file");
+    assert_eq!(body["availableActions"].as_array().unwrap().len(), 13);
 
     // …and a request with NO action reaches the other envelope.
     let resp = client

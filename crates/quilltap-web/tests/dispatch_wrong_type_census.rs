@@ -2549,7 +2549,16 @@ fn is_route_identifier(field: &str) -> bool {
 // `*_id` rule never saw `profile_id` or `chat_id` to drop. Nothing entered or
 // left the typed set; the arithmetic is untouched in both directions. They are
 // adjudicated in `IMAGES_GENERATE_RAW_FIVE` at the foot of this file.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 441;
+// **P4.D210 (+1): 441 → 442** — `Request::MountSync.mount_point_id`, the ONE
+// typed field the new verb carries. It is a genuine route identifier (v4's
+// `[id]` path segment on `POST /api/v1/mount-points/[id]?action=sync`), so the
+// `*_id` rule drops it and the excluded count rises by exactly one. The
+// variant's other SIX keys are body keys carried raw as `Option<Option<Value>>`
+// tri-states, so `typed_request_fields` never sees them; they are adjudicated in
+// `MOUNT_SYNC_RAW_SIX` at the foot of this file. ⚠ P4.D205 and P4.D207 add verbs
+// on their own branches, so the UNIFIER recounts rather than taking this lane's
+// 442.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 442;
 
 #[test]
 fn census_covers_every_typed_request_field() {
@@ -3261,3 +3270,137 @@ fn images_generate_keeps_absent_and_explicit_null_apart_at_the_decode() {
         );
     }
 }
+
+// === P4.D210 ===
+
+/// The six BODY keys `Request::MountSync` carries raw, all `Option<Option<Value>>`.
+///
+/// v4's `syncSchema` (`mount-points/[id]/route.ts:441-448`) is `targetPath:
+/// z.string().min(1)` plus five `.optional().default(x)` keys. `.optional()`
+/// accepts an ABSENT key and `undefined` and refuses an explicit `null`, so the
+/// tri-state is load-bearing on all five: a plain `Option<Value>` would decode
+/// `{"dryRun": null}` to the same `Request` as an absent key, take the default,
+/// and RUN A SYNC v4 refuses with a Zod 400. `targetPath` is raw for the same
+/// reason every required raw key is — so the HANDLER composes v4's issue
+/// wording rather than serde's.
+const MOUNT_SYNC_RAW_SIX: &[Row] = &[
+    Row {
+        variant: "MountSync",
+        field: "target_path",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:442` `targetPath: z.string().min(1)`. REQUIRED, \
+               so an absent key, an explicit `null` and a wrong type all reach \
+               `Invalid sync request: targetPath <message>`; raw so the sentence \
+               is v4's and not serde's.",
+    },
+    Row {
+        variant: "MountSync",
+        field: "dry_run",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:443` `dryRun: z.boolean().optional().default(false)`. \
+               A plain `Option<Value>` would run a REAL sync on `{\"dryRun\": null}`, \
+               which v4 refuses.",
+    },
+    Row {
+        variant: "MountSync",
+        field: "direction",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:444` `direction: z.enum(['both','to-disk',\
+               'to-store']).optional().default('both')`. An enum answers \
+               `invalid_value` for a null, not `invalid_type`.",
+    },
+    Row {
+        variant: "MountSync",
+        field: "prefer",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:445` `prefer: z.enum(['newer','store','disk'])\
+               .optional().default('newer')`.",
+    },
+    Row {
+        variant: "MountSync",
+        field: "propagate_deletes",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:446` `propagateDeletes: z.boolean().optional()\
+               .default(true)`. The most consequential of the five: a collapsed \
+               `null` takes `true` and the run DELETES.",
+    },
+    Row {
+        variant: "MountSync",
+        field: "use_manifest",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodyParse,
+        note: "RAW(P4.D210) — v4 `:447` `useManifest: z.boolean().optional()\
+               .default(true)`.",
+    },
+];
+
+/// The sibling of [`the_raw_five_list_covers_every_raw_field_on_the_variant`]
+/// over the sync verb: a row deleted, a seventh raw key added without a row, or
+/// a `rust_type` that drifts back to a plain `Option<Value>` is a red.
+#[test]
+fn the_mount_sync_raw_list_covers_every_raw_field_on_the_variant() {
+    let mut have: Vec<(String, String)> = MOUNT_SYNC_RAW_SIX
+        .iter()
+        .map(|r| (r.field.to_string(), r.rust_type.replace(' ', "")))
+        .collect();
+    have.sort();
+    assert_eq!(
+        have,
+        raw_value_fields_of("MountSync"),
+        "MOUNT_SYNC_RAW_SIX must name exactly the raw `Value` fields \
+         `Request::MountSync` carries, WITH their declared shapes"
+    );
+    assert_eq!(have.len(), 6, "v4's `syncSchema` has exactly six keys");
+}
+
+/// The decode must ACCEPT every wrong type so the HANDLER refuses with v4's own
+/// sentence, on both transports — and it must keep absent and explicit-`null`
+/// apart, which is the whole reason the five defaulted keys are tri-states.
+#[test]
+fn mount_sync_six_decode_raw_and_keep_null_apart() {
+    use quilltap_core::api::types::Request;
+
+    let decode = |body: Value| serde_json::from_value::<Request>(body).expect("decodes");
+    let base = json!({ "type": "mountSync", "mountPointId": "mp-1" });
+    for row in MOUNT_SYNC_RAW_SIX {
+        let key = camel(row.field);
+        for wrong in [
+            json!(42),
+            json!(true),
+            json!(Value::Null),
+            json!([1]),
+            json!({"a": 1}),
+        ] {
+            let mut body = base.clone();
+            body.as_object_mut()
+                .unwrap()
+                .insert(key.clone(), wrong.clone());
+            assert!(
+                serde_json::from_value::<Request>(body).is_ok(),
+                "`{key}` refused {wrong} at the DISPATCH decode — v4 answers its own \
+                 `Invalid sync request: …` for it, so the refusal belongs in the \
+                 handler where both transports reach it"
+            );
+        }
+        let absent = decode(base.clone());
+        let mut with_null = base.clone();
+        with_null
+            .as_object_mut()
+            .unwrap()
+            .insert(key.clone(), Value::Null);
+        assert_ne!(
+            absent,
+            decode(with_null),
+            "`{key}` decodes an explicit `null` to the same `Request` as an ABSENT \
+             key — serde has collapsed the tri-state, and for `propagateDeletes` \
+             that is the difference between a 400 and a run that deletes"
+        );
+    }
+}
+
+// === end P4.D210 ===

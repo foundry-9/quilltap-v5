@@ -5649,6 +5649,34 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.83 ===
+
+            // === P4.D210 ===
+            Request::MountSync {
+                mount_point_id,
+                target_path,
+                dry_run,
+                direction,
+                prefer,
+                propagate_deletes,
+                use_manifest,
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, webp)) => {
+                    super::mount_points::mount_point_sync(
+                        &db,
+                        &mount_point_id,
+                        target_path,
+                        dry_run,
+                        direction,
+                        prefer,
+                        propagate_deletes,
+                        use_manifest,
+                        webp,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D210 ===
         }
     }
 
