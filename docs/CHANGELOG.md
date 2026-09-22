@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): P4.D214 lane gate record
+
+_Docs-only change._
+
+Records the P4.D214 lane gate on `16dc14c0`: fmt and clippy clean in both
+feature sets, the release build clean, `cargo test --workspace` 611 binaries /
+3,613 passed / 0 failed, and Tier R 266/0 in-gate.
+
 #### 2026-09-22 — test(cli): P4.D210's live `sync` rows land as canned-stub Tier R rows (P4.D214)
 
 _Versions: cli 0.0.27._

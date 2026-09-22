@@ -142137,3 +142137,28 @@ rows); P4.D210's status header gains one sentence naming this round.
   rows (unit 1 §3).
 - Tier R 260 → **266**: 266 / 0 at `a2db63da7`; at `f45a517a9` all six green
   (the 13 baseline failures are unit 1's 9 cases).
+
+## Lane record — P4.D214: the lane's verification gate, 2026-09-22
+
+Run on HEAD `16dc14c0` (both unit commits in), `CARGO_INCREMENTAL=0 TZ=UTC`, as
+ONE logged chain (`/tmp/p4d214/gate-16dc14c0.log`):
+
+- §R.2 probe: PASSED at lane start and before the baseline run.
+- `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets (default;
+  `--features quilltap-core/native-transport`). `cargo build --workspace
+  --release` clean.
+- `cargo test --workspace --no-fail-fast -- --nocapture` with the lane's env
+  block (`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d214-a2db63da7`, `QT_NODE=<real
+  Node 24 path>`; every other family's var withheld, so they SKIP honestly):
+  **611 test binaries / 3,613 passed / 0 failed / 3 ignored**.
+  `cli_differential` RAN in-gate: **266 cases, 0 failures**. The `panicked`
+  lines in the log come from tests that assert a caught panic.
+- Tier R at both pins (unit 1 §2): 266/0 at `a2db63da7`; 13 failures on 9
+  designed cases at `f45a517a9`.
+- No source census moves (P4.D214 adds no verb and no help file). No
+  committed fixture changed: Tier R builds its master per run, so no other
+  oracle is invalidated.
+- For the unifier: nothing outside `crates/quilltap-cli/**` + the two
+  append-only files + the two order headers (this order's, and P4.D210's
+  one sentence). cli 0.0.25 → 0.0.27 (two bumps). No other crate bumped.
