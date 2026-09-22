@@ -192,10 +192,27 @@ pub fn write_store_file(
             last_modified: times.last_modified.map(str::to_string),
             created_at: times.created_at.map(str::to_string),
         })?;
+        // **The `QUILLTAP_JOB_CHILD` divergence, re-recorded at the applier**
+        // (P4.D210 Tier 2 item 8; P4.D209 records the same at the hoist, which
+        // is `reindex_file.rs:124` — read it for the full argument).
+        //
+        // v4 opens `reindexSingleFile` with
+        // `if (process.env.QUILLTAP_JOB_CHILD === '1') return;`, because inside
+        // its FORKED job child a repository write is buffered until the batch
+        // ships home, so the re-index would read back content that is not
+        // committed. v5's job runner is IN-PROCESS by locked decision — no fork,
+        // no buffered writes, read-your-writes holds — so the guard's
+        // precondition cannot occur and the hook always runs.
+        //
+        // The sync reaches the hook from TWO call sites (here and the pdf/docx
+        // arm below) and adds no third, so it inherits that divergence and does
+        // not widen it. Where v4 runs a sync inside a forked child it would
+        // leave the chunks to the next rescan; v5 builds the same rows sooner.
+        //
+        // v4's `emitDocumentWritten` beside it has no v5 analogue at all: it
+        // schedules the debounced embedding pass, which the in-process runner
+        // reaches through this same call.
         reindex_after_database_write(conn, mount_point_id, relative_path);
-        // v4 `emitDocumentWritten` has no v5 analogue: it schedules the debounced
-        // embedding pass, which the in-process runner reaches through the
-        // re-index call above.
         return Ok(content_sha256);
     }
 
@@ -234,7 +251,9 @@ pub fn write_store_file(
         created_at: times.created_at.map(str::to_string),
     })?;
 
-    // pdf/docx carry extractable text, so they chunk like a document does.
+    // pdf/docx carry extractable text, so they chunk like a document does. The
+    // second and last of the sync's two re-index call sites (see the note on the
+    // first, above).
     if file_type != "blob" {
         reindex_after_database_write(conn, mount_point_id, relative_path);
     }

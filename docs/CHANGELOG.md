@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(scriptorium): the `QUILLTAP_JOB_CHILD` divergence, re-recorded at the sync applier (P4.D210)
+
+_Versions: core 0.0.976._
+
+P4.D210 Tier 2 item 8. v4 opens `reindexSingleFile` with a
+`QUILLTAP_JOB_CHILD` guard because inside its forked job child a repository
+write is buffered until the batch ships home; v5's runner is in-process by
+locked decision, so the precondition cannot occur and the hook always runs.
+P4.D209 records the argument at the hoist; this records, at the sync's own two
+call sites, that the verb inherits the divergence and adds no third.
+
 #### 2026-09-22 — feat(cli): the `quilltap sync` verb — the thin client, the report renderer, the completion hunks and Tier R (P4.D210)
 
 _Versions: cli 0.0.25, harness 0.0.870._

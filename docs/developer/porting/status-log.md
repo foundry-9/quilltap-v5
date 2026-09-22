@@ -138825,3 +138825,46 @@ pin (gutted from 28,099 by `e11a51f44`) against v5's mirrored 24,663, and
 `packages/quilltap/README.md` (**34,707**) has no v5 mirror at all — a straight
 re-mirror of the first without adding the second silently shrinks the port's CLI
 reference by 21.5 KB, which is what §R.9 warns about.
+
+### Unit 6 — Tier 2 item 8, and the lane's gate
+
+The `QUILLTAP_JOB_CHILD` divergence, re-recorded AT THE APPLIER as the order
+asked, cross-referencing P4.D209's record at the hoist. The sync reaches
+`reindex_after_database_write` from exactly two call sites (the document branch
+and the pdf/docx arm) and adds no third, so it inherits the divergence rather
+than widening it. (An earlier draft of the order header argued this needed no
+new record because `reindex_file.rs` already carries the argument; the order
+asked for it at the applier, and writing it is cheaper than the argument.)
+
+**The lane's gate, on the committed tree** (`CARGO_INCREMENTAL=0`, `TZ=UTC`):
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH feature
+  sets. ⚠ It was NOT clean on the first pass and the workspace test run cannot
+  see that: `items_after_test_module` (this lane's block landed after
+  `mount_points.rs`'s `#[cfg(test)] mod tests`) and four `redundant_closure`s.
+  Both fixed before the commits.
+- `cargo build --workspace --release` clean.
+- `cargo test --workspace --no-fail-fast` over **594 test binaries: 3,518
+  passed / 3 failed**, 492 honest `SKIP:` lines (families whose vars this lane
+  withheld). All six of this lane's families confirmed RUN BY NAME with their
+  counts (75 / 74 / 176 / 36 / 47 scenarios / Tier R 244).
+
+The three reds, each attributed by measurement rather than assumption:
+
+1. `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` —
+   **P4.D205's.** The `.qtap` schema grew 93,384 → 95,266 at `e7d77bb60`; the
+   drift ledger's §1 names this as that lane's re-vendor obligation and measured
+   it red on 2026-09-21, before this lane existed. It compares against the LIVE
+   v4 checkout, so no lane can make it green from its own branch.
+2. `zod_version_guard::v4s_installed_zod_matches_the_recorded_version` —
+   **P4.D211's.** `4.5.4 → 4.6.5` at `6b0615807`; same provenance, same reason.
+3. `services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+   — **a pre-existing wall-clock FLAKE, not this lane's.** It is green in both
+   of this lane's two earlier full gates, green 3/3 re-run in isolation
+   afterwards, and sits in a file this lane never touched. A threshold test on a
+   machine running a 594-binary gate; recorded by name rather than explained
+   away.
+
+Versions at lane close: **core 0.0.976, harness 0.0.870, host 0.0.140, web
+0.0.160, cli 0.0.25.** Tauri and fixture-sanitizer untouched; the SPA untouched.
