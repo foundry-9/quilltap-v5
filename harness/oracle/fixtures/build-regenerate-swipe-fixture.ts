@@ -89,6 +89,17 @@ interface Spec {
   chats: ChatSpec[];
   seedMemories: MemorySpec[];
   seedMetaCharacterIds: string[];
+  /** P4.106 item 3: `chat_informs` rows for the two re-apply calls' chats. */
+  informs?: Array<{
+    id: string;
+    chatId: string;
+    batchId: string;
+    participantId: string;
+    contentMarkdown: string;
+    createdAt: string;
+    consumedAt?: string | null;
+    consumedByMessageId?: string | null;
+  }>;
 }
 
 async function main(): Promise<void> {
@@ -284,6 +295,32 @@ async function main(): Promise<void> {
         characterId: seed.characterId,
         embedding: new Float32Array(seed.vector),
       });
+    }
+  }
+
+  // P4.106 item 3: the inform plant through v4's REAL repository (ids + stamps
+  // pinned). The table is created by v4's own `ensureCollection` either way.
+  {
+    const { ensureCollection } = await import('@/lib/database/manager');
+    const { ChatInformsRepository } = await import(
+      '@/lib/database/repositories/chat-informs.repository'
+    );
+    const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+    await ensureCollection('chat_informs', ChatInformSchema);
+    const informRepo = new ChatInformsRepository();
+    for (const row of spec.informs ?? []) {
+      await informRepo.create(
+        {
+          chatId: row.chatId,
+          batchId: row.batchId,
+          participantId: row.participantId,
+          contentMarkdown: row.contentMarkdown,
+          recordMessageId: null,
+          consumedAt: row.consumedAt ?? null,
+          consumedByMessageId: row.consumedByMessageId ?? null,
+        } as never,
+        { id: row.id, createdAt: row.createdAt, updatedAt: row.createdAt }
+      );
     }
   }
 

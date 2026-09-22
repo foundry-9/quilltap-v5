@@ -143312,3 +143312,41 @@ rollback) and the measurement refuted it.
 MOVE at `a2db63da7` (P4.D212's fold). None of the four new calls reaches a
 fold (`summaryCheck: false`), so the re-record at the new baseline should
 move only the pre-existing fold rows it already predicted.
+
+### Unit 7 — item 3: `regenerate_swipe_tier3`'s re-apply rows
+
+Corpus 4 → 6 chats/calls; NEW top-level `informs` (6 rows) planted by
+`build-regenerate-swipe-fixture.ts` through v4's REAL repository; the case's
+table list + the Rust family gain `chat_informs` (compared RAW — a swipe
+writes no minted value there — plus "every row's `updatedAt` equals its
+`createdAt`"). `inform_reapply_whole_group` (C5: target `…501` in a group
+with sibling `…502`; rows consumed by the target, by the sibling, by the
+user message outside the group, and one pending) and `inform_reapply_
+target_only` (C6: an ungrouped target; its own consumed row + one pending).
+v4 measured: the grouped request carries `The sibling swipe read this.\n\n
+---\n\nThe target line read this.` (createdAt order — the sibling's row is
+older), the ungrouped `The only line this target read.`, and no request
+carries the pending or out-of-group row; every row unchanged. v5 matched on
+arrival (neutrality arms). A non-vacuity assert over the oracle's recorded
+`cannedStream` messages pins all three facts; v5 must send the same bytes to
+hit a canned stream at all (the stream key IS the request).
+
+**A trap in my own first corpus, caught by a mutation:** C5 was cloned from
+`existing_group` with its message CONTENT unchanged, so a v5 that dropped
+the grouped block would have produced `existing_group`'s exact request and
+HIT its canned stream — the consume-before-build mutation surfaced at the
+ungrouped call instead of the grouped one. Both new chats' contents made
+unique and the oracle re-recorded; the same mutation then failed at
+`inform_reapply_whole_group` first.
+
+Regen AS RUN (probe PASS): `TMPO=/tmp/p4106/qt-regen-oracle`, builder
+`QT_FIXTURE_OUT=/tmp/p4106/qt-regen-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4106/
+qt-regen-mount.db` → "6 chats"; jest `TZ=UTC … -- "regenerate-swipe-tier3\.
+test\.ts$"` → 23 rows. Both tests green (`--test-threads=1`).
+`chat_informs_swipe_handle` census re-run: green (unmoved).
+
+Mutations (`regenerate_swipe.rs`, file-backup reverts): the group gather
+disabled → both tests red (`no canned stream registered`); a consume of the
+re-applied rows BEFORE the context build → `inform_reapply_whole_group`
+request miss; a consume of the chat's consumed rows AFTER the swipe is saved
+→ `table chat_informs mismatch` (the order's "consume informs on a swipe").

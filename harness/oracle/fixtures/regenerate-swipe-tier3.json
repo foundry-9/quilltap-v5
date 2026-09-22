@@ -216,6 +216,87 @@
           "createdAt": "2026-01-02T03:04:05.000Z"
         }
       ]
+    },
+    {
+      "id": "aa000005-0000-4000-8000-000000000005",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0005-0000-4000-8000-0000000000a5",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0005-0000-4000-8000-0000000000b5",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0005-0000-4000-8000-0000000000f5",
+          "role": "USER",
+          "content": "Again please, and mind the gate.",
+          "participantId": "aa0b0005-0000-4000-8000-0000000000b5",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "aa050001-0000-4000-8000-000000000501",
+          "role": "ASSISTANT",
+          "content": "Original grouped reply, before the gate.",
+          "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+          "createdAt": "2026-01-02T03:04:06.000Z",
+          "swipeGroupId": "swipe-aa050001-0000-4000-8000-000000000501",
+          "swipeIndex": 0
+        },
+        {
+          "id": "aa050002-0000-4000-8000-000000000502",
+          "role": "ASSISTANT",
+          "content": "A sibling swipe, beside the gate.",
+          "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+          "createdAt": "2026-01-02T03:04:06.000Z",
+          "swipeGroupId": "swipe-aa050001-0000-4000-8000-000000000501",
+          "swipeIndex": 1
+        }
+      ]
+    },
+    {
+      "id": "aa000006-0000-4000-8000-000000000006",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "chatType": "salon",
+      "participants": [
+        {
+          "id": "aa0a0006-0000-4000-8000-0000000000a6",
+          "character": "bb000001-0000-4000-8000-000000000001",
+          "controlledBy": "llm",
+          "status": "active"
+        },
+        {
+          "id": "aa0b0006-0000-4000-8000-0000000000b6",
+          "character": "bb000002-0000-4000-8000-000000000002",
+          "controlledBy": "user",
+          "status": "active"
+        }
+      ],
+      "messages": [
+        {
+          "id": "aa0f0006-0000-4000-8000-0000000000f6",
+          "role": "USER",
+          "content": "Tell me a tale of the lamplighter.",
+          "participantId": "aa0b0006-0000-4000-8000-0000000000b6",
+          "createdAt": "2026-01-02T03:04:05.000Z"
+        },
+        {
+          "id": "aa060001-0000-4000-8000-000000000601",
+          "role": "ASSISTANT",
+          "content": "A lamplighter once, long ago.",
+          "participantId": "aa0a0006-0000-4000-8000-0000000000a6",
+          "createdAt": "2026-01-02T03:04:06.000Z"
+        }
+      ]
     }
   ],
   "seedMemories": [
@@ -334,6 +415,76 @@
       "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
       "targetMessageId": "aa0f0004-0000-4000-8000-0000000000f4",
       "expectThrow": true
+    },
+    {
+      "name": "inform_reapply_whole_group",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa050001-0000-4000-8000-000000000501"
+    },
+    {
+      "name": "inform_reapply_target_only",
+      "chatId": "aa000006-0000-4000-8000-000000000006",
+      "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+      "targetMessageId": "aa060001-0000-4000-8000-000000000601"
+    }
+  ],
+  "informs": [
+    {
+      "id": "aa0c0001-0000-4000-8000-000000000001",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "batchId": "aa0d0001-0000-4000-8000-000000000001",
+      "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+      "contentMarkdown": "The target line read this.",
+      "createdAt": "2026-01-02T03:04:05.500Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa050001-0000-4000-8000-000000000501"
+    },
+    {
+      "id": "aa0c0002-0000-4000-8000-000000000002",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "batchId": "aa0d0002-0000-4000-8000-000000000002",
+      "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+      "contentMarkdown": "The sibling swipe read this.",
+      "createdAt": "2026-01-02T03:04:05.400Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa050002-0000-4000-8000-000000000502"
+    },
+    {
+      "id": "aa0c0003-0000-4000-8000-000000000003",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "batchId": "aa0d0003-0000-4000-8000-000000000003",
+      "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+      "contentMarkdown": "Consumed by a message outside the group.",
+      "createdAt": "2026-01-02T03:04:05.300Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa0f0005-0000-4000-8000-0000000000f5"
+    },
+    {
+      "id": "aa0c0004-0000-4000-8000-000000000004",
+      "chatId": "aa000005-0000-4000-8000-000000000005",
+      "batchId": "aa0d0004-0000-4000-8000-000000000004",
+      "participantId": "aa0a0005-0000-4000-8000-0000000000a5",
+      "contentMarkdown": "Pending, and never delivered to a swipe.",
+      "createdAt": "2026-01-02T03:04:05.600Z"
+    },
+    {
+      "id": "aa0c0005-0000-4000-8000-000000000005",
+      "chatId": "aa000006-0000-4000-8000-000000000006",
+      "batchId": "aa0d0005-0000-4000-8000-000000000005",
+      "participantId": "aa0a0006-0000-4000-8000-0000000000a6",
+      "contentMarkdown": "The only line this target read.",
+      "createdAt": "2026-01-02T03:04:05.500Z",
+      "consumedAt": "2026-01-02T03:04:07.000Z",
+      "consumedByMessageId": "aa060001-0000-4000-8000-000000000601"
+    },
+    {
+      "id": "aa0c0006-0000-4000-8000-000000000006",
+      "chatId": "aa000006-0000-4000-8000-000000000006",
+      "batchId": "aa0d0006-0000-4000-8000-000000000006",
+      "participantId": "aa0a0006-0000-4000-8000-0000000000a6",
+      "contentMarkdown": "Pending here too.",
+      "createdAt": "2026-01-02T03:04:05.600Z"
     }
   ]
 }

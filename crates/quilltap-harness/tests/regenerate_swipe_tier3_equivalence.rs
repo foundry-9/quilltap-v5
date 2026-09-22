@@ -365,6 +365,30 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
         "the oracle recorded no `cannedStream` line — it is stale (pre-P4.D207) \
          or the mocked provider was never called; re-record it"
     );
+    // P4.106 item 3 — the re-apply is non-vacuous: v4's recorded requests carry
+    // the grouped target's two CONSUMED passages (createdAt order) and the
+    // ungrouped target's one, and never a pending row or a row consumed outside
+    // the group. The Rust run hits these canned streams only by sending the SAME
+    // messages (the key is the request), so this is what pins v5's block too.
+    {
+        let requests: Vec<&str> = canned_streams
+            .iter()
+            .flat_map(|r| r.messages.iter().map(|m| m.content.as_str()))
+            .collect();
+        let any = |needle: &str| requests.iter().any(|c| c.contains(needle));
+        assert!(
+            any("The sibling swipe read this.\n\n---\n\nThe target line read this."),
+            "the grouped swipe's re-applied block is missing from v4's requests"
+        );
+        assert!(
+            any("The only line this target read."),
+            "the ungrouped swipe's re-applied block is missing from v4's requests"
+        );
+        assert!(
+            !any("Pending, and never delivered") && !any("Consumed by a message outside"),
+            "a pending or out-of-group inform reached a swipe's request"
+        );
+    }
 
     let scratch =
         std::env::temp_dir().join(format!("qt-regen-harness-{}-{label}", std::process::id()));
@@ -571,6 +595,8 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     let mut got_mem = dump("memories");
     let mut got_vi = dump("vector_indices");
     let mut got_ve = dump("vector_entries");
+    // P4.106 item 3: a swipe never consumes — the planted rows are unchanged.
+    let got_informs = dump("chat_informs");
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
 
@@ -603,6 +629,20 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     assert_rows_eq("memories", &got_mem, &want_mem);
     assert_rows_eq("vector_indices", &got_vi, &want_vi);
     assert_rows_eq("vector_entries", &got_ve, &want_ve);
+    // P4.106 item 3: no minted value can appear in `chat_informs` (a swipe
+    // never writes it), so the rows compare RAW, and each must equal its plant.
+    let want_informs = oracle_table(&oracle_text, "chat_informs");
+    assert_rows_eq("chat_informs", &got_informs, &want_informs);
+    {
+        let rows = got_informs["rows"].as_array().expect("chat_informs rows");
+        assert_eq!(rows.len(), 6, "the planted chat_informs rows went missing");
+        for r in rows {
+            assert_eq!(
+                r["updatedAt"], r["createdAt"],
+                "a swipe must never write chat_informs: {r}"
+            );
+        }
+    }
 
     // Sanity: two memory survivors (targetC's), two vector entries.
     assert_eq!(

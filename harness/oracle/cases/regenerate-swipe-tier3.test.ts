@@ -391,7 +391,9 @@ async function main(): Promise<void> {
     return canonicalizeRows({ table, columns, rawRows });
   };
 
-  for (const table of ['chats', 'chat_messages', 'memories', 'vector_indices', 'vector_entries']) {
+  // P4.106 item 3: `chat_informs` — a swipe NEVER consumes, so every planted
+  // row must come back exactly as planted.
+  for (const table of ['chats', 'chat_messages', 'memories', 'vector_indices', 'vector_entries', 'chat_informs']) {
     lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable(table)) }));
   }
 

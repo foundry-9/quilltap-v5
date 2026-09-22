@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): regenerate_swipe_tier3's Inform re-apply rows (P4.106 item 3)
+
+_Versions: harness 0.0.897._
+
+P4.106 item 3. `regenerate_swipe_tier3` adds v4's `inform re-apply` arms as two
+calls over six `chat_informs` rows planted through v4's real repository: a
+grouped target whose re-applied block carries the rows consumed by the target
+and its sibling swipe (createdAt order) but not a row consumed outside the
+group or a pending row, and an ungrouped target that re-applies only its own
+row. The family now diffs `chat_informs` (every row must come back exactly as
+planted — a swipe never consumes) and asserts the recorded requests carry
+the re-applied passages. Dropping the swipe-group gather fails the grouped
+call's request; a consume inserted after the swipe is saved fails the
+`chat_informs` table.
+
 #### 2026-09-22 — test(harness): the Inform consumption arms in orchestrator_tier3 + primary_stream_tier3, and the failed-consume line (P4.106 item 2, Tier 2)
 
 _Versions: harness 0.0.896._
