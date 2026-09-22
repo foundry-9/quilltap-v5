@@ -138174,3 +138174,42 @@ heal is deferred by name to the round after this one). It belongs on that
 order's list as an ELEVENTH family — it is not among the four §R.5 names.
 The heal is one line: `ensure_p4d171_columns` on the opened fixture, the same
 repaired-at-boot idiom the other readers of that vintage use.
+
+## P4.D209 — the Scriptorium repo layer (the contract T): bugs 155/156/157, the timestamps + reindex seams, bug 159's image half
+
+_Lane branch `claude/scriptorium-repo-layer-port-e5cc63`, cut from P4.D203's
+tip (S = `144a0e80`, present with the rest of that lane). Work order
+`docs/developer/porting/work-orders/p4.d209-scriptorium-repo-layer.md`._
+
+### §0 — the probe, and the call the lane made on it
+
+**The §R.2 probe FAILED as the order was written and PASSED against the
+refreshed ledger.** At lane open v4 `main` stood at `e7821606f`, two commits
+past the order's §R.1 `f45a517a9`; the lane STOPped and reported, per the
+ground rules, and did not touch the ledger. The human then ran `/driftcheck`
+(v5 `f05cb56a`), which re-pinned §1 at **`a2db63da7`** — sixteen commits past
+the baseline — and ruled, in §1 itself, that **the three new rows are outside
+this round's scope and must not be added to a running lane.** Re-probed against
+that: branch `main`, tree CLEAN, `a2db63da7..main` EMPTY, `1a2b2164c..bugfix`
+EMPTY, HEAD `a2db63da7`. **PASS.** So this lane's mandate is unchanged (the
+thirteen ORDERED rows; P4.D209 owns `0c14fd61f`, `23da0b322` seams 1–5, and
+`186eb09cb`'s image half), and its two pins are untouched — both shas still
+resolve and a pinned worktree is immune to HEAD moving. Measured and recorded
+rather than assumed: **neither new commit touches any path in P4.D209's
+spec-read list** (`lib/database/repositories/doc-mount-*.repository.ts`,
+`lib/mount-index/**`, `app/api/v1/mount-points`, `app/api/v1/chats/[id]/files`,
+`lib/import/quilltap-import/**`).
+
+Pins, both verified by `rev-parse` AND `ls -ld` per ledger §5.1:
+
+| pin | sha | used for |
+|---|---|---|
+| `/tmp/qt-v4-pin-p4d209-f45a517a9` | `f45a517a992bf94fdc6ae34b96791ef1d3538870` | every family this port moves |
+| `/tmp/qt-v4-pin-p4d209-baa85e19b` | `baa85e19b9d904354b999924e3aa8c12f8130811` | the neutrality legs |
+
+### T — the repo-layer contract (`c91aa240`)
+
+**⭐ T's hash is `c91aa240`. P4.D210 branches from it** (§R.10(a)): the widened
+`LinkBlobInput` / `LinkDocumentInput`, `set_link_timestamps`,
+`drop_chunks_for_links`, the per-field SET, and bug 157's two signatures all
+land here. Versions: core 0.0.970, harness 0.0.863, web 0.0.159.
