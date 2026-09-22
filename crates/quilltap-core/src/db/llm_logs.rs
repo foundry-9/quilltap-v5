@@ -82,7 +82,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::text_compression::CompressedText;
+use super::text_compression::{text_to_blob, CompressedText};
 use super::DbError;
 
 // ============================================================================
@@ -532,10 +532,18 @@ impl<'c> LLMLogsRepository<'c> {
         opts: &CreateOptions,
         omit_columns_the_table_lacks: bool,
     ) -> Result<(), DbError> {
-        let request_json = serde_json::to_string(&data.request)
-            .map_err(|e| DbError::Internal(format!("request serialize: {e}")))?;
-        let response_json = serde_json::to_string(&data.response)
-            .map_err(|e| DbError::Internal(format!("response serialize: {e}")))?;
+        // JSON FIRST, then the codec — v4's `documentToRow` runs its compressed
+        // branch before the JSON branch for exactly these two columns
+        // (`llm-logs.repository.ts:42`), which are both. Stringify, then
+        // compress whatever the stringify produced.
+        let request_json = text_to_blob(
+            &serde_json::to_string(&data.request)
+                .map_err(|e| DbError::Internal(format!("request serialize: {e}")))?,
+        );
+        let response_json = text_to_blob(
+            &serde_json::to_string(&data.response)
+                .map_err(|e| DbError::Internal(format!("response serialize: {e}")))?,
+        );
         let usage_json = opt_json(&data.usage, "usage")?;
         let cache_usage_json = opt_json(&data.cache_usage, "cacheUsage")?;
         let raw_provider_usage_json = opt_json(&data.raw_provider_usage, "rawProviderUsage")?;

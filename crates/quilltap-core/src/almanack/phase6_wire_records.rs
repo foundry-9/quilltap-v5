@@ -121,7 +121,7 @@ fn get_stats_by_type(db: &Db, user_id: &str) -> Vec<WireTypeRow> {
          COALESCE(SUM(json_extract("usage", '$.totalTokens')), 0)      AS totalTokens,
          SUM(CASE WHEN "durationMs" IS NOT NULL AND "durationMs" > 0 THEN 1 ELSE 0 END) AS measuredRequests,
          AVG(CASE WHEN "durationMs" IS NOT NULL AND "durationMs" > 0 THEN "durationMs" END) AS avgDurationMs,
-         SUM(CASE WHEN json_extract("response", '$.error') IS NOT NULL THEN 1 ELSE 0 END) AS failures
+         SUM(CASE WHEN json_extract(qt_text("response"), '$.error') IS NOT NULL THEN 1 ELSE 0 END) AS failures
        FROM "llm_logs"
        WHERE "userId" = ?
        GROUP BY "type"
@@ -181,7 +181,7 @@ fn get_stats_by_profile(
          COALESCE(SUM(json_extract("usage", '$.totalTokens')), 0)      AS totalTokens,
          SUM(CASE WHEN "durationMs" IS NOT NULL AND "durationMs" > 0 THEN 1 ELSE 0 END) AS measuredRequests,
          AVG(CASE WHEN "durationMs" IS NOT NULL AND "durationMs" > 0 THEN "durationMs" END) AS avgDurationMs,
-         SUM(CASE WHEN json_extract("response", '$.error') IS NOT NULL THEN 1 ELSE 0 END) AS failures
+         SUM(CASE WHEN json_extract(qt_text("response"), '$.error') IS NOT NULL THEN 1 ELSE 0 END) AS failures
        FROM "llm_logs"
        WHERE "userId" = ? {type_clause}
          {not_null_clause}

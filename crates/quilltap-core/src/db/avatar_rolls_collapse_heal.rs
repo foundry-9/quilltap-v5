@@ -82,6 +82,7 @@ use serde_json::Value;
 // were two v5 copies disagreeing on trailing-slash runs, and this import named
 // which one it wanted; there is nothing left to choose between.)
 use crate::db::doc_mount_file_links::gc_orphaned_file_row;
+use crate::db::text_compression::text_to_blob;
 use crate::db::DbError;
 use crate::photos::photos_paths::is_photos_relative_path;
 use crate::services::avatar_cache::derive_legacy_avatar_cache_key;
@@ -1018,8 +1019,11 @@ fn repoint_messages(main: &Connection, remap: &HashMap<String, String>) -> Resul
              WHERE id = ?4",
             rusqlite::params![
                 json_text(&Value::Array(swapped))?,
-                content,
-                opaque_content,
+                // v4's explicit NULL guards: `content === null ? null :
+                // textToBlob(content)` — a NULL cell stays NULL rather than
+                // becoming an empty compressed blob.
+                content.as_deref().map(text_to_blob),
+                opaque_content.as_deref().map(text_to_blob),
                 row.id
             ],
         )?;

@@ -12,6 +12,56 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(db): every v5 write to a compressed column goes through the codec, and every raw-SQL expression through `qt_text()` (P4.D203)
+
+_Versions: core 0.0.968, harness 0.0.859, cli 0.0.24._
+
+S made v5 able to READ a v4-4.10 instance. This makes it stop laundering the
+format backwards on the way out.
+
+Ten write sites now route through `text_to_blob`: the `chat_messages` message
+insert's `content` and `opaqueContent`, the context-summary insert's `context`,
+the system insert's `description` (`update_message` is a DELETE + re-INSERT
+through `insert_event`, so it needs nothing of its own), `conversation_chunks`
+`create` plus its dynamic `update` patch arm — which matters on its own, or an
+upsert over an existing chunk would launder a compressed cell back to plaintext
+— `llm_logs`'s `request` and `response` (JSON first, then the codec, v4's own
+ordering for the two columns that are both), and the avatar-roll heal's
+write-back under v4's explicit NULL guards.
+
+A new source census, `compressed_column_write_sites_census`, pins all ten. v4
+cannot grow a bypassing write — `documentToRow` is its one chokepoint — while
+v5's writes are independent hand-written statements, so a bypass is the default
+and nothing else in the repo can see one: a tier-2 dump comparison shows plain
+text on both sides for any row under 512 bytes. The census took four rounds of
+false positives to get right, each recorded in the file: it needs a real lexer
+(the naive brace counter panics on ten files whose test fixtures hold braces
+inside string literals), it must KEEP string literals in its output (the SQL it
+searches for IS one — an earlier draft elided them and its mutation proof duly
+survived), it must match per SQL literal rather than per byte window, and it
+must word-bound the verb on both sides (`updatedAt` reads as `UPDATE`).
+
+Raw SQL rewritten: the almanack's two `json_extract(qt_text("response"),
+'$.error')` (v4's `USAGE_AGGREGATE_COLUMNS` — v5's only home for that
+aggregate, so this closes tier-2 item 10 too, not a separate change in
+`llm_logs.rs`), the cold-chunk `trim(qt_text(content)) != ''`, and the render
+reconciler's three `LENGTH(qt_text(cc."content"))`. The last two were
+SILENT-WRONG rather than erroring: `trim(<blob>)` never yields empty, so every
+compressed chunk passed the non-empty test, and `LENGTH(<blob>)` counts
+compressed bytes against a character budget. The reconciler's six unit tests
+went red the moment the wrap landed, because a raw test connection registers no
+UDF — the loud failure the codec's doc calls for — and now register it.
+
+Three of the order's raw-SQL sub-items resolve to NO CHANGE by measurement, each
+recorded in a code comment naming the sha. `f45a517a9` did not touch
+`run-sql-handler.ts`'s `sanitizeRow`, so v4 still hands the model `<blob: N
+bytes>`; v4 mentions `qt_text` to the model nowhere at all, so decoding for the
+tool or advertising the UDF in the Brahma prompt would be a v5 invention; and
+v4's CLI decodes compressed columns in exactly three verbs v5 does not ship,
+while `quilltap db "<SQL>"` prints whatever better-sqlite3 returns — so
+`nodefmt`'s Node Buffer form is already correct. What makes the CLI path usable
+is the registration, not a formatter change.
+
 #### 2026-09-21 — test(harness): the tier-1 codec family — byte parity with v4's real text-compression.ts, in both directions (P4.D203)
 
 _Versions: harness 0.0.858._

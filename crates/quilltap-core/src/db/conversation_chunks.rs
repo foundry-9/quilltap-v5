@@ -63,7 +63,7 @@
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
-use super::text_compression::CompressedText;
+use super::text_compression::{text_to_blob, CompressedText};
 use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::{blob_to_float32, float32_to_blob};
@@ -357,7 +357,8 @@ impl<'c> ConversationChunksRepository<'c> {
                 opts.id,
                 data.chat_id,
                 data.interchange_index,
-                data.content,
+                // REGISTERED COMPRESSED COLUMN (v4 `manager.ts:125`).
+                text_to_blob(&data.content),
                 participant_names_json,
                 message_ids_json,
                 embedding_blob,
@@ -393,7 +394,10 @@ impl<'c> ConversationChunksRepository<'c> {
         }
         if let Some(content) = &patch.content {
             assignments.push(format!("content = ?{}", values.len() + 1));
-            values.push(Box::new(content.clone()));
+            // REGISTERED COMPRESSED COLUMN — the patch arm too, or an upsert
+            // over an existing chunk would launder a compressed cell back to
+            // plaintext.
+            values.push(Box::new(text_to_blob(content)));
         }
         if let Some(participant_names) = &patch.participant_names {
             let participant_names_json = serde_json::to_string(participant_names)
@@ -537,10 +541,16 @@ impl<'c> ConversationChunksRepository<'c> {
     /// empty embedding as SQL NULL, `embedding IS NULL` captures both the
     /// null and empty-vector cases. Returned in rowid (insertion) order to
     /// mirror v4's `findByChatId` iteration. Read-only.
+    ///
+    /// `content` is a REGISTERED COMPRESSED COLUMN, so the emptiness test goes
+    /// through `qt_text()`. Unwrapped it was SILENT-WRONG rather than an
+    /// error: `trim(<blob>)` casts the BLOB to text and a brotli payload never
+    /// trims to empty, so EVERY compressed chunk passed the non-empty test
+    /// (measured in `db/text_compression.rs`).
     pub fn find_cold_chunk_ids_by_chat_id(&self, chat_id: &str) -> Result<Vec<String>, DbError> {
         let mut stmt = self.conn.prepare(
             "SELECT id FROM conversation_chunks \
-             WHERE chatId = ?1 AND embedding IS NULL AND trim(content) != '' \
+             WHERE chatId = ?1 AND embedding IS NULL AND trim(qt_text(content)) != '' \
              ORDER BY rowid ASC",
         )?;
         let rows = stmt.query_map(params![chat_id], |r| r.get::<_, String>(0))?;

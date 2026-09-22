@@ -53,6 +53,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::chats::{ChatUpdate, ChatsRepository};
+use super::text_compression::text_to_blob;
 use super::{chats_messages_read, chats_read, js_number_to_json, DbError};
 use crate::chat_predicates::ParticipantStatus;
 use crate::clock::now_iso;
@@ -883,6 +884,14 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
     let confirmed = m.confirmed.map(i64::from);
     let confirmation_checked = m.confirmation_checked.map(i64::from);
     let confirmation_revised = m.confirmation_revised.map(i64::from);
+    // The four REGISTERED COMPRESSED COLUMNS of `chat_messages` (v4
+    // `manager.ts:134-139`) go through the codec on the way in. v4's write
+    // chokepoint is ONE `documentToRow`; v5's is these independent
+    // hand-written statements, so a write path that bypasses the codec is the
+    // DEFAULT — which is why `compressed_column_write_sites_census` pins every
+    // one of them. Two here; `context` and `description` below.
+    let content = text_to_blob(&m.content);
+    let opaque_content = m.opaque_content.as_deref().map(text_to_blob);
 
     conn.execute(
         "INSERT INTO chat_messages (\
@@ -903,7 +912,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             m.id,
             chat_id,
             m.role,
-            m.content,
+            content,
             raw_response,
             m.token_count,
             m.prompt_tokens,
@@ -923,7 +932,7 @@ fn insert_message(conn: &Connection, chat_id: &str, m: &MessageEventInput) -> Re
             is_silent_message,
             m.system_sender,
             m.system_kind,
-            m.opaque_content,
+            opaque_content,
             host_event,
             custom_announcer,
             carina_meta,
@@ -956,7 +965,7 @@ fn insert_context_summary(
     conn.execute(
         "INSERT INTO chat_messages (id, chatId, type, context, createdAt) \
          VALUES (?1, ?2, 'context-summary', ?3, ?4)",
-        rusqlite::params![c.id, chat_id, c.context, c.created_at],
+        rusqlite::params![c.id, chat_id, text_to_blob(&c.context), c.created_at],
     )?;
     Ok(())
 }
@@ -971,7 +980,7 @@ fn insert_system(conn: &Connection, chat_id: &str, s: &SystemEventInput) -> Resu
             s.id,
             chat_id,
             s.system_event_type,
-            s.description,
+            text_to_blob(&s.description),
             s.prompt_tokens,
             s.completion_tokens,
             s.total_tokens,

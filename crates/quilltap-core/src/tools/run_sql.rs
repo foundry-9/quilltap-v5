@@ -353,6 +353,15 @@ fn sanitize_row(row: &rusqlite::Row, col_names: &[String]) -> Value {
             Ok(rusqlite::types::ValueRef::Text(t)) => {
                 Value::String(String::from_utf8_lossy(t).into_owned())
             }
+            // MEASURED at v4 `f45a517a9` (P4.D203): `f45a517a9` did NOT touch
+            // `run-sql-handler.ts`'s `sanitizeRow`, which still renders every
+            // BLOB as `<blob: ${value.length} bytes>`. So a compressed
+            // `chat_messages.content` reaches the model as a placeholder on
+            // BOTH sides, and v4 tells the model nothing about `qt_text`
+            // anywhere (zero hits across `lib/tools/`, `lib/services/` and
+            // `app/`). Decoding here — or advertising the UDF in the prompt —
+            // would be a v5 INVENTION. The model can call `qt_text()` itself;
+            // the registration on every connection is what makes that work.
             Ok(rusqlite::types::ValueRef::Blob(b)) => {
                 Value::String(format!("<blob: {} bytes>", b.len()))
             }

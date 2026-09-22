@@ -119,7 +119,13 @@ const SELECT_INCOMPLETE_CHATS: &str = "\
     SELECT 1 FROM \"conversation_chunks\" cc
     WHERE cc.\"chatId\" = c.\"id\"
       AND cc.\"embedding\" IS NULL
-      AND LENGTH(cc.\"content\") BETWEEN 1 AND ?1
+      -- qt_text() decodes the compressed-text column so LENGTH counts
+      -- CHARACTERS of the rendered chunk, not bytes of its brotli blob
+      -- (v4 `reconcile-conversation-rendering.ts:108-112`). Unwrapped, this
+      -- compared a compressed byte count against a character budget — which
+      -- was SILENT-WRONG, never an error: `LENGTH(<blob>)` counts compressed
+      -- bytes, measured in `db/text_compression.rs`.
+      AND LENGTH(qt_text(cc.\"content\")) BETWEEN 1 AND ?1
       AND NOT EXISTS (
         SELECT 1 FROM \"embedding_status\" es
         WHERE es.\"entityType\" = 'CONVERSATION_CHUNK'
@@ -136,8 +142,8 @@ const SELECT_INCOMPLETE_CHATS: &str = "\
     SELECT 1 FROM \"conversation_chunks\" cc2
     WHERE cc2.\"chatId\" = c.\"id\"
       AND cc2.\"embedding\" IS NULL
-      AND LENGTH(cc2.\"content\") > ?3
-      AND LENGTH(cc2.\"content\") <= ?4
+      AND LENGTH(qt_text(cc2.\"content\")) > ?3
+      AND LENGTH(qt_text(cc2.\"content\")) <= ?4
   )
 ";
 
@@ -319,6 +325,12 @@ mod tests {
     /// and the gate misjudge every chat.
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        // The scan's three `LENGTH(qt_text(cc."content"))` need the UDF, just
+        // as every real connection does (P4.D203). A raw test open registers
+        // nothing, so without this the six tests below fail with "no such
+        // function: qt_text" — which is the loud failure the codec's doc calls
+        // for, arriving here as six reds the moment the wrap landed.
+        crate::db::text_compression::register_qt_text(&conn).unwrap();
         conn.execute_batch(
             "CREATE TABLE chats (\
                 id TEXT PRIMARY KEY, userId TEXT, renderedMarkdown TEXT, updatedAt TEXT);\

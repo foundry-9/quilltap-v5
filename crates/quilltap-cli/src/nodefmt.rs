@@ -37,6 +37,16 @@ pub fn js_number_to_json(f: f64) -> Value {
 /// A SQLite cell as better-sqlite3 hands it to JS: INTEGER goes through a
 /// (lossy past 2^53) double conversion, REAL is a double, TEXT a string,
 /// NULL null, BLOB a Node `Buffer` (JSON form `{"type":"Buffer","data":[…]}`).
+///
+/// MEASURED at v4 `f45a517a9` (P4.D203): the Buffer form is CORRECT for the
+/// raw-SQL path and must not be decoded. v4's CLI decodes compressed columns
+/// in exactly three verbs — `cmdMessages`, `cmdMessage` and `cmdLog`
+/// (`db-commands.js:484,570,616-617`), all three of which v5 does not ship —
+/// while `quilltap db "<SQL>"` (`bin/quilltap.js:1049-1059`) does plain
+/// `JSON.stringify(rows)` / `console.table(rows)` over whatever
+/// better-sqlite3 returns. A compressed cell therefore prints as a Buffer on
+/// BOTH sides. What makes the path usable is the `qt_text()` registration in
+/// `db_cmd::open_encrypted`: the operator wraps the column in their own SQL.
 pub fn cell_to_js_value(v: rusqlite::types::ValueRef<'_>) -> Value {
     use rusqlite::types::ValueRef;
     match v {
