@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(chat): the one predicate for a summary that is really the chat's own scenario (P4.D208)
+
+_Versions: core 0.0.970, harness 0.0.863._
+
+Ports v4's `lib/chat/scenario-seeded-summary.ts` (bug 158, `da9c4f34f`) as
+`services::scenario_seeded_summary`. Until bug 158, creating a chat wrote the
+chosen scenario into `contextSummary` as well as `scenarioText`, so every
+reader of `contextSummary` treated a brand-new chat as already summarized.
+Creation is fixed and a boot heal clears the rows on disk, but neither reaches
+a chat that arrives — a `.qtap` import or a backup restore carries whatever the
+source instance stored, long after the heal has run. This is the predicate both
+ingest paths will strip through.
+
+v4's `ScenarioSeededSummaryFields` is a structural interface, so v5's is a
+trait, implemented for the raw `Value` the import carries and the `ChatCreate`
+the restore deserializes — one predicate, not two copies that can drift. Byte
+equality is the whole test; the emptiness guard is on the scenario only, and it
+is v4's `length === 0` rather than a trim.
+
+New tier-1 family `scenario_seeded_summary_equivalence` over v4's real module:
+its own nine cases plus the ''/null/absent permutations it does not enumerate,
+27 rows, each driven through both trait implementations. v4's identity contract
+(the untouched row is returned by reference, not copied) is carried as the
+stronger in-place claim and pinned by pointer.
+
 #### 2026-09-22 — fix(test): the swipe edge's row in the typed-only construction census (P4.D207)
 
 _Versions: web 0.0.161._
