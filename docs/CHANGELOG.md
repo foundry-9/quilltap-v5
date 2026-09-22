@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the .qtap import-execute arms over planted informs + the baseline-guard vacuity fix (P4.106 item 6, part 2)
+
+_Versions: harness 0.0.899._
+
+P4.106 item 6 (part 2). `system_import_state` adds three `.qtap` import arms
+over a chats-only export built by v4's real writer on a copy with five planted
+`chat_informs` rows (pending and consumed rows on each chat's real seat, one
+for a seat the chat never had): `skip` lands four on the existing chats and
+drops the stray seat by name, `duplicate` drops every inform (the duplicated
+chats' seats are re-minted and the inform's participant id is not remapped —
+v4's behaviour, reproduced), and the cross-instance arm lands four. The Rust
+copy now runs the boot chain's `ensure_chat_informs_table`, since the
+committed triple predates Inform.
+
+Also fixes a vacuity trap in the family: the baseline guard returned whenever
+`pre != want_pre`, but reported through `diff_states`, which reads an absent
+table as empty, so a baseline differing only by an empty table skipped the
+whole case while printing `OK`. It now returns only when `diff_states`
+recorded a difference. Disabling v5's inform import step, which survived
+before the fix, now fails all three arms.
+
 #### 2026-09-22 — test(harness): planted informs in the backup archive + the pre-4.10 restore arm (P4.106 item 6, part 1)
 
 _Versions: harness 0.0.898._

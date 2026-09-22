@@ -218,6 +218,16 @@ fn fresh_fixture(tag: &str) -> Scratch {
             w.connection(),
         )
         .expect("ensure the transcript-version column on the vintage fixture");
+        // [P4.106 item 6] The committed triple predates Inform (`e7d77bb60`) too.
+        // A live v5 instance has `chat_informs` before any import runs — the
+        // boot chain's `ensure_chat_informs_table` — while v4's repository
+        // creates the collection lazily on its first write. Without this the
+        // import's inform inserts fail `no such table` on the vintage copy (an
+        // instrument gap, measured: the first run of the three
+        // `execute_chats_informs_*` arms). An absent table and an empty one
+        // compare equal in `diff_states`, so every other arm is unmoved.
+        quilltap_core::db::chat_informs::ensure_chat_informs_table(w.connection())
+            .expect("ensure chat_informs on the vintage fixture");
         let touched = w
             .connection()
             .execute(
@@ -1190,7 +1200,46 @@ fn system_import_execute_state_equivalence() {
     // arm.
     // …+ P4.63's bug-105 arm (a plain equality since v4 converged at
     // `679e450e3` — P4.D131).
-    assert_eq!(ran, 37, "expected 37 cases, ran {ran}");
+    // …+ P4.106's three `execute_chats_informs_*` arms (37 + 3 = 40).
+    assert_eq!(ran, 40, "expected 40 cases, ran {ran}");
+    // [P4.106 item 6] The chats-only `.qtap` over planted informs — non-vacuous
+    // by construction: the payload carries all five rows (two pending, two
+    // consumed, one for a seat its chat lacks), the target starts with none,
+    // and the cross-instance arm's v4 end-state lands the four seated rows (the
+    // fifth dropped by name). v5's end-states are the whole-state diff's.
+    for arm in [
+        "execute_chats_informs_skip",
+        "execute_chats_informs_duplicate",
+        "execute_chats_informs_cross_instance",
+    ] {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == arm)
+            .unwrap_or_else(|| panic!("the oracle is missing `{arm}`"));
+        let carried = case["exportData"]["data"]["chatInforms"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0);
+        assert_eq!(carried, 5, "[{arm}] the payload's chatInforms");
+        let pre = case["preState"]["main"]["chat_informs"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0);
+        assert_eq!(pre, 0, "[{arm}] the target starts with no informs");
+    }
+    let cross = cases
+        .iter()
+        .find(|c| c["name"] == "execute_chats_informs_cross_instance")
+        .unwrap();
+    assert_eq!(
+        cross["state"]["main"]["chat_informs"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0),
+        4,
+        "the cross-instance import must land the four seated informs (v4's end-state; v5's \
+         is the whole-state diff above)"
+    );
     // [P4.63 → bug 105] Named explicitly, so a dropped case fails saying WHAT
     // went missing rather than failing the arithmetic above.
     assert!(
@@ -1612,8 +1661,17 @@ fn run_execute_case(
     // as such rather than leaking into every table diff below.
     let pre = read_state(&scratch);
     let want_pre = state_from_value(&case["preState"]);
-    if pre != want_pre {
-        diff_states(&format!("{name} BASELINE"), &pre, &want_pre, failures);
+    // [P4.106] Return early ONLY when `diff_states` itself recorded a baseline
+    // difference. The guard used to be a strict `pre != want_pre`, but
+    // `diff_states` reads an ABSENT table as empty — so a baseline that differed
+    // only by an empty table on one side (v5's copy carries the booted
+    // `chat_informs`, v4's lazily-created collection does not) pushed NO
+    // failure and still returned, skipping the whole case silently while the
+    // loop printed `OK`. Measured: the three `execute_chats_informs_*` arms
+    // "passed" with v5's inform import disabled outright.
+    let baseline_failures = failures.len();
+    diff_states(&format!("{name} BASELINE"), &pre, &want_pre, failures);
+    if failures.len() > baseline_failures {
         return;
     }
 

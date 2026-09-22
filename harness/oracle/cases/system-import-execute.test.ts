@@ -555,6 +555,86 @@ async function buildMergedExport(
   return { manifest, data };
 }
 
+/**
+ * P4.106 item 6 — the chats-only export over PLANTED informs, written through
+ * v4's REAL repository on the `_build` copy only (so every arm's TARGET starts
+ * without them and the import is what writes them), built LAST in `_build` so
+ * no other payload can see the rows. Per the user's first two chats (sorted by
+ * id), on the chat's REAL first seat: a PENDING row, and a CONSUMED row whose
+ * `consumedByMessageId` names a message no destination has (v4's reconcile
+ * keeps it and clears the anchor); plus, on the first chat only, a PENDING row
+ * for a seat that chat does not have (v4 drops it with a named warning —
+ * `reconcile.ts` `remapChatInform`). Five rows.
+ */
+async function buildChatsInformsExport(
+  userId: string,
+): Promise<{ manifest: unknown; data: Record<string, unknown[]> }> {
+  const { ensureCollection, rawQuery } = await import('@/lib/database/manager');
+  const { ChatInformsRepository } = await import(
+    '@/lib/database/repositories/chat-informs.repository'
+  );
+  const { ChatInformSchema } = await import('@/lib/schemas/chat-inform.types');
+  const repos = (await import('@/lib/repositories/factory')).getRepositories();
+  await ensureCollection('chat_informs', ChatInformSchema);
+  const chats = (await rawQuery('SELECT id FROM chats WHERE userId = ? ORDER BY id', [
+    userId,
+  ])) as Array<{ id: string }>;
+  if (chats.length < 2) throw new Error(`inform plant needs two chats, found ${chats.length}`);
+  const repo = new ChatInformsRepository();
+  const plant = async (
+    id: string,
+    chatId: string,
+    participantId: string,
+    body: string,
+    consumedBy: string | null,
+  ) =>
+    repo.create(
+      {
+        chatId,
+        // the id's last group `…00000000000k` → `…0000000000bk`
+        batchId: `${id.slice(0, 24)}0000000000b${id.slice(-1)}`,
+        participantId,
+        contentMarkdown: body,
+        recordMessageId: null,
+        consumedAt: consumedBy ? '2026-01-03T00:00:00.000Z' : null,
+        consumedByMessageId: consumedBy,
+      } as never,
+      {
+        id,
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: consumedBy ? '2026-01-03T00:00:00.000Z' : '2026-01-02T00:00:00.000Z',
+      },
+    );
+  for (const [i, chat] of chats.slice(0, 2).entries()) {
+    const n = i + 1;
+    const full = await repos.chats.findById(chat.id);
+    const seat = (full?.participants ?? [])[0]?.id;
+    if (!seat) throw new Error(`chat ${chat.id} has no seat to plant an inform on`);
+    await plant(`1d0000${n}1-0000-4000-8000-000000000001`, chat.id, seat, `Pending passage ${n}.`, null);
+    await plant(
+      `1d0000${n}2-0000-4000-8000-000000000002`,
+      chat.id,
+      seat,
+      `Consumed passage ${n}.`,
+      `1d0000${n}2-0000-4000-8000-0000000000d2`,
+    );
+    if (n === 1) {
+      await plant(
+        '1d000013-0000-4000-8000-000000000003',
+        chat.id,
+        '1d000013-0000-4000-8000-0000000000a3',
+        'A passage for a seat this chat never had.',
+        null,
+      );
+    }
+  }
+  const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
+  const bytes = await drainBytes(
+    createNdjsonStream(userId, { type: 'chats', scope: 'all', includeMemories: false } as never),
+  );
+  return loadQtap(bytes);
+}
+
 /** The files-only export (`{files, folders}`), assembled from v4's own writer. */
 async function buildFilesExport(
   userId: string,
@@ -1706,6 +1786,8 @@ async function main(): Promise<void> {
     lorianPayload: await buildCharactersExport(spec.userId, [
       'a1000000-0000-4000-8000-000000000001',
     ]),
+    // P4.106 item 6: LAST — it plants informs on this `_build` copy.
+    chatsInformsPayload: await buildChatsInformsExport(spec.userId),
   }));
   const mergedPayload = merged.payload as { manifest: unknown; data: Record<string, unknown[]> };
   const filesPayload = merged.filesPayload as { manifest: unknown; data: Record<string, unknown[]> };
@@ -1714,6 +1796,10 @@ async function main(): Promise<void> {
     data: Record<string, unknown[]>;
   };
   const lorianPayload = merged.lorianPayload as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const chatsInformsPayload = merged.chatsInformsPayload as {
     manifest: unknown;
     data: Record<string, unknown[]>;
   };
@@ -1753,6 +1839,26 @@ async function main(): Promise<void> {
         includeRelatedEntities: false,
       },
     ),
+    // P4.106 item 6: a chats-only `.qtap` carrying `chatInforms` (four planted
+    // rows, pending and consumed), imported into a target that has none. `skip`
+    // meets the chats already present; `duplicate` re-mints them; the
+    // cross-instance arm rewrites every id so the chats (and their informs) are
+    // new to the target.
+    executeCase('execute_chats_informs_skip', () => chatsInformsPayload, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_chats_informs_duplicate', () => chatsInformsPayload, {
+      conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    executeCase('execute_chats_informs_cross_instance', () => rewriteIds(chatsInformsPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
     executeCase('execute_legacy_folds', () => legacyFoldsPayload(), {
       conflictStrategy: 'skip',
       includeMemories: true,

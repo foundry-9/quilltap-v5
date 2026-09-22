@@ -143388,3 +143388,63 @@ A restore of an archive WITH informs is not in this arm — every restore
 fixture is a committed zip and §R.12 allows one new committed artifact this
 round (the `.qtap` bundle); `backup_uuid_remap` already carries the
 with-informs remap.
+
+### Unit 9 — item 6 part 2: `system_import_state`'s inform arms + a vacuity fix
+
+NEW `buildChatsInformsExport` in `system-import-execute.test.ts`, built LAST
+in `_build` (so no other payload sees the rows): five `chat_informs` rows
+planted through v4's REAL repository on the `_build` copy — per the user's
+first two chats (sorted by id), on the chat's REAL first seat, a pending
+row and a consumed row whose `consumedByMessageId` no destination has, plus
+(chat 1 only) a pending row for a seat the chat never had — then the
+`chats` type exported through v4's REAL `createNdjsonStream` (`scope:
+'all'`). **First design measured wrong:** the backup family's plant (fake
+participant ids) made v4 DROP every row (`Dropped an imported inform:
+participant … is not a seat in chat …` — `reconcile.ts` `remapChatInform`),
+so the plant was rebuilt on real seats. Three `executeCase` arms (37 → 40):
+
+- `execute_chats_informs_skip` — v4: the chats are SKIPPED, yet the four
+  seated informs are imported onto the EXISTING chats (fresh ids, anchors
+  cleared), the stray seat dropped by name.
+- `execute_chats_informs_duplicate` — v4: EVERY inform dropped — the
+  duplicated chats' seats come back re-minted and the inform's
+  `participantId` is not remapped through them; plus two `UNIQUE
+  constraint failed: chat_messages.id` message warnings. v5 reproduces all
+  of it. **Candidate v4 filing** (an inform whose chat is duplicated can
+  never land) — recorded here, not filed from the lane.
+- `execute_chats_informs_cross_instance` (`rewriteIds`) — v4: four land.
+
+**Instrument gap, fixed in the family:** the committed `system-data` triple
+predates Inform; v4's repository creates the collection on first write, v5
+relies on the boot chain's `ensure_chat_informs_table`, which the harness
+copy never ran — the first run failed `no such table: chat_informs` (and
+the failed inserts also moved `chats`/`conversation_annotations` — noted,
+instrument-only). `fresh_fixture` now runs the ensure beside the P4.D171 /
+P4.D182 ones.
+
+**⚠ A vacuity trap in the family, found by a SURVIVING mutation:** with the
+ensure in place, disabling v5's inform import outright (`non_empty_array(…,
+"chatInforms").filter(|_| false)`) stayed GREEN. `run_execute_case` gated on
+`if pre != want_pre` (strict `BTreeMap` equality) but reported through
+`diff_states`, which reads an absent table as empty — v5's baseline now
+carried an empty `chat_informs` that v4's lacked, so the guard pushed no
+failure, `return`ed, and the loop printed `OK`. Fixed: return only when
+`diff_states` recorded a failure. The same mutation now reddens all three
+arms (result body on all three, `main.chat_informs` on skip + cross). No
+other arm moved (the 37 older arms' baselines were already equal; runtime
+2.5 s → 6.7 s is the three arms running for the first time). Memory note:
+`a-baseline-guard-that-returns-without-a-failure-skips-the-case`.
+
+Regen AS RUN (probe PASS): `TMPO=/tmp/p4106/qt-sysimportexec-oracle`, the
+triple at `/tmp/p4106/fx/`, `-- "system-import-execute\.test\.ts$"` → 41
+rows. Non-vacuity pins: each arm's payload carries 5 `chatInforms`, each
+target starts with 0, and v4's cross-instance end-state has 4.
+
+**`system_export` — NOT touched (out of ownership), named for the unifier:**
+the `.qtap` export marshal (`services/qtap_export/records.rs`, v4
+`ndjson-writer.ts:347`) is diffed by `system_export_equivalence`, which is
+not in P4.106's ownership table. The order's "omit `chatInforms` from the
+export marshal (item 6's export row reddens)" was carried out on the
+BACKUP marshal (unit 8, `system_backup`); the `.qtap` writer's own
+chatInforms rows remain proven only through v4's side here (the payload is
+v4's). A planted-inform case in `system_export` is the follow-up.
