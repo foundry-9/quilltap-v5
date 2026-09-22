@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(sanitizer): scrub compressed text INSIDE the codec, and re-vendor `help/data-retention.md` (P4.D203)
+
+_Versions: fixture-sanitizer 0.0.4._
+
+The fixture sanitizer routed every BLOB to `scrub_blob`, which replaces the
+bytes with same-length SHA-256 counter-mode noise. Applied to a compressed text
+cell that produces a cell still wearing the `0x51 0x01 0x01` header over a
+brotli payload of pure noise: every reader believes it is compressed text, and
+`blob_to_text` takes its corrupt-payload fallback and hands back the noise as
+UTF-8. Worse, it was inconsistent — the same column's sub-512-byte rows went
+down the text path and sanitized into valid pseudo-text, so one fixture held
+both kinds.
+
+The seven registered columns now decode, scrub the TEXT, and re-encode through
+`text_to_blob`, which keeps the mix v4 would have written: a scrubbed long row
+is still compressed, a scrubbed short row is still plain TEXT. The match is
+keyed by `(table, column)` so `files.description` and
+`doc_mount_file_links.description` are not swept in with
+`chat_messages.description`.
+
+Both of the sanitizer's production opens register `qt_text`. The write one is
+the sharper case: `sanitize_db` replays every `sqlite_master` row into the
+destination verbatim — triggers included — then bulk-INSERTs every user table,
+`chat_messages` among them. On a snapshot carrying v4 4.10's message-search
+triggers that INSERT cannot succeed without the registration.
+
+`help/data-retention.md` byte-copied at the target pin (4,409 → 5,944 bytes).
+The vendored count stays 124 — this round's two new help files belong to
+P4.D205 and P4.D210.
+
 #### 2026-09-21 — fix(retention): the stale-cache sweep collapses `compiledIdentityStacks` too (v4 bug 160) (P4.D203)
 
 _Versions: core 0.0.969, harness 0.0.860._

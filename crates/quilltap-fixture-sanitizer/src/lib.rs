@@ -42,6 +42,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use quilltap_core::db::doc_mount_file_links::sha256_of_string;
+use quilltap_core::db::text_compression::{decode_blob, text_to_blob, TextCell};
 // Link-only: keep the cipher-correct sqlite3 in this crate's link graph.
 use quilltap_sqlite3mc_sys as _;
 
@@ -103,6 +104,14 @@ pub fn open_read(path: &Path, pepper_b64: &str) -> Result<Connection> {
         .map_err(|e| SanitizeError::Key(e.to_string()))?;
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "key", format!("x'{hex}'"))?;
+    // `qt_text()` on both of the sanitizer's opens (P4.D203). The WRITE one is
+    // the sharper case: `sanitize_db` replays every `sqlite_master` row into
+    // the destination VERBATIM — triggers included — and then bulk-INSERTs
+    // every user table, `chat_messages` among them. On a snapshot carrying the
+    // v4 4.10 message-search triggers, two of which call `qt_text`, that
+    // INSERT cannot succeed without the registration: SQLite resolves a
+    // trigger's functions when it COMPILES the trigger program.
+    quilltap_core::db::text_compression::register_qt_text(&conn)?;
     Ok(conn)
 }
 
@@ -113,6 +122,14 @@ pub fn open_write_fresh(path: &Path, pepper_b64: &str) -> Result<Connection> {
         .map_err(|e| SanitizeError::Key(e.to_string()))?;
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "key", format!("x'{hex}'"))?;
+    // `qt_text()` on both of the sanitizer's opens (P4.D203). The WRITE one is
+    // the sharper case: `sanitize_db` replays every `sqlite_master` row into
+    // the destination VERBATIM — triggers included — and then bulk-INSERTs
+    // every user table, `chat_messages` among them. On a snapshot carrying the
+    // v4 4.10 message-search triggers, two of which call `qt_text`, that
+    // INSERT cannot succeed without the registration: SQLite resolves a
+    // trigger's functions when it COMPILES the trigger program.
+    quilltap_core::db::text_compression::register_qt_text(&conn)?;
     Ok(conn)
 }
 
@@ -330,6 +347,42 @@ fn sanitize_cell(
         _ => {}
     }
 
+    // A REGISTERED COMPRESSED COLUMN: scrub INSIDE the codec (P4.D203).
+    //
+    // Without this a compressed cell fell to the generic `Blob` arm below,
+    // which replaces the bytes with SHA-256 counter-mode noise of the same
+    // length. The result is a cell that still carries the `0x51 0x01 0x01`
+    // header — so every reader believes it is compressed text — over a brotli
+    // payload that is pure noise. `blob_to_text` then takes its corrupt-payload
+    // fallback and hands the caller the noise as UTF-8. Worse, it is
+    // INCONSISTENT: the same column's sub-512-byte rows go down the `Text` arm
+    // and sanitize into valid pseudo-text, so one fixture holds both.
+    //
+    // Decoding first, scrubbing the TEXT, then re-encoding through
+    // `text_to_blob` keeps the mix v4 would have written: a scrubbed long row
+    // is still compressed (same-length pseudo-text stays over the floor) and a
+    // scrubbed short row is still plain TEXT.
+    if is_compressed_column(table, col) {
+        return match val {
+            SqlValue::Null => SqlValue::Null,
+            SqlValue::Blob(b) => {
+                let text = decode_blob(&b);
+                let scrubbed = scrub_text_value(col, &text);
+                match text_to_blob(&scrubbed) {
+                    TextCell::Text(t) => SqlValue::Text(t),
+                    TextCell::Blob(bytes) => SqlValue::Blob(bytes),
+                }
+            }
+            // Plain TEXT below the floor, or a legacy plaintext row: scrub the
+            // text and let the codec decide again, exactly as a v5 write would.
+            SqlValue::Text(t) => match text_to_blob(&scrub_text_value(col, &t)) {
+                TextCell::Text(t) => SqlValue::Text(t),
+                TextCell::Blob(bytes) => SqlValue::Blob(bytes),
+            },
+            other => other,
+        };
+    }
+
     // Generic per-column scrub.
     match val {
         SqlValue::Null => SqlValue::Null,
@@ -338,6 +391,23 @@ fn sanitize_cell(
         SqlValue::Blob(b) => SqlValue::Blob(scrub_blob(col, &b)),
         SqlValue::Text(s) => SqlValue::Text(scrub_text_value(col, &s)),
     }
+}
+
+/// The seven columns v4 registers as compressed text (`manager.ts:125,134-139`
+/// and `llm-logs.repository.ts:42`), keyed by table so a same-named column on
+/// another table (`files.description`, `doc_mount_file_links.description`) is
+/// NOT swept in.
+fn is_compressed_column(table: &str, col: &str) -> bool {
+    matches!(
+        (table, col),
+        ("chat_messages", "content")
+            | ("chat_messages", "opaqueContent")
+            | ("chat_messages", "description")
+            | ("chat_messages", "context")
+            | ("conversation_chunks", "content")
+            | ("llm_logs", "request")
+            | ("llm_logs", "response")
+    )
 }
 
 // ---- classification -------------------------------------------------------
@@ -787,5 +857,82 @@ mod tests {
         // Leading slash (a folder path) keeps its empty root segment + structure.
         let f = scrub_path("/SecretFolder");
         assert!(f.starts_with('/') && !f.contains("SecretFolder"));
+    }
+
+    /// P4.D203: a compressed cell and a plaintext cell in the SAME column, both
+    /// sanitized correctly — and the compressed one sanitized INSIDE the codec,
+    /// not over its bytes.
+    ///
+    /// Before this the long row fell to the generic `Blob` arm and came out as
+    /// SHA-256 noise still wearing the `0x51 0x01 0x01` header: undecodable by
+    /// every reader that believes the header, and sitting beside short rows in
+    /// the same column that sanitized into perfectly valid pseudo-text.
+    #[test]
+    fn a_compressed_column_is_scrubbed_inside_the_codec() {
+        let ov = FileOverrides::default();
+        let secret = "Leilani told him about the severed hand. ".repeat(40);
+        assert!(
+            secret.len() > 512,
+            "the long row must clear the codec's floor"
+        );
+
+        let stored = match text_to_blob(&secret) {
+            TextCell::Blob(b) => b,
+            TextCell::Text(_) => panic!("a 1640-byte compressible string must compress"),
+        };
+        assert_eq!(&stored[..3], &[0x51, 0x01, 0x01]);
+
+        // --- the long row: in as a BLOB, out as a BLOB, decodable, scrubbed --
+        let out = sanitize_cell(
+            "chat_messages",
+            "content",
+            SqlValue::Blob(stored.clone()),
+            None,
+            &ov,
+        );
+        let SqlValue::Blob(out_bytes) = out else {
+            panic!("a long compressed row must stay compressed after scrubbing");
+        };
+        assert_eq!(
+            &out_bytes[..3],
+            &[0x51, 0x01, 0x01],
+            "the scrubbed cell must still carry the codec header"
+        );
+        let decoded = decode_blob(&out_bytes);
+        // The payload DECODES — the thing the old behaviour destroyed.
+        assert!(
+            !decoded.is_empty(),
+            "the scrubbed payload must decode to text, not noise"
+        );
+        assert!(
+            !decoded.contains("Leilani") && !decoded.contains("severed"),
+            "the secret survived the scrub: {decoded:.120}"
+        );
+        assert_ne!(decoded, secret);
+
+        // --- a short row in the SAME column: in as TEXT, out as TEXT --------
+        let short = "a brief aside";
+        let out_short = sanitize_cell(
+            "chat_messages",
+            "content",
+            SqlValue::Text(short.to_string()),
+            None,
+            &ov,
+        );
+        let SqlValue::Text(short_text) = out_short else {
+            panic!("a sub-floor row must stay plain TEXT");
+        };
+        assert_ne!(short_text, short, "the short row must still be scrubbed");
+
+        // --- a NULL cell stays NULL ----------------------------------------
+        assert!(matches!(
+            sanitize_cell("chat_messages", "content", SqlValue::Null, None, &ov),
+            SqlValue::Null
+        ));
+
+        // --- a same-named column on ANOTHER table is NOT swept in -----------
+        assert!(!is_compressed_column("files", "description"));
+        assert!(!is_compressed_column("doc_mount_file_links", "description"));
+        assert!(is_compressed_column("chat_messages", "description"));
     }
 }
