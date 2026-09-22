@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(salon): a scenario is not a summary, and the greeting stops opening from one (P4.D208)
+
+_Versions: core 0.0.971, harness 0.0.864._
+
+Ports the two halves of v4 bug 158 (`da9c4f34f`) that stop the defect being
+made. Chat creation no longer seeds `contextSummary` with the chosen scenario —
+the scenario goes in `scenarioText` and stays there, and only the summarizer
+writes the summary column. And `build_recent_conversations_block`, which
+inlined that column whole, now caps each entry through the same
+`truncate_gist(280)` its sibling recap uses, renders a heading alone when the
+gist trims to nothing, and closes with `READ_CONVERSATION_CALL_NOTE`. A wrong
+value is now a short wrong value that announces itself as a past transcript
+rather than a stage direction sitting next to the instruction to greet.
+
+`chat_create_capstone_equivalence` regenerated at the target pin, RED-FIRST:
+the oracle writes `contextSummary: null` on all 182 chat rows across the corpus
+and v5 wrote the scenario on `two_char_scenario`. v4's third regression case —
+"never writes the scenario text into contextSummary, whatever the scenario is"
+— lands as a named invariant over every chat each case writes, so a future
+corpus row that reintroduces the seed fails by name rather than as one cell in
+a 96-column diff.
+
+That regen also surfaced a P4.D203-class red the codec census did not reach,
+because it is in the harness rather than in `db/`: the family's `message_order`
+projection bound `content` as `Option<String>` and a target-pinned fixture
+stores every cell over 512 bytes as a brotli BLOB
+(`InvalidColumnType(5, "content", Blob)`). The cell is now RENDERED as hex, not
+decoded — v4's `canonValue` and v5's `cell_to_json` both hex a BLOB, so the
+sibling `chatMessages` section already compares the stored form and this one
+must agree with it.
+
+New family `recent_conversations_block_equivalence` over a nine-chat fixture
+built by v4's real repository, driving v4's real `buildRecentConversationsBlock`
+through its real repository rather than a mock — so the read's
+`contextSummary IS NOT NULL` filter is under test too, which is the only thing
+that makes the empty-gist arm reachable. The corpus covers the 445-character
+scenario capped with an ellipsis, 280 exactly against 281, a padded summary
+trimmed before measuring, and the whitespace-only chat that renders its heading
+alone. v4's `limit <= 0` short circuit is proven by silence: the read is handed
+a connection with no `chats` table, so reaching it would warn — with a firing
+pin at a positive limit, which does.
+
+Mutation proofs: restoring the seed reddens the named invariant on
+`two_char_scenario`; capping at 281, rendering a body line for an empty gist,
+dropping the closing note, and dropping the trim each redden the block
+comparison and are green on revert.
+
 #### 2026-09-21 — feat(chat): the one predicate for a summary that is really the chat's own scenario (P4.D208)
 
 _Versions: core 0.0.970, harness 0.0.863._

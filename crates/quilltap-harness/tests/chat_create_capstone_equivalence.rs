@@ -588,9 +588,28 @@ fn dump_message_order(db: &Db) -> Value {
             .query_map([], |row| {
                 let mut cells: Vec<Value> = Vec::with_capacity(6);
                 for i in 0..6 {
-                    cells.push(match row.get::<_, Option<String>>(i)? {
-                        Some(s) => Value::String(s),
-                        None => Value::Null,
+                    // `content` is a compressed column since v4 `f45a517a9`, so
+                    // a fixture built at the target pin stores every cell of 512
+                    // bytes or more as a brotli BLOB, and the `Option<String>`
+                    // bind this used raised `InvalidColumnType(5, "content",
+                    // Blob)` on the whole dump (the P4.D203 class, at a read
+                    // site in the harness rather than in `db/`).
+                    //
+                    // The cell is RENDERED, not decoded: v4's `canonValue` and
+                    // v5's `cell_to_json` both hex a BLOB, so the sibling
+                    // `chatMessages` section already compares the stored form
+                    // and this section must agree with it. Decoding here would
+                    // also cost the comparand that storage form — P4.D203
+                    // measured that a decoded comparand cannot tell a
+                    // re-compressed cell from a plaintext one. Both sides read
+                    // the same v4-written bytes, so no parity question arises.
+                    cells.push(match row.get_ref(i)? {
+                        rusqlite::types::ValueRef::Null => Value::Null,
+                        rusqlite::types::ValueRef::Text(b) => {
+                            Value::String(String::from_utf8_lossy(b).into_owned())
+                        }
+                        rusqlite::types::ValueRef::Blob(b) => Value::String(hex::encode(b)),
+                        other => panic!("unexpected cell kind in message_order: {other:?}"),
                     });
                 }
                 Ok(Value::Array(cells))
@@ -1025,6 +1044,33 @@ fn chat_create_capstone_matches_oracle() {
                 .map(|r| json!([r.provider, r.model]))
                 .collect(),
         );
+
+        // P4.D208 (v4 bug 158, `da9c4f34f`): v4's third regression case —
+        // "never writes the scenario text into contextSummary, whatever the
+        // scenario is" — as an invariant over every chat this case wrote,
+        // rather than a row comparison that only fires where the corpus
+        // happens to carry a scenario. The precise shape of the bug is the two
+        // columns holding the same bytes, so that is what is forbidden. The
+        // row-level comparison below still proves the column's exact value;
+        // this names the defect, so a future corpus row that reintroduces the
+        // seed fails HERE, by name, instead of as one cell in a 96-column diff.
+        for row in got_chats
+            .get("rows")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let summary = row.get("contextSummary").and_then(Value::as_str);
+            let scenario = row.get("scenarioText").and_then(Value::as_str);
+            if let Some(scenario) = scenario.filter(|s| !s.is_empty()) {
+                assert_ne!(
+                    summary,
+                    Some(scenario),
+                    "case {}: the chat's scenario was seeded into contextSummary (v4 bug 158)",
+                    c.name
+                );
+            }
+        }
 
         let sections: [(&str, Value, Value); 8] = [
             (

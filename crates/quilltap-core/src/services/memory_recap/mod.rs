@@ -150,7 +150,7 @@ pub(crate) const RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS: i64 = 32000;
 /// v4 `truncateGist` — cap an inlined gist so the recap block stays bounded.
 /// `text.trim()`; if ≤ `max_chars` return it, else `slice(0, max_chars-1)` +
 /// `trimEnd()` + `'…'`. UTF-16-faithful slice (JS `String.length` / `.slice`).
-fn truncate_gist(text: &str, max_chars: usize) -> String {
+pub(crate) fn truncate_gist(text: &str, max_chars: usize) -> String {
     let trimmed = crate::jsstr::js_trim(text);
     if crate::jsstr::utf16_len(trimmed) <= max_chars {
         return trimmed.to_string();

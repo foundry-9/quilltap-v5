@@ -1416,7 +1416,16 @@ where
         "userId": user_id,
         "participants": Value::Array(participants.clone()),
         "title": req.title.clone().unwrap_or_else(|| format!("Chat with {character_name}")),
-        "contextSummary": resolved_scenario.clone(),
+        // A scenario is a stage direction for a conversation that has not
+        // happened; `contextSummary` is a record of one that has. Seeding the
+        // summary with the scenario — which this did until v4's bug 158
+        // (`da9c4f34f`), from before `scenarioText` had a column of its own —
+        // makes every reader of `contextSummary` believe a brand-new chat has
+        // already been summarized, and hands the greeting's "Recent
+        // Conversations" block a stage direction to open from. The scenario
+        // goes in `scenarioText` below, and stays there; only the summarizer
+        // writes this.
+        "contextSummary": Value::Null,
         "tags": Value::Array(built.tags.iter().cloned().map(Value::String).collect()),
         "roleplayTemplateId": default_roleplay_template_id,
         "timestampConfig": resolved_timestamp_config,
@@ -3020,19 +3029,49 @@ pub fn build_recent_conversations_block(
     if eligible.is_empty() {
         return String::new();
     }
+    // Each entry is capped through `truncate_gist` and the block closes with
+    // `READ_CONVERSATION_CALL_NOTE`, exactly as the sibling recap renders the
+    // same rows on the per-turn path (`memory_recap`). Both matter here, and
+    // v4's bug 158 (`da9c4f34f`) is why: a chat created before that fix carried
+    // its own scenario in `contextSummary`, so an unsummarized prior chat
+    // contributed its entire raw scenario — 9 KB of it, in the reported case —
+    // to the greeting prompt, at full length, with nothing marking it as past,
+    // immediately before "open with a concise greeting". The character greeted
+    // from it. The seed is fixed at the source and the boot heal clears the old
+    // rows; these two lines are the standing guard, so an entry that is somehow
+    // the wrong text is a TRUNCATED wrong text that announces itself as a
+    // transcript the model may go read, rather than a stage direction sitting
+    // next to the instruction to act.
+    //
+    // The empty arm renders the heading ALONE, not a heading with a blank line
+    // under it. It is reachable: the read filters `contextSummary IS NOT NULL`
+    // and nothing more, so a whitespace-only summary arrives here and trims to
+    // nothing. `utf16_len` (not `is_empty`) because v4 measures `gist.length`.
     let entries: Vec<String> = eligible
         .iter()
         .map(|c| {
             let title = c.get("title").and_then(Value::as_str).unwrap_or_default();
             let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
-            let summary = c
+            let gist_raw = c
                 .get("contextSummary")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            format!("#### {title} (`{id}`)\n{summary}")
+            let gist = crate::jsstr::js_trim(gist_raw);
+            if crate::jsstr::utf16_len(gist) > 0 {
+                format!(
+                    "#### {title} (`{id}`)\n{}",
+                    super::memory_recap::truncate_gist(gist, 280)
+                )
+            } else {
+                format!("#### {title} (`{id}`)")
+            }
         })
         .collect();
-    format!("### Recent Conversations\n\n{}", entries.join("\n\n"))
+    format!(
+        "### Recent Conversations\n\n{}\n\n{}",
+        entries.join("\n\n"),
+        super::memory_recap::READ_CONVERSATION_CALL_NOTE
+    )
 }
 
 // ============================================================================

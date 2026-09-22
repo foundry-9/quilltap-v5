@@ -1,0 +1,273 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "characterId": "bbbb2222-2222-4222-8222-222222222222",
+  "currentChatId": "cc000005-0000-4000-8000-000000000005",
+  "chats": [
+    {
+      "id": "cc000001-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Damp Curtains and Cold Water",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-06T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "# Scenario: Amy's Pool\n\nFollow the stream north from the Troll Bridge \u2014 not across it, not under it, but along the east bank, on the same side as the mansion and the Cottage, where the grass is soft and the path is more suggestion than fact. A hundred yards, then two hundred, and the Cottage is somewhere behind your right shoulder, screened by its privacy hedge. Amy is in her pool, and Charlie walks up the path and sits down on the flat rocks next to it.",
+      "type": "salon"
+    },
+    {
+      "id": "cc000002-0000-4000-8000-000000000002",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "The Wrong Wall",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-05T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000002-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "They argued about a wall.",
+      "type": "salon"
+    },
+    {
+      "id": "cc000003-0000-4000-8000-000000000003",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Untold",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-04T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000003-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "   ",
+      "type": "salon"
+    },
+    {
+      "id": "cc000004-0000-4000-8000-000000000004",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Never Summarized",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-03T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000004-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": null,
+      "type": "salon"
+    },
+    {
+      "id": "cc000005-0000-4000-8000-000000000005",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "The Chat In Hand",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-07T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000005-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "This one is being greeted right now.",
+      "type": "salon"
+    },
+    {
+      "id": "cc000006-0000-4000-8000-000000000006",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Somebody Else's Afternoon",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-08T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000006-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb3333-3333-4333-8333-333333333333",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "A different character entirely.",
+      "type": "salon"
+    },
+    {
+      "id": "cc000007-0000-4000-8000-000000000007",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Exactly At The Cap",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-02T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000007-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "type": "salon"
+    },
+    {
+      "id": "cc000008-0000-4000-8000-000000000008",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "One Over The Cap",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-01T12:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000008-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "type": "salon"
+    },
+    {
+      "id": "cc000009-0000-4000-8000-000000000009",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Padded",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "lastMessageAt": "2026-03-01T06:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000009-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "connectionProfileId": "cccc0001-0000-4000-8000-000000000001",
+          "displayOrder": 0,
+          "isActive": true,
+          "status": "active",
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "contextSummary": "   spaced out   ",
+      "type": "salon"
+    }
+  ],
+  "calls": [
+    [
+      "all-nine-limit-20",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "cc000005-0000-4000-8000-000000000005",
+      20
+    ],
+    [
+      "limit-two-takes-the-newest",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "cc000005-0000-4000-8000-000000000005",
+      2
+    ],
+    [
+      "limit-one",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "cc000005-0000-4000-8000-000000000005",
+      1
+    ],
+    [
+      "limit-zero-asks-nothing",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "cc000005-0000-4000-8000-000000000005",
+      0
+    ],
+    [
+      "limit-negative-asks-nothing",
+      "bbbb2222-2222-4222-8222-222222222222",
+      "cc000005-0000-4000-8000-000000000005",
+      -3
+    ],
+    [
+      "no-exclusion-includes-the-greeted-chat",
+      "bbbb2222-2222-4222-8222-222222222222",
+      null,
+      20
+    ],
+    [
+      "other-character",
+      "bbbb3333-3333-4333-8333-333333333333",
+      null,
+      20
+    ],
+    [
+      "character-with-no-chats",
+      "bbbb4444-4444-4444-8444-444444444444",
+      null,
+      20
+    ]
+  ]
+}
