@@ -143530,3 +143530,30 @@ Regen AS RUN (probe PASS): `TMPO=/tmp/p4106/qt-cd-oracle` (+ `lib/`), the
 pair copied to `/tmp/p4106/fx/`, `TZ=UTC … -- "chat-dialogs-export\.test\.
 ts$"` → 16 rows. Mutation: v5's JSONL filter also dropping `systemKind ==
 "inform"` → exactly `export_with_inform` red.
+
+### Lane gate + close (P4.106)
+
+§R.2 probe re-run before every regen batch and before the gate: PASS
+throughout (v4 `main` @ `a2db63da7`, clean, both logs empty). Gate on the
+committed tree, `CARGO_INCREMENTAL=0 TZ=UTC`, one sentinel-logged script:
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets; `cargo build --workspace
+--release` clean (6 m); `cargo test --workspace --no-fail-fast` with the
+lane's env block (the twelve families' vars, every other family withheld)
+**615 binaries / 3,620 passed / 0 failed / 3 ignored**, every lane family
+confirmed RUN by name; `regenerate_swipe_tier3_equivalence` 2/2 by name
+with `--test-threads=1` (its header's rule — withheld from the workspace
+block). The FIRST gate run caught two lane defects, both fixed in commit
+`fix(test): P4.106 gate fixes`: the new wire test asserted list/seat ORDER,
+which ties on the millisecond and breaks on random row ids (one red in
+615 binaries; now compared as sets), and a `clippy::cmp_owned` in the
+pre-4.10 restore assert. Censuses re-run: `zod_version_guard`,
+`provider_sdk_version_guard` (NEW), `chat_informs_swipe_handle` green;
+`dispatch_wrong_type_census` unmoved (no verb added).
+
+Versions at close: core 0.0.993 (+1, the §R.10(j) lift), harness 0.0.902
+(+12), web 0.0.172 (+2); host/cli/tauri/fixture-sanitizer/SPA unchanged.
+Oracles were staged under `/tmp/p4106/` and are NOT committed (the unifier
+regenerates from its own pin); the one new committed artifact is
+`qtap-import-two-link-blob.qtap` (2,757 bytes). Cross-order header
+sentences appended to P4.D205, P4.D208, P4.D209, P4.D211 (§R.7).

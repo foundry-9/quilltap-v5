@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — docs(porting): the P4.106 lane close — gate, status headers
+
+_Docs-only change._
+
+Closes the P4.106 lane record: the gate results, the order's status header
+(what landed, what the order got wrong, the candidate v4 filings, the one
+named deferral), and one sentence each on the P4.D205, P4.D208, P4.D209 and
+P4.D211 headers naming the items this round closed.
+
 #### 2026-09-22 — fix(test): P4.106 gate fixes — the Inform wire test's tie-order flake, a clippy cmp_owned
 
 _Versions: harness 0.0.902, web 0.0.172._
