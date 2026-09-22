@@ -105,6 +105,11 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
       !P4D207_SERVER_LANDED,
       'awaits P4.D207: messageSwipe { stream: true } + the swipeProgress events',
     );
+    // A send plus TWO re-rolls: three real turns against the mock, each with
+    // its own settle wait. The suite's 30 s per-test budget is not enough in
+    // the full run (the first full-suite red was the test timeout landing on
+    // the 3/3 poll's first sample, not the assertion), so this beat is slow.
+    test.slow();
     await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
