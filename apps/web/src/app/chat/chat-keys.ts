@@ -42,4 +42,15 @@ export const chatKeys = {
    * Already covered by {@link detail}'s prefix — see `realtime-topic-map.ts`.
    */
   gallery: (chatId: string) => ['chat', chatId, 'gallery'] as const,
+  /**
+   * The Inform batches still owed in one conversation (v4
+   * `queryKeys.chats.informs`, `e7d77bb60`) — what the composer's "Informing …"
+   * chips read from `chatInformsList`.
+   *
+   * Like {@link gallery} it already sits under {@link detail}'s prefix, so the
+   * `chats` realtime topic reaches it with no row of its own: a post inserts the
+   * Host record, a consumed row rides the assistant-message insert, and a cancel
+   * publishes `chats` explicitly. See `realtime-topic-map.ts`.
+   */
+  informs: (chatId: string) => ['chat', chatId, 'informs'] as const,
 };

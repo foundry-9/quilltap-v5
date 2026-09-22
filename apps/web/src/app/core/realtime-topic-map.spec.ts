@@ -47,6 +47,21 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     expect(background.slice(0, prefix.length)).toEqual([...prefix]);
   });
 
+  it('the row-scoped chats prefix reaches the pending-informs key (P4.D206)', () => {
+    // v4 `e7d77bb60` adds `queryKeys.chats.informs(id)` as its own row here and
+    // a spec case to match ("refreshes the pending informs on the chats
+    // topic"). v5 needs no row — `['chat', id]` is the parent of
+    // `['chat', id, 'informs']` — so the case becomes the same assertion the
+    // gallery's did: the publish a post, a consume or a cancel makes must reach
+    // the composer chips with no poll of their own.
+    const [prefix] = queryKeysForTopic('chats', 'chat-7') as readonly (readonly unknown[])[];
+    const informs = chatKeys.informs('chat-7');
+    expect(informs.slice(0, prefix.length)).toEqual([...prefix]);
+    // v4's other half: another chat's hint must not reach this chat's chips.
+    const [other] = queryKeysForTopic('chats', 'other-chat') as readonly (readonly unknown[])[];
+    expect(informs.slice(0, other.length)).not.toEqual([...other]);
+  });
+
   it('a row-scoped chats hint must NOT reach the collection reads', () => {
     const [prefix] = queryKeysForTopic('chats', 'chat-7') as readonly (readonly unknown[])[];
     expect(prefix[0]).not.toBe(chatKeys.all[0]);

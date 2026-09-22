@@ -140400,3 +140400,70 @@ run by name with its oracle var set, **ZERO `SKIP:` lines**:
 | `system_restore_state` | 2 passed (19 restore cases incl. `restore_bug158_replace`) |
 | `host_scenario_seeded_summary_heal` | 3 passed |
 | `scenario_seeded_summary_heal` + `scenario_seeded_summary` unit tests | 6 passed |
+
+## P4.D206 — the Salon SPA lane: Inform's client half + the streamed swipe's client half (`f45a517a9` round)
+
+Branch `claude/p4-d206-salon-spa-f45a517a9`, from `main` `c3a615da` (this lane
+does NOT stack on S — it touches no Rust and no DB). Oracle baseline
+`baa85e19b`; the ledger's §2 freshness probe PASSED at lane start (branch
+`main`, HEAD `f45a517a9`, both logs empty, tree clean). This lane regenerates
+NOTHING from the harness: its oracles are v4's own client specs at
+`f45a517a9`, transcribed with sha and path in each spec header, plus the §S.1
+/ §S.2 contract tables. `npm test` + `npm run build` + `npm run lint` are the
+gate.
+
+### Unit 1 — the contract, the query key, the topic-map row, the chip label
+
+v4 sources read at `f45a517a9`: `components/chat/InformDialog.tsx`,
+`components/chat/PendingInformChips.tsx`, `lib/query/keys.ts:60-66`,
+`lib/realtime/topic-map.ts:64-71`, `__tests__/unit/realtime/topic-map.test.ts`,
+`app/salon/[id]/components/system-message-labels.ts`.
+
+Landed:
+
+- `core/core-contract.ts` — a fenced `=== P4.D206 ===` block at the end:
+  `PendingInformBatch`, `ChatInformRequest` + `ChatInformResult`,
+  `ChatInformsListRequest` + `ChatInformsListResult`,
+  `ChatInformCancelRequest` + `ChatInformCancelResult`, `SwipeProgressEvent`
+  and `isSwipeProgressEvent`; the three request types wired into the
+  `CoreRequest` union beside the Post Office block; `MessageSwipeRequest`
+  gains `stream?: boolean` (§S.2).
+- `chat/chat-keys.ts` — `informs: (chatId) => ['chat', chatId, 'informs']`.
+- `chat/system-message-labels.ts` — `inform: 'out of character'`.
+- `core/realtime-topic-map.ts` — a `=== P4.D206 ===` comment only.
+
+**MEASURED, a structural divergence from v4 worth naming:** v4's `e7d77bb60`
+adds `queryKeys.chats.informs(id)` as a NEW ROW in the row-scoped `chats`
+entry of `lib/realtime/topic-map.ts`, and a spec case ("refreshes the pending
+informs on the chats topic") to match. **v5 needs no row.** Its `chats` row
+returns the single prefix `chatKeys.detail(id)` = `['chat', id]`, which is
+the parent of `['chat', id, 'informs']` — exactly the reason P4.D176 added no
+row for `chatKeys.gallery`. So v4's row becomes, in v5, two assertions: the
+prefix-parent pin in `chat-keys.spec.ts` and the topic-map's own
+`the row-scoped chats prefix reaches the pending-informs key (P4.D206)`,
+which also carries v4's negative half (another chat's hint must not reach this
+chat's chips).
+
+**Also measured:** v4 spells the key `['chats', id, 'informs']` (PLURAL first
+element, because v4's chat detail key is plural). v5's row word has been
+SINGULAR since P4.D125 — `['chat', id]` — precisely so the collection prefix
+`['chats']` cannot reach a row key. The informs key therefore follows the
+family it belongs to rather than quoting v4's first element; pinned in
+`chat-keys.spec.ts` with the reason in the test's own name.
+
+Specs: `chat-keys.spec.ts` (+3 cases), `realtime-topic-map.spec.ts` (+1),
+`system-message-labels.spec.ts` (+4, incl. the importance fall-through and the
+content-inference negative, per the `scenario-change` precedent of pinning the
+default arm rather than trusting it).
+
+Gate: `npm test` 437 files / **7,416 passed** (baseline before the unit: 437 /
+7,408); `npm run build` clean; `npm run lint` clean. SPA 0.5.742.
+
+**A trap worth the note (it fired here):** `npx prettier --write <file>` on
+these SPA sources is never a no-op — `core-contract.ts`,
+`system-message-labels{,.spec}.ts` and `realtime-topic-map.spec.ts` all carry
+PRE-EXISTING lines prettier disagrees with, so a `--write` turned a 44-line
+change into a 254-line one. Reverted and re-applied by hand, with the added
+lines written prettier-clean and checked by diffing `npx prettier <file>`
+against the working copy (every remaining difference is on a line this lane
+never touched). Prettier is not in the SPA gate, so the churn buys nothing.

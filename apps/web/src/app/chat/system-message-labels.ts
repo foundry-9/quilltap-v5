@@ -56,6 +56,10 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   'autonomous-room-halfway': 'halfway through',
   'autonomous-room-nearing-end': 'nearing the end',
   'mail-delivery': 'mail delivery',
+  // The Host record an Inform leaves behind, for the operator alone (v4
+  // `e7d77bb60`). Deliberately NOT "inform": the chip names what the row IS —
+  // a note passed outside the scene — rather than the verb that made it.
+  inform: 'out of character',
   'custom-tool-result': 'roll outcome',
   'custom-tool-error': "the table couldn't deal",
   'turn-pass': 'nothing to add',

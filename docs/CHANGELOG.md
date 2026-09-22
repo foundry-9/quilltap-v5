@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — feat(salon): the Inform contract, its query key and the record's chip label (P4.D206 unit 1)
+
+_Versions: SPA 0.5.742._
+
+The SPA's contract half of two v4 rows this round absorbs. `core-contract.ts`
+gains the three Inform verbs (`chatInform`, `chatInformsList`,
+`chatInformCancel`) and their result shapes from the round's §S.1 table,
+`PendingInformBatch`, the streamed swipe's `MessageSwipeRequest.stream` flag,
+and `SwipeProgressEvent` + `isSwipeProgressEvent` from §S.2 — the latter
+modelled on the existing `GeneratorProgressEvent` narrowing helper, since the
+swipe's progress frames ride the same one Event channel scoped by
+`progressId` (here the target message's own id).
+
+`chatKeys.informs(chatId)` joins the family as `['chat', id, 'informs']`. v4
+spends a new row in its realtime topic map on the matching key; v5 needs none,
+because its `chats` row already returns `['chat', id]` and that is the parent
+prefix — the same reason the gallery key needed no row (P4.D176). What v4
+spends a row on, v5 spends assertions on, in `chat-keys.spec.ts` and
+`realtime-topic-map.spec.ts`.
+
+The Host record an Inform leaves behind is labelled `out of character`
+(`KIND_DISPLAY_OVERRIDES.inform`), with v4's own importance fall-through
+pinned rather than assumed.
+
 #### 2026-09-21 — feat(concierge): the scenario arm, the ingest strips, and the boot heal for bug 158 (P4.D208)
 
 _Versions: core 0.0.972, harness 0.0.865, host 0.0.140._

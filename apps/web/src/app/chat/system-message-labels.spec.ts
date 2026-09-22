@@ -299,3 +299,42 @@ describe('the scenario-change kind (v4 44a8137e)', () => {
     expect(getAnnouncementAccentClasses(sceneChange())).toBe('');
   });
 });
+
+/**
+ * P4.D206 — the Inform record's chip label (v4 `e7d77bb60`, its ONE line in
+ * `app/salon/[id]/components/system-message-labels.ts`:
+ * `KIND_DISPLAY_OVERRIDES.inform = 'out of character'`).
+ *
+ * The Host writes the record with `systemSender: 'host'`, `systemKind:
+ * 'inform'`, so both tables see it; v4 adds a row to the display overrides and
+ * NONE to `host`'s importance map, which is the behavior pinned below.
+ */
+describe('the inform kind (v4 e7d77bb60 — the Inform record)', () => {
+  const inform = (over: Partial<StaffFields> = {}): StaffFields => ({
+    systemSender: 'host',
+    systemKind: 'inform',
+    content: 'You see that Alice slipped the letter into her sleeve.',
+    pascalMeta: null,
+    ...over,
+  });
+
+  it("labels it 'out of character', not the de-hyphenated kind", () => {
+    expect(getSystemKindDisplayLabel(inform())).toBe('out of character');
+    // Without the override row the fall-through would read "inform" — the verb
+    // rather than what the row IS. This is the difference the row buys.
+    expect(getSystemKindDisplayLabel(inform({ systemKind: 'informed' }))).toBe('informed');
+  });
+
+  it("rates it at the host tier's fall-through, medium (v4 adds no importance row)", () => {
+    expect(getAnnouncementImportance(inform())).toBe('medium');
+  });
+
+  it('carries no outcome state and no accent (it is not a Pascal roll)', () => {
+    expect(getAnnouncementOutcomeState(inform())).toBeNull();
+    expect(getAnnouncementAccentClasses(inform())).toBe('');
+  });
+
+  it('is NOT reachable by content inference — the column carries it', () => {
+    expect(getSystemKindDisplayLabel(inform({ systemKind: null }))).toBe('announcement');
+  });
+});

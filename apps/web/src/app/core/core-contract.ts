@@ -165,6 +165,14 @@ export interface MessageSwipeRequest {
   messageId: string;
   /** Omit to generate a NEW variant; provide to switch to an existing one. */
   swipeIndex?: number;
+  /**
+   * Narrate the generation (v4 `?stream=1`, `f564b0de3`). Meaningful only on
+   * the GENERATE branch: with it the engine emits a {@link SwipeProgressEvent}
+   * per v4 frame on the Event channel while the call runs. The dispatch
+   * RESPONSE is unchanged either way — the same 201 `{ message }` the
+   * non-streaming call answers, once the generation completes (§S.2).
+   */
+  stream?: boolean;
 }
 
 /** Impersonation + Speaking-As controls (v4 `actions/participants.ts`). */
@@ -2604,6 +2612,11 @@ export type CoreRequest =
   | ConversationSummariesRegenerateRequest
   | ChatAnnouncementPostRequest
   | ChatAnnouncementPreviewRequest
+  // --- Inform, the out-of-character word to the cast (§S.1; P4.D205 owns the
+  //     server half) ---
+  | ChatInformRequest
+  | ChatInformsListRequest
+  | ChatInformCancelRequest
   | ChatImpersonationVoicePreviewRequest
   | ChatSendMailRequest
   | ChatMailboxListRequest
@@ -7987,3 +8000,118 @@ export interface ConversationSummariesRegenerateStatusRequest {
 export interface ConversationSummariesRegenerateRequest {
   type: 'conversationSummariesRegenerate';
 }
+
+// ===========================================================================
+// === P4.D206 — Inform (v4 `e7d77bb60`) + the streamed swipe (`f564b0de3`) ===
+// ---------------------------------------------------------------------------
+// The SPA's half of two v4 rows this round absorbs. The three Inform verbs are
+// transcribed from the round's §S.1 shared contract (v4
+// `app/api/v1/chats/[id]/actions/inform.ts` + `schemas.ts:249-258` at
+// `f45a517a9`); the swipe's `stream` flag and its progress event from §S.2 (v4
+// `lib/services/chat-message/regenerate-swipe.service.ts` +
+// `app/api/v1/messages/[id]/route.ts`). P4.D205 and P4.D207 serve them.
+// ===========================================================================
+
+/**
+ * A pending Inform batch (§S.1's `PendingInformBatch`, the shape v4's
+ * `PendingInformChips.tsx:29-36` reads).
+ *
+ * `pendingParticipantIds` are CHAT PARTICIPANT ids — never character ids — and
+ * the server has already dropped the seats that have left, so a batch that
+ * reaches the client always has at least one live target.
+ */
+export interface PendingInformBatch {
+  batchId: string;
+  contentMarkdown: string;
+  createdAt: string;
+  recordMessageId: string | null;
+  /** CHAT PARTICIPANT ids still awaiting delivery. */
+  pendingParticipantIds: string[];
+}
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=inform` — a quiet word out of character to
+ * one, several or every LLM-controlled seat, delivered verbatim as a system
+ * block before each target's next turn and consumed there.
+ *
+ * `targetParticipantIds` is REQUIRED on the wire and nullable: `null` means
+ * Everyone. The dialog collapses a full hand-picked selection back to `null`
+ * before it posts, because actual coverage — not how the operator clicked —
+ * decides whether the Host record is public or a whisper.
+ */
+export interface ChatInformRequest {
+  type: 'chatInform';
+  chatId: string;
+  contentMarkdown: string;
+  targetParticipantIds: string[] | null;
+}
+
+/** Success data for {@link ChatInformRequest} (201), §S.1's key order. */
+export interface ChatInformResult {
+  success: boolean;
+  batchId: string;
+  /** The RECORD's audience — `null` when the batch covers every eligible seat. */
+  targetParticipantIds: string[] | null;
+  /** The persisted Host record, or `null` when the record write failed. */
+  message: PostedMessage | null;
+}
+
+/** v4 `GET /api/v1/chats/[id]?action=informs` — the batches still owed. */
+export interface ChatInformsListRequest {
+  type: 'chatInformsList';
+  chatId: string;
+}
+
+export interface ChatInformsListResult {
+  batches: PendingInformBatch[];
+}
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=cancel-inform` — withdraw a batch.
+ *
+ * Consumed rows and their Host record survive (a later swipe can re-apply
+ * them), so `recordDeleted` is true only when nothing had been consumed yet.
+ */
+export interface ChatInformCancelRequest {
+  type: 'chatInformCancel';
+  chatId: string;
+  batchId: string;
+}
+
+export interface ChatInformCancelResult {
+  success: boolean;
+  /** How many still-pending rows the cancel removed. */
+  removed: number;
+  recordDeleted: boolean;
+}
+
+/**
+ * §S.2's `Event::SwipeProgress` on the wire: `{ type: 'swipeProgress',
+ * progressId, frame }` — `progressId` is the TARGET message id (the message
+ * being re-rolled, so the client needs to mint nothing), and `frame` is v4's
+ * own SSE payload object byte-for-byte, key order and all. Narrowed from a raw
+ * stream frame by {@link isSwipeProgressEvent} (the
+ * {@link GeneratorProgressEvent} precedent — the frame carries its own `type`
+ * tag).
+ *
+ * The frame is one of: `{ status: { stage, message, characterName, characterId } }`
+ * for the four status beats, `{ content: <delta> }` (APPEND), `{ reasoning:
+ * <cumulative> }` (REPLACE — last wins, never concatenated), `{ done: true,
+ * message: <the persisted swipe row> }`, or `{ error, errorType, details }`.
+ */
+export interface SwipeProgressEvent {
+  type: 'swipeProgress';
+  progressId: string;
+  frame: Record<string, unknown>;
+}
+
+/** Narrow a raw stream frame to a swipe-progress frame for `mine`. */
+export function isSwipeProgressEvent(
+  frame: ScopedEvent | Record<string, unknown>,
+  mine: string,
+): frame is SwipeProgressEvent {
+  const f = frame as Record<string, unknown>;
+  return f['type'] === 'swipeProgress' && f['progressId'] === mine;
+}
+
+// === end P4.D206 ===

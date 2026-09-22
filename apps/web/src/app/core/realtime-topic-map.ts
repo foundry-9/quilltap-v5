@@ -90,6 +90,15 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // and avatar jobs already publish `{topic:'chats', id}`, which is what
       // refreshes a Lantern backdrop or an Aurora repaint into the gallery for
       // free. Pinned by `chat-keys.spec.ts`. === end P4.D176 ===
+      // === P4.D206: so does `chatKeys.informs(id)` (`['chat', id, 'informs']`),
+      // v4's own new row here (`e7d77bb60` adds `queryKeys.chats.informs(id)`
+      // beside `gallery` in its row-scoped `chats` entry). v5 needs no entry for
+      // the same reason it needed none for the gallery — the ONE `['chat', id]`
+      // prefix is the parent of both — so what v4 spends a row on, v5 spends an
+      // assertion on (`chat-keys.spec.ts`, `realtime-topic-map.spec.ts`). The
+      // refresh story is the same either way: every event that changes a pending
+      // inform already publishes `chats`, so the composer chips stay honest
+      // without a poll of their own. === end P4.D206 ===
       return id ? [chatKeys.detail(id)] : [chatKeys.all];
 
     case 'projects':
