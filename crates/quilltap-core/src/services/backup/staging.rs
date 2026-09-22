@@ -103,12 +103,14 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
         ),
         // Format-3 additions (older restorers simply skip these missing files).
         ("chat-documents.json", &data.chat_documents),
-        // === P4.D205 (v4 `e7d77bb60`, `backup-service.ts:680`) ===
-        // Optional on the way back in, like every file here, so an older
-        // restorer simply does not see it.
+        ("instance-settings.json", &data.instance_settings),
+        // === P4.D205 (v4 `e7d77bb60`, `backup-service.ts:675-680`) ===
+        // Inform rows (4.10). v4 writes this file AFTER `instance-settings.json`,
+        // not before it — the staging write order is what the differential's
+        // file listing compares. Optional on the way back in, like every file
+        // here, so an older restorer simply does not see it.
         ("chat-informs.json", &data.chat_informs),
         // === end P4.D205 ===
-        ("instance-settings.json", &data.instance_settings),
         ("embedding-status.json", &data.embedding_status),
         ("conversation-chunks.json", &data.conversation_chunks),
         ("tfidf-vocabularies.json", &data.tfidf_vocabularies),

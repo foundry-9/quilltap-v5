@@ -1058,14 +1058,33 @@ where
     if !inform_row_ids.is_empty() {
         let ids = inform_row_ids.clone();
         let consume_message_id = assistant_message_id.clone();
-        let consumed = db
+        // v4 wraps `markConsumed` in `safeQuery(..., 0)`
+        // (`chat-informs.repository.ts:218-245`), so a failed consume LOGS at
+        // error level and answers 0 — finalization CONTINUES. Propagating here
+        // instead would abandon the turn after the assistant row is already
+        // saved (events unsent, the turn chain never resumed) for a bookkeeping
+        // write, which is strictly worse than the rows staying pending.
+        let consumed = match db
             .write(move |writers| {
                 writers
                     .main()
                     .chat_informs()
                     .mark_consumed(&ids, &consume_message_id)
             })
-            .await?;
+            .await
+        {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::inform",
+                    ids = ?inform_row_ids,
+                    message_id = %assistant_message_id,
+                    error = %e,
+                    "Error marking informs consumed",
+                );
+                0
+            }
+        };
         tracing::debug!(
             target: "quilltap::inform",
             chat_id = %chat_id,

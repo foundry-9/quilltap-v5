@@ -869,8 +869,13 @@ pub fn remap_chat_inform(
         };
     }
 
+    // JS truthiness, both guards: v4 writes `if (recordMessageId && !known…)`
+    // and `Boolean(consumedByMessageId && !known…)` (`reconcile.ts:75-86`), and
+    // an EMPTY STRING is falsy — so a row carrying `""` is neither dropped nor
+    // cleared, and the `""` passes through to the destination row unchanged.
+    // The `.filter` is on the GUARD only, never on the stored value.
     let record_message_id = s("recordMessageId");
-    if let Some(rid) = &record_message_id {
+    if let Some(rid) = record_message_id.as_deref().filter(|r| !r.is_empty()) {
         if !known_message_ids.contains(rid) {
             return ChatInformRemap::Dropped {
                 reason: format!("record message {rid} is missing from chat {chat_id}"),
@@ -880,7 +885,8 @@ pub fn remap_chat_inform(
 
     let consumed_by = s("consumedByMessageId");
     let cleared = consumed_by
-        .as_ref()
+        .as_deref()
+        .filter(|m| !m.is_empty())
         .is_some_and(|m| !known_message_ids.contains(m));
 
     let now = crate::clock::now_iso();

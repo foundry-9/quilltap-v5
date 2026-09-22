@@ -239,7 +239,26 @@ pub async fn post_inform_record(db: &Db, params: &InformRecordParams) -> Option<
         "targetParticipantIds": targets,
         "customAnnouncer": null,
     });
-    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
+    // Every other exit from this function says why it took itself out; this one
+    // used to return `None` in silence, leaving a vanished record with nothing
+    // in the log to explain it. (v4 has no counterpart arm — it hands the object
+    // straight to `addMessage` — so a failure here is a v5-side modelling
+    // mismatch between the literal above and `ChatEventInput`, which is exactly
+    // the thing worth naming.)
+    let event: ChatEventInput = match serde_json::from_value(message.clone()) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::announcer",
+                context = "announcer",
+                chat_id = %params.chat_id,
+                message_id = %message_id,
+                error = %e,
+                "[Announcer] Inform record could not be built",
+            );
+            return None;
+        }
+    };
 
     let chat_id = params.chat_id.clone();
     match db

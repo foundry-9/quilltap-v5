@@ -507,6 +507,47 @@ pub async fn chat_remove_participant(db: &Db, chat_id: &str, participant_id: &st
         }
     }
 
+    // === P4.D205 (v4 `e7d77bb60`, `actions/participants.ts:566-582`) ===
+    // A seat that has left can never collect what it was handed out of
+    // character, and a pending row would keep its name on the composer's chip
+    // forever.
+    //
+    // **This lives on the ACTION, not in the repository.** v4 puts it in
+    // `handleRemoveParticipantAction` — after the impersonation clean-up update
+    // and before the `[Chats v1] Participant removed` info line — and NOT in the
+    // shared `helpers.ts::handleRemoveParticipant`, which the chat-PUT bag path
+    // also reaches. So removing a seat through the PUT bag leaves its informs
+    // alone, and reproducing that means putting the drop here.
+    //
+    // **Never allowed to break the removal itself** — the seat is already gone,
+    // and v4 wraps this in a try/catch that only warns.
+    {
+        let cid = chat_id.to_string();
+        let pid = participant_id.to_string();
+        match db
+            .write(move |w| {
+                w.main()
+                    .chat_informs()
+                    .delete_pending_for_participant(&cid, &pid)
+            })
+            .await
+        {
+            Ok(dropped_informs) => tracing::debug!(
+                chat_id = %chat_id,
+                participant_id = %participant_id,
+                dropped_informs,
+                "[Chats v1] Pending informs dropped with removed seat",
+            ),
+            Err(e) => tracing::warn!(
+                chat_id = %chat_id,
+                participant_id = %participant_id,
+                error = %e,
+                "[Chats v1] Could not drop pending informs for removed seat",
+            ),
+        }
+    }
+    // === end P4.D205 ===
+
     if character_name != "Unknown" {
         post_host_remove_announcement(
             db,

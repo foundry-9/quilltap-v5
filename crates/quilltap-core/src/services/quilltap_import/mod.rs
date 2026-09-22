@@ -1543,14 +1543,25 @@ fn import_body(
                             "Failed to read chat while importing informs",
                         ),
                     }
-                    if let Ok(events) =
-                        crate::db::chats_messages_read::get_messages(main, &remapped_chat_id)
-                    {
-                        for ev in events {
-                            if let Some(mid) = ev.get("id").and_then(Value::as_str) {
-                                messages.insert(mid.to_string());
+                    // v4's ONE try/catch wraps `findById` AND `getMessages`
+                    // (`execute.ts:727-741`), so a message-read failure warns
+                    // with the SAME sentence and carries on with the sets it
+                    // has — every row whose `recordMessageId` it can no longer
+                    // vouch for then drops. Swallowing the `Err` silently would
+                    // leave that mass drop unexplained in the log.
+                    match crate::db::chats_messages_read::get_messages(main, &remapped_chat_id) {
+                        Ok(events) => {
+                            for ev in events {
+                                if let Some(mid) = ev.get("id").and_then(Value::as_str) {
+                                    messages.insert(mid.to_string());
+                                }
                             }
                         }
+                        Err(e) => tracing::warn!(
+                            chat_id = %remapped_chat_id,
+                            error = %e,
+                            "Failed to read chat while importing informs",
+                        ),
                     }
                     (participants, messages)
                 });

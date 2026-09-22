@@ -67,6 +67,12 @@ pub fn create_manifest(
         Value::from(host.user_installed_themes),
     );
     n(c, "chatDocuments", data.chat_documents.len());
+    // === P4.D205 (v4 `e7d77bb60`, `backup-service.ts:480`) ===
+    // v4 writes `chatInforms` between `chatDocuments` and `instanceSettings`,
+    // and the manifest's key order IS the wire (`JSON.stringify` of the object
+    // literal), so the position is load-bearing, not cosmetic.
+    n(c, "chatInforms", data.chat_informs.len());
+    // === end P4.D205 ===
     n(c, "instanceSettings", data.instance_settings.len());
     n(c, "embeddingStatus", data.embedding_status.len());
     n(c, "conversationChunks", data.conversation_chunks.len());

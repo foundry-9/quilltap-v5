@@ -40,13 +40,41 @@ use crate::text_replacements_routes::{chat_get_background, dispatch_core, error_
 /// Unwrap a wardrobe-family body to the raw route shape.
 fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
-        CoreResponse::Wardrobe(v) | CoreResponse::ChatOutfit(v) | CoreResponse::ChatDialog(v) => (
+        CoreResponse::Wardrobe(v)
+        | CoreResponse::ChatOutfit(v)
+        | CoreResponse::ChatDialog(v)
+        // === P4.D205 (v4 `e7d77bb60`) ===
+        // The three Inform bodies leave through this fan-out too. Without them
+        // every SUCCESS fell to the `_` arm and answered 500 `Unexpected core
+        // response` — the P4.56 `BrahmaConsole` failure shape exactly, and
+        // invisible to the route differential, which drives the HANDLER rather
+        // than the HTTP edge. `success_status` is what the caller passes: 201
+        // for `?action=inform` (v4's `created(...)`), 200 for `?action=informs`
+        // and `?action=cancel-inform` (v4's plain `NextResponse.json`).
+        | CoreResponse::ChatInform(v)
+        | CoreResponse::ChatInforms(v)
+        | CoreResponse::ChatInformCancelled(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
         )
             .into_response(),
-        CoreResponse::Error(e) => error_to_http(e),
+        // v4's `validationError(zodError)` puts BOTH keys on the wire —
+        // `{error: 'Validation error', details: [issues]}` at 400
+        // (`lib/api/responses.ts:108-118`, reached from the route middleware's
+        // `handleRouteError`). The shared `error_to_http` renders only
+        // `{error}`, so a details-bearing refusal — the Inform verbs' Zod arm —
+        // is rendered here, the same way `images_routes`/`subprompts_routes`/
+        // `prompt_templates_routes`/`chats_routes` already render theirs.
+        CoreResponse::Error(e) => match e.validation_wire_body() {
+            Some(body) => (
+                StatusCode::BAD_REQUEST,
+                [("content-type", "application/json")],
+                body.to_string(),
+            )
+                .into_response(),
+            None => error_to_http(e),
+        },
         _ => error_json(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Unexpected core response",

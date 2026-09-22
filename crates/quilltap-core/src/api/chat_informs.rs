@@ -59,10 +59,20 @@ fn participants_of(chat: &Value) -> Vec<Value> {
 /// tri-state rather than a serde-typed field. `null` on the second means
 /// Everyone; `null` on the first does NOT (the schema is not `.nullable()`).
 ///
-/// Zod 4's `z.object` refuses a non-object body BEFORE any field check, with ONE
-/// issue at the root path — the same rule `chat_delete::parse_stop_impersonate`
-/// carries, and for the same reason: a per-field walk over `null` / `[]` / `42`
-/// would invent field issues v4 never emits.
+/// **This function walks the two fields and nothing else — it has no root-path
+/// arm, and cannot have one.** Zod 4's `z.object` refuses a non-object body
+/// BEFORE any field check, with ONE issue at the root path (the rule
+/// `chat_delete::parse_stop_impersonate` does carry, because that verb keeps
+/// the raw body). This verb does not: the wire carries the two keys already
+/// LIFTED into the tri-state, so the body's SHAPE is not visible at this seam.
+/// On `POST /api/dispatch` the envelope is an object by construction, so the
+/// root arm is unreachable there; at the REST edge `request_envelope` folds a
+/// non-object body to all-absent (see its header), and the two per-field
+/// `invalid_type … received undefined` issues below are what v5 answers where
+/// v4 would answer the single root issue. A **recorded divergence on a
+/// non-object body only**, not a silent one — inventing a root arm here would
+/// mean guessing which of `null` / `[]` / `42` the edge had folded, which the
+/// lifted shape cannot tell us.
 fn parse_inform(
     content_markdown: &Option<Option<Value>>,
     target_participant_ids: &Option<Option<Value>>,
@@ -70,9 +80,12 @@ fn parse_inform(
     let mut issues: Vec<Value> = Vec::new();
 
     // `contentMarkdown: z.string().min(1)`.
-    let raw_content: Option<&Value> = content_markdown.as_ref().map(|v| v.as_ref()).and_then(
-        |v: Option<&Value>| v, // Some(None) => absent-with-null; handled below
-    );
+    //
+    // `Some(None)` is an explicit JSON `null`, and Zod's `util.parsedType` calls
+    // that **"null"**, never "undefined" (`zod_issues::zod_parsed_type`): only an
+    // ABSENT key reads as `undefined`. So the explicit null is handed to the
+    // issue as `Value::Null` rather than as "nothing".
+    let explicit_null = Value::Null;
     let content = match content_markdown {
         // The key was absent entirely.
         None => {
@@ -96,7 +109,7 @@ fn parse_inform(
                     ZodIssue::invalid_type(
                         "string",
                         vec![key("contentMarkdown")],
-                        inner.as_ref().or(raw_content),
+                        Some(inner.as_ref().unwrap_or(&explicit_null)),
                     )
                     .to_value(),
                 );
@@ -162,7 +175,12 @@ fn parse_inform(
 }
 
 /// v4 `cancelInformSchema` = `{ batchId: z.uuid() }`.
+///
+/// Same lifted-tri-state shape as [`parse_inform`], and the same
+/// `parsedType` rule: an ABSENT key is `undefined`, an explicit JSON `null` is
+/// **`null`** (`zod_issues::zod_parsed_type`).
 fn parse_cancel(batch_id: &Option<Option<Value>>) -> Result<String, Value> {
+    let explicit_null = Value::Null;
     match batch_id {
         None => Err(json!([ZodIssue::invalid_type(
             "string",
@@ -178,7 +196,7 @@ fn parse_cancel(batch_id: &Option<Option<Value>>) -> Result<String, Value> {
             None => Err(json!([ZodIssue::invalid_type(
                 "string",
                 vec![key("batchId")],
-                inner.as_ref()
+                Some(inner.as_ref().unwrap_or(&explicit_null))
             )
             .to_value()])),
         },
@@ -333,12 +351,25 @@ pub async fn chat_inform(
         .map(|r| Value::String(r.batch_id.clone()))
         .unwrap_or(Value::Null);
 
+    // v4 logs `{ chatId, batchId, targetCount, audience, recordMessageId }`, and
+    // BOTH ids are `… ?? null` — a JSON string or a JSON null. `%batch_id` on a
+    // `serde_json::Value` renders the quotes INTO the field (`"\"uuid\""`), and
+    // `unwrap_or("null")` logs the four-character string `null` where v4 logs a
+    // real null. Both go through the file layer's `…Json` convention instead
+    // (`quilltap_web::log_file::JSON_FIELD_SUFFIX`): the callsite serializes and
+    // the layer re-parses under the un-suffixed name, so the record reads
+    // `"batchId": "…"` / `"recordMessageId": null` exactly as v4's does.
+    let batch_id_json = batch_id.to_string();
+    let record_message_id_json = match &record_message_id {
+        Some(id) => Value::String(id.clone()).to_string(),
+        None => "null".to_string(),
+    };
     tracing::info!(
         chat_id = %chat_id,
-        batch_id = %batch_id,
+        batchIdJson = batch_id_json.as_str(),
         target_count = participant_ids.len(),
         audience = if record_targets.is_some() { "whisper" } else { "public" },
-        record_message_id = record_message_id.as_deref().unwrap_or("null"),
+        recordMessageIdJson = record_message_id_json.as_str(),
         "[Chats v1] Inform posted",
     );
 
@@ -442,13 +473,23 @@ pub async fn chat_inform_cancel(
     };
 
     let b1 = batch.clone();
+    // v4 wraps `findByBatchId` in `safeQuery(..., [])`
+    // (`chat-informs.repository.ts:163-170`): a failed read LOGS and answers the
+    // EMPTY fallback, it never throws. So a broken read falls into the
+    // `rows.is_empty()` arm below and the operator sees v4's 404 — not a 500.
+    // (`safeQuery`'s rethrow leg only arms inside
+    // `withStrictRepositoryFailures`, which only the importer enters.)
     let rows = match db.read_main(move |c| {
         crate::db::chat_informs::ChatInformsRepository::new(c).find_by_batch_id(&b1)
     }) {
         Ok(rows) => rows,
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Error cancelling inform");
-            return Response::error(ErrorKind::Internal, "Failed to cancel inform");
+            tracing::error!(
+                batch_id = %batch,
+                error = %e,
+                "Error finding informs by batch ID",
+            );
+            Vec::new()
         }
     };
     if rows.is_empty() {
@@ -468,14 +509,21 @@ pub async fn chat_inform_cancel(
         .and_then(|r| r.record_message_id.clone());
 
     let b2 = batch.clone();
+    // `deletePendingByBatch` is `safeQuery(..., 0)` too
+    // (`chat-informs.repository.ts:250-270`): a failed delete LOGS and answers
+    // 0, and v4's handler carries on to its 200 with `removed: 0`.
     let removed = match db
         .write(move |writers| writers.main().chat_informs().delete_pending_by_batch(&b2))
         .await
     {
         Ok(n) => n,
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[Chats v1] Error cancelling inform");
-            return Response::error(ErrorKind::Internal, "Failed to cancel inform");
+            tracing::error!(
+                batch_id = %batch,
+                error = %e,
+                "Error deleting pending informs by batch",
+            );
+            0
         }
     };
 
@@ -530,4 +578,311 @@ pub async fn chat_inform_cancel(
         "removed": removed,
         "recordDeleted": record_deleted,
     }))
+}
+
+#[cfg(test)]
+mod zod_rendering_tests {
+    //! The `parsedType` pin for the two lifted tri-states (the `f45a517a9`
+    //! unification §3, finding 3).
+    //!
+    //! `double_option` decodes an ABSENT key to `None` and an explicit JSON
+    //! `null` to `Some(None)`, and the two must NOT render the same: Zod's
+    //! `util.parsedType` calls a missing key `undefined` and a null `null`
+    //! (`zod_issues::zod_parsed_type`). Handing `Some(None)` to
+    //! `ZodIssue::invalid_type` as "nothing" — which the first port did — made
+    //! `{"contentMarkdown": null}` answer v4's sentence for a key that was never
+    //! sent. Both legs are asserted, so a fix in either direction that collapses
+    //! them again reddens.
+
+    use super::*;
+
+    fn message(issues: &Value, index: usize) -> String {
+        issues[index]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    #[test]
+    fn an_absent_content_markdown_is_received_undefined() {
+        let err = parse_inform(&None, &Some(None)).expect_err("an absent key is an issue");
+        assert_eq!(
+            message(&err, 0),
+            "Invalid input: expected string, received undefined"
+        );
+        assert_eq!(err[0]["path"], json!(["contentMarkdown"]));
+    }
+
+    #[test]
+    fn an_explicit_null_content_markdown_is_received_null() {
+        let err = parse_inform(&Some(None), &Some(None)).expect_err("null is not a string");
+        assert_eq!(
+            message(&err, 0),
+            "Invalid input: expected string, received null"
+        );
+    }
+
+    #[test]
+    fn a_non_string_content_markdown_still_names_its_own_type() {
+        let err = parse_inform(&Some(Some(json!(42))), &Some(None))
+            .expect_err("a number is not a string");
+        assert_eq!(
+            message(&err, 0),
+            "Invalid input: expected string, received number"
+        );
+    }
+
+    #[test]
+    fn an_absent_batch_id_is_received_undefined_and_an_explicit_null_is_received_null() {
+        assert_eq!(
+            message(&parse_cancel(&None).expect_err("absent"), 0),
+            "Invalid input: expected string, received undefined"
+        );
+        assert_eq!(
+            message(&parse_cancel(&Some(None)).expect_err("explicit null"), 0),
+            "Invalid input: expected string, received null"
+        );
+        // The non-string leg keeps naming the type it actually saw.
+        assert_eq!(
+            message(
+                &parse_cancel(&Some(Some(json!([])))).expect_err("an array"),
+                0
+            ),
+            "Invalid input: expected string, received array"
+        );
+    }
+
+    #[test]
+    fn an_absent_targets_key_is_received_undefined_and_an_explicit_null_is_legal() {
+        // `targetParticipantIds` IS `.nullable()`, so `Some(None)` is the
+        // "Everyone" spelling and must produce NO issue — the other half of the
+        // same tri-state, and the reason the two keys cannot share one arm.
+        let ok = parse_inform(&Some(Some(json!("a passage"))), &Some(None))
+            .expect("an explicit null means every eligible seat");
+        assert_eq!(ok, ("a passage".to_string(), None));
+
+        let err = parse_inform(&Some(Some(json!("a passage"))), &None)
+            .expect_err("an ABSENT targets key is still an issue");
+        assert_eq!(
+            message(&err, 0),
+            "Invalid input: expected array, received undefined"
+        );
+    }
+}
+
+#[cfg(test)]
+mod safe_query_and_log_tests {
+    //! The `safeQuery` fidelity pins (the `f45a517a9` unification §3, finding 7)
+    //! and the posted-inform log line (nit 11).
+    //!
+    //! v4 wraps `findByBatchId` and `deletePendingByBatch` in
+    //! `safeQuery(op, message, context, fallback)`
+    //! (`chat-informs.repository.ts:163-170, 250-270`), which logs at ERROR and
+    //! returns the fallback — it only rethrows inside
+    //! `withStrictRepositoryFailures`, a scope the importer enters and no route
+    //! does. So on v4 a broken read answers **404** and a broken delete answers
+    //! **200 with `removed: 0`**; v5 answered 500 for both. Both are induced
+    //! here rather than argued: a MISSING table for the read, and a
+    //! `BEFORE DELETE … RAISE(ABORT)` trigger for the delete — which fails the
+    //! DELETE while leaving the SELECT that precedes it working, the one shape
+    //! that separates the two arms.
+
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
+    const BATCH: &str = "bbbbbbbb-0000-4000-8000-000000000001";
+    const SEAT_A: &str = "e1000000-0000-4000-8000-000000000001";
+    const SEAT_B: &str = "e1000000-0000-4000-8000-000000000002";
+
+    fn line<'a>(lines: &'a [String], needle: &str) -> &'a str {
+        lines
+            .iter()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("no line containing {needle:?} in {lines:#?}"))
+    }
+
+    /// A full fresh instance — the real DDL, so `chats` / `chat_messages` /
+    /// `chat_informs` are exactly what a provisioned instance carries.
+    fn provisioned(tag: &str) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join(tag);
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// A two-LLM-seat room, so the eligibility gate passes and the coverage rule
+    /// has something to be true about.
+    async fn seed_chat(db: &Db) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "The Inform Room",
+            "participants": [
+                { "id": SEAT_A, "type": "CHARACTER", "controlledBy": "llm",
+                  "characterId": "a1000000-0000-4000-8000-000000000001",
+                  "createdAt": "2026-05-01T00:00:00.000Z",
+                  "updatedAt": "2026-05-01T00:00:00.000Z" },
+                { "id": SEAT_B, "type": "CHARACTER", "controlledBy": "llm",
+                  "characterId": "a1000000-0000-4000-8000-000000000002",
+                  "createdAt": "2026-05-01T00:00:00.000Z",
+                  "updatedAt": "2026-05-01T00:00:00.000Z" }
+            ],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        })
+        .await
+        .expect("seed the chat");
+    }
+
+    #[test]
+    fn a_broken_batch_read_answers_v4s_404_not_a_500() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("a");
+        // Drop the table: every `find_by_batch_id` now errors, which is exactly
+        // the state v4's `safeQuery` answers `[]` for.
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE chat_informs")?;
+            Ok(())
+        }))
+        .unwrap();
+
+        let (resp, lines) =
+            captured_with(|| rt.block_on(chat_inform_cancel(&db, CHAT, &Some(Some(json!(BATCH))))));
+        match resp {
+            Response::Error(e) => {
+                assert!(
+                    matches!(e.kind, ErrorKind::NotFound),
+                    "v4's safeQuery fallback is `[]`, so the handler reaches its \
+                     `rows.length === 0` arm: {e:?}"
+                );
+                assert_eq!(e.message, "Inform batch not found");
+            }
+            other => panic!("expected v4's 404, got {other:?}"),
+        }
+        let l = line(&lines, "Error finding informs by batch ID");
+        assert!(l.starts_with("ERROR"), "v4's safeQuery logs at error: {l}");
+        assert!(l.contains(&format!("batch_id={BATCH}")), "{l}");
+    }
+
+    #[test]
+    fn a_broken_pending_delete_still_answers_200_with_removed_zero() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("b");
+
+        rt.block_on(db.write(|w| {
+            let c = w.main().connection();
+            crate::db::chat_informs::ChatInformsRepository::new(c).create(
+                &crate::db::chat_informs::ChatInformCreate {
+                    id: "11110000-0000-4000-8000-00000000aaa1".to_string(),
+                    chat_id: CHAT.to_string(),
+                    batch_id: BATCH.to_string(),
+                    participant_id: SEAT_A.to_string(),
+                    content_markdown: "The clock has stopped.".to_string(),
+                    // NULL, so the record-delete leg is not entered and this
+                    // case measures the delete arm alone.
+                    record_message_id: None,
+                    created_at: "2026-05-01T00:00:00.000Z".to_string(),
+                    updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+                    consumed_at: None,
+                    consumed_by_message_id: None,
+                },
+            )?;
+            // Fails the DELETE while leaving the SELECT before it working.
+            c.execute_batch(
+                "CREATE TRIGGER no_delete BEFORE DELETE ON chat_informs \
+                 BEGIN SELECT RAISE(ABORT, 'the delete is refused'); END",
+            )?;
+            Ok(())
+        }))
+        .unwrap();
+
+        let (resp, lines) =
+            captured_with(|| rt.block_on(chat_inform_cancel(&db, CHAT, &Some(Some(json!(BATCH))))));
+        match resp {
+            Response::ChatInformCancelled(v) => {
+                assert_eq!(v["success"], json!(true));
+                assert_eq!(
+                    v["removed"],
+                    json!(0),
+                    "v4's safeQuery fallback for `deletePendingByBatch` is 0, and \
+                     the handler carries on to its 200: {v}"
+                );
+                assert_eq!(v["recordDeleted"], json!(false));
+            }
+            other => panic!("expected v4's 200, got {other:?}"),
+        }
+        let l = line(&lines, "Error deleting pending informs by batch");
+        assert!(l.starts_with("ERROR"), "{l}");
+    }
+
+    #[test]
+    fn the_posted_inform_line_renders_both_ids_as_json() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (_dir, db) = provisioned("c");
+        rt.block_on(seed_chat(&db));
+
+        let (resp, lines) = captured_with(|| {
+            rt.block_on(chat_inform(
+                &db,
+                CHAT,
+                &Some(Some(json!("The clock in the hall has stopped."))),
+                &Some(None),
+            ))
+        });
+        let body = match resp {
+            Response::ChatInform(v) => v,
+            other => panic!("the post must succeed for this pin to mean anything: {other:?}"),
+        };
+        let batch_id = body["batchId"].as_str().expect("a batch id");
+        let record_id = body["message"]["id"].as_str().expect("a record message id");
+
+        let l = line(&lines, "[Chats v1] Inform posted");
+        assert!(l.starts_with("INFO"), "v4 logs this one at info: {l}");
+        // The `…Json` convention: the callsite serializes, and the file layer
+        // re-parses under the un-suffixed name. The thread-scoped capture sees
+        // the RAW field, so the quotes are the proof the value is JSON and not
+        // a bare interpolation of a `serde_json::Value`'s Display.
+        assert!(
+            l.contains(&format!("batchIdJson=\"{batch_id}\"")),
+            "the batch id must render as a JSON string, once: {l}"
+        );
+        assert!(
+            l.contains(&format!("recordMessageIdJson=\"{record_id}\"")),
+            "{l}"
+        );
+        // `audience` is a plain `&str` field, so the fmt layer renders it
+        // UNQUOTED — unlike the two `…Json` fields above, whose quotes are the
+        // JSON's own and are the point of the assertions.
+        assert!(
+            l.contains("audience=public") && l.contains("target_count=2"),
+            "both eligible seats were covered, so the record is public: {l}"
+        );
+        // The silence leg: the two ids never reach the wire under their old
+        // spellings, which rendered `"\"uuid\""` and the literal string `null`.
+        assert!(
+            !l.contains("batch_id=") && !l.contains("record_message_id="),
+            "the pre-fix field names must be gone: {l}"
+        );
+    }
 }

@@ -51,8 +51,11 @@
 //!   - **Because the v5 surface has no FK, the chat-delete cascade must delete
 //!     these rows explicitly** — which is exactly what v4's own `deleteByChatId`
 //!     exists for ("the FK already cascades; this is for callers that ask"). See
-//!     [`ChatInformsRepository::delete_by_chat_id`] and its caller in
-//!     `api/chat_delete.rs`.
+//!     [`ChatInformsRepository::delete_by_chat_id`] and its caller — the
+//!     repository's own delete, `db::chats::ChatsRepository::delete`
+//!     (`db/chats.rs`, the `P4.D205` fence beside the conversation-annotations
+//!     sweep), NOT the `api/chat_delete.rs` handler, which never touches this
+//!     table directly.
 //!
 //! ## Method names
 //!
