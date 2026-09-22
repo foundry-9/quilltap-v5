@@ -47,13 +47,16 @@ interface Spec {
   seedTs: string;
   staleMsgAt: string;
   activeMsgAt: string;
+  stackOnlyMsgAt: string;
   staleChatId: string;
   activeChatId: string;
+  stackOnlyChatId: string;
   participantId: string;
   characterId: string;
   staleMsgId: string;
   staleMsg2Id: string;
   activeMsgId: string;
+  stackOnlyMsgId: string;
   cutoffIso: string;
   chunks: Array<{ id: string; chat: 'stale' | 'active'; embedded: boolean; updatedAt: string }>;
   embedding: number[];
@@ -102,8 +105,16 @@ async function main(): Promise<void> {
     updatedAt: spec.seedTs,
   };
 
-  // --- create both chats (pinned ids + seed timestamps) ---------------------
-  for (const chatId of [spec.staleChatId, spec.activeChatId]) {
+  // --- create all three chats (pinned ids + seed timestamps) ---------------
+  // The THIRD chat (P4.D203, v4 bug 160) is stale and carries ONLY
+  // `compiledIdentityStacks` — no compressionCache, no renderedMarkdown. It is
+  // the one row that distinguishes the guard's new disjunct from its SET: with
+  // the disjunct absent the WHERE excludes this chat and the stack survives,
+  // even though the SET names the column. The other two chats carry all three,
+  // so they stay green under that mutation — which is exactly why a
+  // stack-ONLY row had to be added rather than a column added to an existing
+  // one (`a-guard-whose-other-conjuncts-are-false-is-untested`).
+  for (const chatId of [spec.staleChatId, spec.activeChatId, spec.stackOnlyChatId]) {
     await chats.create(
       { userId: spec.userId, title: `Retention ${chatId}`, participants: [participant] } as never,
       { id: chatId, createdAt: spec.seedTs, updatedAt: spec.seedTs },
@@ -127,6 +138,7 @@ async function main(): Promise<void> {
   await playedMessage(spec.staleChatId, spec.staleMsgId, spec.staleMsgAt);
   await playedMessage(spec.staleChatId, spec.staleMsg2Id, spec.staleMsgAt);
   await playedMessage(spec.activeChatId, spec.activeMsgId, spec.activeMsgAt);
+  await playedMessage(spec.stackOnlyChatId, spec.stackOnlyMsgId, spec.stackOnlyMsgAt);
 
   // Load the discardable columns onto the two "laden" messages (stale + active).
   const loadDiscardable = async (id: string) => {
@@ -163,17 +175,39 @@ async function main(): Promise<void> {
   const dressChat = async (chatId: string, lastMessageAt: string) => {
     await rawQuery(
       `UPDATE chats
-          SET compressionCache = ?, renderedMarkdown = ?, updatedAt = ?, lastMessageAt = ?
+          SET compressionCache = ?, renderedMarkdown = ?, compiledIdentityStacks = ?,
+              updatedAt = ?, lastMessageAt = ?
         WHERE id = ?`,
-      ['COMPRESSION-CACHE-JSON', '# rendered markdown', spec.seedTs, lastMessageAt, chatId],
+      [
+        'COMPRESSION-CACHE-JSON',
+        '# rendered markdown',
+        '{"v":1,"stacks":{"cccccccc-0000-4000-8000-000000000001":"compiled"}}',
+        spec.seedTs,
+        lastMessageAt,
+        chatId,
+      ],
     );
   };
   await dressChat(spec.staleChatId, spec.staleMsgAt);
   await dressChat(spec.activeChatId, spec.activeMsgAt);
 
+  // The stack-ONLY chat: the two older cache columns stay NULL, so this row is
+  // reachable by the collapse ONLY through bug 160's new guard disjunct.
+  await rawQuery(
+    `UPDATE chats
+        SET compiledIdentityStacks = ?, updatedAt = ?, lastMessageAt = ?
+      WHERE id = ?`,
+    [
+      '{"v":1,"stacks":{"cccccccc-0000-4000-8000-000000000001":"stack-only"}}',
+      spec.seedTs,
+      spec.stackOnlyMsgAt,
+      spec.stackOnlyChatId,
+    ],
+  );
+
   await closeDatabase();
   process.stderr.write(
-    `built retention-caches fixture: ${out} (2 chats, 3 messages, ${spec.chunks.length} chunks)\n`,
+    `built retention-caches fixture: ${out} (3 chats, 4 messages, ${spec.chunks.length} chunks)\n`,
   );
   process.exit(0);
 }

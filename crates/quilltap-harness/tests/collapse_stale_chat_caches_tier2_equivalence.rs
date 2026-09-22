@@ -173,7 +173,8 @@ fn collapse_stale_chat_caches_matches_oracle() {
     let got_chats = db
         .read_main(|c| {
             let mut stmt = c.prepare(
-                "SELECT id, compressionCache, renderedMarkdown, updatedAt FROM chats ORDER BY id ASC",
+                "SELECT id, compressionCache, renderedMarkdown, compiledIdentityStacks, \
+                        updatedAt FROM chats ORDER BY id ASC",
             )?;
             let rows = stmt
                 .query_map([], |r| {
@@ -181,7 +182,12 @@ fn collapse_stale_chat_caches_matches_oracle() {
                         "id": r.get::<_, String>(0)?,
                         "compressionCache": r.get::<_, Option<String>>(1)?,
                         "renderedMarkdown": r.get::<_, Option<String>>(2)?,
-                        "updatedAt": r.get::<_, String>(3)?,
+                        // v4 bug 160 (`186eb09cb`): the third discardable
+                        // `chats` cache column. The fixture's THIRD chat
+                        // carries ONLY this one, so it is the row that
+                        // distinguishes the guard's new disjunct from the SET.
+                        "compiledIdentityStacks": r.get::<_, Option<String>>(3)?,
+                        "updatedAt": r.get::<_, String>(4)?,
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

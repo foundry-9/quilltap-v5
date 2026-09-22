@@ -27,6 +27,14 @@
 //! NEVER touched: `content`, `opaqueContent`, `thoughtSignature`, `attachments`,
 //! `contextSummary`, `chats.state`, memories, `summaryAnchor`.
 //!
+//! `chats.compiledIdentityStacks` IS collapsed, alongside `compressionCache`
+//! and `renderedMarkdown` — v4 bug 160 (`186eb09cb`). v5 had reproduced the
+//! same omission: the column was absent from both the SET and the guard
+//! disjunct, so a chat whose ONLY discardable column was a compiled stack was
+//! swept and left it behind. Nulling is safe and costs one recompile: the
+//! stack is written by `services/system_prompt_compiler.rs:269` and read back
+//! under STRICT version equality, so an absent stack is simply recompiled.
+//!
 //! Gated on CHAT staleness via the same shared [`super::maintenance::is_stale`]
 //! the asset collapse uses, so the sweeps can never disagree on "stale". NULLing
 //! frees pages inside the file; actual file shrink happens at the periodic manual
@@ -96,9 +104,11 @@ async fn collapse_one_chat(
         //    chat look freshly touched. (v4 also drops the in-memory compression
         //    cache here; v5 has no such Map — see the module doc.)
         let chat_rows = conn.execute(
-            "UPDATE chats SET compressionCache = NULL, renderedMarkdown = NULL \
+            "UPDATE chats SET compressionCache = NULL, renderedMarkdown = NULL, \
+                              compiledIdentityStacks = NULL \
                WHERE id = ?1 \
-                 AND (compressionCache IS NOT NULL OR renderedMarkdown IS NOT NULL)",
+                 AND (compressionCache IS NOT NULL OR renderedMarkdown IS NOT NULL \
+                   OR compiledIdentityStacks IS NOT NULL)",
             params![cid],
         )?;
 

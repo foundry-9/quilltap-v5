@@ -77,7 +77,8 @@ async function main(): Promise<void> {
   const summary = await collapseStaleChatCaches(nowMs);
 
   const chats = await rawQuery<Array<Record<string, unknown>>>(
-    'SELECT id, compressionCache, renderedMarkdown, updatedAt FROM chats ORDER BY id ASC',
+    `SELECT id, compressionCache, renderedMarkdown, compiledIdentityStacks, updatedAt
+       FROM chats ORDER BY id ASC`,
     [],
   );
   const messages = await rawQuery<Array<Record<string, unknown>>>(

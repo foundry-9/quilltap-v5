@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — fix(retention): the stale-cache sweep collapses `compiledIdentityStacks` too (v4 bug 160) (P4.D203)
+
+_Versions: core 0.0.969, harness 0.0.860._
+
+v4 `186eb09cb`'s bug 160 adds `chats.compiledIdentityStacks` to the maintenance
+sweep's discardable columns. v5 had reproduced the same omission exactly: the
+column was absent from both the SET and the guard disjunct, so a stale chat
+whose only discardable column was a compiled identity stack was scanned, judged
+stale, and left untouched. Nulling is safe and costs one recompile — the stack
+is read back under strict version equality.
+
+The family could not see it. `collapse_stale_chat_caches_tier2` was green by
+luck: neither its fixture nor either side's comparand mentioned the column. It
+is grown here with a THIRD chat — stale, carrying ONLY
+`compiledIdentityStacks`, with both older cache columns NULL — plus the column
+in both projections. The stack-only row is the point: with the guard's new
+disjunct removed but the SET kept, the WHERE excludes that chat and the stack
+survives, while the other two chats stay green because they carry all three
+columns. A column added to an existing row would have pinned nothing.
+
+Red-first on unported v5 at the target pin: `chatsCollapsed` 1 where v4 reports
+2, `chatRowsCleared` 1 where v4 reports 2. Both halves are independently
+mutation-proven — removing the disjunct alone reddens the summary, removing the
+SET's column alone reddens the chats projection.
+
 #### 2026-09-21 — feat(db): every v5 write to a compressed column goes through the codec, and every raw-SQL expression through `qt_text()` (P4.D203)
 
 _Versions: core 0.0.968, harness 0.0.859, cli 0.0.24._

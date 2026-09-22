@@ -5,13 +5,16 @@
   "seedTs": "2026-01-01T00:00:00.000Z",
   "staleMsgAt": "2026-04-22T00:00:00.000Z",
   "activeMsgAt": "2026-05-31T00:00:00.000Z",
+  "stackOnlyMsgAt": "2026-04-20T00:00:00.000Z",
   "staleChatId": "aaaaaaa1-0000-4000-8000-000000000001",
   "activeChatId": "aaaaaaa2-0000-4000-8000-000000000002",
+  "stackOnlyChatId": "aaaaaaa3-0000-4000-8000-000000000003",
   "participantId": "fbfbfbfb-0000-4000-8000-000000000001",
   "characterId": "cccccccc-0000-4000-8000-000000000001",
   "staleMsgId": "bbbbbbb1-0000-4000-8000-000000000001",
   "staleMsg2Id": "bbbbbbb2-0000-4000-8000-000000000002",
   "activeMsgId": "bbbbbbb3-0000-4000-8000-000000000003",
+  "stackOnlyMsgId": "bbbbbbb4-0000-4000-8000-000000000004",
   "embedding": [
     0.5,
     -0.25,
@@ -46,7 +49,7 @@
       "chat": "stale",
       "embedded": true,
       "updatedAt": "2026-05-20T00:00:00.000Z",
-      "comment": "P4.D25 warmth: re-embedded by a reopen INSIDE the retention window. The chat is still stale (reading never counts as played activity), but the vectors must SURVIVE — before f7cc887b this was one paid re-embed per read/sweep cycle."
+      "comment": "P4.D25 warmth: re-embedded by a reopen INSIDE the retention window. The chat is still stale (reading never counts as played activity), but the vectors must SURVIVE \u2014 before f7cc887b this was one paid re-embed per read/sweep cycle."
     },
     {
       "id": "cc000003-0000-4000-8000-000000000003",
