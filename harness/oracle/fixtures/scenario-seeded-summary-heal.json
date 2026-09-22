@@ -1,0 +1,67 @@
+{
+  "_comment": "P4.106 item 8 — the bug-158 heal spec (v4 da9c4f34f, migration clear-scenario-seeded-chat-summaries-v1). Built identically by harness/oracle/cases/scenario-seeded-summary-heal.test.ts (v4's REAL migration module + migrations/state.ts, the runner replayed by hand) and crates/quilltap-harness/tests/scenario_seeded_summary_heal_equivalence.rs (v5's boot heal). Each chat row is {id, contextSummary, scenarioText}; updatedAt is seeded to the same fixed stamp on both sides and dumped as '<bumped>' when the pass moved it. `priorLedger: true` plants a completed ledger row for the migration BEFORE the runner sequence (both apps must then skip). `omitScenarioColumn: true` builds a chats table with no scenarioText (v4's chatsTableUsable() false — both skip, nothing stamped).",
+  "scenarios": [
+    {
+      "name": "seeded-pair",
+      "chats": [
+        { "id": "seed-a", "contextSummary": "A rainy platform at Paddington.", "scenarioText": "A rainy platform at Paddington." },
+        { "id": "seed-b", "contextSummary": "The Salon after midnight.", "scenarioText": "The Salon after midnight." }
+      ]
+    },
+    {
+      "name": "single-seed",
+      "chats": [
+        { "id": "seed-only", "contextSummary": "A lighthouse in fog.", "scenarioText": "A lighthouse in fog." },
+        { "id": "summarized", "contextSummary": "They met at the lighthouse and argued about the lamp.", "scenarioText": "A lighthouse in fog." }
+      ]
+    },
+    {
+      "name": "empty-scenario-pair",
+      "chats": [
+        { "id": "both-empty", "contextSummary": "", "scenarioText": "" },
+        { "id": "summary-over-empty", "contextSummary": "Something happened.", "scenarioText": "" }
+      ]
+    },
+    {
+      "name": "real-summary",
+      "chats": [
+        { "id": "quotes-the-scene", "contextSummary": "A rainy platform at Paddington. Then the train came.", "scenarioText": "A rainy platform at Paddington." },
+        { "id": "trailing-newline", "contextSummary": "A rainy platform at Paddington.\n", "scenarioText": "A rainy platform at Paddington." }
+      ]
+    },
+    {
+      "name": "no-summary",
+      "chats": [
+        { "id": "never-summarized", "contextSummary": null, "scenarioText": "A rainy platform at Paddington." },
+        { "id": "no-scenario", "contextSummary": "A summary.", "scenarioText": null },
+        { "id": "both-null", "contextSummary": null, "scenarioText": null }
+      ]
+    },
+    {
+      "name": "mixed",
+      "chats": [
+        { "id": "m-seeded", "contextSummary": "The garden party.", "scenarioText": "The garden party." },
+        { "id": "m-seeded-unicode", "contextSummary": "a 𝒳 ☃ b — «café»", "scenarioText": "a 𝒳 ☃ b — «café»" },
+        { "id": "m-seeded-whitespace", "contextSummary": "   ", "scenarioText": "   " },
+        { "id": "m-real", "contextSummary": "The garden party, and then the storm.", "scenarioText": "The garden party." },
+        { "id": "m-case-differs", "contextSummary": "the garden party.", "scenarioText": "The garden party." },
+        { "id": "m-null-summary", "contextSummary": null, "scenarioText": "The garden party." },
+        { "id": "m-empty", "contextSummary": "", "scenarioText": "" }
+      ]
+    },
+    {
+      "name": "already-run",
+      "priorLedger": true,
+      "chats": [
+        { "id": "still-seeded", "contextSummary": "The Salon after midnight.", "scenarioText": "The Salon after midnight." }
+      ]
+    },
+    {
+      "name": "no-scenario-column",
+      "omitScenarioColumn": true,
+      "chats": [
+        { "id": "old-vintage", "contextSummary": "An old summary.", "scenarioText": null }
+      ]
+    }
+  ]
+}

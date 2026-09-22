@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-22 — test(harness): the bug-158 heal differential against v4's real migration (P4.106 item 8)
+
+_Versions: harness 0.0.893._
+
+P4.106 item 8. New `scenario_seeded_summary_heal_equivalence` compares v5's
+bug-158 boot heal (`clear_scenario_seeded_chat_summaries`) with v4's real
+`clear-scenario-seeded-chat-summaries-v1` migration and ledger, replaying
+v4's runner by hand as the `chat_activity_heal` family does. Eight scenarios
+cover all four paths: ran (plural and singular messages, a mixed instance
+with unicode and whitespace-only seeds), no-drift (empty scenarios, real
+summaries, null columns — no ledger row, the no-op sentence pinned),
+not-applicable (no `scenarioText` column), and already-completed (a prior
+ledger row planted through v4's real `recordCompletedMigration`). The
+comparand is every `chats` row, the `migrations_state` rows and the
+metadata keys. Dropping `SEEDED_WHERE`'s `<> ''` fails the empty-scenario
+scenario.
+
 #### 2026-09-22 — test(harness): the tier-1 isRecordOnlyMessage family + the turn-transcript Staff-skip row (P4.106 item 4)
 
 _Versions: core 0.0.993, harness 0.0.892._

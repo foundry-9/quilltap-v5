@@ -143110,3 +143110,34 @@ three more). Drop the transcript's `systemSender` skip → exactly
 `skip_classes` + `inform_record_skipped` red.
 Red-first availability: none — both are neutrality arms over ported code;
 the mutations are the proofs.
+
+### Unit 3 — item 8: `scenario_seeded_summary_heal_equivalence`
+
+NEW family + `cases/scenario-seeded-summary-heal.test.ts` (jest, the
+`chat-activity-heal.test.ts` harnessing: the three `migrations/lib` mocks
+over one in-memory DB, the REAL migration module + `migrations/state.ts`) +
+spec `fixtures/scenario-seeded-summary-heal.json`, eight scenarios:
+`seeded-pair` (ran, 2 — plural), `single-seed` (ran, 1 — singular; a real
+summary beside it untouched), `empty-scenario-pair` (no-drift — both rows
+match the predicate without `<> ''`), `real-summary` (no-drift: a summary
+quoting the scene, a trailing newline), `no-summary` (no-drift: the three
+NULL shapes), `mixed` (ran, 3 — unicode, whitespace-only and plain seeds
+among a case-differs row, a NULL and an empty pair), `already-run` (a prior
+ledger row planted through v4's REAL `recordCompletedMigration`; both
+skip; the seed stays), `no-scenario-column` (`chatsTableUsable()` false —
+`NotApplicable`, nothing stamped). Comparand: every `chats` row
+(`updatedAt` as `<bumped>` when moved), `migrations_state` (`completedAt`/
+`quilltapVersion` normalized), the metadata KEYS (both values normalized),
+the path, the message via `cleared_message`, the no-drift sentence vs
+`NO_DRIFT_MESSAGE`, v4's fixed point + re-run skip, v5's own re-run skip.
+
+Regen AS RUN: `TMPO=/tmp/p4106/qt-scenario-seeded-summary-heal-oracle` (the
+case + spec copied in), `cd /tmp/qt-v4-pin-p4106-f45a517a9 &&
+QT_ORACLE_OUT=/tmp/p4106/oracle-scenario-seeded-summary-heal.ndjson
+PATH=$N:$PATH $N/npx jest --silent --watchman=false --testTimeout=120000
+--roots "$PWD" --roots "$TMPO/cases" -- "scenario-seeded-summary-heal\.test\.ts$"`
+→ 1 suite passed, 8 rows. Green 8/8.
+
+Mutation: `SEEDED_WHERE` without `AND "scenarioText" <> ''` → red at
+`[empty-scenario-pair] v4 skipped; v5 must too` (the first scenario it
+reaches). Reverted by file backup.
