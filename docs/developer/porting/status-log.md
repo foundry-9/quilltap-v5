@@ -140681,3 +140681,38 @@ calls `TestBed.configureTestingModule`, so it may be called ONCE per test — a
 single "and only then" case that rendered twice died with
 `Cannot configure the test module when the test module has already been
 instantiated`, which reads like a DI problem and is not. Split into a pair.
+
+### Unit 8 — the two live beats, authored gated (§R.11)
+
+NEW `apps/web/e2e/salon-inform-flow.spec.ts` (4 tests) and
+`apps/web/e2e/salon-regenerate-stream-flow.spec.ts` (3 tests). Both sort after
+`foundation.spec.ts` as the shared-server ordering requires; both use "Group
+Expedition" (Aria + Bram LLM, Cleo the operator's), never "Solo Voyage", whose
+hardcoded token baseline `salon-token-cost-flow` asserts.
+
+**Gated on NAMED constants, `P4D205_SERVER_LANDED` / `P4D207_SERVER_LANDED`,
+both `false`; the UNIFIER flips them.** A capability probe would be wrong in
+both cases and differently: for Inform, the table's absence and the verbs'
+absence are different failures that look alike; for the swipe, **`messageSwipe`
+has been live since P4.6a**, so a probe on the verb reads true and activates the
+beats into a FALSE PASS — they would watch a blocking call, see no plate, and
+fail for a reason that has nothing to do with the port.
+
+**ONE test is deliberately UNGATED and needs no server verb**
+(`the gutter offers Inform, and the dialog offers only the model-played seats`):
+the button and the dialog's audience come off the chat the Salon already holds.
+
+⚠ **Neither beat has been RUN.** There is no `target/release` binary anywhere —
+not in this worktree and not in the main checkout — and this lane touches zero
+Rust, so building the workspace in release for one walk is out of proportion to
+what it would prove. The order provides for exactly this (§R.11: "their first
+live run is the unified gate's own step"). Both files were type-checked and
+enumerated through `npx playwright test --list` (7 tests in 2 files, exit 0),
+and every locator is one an existing green beat already uses
+(`.qt-composer-gutter-tools` + accessible name, `[qt-modal-footer]`-scoped
+footer buttons, `.chat-card-stack a.qt-entity-card`) or one this lane's unit
+specs pin (`.qt-chat-regenerating-plate`, `.qt-chat-regenerating-original`,
+`.qt-chat-message-action-bar-disabled`, `.qt-chat-tool-result-chip`,
+`aria-label="Regenerate response"` read off `message-row.ts` rather than
+guessed). **The unifier should expect the ungated Inform test to run in the
+unified suite** and treat a failure there as this lane's to answer.

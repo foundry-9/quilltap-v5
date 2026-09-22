@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — test(e2e): the Inform walk and the regeneration walk, gated for the unifier (P4.D206 unit 8)
+
+_No crate versions bumped._
+
+Two Playwright specs for the surfaces this round's SPA lane built.
+
+`salon-inform-flow.spec.ts`: the gutter offers Inform, the dialog offers the
+two model-played seats and never the operator's own, Everyone is the opening
+state and a pick drops it, and Inform stays shut until the passage has a body —
+all of which runs live in-lane, because it needs no server verb. Then the three
+posting beats: Everyone leaves a record labelled `out of character`, one seat
+puts its name on a chip whose hover carries the passage's FIRST line and whose
+cross withdraws it, and that seat's next turn consumes the note so the chip goes.
+
+`salon-regenerate-stream-flow.spec.ts`: the plate goes up over the dimmed
+original, withdraws on the first token, and leaves the new variant on display;
+the row's action bar and the whole composer are shut for the duration and open
+again after; the status strip carries the stage. The mock streams slowly,
+because every assertion is about the in-flight window.
+
+The posting and re-roll beats are gated on named constants rather than on a
+capability probe: `messageSwipe` has been live since P4.6a, so a probe on the
+verb would read true and activate them into a false pass against a blocking
+call with no plate at all. The unifier flips both after picking P4.D205 and
+P4.D207; their first live run is the unified gate's own step.
+
 #### 2026-09-21 — feat(salon): a regeneration says so while it happens (P4.D206 units 6–7)
 
 _Versions: SPA 0.5.745._
