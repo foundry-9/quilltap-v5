@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-21 — docs(porting): the P4.D211 lane's gate record and what it measured that the order got wrong
+
+_No crate versions bumped._
+
+Closes the P4.D211 lane: the gate table, the four workspace failures each
+attributed to a sibling lane or to pre-existing fixture vintage, and the order's
+status header rewritten with the six measurements that correct it.
+
+The gate: fmt and lint clean, clippy clean in both feature sets, release build
+clean, SPA 437 files / 7,408 tests / 0 failed, `cargo test --workspace` 582 test
+binaries / 3,471 passed / 4 failed / 2 ignored, Tier R 223/0 at the baseline pin
+and 223/4 at the target. None of the four failures is in this lane's ownership:
+two are §R.5's designed reds for P4.D210 (v4's new `sync` verb) and P4.D205 (the
+Inform schema re-vendor), and two are fixture-vintage families missing
+`files.generationKey`, both proven pre-existing on clean main.
+
+Corrections for the next order. Item 6's "223/0 expected" holds only at the
+baseline pin, since the target pin is where v4 grew the verb. A pinned v4
+worktree cannot reproduce a past dependency state, because its `node_modules` are
+symlinks into the live checkout — and no recorder loads the rebuilt plugin
+bundles at all, only each plugin's TypeScript source against the installed SDK.
+The prescribed `[DONE]`-truncation mutation is vacuous, since that line emits no
+chunk. There are 43 `.wire` files now, 16 without a trailing blank line, of which
+ten are NDJSON and never reach an SSE decoder. And the fixture-vintage heal order
+grows from nine families on four pairs to eleven on six.
+
 #### 2026-09-21 — fix(clippy): a doc comment's line-initial `+` was opening a markdown list, and main was red
 
 _Versions: web 0.0.159._

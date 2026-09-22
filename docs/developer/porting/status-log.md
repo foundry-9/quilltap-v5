@@ -141419,3 +141419,46 @@ still have 7.10.0 installed"). **Strike it with this correction:**
 > declared, and `@anthropic-ai/sdk@0.115.0`, `@google/genai@1.52.0` and
 > `@openrouter/sdk@1.3.11` all match their declarations. No `npm install` is
 > owed.
+
+## Lane record — P4.D211: the lane's verification gate (2026-09-21)
+
+Run from `claude/p4-d211-zod-4-6-move-6b0615807` with `CARGO_INCREMENTAL=0` and
+`TZ=UTC`, each long step backgrounded behind its own sentinel file and read from
+the full log (never `| tail`).
+
+| step | result |
+|---|---|
+| **1. §R.2 freshness probe** | **PASS** at lane start AND again before the regen batch — branch `main`, tree CLEAN, HEAD `f45a517a9`, both logs empty |
+| **2. `cargo fmt --all --check`** | clean |
+| **2b. `npm run lint`** (SPA touched) | clean, incl. the qt-class guard (`check-qt-classes --self-test: 5/5`) |
+| **3. `cargo clippy --workspace --all-targets -- -D warnings`** | **clean in BOTH feature sets** (default; `--features quilltap-core/native-transport`) — after the out-of-mandate fix below |
+| **4. the lane's differentials by name** | all green: `zod_version_guard` 1/1, `zod_email_equivalence` 1/1, `pascal_custom_tool_definition_equivalence` 1/1, plus all eleven corpus-reading families (`request_builder_equivalence`, `request_builder_google{,_wire}_equivalence`, `image_dialects_equivalence`, `tool_wire_{equivalence,call_site}` 2+7, `stream_decoders_equivalence` 5, `response_parse_equivalence`, `streaming_composer_equivalence` 5, `moderation_wire_equivalence`, `web_search_wire_equivalence`) and `dispatch_wrong_type_census` 10/10. **Zero `SKIP:` lines for any family this lane owns.** |
+| **5. neutrality legs** | the engines' corpus regenerated at the target AND at a purpose-built zod-4.5.4 control, `cmp` byte-identical both ways (control proven LIVE by mutation first — 53 rows moved). All nine recorder corpora compared at the target, the baseline pin and the control; ten of twelve byte-identical, the two movers attributed token-by-token to the SDK stamps. |
+| **6. mutation proofs** | 4 of 4 behaved — see the per-unit tables. One (`[DONE]`-truncation) SURVIVED and is recorded as vacuous-by-construction rather than deleted, with a replacement that reddens the row by name. |
+| **7. `cargo build --workspace --release`** | clean |
+| **7b. `npm run build`** (SPA) | clean — 435 files emitted, bundle generated |
+| **7c. `npm test`** (SPA) | **437 test files / 7,408 tests, 0 failed** |
+| **8. `cargo test --workspace --no-fail-fast`** | **582 test binaries / 3,471 passed / 4 failed / 2 ignored** — every failure attributed below, none this lane's |
+| **9. source censuses** | `zod_version_guard` re-run and green at its new constant; `dispatch_wrong_type_census` 10/10 unmoved (this lane adds no verb and no raw field). `help_tree_embed_guard`, `host_help_docs_boot`, `stream_watchdog_wrap_census`, `public_schemas_vendor_guard` — **NOT moved by this lane** (no help page, no watchdog site, no vendored schema is ours). |
+| **10. Tier R** | **223/0 at the baseline pin, 223/4 at the target pin** — see item 6. |
+| **11. commits** | four, each through `.claude/commands/commit.md` with a CHANGELOG entry and its version bumps. |
+
+### The four workspace failures, each attributed
+
+| binary | cause | whose |
+|---|---|---|
+| `cli_differential` | the 4 Tier R cases (`main help` + three `completion` templates) missing v4's new `sync` verb | **P4.D210's designed red** (§R.5), proven drift by the 223/0 baseline run |
+| `qtap_schema_embed_guard` | `the_embedded_schema_equals_the_v4_checkouts`: "v4 95266 bytes, vendored 93384 bytes" | **P4.D205's re-vendor obligation** — the ledger measured this exact red from `e7d77bb60` (Inform) before the round opened |
+| `profile_routes_equivalence` | 4 `patch_avatar_*` cases, `no such column: generationKey` | **pre-existing fixture vintage**, proven on clean `main` |
+| `projects_routes_equivalence` | 17 cases, same missing column | **pre-existing fixture vintage**, proven on clean `main` |
+
+**Nothing in this lane's ownership is red.** The two fixture-vintage families are
+new to the heal order's list (see items 5–7); the other two are named in §R.5 as
+this round's designed reds and belong to sibling lanes.
+
+### Versions at lane close
+
+core **0.0.968**, harness **0.0.860**, web **0.0.159**, SPA **0.5.742**.
+Unmoved by this lane: host 0.0.139, cli 0.0.22, tauri 0.0.7,
+fixture-sanitizer 0.0.3, sqlite3mc-sys (pinned, never bumped). The unifier
+recounts as base + the sum of every lane's bumps (§R.8).
