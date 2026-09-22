@@ -169,10 +169,18 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
     // 4. A SECOND re-roll is where v4 bug (b) actually bites: the group now
     //    exists in the previous swipe map, so the reconcile's id-carry has a
     //    previous selection to keep. The counter must read the newest variant.
+    //    The first re-roll ends with v4's queue kick, and in the full suite's
+    //    accumulated chat state that can start a chain turn; a swipe posted
+    //    while a turn runs is refused, so the counter would stay at 2/2 (the
+    //    first full-suite run). Wait for the turn to be over — the composer
+    //    open again — exactly as `sendAndSettle` does.
+    await expect(page.locator('button[aria-label="Send message"]')).toBeVisible({
+      timeout: 30_000,
+    });
     await regenerateButton(page).click();
     // (No plate assertion here — the same race as above; the counter is the proof.)
     await expect(page.locator('.qt-chat-regenerating')).toHaveCount(0, { timeout: 30_000 });
-    await expect(counter).toHaveText('3/3', { timeout: 15_000 });
+    await expect(counter).toHaveText('3/3', { timeout: 30_000 });
   });
 
   test('the composer and the action bar are shut for the duration', async ({ page }) => {
