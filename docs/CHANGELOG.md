@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(context-summary): the fold keeps a hand-set title and cues the Lantern (P4.D215 unit 4)
+
+_Versions: core 0.0.1005, harness 0.0.916._
+
+Ports v4 bugs 163 and 164 into the context-summary fold. A hand-renamed
+chat skips the title call entirely (no LLM call, no cost event) and logs
+`Chat renamed by hand; skipping fold title`. Other chats title through the
+auto-title chokepoint with the user's chat settings, so a changed title
+queues a story background. A title failure no longer fails the fold; it
+logs v4's error line and the fold still succeeds. Also adds the fold's
+`Generated title` (now with `outcome`) and `Failed to generate title`
+lines. `context_summary_service_tier3` gains a hand-renamed chat, a chat
+whose image profile resolves, and a chat-settings row, and pins the title
+lines per op.
+
 #### 2026-09-23 — feat(chats): regenerate-title through the auto-title chokepoint (P4.D215 unit 3)
 
 _Versions: core 0.0.1004, harness 0.0.915._

@@ -85,6 +85,9 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
+use crate::services::auto_title::{
+    apply_auto_title, AutoTitleExtraPatch, AutoTitleOutcome, AutoTitleSource,
+};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::commonplace_notifications::{
     refresh_relevant_conversations_on_fold, RefreshRelevantConversationsInput,
@@ -931,6 +934,29 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         }
     }
 
+    // v4's `result` — what every remaining exit returns: the fold succeeded
+    // whatever happens to the title.
+    let result = SummaryGenerationResult {
+        success: true,
+        summary: Some(new_summary.clone()),
+        error: None,
+        was_generated: true,
+        usage,
+        timed_out: false,
+    };
+
+    // v4 `00c290c9a` (bug 164): a hand-renamed chat keeps its title, so don't
+    // pay for one. Off the START snapshot — the chokepoint re-checks after the
+    // call in case the user renames mid-flight. No title LLM call, no
+    // TITLE_GENERATION log row, no title cost event.
+    if chat.get("isManuallyRenamed").and_then(Value::as_bool) == Some(true) {
+        tracing::debug!(
+            chatId = chat_id.as_str(),
+            "[Context Summary] Chat renamed by hand; skipping fold title"
+        );
+        return Ok(result);
+    }
+
     // Title generation (literary, or practical for help-like chats).
     let title_result = if is_help_like_chat_type(chat_type.as_deref()) {
         generate_help_chat_title_from_summary(executor, completion, &new_summary, &selection).await
@@ -938,50 +964,96 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         generate_title_from_summary(executor, completion, &new_summary, &selection).await
     };
 
-    if title_result.success {
-        if let Some(title) = title_result.result.clone().filter(|t| !t.is_empty()) {
-            let write_chat_id = chat_id.clone();
-            let now = now_iso();
-            db.write(move |writers| {
-                let patch = ChatUpdate {
-                    title: Some(title),
-                    updated_at: Some(now),
-                    ..Default::default()
-                };
-                writers.main().chats().update(&write_chat_id, &patch)?;
-                Ok(())
-            })
-            .await?;
-
-            if let Some(u) = title_result.usage {
-                let tu = Usage {
-                    prompt_tokens: u.prompt_tokens,
-                    completion_tokens: u.completion_tokens,
-                    total_tokens: u.total_tokens,
-                };
-                if tu.prompt_tokens > 0 || tu.completion_tokens > 0 {
-                    seams
-                        .emit_title_cost_event(
-                            &chat_id,
-                            tu,
-                            Some(selection.provider.as_str()),
-                            Some(selection.model_name.as_str()),
-                        )
-                        .await;
+    // v4's `if (titleResult.success && titleResult.result)` — JS-truthy, so an
+    // empty title takes the warn arm.
+    match title_result
+        .result
+        .clone()
+        .filter(|t| title_result.success && !t.is_empty())
+    {
+        Some(title) => {
+            // v4 `:590-632` is one try/catch: a failure anywhere from the
+            // settings read through the chokepoint lands in the catch's ERROR
+            // and skips the title cost event — the fold still succeeds. (Before
+            // this port v5 `?`-propagated a title-write error and FAILED the
+            // whole fold; that pre-existing divergence closes here.)
+            match apply_fold_title(db, &options.user_id, &chat_id, &title).await {
+                Ok(outcome) => {
+                    // v4 `:605` — one rendered sentence, now WITH `{ outcome }`
+                    // (every outcome, not only `applied`).
+                    tracing::info!(
+                        outcome = outcome.as_str(),
+                        "[Context Summary] Generated title for chat {}: {}",
+                        chat_id,
+                        title
+                    );
+                    if let Some(u) = title_result.usage {
+                        let tu = Usage {
+                            prompt_tokens: u.prompt_tokens,
+                            completion_tokens: u.completion_tokens,
+                            total_tokens: u.total_tokens,
+                        };
+                        if tu.prompt_tokens > 0 || tu.completion_tokens > 0 {
+                            seams
+                                .emit_title_cost_event(
+                                    &chat_id,
+                                    tu,
+                                    Some(selection.provider.as_str()),
+                                    Some(selection.model_name.as_str()),
+                                )
+                                .await;
+                        }
+                    }
+                }
+                Err(e) => {
+                    // v4 `:631` — `logger.error(msg, {}, err)`: the error rides
+                    // as v5's `error` field.
+                    tracing::error!(
+                        error = %e,
+                        "[Context Summary] Error generating title for chat {}:",
+                        chat_id
+                    );
                 }
             }
         }
+        None => {
+            // v4 `:628` — `${titleResult.error}` renders `undefined` when absent.
+            tracing::warn!(
+                "[Context Summary] Failed to generate title for chat {}: {}",
+                chat_id,
+                title_result.error.as_deref().unwrap_or("undefined")
+            );
+        }
     }
-    // v4: a title failure only logs; the fold result still returns success.
 
-    Ok(SummaryGenerationResult {
-        success: true,
-        summary: Some(new_summary),
-        error: None,
-        was_generated: true,
-        usage,
-        timed_out: false,
-    })
+    Ok(result)
+}
+
+/// The fold's title write (v4 `context-summary.ts:597-604`): its OWN
+/// chat-settings read (the fold's options carry none; `null` → no background),
+/// then the auto-title chokepoint with `source: 'summary-fold'` and no extra
+/// patch — so a refused title writes nothing at all.
+async fn apply_fold_title(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    title: &str,
+) -> Result<AutoTitleOutcome, DbError> {
+    let uid = user_id.to_string();
+    let chat_settings =
+        db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid))?;
+    apply_auto_title(
+        db,
+        user_id,
+        chat_id,
+        title,
+        chat_settings.as_ref(),
+        AutoTitleExtraPatch::default(),
+        false,
+        AutoTitleSource::SummaryFold,
+        &now_iso(),
+    )
+    .await
 }
 
 /// v4 lines ~435-453: sweep prior Librarian summary whispers from older

@@ -120,9 +120,9 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::context_summary::{
-    check_and_generate_summary_if_needed_with_seams, generate_context_summary_with_seams,
-    invalidate_context_summary_if_message_covered, CheapLlmSettings, FoldEpisodePassSeams,
-    GenerateSummaryOptions, RealContextSummarySeams,
+    check_and_generate_summary_if_needed_with_seams, generate_context_summary,
+    generate_context_summary_with_seams, invalidate_context_summary_if_message_covered,
+    CheapLlmSettings, FoldEpisodePassSeams, GenerateSummaryOptions, RealContextSummarySeams,
 };
 use quilltap_core::services::llm_logging::LogContext;
 use serde::Deserialize;
@@ -137,18 +137,93 @@ mod common;
 
 const SPEAKER_NAMES_LINE: &str = "[Context Summary] Resolved speaker names for fold";
 
-/// Run `f` under a THREAD-SCOPED capturing subscriber (every `#[tokio::test]`
-/// is current-thread, so the guard spans the awaits) and return its lines.
+// P4.D215: the process-global, per-thread capture rig (its module doc has the
+// cross-thread `Interest` race it closes). This binary has one test today, so
+// the old thread-scoped subscriber was safe — the rig keeps it safe if a second
+// test ever lands beside it.
+mod auto_title_capture;
+
+/// Run `f` with this thread's capture buffer armed (every `#[tokio::test]` is
+/// current-thread, so it spans the awaits) and return its lines.
 async fn capture_lines<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
-    use tracing_subscriber::layer::SubscriberExt;
-    let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-    let subscriber = tracing_subscriber::registry()
-        .with(quilltap_core::test_support::CaptureLayer(logs.clone()));
-    let guard = tracing::subscriber::set_default(subscriber);
-    let out = f.await;
-    drop(guard);
-    let lines = logs.lock().unwrap().clone();
-    (out, lines)
+    auto_title_capture::capture_async(f).await
+}
+
+// ---------------------------------------------------------------------------
+// P4.D215 (bugs 163/164, v4 `00c290c9a`): the fold's title lines, per op.
+// ---------------------------------------------------------------------------
+
+const FOLD_SKIP_LINE: &str = "[Context Summary] Chat renamed by hand; skipping fold title";
+
+/// The fold-title lines each `generate` op must (and must not) log. v4
+/// `context-summary.ts`: the early-return DEBUG on a hand-renamed chat (NEW,
+/// `:583-588`); the `Generated title for chat …` INFO now WITH `{ outcome }`
+/// (`:605`, every outcome); the `!success` WARN (`:628`). All three were absent
+/// from v5 before this lane.
+fn assert_fold_title_lines(op: &str, chat_id: &str, lines: &[String]) {
+    let count = |needle: &str| lines.iter().filter(|l| l.contains(needle)).count();
+    let generated = format!("[Context Summary] Generated title for chat {chat_id}: ");
+    let failed = format!("[Context Summary] Failed to generate title for chat {chat_id}: ");
+    match op {
+        "fold_hand_renamed" => {
+            let hits: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains(FOLD_SKIP_LINE))
+                .collect();
+            assert_eq!(hits.len(), 1, "{op}: exactly one skip line: {lines:#?}");
+            assert!(hits[0].starts_with("DEBUG "), "{op}: {}", hits[0]);
+            assert!(
+                hits[0].contains(&format!(" chatId={chat_id}")),
+                "{op}: {}",
+                hits[0]
+            );
+            assert_eq!(count(&generated), 0, "{op}: no title was generated");
+            assert_eq!(
+                count("[Auto Title]"),
+                0,
+                "{op}: the chokepoint is never reached"
+            );
+        }
+        "title_failure" => {
+            assert_eq!(count(FOLD_SKIP_LINE), 0, "{op}");
+            let hits: Vec<&String> = lines.iter().filter(|l| l.contains(&failed)).collect();
+            assert_eq!(
+                hits.len(),
+                1,
+                "{op}: exactly one failed-title warn: {lines:#?}"
+            );
+            assert!(hits[0].starts_with("WARN "), "{op}: {}", hits[0]);
+            assert_eq!(count(&generated), 0, "{op}");
+        }
+        // The fold returns `Not enough turns to fold` before any title.
+        "fold_too_few_turns" => {
+            for needle in [
+                FOLD_SKIP_LINE,
+                generated.as_str(),
+                failed.as_str(),
+                "[Auto Title]",
+            ] {
+                assert_eq!(count(needle), 0, "{op}: {needle}");
+            }
+        }
+        _ => {
+            assert_eq!(count(FOLD_SKIP_LINE), 0, "{op}: not hand-renamed");
+            assert_eq!(count(&failed), 0, "{op}");
+            let hits: Vec<&String> = lines.iter().filter(|l| l.contains(&generated)).collect();
+            assert_eq!(
+                hits.len(),
+                1,
+                "{op}: exactly one generated-title line: {lines:#?}"
+            );
+            assert!(hits[0].starts_with("INFO "), "{op}: {}", hits[0]);
+            // Every corpus title differs from its chat's seed title.
+            assert!(hits[0].contains(" outcome=applied"), "{op}: {}", hits[0]);
+            assert_eq!(count("[Auto Title] Chat retitled"), 1, "{op}");
+            // Only chat P resolves an image profile (see the fixture's note).
+            let queued = count("[Auto Title] Queued story background generation");
+            assert_eq!(queued, usize::from(op == "fold_queues_background"), "{op}");
+        }
+    }
 }
 
 /// The per-op expectation for the debug line: `None` = the op must not log it
@@ -175,6 +250,9 @@ fn expected_speaker_names_line(op: &str) -> Option<(usize, usize, &'static str)>
             3,
             r#"["ee00000d-0000-4000-8000-000000000002","ee00000d-0000-4000-8000-000000000003"]"#,
         )),
+        // P4.D215's two chats: one seat each on a character with no row.
+        "fold_hand_renamed" => Some((1, 0, r#"["ee000000-0000-4000-8000-00000000000f"]"#)),
+        "fold_queues_background" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000010"]"#)),
         // `Not enough turns to fold` returns BEFORE the resolution; the gate
         // skips and the invalidates never fold.
         _ => None,
@@ -766,6 +844,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                 ))
                 .await;
                 assert_speaker_names_line(&op.name, &op.chat_id, &lines);
+                assert_fold_title_lines(&op.name, &op.chat_id, &lines);
                 // Match v4's result shape: undefined keys are dropped by
                 // JSON.stringify, so `summary`/`error`/`usage` only appear when set.
                 let mut obj = serde_json::Map::new();
@@ -937,6 +1016,31 @@ async fn context_summary_service_tier3_matches_oracle() {
     // error row. Split it off and assert the divergence in BOTH directions
     // (`compression_tier3` carries the same pin), so a convergence retires the
     // pin rather than hiding inside a filter.
+    // P4.D215 (bug 164): the hand-renamed chat's fold makes ZERO title LLM
+    // calls on either side. Pinned BEFORE the ruled-failure split below, which
+    // drops every failed-call row — an un-ported v5 asks for a title v4 never
+    // requested, misses the canned replay, and its failed row would vanish
+    // into that split (measured: the tables then match, because the miss
+    // writes no title).
+    let hand_renamed_title_rows = |rows: &[Value]| {
+        rows.iter()
+            .filter(|r| {
+                r.get("chatId").and_then(Value::as_str)
+                    == Some("c000000f-0000-4000-8000-00000000000f")
+                    && r.get("type").and_then(Value::as_str) == Some("TITLE_GENERATION")
+            })
+            .count()
+    };
+    assert_eq!(
+        hand_renamed_title_rows(&want_logs),
+        0,
+        "v4 made a title call for the hand-renamed chat"
+    );
+    assert_eq!(
+        hand_renamed_title_rows(&got_logs),
+        0,
+        "fold_hand_renamed: v5 made a title LLM call for a hand-renamed chat (bug 164)"
+    );
     let got_logs = common::assert_ruled_failed_call_divergence(
         got_logs,
         &want_logs,
@@ -1031,5 +1135,96 @@ async fn context_summary_service_tier3_matches_oracle() {
             t.table
         );
         assert_eq!(got[i]["rows"], want[i]["rows"], "{} rows diverge", t.table);
+    }
+
+    // P4.D215: v4's catch (`context-summary.ts:630-632`). The fold's title
+    // block is one try/catch in v4 — a failure from the settings read through
+    // the chokepoint logs `[Context Summary] Error generating title for chat …:`
+    // and the fold STILL succeeds (before this lane v5 `?`-propagated a
+    // title-write error and failed the whole fold). Driven on a separate
+    // PRISTINE copy with `chat_settings` dropped, replaying the same canned
+    // calls as `fold_queues_background` (same chat, same prompts).
+    {
+        let err_main = std::env::temp_dir().join(format!("qt-ctxsum-rust-err-{pid}.db"));
+        let err_mount = std::env::temp_dir().join(format!("qt-ctxsum-rust-err-mount-{pid}.db"));
+        std::fs::copy(&fixture_main, &err_main).unwrap();
+        std::fs::copy(&fixture_mount, &err_mount).unwrap();
+        let err_db = Db::open(
+            DbPaths {
+                main: err_main.clone(),
+                mount_index: Some(err_mount.clone()),
+                llm_logs: None,
+            },
+            &ops_spec.test_pepper_base64,
+        )
+        .unwrap();
+        let chat_p = "c0000010-0000-4000-8000-000000000010".to_string();
+        let options = GenerateSummaryOptions {
+            user_id: ops_spec.user_id.clone(),
+            chat_id: chat_p.clone(),
+            connection_profile: current_profile.clone(),
+            cheap_llm_settings: settings.clone(),
+            available_profiles: profiles.clone(),
+            force_regenerate: false,
+            danger_settings: None,
+            registry_cheapest_for_current: None,
+            connection_max_context: None,
+        };
+        let generated = format!("[Context Summary] Generated title for chat {chat_p}: ");
+        let error_line = format!("[Context Summary] Error generating title for chat {chat_p}:");
+        // (a) The healthy fold: no ERROR.
+        let (r, lines) = capture_lines(generate_context_summary(
+            &err_db,
+            &completion,
+            &CheapLlmTaskExecutor::new(),
+            &options,
+        ))
+        .await;
+        assert!(r.success, "the healthy fold succeeds");
+        assert!(!lines.iter().any(|l| l.contains(&error_line)), "{lines:#?}");
+        assert!(lines.iter().any(|l| l.contains(&generated)), "{lines:#?}");
+        // (b) Settings unreadable: the ERROR, no success line, and the fold
+        //     STILL succeeds. (Re-folding the same chat: the first run's
+        //     summary moved the cursor, so reset it by re-copying.)
+        drop(err_db);
+        std::fs::copy(&fixture_main, &err_main).unwrap();
+        std::fs::copy(&fixture_mount, &err_mount).unwrap();
+        let err_db = Db::open(
+            DbPaths {
+                main: err_main.clone(),
+                mount_index: Some(err_mount.clone()),
+                llm_logs: None,
+            },
+            &ops_spec.test_pepper_base64,
+        )
+        .unwrap();
+        err_db
+            .write(|w| {
+                w.main()
+                    .connection()
+                    .execute_batch("DROP TABLE chat_settings;")?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let (r, lines) = capture_lines(generate_context_summary(
+            &err_db,
+            &completion,
+            &CheapLlmTaskExecutor::new(),
+            &options,
+        ))
+        .await;
+        assert!(
+            r.success,
+            "a title failure never fails the fold (v4's catch)"
+        );
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(&error_line)).collect();
+        assert_eq!(hits.len(), 1, "exactly one catch ERROR: {lines:#?}");
+        assert!(hits[0].starts_with("ERROR "), "{}", hits[0]);
+        assert!(hits[0].contains(" error="), "{}", hits[0]);
+        assert!(!lines.iter().any(|l| l.contains(&generated)), "{lines:#?}");
+        drop(err_db);
+        let _ = std::fs::remove_file(&err_main);
+        let _ = std::fs::remove_file(&err_mount);
     }
 }

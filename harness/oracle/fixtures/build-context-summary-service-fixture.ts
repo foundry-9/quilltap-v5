@@ -70,6 +70,10 @@ interface ChatSeed {
   lastFullRebuildTurn?: number;
   lastRenameCheckInterchange?: number;
   summaryAnchorMessageIds?: string[];
+  /** P4.D215: a hand-renamed chat (the fold must keep its title, bug 164). */
+  isManuallyRenamed?: boolean;
+  /** P4.D215: the chat-level image profile — the only one that resolves. */
+  imageProfileId?: string;
   participants: Array<Record<string, unknown>>;
   messages: MessageSeed[];
 }
@@ -86,6 +90,15 @@ interface Spec {
   userId: string;
   chats: ChatSeed[];
   extraCharacters?: ExtraCharacterSeed[];
+  /**
+   * P4.D215 (v4 `00c290c9a`, bug 163): the user's `chat_settings` row with
+   * story backgrounds ENABLED and NO default image profile, plus one image
+   * profile (WITH an `apiKeyId`) that only one chat names — so a changed fold
+   * title queues a background on that chat and resolves no profile anywhere
+   * else. The fixture had no settings row before, so the fold passed `null` to
+   * the chokepoint and nothing could queue.
+   */
+  storyBackgrounds?: { imageProfileId: string; apiKeyId: string; chatSettingsId: string };
 }
 
 // Round-3 Group 7: the `fold_regular` chat's single participant character —
@@ -255,6 +268,32 @@ async function main(): Promise<void> {
     }
   }
 
+  if (spec.storyBackgrounds) {
+    const sb = spec.storyBackgrounds;
+    await repos.imageProfiles.create(
+      {
+        userId: spec.userId,
+        name: 'Fixture Lantern Profile',
+        provider: 'OPENAI',
+        modelName: 'dall-e-3',
+        apiKeyId: sb.apiKeyId,
+        baseUrl: null,
+        parameters: {},
+        isDefault: false,
+        isDangerousCompatible: false,
+        tags: [],
+      } as never,
+      { id: sb.imageProfileId, createdAt: TS, updatedAt: TS } as never
+    );
+    await repos.chatSettings.create(
+      {
+        userId: spec.userId,
+        storyBackgroundsSettings: { enabled: true, defaultImageProfileId: null },
+      } as never,
+      { id: sb.chatSettingsId, createdAt: TS, updatedAt: TS } as never
+    );
+  }
+
   for (const c of spec.chats) {
     await repo.create(
       {
@@ -264,6 +303,7 @@ async function main(): Promise<void> {
         chatType: c.chatType ?? 'salon',
         isDangerousChat: c.isDangerousChat ?? null,
         conciergeOverride: c.conciergeOverride ?? null,
+        ...(c.imageProfileId !== undefined ? { imageProfileId: c.imageProfileId } : {}),
       } as never,
       { id: c.id, createdAt: TS, updatedAt: TS }
     );
@@ -296,6 +336,7 @@ async function main(): Promise<void> {
       lastFullRebuildTurn: c.lastFullRebuildTurn ?? 0,
       lastRenameCheckInterchange: c.lastRenameCheckInterchange ?? 0,
       summaryAnchorMessageIds: c.summaryAnchorMessageIds ?? [],
+      ...(c.isManuallyRenamed !== undefined ? { isManuallyRenamed: c.isManuallyRenamed } : {}),
       lastMessageAt: null,
       updatedAt: TS,
     } as never);

@@ -2079,6 +2079,380 @@
           "participantId": "ee00000e-0000-4000-8000-000000000001"
         }
       ]
+    },
+    {
+      "id": "c000000f-0000-4000-8000-00000000000f",
+      "title": "A Title I Picked Myself",
+      "chatType": "salon",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "participants": [
+        {
+          "id": "ee000000-0000-4000-8000-00000000000f",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000015",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.9,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd00000f-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "user says thing 0 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "assistant replies 0 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "user says thing 1 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "assistant replies 1 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "user says thing 2 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "assistant replies 2 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "user says thing 3 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "assistant replies 3 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "user says thing 4 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000009",
+          "role": "ASSISTANT",
+          "content": "assistant replies 4 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000a",
+          "role": "USER",
+          "content": "user says thing 5 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000b",
+          "role": "ASSISTANT",
+          "content": "assistant replies 5 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000c",
+          "role": "USER",
+          "content": "user says thing 6 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000d",
+          "role": "ASSISTANT",
+          "content": "assistant replies 6 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000e",
+          "role": "USER",
+          "content": "user says thing 7 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000000f",
+          "role": "ASSISTANT",
+          "content": "assistant replies 7 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000010",
+          "role": "USER",
+          "content": "user says thing 8 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000011",
+          "role": "ASSISTANT",
+          "content": "assistant replies 8 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000012",
+          "role": "USER",
+          "content": "user says thing 9 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000013",
+          "role": "ASSISTANT",
+          "content": "assistant replies 9 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000014",
+          "role": "USER",
+          "content": "user says thing 10 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000015",
+          "role": "ASSISTANT",
+          "content": "assistant replies 10 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000016",
+          "role": "USER",
+          "content": "user says thing 11 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000017",
+          "role": "ASSISTANT",
+          "content": "assistant replies 11 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000018",
+          "role": "USER",
+          "content": "user says thing 12 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-000000000019",
+          "role": "ASSISTANT",
+          "content": "assistant replies 12 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001a",
+          "role": "USER",
+          "content": "user says thing 13 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001b",
+          "role": "ASSISTANT",
+          "content": "assistant replies 13 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001c",
+          "role": "USER",
+          "content": "user says thing 14 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001d",
+          "role": "ASSISTANT",
+          "content": "assistant replies 14 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001e",
+          "role": "USER",
+          "content": "user says thing 15 in 0f"
+        },
+        {
+          "id": "dd00000f-0000-4000-8000-00000000001f",
+          "role": "ASSISTANT",
+          "content": "assistant replies 15 in 0f"
+        }
+      ],
+      "isManuallyRenamed": true,
+      "_note": "P4.D215 (v4 00c290c9a, bug 164): hand-renamed \u2014 the fold must keep this title, skip the title LLM call, its TITLE_GENERATION log row and its cost event."
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000010",
+      "title": "New Chat P",
+      "chatType": "salon",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "participants": [
+        {
+          "id": "ee000000-0000-4000-8000-000000000010",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000016",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.9,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd000010-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "user says thing 0 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "assistant replies 0 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "user says thing 1 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "assistant replies 1 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "user says thing 2 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "assistant replies 2 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "user says thing 3 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "assistant replies 3 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "user says thing 4 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000009",
+          "role": "ASSISTANT",
+          "content": "assistant replies 4 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000a",
+          "role": "USER",
+          "content": "user says thing 5 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000b",
+          "role": "ASSISTANT",
+          "content": "assistant replies 5 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000c",
+          "role": "USER",
+          "content": "user says thing 6 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000d",
+          "role": "ASSISTANT",
+          "content": "assistant replies 6 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000e",
+          "role": "USER",
+          "content": "user says thing 7 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000000f",
+          "role": "ASSISTANT",
+          "content": "assistant replies 7 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000010",
+          "role": "USER",
+          "content": "user says thing 8 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000011",
+          "role": "ASSISTANT",
+          "content": "assistant replies 8 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000012",
+          "role": "USER",
+          "content": "user says thing 9 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000013",
+          "role": "ASSISTANT",
+          "content": "assistant replies 9 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000014",
+          "role": "USER",
+          "content": "user says thing 10 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000015",
+          "role": "ASSISTANT",
+          "content": "assistant replies 10 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000016",
+          "role": "USER",
+          "content": "user says thing 11 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000017",
+          "role": "ASSISTANT",
+          "content": "assistant replies 11 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000018",
+          "role": "USER",
+          "content": "user says thing 12 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-000000000019",
+          "role": "ASSISTANT",
+          "content": "assistant replies 12 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001a",
+          "role": "USER",
+          "content": "user says thing 13 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001b",
+          "role": "ASSISTANT",
+          "content": "assistant replies 13 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001c",
+          "role": "USER",
+          "content": "user says thing 14 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001d",
+          "role": "ASSISTANT",
+          "content": "assistant replies 14 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001e",
+          "role": "USER",
+          "content": "user says thing 15 in 10"
+        },
+        {
+          "id": "dd000010-0000-4000-8000-00000000001f",
+          "role": "ASSISTANT",
+          "content": "assistant replies 15 in 10"
+        }
+      ],
+      "imageProfileId": "ab000000-0000-4000-8000-000000000001",
+      "_note": "P4.D215 (v4 00c290c9a, bug 163): the ONLY chat whose image profile resolves (its own imageProfileId; the settings row names no default) \u2014 a changed fold title queues one story background here and nowhere else."
     }
   ],
   "_invalidateHitTarget": "dd00000a-0000-4000-8000-000000000004",
@@ -2106,5 +2480,11 @@
       "controlledBy": "llm",
       "emptyName": true
     }
-  ]
+  ],
+  "_storyBackgroundsNote": "P4.D215: the user\u2019s chat_settings row (the fixture had none) \u2014 storyBackgroundsSettings enabled with NO defaultImageProfileId, plus one image profile WITH an apiKeyId that only chat P names, so every other chat\u2019s changed title resolves no profile and queues nothing.",
+  "storyBackgrounds": {
+    "imageProfileId": "ab000000-0000-4000-8000-000000000001",
+    "apiKeyId": "ab000000-0000-4000-8000-000000000002",
+    "chatSettingsId": "ab000000-0000-4000-8000-000000000003"
+  }
 }

@@ -137,6 +137,36 @@
       "op": "fold_removed_and_dangling",
       "kind": "title",
       "response": "A Knock Unanswered"
+    },
+    {
+      "op": "fold_hand_renamed",
+      "kind": "fold",
+      "response": "Active threads: a name the user chose. Resolved decisions: keep it. Emotional state: settled. Open questions: none."
+    },
+    {
+      "op": "fold_hand_renamed",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "fold_hand_renamed",
+      "kind": "title",
+      "response": "A Title The Fold Wanted"
+    },
+    {
+      "op": "fold_queues_background",
+      "kind": "fold",
+      "response": "Active threads: the lamps are lit. Resolved decisions: paint the scene. Emotional state: bright. Open questions: the weather."
+    },
+    {
+      "op": "fold_queues_background",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "fold_queues_background",
+      "kind": "title",
+      "response": "The Lantern Is Lit"
     }
   ],
   "ops": [
@@ -222,6 +252,18 @@
       "name": "fold_too_few_turns",
       "kind": "generate",
       "chatId": "c000000e-0000-4000-8000-00000000000e",
+      "forceRegenerate": false
+    },
+    {
+      "name": "fold_hand_renamed",
+      "kind": "generate",
+      "chatId": "c000000f-0000-4000-8000-00000000000f",
+      "forceRegenerate": false
+    },
+    {
+      "name": "fold_queues_background",
+      "kind": "generate",
+      "chatId": "c0000010-0000-4000-8000-000000000010",
       "forceRegenerate": false
     }
   ]
