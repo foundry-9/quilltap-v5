@@ -255,6 +255,30 @@
  *   widen it by name, never copy one over the other. NEVER name
  *   `almanack-llmlogs-legacy.db`: its missing profile columns are the
  *   builder's deliberate approximate-attribution case.)
+ *
+ * The ten P4.111 main files (widened in place 2026-09-23 at v4 `00c290c9a`
+ * from `/tmp/qt-v4-pin-p4111-00c290c9a` — MAIN partitions only; the ten
+ * standing vintage reds this closes are named in `docs/developer/porting/
+ * work-orders/p4.111-fixture-vintage-heal-ten-mains.md`):
+ *   F=$W/crates/quilltap-web/tests/fixtures
+ *   $N/node --import tsx $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     $F/embedding-remainder-main.db $F/autonomous-main.db $F/chat-cast-main.db \
+ *     $F/conversation-summaries-regen-main.db $F/documents-main.db \
+ *     $F/cost-background-main.db $F/system-data-main.db \
+ *     $F/episodic-recall-main.db $F/home-main.db $F/text-replacements-main.db
+ *   (as run: embedding-remainder +13 cols; autonomous +12; chat-cast +10
+ *   +INDEX idx_files_generationKey; conversation-summaries-regen +6;
+ *   documents +6; cost-background +5 +INDEX; system-data +5 +INDEX;
+ *   episodic-recall +4; home +4 +INDEX; text-replacements +3 +INDEX; zero
+ *   `.db-journal` residue; the re-run `--report-only` answered "already
+ *   current" for all ten. No new pepper was needed — P4.107's five open all
+ *   ten. ⚠ Widening `system-data-main.db` made three oracle cases' own
+ *   unguarded `ADD COLUMN` plants throw `duplicate column name`
+ *   (`system-export.test.ts`, `system-import-execute.test.ts`,
+ *   `qtap-schema-validate.test.ts`) — guarded on `pragma_table_info` in the
+ *   same change, with the human's approval. Any FUTURE widen of a pair an
+ *   oracle case plants columns into needs the same check: grep the cases
+ *   for `ADD COLUMN` over the pair before applying.)
  */
 
 import { readFileSync } from 'node:fs';

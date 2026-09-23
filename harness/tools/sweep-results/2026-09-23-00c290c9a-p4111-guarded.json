@@ -1,0 +1,62 @@
+{
+  "label": "P4.111 post-widen + guarded oracle ALTERs, pin 00c290c9a",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de",
+  "venue_is_worktree": true,
+  "requested": [
+    "system_export_equivalence",
+    "system_import_state",
+    "qtap_schema_validate_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "blob_path_normaliser_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "system_export_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_import_state",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "qtap_schema_validate_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 3
+  }
+}

@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — test(fixtures): ten committed main fixtures widened to v4's current columns, closing ten standing vintage reds (P4.111)
+
+_Versions: web 0.0.180._
+
+The fixture-vintage heal's next list. Ten `crates/quilltap-web/tests/fixtures/*-main.db`
+files (embedding-remainder, autonomous, chat-cast, conversation-summaries-regen,
+documents, cost-background, system-data, episodic-recall, home, text-replacements)
+were widened in place through v4's own migration statements from a worktree pinned
+at `00c290c9a`. No `.rs` file changed.
+
+- All 26 families that read the ten were run before and after, from the pin.
+  Before: ten red, all on missing columns. After: all 26 green, with no `SKIP:`.
+- The order counted eleven reds. `title_update_tier3` was already green, because
+  P4.D215 healed its per-case copy on the oracle side.
+- Widening `system-data-main.db` broke three oracle cases that plant columns with
+  unguarded `ALTER TABLE … ADD COLUMN` (`system-export`, `system-import-execute`,
+  `qtap-schema-validate`), because the regen threw `duplicate column name`. With
+  the human's approval each add now runs only when the column is missing. The
+  declarations and the planted values are unchanged.
+- The widen retired several false agreements where both sides failed on vintage.
+  v4 itself returned 500 on 13 autonomous-room cases and 2 document-open cases
+  before the widen.
+- The migrator's header records the recipe as run. The three sweep results
+  (pre-widen, heal, guarded) are under `harness/tools/sweep-results/`.
+
 #### 2026-09-23 — docs(porting): order the `d1c06cd9d` Scenario Builder drift catch-up + maintenance round (P4.D216 → {P4.D217} ∥ P4.D218 ∥ P4.D219 ∥ P4.111 ∥ P4.112)
 
 _Docs-only change._

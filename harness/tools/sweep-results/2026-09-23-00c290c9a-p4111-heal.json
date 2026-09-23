@@ -1,0 +1,287 @@
+{
+  "label": "P4.111 post-widen, ten mains widened over 602c5f87, pin 00c290c9a",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de",
+  "venue_is_worktree": true,
+  "requested": [
+    "embedding_remainder_equivalence",
+    "autonomous_rooms_routes_equivalence",
+    "chat_cast_routes_equivalence",
+    "inform_drop_lives_on_the_action",
+    "conversation_summaries_regen_equivalence",
+    "documents_routes_equivalence",
+    "mount_refresh_equivalence",
+    "title_update_tier3_equivalence",
+    "cost_background_routes_equivalence",
+    "system_export_equivalence",
+    "system_jobs_routes_equivalence",
+    "system_jobs_collection_equivalence",
+    "system_import_state",
+    "system_backup_equivalence",
+    "system_import_equivalence",
+    "qtap_schema_validate_equivalence",
+    "system_delete_data_equivalence",
+    "query_param_semantics_equivalence",
+    "system_body_guards_equivalence",
+    "files_body_guards_equivalence",
+    "precompute_equivalence",
+    "recall_replay_equivalence",
+    "vault_conv_search_equivalence",
+    "home_routes_equivalence",
+    "text_replacements_routes_equivalence",
+    "text_replacements_web_routes"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "blob_path_normaliser_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "embedding_remainder_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "chat_cast_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "inform_drop_lives_on_the_action",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "conversation_summaries_regen_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "documents_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "mount_refresh_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "title_update_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "cost_background_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_export_equivalence",
+      "status": "regen_failed",
+      "cause": "      390 |   db.exec(`ALTER TABLE \"chat_messages\" ADD COLUMN \"routeTrail\" TEXT DEFAULT NULL`);\n      391 |   db.prepare(`UPDATE \"chats\" SET \"cycleOrderParticipantIds\" = ? WHERE \"id\" = ?`).run(\n      392 |     P4D171_ROTATION,\n      at Database.exec (../../../Users/csebold/source/quilltap-server/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers/lib/methods/wrappers.js:19:14)\n      at exec (../qt-sysexport-oracle-system_export_equivalence/cases/system-export.test.ts:389:6)\n      at plantP4d171Values (../qt-sysexport-oracle-system_export_equivalence/cases/system-export.test.ts:428:5)\n      at main (../qt-sysexport-oracle-system_export_equivalence/cases/system-export.test.ts:476:21)\n      at Object.<anonymous> (../qt-sysexport-oracle-system_export_equivalence/cases/system-export.test.ts:486:3)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        0.321 s, estimated 6 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "system_jobs_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_jobs_collection_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_import_state",
+      "status": "regen_failed",
+      "cause": "      1208 |   db.exec(`ALTER TABLE \"chat_messages\" ADD COLUMN \"routeTrail\" TEXT DEFAULT NULL`);\n      1209 |   db.prepare(`UPDATE \"chats\" SET \"cycleOrderParticipantIds\" = ? WHERE \"id\" = ?`).run(\n      1210 |     P4D171_ROTATION,\n      at Database.exec (../../../Users/csebold/source/quilltap-server/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers/lib/methods/wrappers.js:19:14)\n      at exec (../qt-sysimportexec-oracle-system_import_state/cases/system-import-execute.test.ts:1207:6)\n      at plantP4d171Values (../qt-sysimportexec-oracle-system_import_state/cases/system-import-execute.test.ts:1250:3)\n      at main (../qt-sysimportexec-oracle-system_import_state/cases/system-import-execute.test.ts:1782:18)\n      at Object.<anonymous> (../qt-sysimportexec-oracle-system_import_state/cases/system-import-execute.test.ts:2226:3)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        0.323 s, estimated 7 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "system_backup_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_import_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "qtap_schema_validate_equivalence",
+      "status": "regen_failed",
+      "cause": "          |           ^\n      269 |       raw\n      270 |         .prepare(`UPDATE \"files\" SET \"generationKey\" = ? WHERE \"id\" = ?`)\n      271 |         .run('a3000000-0000-4000-8000-000000000001', 'f0000001-0000-4000-8000-000000000001');\n      at Database.exec (../../../Users/csebold/source/quilltap-server/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers/lib/methods/wrappers.js:19:14)\n      at exec (../qt-qtap-schema-oracle-qtap_schema_validate_equivalence/cases/qtap-schema-validate.test.ts:268:11)\n      at main (../qt-qtap-schema-oracle-qtap_schema_validate_equivalence/cases/qtap-schema-validate.test.ts:318:17)\n      at Object.<anonymous> (../qt-qtap-schema-oracle-qtap_schema_validate_equivalence/cases/qtap-schema-validate.test.ts:372:3)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        0.393 s, estimated 2 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "system_delete_data_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "query_param_semantics_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "system_body_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "files_body_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "precompute_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "recall_replay_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "vault_conv_search_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "home_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "text_replacements_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    },
+    {
+      "family": "text_replacements_web_routes",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/autonomous-main.db\n M crates/quilltap-web/tests/fixtures/chat-cast-main.db\n M crates/quilltap-web/tests/fixtures/conversation-summaries-regen-main.db\n M crates/quilltap-web/tests/fixtures/cost-background-main.db\n M crates/quilltap-web/tests/fixtures/documents-main.db\n M crates/quilltap-web/tests/fixtures/embedding-remainder-main.db\n M crates/quilltap-web/tests/fixtures/episodic-recall-main.db\n M crates/quilltap-web/tests/fixtures/home-main.db\n M crates/quilltap-web/tests/fixtures/system-data-main.db\n M crates/quilltap-web/tests/fixtures/text-replacements-main.db"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 23,
+    "regen_failed": 3
+  }
+}

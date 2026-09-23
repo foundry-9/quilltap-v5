@@ -265,7 +265,12 @@ async function buildSeeds(
       // other rows keep NULL, so the same seeds also carry the omitted case.
       const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
       const raw = getRawDatabase()!;
-      raw.exec(`ALTER TABLE "files" ADD COLUMN "generationKey" TEXT`);
+      // P4.111: guarded — the widened fixture (v4 `00c290c9a`) already carries
+      // the column, and an unguarded ADD COLUMN throws `duplicate column name`.
+      const hasKey = (
+        raw.prepare(`SELECT name FROM pragma_table_info('files')`).all() as Array<{ name: string }>
+      ).some((c) => c.name === 'generationKey');
+      if (!hasKey) raw.exec(`ALTER TABLE "files" ADD COLUMN "generationKey" TEXT`);
       raw
         .prepare(`UPDATE "files" SET "generationKey" = ? WHERE "id" = ?`)
         .run('a3000000-0000-4000-8000-000000000001', 'f0000001-0000-4000-8000-000000000001');

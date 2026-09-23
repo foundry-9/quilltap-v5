@@ -1,0 +1,242 @@
+{
+  "label": "P4.111 pre-widen, un-widened tree 602c5f87, pin 00c290c9a",
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de",
+  "venue_is_worktree": true,
+  "requested": [
+    "embedding_remainder_equivalence",
+    "autonomous_rooms_routes_equivalence",
+    "chat_cast_routes_equivalence",
+    "inform_drop_lives_on_the_action",
+    "conversation_summaries_regen_equivalence",
+    "documents_routes_equivalence",
+    "mount_refresh_equivalence",
+    "title_update_tier3_equivalence",
+    "cost_background_routes_equivalence",
+    "system_export_equivalence",
+    "system_jobs_routes_equivalence",
+    "system_jobs_collection_equivalence",
+    "system_import_state",
+    "system_backup_equivalence",
+    "system_import_equivalence",
+    "qtap_schema_validate_equivalence",
+    "system_delete_data_equivalence",
+    "query_param_semantics_equivalence",
+    "system_body_guards_equivalence",
+    "files_body_guards_equivalence",
+    "precompute_equivalence",
+    "recall_replay_equivalence",
+    "vault_conv_search_equivalence",
+    "home_routes_equivalence",
+    "text_replacements_routes_equivalence",
+    "text_replacements_web_routes"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "blob_path_normaliser_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "embedding_remainder_equivalence",
+      "status": "run_failed",
+      "cause": "   Compiling image v0.25.10\n   Compiling webp v0.3.1\n   Compiling quilltap-core v0.0.1013 (/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de/crates/quilltap-core)\n   Compiling quilltap-harness v0.0.930 (/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 58.25s\n     Running tests/embedding_remainder_equivalence.rs (target/debug/deps/embedding_remainder_equivalence-79c46ffe847bb592)\nthread 'embedding_remainder_matches_oracle' (24352120) panicked at crates/quilltap-harness/tests/embedding_remainder_equivalence.rs:702:5:\nassertion `left == right` failed: render outcome sequence diverges\n  left: [(\"unrendered-chat-first-render\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\")), (\"rendered-chat-reembeds-only-missing\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\")), (\"rendered-chat-full-reembed-dedupes\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\")), (\"healthy-chat-skips-already-embedded-chunk\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\")), (\"empty-chat-returns-early\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\")), (\"missing-chat-returns-early\", \"error\", Some(\"sqlite error: no such column: cycleOrderParticipantIds\"))]\n right: [(\"unrendered-chat-first-render\", \"error\", Some(\"no such column: cycleOrderParticipantIds\")), (\"rendered-chat-reembeds-only-missing\", \"error\", Some(\"no such column: cycleOrderParticipantIds\")), (\"rendered-chat-full-reembed-dedupes\", \"error\", Some(\"no such column: cycleOrderParticipantIds\")), (\"healthy-chat-skips-already-embedded-chunk\", \"error\", Some(\"no such column: cycleOrderParticipantIds\")), (\"empty-chat-returns-early\", \"ok\", None), (\"missing-chat-returns-early\", \"ok\", None)]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test embedding_remainder_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[start_idle] MISMATCH:\n   = {\n  GOT :   \"kind\": \"internal\",\n  WANT:   \"error\": \"Failed to start autonomous run\"\n[start_idle tables] OK.\n[start_already_running] MISMATCH: got 500 \"Failed to start autonomous run\" / want 400 \"An autonomous run is already in progress for this room.\"\nthread 'autonomous_rooms_routes_match_oracle' (24360631) panicked at crates/quilltap-harness/tests/autonomous_rooms_routes_equivalence.rs:291:9:\nassertion `left == right` failed: [pause] expected 200\n  left: 500\n right: 200\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test autonomous_rooms_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "chat_cast_routes_equivalence",
+      "status": "regen_failed",
+      "cause": "      at safeQuery.id.id (lib/database/repositories/base.repository.ts:383:7)\n      at safeQuery (lib/database/repositories/safe-query.ts:58:12)\n      at chatId.chatId (lib/database/repositories/chats-participants.ops.ts:105:14)\n      at safeQuery (lib/database/repositories/safe-query.ts:58:12)\n      at Object.run (../qt-cast-oracle-chat_cast_routes_equivalence/cases/chat-cast-routes.test.ts:354:7)\n      at runCase (../qt-cast-oracle-chat_cast_routes_equivalence/cases/chat-cast-routes.test.ts:259:17)\n      at main (../qt-cast-oracle-chat_cast_routes_equivalence/cases/chat-cast-routes.test.ts:804:21)\n      at Object.<anonymous> (../qt-cast-oracle-chat_cast_routes_equivalence/cases/chat-cast-routes.test.ts:812:3)\nTest Suites: 1 failed, 1 total\nTests:       1 failed, 1 total\nSnapshots:   0 total\nTime:        6.167 s",
+      "exit": 1,
+      "warnings": []
+    },
+    {
+      "family": "inform_drop_lives_on_the_action",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "conversation_summaries_regen_equivalence",
+      "status": "run_failed",
+      "cause": "   Compiling quilltap-harness v0.0.930 (/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.99s\n     Running tests/conversation_summaries_regen_equivalence.rs (target/debug/deps/conversation_summaries_regen_equivalence-e135af99a3aa506c)\n[statusBefore] OK.\n[enqueue1] OK.\n[enqueue2] OK.\n[statusAfter] OK.\n[jobs] OK.\nthread 'conversation_summaries_regen_matches_oracle' (24366065) panicked at crates/quilltap-harness/tests/conversation_summaries_regen_equivalence.rs:254:10:\nhandler: Sqlite(SqliteFailure(Error { code: Unknown, extended_code: 1 }, Some(\"no such column: cycleOrderParticipantIds\")))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test conversation_summaries_regen_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "documents_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[chat_accessible_stores_all] expected 200, got error 500: Failed to resolve accessible document stores\n[chat_accessible_stores_default] expected 200, got error 500: Failed to resolve accessible document stores\n[chat_read_document_existing] expected 200, got error 500: sqlite error: no such column: cycleOrderParticipantIds\n[chat_read_document_missing] MISMATCH: got 500 \"sqlite error: no such column: cycleOrderParticipantIds\" / want 404 \"File not found: notes/missing.md\"\n[chat_resolve_document_exists] expected 200, got error 500: sqlite error: no such column: cycleOrderParticipantIds\n[chat_resolve_document_missing] expected 200, got error 500: sqlite error: no such column: cycleOrderParticipantIds\n[standalone_stores] OK.\n[standalone_recent] OK.\nthread 'documents_routes_match_oracle' (24367698) panicked at crates/quilltap-harness/tests/documents_routes_equivalence.rs:219:6:\ncalled `Result::unwrap()` on an `Err` value: Sqlite(SqliteFailure(Error { code: Unknown, extended_code: 1 }, Some(\"no such column: cycleOrderParticipantIds\")))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test documents_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "mount_refresh_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "title_update_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "cost_background_routes_equivalence",
+      "status": "run_failed",
+      "cause": "      \"sceneContext\": \"A Scene Worth Painting\"\n    },\n    \"priority\": -1,\n    \"status\": \"PENDING\",\n    \"type\": \"STORY_BACKGROUND_GENERATION\",\n    \"userId\": \"c0000000-0000-4000-8000-000000000001\"\n  }\n]\nthread 'cost_background_routes_match_oracle' (24369136) panicked at crates/quilltap-harness/tests/cost_background_routes_equivalence.rs:396:9:\nregen_dedupe: first call produced no jobId\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test cost_background_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "system_export_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_jobs_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_jobs_collection_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_import_state",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_backup_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_import_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "qtap_schema_validate_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_delete_data_equivalence",
+      "status": "run_failed",
+      "cause": "  oracle: {\"success\":true,\"summary\":{\"characters\":2,\"chats\":2,\"tags\":2,\"files\":5,\"memories\":3,\"apiKeys\":1,\"backups\":1,\"archiveBundles\":1,\"archiveBundlesKept\":true,\"projects\":1,\"profiles\":{\"connection\":1,\"image\":1,\"embedding\":1},\"templates\":{\"prompt\":2,\"roleplay\":1}}}\ndelete_data_sweeps_archive_bundles: body mismatch\n  rust:   {\"success\":true,\"summary\":{\"characters\":2,\"chats\":2,\"tags\":2,\"files\":0,\"memories\":3,\"apiKeys\":1,\"backups\":0,\"archiveBundles\":0,\"archiveBundlesKept\":false,\"projects\":1,\"profiles\":{\"connection\":1,\"image\":1,\"embedding\":1},\"templates\":{\"prompt\":2,\"roleplay\":1}}}\n  oracle: {\"success\":true,\"summary\":{\"characters\":2,\"chats\":2,\"tags\":2,\"files\":6,\"memories\":3,\"apiKeys\":1,\"backups\":1,\"archiveBundles\":1,\"archiveBundlesKept\":false,\"projects\":1,\"profiles\":{\"connection\":1,\"image\":1,\"embedding\":1},\"templates\":{\"prompt\":2,\"roleplay\":1}}}\ndelete_data_keeps_archive_bundles_explicitly: body mismatch\n  rust:   {\"success\":true,\"summary\":{\"characters\":2,\"chats\":2,\"tags\":2,\"files\":0,\"memories\":3,\"apiKeys\":1,\"backups\":0,\"archiveBundles\":0,\"archiveBundlesKept\":true,\"projects\":1,\"profiles\":{\"connection\":1,\"image\":1,\"embedding\":1},\"templates\":{\"prompt\":2,\"roleplay\":1}}}\n  oracle: {\"success\":true,\"summary\":{\"characters\":2,\"chats\":2,\"tags\":2,\"files\":5,\"memories\":3,\"apiKeys\":1,\"backups\":1,\"archiveBundles\":1,\"archiveBundlesKept\":true,\"projects\":1,\"profiles\":{\"connection\":1,\"image\":1,\"embedding\":1},\"templates\":{\"prompt\":2,\"roleplay\":1}}}\ndelete_data_preview_after_wipe: body mismatch\n  rust:   {\"success\":true,\"summary\":{\"characters\":0,\"chats\":0,\"tags\":0,\"files\":0,\"memories\":0,\"apiKeys\":0,\"backups\":0,\"archiveBundles\":0,\"archiveBundlesKept\":true,\"projects\":0,\"profiles\":{\"connection\":0,\"image\":0,\"embedding\":0},\"templates\":{\"prompt\":1,\"roleplay\":0}}}\n  oracle: {\"success\":true,\"summary\":{\"characters\":0,\"chats\":0,\"tags\":0,\"files\":1,\"memories\":0,\"apiKeys\":0,\"backups\":0,\"archiveBundles\":1,\"archiveBundlesKept\":true,\"projects\":0,\"profiles\":{\"connection\":0,\"image\":0,\"embedding\":0},\"templates\":{\"prompt\":1,\"roleplay\":0}}}\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test system_delete_data_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "query_param_semantics_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "system_body_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "files_body_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "precompute_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "recall_replay_equivalence",
+      "status": "run_failed",
+      "cause": "failures:\n    recall_replay_matches_oracle\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s\n   Compiling quilltap-harness v0.0.930 (/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de/crates/quilltap-harness)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s\n     Running tests/recall_replay_equivalence.rs (target/debug/deps/recall_replay_equivalence-6c9125f1470c1d60)\nthread 'recall_replay_matches_oracle' (24390725) panicked at crates/quilltap-harness/tests/recall_replay_equivalence.rs:333:17:\nassertion `left == right` failed: retro_full: status diverges (message: sqlite error: no such column: cycleOrderParticipantIds)\n  left: 500\n right: 200\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test recall_replay_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "vault_conv_search_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "home_routes_equivalence",
+      "status": "run_failed",
+      "cause": "failures:\nfailures:\n    home_routes_match_oracle\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n   Compiling quilltap-web v0.0.179 (/Users/csebold/source/quilltap-v5/.claude/worktrees/fixture-vintage-heal-ten-mains-2c44de/crates/quilltap-web)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.78s\n     Running tests/home_routes_equivalence.rs (target/debug/deps/home_routes_equivalence-e386a20a0377163c)\n[route_primary] expected success, got Error(CoreError { kind: Internal, message: \"Failed to load the home dashboard\", pepper_state: None, code: None, associations: None, character_id: None, entity: None, details: None, already_saved: None })\nthread 'home_routes_match_oracle' (24391477) panicked at crates/quilltap-web/tests/home_routes_equivalence.rs:224:35:\nsuccess body\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-web --test home_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "text_replacements_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[delete_missing] OK (404).\n[bulk_replace] OK.\n[bulk_then_list] OK.\n[list_empty] OK.\n[bg_resolved] expected success, got Error(CoreError { kind: Internal, message: \"sqlite error: no such column: cycleOrderParticipantIds\", pepper_state: None, code: None, associations: None, character_id: None, entity: None, details: None, already_saved: None })\n[bg_no_id] expected success, got Error(CoreError { kind: Internal, message: \"sqlite error: no such column: cycleOrderParticipantIds\", pepper_state: None, code: None, associations: None, character_id: None, entity: None, details: None, already_saved: None })\n[bg_file_missing] expected success, got Error(CoreError { kind: Internal, message: \"sqlite error: no such column: cycleOrderParticipantIds\", pepper_state: None, code: None, associations: None, character_id: None, entity: None, details: None, already_saved: None })\n[bg_chat_missing] MISMATCH: got 500 \"sqlite error: no such column: cycleOrderParticipantIds\" / want 404 \"Chat not found\"\nthread 'text_replacements_routes_match_oracle' (24392120) panicked at crates/quilltap-harness/tests/text_replacements_routes_equivalence.rs:344:5:\ncases failed: [\"bg_resolved\", \"bg_no_id\", \"bg_file_missing\", \"bg_chat_missing\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test text_replacements_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "text_replacements_web_routes",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "run_failed": 9,
+    "regen_failed": 1,
+    "ok": 16
+  }
+}
