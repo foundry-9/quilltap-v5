@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — docs(porting): P4.D215 lane close — the gate record and the order's status header
+
+_Docs-only change._
+
+Records the lane's workspace gate (620 binaries, 3,648 passed, 0 failed)
+and the regen recipes as run, and marks the P4.D215 work order closed with
+what landed, what was deferred, and where the order's survey was wrong.
+
 #### 2026-09-23 — docs(help): re-vendor help/story-backgrounds.md at v4 00c290c9a (P4.D215 unit 5)
 
 _Docs-only change._

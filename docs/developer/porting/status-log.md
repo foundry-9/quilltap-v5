@@ -144028,3 +144028,34 @@ Zero `SKIP:` lines.
   bug-163-fold-rename-no-background.md` (NEW, 4,621),
   `bug-164-fold-overwrites-manual-title.md` (NEW, 2,867),
   `docs/v4/developer/bugs.md` (306,475 → 308,274).
+
+### Lane gate (2026-09-23, on the final tree — core 0.0.1005, harness 0.0.916, web 0.0.177)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean in BOTH feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace
+--release` clean; `CARGO_INCREMENTAL=0 TZ=UTC cargo test --workspace
+--no-fail-fast -- --nocapture` with the lane's 19-var env block (the
+target-pinned `title_update_tier3`, `chat_regenerate_title_tier3`,
+`context_summary_service_tier3`, `help_tree`, `memory_pipeline_jobs_tier3`,
+`orchestrator_tier3`, `story_background_job_tier3` + the baseline-pinned
+`chat_admin_routes`, `chat_rebuild_summary`, `context_summary`,
+`chat_tasks`, all staged under `/tmp/p4d215/<sha>/`): **620 test binaries /
+3,648 passed / 0 failed / 3 ignored**. Every lane family confirmed RUN by
+name; zero `SKIP:` lines for any var in the block (the 506 `SKIP:` lines
+are families outside it). `help_tree_embed_guard`
+(`embedded_table_equals_the_on_disk_help_tree`) and `host_help_docs_boot`
+green — 126 UNMOVED; `dispatch_wrong_type_census` green (446, no verb).
+The gate ran once, on the final tree; the four code commits were split
+from it by path afterwards (each intermediate tree was not separately
+gated — commit 2's tree carries the un-ported fold and regenerate, both of
+which compile unchanged against the new module).
+
+Regen recipes AS RUN (the committed recipe headers are unchanged and
+canonical; the lane's wrapper only rewrote the pin, the `/tmp/oracle-*`
+outputs and the `/tmp/qt-*.db` fixtures into `/tmp/p4d215/<sha>/`):
+`python3 harness/tools/recipe_sweep.py --show <family> --v5w <worktree>`,
+then each stage run with `cd /tmp/qt-v4-pin-p4d215-<sha>`. The regenerate
+family's planted seeds land beside its NDJSON
+(`<QT_ORACLE_REGENERATE_TITLE>.<case>.{main,mount}.db`) — regenerate the
+oracle, never copy the NDJSON alone.
