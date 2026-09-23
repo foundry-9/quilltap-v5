@@ -53,6 +53,13 @@ pub struct SearchContext {
     pub embedding_profile_id: Option<String>,
     pub project_id: Option<String>,
     pub operator_surface: bool,
+    /// A pre-built pool — "what this chat could see" before the chat exists (the
+    /// Scenario Builder; v4 `SearchScriptoriumToolContext.mountPool`,
+    /// `d1c06cd9d`). When set, the pool is used as-is instead of resolved, the
+    /// cast vaults (participant tier) are searched, and only `documents` /
+    /// `knowledge` run: memories and conversations are forced off. Never
+    /// combined with `operator_surface`.
+    pub mount_pool: Option<TieredMountPool>,
 }
 
 /// v4 `SearchScriptoriumToolOutput` — `{ success, results?, error?, totalFound,
@@ -248,10 +255,20 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         None
     };
 
-    let operator_wide = context.operator_surface;
-    let search_memories =
-        sources.iter().any(|s| s == "memories") && !operator_wide && context.character_id.is_some();
-    let search_conversations = sources.iter().any(|s| s == "conversations");
+    // Operator surface (Brahma Console): no character, no memories — and a
+    // pre-built pool overrides it (v4 `d1c06cd9d`: `!!operatorSurface &&
+    // !mountPool`; the executor refuses the two together, so this only matters
+    // to a direct caller).
+    let operator_wide = context.operator_surface && context.mount_pool.is_none();
+    // A pre-built pool is a documents-only surface (the Scenario Builder): its
+    // schema never offers memories or conversations, and the handler enforces the
+    // same exclusion defensively.
+    let prebuilt = context.mount_pool.is_some();
+    let search_memories = sources.iter().any(|s| s == "memories")
+        && !operator_wide
+        && !prebuilt
+        && context.character_id.is_some();
+    let search_conversations = sources.iter().any(|s| s == "conversations") && !prebuilt;
     let search_documents = sources.iter().any(|s| s == "documents");
     let search_knowledge = sources.iter().any(|s| s == "knowledge");
 
@@ -441,6 +458,8 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                 &pool,
                 FlattenOptions {
                     scope: flatten_scope(scope),
+                    // A pre-built pool's cast vaults ride the participant tier.
+                    include_participants: prebuilt,
                     ..Default::default()
                 },
             )
@@ -466,7 +485,8 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     let mut knowledge_chunk_ids: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     if search_knowledge {
-        let tiers = build_knowledge_tiers(scope, operator_wide, &pool, &operator_store_ids);
+        let tiers =
+            build_knowledge_tiers(scope, operator_wide, prebuilt, &pool, &operator_store_ids);
         let tiers_allowed: Vec<KnowledgeTier> = tiers
             .into_iter()
             .filter(|t| t.tier != "character" || owns_character)
@@ -561,7 +581,18 @@ fn build_pool_context(
             let mut owns_character = false;
             let mut operator_store_ids = Vec::new();
             if need_pool {
-                if context.operator_surface {
+                if let Some(prebuilt_pool) = &context.mount_pool {
+                    pool = prebuilt_pool.clone();
+                    // The caller vetted the cast before building the pool.
+                    owns_character = true;
+                    tracing::debug!(
+                        participants = pool.participant_mount_point_ids.len(),
+                        groups = pool.group_mount_point_ids.len(),
+                        projects = pool.project_mount_point_ids.len(),
+                        hasGlobal = pool.global_mount_point_id.is_some(),
+                        "Search using pre-built mount pool"
+                    );
+                } else if context.operator_surface {
                     operator_store_ids = doc_mount_points::DocMountPointsRepository::new(mount)
                         .find_enabled_for_docedit()?
                         .into_iter()
@@ -629,6 +660,7 @@ fn flatten_scope(scope: &str) -> FlattenScope {
 fn build_knowledge_tiers(
     scope: &str,
     operator_wide: bool,
+    prebuilt: bool,
     pool: &TieredMountPool,
     operator_store_ids: &[String],
 ) -> Vec<KnowledgeTier> {
@@ -656,6 +688,14 @@ fn build_knowledge_tiers(
                 boost: LITERAL_BOOST_CHARACTER,
             });
         }
+    }
+    // Pre-built pool: the cast vaults stand where the character tier would.
+    if want_character && prebuilt && !pool.participant_mount_point_ids.is_empty() {
+        tiers.push(KnowledgeTier {
+            tier: "character",
+            mount_point_ids: pool.participant_mount_point_ids.clone(),
+            boost: LITERAL_BOOST_CHARACTER,
+        });
     }
     if want_group && !pool.group_mount_point_ids.is_empty() {
         tiers.push(KnowledgeTier {

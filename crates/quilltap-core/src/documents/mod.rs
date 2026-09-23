@@ -182,6 +182,10 @@ pub fn resolve_operator_doc_path(
         hide_character_vaults: false,
         mount_point: mount_point.map(str::to_string),
         operator_override: true,
+        // P4.D216 OUT-OF-MANDATE — the documents module's owner preserves (a
+        // required field on a shared struct, v4 `d1c06cd9d`): Document Mode is
+        // the operator surface, never a pre-built pool.
+        mount_pool: None,
     };
     resolve_doc_edit_path(
         main,

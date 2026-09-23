@@ -725,9 +725,13 @@ pub fn handle_grep(
     args: &Value,
     ctx: &DocEditToolContext,
 ) -> Result<DocEditToolResult, String> {
-    let Some(project_id) = ctx.project_id.clone() else {
+    // A pre-built mount pool (Scenario Builder) stands in for the project: a
+    // General-only scene has no project and must still be able to grep (v4
+    // `d1c06cd9d`).
+    if ctx.project_id.is_none() && ctx.mount_pool.is_none() {
         return Ok(DocEditToolResult::fail("Grep requires a project context"));
-    };
+    }
+    let project_id: Option<String> = ctx.project_id.clone();
     let addressing = apply_qtap_uri(
         arg_str(args, "scope"),
         arg_str(args, "mount_point"),
@@ -784,10 +788,11 @@ pub fn handle_grep(
         main,
         mount,
         AccessibleMountPointsQuery {
-            project_id: Some(&project_id),
+            project_id: project_id.as_deref(),
             character_id: ctx.character_id.as_deref(),
             extra_character_ids: &peer_ids,
             hide_character_vaults,
+            mount_pool: ctx.mount_pool.as_ref(),
         },
     );
     let docs_repo = DocMountDocumentsRepository::new(mount);
@@ -856,11 +861,14 @@ pub fn handle_grep(
     // `mount_point` filter and the project has NO official mount (an official mount
     // was already enumerated by the accessible-mounts loop). Requires the host
     // files dir; skipped with `files_dir: None`.
-    if addressing.mount_point.is_none()
-        && resolve_official_project_mount(main, mount, Some(&project_id)).is_none()
-    {
+    // v4 `d1c06cd9d`: `!input.mount_point && context.projectId` — a pool-only
+    // (project-less) grep has no legacy project directory to walk.
+    if let Some(project_id) = project_id.as_deref().filter(|pid| {
+        addressing.mount_point.is_none()
+            && resolve_official_project_mount(main, mount, Some(pid)).is_none()
+    }) {
         if let Some(files_dir) = ctx.files_dir.as_deref() {
-            let project_dir = files_dir.join(&project_id);
+            let project_dir = files_dir.join(project_id);
             if project_dir.exists() {
                 grep_walk(
                     &project_dir,
@@ -1107,11 +1115,14 @@ pub fn handle_list_files(
     args: &Value,
     ctx: &DocEditToolContext,
 ) -> Result<DocEditToolResult, String> {
-    let Some(project_id) = ctx.project_id.clone() else {
+    // See doc_grep: a pre-built mount pool stands in for the project (v4
+    // `d1c06cd9d`).
+    if ctx.project_id.is_none() && ctx.mount_pool.is_none() {
         return Ok(DocEditToolResult::fail(
             "List files requires a project context",
         ));
-    };
+    }
+    let project_id: Option<String> = ctx.project_id.clone();
     // A qtap:// URI projects onto scope / mount_point / folder.
     let (scope, mount_point, folder) = if let Some(uri) = arg_str_ref(args, "uri") {
         let parts = crate::doc_edit::qtap_uri::parse_qtap_uri(uri).map_err(|e| e.message)?;
@@ -1144,13 +1155,18 @@ pub fn handle_list_files(
     let include_project = scope.is_none() || scope.as_deref() == Some("project");
     let include_general = scope.is_none() || scope.as_deref() == Some("general");
 
-    let group_mount_ids: std::collections::HashSet<String> = ctx
-        .character_id
-        .as_deref()
-        .map(|cid| resolve_group_mount_point_ids_for_character(main, mount, cid))
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    // Resolve group mount IDs once so per-mount tagging is O(1). A pre-built pool
+    // already carries the whole cast's group tier (v4 `d1c06cd9d`).
+    let group_mount_ids: std::collections::HashSet<String> = match &ctx.mount_pool {
+        Some(pool) => pool.group_mount_point_ids.iter().cloned().collect(),
+        None => ctx
+            .character_id
+            .as_deref()
+            .map(|cid| resolve_group_mount_point_ids_for_character(main, mount, cid))
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+    };
 
     let mut files: Vec<Value> = Vec::new();
 
@@ -1166,10 +1182,11 @@ pub fn handle_list_files(
             main,
             mount,
             AccessibleMountPointsQuery {
-                project_id: Some(&project_id),
+                project_id: project_id.as_deref(),
                 character_id: ctx.character_id.as_deref(),
                 extra_character_ids: &peer_ids,
                 hide_character_vaults,
+                mount_pool: ctx.mount_pool.as_ref(),
             },
         );
         for mp in &mount_points {
@@ -1229,8 +1246,9 @@ pub fn handle_list_files(
         }
     }
 
-    if include_project {
-        if let Some(official) = resolve_official_project_mount(main, mount, Some(&project_id)) {
+    // v4 `d1c06cd9d`: `shouldIncludeProject && context.projectId`.
+    if let Some(project_id) = project_id.as_deref().filter(|_| include_project) {
+        if let Some(official) = resolve_official_project_mount(main, mount, Some(project_id)) {
             // The document-store branch already enumerated this mount when listing
             // every scope; only re-emit when scope was explicitly 'project'.
             if scope.as_deref() == Some("project") && official.mount_type == "database" {
@@ -1280,7 +1298,7 @@ pub fn handle_list_files(
         } else if let Some(files_dir) = ctx.files_dir.as_deref() {
             // No official mount → the legacy `<filesDir>/<projectId>` on-disk walk
             // (v4 `text-handlers.ts:1002-1008`). No blocked-path set, no mount name.
-            let base = files_dir.join(&project_id);
+            let base = files_dir.join(project_id);
             let (start, rel_prefix) = fs_walk_start(&base.to_string_lossy(), folder.as_deref());
             let make_uri = |rel: &str| resolver.uri_for_scope(ScopedAuthority::Project, rel);
             collect_files_walk(

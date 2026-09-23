@@ -37,6 +37,8 @@
     ],
     "globalMountPointId": "f2000000-0000-4000-8000-00000000c005"
   },
+  "_prebuiltPoolComment": "P4.D216 (v4 d1c06cd9d): the `pool` actor is a character-less, project-less DocEditToolContext carrying this hand-built pre-built mount pool of the fixture's REAL ids (the Scenario Builder's shape: the cast vaults in the participant tier, no character tier). The `nobody` actor carries neither a pool nor a project nor a character — the guards' refusal legs. Pool ops also record the DocEdit:PathResolver log lines.",
+  "prebuiltPool": {"characterMountPointId": null, "participantMountPointIds": ["{{leilaniVaultId}}", "{{abigailVaultId}}"], "groupMountPointIds": ["e2000000-0000-4000-8000-0000000000f1", "e2000000-0000-4000-8000-0000000000f4"], "projectMountPointIds": ["e2000000-0000-4000-8000-0000000000f2"], "globalMountPointId": "e2000000-0000-4000-8000-0000000000a1"},
   "ops": [
     {
       "name": "group_store_by_name_write",
@@ -405,6 +407,31 @@
         "includeCharacterTier": false,
         "includeParticipants": true
       }
-    }
+    },
+    {"name": "pool_context_read", "kind": "context_read", "actor": "pool", "mountPoint": "Group Files: Severed"},
+    {"name": "pool_context_write", "kind": "context_write", "actor": "pool", "mountPoint": "Group Files: Severed"},
+    {"name": "pool_vault_by_name_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "{{leilaniVaultName}}", "path": "notes.md"},
+    {"name": "pool_vault_by_id_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "{{abigailVaultId}}", "path": "notes.md"},
+    {"name": "pool_group_store_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "Group Files: Severed", "path": "notes.md"},
+    {"name": "pool_group_linked_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "Group Files: Severed (Linked)", "path": "notes.md"},
+    {"name": "pool_project_store_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "Project Papers", "path": "notes.md"},
+    {"name": "pool_general_read", "kind": "resolve_read", "actor": "pool", "mountPoint": "Quilltap General", "path": "notes.md"},
+    {"name": "pool_stranger_denied", "kind": "resolve_read", "actor": "pool", "mountPoint": "Someone Elses Papers", "path": "notes.md"},
+    {"name": "pool_self_token", "kind": "resolve_read", "actor": "pool", "mountPoint": "self", "path": "notes.md"},
+    {"name": "pool_nonexistent_not_found", "kind": "resolve_read", "actor": "pool", "mountPoint": "Group", "path": "notes.md"},
+    {"name": "pool_group_store_write", "kind": "resolve_write", "actor": "pool", "mountPoint": "Group Files: Severed", "path": "notes.md"},
+    {"name": "pool_vault_write", "kind": "resolve_write", "actor": "pool", "mountPoint": "{{leilaniVaultName}}", "path": "notes.md"},
+    {"name": "pool_accessible", "kind": "accessible", "actor": "pool"},
+    {"name": "pool_accessible_covenant_flag_ignored", "kind": "accessible", "actor": "pool", "opts": {"hideCharacterVaults": true}},
+    {"name": "pool_list_files", "kind": "tool", "actor": "pool", "tool": "doc_list_files", "args": {}},
+    {"name": "pool_list_files_document_store", "kind": "tool", "actor": "pool", "tool": "doc_list_files", "args": {"scope": "document_store"}},
+    {"name": "pool_list_files_project_scope", "kind": "tool", "actor": "pool", "tool": "doc_list_files", "args": {"scope": "project"}},
+    {"name": "pool_grep", "kind": "tool", "actor": "pool", "tool": "doc_grep", "args": {"query": "quarry"}},
+    {"name": "pool_read_blob_cast_vault", "kind": "tool", "actor": "pool", "tool": "doc_read_blob", "args": {"mount_point": "{{abigailVaultName}}", "path": "seed.bin"}},
+    {"name": "pool_list_blobs_cast_vault", "kind": "tool", "actor": "pool", "tool": "doc_list_blobs", "args": {"mount_point": "{{abigailVaultName}}"}},
+    {"name": "nopool_list_files_refused", "kind": "tool", "actor": "nobody", "tool": "doc_list_files", "args": {}},
+    {"name": "nopool_grep_refused", "kind": "tool", "actor": "nobody", "tool": "doc_grep", "args": {"query": "quarry"}},
+    {"name": "nopool_read_blob_refused", "kind": "tool", "actor": "nobody", "tool": "doc_read_blob", "args": {"mount_point": "{{abigailVaultName}}", "path": "seed.bin"}},
+    {"name": "nopool_resolve_refused", "kind": "resolve_read", "actor": "nobody", "mountPoint": "Group Files: Severed", "path": "notes.md"}
   ]
 }

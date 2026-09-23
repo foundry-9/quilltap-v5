@@ -285,6 +285,13 @@ pub struct ToolExecutionContext {
     /// The Brahma Console operator surface (v4 `operatorSurface`). Character tool
     /// handlers never set this.
     pub operator_surface: bool,
+    /// A pre-built accessible set — "what this chat could see" before the chat
+    /// exists — for a character-less tool loop (the Scenario Builder; v4
+    /// `ToolExecutionContext.mountPool`, `d1c06cd9d`). Copied onto the `search`
+    /// and `doc_*` contexts, where it replaces pool resolution. Mutually
+    /// exclusive with `operator_surface`: the executor refuses a context that
+    /// sets both.
+    pub mount_pool: Option<crate::db::tiered_mount_pool::TieredMountPool>,
 }
 
 /// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints an
@@ -320,6 +327,8 @@ pub fn create_tool_context(
         loaded_memories,
         pending_wardrobe_announcements: Arc::new(Mutex::new(HashSet::new())),
         operator_surface: false,
+        // v4's `createToolContext` never sets `mountPool` either (`d1c06cd9d`).
+        mount_pool: None,
     }
 }
 

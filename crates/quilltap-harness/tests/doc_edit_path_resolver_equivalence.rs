@@ -50,6 +50,8 @@ struct Spec {
     legacy_project_id: String,
     #[serde(rename = "fsProjectId")]
     fs_project_id: String,
+    #[serde(rename = "generalMountPointId")]
+    general_mount_point_id: String,
 }
 
 /// Build the host-filesystem tree both sides materialize identically under a
@@ -203,6 +205,20 @@ fn doc_edit_path_resolver_matches_oracle() {
         hide_character_vaults: false,
         mount_point: mount_point.map(String::from),
         operator_override: operator,
+        mount_pool: None,
+    };
+
+    // P4.D216: the pre-built pool (the Scenario Builder shape).
+    let pool = quilltap_core::db::tiered_mount_pool::TieredMountPool {
+        character_mount_point_id: None,
+        participant_mount_point_ids: vec![char_a_vault.clone()],
+        group_mount_point_ids: Vec::new(),
+        project_mount_point_ids: vec![spec.normal_store.clone()],
+        global_mount_point_id: Some(spec.general_mount_point_id.clone()),
+    };
+    let with_pool = |mut c: PathResolutionContext| {
+        c.mount_pool = Some(pool.clone());
+        c
     };
 
     let p = spec.project_id.as_str();
@@ -363,6 +379,50 @@ fn doc_edit_path_resolver_matches_oracle() {
             proj,
             Some("spec.md"),
             ctx(None, Some(&spec.fs_project_id), None, false),
+        ),
+        // ── P4.D216 (v4 `d1c06cd9d`): a pre-built mount pool — no project, no
+        // character (see the oracle's matching rows).
+        (
+            "pool-no-context-name",
+            ds,
+            Some("k.md"),
+            with_pool(ctx(None, None, Some("Project Docs"), false)),
+        ),
+        (
+            "pool-vault-by-id",
+            ds,
+            Some("Notes/a.md"),
+            with_pool(ctx(None, None, Some(&char_a_vault), false)),
+        ),
+        (
+            "pool-general-by-id",
+            ds,
+            Some("g.md"),
+            with_pool(ctx(None, None, Some(&spec.general_mount_point_id), false)),
+        ),
+        (
+            "pool-self-no-character",
+            ds,
+            Some("a.md"),
+            with_pool(ctx(None, None, Some("self"), false)),
+        ),
+        (
+            "pool-out-of-pool",
+            ds,
+            Some("a.md"),
+            with_pool(ctx(None, None, Some("Shared Name"), false)),
+        ),
+        (
+            "pool-and-operator",
+            ds,
+            Some("a.md"),
+            with_pool(ctx(None, None, Some("Shared Name"), true)),
+        ),
+        (
+            "pool-project-scope-still-needs-project",
+            proj,
+            Some("a.md"),
+            with_pool(ctx(None, None, None, false)),
         ),
     ];
 

@@ -32,6 +32,20 @@
 //! this row, nothing made that builder throw, so the throw was left unwrapped
 //! and would have ABORTED the whole oracle case.
 //!
+//! **P4.D216 (v4 `d1c06cd9d`) — the pre-built mount pool.** A `pool` actor is a
+//! character-less, project-less context carrying a hand-built pool of the
+//! fixture's REAL ids (the Scenario Builder's shape: both cast vaults in the
+//! participant tier, both group stores, the project store, Quilltap General, no
+//! character tier). Its ops prove the resolver's pool arm (the participant vaults
+//! ADMITTED — v4's `includeParticipants: true` — the covenant bypassed, the
+//! stranger store still refused, the `self` token measured), the write builder,
+//! the enumerator (incl. a forced covenant flag the pool arm ignores), and the
+//! three handler guards (`doc_list_files` with the group tier tagged from the
+//! pool and no project branch, `doc_grep`, the two blob resolvers). Each pool op
+//! also compares the `DocEdit:PathResolver` log lines field for field (the new
+//! `pre-built mount pool` DEBUG among them). A `nobody` actor (no pool, no
+//! project, no character) is the guards' refusal leg.
+//!
 //! Regen (Node 24). The fixture pair is MINTED per run — rebuild, regenerate,
 //! THEN `cargo test` against that SAME build, in that order. The sweep driver is
 //! the sanctioned path (`recipe_sweep.py --run doc_opacity_equivalence --v4
@@ -85,6 +99,17 @@ struct FlattenPoolSpec {
     global_mount_point_id: String,
 }
 
+/// P4.D216: the `pool` actor's pre-built pool (vault placeholders resolved at run).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrebuiltPoolSpec {
+    character_mount_point_id: Option<String>,
+    participant_mount_point_ids: Vec<String>,
+    group_mount_point_ids: Vec<String>,
+    project_mount_point_ids: Vec<String>,
+    global_mount_point_id: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Op {
@@ -114,6 +139,7 @@ struct Spec {
     project_id: String,
     chat_id: String,
     group_official_mount_point_id: String,
+    prebuilt_pool: PrebuiltPoolSpec,
     flatten_pool: FlattenPoolSpec,
     ops: Vec<Op>,
 }
@@ -261,7 +287,95 @@ fn shape_of(c: &PathResolutionContext) -> Value {
         "hideCharacterVaults": c.hide_character_vaults,
         "mountPoint": c.mount_point,
         "operatorOverride": c.operator_override,
+        // P4.D216: the pool must ride the builders into the resolver's context.
+        "mountPool": c.mount_pool,
     })
+}
+
+// ---------------------------------------------------------------------------
+// P4.D216: a STRUCTURAL capture of the path resolver's lines (level, message,
+// fields by name), compared with v4's `{ level, message, context }`.
+// ---------------------------------------------------------------------------
+
+const RESOLVER_TARGET: &str = "quilltap_core::doc_edit::path_resolver";
+
+/// `(level, message, sorted (field, value) pairs)`.
+type Line = (String, String, Vec<(String, String)>);
+
+struct LineVisitor(String, Vec<(String, String)>);
+impl tracing::field::Visit for LineVisitor {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_i64(&mut self, f: &tracing::field::Field, v: i64) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_u64(&mut self, f: &tracing::field::Field, v: u64) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_bool(&mut self, f: &tracing::field::Field, v: bool) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        if f.name() == "message" {
+            self.0 = format!("{v:?}");
+        } else {
+            self.1.push((f.name().to_string(), format!("{v:?}")));
+        }
+    }
+}
+
+struct ResolverCapture(std::sync::Arc<std::sync::Mutex<Vec<Line>>>);
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ResolverCapture {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        if meta.target() != RESOLVER_TARGET {
+            return;
+        }
+        let mut v = LineVisitor(String::new(), Vec::new());
+        event.record(&mut v);
+        v.1.sort();
+        self.0
+            .lock()
+            .unwrap()
+            .push((meta.level().to_string().to_lowercase(), v.0, v.1));
+    }
+}
+
+/// v4's recorded lines in the capture's shape (every context value as text).
+fn v4_lines(v: &Value) -> Vec<Line> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .map(|l| {
+                    let mut fields: Vec<(String, String)> = l["context"]
+                        .as_object()
+                        .map(|o| {
+                            o.iter()
+                                .map(|(k, v)| {
+                                    let text = match v {
+                                        Value::String(s) => s.clone(),
+                                        other => other.to_string(),
+                                    };
+                                    (k.clone(), text)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    fields.sort();
+                    (
+                        l["level"].as_str().unwrap_or_default().to_string(),
+                        l["message"].as_str().unwrap_or_default().to_string(),
+                        fields,
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_oracle(text: &str) -> Vec<Value> {
@@ -379,19 +493,53 @@ fn doc_opacity_matches_oracle() {
         }
     };
 
-    let ctx_for = |actor: &str| DocEditToolContext {
-        chat_id: spec.chat_id.clone(),
-        user_id: spec.user_id.clone(),
-        project_id: Some(spec.project_id.clone()),
-        character_id: Some(if actor == "abigail" {
-            spec.abigail_id.clone()
-        } else {
-            spec.leilani_id.clone()
-        }),
-        operator_override: false,
-        files_dir: None,
-        blob_webp: Default::default(),
+    // P4.D216: the pre-built pool, its vault placeholders read back.
+    let prebuilt_pool = TieredMountPool {
+        character_mount_point_id: spec.prebuilt_pool.character_mount_point_id.clone(),
+        participant_mount_point_ids: spec
+            .prebuilt_pool
+            .participant_mount_point_ids
+            .iter()
+            .map(|v| sub(v))
+            .collect(),
+        group_mount_point_ids: spec
+            .prebuilt_pool
+            .group_mount_point_ids
+            .iter()
+            .map(|v| sub(v))
+            .collect(),
+        project_mount_point_ids: spec
+            .prebuilt_pool
+            .project_mount_point_ids
+            .iter()
+            .map(|v| sub(v))
+            .collect(),
+        global_mount_point_id: spec.prebuilt_pool.global_mount_point_id.clone(),
     };
+    let ctx_for = |actor: &str| {
+        let character = match actor {
+            "pool" | "nobody" => None,
+            "abigail" => Some(spec.abigail_id.clone()),
+            _ => Some(spec.leilani_id.clone()),
+        };
+        DocEditToolContext {
+            chat_id: spec.chat_id.clone(),
+            user_id: spec.user_id.clone(),
+            project_id: character.as_ref().map(|_| spec.project_id.clone()),
+            character_id: character,
+            operator_override: false,
+            files_dir: None,
+            blob_webp: Default::default(),
+            mount_pool: (actor == "pool").then(|| prebuilt_pool.clone()),
+        }
+    };
+
+    use tracing_subscriber::layer::SubscriberExt;
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Line>::new()));
+    let _capture_guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry().with(ResolverCapture(captured.clone())),
+    );
+    let mut pool_ops = 0usize;
 
     let pool = TieredMountPool {
         character_mount_point_id: Some(spec.flatten_pool.character_mount_point_id.clone()),
@@ -433,7 +581,15 @@ fn doc_opacity_matches_oracle() {
             "accessible" => {
                 let peers = collect_peer_character_ids_for_reads(main, &ctx);
                 let hide = acting_character_is_opaque_to_vaults(main, &ctx);
-                let stores = accessible_for(main, mount, &spec.project_id, &ctx, &peers, hide);
+                // P4.D216: an op may force the covenant flag on — a pre-built
+                // pool must ignore it (the pool arm runs before the covenant).
+                let forced = op
+                    .opts
+                    .as_ref()
+                    .and_then(|o| o.get("hideCharacterVaults"))
+                    .and_then(Value::as_bool)
+                    .unwrap_or(hide);
+                let stores = accessible_for(main, mount, &ctx, &peers, forced);
                 json!({
                     "hideCharacterVaults": hide,
                     "peers": peers,
@@ -445,7 +601,7 @@ fn doc_opacity_matches_oracle() {
             "agreement" => {
                 let peers = collect_peer_character_ids_for_reads(main, &ctx);
                 let hide = acting_character_is_opaque_to_vaults(main, &ctx);
-                let stores = accessible_for(main, mount, &spec.project_id, &ctx, &peers, hide);
+                let stores = accessible_for(main, mount, &ctx, &peers, hide);
                 let rows: Vec<Value> = stores
                     .iter()
                     .map(|m| {
@@ -501,7 +657,61 @@ fn doc_opacity_matches_oracle() {
             "actor": actor,
             "result": result,
         }));
-        let want = normalize(&oracle_ops[i]);
+        // P4.D216: a pool op's path-resolver lines are compared on their own
+        // (field values as text); every other op's lines are dropped, as v4's
+        // oracle drops them.
+        let got_lines: Vec<Line> = std::mem::take(&mut *captured.lock().unwrap());
+        let mut want_raw = oracle_ops[i].clone();
+        if actor == "pool" {
+            pool_ops += 1;
+            let want_lines = v4_lines(&normalize(want_raw.get("logs").unwrap_or(&Value::Null)));
+            let got_norm: Vec<Line> = got_lines
+                .into_iter()
+                .map(|(l, m, f)| {
+                    let norm = |t: &str| {
+                        normalize(&Value::String(t.to_string()))
+                            .as_str()
+                            .unwrap()
+                            .to_string()
+                    };
+                    (
+                        l,
+                        norm(&m),
+                        f.into_iter().map(|(k, v)| (k, norm(&v))).collect(),
+                    )
+                })
+                .collect();
+            // v5's refusal WARNs carry structured fields v4 bakes into the
+            // message (a v5 convenience, P4.100); a v4 line with NO context is
+            // compared on level + message alone.
+            let got_norm: Vec<Line> = got_norm
+                .into_iter()
+                .zip(want_lines.iter().map(Some).chain(std::iter::repeat(None)))
+                .map(|((l, m, f), w)| match w {
+                    Some((_, _, wf)) if wf.is_empty() => (l, m, Vec::new()),
+                    _ => (l, m, f),
+                })
+                .collect();
+            if got_norm != want_lines {
+                mismatches.push(format!(
+                    "op[{i}] {}: path-resolver log lines diverge\n  rust:   {got_norm:?}\n  oracle: {want_lines:?}",
+                    op.name
+                ));
+            }
+            if let Some(o) = want_raw.as_object_mut() {
+                o.remove("logs");
+            }
+        }
+        let mut want = normalize(&want_raw);
+        // P4.D216: the pool ops list AFTER the run's own blob writes, whose
+        // `modified` is the write's epoch-ms on each side (a minted clock the ISO
+        // normalizer cannot see). Blanked on BOTH sides for pool ops only — the
+        // discriminators (path, store, scope tag) are untouched.
+        let mut got = got;
+        if actor == "pool" {
+            blank_modified(&mut got);
+            blank_modified(&mut want);
+        }
         if got != want {
             mismatches.push(format!(
                 "op[{i}] {}\n  rust:   {got}\n  oracle: {want}",
@@ -560,7 +770,14 @@ fn doc_opacity_matches_oracle() {
         spec.ops.len(),
         mismatches.join("\n\n")
     );
-    eprintln!("doc_opacity: {} ops matched the oracle.", spec.ops.len());
+    assert!(
+        pool_ops >= 20,
+        "the P4.D216 pool arms must run; only {pool_ops} did"
+    );
+    eprintln!(
+        "doc_opacity: {} ops matched the oracle ({pool_ops} pre-built-pool ops, their resolver lines included).",
+        spec.ops.len()
+    );
 }
 
 /// The enumeration the `accessible` and `agreement` ops share — the same query
@@ -568,7 +785,6 @@ fn doc_opacity_matches_oracle() {
 fn accessible_for(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
-    project_id: &str,
     ctx: &DocEditToolContext,
     peers: &[String],
     hide: bool,
@@ -577,12 +793,30 @@ fn accessible_for(
         main,
         mount,
         AccessibleMountPointsQuery {
-            project_id: Some(project_id),
+            project_id: ctx.project_id.as_deref(),
             character_id: ctx.character_id.as_deref(),
             extra_character_ids: peers,
             hide_character_vaults: hide,
+            mount_pool: ctx.mount_pool.as_ref(),
         },
     )
+}
+
+/// Replace every numeric `modified` value with `"<ms>"`.
+fn blank_modified(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            for (k, val) in o.iter_mut() {
+                if k == "modified" && val.is_number() {
+                    *val = Value::String("<ms>".to_string());
+                } else {
+                    blank_modified(val);
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(blank_modified),
+        _ => {}
+    }
 }
 
 fn flatten_for(

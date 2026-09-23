@@ -80,6 +80,14 @@ interface Spec {
   projectId: string;
   chatId: string;
   groupOfficialMountPointId: string;
+  /** P4.D216: the `pool` actor's pre-built mount pool (placeholders resolved at run). */
+  prebuiltPool: {
+    characterMountPointId: string | null;
+    participantMountPointIds: string[];
+    groupMountPointIds: string[];
+    projectMountPointIds: string[];
+    globalMountPointId: string | null;
+  };
   flattenPool: {
     characterMountPointId: string;
     participantMountPointIds: string[];
@@ -160,6 +168,22 @@ async function main(): Promise<void> {
       triggerReindexIfNeeded: async () => undefined,
     };
   });
+  // P4.D216: record the path resolver's log lines (the pool ops compare them).
+  const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+  jest.doMock('@/lib/logging/create-logger', () => {
+    const actual = jest.requireActual('@/lib/logging/create-logger');
+    return {
+      __esModule: true,
+      ...actual,
+      createServiceLogger: (serviceName: string) => {
+        if (serviceName !== 'DocEdit:PathResolver') return actual.createServiceLogger(serviceName);
+        const rec = (level: string) => (message: string, context?: unknown) => {
+          logLines.push({ level, message, context: context ?? null });
+        };
+        return { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') };
+      },
+    };
+  });
   jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
     __esModule: true,
     enqueueEmbeddingJobsForMountPoint: () => undefined,
@@ -215,12 +239,29 @@ async function main(): Promise<void> {
     return out;
   };
 
-  const ctxFor = (actor: string) => ({
-    chatId: spec.chatId,
-    userId: spec.userId,
-    projectId: spec.projectId,
-    characterId: actor === 'abigail' ? spec.abigailId : spec.leilaniId,
-  });
+  // P4.D216: the pre-built pool, its vault placeholders read back.
+  const prebuiltPool = {
+    characterMountPointId: spec.prebuiltPool.characterMountPointId,
+    participantMountPointIds: spec.prebuiltPool.participantMountPointIds.map((v) => sub(v) as string),
+    groupMountPointIds: spec.prebuiltPool.groupMountPointIds.map((v) => sub(v) as string),
+    projectMountPointIds: spec.prebuiltPool.projectMountPointIds.map((v) => sub(v) as string),
+    globalMountPointId: spec.prebuiltPool.globalMountPointId,
+  };
+  const ctxFor = (actor: string): Record<string, unknown> & {
+    projectId?: string;
+    characterId?: string;
+    mountPool?: typeof prebuiltPool;
+  } =>
+    actor === 'pool'
+      ? { chatId: spec.chatId, userId: spec.userId, mountPool: prebuiltPool }
+      : actor === 'nobody'
+        ? { chatId: spec.chatId, userId: spec.userId }
+        : {
+            chatId: spec.chatId,
+            userId: spec.userId,
+            projectId: spec.projectId,
+            characterId: actor === 'abigail' ? spec.abigailId : spec.leilaniId,
+          };
 
   /**
    * Canonical context shape. v4 OMITS `characterIds` / `hideCharacterVaults` /
@@ -238,6 +279,8 @@ async function main(): Promise<void> {
     hideCharacterVaults: c.hideCharacterVaults === true,
     mountPoint: (c.mountPoint as string) ?? null,
     operatorOverride: c.operatorOverride === true,
+    // P4.D216: the pool must ride the builders into the resolver's context.
+    mountPool: (c.mountPool as unknown) ?? null,
   });
 
   const resolveRow = async (
@@ -329,7 +372,10 @@ async function main(): Promise<void> {
             projectId: context.projectId,
             characterId: context.characterId,
             extraCharacterIds: peers,
-            hideCharacterVaults: hide,
+            // P4.D216: an op may force the covenant flag on (a pre-built pool
+            // must ignore it — the pool arm runs before the covenant).
+            hideCharacterVaults: (op.opts?.hideCharacterVaults as boolean | undefined) ?? hide,
+            ...(context.mountPool ? { mountPool: context.mountPool } : {}),
           });
           result = {
             hideCharacterVaults: hide,
@@ -385,7 +431,14 @@ async function main(): Promise<void> {
           throw new Error(`unknown op kind: ${op.kind}`);
       }
 
-      opResults.push({ name: op.name, kind: op.kind, actor, result });
+      // P4.D216: a pool op carries the path resolver's lines; every other op
+      // drops what it logged (the pre-existing ops were never log-compared).
+      const lines = logLines.splice(0);
+      opResults.push(
+        actor === 'pool'
+          ? { name: op.name, kind: op.kind, actor, result, logs: lines }
+          : { name: op.name, kind: op.kind, actor, result },
+      );
     }
     outLines.push(JSON.stringify({ case: 'doc-opacity', ops: opResults }));
   } finally {

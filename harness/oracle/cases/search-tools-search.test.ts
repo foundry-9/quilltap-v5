@@ -74,8 +74,18 @@ async function main(): Promise<void> {
     operatorSurface?: boolean;
     noCharacter?: boolean;
     wrongUser?: boolean;
+    /** P4.D216: carry the pre-built mount pool (see `buildPool`). */
+    pool?: boolean;
   };
-  type Case = HelpCase | SearchCase;
+  /** P4.D216: `executeToolCallWithContext` itself — the pool/operator refusal. */
+  type ExecutorCase = {
+    label: string;
+    tool: 'executor';
+    args: unknown;
+    operatorSurface?: boolean;
+    pool?: boolean;
+  };
+  type Case = HelpCase | SearchCase | ExecutorCase;
 
   const cases: Case[] = [
     // ---- help_search ----
@@ -113,6 +123,23 @@ async function main(): Promise<void> {
     { label: 'search_conversations_window_in', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2025-05-01', until: '2025-07-01' } },
     { label: 'search_conversations_window_out', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'], since: '2020-01-01', until: '2020-12-31' } },
     { label: 'search_invalid_since', tool: 'search', args: { query: 'recall the star navigation notes', since: 'last week' } },
+    // ── P4.D216 (v4 `d1c06cd9d`): a pre-built mount pool — the cast vault in the
+    // participant tier, the project store, Quilltap General, no character tier.
+    // `noCharacter` is the Scenario Builder's own shape; the arms that KEEP a
+    // character prove memories/conversations are forced off by the pool itself.
+    { label: 'pool_documents', tool: 'search', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, pool: true, noCharacter: true },
+    { label: 'pool_knowledge', tool: 'search', args: { query: 'guide to celestial mechanics', sources: ['knowledge'] }, pool: true, noCharacter: true },
+    { label: 'pool_default_sources', tool: 'search', args: { query: 'guide to celestial mechanics' }, pool: true, noCharacter: true },
+    { label: 'pool_scope_character', tool: 'search', args: { query: 'guide to celestial mechanics', scope: 'character' }, pool: true, noCharacter: true },
+    { label: 'pool_scope_project', tool: 'search', args: { query: 'guide to celestial mechanics', scope: 'project' }, pool: true, noCharacter: true },
+    { label: 'pool_memories_forced_off', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'] }, pool: true },
+    { label: 'pool_conversations_forced_off', tool: 'search', args: { query: 'what did we say about the ledger', sources: ['conversations'] }, pool: true },
+    { label: 'pool_with_character_all_sources', tool: 'search', args: { query: 'guide to celestial mechanics' }, pool: true },
+    { label: 'pool_beats_operator_in_handler', tool: 'search', args: { query: 'guide to celestial mechanics' }, pool: true, noCharacter: true, operatorSurface: true },
+    // The executor's mutual-exclusion refusal and its two silence legs.
+    { label: 'executor_pool_and_operator_refused', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, pool: true, operatorSurface: true },
+    { label: 'executor_pool_only_runs', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, pool: true },
+    { label: 'executor_operator_only_runs', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, operatorSurface: true },
   ];
 
   for (const c of cases) {
@@ -166,11 +193,44 @@ async function main(): Promise<void> {
       return { __esModule: true, ...actual, ensureHelpDocsSynced: async () => undefined };
     });
 
+    // P4.D216: record the search handler's lines (pool cases compare them).
+    const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+    jest.doMock('@/lib/logging/create-logger', () => {
+      const actual = jest.requireActual('@/lib/logging/create-logger');
+      return {
+        __esModule: true,
+        ...actual,
+        createServiceLogger: (serviceName: string) => {
+          if (serviceName !== 'SearchScriptoriumHandler') return actual.createServiceLogger(serviceName);
+          const rec = (level: string) => (message: string, context?: unknown) => {
+            logLines.push({ level, message, context: context ?? null });
+          };
+          return { debug: rec('debug'), info: rec('info'), warn: rec('warn'), error: rec('error') };
+        },
+      };
+    });
+
     const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
     await initializeDatabase();
 
+    // P4.D216: the pre-built pool, its minted ids read back (never transcribed).
+    const buildPool = async () => {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      const repos = getRepositories();
+      const ch = await repos.characters.findByIdRaw(spec.charAId);
+      const proj = await repos.projects.findById(spec.projectId);
+      return {
+        characterMountPointId: null,
+        participantMountPointIds: [ch?.characterDocumentMountPointId as string],
+        groupMountPointIds: [],
+        projectMountPointIds: [proj?.officialMountPointId as string],
+        globalMountPointId: (spec as unknown as { generalMountPointId: string }).generalMountPointId,
+      };
+    };
+
     let resultJson: string;
     let formatted: string;
+    let extra: Record<string, unknown> = {};
 
     if (c.tool === 'help_search') {
       // HelpSearch is a module singleton caching docs; reset it per case so it
@@ -183,6 +243,32 @@ async function main(): Promise<void> {
       const out = await executeHelpSearchTool(c.args, { userId: spec.userId });
       resultJson = JSON.stringify(out);
       formatted = formatHelpSearchResults(out.results ?? []);
+    } else if (c.tool === 'executor') {
+      // P4.D216: v4's REAL `executeToolCallWithContext` — the refusal is its
+      // FIRST act; the silence legs dispatch the search as usual. The refusal
+      // logs on the ROOT logger (`@/lib/logger`), spied here.
+      const { logger } = await import('@/lib/logger');
+      const refusals: Array<{ level: string; message: string; context: unknown }> = [];
+      const spy = jest.spyOn(logger, 'error').mockImplementation(((message: string, context?: unknown) => {
+        if (typeof message === 'string' && message.startsWith('Tool context sets both')) {
+          refusals.push({ level: 'error', message, context: context ?? null });
+        }
+      }) as never);
+      const { executeToolCallWithContext } = await import('@/lib/chat/tool-executor');
+      const ec = c as ExecutorCase;
+      const context: Record<string, unknown> = {
+        chatId: spec.chatAId,
+        userId: spec.userId,
+        projectId: spec.projectId,
+        pendingWardrobeAnnouncements: new Set<string>(),
+      };
+      if (ec.operatorSurface) context.operatorSurface = true;
+      if (ec.pool) context.mountPool = await buildPool();
+      const r = await executeToolCallWithContext({ name: 'search', arguments: ec.args as never }, context as never);
+      spy.mockRestore();
+      resultJson = JSON.stringify({ toolName: r.toolName, success: r.success, error: r.error ?? null });
+      formatted = '';
+      extra = { refusals };
     } else {
       const { executeSearchScriptoriumTool, formatSearchScriptoriumResults } = await import(
         '@/lib/tools/handlers/search-scriptorium-handler'
@@ -195,16 +281,22 @@ async function main(): Promise<void> {
       };
       if (!sc.noCharacter) context.characterId = spec.charAId;
       if (sc.operatorSurface) context.operatorSurface = true;
+      // P4.D216: the pool cases carry NO project (the Scenario Builder shape).
+      if (sc.pool) {
+        context.mountPool = await buildPool();
+        delete context.projectId;
+      }
       const out = await executeSearchScriptoriumTool(c.args, context);
       resultJson = JSON.stringify(out);
       formatted = formatSearchScriptoriumResults(out.results ?? []);
+      if (sc.pool) extra = { logs: logLines.splice(0) };
     }
 
     // Let fire-and-forget promises settle before closing.
     await new Promise((resolve) => setTimeout(resolve, 50));
     await closeDatabase();
 
-    lines.push(JSON.stringify({ label: c.label, resultJson, formatted }));
+    lines.push(JSON.stringify({ label: c.label, resultJson, formatted, ...extra }));
   }
 
   Date.now = realDateNow;

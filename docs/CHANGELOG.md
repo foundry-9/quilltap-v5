@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(tools): the pre-built mount pool on the tool context, through the executor, search, the doc-edit handlers and the path resolver (P4.D216 unit 4)
+
+_Versions: core 0.0.1017, harness 0.0.933._
+
+v4 `d1c06cd9d` gave the tool context an optional pre-built mount pool, the
+Scenario Builder's "what this chat could see" before the chat exists.
+`ToolExecutionContext`, `SearchContext`, `DocEditToolContext`,
+`PathResolutionContext` and `AccessibleMountPointsQuery` each gain
+`mount_pool`. The executor refuses a context that sets both `mount_pool` and
+`operator_surface`, before any dispatch, with v4's error string and ERROR
+line. The `search` guard admits a pool with no character. Search uses the
+pool as given, admits the cast vaults (the participant tier) into
+documents, lists them as the `character` knowledge tier, and forces
+memories and conversations off. The path resolver's pool arm (after the
+operator arm and before the covenant) returns the pool flattened with
+participants. Enumeration shares that arm, so its DEBUG line fires on both
+paths. The resolver guard gains a fourth conjunct.
+`doc_grep`/`doc_list_files` accept a pool in place of a project: the group
+tier comes from the pool, and the legacy-directory and project branches
+need a real project. The two blob resolvers gain the same third conjunct.
+The resolver's operator-override DEBUG line, missing until now, is added
+alongside. Every other struct literal gets `mount_pool: None`.
+
+Tests: `doc_opacity_equivalence` +25 ops, `doc_edit_path_resolver_equivalence`
++7 rows, and `search_tools_equivalence` +9 pool searches plus 3 executor arms,
+all through v4's real code at `d1c06cd9d`. Every pool arm was red with no pool
+reaching v5, and every pre-existing row passes at both pins. Mutations
+(participants dropped, the resolver guard, the refusal as WARN, conversations
+not forced off, documents without participants) each redden their own arms.
+
 #### 2026-09-23 — feat(agent-loop): the shared one-shot tool loop, with the Brahma one-shot as its thin wrapper (P4.D216 unit 3)
 
 _Versions: core 0.0.1016, harness 0.0.932._

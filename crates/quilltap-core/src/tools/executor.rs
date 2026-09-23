@@ -973,8 +973,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     // -- search (Scriptorium unified search; tool-executor.ts:938) ----------
     async fn run_search(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         // v4's dispatcher guard: a character surface needs a character; the
-        // operator surface (Brahma Console) is character-less.
-        if ctx.character_id.is_none() && !ctx.operator_surface {
+        // operator surface (Brahma Console) is character-less, and so is a
+        // pre-built pool (the Scenario Builder, `d1c06cd9d`).
+        if ctx.character_id.is_none() && !ctx.operator_surface && ctx.mount_pool.is_none() {
             return fail("search", "Search requires a character context");
         }
         let context = search::SearchContext {
@@ -983,6 +984,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             embedding_profile_id: ctx.embedding_profile_id.clone(),
             project_id: ctx.project_id.clone(),
             operator_surface: ctx.operator_surface,
+            mount_pool: ctx.mount_pool.clone(),
         };
         let out = search::execute_search_scriptorium(
             &self.db,
@@ -1378,6 +1380,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
             operator_override: false,
+            // v4 `d1c06cd9d` copies `mountPool` onto the doc-edit context.
+            mount_pool: ctx.mount_pool.clone(),
             // P4.6bg S2: the doc-edit files-dir thread. Set to the host files dir
             // in U5 so character tools reach the general/legacy-project/fs-mount
             // branches; `None` preserves today's FsSeam refusal.
@@ -1730,6 +1734,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             project_id: ctx.project_id.clone(),
             character_id: ctx.character_id.clone(),
             operator_override: false,
+            // v4 `tool-executor.ts:1148` (`d1c06cd9d`): the pre-built pool rides
+            // the doc-edit context straight to the path resolver.
+            mount_pool: ctx.mount_pool.clone(),
             files_dir: None,
             // P4.104: `doc_write_blob` normalizes through the host's encoder,
             // reached through the byte store (the host's image boundary).
@@ -1903,6 +1910,22 @@ impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
         ctx: &ToolExecutionContext,
     ) -> impl std::future::Future<Output = ToolResult> + Send {
         async move {
+            // A pre-built pool narrows; the operator surface widens. A context
+            // carrying both is a caller bug — refuse rather than guess which one
+            // was meant (v4 `executeToolCallWithContext`, `d1c06cd9d` — FIRST,
+            // before any dispatch, built-in or plugin).
+            if ctx.mount_pool.is_some() && ctx.operator_surface {
+                tracing::error!(
+                    context = "tool-executor",
+                    toolName = %tool_call.name,
+                    chatId = %ctx.chat_id,
+                    "Tool context sets both mountPool and operatorSurface; refusing"
+                );
+                return fail(
+                    &tool_call.name,
+                    "Tool context is misconfigured (mountPool and operatorSurface are mutually exclusive).",
+                );
+            }
             match self.dispatch(tool_call, ctx).await {
                 Some(result) => result,
                 // Not handled here → the injected fallback (loud by default).

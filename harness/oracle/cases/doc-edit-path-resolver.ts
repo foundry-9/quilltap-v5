@@ -130,6 +130,16 @@ async function main(): Promise<void> {
 
   const rows: unknown[] = [];
 
+  // P4.D216: the pre-built pool (the Scenario Builder shape: the cast vault in
+  // the participant tier, no character tier).
+  const pool = {
+    characterMountPointId: null,
+    participantMountPointIds: [charAVault],
+    groupMountPointIds: [],
+    projectMountPointIds: [spec.normalStore],
+    globalMountPointId: spec.generalMountPointId,
+  };
+
   const matrix: Array<{ id: string; scope: string; path: string | undefined; ctx: any }> = [
     { id: 'self-token', scope: 'document_store', path: 'Notes/a.md', ctx: { characterId: A, mountPoint: 'self' } },
     { id: 'self-token-upper', scope: 'document_store', path: 'x.md', ctx: { characterId: A, mountPoint: 'SELF' } },
@@ -157,6 +167,17 @@ async function main(): Promise<void> {
     { id: 'general-symlink-escape', scope: 'general', path: 'link-out/secret.md', ctx: {} },
     { id: 'project-legacy-fallback', scope: 'project', path: 'draft.md', ctx: { projectId: spec.legacyProjectId } },
     { id: 'project-official-fs', scope: 'project', path: 'spec.md', ctx: { projectId: spec.fsProjectId } },
+    // ── P4.D216 (v4 `d1c06cd9d`): a pre-built mount pool — no project, no
+    // character. The pool is the accessible set (participants admitted); the
+    // guard's third conjunct lets it through; the operator arm still wins when
+    // both are set (the pool arm sits AFTER it).
+    { id: 'pool-no-context-name', scope: 'document_store', path: 'k.md', ctx: { mountPool: pool, mountPoint: 'Project Docs' } },
+    { id: 'pool-vault-by-id', scope: 'document_store', path: 'Notes/a.md', ctx: { mountPool: pool, mountPoint: charAVault } },
+    { id: 'pool-general-by-id', scope: 'document_store', path: 'g.md', ctx: { mountPool: pool, mountPoint: spec.generalMountPointId } },
+    { id: 'pool-self-no-character', scope: 'document_store', path: 'a.md', ctx: { mountPool: pool, mountPoint: 'self' } },
+    { id: 'pool-out-of-pool', scope: 'document_store', path: 'a.md', ctx: { mountPool: pool, mountPoint: 'Shared Name' } },
+    { id: 'pool-and-operator', scope: 'document_store', path: 'a.md', ctx: { mountPool: pool, operatorOverride: true, mountPoint: 'Shared Name' } },
+    { id: 'pool-project-scope-still-needs-project', scope: 'project', path: 'a.md', ctx: { mountPool: pool } },
   ];
 
   for (const c of matrix) {

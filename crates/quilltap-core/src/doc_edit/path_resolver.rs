@@ -29,6 +29,7 @@ use super::DocEditScope;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::tiered_mount_pool::{
     flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
+    TieredMountPool,
 };
 
 /// Reserved `mount_point` token meaning "the acting character's own vault"
@@ -57,6 +58,13 @@ pub struct PathResolutionContext {
     pub mount_point: Option<String>,
     /// Operator "look everywhere" override — reaches ANY enabled mount.
     pub operator_override: bool,
+    /// A pre-built pool that IS the accessible set — used by a tool loop that
+    /// must see "what this chat could see" before the chat exists (the Scenario
+    /// Builder; v4 `PathResolutionContext.mountPool`, `d1c06cd9d`). When set,
+    /// resolution never consults `character_id` / `project_id` for the pool, and
+    /// the participant tier is admitted. Mutually exclusive with
+    /// `operator_override`.
+    pub mount_pool: Option<TieredMountPool>,
 }
 
 /// A resolved path (v4 `ResolvedPath`). For database-backed stores
@@ -410,7 +418,21 @@ fn collect_accessible_mount_point_ids(
                 ids.push(r.id);
             }
         }
+        // v4 logs this arm too; the port had never carried the line (restored
+        // beside the pre-built-pool arm's, P4.D216).
+        tracing::debug!(
+            count = ids.len(),
+            "Path resolver: operator override — all enabled stores accessible"
+        );
         return Ok(ids);
+    }
+
+    // A pre-built pool (Scenario Builder) is the accessible set, verbatim. The
+    // cast vaults ride in the participant tier; there is no character tier.
+    // v4 `d1c06cd9d` — AFTER the operator arm, BEFORE the covenant: the pool is
+    // not subject to the opacity covenant (the caller built it).
+    if let Some(pool) = &context.mount_pool {
+        return Ok(prebuilt_pool_accessible_ids(pool));
     }
 
     // The opacity covenant subtracts the two vault tiers and nothing else. The
@@ -443,6 +465,29 @@ fn collect_accessible_mount_point_ids(
             ..Default::default()
         },
     ))
+}
+
+/// The pre-built-pool arm of v4 `collectAccessibleMountPointIds` (`d1c06cd9d`):
+/// `flattenTierPool(mountPool, { includeParticipants: true })` — every tier, the
+/// participant tier folded in, `includeCharacterTier` left at its default (the
+/// feature spec's §5.2 said to set it false; that would drop the participant
+/// tier too, since both live inside `addCharacterTier` — the shipped code does
+/// not, and the port follows the code). Shared with the enumeration side
+/// (`tools::doc_edit::shared::get_accessible_mount_points`), which v4 routes
+/// through the same function — so the DEBUG fires on both.
+pub(crate) fn prebuilt_pool_accessible_ids(pool: &TieredMountPool) -> Vec<String> {
+    let ids = flatten_tier_pool(
+        pool,
+        FlattenOptions {
+            include_participants: true,
+            ..Default::default()
+        },
+    );
+    tracing::debug!(
+        count = ids.len(),
+        "Path resolver: pre-built mount pool — accessible set supplied by caller"
+    );
+    ids
 }
 
 /// v4 `describeCharacters`: the context's character ids as one comma-joined
@@ -510,7 +555,13 @@ fn resolve_document_store_path(
     };
 
     let has_character_context = context.character_id.is_some() || !context.character_ids.is_empty();
-    if !context.operator_override && context.project_id.is_none() && !has_character_context {
+    // The operator override AND a pre-built pool each carry their own accessible
+    // set, so neither needs a project or a character (v4 `d1c06cd9d`).
+    if !context.operator_override
+        && context.mount_pool.is_none()
+        && context.project_id.is_none()
+        && !has_character_context
+    {
         tracing::warn!("document_store scope requires projectId or characterId in context");
         return Err(ResolveError::path(
             PathErrorCode::MissingContext,

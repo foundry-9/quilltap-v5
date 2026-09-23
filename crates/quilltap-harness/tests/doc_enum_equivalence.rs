@@ -260,6 +260,9 @@ fn doc_enum_matches_oracle() {
         operator_override: false,
         files_dir: None,
         blob_webp: Default::default(),
+        // P4.D216 OUT-OF-MANDATE — the family's owner preserves (a required
+        // field on a shared struct, v4 `d1c06cd9d`'s `mountPool`).
+        mount_pool: None,
     };
 
     for (i, op) in spec.ops.iter().enumerate() {

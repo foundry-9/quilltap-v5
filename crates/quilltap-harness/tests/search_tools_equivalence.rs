@@ -53,6 +53,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::tiered_mount_pool::TieredMountPool;
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::tools::help_search::{execute_help_search, format_help_search};
 use quilltap_core::tools::project_info::{
@@ -87,6 +88,8 @@ struct Spec {
     chat_a_id: String,
     #[serde(rename = "charAId")]
     char_a_id: String,
+    #[serde(rename = "generalMountPointId")]
+    general_mount_point_id: String,
     #[serde(rename = "$nowMs")]
     now_ms: f64,
     #[serde(rename = "cannedEmbeddings")]
@@ -103,6 +106,121 @@ struct OracleRow {
     formatted: String,
     #[serde(default, rename = "chatRow")]
     chat_row: Option<Value>,
+    /// P4.D216: a pool case's `SearchScriptoriumHandler` lines.
+    #[serde(default)]
+    logs: Option<Value>,
+    /// P4.D216: an executor case's refusal ERROR lines.
+    #[serde(default)]
+    refusals: Option<Value>,
+}
+
+// ---------------------------------------------------------------------------
+// P4.D216: a STRUCTURAL capture (level, message, sorted fields as text).
+// ---------------------------------------------------------------------------
+
+type Line = (String, String, Vec<(String, String)>);
+
+struct LineVisitor(String, Vec<(String, String)>);
+impl tracing::field::Visit for LineVisitor {
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_i64(&mut self, f: &tracing::field::Field, v: i64) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_u64(&mut self, f: &tracing::field::Field, v: u64) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_bool(&mut self, f: &tracing::field::Field, v: bool) {
+        self.1.push((f.name().to_string(), v.to_string()));
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        if f.name() == "message" {
+            self.0 = format!("{v:?}");
+        } else {
+            self.1.push((f.name().to_string(), format!("{v:?}")));
+        }
+    }
+}
+
+/// Captures the search handler's and the executor's lines.
+struct Capture(std::sync::Arc<std::sync::Mutex<Vec<(String, Line)>>>);
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        let target = meta.target();
+        if target != "quilltap_core::tools::search" && target != "quilltap_core::tools::executor" {
+            return;
+        }
+        let mut v = LineVisitor(String::new(), Vec::new());
+        event.record(&mut v);
+        v.1.sort();
+        self.0.lock().unwrap().push((
+            target.to_string(),
+            (meta.level().to_string().to_lowercase(), v.0, v.1),
+        ));
+    }
+}
+
+fn v4_lines(v: Option<&Value>) -> Vec<Line> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .map(|l| {
+                    let mut fields: Vec<(String, String)> = l["context"]
+                        .as_object()
+                        .map(|o| {
+                            o.iter()
+                                .map(|(k, v)| {
+                                    let text = match v {
+                                        Value::String(s) => s.clone(),
+                                        other => other.to_string(),
+                                    };
+                                    (k.clone(), text)
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    fields.sort();
+                    (
+                        l["level"].as_str().unwrap_or_default().to_string(),
+                        l["message"].as_str().unwrap_or_default().to_string(),
+                        fields,
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The P4.D216 pre-built pool over THIS copy: the cast vault (participant tier),
+/// the project's official store, Quilltap General; the minted ids read back.
+fn pool_for(db: &Db, char_a_id: &str, project_id: &str, general_id: &str) -> TieredMountPool {
+    let vault = db
+        .read_main(|c| quilltap_core::db::characters_read::find_by_id_raw(c, char_a_id))
+        .unwrap()
+        .and_then(|v| {
+            v.get("characterDocumentMountPointId")
+                .and_then(Value::as_str)
+                .map(String::from)
+        })
+        .expect("charA vault minted");
+    let store = db
+        .read_main(|c| quilltap_core::db::projects::find_official_mount_point_id_raw(c, project_id))
+        .unwrap()
+        .flatten()
+        .expect("project store minted");
+    TieredMountPool {
+        character_mount_point_id: None,
+        participant_mount_point_ids: vec![vault],
+        group_mount_point_ids: Vec::new(),
+        project_mount_point_ids: vec![store],
+        global_mount_point_id: Some(general_id.to_string()),
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -442,6 +560,8 @@ async fn run_search(
         operator_surface: bool,
         with_character: bool,
         wrong_user: bool,
+        /// P4.D216: carry the pre-built mount pool (and no project).
+        pool: bool,
     }
     let s_cases = vec![
         SearchCase {
@@ -450,6 +570,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_conversations_only",
@@ -457,6 +578,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_documents_only",
@@ -464,6 +586,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_knowledge_only",
@@ -471,6 +594,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_combined",
@@ -478,6 +602,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_empty_result",
@@ -485,6 +610,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_limit_cap",
@@ -492,6 +618,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_truncation",
@@ -499,6 +626,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_operator_surface",
@@ -506,6 +634,7 @@ async fn run_search(
             operator_surface: true,
             with_character: false,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_invalid_empty",
@@ -513,6 +642,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         // ---- episodic recall (P4.d13 unit 6): since/until + aboutCharacter ----
         SearchCase {
@@ -521,6 +651,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_until_createdat_fallback",
@@ -528,6 +659,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_since_full_iso",
@@ -535,6 +667,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_window_empty",
@@ -542,6 +675,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_about_resolved",
@@ -549,6 +683,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_about_alias",
@@ -556,6 +691,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_about_trimmed_case",
@@ -563,6 +699,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_about_unresolved",
@@ -570,6 +707,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_conversations_window_in",
@@ -577,6 +715,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_conversations_window_out",
@@ -584,6 +723,7 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
         },
         SearchCase {
             label: "search_invalid_since",
@@ -591,8 +731,88 @@ async fn run_search(
             operator_surface: false,
             with_character: true,
             wrong_user: false,
+            pool: false,
+        },
+        // ── P4.D216 (v4 `d1c06cd9d`): the pre-built mount pool (see the oracle).
+        SearchCase {
+            label: "pool_documents",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "sources": ["documents"] }),
+            operator_surface: false,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_knowledge",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "sources": ["knowledge"] }),
+            operator_surface: false,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_default_sources",
+            args: serde_json::json!({ "query": "guide to celestial mechanics" }),
+            operator_surface: false,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_scope_character",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "scope": "character" }),
+            operator_surface: false,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_scope_project",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "scope": "project" }),
+            operator_surface: false,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_memories_forced_off",
+            args: serde_json::json!({ "query": "recall the star navigation notes", "sources": ["memories"] }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_conversations_forced_off",
+            args: serde_json::json!({ "query": "what did we say about the ledger", "sources": ["conversations"] }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_with_character_all_sources",
+            args: serde_json::json!({ "query": "guide to celestial mechanics" }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: true,
+        },
+        SearchCase {
+            label: "pool_beats_operator_in_handler",
+            args: serde_json::json!({ "query": "guide to celestial mechanics" }),
+            operator_surface: true,
+            with_character: false,
+            wrong_user: false,
+            pool: true,
         },
     ];
+    use tracing_subscriber::layer::SubscriberExt;
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, Line)>::new()));
+    let _capture_guard = tracing::subscriber::set_default(
+        tracing_subscriber::registry().with(Capture(captured.clone())),
+    );
+    let mut pool_cases_run = 0usize;
     for c in &s_cases {
         let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, c.label);
         let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);
@@ -608,9 +828,19 @@ async fn run_search(
                 None
             },
             embedding_profile_id: spec.embedding_profile_id.clone(),
-            project_id: Some(spec.project_id.clone()),
+            // P4.D216: a pool case carries NO project (the Scenario Builder shape).
+            project_id: (!c.pool).then(|| spec.project_id.clone()),
             operator_surface: c.operator_surface,
+            mount_pool: c.pool.then(|| {
+                pool_for(
+                    &db,
+                    &spec.char_a_id,
+                    &spec.project_id,
+                    &spec.general_mount_point_id,
+                )
+            }),
         };
+        captured.lock().unwrap().clear();
         let out = execute_search_scriptorium(&db, &provider, &ctx, &c.args, spec.now_ms).await;
         let got_json = serde_json::to_string(&out).unwrap();
         let got_fmt = format_search_scriptorium_results(out.results.as_deref().unwrap_or(&[]));
@@ -628,7 +858,118 @@ async fn run_search(
             "formatted diverged for {}",
             c.label
         );
+        if c.pool {
+            pool_cases_run += 1;
+            let got_lines: Vec<Line> = captured
+                .lock()
+                .unwrap()
+                .drain(..)
+                .filter(|(t, _)| t == "quilltap_core::tools::search")
+                .map(|(_, l)| l)
+                .collect();
+            // ⚠ v4's per-call INFO `Search scriptorium completed` has NEVER had a
+            // v5 emitter (a pre-existing absence on every search, not P4.D216's —
+            // recorded in the lane record for a follow-up); every OTHER line is
+            // compared, so the pool DEBUG and the absence of anything else are
+            // both pinned.
+            let want_lines: Vec<Line> = v4_lines(want.logs.as_ref())
+                .into_iter()
+                .filter(|l| l.1 != "Search scriptorium completed")
+                .collect();
+            assert_eq!(
+                got_lines, want_lines,
+                "search-handler log lines diverged for {}",
+                c.label
+            );
+        }
 
+        drop(db);
+        cleanup(&main_work, &mount_work);
+    }
+    assert_eq!(pool_cases_run, 9, "every P4.D216 pool case must run");
+
+    // ---- P4.D216: the executor's pool/operator mutual-exclusion refusal ----
+    // Through the REAL `BuiltInToolRunner` (v4's `executeToolCallWithContext`):
+    // both set → the exact refusal result + the ERROR line; either alone → the
+    // search runs and NO refusal line (the two silence legs).
+    for (label, operator, pool) in [
+        ("executor_pool_and_operator_refused", true, true),
+        ("executor_pool_only_runs", false, true),
+        ("executor_operator_only_runs", true, false),
+    ] {
+        use quilltap_core::services::tool_execution::{ToolCall, ToolExecutionContext, ToolRunner};
+        let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, label);
+        let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);
+        let runner = quilltap_core::tools::executor::BuiltInToolRunner::new(
+            db.clone(),
+            quilltap_core::tools::self_inventory::SelfInventoryEnv {
+                version: String::new(),
+                runtime_mode: "local-dev".to_string(),
+                client_shell: quilltap_core::tools::self_inventory::ClientShell::Browser,
+                mount_index_degraded: false,
+                release_notes: None,
+                changelog: None,
+                model_info: Vec::new(),
+                fallback_pricing: Vec::new(),
+                registry_default_context: 8192,
+            },
+        )
+        .with_embedding_provider(
+            quilltap_core::model::embedding::ErasedEmbeddingProvider::new(build_provider(spec)),
+        );
+        let ctx = ToolExecutionContext {
+            chat_id: spec.chat_a_id.clone(),
+            user_id: spec.user_id.clone(),
+            project_id: Some(spec.project_id.clone()),
+            operator_surface: operator,
+            mount_pool: pool.then(|| {
+                pool_for(
+                    &db,
+                    &spec.char_a_id,
+                    &spec.project_id,
+                    &spec.general_mount_point_id,
+                )
+            }),
+            ..Default::default()
+        };
+        captured.lock().unwrap().clear();
+        let r = runner
+            .run(
+                &ToolCall {
+                    name: "search".to_string(),
+                    arguments: serde_json::json!({ "query": "guide to celestial mechanics", "sources": ["documents"] }),
+                    call_id: None,
+                },
+                &ctx,
+            )
+            .await;
+        let got_json = serde_json::json!({
+            "toolName": r.tool_name,
+            "success": r.success,
+            "error": r.error,
+        })
+        .to_string();
+        let want = oracle
+            .get(label)
+            .unwrap_or_else(|| panic!("oracle missing case {label}"));
+        assert_eq!(
+            got_json, want.result_json,
+            "executor result diverged for {label}"
+        );
+        let got_refusals: Vec<Line> = captured
+            .lock()
+            .unwrap()
+            .drain(..)
+            .filter(|(t, l)| {
+                t == "quilltap_core::tools::executor" && l.1.starts_with("Tool context sets both")
+            })
+            .map(|(_, l)| l)
+            .collect();
+        assert_eq!(
+            got_refusals,
+            v4_lines(want.refusals.as_ref()),
+            "executor refusal lines diverged for {label}"
+        );
         drop(db);
         cleanup(&main_work, &mount_work);
     }

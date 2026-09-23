@@ -1018,6 +1018,9 @@ fn photo_tools_matches_oracle() {
             operator_override: false,
             files_dir: None,
             blob_webp: Default::default(),
+            // P4.D216 OUT-OF-MANDATE — the family's owner preserves (a required
+            // field on a shared struct, v4 `d1c06cd9d`'s `mountPool`).
+            mount_pool: None,
         };
         let args = (op.build_args)(&meta);
         if op.label == KEEP_REAL_PNG {

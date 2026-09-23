@@ -83,6 +83,11 @@ pub struct DocEditToolContext {
     /// bytes through (v4 `blob-handlers.ts:131` + `linkBlobContent`). Default =
     /// none wired → the refusing encoder, v4's `sharp`-threw arm.
     pub blob_webp: crate::services::mount_index::normalize_blob_image::SharedBlobWebp,
+    /// A pre-built accessible set (the Scenario Builder's "what this chat could
+    /// see"; v4 `DocEditToolContext.mountPool`, `d1c06cd9d`). Passed straight
+    /// through to the path resolver's `mount_pool`; never combined with
+    /// `operator_override`.
+    pub mount_pool: Option<crate::db::tiered_mount_pool::TieredMountPool>,
 }
 
 /// Map a resolved [`DocEditScope`] to the announcement's [`LibrarianScope`]. v4's
@@ -571,6 +576,7 @@ pub fn build_read_resolution_context(
             hide_character_vaults: true,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
+            mount_pool: ctx.mount_pool.clone(),
         };
     }
     let peers = collect_peer_character_ids_for_reads(main, ctx);
@@ -581,6 +587,7 @@ pub fn build_read_resolution_context(
         hide_character_vaults: false,
         mount_point: addressing.mount_point.clone(),
         operator_override: ctx.operator_override,
+        mount_pool: ctx.mount_pool.clone(),
     }
 }
 
@@ -602,6 +609,7 @@ pub fn build_write_resolution_context(
             hide_character_vaults: true,
             mount_point: addressing.mount_point.clone(),
             operator_override: ctx.operator_override,
+            mount_pool: ctx.mount_pool.clone(),
         });
     }
     let peers = collect_peer_character_ids_for_reads(main, ctx);
@@ -618,6 +626,7 @@ pub fn build_write_resolution_context(
         hide_character_vaults: false,
         mount_point: addressing.mount_point.clone(),
         operator_override: ctx.operator_override,
+        mount_pool: ctx.mount_pool.clone(),
     })
 }
 
@@ -689,6 +698,9 @@ pub struct AccessibleMountPointsQuery<'a> {
     /// derive it from [`acting_character_is_opaque_to_vaults`] so the two sides
     /// cannot disagree.
     pub hide_character_vaults: bool,
+    /// A pre-built pool that is the accessible set (see
+    /// [`PathResolutionContext::mount_pool`]; v4 `d1c06cd9d`).
+    pub mount_pool: Option<&'a crate::db::tiered_mount_pool::TieredMountPool>,
 }
 
 /// v4 `getAccessibleMountPoints` over `collectAccessibleMountPointIds`: every
@@ -708,7 +720,14 @@ pub fn get_accessible_mount_points(
         character_id,
         extra_character_ids,
         hide_character_vaults,
+        mount_pool,
     } = query;
+    // v4 routes this through `collectAccessibleMountPointIds`, whose pre-built-
+    // pool arm (`d1c06cd9d`) returns the pool verbatim, ahead of the covenant.
+    if let Some(pool) = mount_pool {
+        let ids = crate::doc_edit::path_resolver::prebuilt_pool_accessible_ids(pool);
+        return enabled_accessible_mount_points(mount, ids);
+    }
     let vaults_visible = !hide_character_vaults;
     let tier_ctx = TierContext {
         user_id: None,
@@ -734,6 +753,15 @@ pub fn get_accessible_mount_points(
             ..Default::default()
         },
     );
+    enabled_accessible_mount_points(mount, ids)
+}
+
+/// The enabled rows among `ids`, in order (v4 `getAccessibleMountPoints`'s
+/// per-id `findById` + `enabled` filter).
+fn enabled_accessible_mount_points(
+    mount: &Connection,
+    ids: Vec<String>,
+) -> Vec<AccessibleMountPoint> {
     let repo = DocMountPointsRepository::new(mount);
     let mut out = Vec::new();
     for id in ids {
@@ -983,6 +1011,7 @@ mod tests {
             operator_override: false,
             files_dir: None,
             blob_webp: Default::default(),
+            mount_pool: None,
         }
     }
 

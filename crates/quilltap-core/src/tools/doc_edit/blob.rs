@@ -99,7 +99,8 @@ fn resolve_blob_mount_point_for_read(
     mount_point_ref: &str,
     ctx: &DocEditToolContext,
 ) -> Option<ResolvedMount> {
-    if ctx.project_id.is_none() && ctx.character_id.is_none() {
+    // v4 `d1c06cd9d`: a pre-built mount pool stands in for the project/character.
+    if ctx.project_id.is_none() && ctx.character_id.is_none() && ctx.mount_pool.is_none() {
         return None;
     }
     let effective_ref = resolve_mount_point_ref(main, mount_point_ref, ctx.character_id.as_deref());
@@ -116,6 +117,7 @@ fn resolve_blob_mount_point_for_read(
             character_id: ctx.character_id.as_deref(),
             extra_character_ids: &peers,
             hide_character_vaults,
+            mount_pool: ctx.mount_pool.as_ref(),
         },
     );
     let needle = effective_ref.to_lowercase();
@@ -138,7 +140,8 @@ fn resolve_blob_mount_point_for_write(
     mount_point_ref: &str,
     ctx: &DocEditToolContext,
 ) -> Result<Option<ResolvedMount>, String> {
-    if ctx.project_id.is_none() && ctx.character_id.is_none() {
+    // v4 `d1c06cd9d`: a pre-built mount pool stands in for the project/character.
+    if ctx.project_id.is_none() && ctx.character_id.is_none() && ctx.mount_pool.is_none() {
         return Ok(None);
     }
     let effective_ref = resolve_mount_point_ref(main, mount_point_ref, ctx.character_id.as_deref());
@@ -158,6 +161,7 @@ fn resolve_blob_mount_point_for_write(
             project_id: ctx.project_id.as_deref(),
             character_id: ctx.character_id.as_deref(),
             hide_character_vaults,
+            mount_pool: ctx.mount_pool.as_ref(),
             ..Default::default()
         },
     );

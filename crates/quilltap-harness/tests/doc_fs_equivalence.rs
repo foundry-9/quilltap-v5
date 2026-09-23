@@ -458,6 +458,9 @@ fn doc_fs_matches_oracle() {
             operator_override: op.ctx.operator_override,
             files_dir: Some(files_dir.clone()),
             blob_webp: Default::default(),
+            // P4.D216 OUT-OF-MANDATE — the family's owner preserves (a required
+            // field on a shared struct, v4 `d1c06cd9d`'s `mountPool`).
+            mount_pool: None,
         };
         // The Librarian announcement is a documented seam — NOT posted (the oracle
         // mocks its poster to a no-op), so chat_messages stays untouched.
