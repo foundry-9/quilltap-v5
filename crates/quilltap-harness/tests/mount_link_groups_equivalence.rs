@@ -25,10 +25,15 @@
 //! the values. Mount ids and the scratch paths are pinned/never dumped.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout), after building the
-//! shared fixture:
+//! shared fixture. The mirror is STAGED by the recipe — it used to assume a
+//! `.qt-oracle-mirror` someone had copied earlier, which passed for years off a
+//! stale copy in the live checkout and failed on every pinned worktree (the
+//! `a2db63da7` unification's sweep):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
-//!   MIRROR=~/source/quilltap-server/.qt-oracle-mirror   # cp -R harness/oracle → here
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
+//!   MIRROR="$PWD/.qt-oracle-mirror"
+//!   rm -rf "$MIRROR"; mkdir -p "$MIRROR"; cp -R "$V5W/harness/oracle" "$MIRROR/oracle"
 //!   QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
 //!     $N/node --import tsx $MIRROR/oracle/fixtures/build-doc-mount-file-links-fixture.ts
 //!   QT_FIXTURE_MOUNT_LINK_GROUPS=/tmp/qt-dmfl-fixture.db \

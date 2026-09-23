@@ -453,8 +453,13 @@ async function readLlmLogsStable(): Promise<unknown> {
   const parse = (v: unknown): unknown => (typeof v === 'string' ? JSON.parse(v) : (v ?? null));
   const rows = db
     .prepare(
+      // P4.D203 stores `request` / `response` as compressed BLOBs: read them
+      // through `qt_text()` (registered on every v4 connection) or the raw
+      // read serializes a Node Buffer (`{type:'Buffer', data:[…]}`) — which is
+      // what this case did from the `f45a517a9` round until the `a2db63da7`
+      // unification, matching the harness dump's own raw read.
       'SELECT type, userId, chatId, messageId, characterId, autonomousRunId, ' +
-        'provider, modelName, request, response, usage FROM llm_logs',
+        'provider, modelName, qt_text(request) AS request, qt_text(response) AS response, usage FROM llm_logs',
     )
     .all()
     .map((r) => ({ ...r, request: parse(r.request), response: parse(r.response), usage: parse(r.usage) }));

@@ -384,9 +384,15 @@ fn dump_background_jobs_stable(db: &Db) -> Value {
 /// JSON columns parsed), sorted canonically — the oracle's `readLlmLogsStable`.
 fn dump_llm_logs_stable(db: &Db) -> Value {
     db.read_llm_logs(|conn| {
+        // P4.D203 stores `request` / `response` as compressed BLOBs; `qt_text()`
+        // (registered on every core connection) decodes them to the text v4's
+        // `readLlmLogsStable` sees through its repository read. A raw read of
+        // the column answered `InvalidColumnType(…, Blob)` — this family was
+        // RED on main from the `f45a517a9` round until the `a2db63da7`
+        // unification repointed the dump.
         let mut stmt = conn.prepare(
             "SELECT type, userId, chatId, messageId, characterId, autonomousRunId, \
-             provider, modelName, request, response, usage FROM llm_logs",
+             provider, modelName, qt_text(request), qt_text(response), usage FROM llm_logs",
         )?;
         let parse = |s: Option<String>| {
             s.and_then(|v| serde_json::from_str::<Value>(&v).ok())
