@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(groups): `groupList` filters by character membership (P4.D216 unit 5)
+
+_Versions: core 0.0.1018, harness 0.0.934, web 0.0.180._
+
+v4 `d1c06cd9d` added `GET /api/v1/groups?characterIds=<id,id,…>` for the
+Scenario Builder's save dialog. v5 has no REST route for the groups list, so
+the key arrives as a dispatch field instead: `Request::GroupList` becomes
+`{ character_ids: Option<Vec<String>> }`. A plain `{"type":"groupList"}`
+still decodes to the unfiltered list, and an empty array stays distinct from
+an absent key (a decode pin covers both). When the key is present, even empty,
+each trimmed non-blank id that the user-scoped character read finds adds that
+character's group memberships. The list keeps only those groups, filtered
+before the sort and the member counts. v4's `[Groups v1] Filtered groups by
+character membership` DEBUG line is emitted with `userId`, `requested` and
+`matched`.
+
+`groups_routes_equivalence` grows eight reads: absent, a three-character
+union, a single character, an unknown id skipped, an archived character, the
+empty key, blank entries, and the SPA's empty array. Each compares the body
+and the DEBUG line against v4's real route. All were red with the filter
+ignored. Two gate mutations each redden the empty arms (the first survived
+until the empty-array arm was added). The dispatch wrong-type census moves
+446 to 447 (`character_ids` is a v4 query key that the `*_ids` rule drops),
+with the reason recorded in the file.
+
 #### 2026-09-23 — feat(tools): the pre-built mount pool on the tool context, through the executor, search, the doc-edit handlers and the path resolver (P4.D216 unit 4)
 
 _Versions: core 0.0.1017, harness 0.0.933._

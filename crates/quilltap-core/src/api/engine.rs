@@ -2610,8 +2610,8 @@ impl CoreEngine {
             },
 
             // --- Groups family (P4.6k) --------------------------------------
-            Request::GroupList => match self.ready_db() {
-                Ok(db) => super::groups::group_list(&db),
+            Request::GroupList { character_ids } => match self.ready_db() {
+                Ok(db) => super::groups::group_list(&db, SINGLE_USER_ID, character_ids),
                 Err(r) => r,
             },
             Request::GroupCreate {

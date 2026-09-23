@@ -142,7 +142,7 @@ async function dumpCreatedGroupFolders(createdMountPointId: string): Promise<unk
 
 interface CaseSpec {
   name: string;
-  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown; logs?: unknown }>;
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -173,7 +173,13 @@ async function runCase(
   await initializeDatabase();
   try {
     const out = await c.run({});
-    return { name: c.name, status: out.status, body: out.body, ...(out.tables !== undefined ? { tables: out.tables } : {}) };
+    return {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+      ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      ...(out.logs !== undefined ? { logs: out.logs } : {}),
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -186,6 +192,27 @@ async function respond(
 ): Promise<{ status: number; body: unknown }> {
   const resp = r as { status: number; json: () => Promise<unknown> };
   return { status: resp.status, body: await resp.json() };
+}
+
+/**
+ * P4.D216 (v4 `d1c06cd9d`): `GET /api/v1/groups?characterIds=` — the membership
+ * filter, with the route's `[Groups v1]` DEBUG line recorded through a spy on
+ * v4's ROOT logger (the route imports `@/lib/logger` directly).
+ */
+async function listWithLogs(url: string): Promise<{ status: number; body: unknown; logs: unknown }> {
+  const { logger } = await import('@/lib/logger');
+  const logs: Array<{ level: string; message: string; context: unknown }> = [];
+  const spy = jest.spyOn(logger, 'debug').mockImplementation(((message: string, context?: unknown) => {
+    if (typeof message === 'string' && message.startsWith('[Groups v1]')) {
+      logs.push({ level: 'debug', message, context: context ?? null });
+    }
+  }) as never);
+  try {
+    const r = await respond(await (await loadRoute('@/app/api/v1/groups/route')).GET(mockRequest(url)));
+    return { ...r, logs };
+  } finally {
+    spy.mockRestore();
+  }
 }
 
 async function main(): Promise<void> {
@@ -218,6 +245,17 @@ async function main(): Promise<void> {
       name: 'list',
       run: async () => respond(await (await loadRoute('@/app/api/v1/groups/route')).GET(mockRequest(B))),
     },
+    // ── P4.D216: the `characterIds` membership filter (absent = `list` above).
+    { name: 'list_absent_key_logs_nothing', run: async () => listWithLogs(B) },
+    { name: 'list_by_characters_union', run: async () => listWithLogs(`${B}?characterIds=${ARIA},${BRAM},${CLEO}`) },
+    { name: 'list_by_characters_single', run: async () => listWithLogs(`${B}?characterIds=${BRAM}`) },
+    {
+      name: 'list_by_characters_unknown_skipped',
+      run: async () => listWithLogs(`${B}?characterIds=deadbeef-0000-4000-8000-000000000000,${ARIA}`),
+    },
+    { name: 'list_by_characters_archived', run: async () => listWithLogs(`${B}?characterIds=${EDDA}`) },
+    { name: 'list_by_characters_empty_key', run: async () => listWithLogs(`${B}?characterIds=`) },
+    { name: 'list_by_characters_blank_entries', run: async () => listWithLogs(`${B}?characterIds=%20,%20`) },
     {
       name: 'get_gamma',
       run: async () =>

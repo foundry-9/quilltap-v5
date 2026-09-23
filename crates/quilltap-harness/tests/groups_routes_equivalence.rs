@@ -23,6 +23,8 @@ use serde_json::{json, Value};
 
 const GAMMA: &str = "a2000000-0000-4000-8000-000000000001";
 const DELTA: &str = "a2000000-0000-4000-8000-000000000002";
+/// P4.D216: the membership-filter reads name ARIA too.
+const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
 const BRAM: &str = "a1000000-0000-4000-8000-000000000002";
 const CLEO: &str = "a1000000-0000-4000-8000-000000000003";
 /// P4.D63: the archived character (fixture extension) — add-member must refuse.
@@ -33,8 +35,51 @@ const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
-    #[allow(dead_code)]
     user_id: String,
+}
+
+/// P4.D216: the `[Groups v1]` lines in v4's recorded shape — `{ level, message,
+/// context: { userId, requested, matched } }` (numbers as numbers).
+struct GroupsCapture(std::sync::Arc<std::sync::Mutex<Vec<Value>>>);
+struct FieldsToJson(String, serde_json::Map<String, Value>);
+impl tracing::field::Visit for FieldsToJson {
+    fn record_u64(&mut self, f: &tracing::field::Field, v: u64) {
+        self.1.insert(f.name().to_string(), json!(v));
+    }
+    fn record_i64(&mut self, f: &tracing::field::Field, v: i64) {
+        self.1.insert(f.name().to_string(), json!(v));
+    }
+    fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+        self.1.insert(f.name().to_string(), json!(v));
+    }
+    fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+        if f.name() == "message" {
+            self.0 = format!("{v:?}");
+        } else {
+            self.1.insert(f.name().to_string(), json!(format!("{v:?}")));
+        }
+    }
+}
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for GroupsCapture {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if event.metadata().target() != "quilltap_core::api::groups" {
+            return;
+        }
+        let mut v = FieldsToJson(String::new(), serde_json::Map::new());
+        event.record(&mut v);
+        if !v.0.starts_with("[Groups v1]") {
+            return;
+        }
+        self.0.lock().unwrap().push(json!({
+            "level": event.metadata().level().to_string().to_lowercase(),
+            "message": v.0,
+            "context": Value::Object(v.1),
+        }));
+    }
 }
 
 fn spec_path() -> PathBuf {
@@ -318,9 +363,58 @@ fn groups_routes_match_oracle() {
         let db = fresh_db(&spec, "list");
         check(
             "list",
-            &response_data(&groups::group_list(&db)),
+            &response_data(&groups::group_list(&db, &spec.user_id, None)),
             &mut failed,
         );
+    }
+    // P4.D216 (v4 `d1c06cd9d`): the `characterIds` membership filter. The body
+    // AND the route's `[Groups v1]` DEBUG line (v4 records it through a spy on
+    // its root logger; this side captures the tracing event structurally).
+    // `None` is the absent query key — the unfiltered list, and NO line.
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        let unknown = "deadbeef-0000-4000-8000-000000000000";
+        let cases: Vec<(&str, Option<Vec<&str>>)> = vec![
+            ("list_absent_key_logs_nothing", None),
+            ("list_by_characters_union", Some(vec![ARIA, BRAM, CLEO])),
+            ("list_by_characters_single", Some(vec![BRAM])),
+            (
+                "list_by_characters_unknown_skipped",
+                Some(vec![unknown, ARIA]),
+            ),
+            ("list_by_characters_archived", Some(vec![EDDA])),
+            // `?characterIds=` — v4 splits `''` into `['']` and drops it.
+            ("list_by_characters_empty_key", Some(vec![""])),
+            // `?characterIds=%20,%20` — two blank entries, trimmed away.
+            ("list_by_characters_blank_entries", Some(vec![" ", " "])),
+            // The SPA's own empty shape: `characterIds: []` — what v4's client
+            // would `.join(',')` into `?characterIds=`, so it answers v4's
+            // empty-key row. The ONE arm where the raw list is itself empty
+            // (the two above are non-empty until the trim): without it, a
+            // `Some(v) if !v.is_empty()` gate survives.
+            ("list_by_characters_empty_key", Some(vec![])),
+        ];
+        for (name, ids) in cases {
+            let db = fresh_db(&spec, name);
+            let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+            let got = {
+                let _g = tracing::subscriber::set_default(
+                    tracing_subscriber::registry().with(GroupsCapture(lines.clone())),
+                );
+                groups::group_list(
+                    &db,
+                    &spec.user_id,
+                    ids.map(|v| v.into_iter().map(String::from).collect()),
+                )
+            };
+            check(name, &response_data(&got), &mut failed);
+            let got_lines = Value::Array(lines.lock().unwrap().clone());
+            let want_lines = &oracle[name]["logs"];
+            if &got_lines != want_lines {
+                eprintln!("[{name}] LOG MISMATCH:\n  v5: {got_lines}\n  v4: {want_lines}");
+                failed.push(format!("{name}_logs"));
+            }
+        }
     }
     {
         let db = fresh_db(&spec, "get_g");

@@ -98,12 +98,49 @@ fn or_null(v: Option<&str>) -> Option<String> {
 // List (v4 GET /api/v1/groups)
 // ===========================================================================
 
-/// v4 `groups/route.ts` GET: `findAll` → createdAt-desc sort → `_count.members`
-/// enrichment. Body `{ groups: [...] }`.
-pub fn group_list(db: &Db) -> Response {
+/// v4 `groups/route.ts` GET: `findAll` → the optional `characterIds` membership
+/// filter → createdAt-desc sort → `_count.members` enrichment. Body
+/// `{ groups: [...] }`.
+///
+/// `character_ids` is v4's `?characterIds=` (`d1c06cd9d`, added for the Scenario
+/// Builder's save dialog): when PRESENT — even empty — only the groups any of
+/// those characters belongs to survive. Each requested id is trusted only if the
+/// user-scoped `characters.findById` finds it (a miss is skipped silently, the
+/// same rule as `groups/scenarios`); the union of their `groupId`s filters the
+/// list BEFORE the sort and the enrichment. `None` is today's unfiltered list.
+pub fn group_list(db: &Db, user_id: &str, character_ids: Option<Vec<String>>) -> Response {
     let result = read_both(db, |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         let mut groups = repo.find_all().map_err(overlay_to_db)?;
+        if let Some(raw) = &character_ids {
+            // v4 splits the query on `,`, trims, and drops empties; the dispatch
+            // field is already split, so only the trim + filter remain.
+            let requested: Vec<String> = raw
+                .iter()
+                .map(|s| crate::jsstr::js_trim(s).to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let members_repo = GroupCharacterMembersRepository::new(mount);
+            let mut member_group_ids: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for character_id in &requested {
+                if characters_read::find_by_id(main, mount, character_id)?.is_none() {
+                    continue;
+                }
+                member_group_ids.extend(members_repo.find_group_ids_by_character_id(character_id)?);
+            }
+            groups.retain(|g| {
+                g.get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| member_group_ids.contains(id))
+            });
+            tracing::debug!(
+                userId = %user_id,
+                requested = requested.len(),
+                matched = groups.len(),
+                "[Groups v1] Filtered groups by character membership"
+            );
+        }
         // createdAt descending (ISO strings sort lexically == v4 `getTime()`).
         groups.sort_by(|a, b| {
             let ta = a.get("createdAt").and_then(Value::as_str).unwrap_or("");

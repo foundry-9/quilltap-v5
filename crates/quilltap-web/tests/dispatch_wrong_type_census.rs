@@ -2591,7 +2591,16 @@ fn is_route_identifier(field: &str) -> bool {
 // /api/v1/chats/[id]?action=rebuild-summary`, so the route-identifier rule
 // drops it and the excluded count rises by exactly one. The verb has no body.
 // Measured by running the test (red at 446 against 445 first), not predicted.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 446;
+//
+// **P4.D216 (+1): 446 → 447** — `Request::GroupList.character_ids`, the ONE
+// typed field the (formerly unit) verb gains for v4 `d1c06cd9d`'s membership
+// filter. It is NOT a route identifier: it is v4's `?characterIds=` QUERY key
+// on `GET /api/v1/groups` (comma-split, trimmed, `!== null` gated), carried as
+// a dispatch field because v5 routes no REST `/api/v1/groups`. The `*_ids`
+// suffix rule drops it all the same — recorded honestly here as one more real
+// v4 input the heuristic excludes, beside the body keys the constant's doc
+// lists. Measured by running the test (red at 447 against 446 first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 447;
 
 #[test]
 fn census_covers_every_typed_request_field() {

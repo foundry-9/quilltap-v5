@@ -802,7 +802,18 @@ pub enum Request {
     // ========================================================================
     // --- Groups ---
     /// v4 `GET /api/v1/groups` — createdAt-desc list + `_count.members`.
-    GroupList,
+    ///
+    /// P4.D216 (v4 `d1c06cd9d`): `GET /api/v1/groups?characterIds=<id,id,…>` —
+    /// only the groups any of those (user-readable) characters belongs to. v4's
+    /// QUERY key rides here as a dispatch field (v5 routes no REST
+    /// `/api/v1/groups`; the SPA dispatches `groupList`). PRESENT — even EMPTY —
+    /// filters (`Some(vec![])` → zero groups, v4's `!== null`); ABSENT
+    /// (`{"type":"groupList"}`) is the unfiltered list.
+    #[serde(rename_all = "camelCase")]
+    GroupList {
+        #[serde(default)]
+        character_ids: Option<Vec<String>>,
+    },
     /// v4 `POST /api/v1/groups` (`createGroupSchema`).
     #[serde(rename_all = "camelCase")]
     GroupCreate {
@@ -5520,6 +5531,28 @@ mod tests {
                 .expect("a foreign-keyed body decodes");
             assert_eq!(tristate(&foreign), &None, "{key}: foreign keys dropped");
         }
+    }
+
+    /// P4.D216 (v4 `d1c06cd9d`): `groupList` became a struct variant for the
+    /// `characterIds` membership filter. The bare `{"type":"groupList"}` every
+    /// existing caller sends must still decode — to the ABSENT key (`None`, the
+    /// unfiltered list) — and an EMPTY array must stay distinct from absent
+    /// (`Some(vec![])` filters to zero groups, v4's `!== null`).
+    #[test]
+    fn group_list_decodes_with_and_without_character_ids() {
+        let ids = |body: &str| match serde_json::from_str::<Request>(body).expect("decodes") {
+            Request::GroupList { character_ids } => character_ids,
+            other => panic!("decoded to {other:?}"),
+        };
+        assert_eq!(ids(r#"{"type":"groupList"}"#), None);
+        assert_eq!(
+            ids(r#"{"type":"groupList","characterIds":[]}"#),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            ids(r#"{"type":"groupList","characterIds":["a","b"]}"#),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
     }
 }
 
