@@ -999,6 +999,40 @@ pub(crate) async fn log_chat_message_call(
     raw_provider_usage: Option<Value>,
     raw_response: Option<Value>,
 ) {
+    log_stream_message_call(
+        log,
+        log_type::CHAT_MESSAGE,
+        profile,
+        params,
+        content,
+        usage,
+        cache_usage,
+        raw_provider_usage,
+        raw_response,
+    )
+    .await;
+}
+
+/// [`log_chat_message_call`] with the row's `type` supplied by the caller —
+/// v4 `streamMessage`'s `logType` option (`d1c06cd9d`, "Defaults to
+/// `CHAT_MESSAGE`"), which the ONE `logLLMCall` site in `streaming.service.ts`
+/// now passes as `type: logType`. v5 has no single `streamMessage` funnel, so
+/// the parameter lives here instead: every existing caller keeps the
+/// `CHAT_MESSAGE` default through [`log_chat_message_call`], and the one-shot
+/// tool loop (`services::agent_loop::one_shot_loop`) — the only v4 caller that
+/// passes a `logType` (the Scenario Builder's `SCENARIO_BUILDER`) — calls this.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn log_stream_message_call(
+    log: &StreamLogCtx<'_>,
+    row_log_type: &'static str,
+    profile: &EffectiveProfile,
+    params: &StreamParams,
+    content: String,
+    usage: Option<StreamUsage>,
+    cache_usage: Option<StreamCacheUsage>,
+    raw_provider_usage: Option<Value>,
+    raw_response: Option<Value>,
+) {
     // v4 passes `tools.length > 0 ? tools : undefined` to both the log request and
     // `computeRequestPrefixHashes`.
     let tools_nonempty: Option<Vec<Value>> = params
@@ -1025,7 +1059,7 @@ pub(crate) async fn log_chat_message_call(
 
     let params_log = LogLlmCallParams {
         user_id: log.user_id.to_string(),
-        log_type: log_type::CHAT_MESSAGE.to_string(),
+        log_type: row_log_type.to_string(),
         // The Salon always has a message id; the help/Brahma orchestrators call
         // `streamMessage` with NO `messageId` (v4 `help-chat/orchestrator.
         // service.ts:352-361`), so v4 logs `undefined` → a NULL cell. An empty
@@ -2462,6 +2496,108 @@ mod tests {
                 .iter()
                 .any(|l| l.contains(MarkingQueuedProvider::MARKER) && l.contains("call=2")),
             "the recovery ran on a non-recoverable error: {lines:?}"
+        );
+    }
+
+    /// P4.D216 (v4 `d1c06cd9d`): the stream call's log TYPE is the caller's.
+    /// v4's `streamMessage` gained `logType` (default `CHAT_MESSAGE`) and its
+    /// ONE `logLLMCall` site now writes `type: logType`; v5 carries it on
+    /// [`log_stream_message_call`]. Two rows through the REAL writer into a
+    /// freshly provisioned llm-logs partition: the default path
+    /// ([`log_chat_message_call`], which every existing caller — the Brahma
+    /// console among them — still uses) must write `CHAT_MESSAGE`, and a typed
+    /// call must write exactly the type it was handed. A jest oracle cannot
+    /// carry this (jest.setup mocks the logging service — every jest oracle
+    /// writes ZERO `llm_logs` rows), so this is the pin. Red-first: with the
+    /// row's type still hard-coded, the `SCENARIO_BUILDER` row read back as
+    /// `CHAT_MESSAGE`.
+    #[tokio::test]
+    async fn the_stream_call_writes_the_log_type_it_is_handed() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER)
+            .expect("provision an instance with an llm-logs partition");
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let profile = EffectiveProfile {
+            id: "p1".into(),
+            name: "Primary".into(),
+            provider: "ANTHROPIC".into(),
+            model_name: "claude-test".into(),
+            base_url: None,
+        };
+        let params = StreamParams {
+            messages: vec![StreamMessage::user("set the scene")],
+            model: "claude-test".into(),
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            tools: None,
+            web_search_enabled: false,
+            profile_parameters: None,
+            cache_key: None,
+            previous_response_id: None,
+            stop: Vec::new(),
+            request_timeout_ms: None,
+        };
+        let none = LogContext::none();
+        let ctx = |chat_id: &'static str| StreamLogCtx {
+            db: &db,
+            user_id: "u1",
+            chat_id,
+            message_id: "",
+            character_id: None,
+            log_context: &none,
+            started_at_ms: crate::clock::now_unix_ms(),
+        };
+        log_chat_message_call(
+            &ctx("chat-default"),
+            &profile,
+            &params,
+            "a plain answer".into(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        log_stream_message_call(
+            &ctx("chat-scenario"),
+            log_type::SCENARIO_BUILDER,
+            &profile,
+            &params,
+            "a drafted scene".into(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        let rows: Vec<(String, String)> = db
+            .read_llm_logs(|c| {
+                let mut st = c.prepare("SELECT chatId, type FROM llm_logs ORDER BY chatId")?;
+                let rows = st
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("chat-default".to_string(), "CHAT_MESSAGE".to_string()),
+                ("chat-scenario".to_string(), "SCENARIO_BUILDER".to_string()),
+            ],
+            "the default path keeps CHAT_MESSAGE; a typed call writes its own type"
         );
     }
 }

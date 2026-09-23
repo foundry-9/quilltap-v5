@@ -390,6 +390,12 @@ pub mod log_type {
     /// reproduced that (measured red-first by
     /// `task_type_log_mapping_equivalence`).
     pub const VOICE_REWRITE: &str = "VOICE_REWRITE";
+    /// The Scenario Builder's one-shot tool loop (v4 `d1c06cd9d` — `LLMLogTypeEnum`
+    /// gains it after `VOICE_REWRITE`). Not a cheap-LLM task type, so
+    /// [`map_task_type_to_log_type`] never yields it: it reaches a row only
+    /// through the stream call's own log type
+    /// (`primary_stream::log_stream_message_call`).
+    pub const SCENARIO_BUILDER: &str = "SCENARIO_BUILDER";
     /// UI-only in v4; no emitter.
     pub const TOOL_CONTINUATION: &str = "TOOL_CONTINUATION";
 }

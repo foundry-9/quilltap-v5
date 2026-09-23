@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — feat(llm-logs): the stream call's log type is the caller's, and `SCENARIO_BUILDER` joins the log types (P4.D216 unit 1)
+
+_Versions: core 0.0.1014._
+
+v4 `d1c06cd9d` gave `streamMessage` a `logType` option (default
+`CHAT_MESSAGE`) and added `SCENARIO_BUILDER` to `LLMLogTypeEnum`. v5 has no
+single stream funnel, so the parameter lands on a new
+`primary_stream::log_stream_message_call`; `log_chat_message_call` now
+delegates to it with `CHAT_MESSAGE`, so every existing caller is unchanged.
+`log_type::SCENARIO_BUILDER` is added. No other closed copy of the log-type
+enum exists in core. A unit test writes both a default row and a typed row
+through the real writer; it failed with the type still hard-coded.
+
 #### 2026-09-23 — fix(characters): addScenario returns the vault-projected scenario id (bug 165, P4.D219)
 
 _Versions: core 0.0.1014, harness 0.0.931._
