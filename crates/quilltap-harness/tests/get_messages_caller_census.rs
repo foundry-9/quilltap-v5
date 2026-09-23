@@ -52,9 +52,10 @@ const CENSUS: &[(&str, usize, usize)] = &[
     // `Failed to update message in chat`. `delete_bookkeeping` and
     // `update_chat_metadata` read through v4's `getMessages` (fallback).
     ("db/chats_messages.rs", 2, 1),
-    // `get_message_count` (v4 wraps `getMessages`) + five unit-test calls;
-    // strict: `get_messages`' own body + two unit-test calls.
-    ("db/chats_messages_read.rs", 6, 3),
+    // `get_message_count` (v4 wraps `getMessages`) + six unit-test calls;
+    // strict: `get_messages`' own body + three unit-test calls (the
+    // `00c290c9a` unification's unknown-type test added one of each).
+    ("db/chats_messages_read.rs", 7, 4),
     // count / find / replace — v4 reads through `getMessages`, which is
     // where their swallow actually happens.
     ("db/chats_search.rs", 3, 0),
@@ -199,8 +200,9 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // helper) + 3 new unit-test calls = 77; strict 2 repointed + 1
     // (`get_messages`' own call of its sibling) + 2 new unit-test calls = 5.
     // The `00c290c9a` unification moved the two importer sites P4.109
-    // recorded: swallowing 77 − 2 = 75; strict 5 + 2 = 7.
-    assert_eq!((swallowing, strict), (75, 7), "census totals");
+    // recorded: swallowing 77 − 2 = 75; strict 5 + 2 = 7; and its
+    // unknown-type unit test calls each variant once: 76 and 8.
+    assert_eq!((swallowing, strict), (76, 8), "census totals");
 }
 
 /// The scanner itself: comments skipped, definitions subtracted, and the
