@@ -20,6 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::Writer;
+use quilltap_core::services::file_storage::NotConfiguredPixelCodec;
 use quilltap_core::services::provisioning::SINGLE_USER_ID;
 use quilltap_core::services::quilltap_import::seed::{seed_avatars, SeedReport};
 use quilltap_core::services::quilltap_import::{execute_import, parse_export_file, ImportOptions};
@@ -137,7 +138,7 @@ fn seed_avatars_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
-        None,
+        &NotConfiguredPixelCodec,
     )
     .expect("import");
 

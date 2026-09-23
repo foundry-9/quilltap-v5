@@ -76,6 +76,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::Writer;
+use quilltap_core::services::file_storage::NotConfiguredPixelCodec;
 use quilltap_core::services::provisioning::SINGLE_USER_ID;
 use quilltap_core::services::quilltap_import::{execute_import, parse_export_file, ImportOptions};
 use serde::Deserialize;
@@ -345,7 +346,7 @@ fn qtap_import_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
-        None,
+        &NotConfiguredPixelCodec,
     )
     .expect("execute_import");
     assert!(
@@ -372,7 +373,7 @@ fn qtap_import_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &bug75_export,
         &ImportOptions::seed_defaults(),
-        None,
+        &NotConfiguredPixelCodec,
     )
     .expect("bug75 execute_import");
     assert!(
@@ -612,7 +613,7 @@ fn qtap_import_tier2_matches_oracle() {
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
-        None,
+        &NotConfiguredPixelCodec,
     )
     .expect("second execute_import");
     assert_eq!(result2.skipped.characters, 2, "both characters skipped");
@@ -707,7 +708,7 @@ fn qtap_import_tier2_matches_oracle() {
             SINGLE_USER_ID,
             &b117_export,
             &ImportOptions::seed_defaults(),
-            Some(&codec),
+            &codec,
         )
         .expect("bug117 execute_import");
 
@@ -788,7 +789,7 @@ fn qtap_import_tier2_matches_oracle() {
             SINGLE_USER_ID,
             &b158_export,
             &ImportOptions::seed_defaults(),
-            None,
+            &NotConfiguredPixelCodec,
         )
         .expect("bug158 execute_import");
 
@@ -870,7 +871,7 @@ fn qtap_import_tier2_matches_oracle() {
             SINGLE_USER_ID,
             &export,
             &options,
-            None,
+            &NotConfiguredPixelCodec,
         )
         .expect("two-link execute_import");
 

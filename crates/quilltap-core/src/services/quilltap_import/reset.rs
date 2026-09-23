@@ -153,7 +153,10 @@ pub fn reset_builtins(
         user_id,
         &remapped,
         &ImportOptions::seed_defaults(),
-        None,
+        // P4.110: the codec this reset already holds for `seed_avatars` below —
+        // it used to pass `None` here and drop it (latent: the seed bundle
+        // carries no `files`, so the file step never ran).
+        codec,
     )
     .map_err(ResetError::Import)?;
 

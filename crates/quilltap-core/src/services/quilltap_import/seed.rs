@@ -62,7 +62,7 @@ pub fn seed_sample_content(
         }
     }
 
-    seed_from_imports(main, mount, &mut report);
+    seed_from_imports(main, mount, codec, &mut report);
     seed_avatars(main, mount, codec, None, &mut report);
     report
 }
@@ -70,7 +70,12 @@ pub fn seed_sample_content(
 /// v4 `seedFromImports` (:197): load every seed `.qtap` (here: the one committed
 /// asset) and run it through `executeImport` with `{skip, includeMemories:true,
 /// includeRelatedEntities:false}`. Per-file try/catch → warn + continue.
-fn seed_from_imports(main: &Connection, mount: &Connection, report: &mut SeedReport) {
+fn seed_from_imports(
+    main: &Connection,
+    mount: &Connection,
+    codec: &dyn PixelCodec,
+    report: &mut SeedReport,
+) {
     let export = match parse_export_file(LORIAN_AND_RIYA_QTAP) {
         Ok(e) => e,
         Err(e) => {
@@ -86,7 +91,9 @@ fn seed_from_imports(main: &Connection, mount: &Connection, report: &mut SeedRep
         SINGLE_USER_ID,
         &export,
         &ImportOptions::seed_defaults(),
-        None,
+        // P4.110: the caller's codec, threaded through — it used to be `None`
+        // (latent: the seed bundle carries no `files`).
+        codec,
     ) {
         Ok(result) => {
             report.imported_characters = result.imported.characters;

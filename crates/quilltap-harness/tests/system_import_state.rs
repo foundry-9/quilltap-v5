@@ -147,6 +147,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use quilltap_core::api::system_qtap;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::services::file_storage::NotConfiguredPixelCodec;
 use quilltap_core::services::quilltap_import::{
     execute_import, ConflictStrategy, ImportOptions, PreserveIdsMode, QuilltapExport,
 };
@@ -987,8 +988,15 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
                 "import" => {
                     let export = export_of(&step["data"]);
                     let opts = options_of(&step["options"]);
-                    execute_import(main, mount.connection(), &uid, &export, &opts, None)
-                        .expect("store-identity import");
+                    execute_import(
+                        main,
+                        mount.connection(),
+                        &uid,
+                        &export,
+                        &opts,
+                        &NotConfiguredPixelCodec,
+                    )
+                    .expect("store-identity import");
                 }
                 "rename" => {
                     mount
@@ -1382,10 +1390,24 @@ fn run_folder_overwrite_case(name: &str, case: &Value, user_id: &str, failures: 
         .write_blocking(move |ws| {
             let main = ws.main().connection();
             let mount = ws.mount_index().expect("fixture has a mount partition");
-            let r1 = execute_import(main, mount.connection(), &uid, &first, &opts, None)
-                .expect("first import");
-            let r2 = execute_import(main, mount.connection(), &uid, &second, &opts, None)
-                .expect("second import");
+            let r1 = execute_import(
+                main,
+                mount.connection(),
+                &uid,
+                &first,
+                &opts,
+                &NotConfiguredPixelCodec,
+            )
+            .expect("first import");
+            let r2 = execute_import(
+                main,
+                mount.connection(),
+                &uid,
+                &second,
+                &opts,
+                &NotConfiguredPixelCodec,
+            )
+            .expect("second import");
             Ok(vec![r1.to_value(), r2.to_value()])
         })
         .expect("imports ran");
@@ -1696,14 +1718,20 @@ fn run_execute_case(
             for i in 0..runs {
                 let opts = if i == 0 { &opts } else { &opts2 };
                 out.push(
-                    execute_import(main, mount.connection(), &uid, &export, opts, None).map_err(
-                        |e| match e {
-                            quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
-                            other => {
-                                panic!("unexpected parse-side error from execute: {other}")
-                            }
-                        },
-                    )?,
+                    execute_import(
+                        main,
+                        mount.connection(),
+                        &uid,
+                        &export,
+                        opts,
+                        &NotConfiguredPixelCodec,
+                    )
+                    .map_err(|e| match e {
+                        quilltap_core::services::quilltap_import::ImportError::Db(d) => d,
+                        other => {
+                            panic!("unexpected parse-side error from execute: {other}")
+                        }
+                    })?,
                 );
             }
             Ok(out)

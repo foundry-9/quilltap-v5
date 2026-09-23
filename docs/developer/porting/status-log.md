@@ -144869,3 +144869,51 @@ superseded by the ledger, which is the record.
   helper still heals the pair — without `ensure_p4d171_columns` the swipe
   family's writes fail on the missing columns, as its P4.D172 comment
   records).
+
+### Unit 3 — `execute_import`'s codec REQUIRED (Tier 1 items 3–4, Tier 2 item 6)
+
+- **Red-first:** NEW `services::quilltap_import::tests::
+  the_callers_codec_reaches_the_file_library_step` — a provisioned instance
+  (`provision_fresh_instance` into a tempdir, test pepper), one `files` row
+  (a real 1×1 PNG, `image/png`, `dataBase64`), `ImportOptions::seed_defaults()`,
+  a `RecordingPixelCodec` that records each `encode_webp` and then fails it
+  (the not-configured answer, so the bridges fall through to the original
+  bytes as today). Written over the pre-change signature with `None` (the
+  reset/seed call shape): `success` true and `imported.files == Some(1)`
+  (the row DID import — the asserts before the codec check passed) and
+  **the recording codec was never called** — RED at its final assert.
+- **The change:** `codec: &dyn PixelCodec` (the `Option` and
+  `codec.unwrap_or(&not_configured)` gone; the doc names why); `reset.rs`
+  passes the `codec` it already held for `seed_avatars`; `seed.rs`
+  threads `codec` into `seed_from_imports` (the public `seed_sample_content`
+  signature unchanged — `host.rs` does not move, verified); `api/system_qtap.rs`
+  + `services/character_archive/service.rs` pass
+  `codec.as_deref().unwrap_or(&NotConfiguredPixelCodec)` — **exactly today's
+  behaviour** (it is the unwrap `execute_import` used to do internally),
+  each hunk marked `// P4.110 OUT-OF-MANDATE` (§R.10(i)); every test caller
+  names `&NotConfiguredPixelCodec` (6 in `mod.rs`, 4 in
+  `system_import_state.rs`, 1 in `seed_avatars_equivalence.rs`, 5 in
+  `qtap_import_equivalence.rs`; its bug-117 arm's `Some(&codec)` →
+  `&codec`). 22 `execute_import(` call sites in all, measured by grep
+  (the order's "~15" undercounted the unit tests).
+- **Green after:** the new test 1/1; the module 35/35.
+- **Mutation (file backup, `cmp`-verified revert):** `execute_import` hands
+  `import_body` `{ let _ = codec; &NotConfiguredPixelCodec }` instead of
+  `codec` — compiles; the new test RED at its final assert.
+- **Re-runs from the pin** (probe PASS immediately before; `rm -f` each
+  output first; `CARGO_INCREMENTAL=0 TZ=UTC python3 harness/tools/
+  recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-p4110-a2db63da7 --v5w
+  <abs worktree>`, one at a time; outputs copied to `/tmp/p4110/`):
+  `qtap_import_equivalence` 1/1 ("9 tables, 2 DBs + skip branch + bug-117
+  sha join + bug-158 strip + the two-link blob"); `system_import_state`
+  1/1 over **40/40** `OK` cases (oracle 46,818,056 bytes, "40 cases");
+  `seed_avatars_equivalence` 1/1 ("2 deterministic WebP blobs +
+  idempotency"). Zero `SKIP`. No NDJSON byte is predicted to move (v4 side
+  untouched; the v5 codec was `NotConfigured` in each and still is,
+  explicitly).
+- **P4.104's status header:** one sentence APPENDED (§R.7) recording the
+  latent item closed.
+- **Why no differential red-first:** the committed bundle carries no
+  `files`, and v4 has no switch to compare (`import-files.ts` always
+  transcodes with real sharp) — the recording-codec test is the proof, as
+  the order states.

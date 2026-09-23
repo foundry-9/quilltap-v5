@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — fix(import): execute_import's image codec is required, so reset and seed stop dropping theirs (P4.110 item 3)
+
+_Versions: core 0.0.1003, harness 0.0.915._
+
+`execute_import` took its image codec as an `Option`, where `None` meant
+"use the not-configured codec". The built-in reset and the first-run seed
+both passed `None` while holding the host codec, so any `files` in their
+bundle would have been stored without the WebP transcode v4 always
+applies. It was latent: the one bundle they import has no `files`. The
+parameter is now `&dyn PixelCodec`; reset and seed pass their codec
+(`seed_from_imports` now takes one), the two callers that hold an
+optional codec pass `NotConfiguredPixelCodec` when it is absent (the same
+behavior as before), and every test caller names `NotConfiguredPixelCodec`
+explicitly. A new unit test imports one PNG `files` row into a provisioned
+instance through a recording codec and asserts the codec was asked to
+encode it; it failed first over the old `None` call shape. The three
+import differentials (`qtap_import_equivalence`, `system_import_state`,
+`seed_avatars_equivalence`) are unchanged and green against oracles
+regenerated from the `a2db63da7` pin.
+
 #### 2026-09-23 — test(web): one materialize_salon_instance in the web tests' common (P4.110 item 2)
 
 _Versions: web 0.0.177._

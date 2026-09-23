@@ -967,11 +967,15 @@ pub fn execute_import(
     export: &QuilltapExport,
     options: &ImportOptions,
     // The image codec the file importers' storage bridges transcode with
-    // (`7189a968`'s step 9). `None` — a caller with no codec seam (the seed
-    // consumers, a host without one) — uses the not-configured codec, whose
-    // transcode falls through to the original bytes, exactly as v4 behaves
-    // when sharp fails.
-    codec: Option<&dyn crate::services::file_storage::PixelCodec>,
+    // (`7189a968`'s step 9 — its ONLY consumer). REQUIRED (P4.110): v4 has no
+    // switch here — `import-files.ts` always transcodes with real sharp — so a
+    // caller holding a codec must hand it on. It used to be an `Option` whose
+    // `None` meant "not configured", and the reset/seed paths passed `None`
+    // while holding the host codec (latent only because the one bundle they
+    // import carries no `files`). A caller with genuinely no pixel stack passes
+    // `&NotConfiguredPixelCodec` by name, whose transcode falls through to the
+    // original bytes — exactly as v4 behaves when sharp fails.
+    codec: &dyn crate::services::file_storage::PixelCodec,
 ) -> Result<ImportResult, ImportError> {
     let mut warnings: Vec<String> = Vec::new();
     let mut imported = ImportCounts::default();
@@ -1026,14 +1030,13 @@ pub fn execute_import(
     }
 
     // The one-big-try body: a chokepoint error → success:false (v4's catch).
-    let not_configured = crate::services::file_storage::NotConfiguredPixelCodec;
     let outcome = import_body(
         main,
         mount,
         user_id,
         data,
         options,
-        codec.unwrap_or(&not_configured),
+        codec,
         &mut imported,
         &mut skipped,
         &mut warnings,
@@ -1891,7 +1894,7 @@ mod tests {
             "user",
             &export,
             &ImportOptions::seed_defaults(),
-            None,
+            &crate::services::file_storage::NotConfiguredPixelCodec,
         )
         .expect("empty payload imports cleanly");
         assert!(result.success);
@@ -1913,7 +1916,7 @@ mod tests {
             "user",
             &export,
             &ImportOptions::seed_defaults(),
-            None,
+            &crate::services::file_storage::NotConfiguredPixelCodec,
         )
         .expect("null data answers success:false, not Err");
         assert!(!result.success);
@@ -2066,7 +2069,7 @@ mod tests {
                 "user",
                 &export_with(key, item),
                 &preserve_ids_options(),
-                None,
+                &crate::services::file_storage::NotConfiguredPixelCodec,
             )
             .expect("a refused preflight is still Ok(success:false)");
             assert!(!result.success, "{key}: unreadable instance must refuse");
@@ -2125,7 +2128,7 @@ mod tests {
                 "user",
                 &export,
                 &preserve_ids_options(),
-                None,
+                &crate::services::file_storage::NotConfiguredPixelCodec,
             )
             .expect("a refused preflight is still Ok(success:false)");
             assert!(!result.success, "{label}: unreadable vault must refuse");
@@ -2155,7 +2158,7 @@ mod tests {
             "user",
             &export_with("projects", json!({"id": "pr1", "name": "P"})),
             &preserve_ids_options(),
-            None,
+            &crate::services::file_storage::NotConfiguredPixelCodec,
         )
         .expect("a refused preflight is still Ok(success:false)");
         assert!(!result.success);
@@ -2184,7 +2187,7 @@ mod tests {
             "user",
             &export_with("projects", json!({"id": "pr1", "name": "Planted"})),
             &ImportOptions::seed_defaults(),
-            None,
+            &crate::services::file_storage::NotConfiguredPixelCodec,
         )
         .expect("per-item failures never sink the import");
         assert_eq!(
@@ -2203,6 +2206,93 @@ mod tests {
             )),
             "v4's per-item catch must carry the overlay failure verbatim — got {:?}",
             result.warnings
+        );
+    }
+
+    /// A [`PixelCodec`](crate::services::file_storage::PixelCodec) that records
+    /// every encode it is asked for and then fails it — the not-configured
+    /// codec's answer, so the bridges fall through to the original bytes
+    /// exactly as they do today, and the ONLY observable difference is the
+    /// record.
+    #[derive(Default)]
+    struct RecordingPixelCodec {
+        encodes: std::sync::Mutex<Vec<usize>>,
+    }
+    impl crate::services::file_storage::PixelCodec for RecordingPixelCodec {
+        fn encode_webp(
+            &self,
+            bytes: &[u8],
+            _quality: i64,
+            _effort: Option<i64>,
+            _animated: bool,
+        ) -> Result<Vec<u8>, String> {
+            self.encodes.lock().unwrap().push(bytes.len());
+            Err("recording codec: no encoder".to_string())
+        }
+        fn measure(&self, _bytes: &[u8]) -> (Option<i64>, Option<i64>) {
+            (None, None)
+        }
+    }
+
+    /// **P4.110 — the codec reaches the file step.** `execute_import`'s codec
+    /// is consumed by ONE step, the general file library (step 9), whose
+    /// bridges transcode bitmaps to WebP as v4's `import-files.ts` always does
+    /// with real sharp (v4 has no switch). The reset/seed paths used to pass
+    /// `None` — dropping the host codec they hold — which was latent only
+    /// because the one bundle they import carries no `files`. This drives ONE
+    /// decodable PNG `files` row through a real provisioned instance with a
+    /// recording codec and asserts the codec was asked to encode it.
+    ///
+    /// Red-first: written over the pre-change `Option` signature with `None`
+    /// (the reset/seed call shape), the file imported and the recording codec
+    /// was NEVER called.
+    #[test]
+    fn the_callers_codec_reaches_the_file_library_step() {
+        const TEST_PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        // A real 1x1 PNG.
+        const PNG_1X1: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), TEST_PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), TEST_PEPPER).unwrap();
+        let mount = crate::db::Writer::open_writable(
+            &dir.path().join("quilltap-mount-index.db"),
+            TEST_PEPPER,
+        )
+        .unwrap();
+
+        let export = export_with(
+            "files",
+            json!({
+                "id": "f1100000-0000-4000-8000-000000000001",
+                "originalFilename": "pixel.png",
+                "mimeType": "image/png",
+                "size": 70,
+                "dataBase64": PNG_1X1,
+            }),
+        );
+        let codec = RecordingPixelCodec::default();
+        let result = execute_import(
+            main.connection(),
+            mount.connection(),
+            crate::api::SINGLE_USER_ID,
+            &export,
+            &ImportOptions::seed_defaults(),
+            &codec,
+        )
+        .expect("the import runs");
+        assert!(result.success, "warnings: {:?}", result.warnings);
+        assert_eq!(
+            result.imported.files,
+            Some(1),
+            "the file row must import (warnings: {:?})",
+            result.warnings
+        );
+        let encodes = codec.encodes.lock().unwrap().clone();
+        assert!(
+            !encodes.is_empty(),
+            "the caller's codec was never asked to encode the imported PNG — the \
+             file step ran on a codec the caller did not pass"
         );
     }
 }

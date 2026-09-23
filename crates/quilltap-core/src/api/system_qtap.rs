@@ -306,7 +306,11 @@ pub async fn run_import_execute(
                 &uid,
                 &export,
                 &opts,
-                codec.as_deref(),
+                // P4.110 OUT-OF-MANDATE — this file's owner preserves: the
+                // required codec; `None` keeps today's not-configured answer.
+                codec
+                    .as_deref()
+                    .unwrap_or(&crate::services::file_storage::NotConfiguredPixelCodec),
             )
             .map_err(|e| match e {
                 crate::services::quilltap_import::ImportError::Db(db_err) => db_err,
