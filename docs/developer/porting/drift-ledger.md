@@ -19,71 +19,74 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `f45a517a9`** — "feat(search): index chat messages with
-  FTS5, compress the transcript" (v4 main, 2026-09-21 17:25,
-  `4.10.0-dev.61`), adopted at the `f45a517a9` thirteen-commit drift
-  catch-up round unification (P4.D203 → {P4.D204 ∥ P4.D205 ∥ P4.D207 ∥
-  P4.D208 ∥ P4.D209 → P4.D210} ∥ P4.D206 ∥ P4.D211, 2026-09-22). CLAUDE.md's
-  Status bullet agrees.
-- **Checked:** 2026-09-22, 09:29 — at the `/unify` that moved the baseline
-  (the §2 probe PASSED at the unification's opening, 08:5x, and again here).
-  Previously checked 2026-09-21 three times (the last at 22:25, the check
-  that recorded the three rows below as NEW).
-- **v4 `main` HEAD at check:** `a2db63da7` ("Fix bug 162: CLI raw-SQL path
-  opens without qt_text() (#63)", 2026-09-21 22:20, `4.10.0-dev.63`) —
-  **THREE commits past the baseline**, all three landed 2026-09-21 between
-  19:37 and 22:20 out of ONE live `Friday` chat whose running summary had
-  been calling a character "Vivienne" (a name in no message and on no
-  character). `git diff --stat f45a517a9 a2db63da7`: 31 files,
-  +1,517/−55.
+- **Oracle baseline: `a2db63da7`** — "Fix bug 162: CLI raw-SQL path opens
+  without qt_text() (#63)" (v4 main, 2026-09-21 22:20, `4.10.0-dev.63`),
+  adopted at the `a2db63da7` bug-161/162 drift catch-up + maintenance round
+  unification (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥
+  P4.106, 2026-09-23). CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-23, 00:10 (the `/unify` opening probe — PASSED: on
+  `main`, CLEAN, both logs empty) and again at the unification's close (see
+  the verdict — the tree went DIRTY mid-unification).
+- **v4 `main` HEAD at check:** `a2db63da7` — **AT the baseline, ZERO commits
+  past.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch") — **UNMOVED**; only pre-absorbed lineage. No unabsorbed bugfix
-  work.
+  branch") — **UNMOVED**; only pre-absorbed lineage.
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2") — UNMOVED.
   Still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN**.
-- **Verdict: DRIFT PENDING — 3 commits, all ORDERED (2026-09-22, the `a2db63da7` round: P4.D212 ∥ P4.D213 ∥ P4.D214 + the maintenance lanes P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106; the §2 probe PASSED at planning start and close)** (§3): `4e1a8e061`
-  (docs-only: bugs 161/162 filed + the summarizer-name design of record —
-  NO-PORT? with a mirror), `e7821606f` (bug 161 — a PORT on a surface v5
-  reproduces verbatim, measured: the context-summary fold renders
-  `role.to_uppercase()` under a prompt whose last line is v4's pre-fix
-  "Use character names, not roles.", and v5 carries the duplicated seat-name
-  loop v4 deleted from its episode pass; plus a PORT-NEW half,
-  `?action=rebuild-summary` + its Salon Organize-drawer entry), and
-  `a2db63da7` (bug 162 — a PORT on the CLI's `db` opener; v5's two CLI
-  openers BOTH register `qt_text` since P4.D203, so the functional half is
-  already met, but v4 also consolidated onto ONE opener and moved a
-  user-facing string — `Cannot open database:` → the per-target
-  friendly-name form — a Tier R comparand to measure before touching).
-  `QT_ORACLE_FOLD_EPISODE` and the context-summary families move at
-  `e7821606f`. **Next round: these three, then the fixture-vintage heal
-  (eleven families on six pairs) and the P4.D209 image-normalization seam
-  (`normalize_blob_image.rs`'s OPEN note).**
-- **Regen rule: PIN REQUIRED at `f45a517a9`.** Three commits of divergence,
-  one of them rewriting the fold/episode paths whose families regenerate
-  routinely. Every oracle regen until the baseline moves runs from a
-  detached worktree pinned at `f45a517a9` (§5.1, lane-unique path). **Do not
-  reason about which families "could" be affected — pin.**
+- **Checkout at check:** branch **`main`**, tree **DIRTY** — clean at 00:10,
+  dirty from 00:16 on (the human working in v4 during the unification):
+  bugs **163** ("fold rename no background") and **164** ("fold overwrites
+  manual title") IN FLIGHT, UNCOMMITTED — NEW `lib/chat/auto-title.ts` (an
+  `applyAutoTitle` chokepoint), edits to `lib/chat/context-summary.ts`,
+  `lib/background-jobs/handlers/title-update.ts` (its
+  `queueStoryBackgroundIfEnabled` folded into the chokepoint),
+  `app/api/v1/chats/[id]/actions/title.ts`, one existing unit test, two NEW
+  unit tests, the two NEW bug files under `docs/developer/bugs/fixed/`,
+  `docs/developer/bugs.md`, `docs/CHANGELOG.md`, `help/story-backgrounds.md`,
+  `CLAUDE.md`. **No row is opened for uncommitted work** (a row is a commit);
+  the next `/driftcheck` classifies them when they land. Every regen of this
+  unification ran from DETACHED pins (`/tmp/qt-v4-pin-unify-a2db63da7`,
+  `/tmp/qt-v4-pin-unify-f45a517a9`), which the working-tree dirt cannot reach.
+- **Verdict: NO DRIFT COMMITTED — v4 HEAD IS the baseline; the §3 table is
+  EMPTY. ⚠ The tree is DIRTY with bugs 163/164 in flight (above), so treat
+  the checkout as poisoned for any regen run from it.** Expected next:
+  v4 commits the title chokepoint (a PORT on `chat_admin`'s regenerate-title,
+  the title-update job handler, and the story-background enqueue — surfaces
+  v5 carries; the story-background trigger moving INTO the chokepoint is the
+  behaviour to watch) plus `help/story-backgrounds.md`.
+- **Regen rule: PIN REQUIRED at `a2db63da7`.** HEAD is at the baseline, but
+  the checkout is DIRTY in `lib/` and `app/` (§2's rule: uncommitted `lib/`
+  edits poison any regen run from the checkout). Every oracle regen runs from
+  a detached worktree pinned at `a2db63da7` (§5.1, lane-unique path) until a
+  `/driftcheck` records the tree clean again. **Do not reason about which
+  families the dirt "could" affect — pin.**
 - **The workspace gate at the baseline:** `qtap_schema_embed_guard` GREEN
-  (95,266 re-vendored by P4.D205), `zod_version_guard` GREEN (4.6.5,
-  P4.D211), `public_schemas_vendor_guard` GREEN, `help_tree_embed_guard`
-  GREEN at 126. `help_tree_equivalence` at the baseline pin is the proof the
-  tree is v4's (md5-identical, 126 files).
-- **Schema state:** the D23 re-dump from `e7d77bb60` LANDED (P4.D205:
-  `chat_informs` + its `createdAt` index, exactly two statements). The FTS
-  objects are NOT a D23 matter (v4 creates them in the migration; the dumper
-  filters triggers and virtual tables by construction) — v5 supplies them
-  through P4.D204's boot reconciler, which IS v4's `create-chat-message-
-  fts-v1` + PHASE 3.65. None of the three pending commits moves the schema
+  (95,266), `zod_version_guard` GREEN (4.6.5), `provider_sdk_version_guard`
+  GREEN (NEW, P4.106 — openai 7.20.0 / anthropic 0.115.0 / google genai
+  1.52.0 / openrouter 1.3.11; it SKIPs on a checkout without plugin installs),
+  `public_schemas_vendor_guard` GREEN, `help_tree_embed_guard` GREEN at 126,
+  `dispatch_wrong_type_census` at **446** (P4.D212's `chatId`),
+  `blob_write_sites_census` (NEW, P4.104) 12 / 12 + one EXEMPT,
+  `compressed_column_write_sites_census` at 14. `help_tree_equivalence` at
+  the `a2db63da7` pin is the proof the tree is v4's (md5-identical, 126
+  files — `help/chats.md` re-vendored by P4.D212).
+- **Schema state:** unchanged from the `f45a517a9` move — the D23 re-dump
+  from `e7d77bb60` stands; the FTS objects come from P4.D204's boot
+  reconciler; none of the three absorbed commits moved the schema
   (`e7821606f` ships no migration on purpose; `a2db63da7` is bin-only).
-- **`help/**` vs v4 HEAD `a2db63da7`:** 126 = 126 files; **ONE differs** —
-  `chats.md` (`e7821606f`, bug 161's rebuild-summary paragraph). Re-vendor
-  it with the bug-161 port.
+- **`help/**` vs v4 HEAD `a2db63da7`:** 126 = 126 files, **NONE differs**
+  (the working tree's dirty `help/story-backgrounds.md` is uncommitted and
+  not counted — it becomes the next round's re-vendor).
 - **The three text-compression migrations and the image re-encode
   migration stay DEFERRED as reclamation** (named in
-  `db/text_compression.rs` and the P4.D209 record); a v5 boot never
-  compresses or re-encodes existing rows, and does not need to — every read
-  and write is codec-aware, so a mixed instance is the normal state.
+  `db/text_compression.rs`, the P4.D209 record, and P4.104's module doc); a
+  v5 boot never compresses or re-encodes existing rows, and does not need
+  to — every read and write is codec-aware, so a mixed instance is the
+  normal state. **Recorded divergence (P4.104):** the host WebP codec
+  encodes a single frame, so an ANIMATED image reaching any blob-write site
+  is stored as a still WebP where v4 keeps every frame — the human's call
+  whether to decline animated inputs at the codec or grow it
+  (`normalize_blob_image.rs`'s module doc).
 
 ## §2 The freshness probe
 
@@ -122,9 +125,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `4e1a8e061` | 2026-09-21 | docs: plan the summarizer name fix, file bugs 161 and 162 | **NO-PORT?** | **Docs-only — six files, none of them `lib/`, `app/`, `components/`, `packages/`, `help/`, `public/schemas/` or `migrations/`: `docs/CHANGELOG.md` (+15), `docs/developer/bugs.md` (+15/−1), the two new bug files (`bug-161-summary-invents-a-name.md`, `bug-162-cli-raw-sql-no-qt-text.md`), the NEW `docs/developer/features/context-summary-speaker-names.md` (+178), and one line in `.claude/commands/update-documentation.md`.** Ratification should be trivial, but as with `781e3b499`/Inform the disposition to expect is NO-PORT-RATIFIED **with a mirror**: v5 already mirrors this tree (`docs/v4/developer/features/`, 21 files) and the spec is the best single reference the bug-161 port has. Mirror it at the version `e7821606f` leaves it — that commit moves the file to **`docs/developer/features/complete/context-summary-speaker-names.md`** and re-grades it "design of record; shipped", so the mirror should carry the FINAL path and text, not this one. ⚠ Note both bugs are **v4's own filings**, not this port's: the §5.4 convergence check is NEGATIVE, so no both-directions pin is expected to trip on either. | ORDERED(P4.D212 — NO-PORT? with mirrors; ratified on P4.D212's file list at unification) |
-| `e7821606f` | 2026-09-21 | fix(summary): name the speakers in the fold transcript (bug 161) | **PORT** (+ a **PORT-NEW** half) | **27 files, +991/−48. v5 reproduces the defect VERBATIM — measured, not inferred.** v4's cause: the context-summary fold rendered its transcript `USER:` / `ASSISTANT:` under a prompt ending *"Use character names, not roles."*, so a model with no name for a seat invented one and every later fold carried it forward (one Friday chat said "Vivienne" twenty-nine times after three folds); the episode pass over the same turns had its own seat-name map and was right all along. **v5's matching state:** `crates/quilltap-core/src/services/context_summary/tasks.rs:82` renders `format!("{stamp}{}: {}", m.role.to_uppercase(), m.content)`, `services/context_summary/prompt_text.rs:20` still carries the pre-fix sentence, and `services/fold_episode_pass.rs:150-190` holds the very duplicate loop v4 has now deleted. **Ported by:** the fold-episode round that landed `services/fold_episode_pass.rs` + the five-section `FOLD_SUMMARY_PROMPT` and the dated turn render (`status-log.md` §"NEW `services/fold_episode_pass.rs`"), with the `QT_ORACLE_FOLD_EPISODE` family as its oracle — so **that family and the context-summary families all move at this commit.** **The v4-side shape:** NEW `lib/chat/speaker-names.ts` (`resolveSpeakerNames` over ALL participants incl. removed/silent ones, raw `findByIdRaw` so a broken vault costs a label not a throw, `if (character?.name)`; `speakerLabel` falling back to `User`/`Character` by role) — v5's existing episode-pass loop already gates on the name being present, so the consolidation is **behaviour-neutral on the episode-pass side** and the whole behaviour change lands on the context-summary side; `FoldSummaryInput.newTurns` gains a required `speaker` (`role` stays on the shape but never reaches a model); `foldChatSummary` renders `${stamp}${m.speaker}: `; `FOLD_SUMMARY_PROMPT`'s last line becomes *"Refer to each speaker by the name on their turns. If a turn is labelled only by a role, keep that label; never invent a name for anyone."*; `generateContextSummary` gains a debug line `[Context Summary] Resolved speaker names for fold` with `chatId`/`seatCount`/`resolvedCount`/`unresolvedParticipantIds`. **The PORT-NEW half:** `POST /api/v1/chats/[id]?action=rebuild-summary` (new `app/api/v1/chats/[id]/actions/rebuild-summary.ts`, registered in the action index and `CHAT_POST_ACTIONS`) — refuses a `running` autonomous room with a 409 *"Pause the room before rebuilding its summary."*, 400s on no connection profiles, picks the profile exactly as regenerate-title does, then clears `contextSummary` / `summaryAnchorMessageIds` / `lastSummaryTurn` in ONE update (+`updatedAt`), enqueues a context summary with `forceRegenerate: false`, publishes realtime `chats`, logs `[Chats v1] Context summary cleared for rebuild`, answers `{success, jobId}`; **deliberately NOT `forceRegenerate`** (won't fit a cheap model's window on a long chat) and **`lastFullRebuildTurn` deliberately untouched** (zeroing it routes any chat past turn 50 into exactly that path). Plus the SPA entry — `useSummaryActions` + an Organize-drawer item with a confirm and two toasts (v5 surface: `apps/web/src/app/chat/sidebar/organize-section.ts`, ported in the Salon consolidation; note **P4.D206 owns that file right now**), `docs/developer/API.md` (+17) and `help/chats.md` (+24, now the ninth differing help file). **No migration, on purpose.** | ORDERED(P4.D212 ∥ P4.D213 — the server half incl. the PORT-NEW `rebuild-summary` verb ∥ the Salon Organize-drawer entry) |
-| `a2db63da7` | 2026-09-21 | Fix bug 162: CLI raw-SQL path opens without qt_text() (#63) | **PORT** (small, but it **enlarges the codec keystone**) | **6 files, +201/−42; the only code file is `packages/quilltap/bin/quilltap.js` (+13/−22).** v4's low-level `db` path (raw SQL, `--repl`, `--tables`, `--count`) rolled its own `new Database(...)`, so it never registered `qt_text()`: `SELECT qt_text(content) …` answered *no such function*, and every `--write` against `chat_messages` failed because the FTS5 sync triggers call it. It now opens through the one shared `openEncryptedDb` (`readonly` follows `!writable`, `friendlyName` follows the `--llm-logs`/`--mount-points` target), with the private driver-require, key pragma and readability probe deleted — **taken as the larger fix on purpose, "because two openers is how this happened".** **v5 intersection, two parts.** (1) **Structural: already done.** v5's `crates/quilltap-cli/src/db_cmd.rs:186` already goes through the shared `open_encrypted`, so v5 never had v4's second opener — which means **the UDF registration P4.D203 adds to that one opener reaches raw SQL and the REPL for free, exactly as v4 intends.** This row is the evidence that P4.D203's registration belongs **inside the shared opener**, not at call sites. (2) **A user-facing string MOVES, and it is a Tier R comparand:** `db_cmd.rs:197-198` prints the generic `Cannot open database: {e}` + the `.dbkey` hint, while v4 now prints `Cannot open main database:` / `Cannot open LLM logs database:` / `Cannot open mount index database:` per target (`db-helpers.js:201`). v5's OTHER CLI paths already carry the friendly-name form (`db_characters.rs:78`, `docs_cmd.rs:311`, `restore_key.rs:228`), so this is the last generic one. ⚠ **Run the Tier R oracle before touching the string** — the standing lesson from #119/bug 144. v4's `fs.existsSync` guard stays ahead of `loadDbKey`, so the "missing database" message is unchanged and `openEncryptedDb`'s own `${friendlyName} not found:` throw stays unreachable from the bin. Also: `packages/quilltap/README.md` gains a `qt_text()` note under Low-level options (CLI reference, `e11a51f44`'s surface), and a new integration test drives the bin itself. | ORDERED(P4.D214 — the ONE opener + the Tier R comparand, with P4.D210's declared live rows folded in as canned-stub rows) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -277,6 +277,25 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `a2db63da7` bug-161/162 drift catch-up + maintenance round
+  (2026-09-23, baseline `f45a517a9` → `a2db63da7`):** `4e1a8e061` (docs:
+  bugs 161/162 filed + the summarizer-name design) NO-PORT-RATIFIED(P4.D212,
+  mirrors — `context-summary-speaker-names.md` at its FINAL path, both bug
+  files, `API.md`, `bugs.md`); `e7821606f` (bug 161 + the PORT-NEW
+  rebuild-summary) ABSORBED(P4.D212 ∥ P4.D213 — ONE `speaker_names`
+  resolver shared by the fold and the episode pass, the fold turn's required
+  `speaker`, `FOLD_SUMMARY_PROMPT` regenerated mechanically, the debug line,
+  `Request::ChatRebuildSummary` with v4's 409/400 order, the single update,
+  the enqueue at priority 0, the `chats` publish, `help/chats.md`; the SPA's
+  Organize entry, confirm and toasts, the beat run LIVE at unification —
+  `orchestrator_tier3`'s `lastTurnParticipantId` CONVERGENCE pin retired:
+  v4 persists the write from this commit on); `a2db63da7` (bug 162)
+  ABSORBED(P4.D214 — the ONE CLI opener with v4's per-target strings, Tier R
+  244 → 266 at both pins, P4.D210's live rows as canned-stub rows, the
+  `packages/quilltap` README mirror). Round record: `status-log.md` →
+  "Round record — the `a2db63da7` bug-161/162 drift catch-up + maintenance
+  round unification".
 
 - **The `f45a517a9` thirteen-commit drift catch-up round (2026-09-22,
   baseline `baa85e19b` → `f45a517a9`):** `186eb09cb` (bugs 159/160, the

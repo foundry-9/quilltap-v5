@@ -6628,6 +6628,81 @@ round unification".
 
 PB1 stays parked by the standing rule.
 
+## The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) — UNIFIED 2026-09-23
+
+**ALL SEVEN LANDED on main; the oracle baseline MOVES to `a2db63da7` and the
+drift ledger's §3 is EMPTY — but ⚠ v4's checkout went DIRTY mid-unification
+with bugs 163/164 in flight (the auto-title chokepoint; uncommitted), so the
+regen rule stays PIN REQUIRED at `a2db63da7` and the next `/driftcheck`
+classifies them when they commit.** Every lane's delivered scope was
+re-checked against its order's tier list by four parallel readers plus the
+unifier's own reads of the shared seams (the §S.1 contract name-for-name,
+the engine fence, the verb against v4's route, the opener). **The §3 review
+found NO blocking finding in any lane — the eighth such round — and nine
+should-fixes/nits landed on the unify branch** (`fix(review)`): the
+`orchestrator_tier3` `lastTurnParticipantId` CONVERGENCE pin was still armed
+on the union (P4.D212 measured v4 persisting the write at `a2db63da7` and
+handed the retirement to the file's owner, who did not take it — the family
+would have panicked at the new baseline); the CLI opener's `: <path>` strip
+guarded on `CannotOpen`; the provider-SDK guard SKIPs (not FAILs) on a
+checkout without plugin installs; the refusing WebP encoder's stale
+"deferred by P4.6y" message; the seam's module doc gains the applier's
+quiet-`None` exception and the animated-input divergence; the Salon toast
+divergence recorded in the handler's comment; a stale comment count; plus
+`compressed_collect`'s recipe header repointed off a retired lane pin (the
+driver had refused it since P4.D203). **The wire:** `P4D212_SERVER_LANDED`
+flipped and the Rebuild Summary beat run LIVE — **it FAILED on its first run
+on its own assertion, not the port** (it read the fold cursor through
+`chatGet`, whose `chat` projection is v4's hand-built object and carries
+`contextSummary` alone on both sides; its cursor plant through `chatUpdate`
+was vacuous for the same reason) — repaired to plant and read
+`contextSummary` only, naming `chat_rebuild_summary_equivalence` as the
+cursor's proof; green. The six §R.9 mirrors landed (byte-identical to the
+pin); the `docs/v4/developer` mirror is otherwise LAGGING earlier rounds
+(bug 147–154 files never mirrored; `bug-146` differs) — a housekeeping
+item, not widened here. Gate numbers, the regen recipes as run, and the
+per-family results: the round record in `status-log.md`.
+
+**Next (in order):**
+
+1. **The bug-163/164 catch-up** once v4 commits them (the auto-title
+   chokepoint — `applyAutoTitle` under both the regenerate-title action and
+   the title-update job, the story-background enqueue moving INTO it, a
+   hand rename during the LLM call winning, `help/story-backgrounds.md`) —
+   a PORT on `chat_admin`'s regenerate-title + the title job handler; the
+   probe will catch the commit.
+2. **The fixture-vintage heal's next list** (one order, P4.103's method —
+   every gap measured with the migrator's `--report-only` from the
+   `a2db63da7` pin at unification): `photos-main.db` (five `photos_routes`
+   save rows), `chat-admin-main.db` (`chat_regenerate_title_tier3`),
+   `inspector-{main,nostore-main}.db` (nine columns; `llm_logs_routes`'s
+   four `list_by_chat*` cases), **`wardrobe-routes-main.db`**
+   (`cycleOrderParticipantIds`, `transcriptVersion`, `files.generationKey` —
+   the ~20 `wardrobe_routes` outfit/equip 500s), **`almanack-main.db` +
+   `almanack-llmlogs-legacy.db`** (`connection_profiles.fallbackProfileId`/
+   `allowTierFallback`, the chat-settings columns, `files.generationKey`;
+   the llm-logs profile pair — `almanack_tier2`'s `generate_*` 500s and the
+   404s behind them). ⚠ The migrator ERRORS (`:461`) on the
+   `wardrobe-instructions-*` pair — not a red family, but measure why before
+   the heal touches it. The `ai_import_tier3` constant and the
+   `courier_images_routes` raw read were fixed at this unification.
+3. **A ruling: animated inputs at the blob-write seam** — the host codec
+   encodes one frame; v4 keeps every frame. Decline animated inputs at the
+   codec (store the original) or grow the host codec (libwebpmux).
+4. **P4.105's owed edge:** a `ui_search_routes` arm over the poisoned-table
+   plant; the two `safeQuery` siblings (`count_messages_with_text` /
+   `find_messages_with_text`) and `updateMessage`'s own `safeQuery` wrap.
+5. **Small DRY items for a quiet round:** the two census lexers
+   (`blob_write_sites_census` / `compressed_column_write_sites_census`),
+   the three `materialize_salon_instance` copies in the web test files; the
+   `quilltap_import/{reset,seed}.rs` `execute_import(…, None)` (latent).
+6. **The `quilltap sync` writer-hold ruling** (P4.D210's header) — human.
+7. **The owed dogfood pass** on a Friday copy — now with the rebuild-summary
+   entry on a real chat with an invented name, `Cannot open main database:`
+   on a real wrong key, a real photograph through a gallery save landing as
+   WebP (and an animated GIF, to see item 3 for real), the widened pairs'
+   Playwright specs live, and the standing queue.
+
 ## The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) — ORDERED 2026-09-22
 
 **Baseline `f45a517a9`; v4 `main` HEAD `a2db63da7` (THREE past — the

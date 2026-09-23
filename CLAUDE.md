@@ -874,10 +874,50 @@ records THERE. Update this summary only when a phase or round completes.
   catch-up, the fixture-vintage heal, the image seam, then the owed dogfood
   pass on a Friday copy v5 can at last read and write** — `phase-4.md`.
   Round record: `status-log.md`.
-- **Oracle baseline: `f45a517a9` (2026-09-21, v4 main — "feat(search): index
-  chat messages with FTS5, compress the transcript", `4.10.0-dev.61`),
-  adopted at the `f45a517a9` thirteen-commit drift catch-up round
-  unification (2026-09-22).**
+- **The `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥
+  P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106): UNIFIED on main
+  (2026-09-23) — ALL SEVEN LANDED; the oracle baseline MOVES to `a2db63da7`
+  and the ledger's §3 is EMPTY; ⚠ v4's checkout went DIRTY mid-unification
+  (bugs 163/164, the auto-title chokepoint, UNCOMMITTED) so the regen rule
+  stays PIN REQUIRED.** Bug 161 absorbed whole (ONE `speaker_names` resolver
+  shared by the fold and the episode pass — v5 had reproduced the defect
+  verbatim; the fold turn's required `speaker`; `FOLD_SUMMARY_PROMPT`
+  regenerated mechanically, 1,585 bytes identical; the debug line; the
+  rebuild-summary verb with v4's 409/400 order, ONE update leaving
+  `lastFullRebuildTurn` alone, priority 0, the `chats` publish; the Salon's
+  Organize entry with v4's strings, its beat run LIVE) ∥ bug 162 (the ONE CLI
+  opener with v4's per-target strings — a v5 defect on `sync`'s strings found
+  and closed with it; Tier R 244 → 266, 266/0 at the target, nine designed
+  reds at the baseline; P4.D210's live rows as canned-stub rows) ∥ the
+  fixture-vintage heal (six pairs widened through v4's own ALTERs, SEVEN
+  standing reds closed, every reader re-run) ∥ bug 159's image half made a
+  port (the encoder threaded to all TEN blob-write sites over a shared D19
+  comparand with real sharp on every decodable row, a census, and THREE real
+  defects found behind the seam and fixed: a pre-`186eb09cb` transcode copy,
+  the general upload's un-configured codec, the vault/Lantern/generate
+  writers recording the INPUT's size) ∥ `update_message` as v4's UPDATE
+  under the FTS5 triggers (red-first on 7 of 8 ops; the search `safeQuery`
+  arm) ∥ P4.D205's seven items closed as planted-row arms + the bug-158
+  heal differential + the provider-SDK guard + the two-link-blob bundle.
+  **The §3 review (four parallel readers): NO blocking finding — the eighth
+  such round; nine should-fixes landed at unification**, headline: the
+  orchestrator family's CONVERGENCE pin was still armed on the union (a
+  cross-lane handoff nobody took — it would have panicked at the new
+  baseline); the opener's path-suffix strip guarded on `CannotOpen`; the SDK
+  guard SKIPs without plugin installs. **The wire's first live run of the
+  P4.D213 beat FAILED on its own assertion** (it read the fold cursor through
+  `chatGet`, whose projection is v4's hand-built object carrying
+  `contextSummary` alone — v5 matches) and was repaired. **Recorded for a
+  ruling:** the host WebP codec encodes ONE frame, so wiring the seam stores
+  an animated GIF as a still where v4 keeps every frame. Gate: fmt/clippy both feature sets/release clean; the 91-family sweep from the pin 86 ok after the sweep's three catches (a courier oracle case serializing a Node Buffer for a compressed column; a recipe assuming an unstaged mirror; a stale version constant), the five reds fixture-vintage pairs measured for the heal; Tier R 266/0 at the target, nine designed reds at the baseline; `cargo test --workspace` (148-var block) **620 binaries / 3,640 / 6 (the five vintage families + the recorded imggen staging collision, green by name) / 3 ignored**; SPA 441 / 7,474 / build + lint clean; full Playwright **326 / 5 / 6** — four reds green by file alone, the fifth REAL: the avatar-rolls beat's PNG plate can no longer read as kept once the album save normalizes for real (v4 identical); its seed made a WebP as production rolls are (green alone after the re-seed: 1/1 (53 s)).
+  Versions: core 0.0.1001, harness 0.0.913, host 0.0.147, web 0.0.176, cli
+  0.0.27, SPA 0.5.748. **Next: the bug-163/164 catch-up when v4 commits it,
+  the heal's next list, the animated ruling, then the owed dogfood pass** —
+  `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `a2db63da7` (2026-09-21, v4 main — "Fix bug 162: CLI
+  raw-SQL path opens without qt_text() (#63)", `4.10.0-dev.63`), adopted at
+  the `a2db63da7` bug-161/162 drift catch-up + maintenance round unification
+  (2026-09-23).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

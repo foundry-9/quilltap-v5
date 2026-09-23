@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-23 — chore(unify): the `a2db63da7` bug-161/162 drift catch-up + maintenance round (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106) unified — the baseline moves to `a2db63da7`
+
+_Versions: core 0.0.1001, harness 0.0.913, host 0.0.147, web 0.0.176, cli 0.0.27, tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.748._
+
+Seven lanes unified onto main; the oracle baseline moves `f45a517a9` →
+`a2db63da7` and the drift ledger's §3 is empty (v4's checkout went dirty
+mid-unification with bugs 163/164 in flight, uncommitted — recorded in the
+ledger; the regen rule stays pinned). Absorbed whole: bug 161 (one speaker
+resolver for the fold and the episode pass, the regenerated fold prompt, the
+rebuild-summary verb and its Salon entry), bug 162 (the one CLI opener with
+v4's per-target strings, Tier R 244 → 266), and the docs commit ratified
+no-port with six mirrors; plus the four maintenance lanes: six committed
+fixture pairs widened to v4's vintage (seven standing reds closed), bug 159's
+image normalization threaded to all ten blob-write sites with decodable-image
+rows and a census, `update_message` as v4's UPDATE under the FTS5 triggers
+with the search `safeQuery` arm, and P4.D205's seven open Inform items plus
+the bug-158 heal differential, the provider-SDK version guard and the
+two-link-blob import bundle. Recounted at unification: versions as base + the
+lanes' sums (two identical web bumps had merged as one); the dispatch
+wrong-type census stands at 446.
+
+The review found nothing blocking; nine should-fixes landed: the orchestrator
+family's convergence pin (still armed on the union, v4 now persists the write),
+the CLI opener's path-suffix strip guarded on `CannotOpen`, the SDK guard
+skipping without plugin installs, the refusing WebP encoder's stale message,
+the seam's recorded animated-input divergence and applier exception, the Salon
+toast divergence recorded, a stale comment count, a dead recipe header. The
+wire flipped `P4D212_SERVER_LANDED`; the beat failed its first live run on its
+own assertion (v4's chat GET projects `contextSummary` and not the fold cursor;
+v5 matches) and was repaired to read what the projection carries.
+
+Gate: fmt + clippy (both feature sets) + release clean on the union before a single review read and again on the final tree; the round's 91 families fresh from the `a2db63da7` pin through the sweep driver — 86 ok after the sweep's own three catches were fixed (the courier oracle case serializing a Node Buffer for a compressed column, a recipe assuming an unstaged mirror, a stale version constant) and the five that stay red are fixture-vintage pairs no lane owned, each measured column-for-column for the next heal; Tier R 266/0 at the target and the nine designed reds at the baseline; `cargo test --workspace` with the 148-variable block 620 binaries / 3,640 passed / 6 failed (the five vintage families with their vars deliberately in the block, plus the recorded image-generation staging collision, green by name) / 3 ignored; SPA lint / 441 files / 7,474 tests / build clean; full Playwright 326 passed / 5 failed / 6 skipped, four of the reds green by file alone and the fifth a real change of behaviour the round made visible in a beat no lane ran (the avatar-rolls beat's PNG plate can no longer read as kept once the album save normalizes for real, on either side; its seed made a WebP as production rolls are — green alone after the re-seed: 1/1 (53 s)). Round record in `status-log.md`.
+
 #### 2026-09-22 — docs(porting): the P4.106 lane close — gate, status headers
 
 _Docs-only change._

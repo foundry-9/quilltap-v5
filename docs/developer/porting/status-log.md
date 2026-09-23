@@ -143557,3 +143557,238 @@ Oracles were staged under `/tmp/p4106/` and are NOT committed (the unifier
 regenerates from its own pin); the one new committed artifact is
 `qtap-import-two-link-blob.qtap` (2,757 bytes). Cross-order header
 sentences appended to P4.D205, P4.D208, P4.D209, P4.D211 (§R.7).
+
+## Round record — the `a2db63da7` bug-161/162 drift catch-up + maintenance round unification (P4.D212 ∥ P4.D213 ∥ P4.D214 ∥ P4.103 ∥ P4.104 ∥ P4.105 ∥ P4.106), 2026-09-23
+
+**ALL SEVEN ORDERS LANDED; the oracle baseline MOVES `f45a517a9` →
+`a2db63da7`; the ledger's §3 is EMPTY — ⚠ with v4's checkout DIRTY from
+00:16 (bugs 163/164 in flight, uncommitted; PIN REQUIRED at the new
+baseline). The §3 review — four parallel readers plus the unifier's own reads
+of the shared seams — found NO BLOCKING finding in any lane (the eighth such
+round); nine should-fixes/nits landed on the unify branch, and the wire's
+first live run of the P4.D213 beat FAILED on the beat's own assertion (not
+the port) and was repaired. Six orders CLOSED WHOLE, P4.D213/P4.104/P4.105/
+P4.106 CLOSED with their Tier 2/3 deferrals restated by name. Versions:
+core 0.0.1001, harness 0.0.913, host 0.0.147, web 0.0.176, cli 0.0.27,
+tauri 0.0.7, fixture-sanitizer 0.0.4, SPA 0.5.748.**
+
+### §1 Survey
+
+Seven lane worktrees, all clean, 34 lane commits between them (P4.D212 4,
+P4.D213 1, P4.D214 3, P4.103 1, P4.104 9, P4.105 3, P4.106 13); six cut
+from the order commit `4b05cf97`, P4.D213 from `fc63905e` (a subset — pick
+order unaffected). The ledger's §2 probe PASSED at the opening (00:10: v4 on
+`main` at `a2db63da7`, CLEAN, both logs empty), so §1's verdict and the
+PIN REQUIRED rule governed. **Six minutes later the checkout was DIRTY** —
+the human working bugs 163/164 (the auto-title chokepoint: NEW
+`lib/chat/auto-title.ts`, `context-summary.ts`, the title-update handler,
+the regenerate-title action, tests, docs, `help/story-backgrounds.md`,
+`CLAUDE.md`), HEAD unmoved. Uncommitted work opens no §3 row; every regen
+here ran from the two detached pins (`/tmp/qt-v4-pin-unify-a2db63da7`,
+`/tmp/qt-v4-pin-unify-f45a517a9`, the three symlink classes, `rev-parse`
+verified), which the dirt cannot reach; the ledger's §1 records the files.
+Load-bearing facts read from the lane records before any pick: P4.D212's
+finding 1 (the orchestrator CONVERGENCE pin trips at `a2db63da7`, handed to
+P4.106); P4.D213's beat gated on `P4D212_SERVER_LANDED` with an unverified
+`chatUpdate` plant; P4.D214's Tier R 266/0 at the target and 13 designed
+reds at the baseline; P4.103's two new findings (`ai_import_tier3`'s
+constant, `inspector-main.db`); P4.104's `photos-main.db` red +
+`wardrobe_routes`/`almanack_tier2` pre-existing reds + the
+`quilltap_import` `None`; P4.105's `message_reattribute` eighth red + the
+dead `regenerate_swipe` recipe (already repaired on P4.106's side);
+P4.106's web bump folded into the recount.
+
+### §2 Reconciliation
+
+`unify/a2db63da7` from main (`4b05cf97`); the 34 commits cherry-picked in
+the §R order P4.D212 → P4.D213 → P4.D214 → P4.103 → P4.105 → P4.104 →
+P4.106. Conflicts: ONLY the two append-only docs (union — CHANGELOG newest
+lane first, status-log appended; every lane's added lines verified present
+by set difference, 0 missing ×14) and the version-only manifests/lock (kept
+at HEAD, then RECOUNTED as base + the sum of every lane's bumps: core
+0.0.992 + 2 + 2 + 4 + 1 = **0.0.1001**, harness 0.0.890 + 2 + 2 + 7 + 12 =
+**0.0.913**, host 0.0.146 + 1 = **0.0.147**, web 0.0.170 + 1 + 1 + 2 + 2 =
+**0.0.176** — P4.D212's and P4.103's identical `0.0.171` had merged as ONE,
+the standing trap — cli **0.0.27**, SPA **0.5.748**); every lane's
+`Cargo.toml`/`Cargo.lock` delta audited version-only before any pick. No
+source-level conflict of any kind — the Ownership table held. The union
+compiled first time: fmt clean, clippy clean in BOTH feature sets before a
+single review read.
+
+### §3 The review
+
+Four readers (P4.D212+P4.D213 / P4.D214+P4.105 / P4.104 / P4.106+P4.103),
+each against the orders' tier lists and v4's real files at the pins, plus
+the unifier's own reads (the §S.1 contract name-for-name across
+`types.rs`/`core-contract.ts`; the `// === P4.D212 ===` fences; the verb
+against `rebuild-summary.ts` arm for arm; the CLI opener). **No blocking
+finding.** Landed on the unify branch (`fix(review)`, `fix(harness)`), each
+named in its order's header:
+
+1. **`orchestrator_tier3`'s `lastTurnParticipantId` CONVERGENCE pin was
+   still armed on the union** — P4.D212 measured v4 persisting the write at
+   `a2db63da7` and handed the retirement to P4.106 (the file's owner), whose
+   thirteen commits touched the file without taking it; at the new baseline
+   the family panics before its table compares. Retired; the field compares
+   raw. (Caught by reading the handoff against the union's diff.)
+2. **The CLI opener's `: <path>` strip was unconditional** — rusqlite appends
+   the path only on `CannotOpen`; guarded on the code (Tier R 266/0 at the
+   target and the nine designed baseline reds unchanged, re-run on the
+   final tree).
+3. **`provider_sdk_version_guard` FAILED, not SKIPped, on a checkout with a
+   root install but no `plugins/dist/*/node_modules`** — the two plugin-only
+   SDKs; now a SKIP with its own sentence.
+4. The refusing WebP encoder's message still said the codec was "deferred
+   by work order P4.6y" — it is the ONE `None` arm for ten sites; reworded.
+5. `normalize_blob_image.rs`'s module doc gains the sync applier's quiet
+   `::new`-on-`None` as the one exception to the decided-ONCE rule, and the
+   **animated-input divergence** (below).
+6. The Salon handler's doc comment records the transport-failure toast
+   collapse (v4's bare sentence on a thrown fetch reads `Failed to rebuild
+   the summary: Connection lost…` here — the file's uniform idiom).
+7. A stale count in an orchestrator comment ("five rows" → seven).
+8. `compressed_collect_equivalence`'s recipe header named a retired lane pin
+   (`stale_v4_pin_path` since P4.D203 — the driver refused it); repointed
+   to the canonical checkout line with a lane-neutral output path.
+9. **The full Playwright run's `character-avatar-rolls-flow` red — RED
+   ALONE, a real behaviour change P4.104 made visible in a beat no lane
+   ran** (the §5 gate line has the mechanism): the beat's PNG plate can no
+   longer read as kept once the album save normalizes for real, on either
+   side; the seed made a WebP, as production rolls are. The playbook's
+   "re-run every sibling's beat against the widened behaviour" — the
+   fourth time a full-suite red outside the round's files was the round's
+   own change.
+
+**Recorded, not fixed (named in the headers and `phase-4.md`):** the
+animated-input divergence (P4.104 — the host codec encodes a single frame;
+before this round those sites stored the original bytes, so wiring the seam
+WIDENED the divergence for animated inputs while matching v4's D19
+decision; a ruling); the `image` decoder's default `Limits` on
+attacker-suppliable bytes inside the writer (hardening candidate);
+P4.105's owed `ui_search_routes` poisoned arm and the two `safeQuery`
+siblings + `updateMessage`'s own `safeQuery`; the third
+`materialize_salon_instance` copy; the two census lexers;
+`quilltap_import/{reset,seed}.rs`'s `execute_import(…, None)` (latent — the
+bundled bundle carries no `files`); v4's `memory-diff-command.js` private
+opener (v5's verb unshipped).
+
+### §4 The wire
+
+`P4D212_SERVER_LANDED` flipped; the Rebuild Summary beat run LIVE against
+the release binary — **RED on its first run:** after the rebuild it read
+`lastSummaryTurn: null`, `summaryAnchorMessageIds: undefined` where it
+expected `0` / `[]`. Traced: the beat reads through `chatGet`, whose `chat`
+projection is v4's hand-built object (`app/api/v1/chats/[id]/handlers/get.ts`
+— `contextSummary`, the rotation, the impersonation state; NOT the fold
+cursor), and v5's `api/salon.rs` projects the same keys; its plant of the
+two cursor keys through `chatUpdate` was vacuous for the same reason (v4's
+`updateChatSchema` strips them; v5's bag copies `contextSummary` only). The
+port is right on both counts. Repaired: the beat plants and reads
+`contextSummary` alone (the thing it actually clears), keeps the confirm,
+the dispatch's `jobId`, the toast and the `CONTEXT_SUMMARY` job row, and
+names `chat_rebuild_summary_equivalence` as the cursor's proof — **green,
+11/11 in the spec.** The §S.1 contract diffed name-for-name (`chatId` on
+both sides under the enum's camelCase rename). The six §R.9 mirrors copied
+from the target pin and `cmp`-verified (9,712 / 6,100 / 6,486 / 221,285 /
+306,475 / the README's two-line `qt_text()` note at `194a195,196`); a
+whole-mirror `diff -rq` shows `docs/v4/developer` LAGGING earlier rounds
+(bug 147–154 files never mirrored, `bug-146` differs) — recorded, not
+widened.
+
+### §5 The gate (final tree ``5f0b00ce`; the avatar-rolls re-run on `e19ae217`, its spec fix`, `CARGO_INCREMENTAL=0 TZ=UTC`, every regen from `/tmp/qt-v4-pin-unify-a2db63da7`)
+
+- **§R.2 probe:** PASS at the opening (00:10); the checkout DIRTY from 00:16
+  (bugs 163/164 in flight, HEAD unmoved) — every regen from the two detached
+  pins, which the dirt cannot reach.
+- **The union before any review read** (`e1a99931`): `cargo fmt --all
+  --check` clean; `cargo clippy --workspace --all-targets -- -D warnings`
+  clean in BOTH feature sets; `cargo build --workspace --release` clean; SPA
+  `npm test` **441 files / 7,474 tests / 0 failed**, `npm run build` clean,
+  `npm run lint` clean (`check-qt-classes` 5/5, 958 classes).
+- **Tier R** (`cli_differential`, the final tree): **266 cases / 0 failures**
+  at `a2db63da7`; **13 failures on the nine DESIGNED cases** at `f45a517a9`
+  (the seven `db` failure arms + `db qt_text read` + `db write under fts
+  trigger` — v4's own pre-fix `no such function: qt_text`), exactly P4.D214's
+  record.
+- **The sweep** (`recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-unify-a2db63da7`,
+  the round's 91 families — every lane's own, every named neutrality leg,
+  P4.103's 22 readers, the three that MOVE at `a2db63da7`; results
+  `05-sweep-results.json`): **81 ok on the first pass; 86 ok after the
+  fixes** — `orchestrator_tier3` GREEN by name once the CONVERGENCE pin was
+  retired (P4.106's grown 64-chat corpus re-recorded with P4.D212's fold
+  present — the only movement the pin's field); `ai_import_tier3` GREEN on
+  the bumped constant; `courier_images_routes` GREEN once BOTH sides read the
+  compressed `llm_logs` columns through `qt_text()` (the sweep's own catch:
+  the oracle case had been serializing a Node Buffer — `{type:'Buffer',
+  data:[…]}` — since `f45a517a9`, so the family's red was never only the
+  harness dump's); `mount_link_groups` GREEN once its recipe STAGED the
+  mirror it had assumed (it passed for P4.104 off a stale `.qt-oracle-mirror`
+  in the live checkout — a stale-mirror pass); `backup_uuid_remap` GREEN by
+  hand (the driver refuses its DELIBERATE hash-pinned repo write; the
+  committed corpus byte-unchanged). **The five that stay RED are all
+  fixture-vintage pairs no lane owned, each measured with the migrator's
+  `--report-only` from the pin:** `chat_regenerate_title_tier3`
+  (`chat-admin-main.db`), `photos_routes`'s five save rows
+  (`photos-main.db`), `llm_logs_routes`'s four `list_by_chat*` cases
+  (`inspector-{main,nostore-main}.db`, nine columns), `wardrobe_routes`'s
+  ~20 outfit/equip 500s (`wardrobe-routes-main.db`:
+  `cycleOrderParticipantIds`, `transcriptVersion`, `files.generationKey`),
+  `almanack_tier2`'s `generate_*` 500s (`almanack-main.db` +
+  `almanack-llmlogs-legacy.db`). P4.105's predicted eighth red
+  `message_reattribute` came GREEN over the widened `chat-dialogs-*`;
+  `help_tree_equivalence` GREEN at the pin (126 files, md5-identical).
+- **The wire's beat:** `salon-dialogs-flow.spec.ts` alone — red-first
+  (1 failed / 10 passed, the beat's own assertion), then **11 passed** after
+  the repair.
+- **The final tree (`5f0b00ce`), one logged chain:** `cargo fmt --all
+  --check` clean; clippy clean in BOTH feature sets; `cargo build --workspace
+  --release` clean; **`cargo test --workspace --no-fail-fast -- --nocapture`
+  with the round's 148-variable env block** (every family's oracle at its
+  driver-staged `/tmp` path from the pin; `QT_V4_CHECKOUT` at the pin for
+  Tier R and the SDK guard; the `QT_FIXTURE_QTAPIMPORT_*` names — shared by
+  three families with different files — set to `qtap_import`'s, the other
+  two re-run by name): **620 test binaries / 3,640 passed / 6 failed / 3
+  ignored, 405 `SKIP:` lines** (families outside the block, none of them
+  this round's). The six reds: the FIVE fixture-vintage families above,
+  their vars deliberately IN the block so the true state shows rather than a
+  false `SKIP:`, plus `image_generation_tier3` on the recorded
+  `/tmp/qt-imggen-*` staging collision (two families share the dir under
+  the parallel workspace run — a minted `mountPointId` differs; GREEN on its
+  own staging through the driver, re-run by name on the final tree). By
+  name after the block: `reset_builtins` 1/1, `seed_avatars` 1/1. Every
+  round family confirmed RUN by its OK line in the sweep artifact.
+- **SPA on the final tree:** `npm run build` clean (the wire's spec + the
+  handler's comment are the only SPA deltas since the union's 441 / 7,474
+  test run); `npm run lint` clean.
+- **Full Playwright** against the final release binary + the fresh `dist`:
+  **326 passed / 5 failed / 6 skipped (14.1 m)** — the six skips the
+  standing parks. The five reds, each re-run BY FILE alone, one invocation
+  at a time: `salon-documents-flow` **5/5**, `salon-regenerate-stream-flow`
+  **3/3**, `workspace-flow` **13/13** (click-stability timeouts and a
+  tab-strip count under the full run — the documented full-suite
+  intermittent class, none of the three files touched this round) — and
+  **`character-avatar-rolls-flow` RED ALONE too: a REAL behaviour change
+  this round made, in a beat no lane ran.** The P4.D188 beat seeds plate A
+  as a PNG and keeps it into the album; since P4.104 the album save
+  normalizes its copy through the real encoder (as v4's `linkBlobContent`
+  always has — measured: `character-gallery-service.ts` passes no
+  `normalizeImages`, default true), so the album copy lands as a
+  different-sha WebP, and BOTH sides' roll listing classifies album
+  membership by the ROLL file's sha (`getPhotoLinkSummaryBySha256` /
+  `classify_roll_links`) — the plate can never read "Already in the photo
+  album" for a PNG roll, on v4 or v5. Production rolls are WebP (the
+  generation pipeline converts before the cache write), where the
+  normalization DECLINES (lossy → lossy) and the sha survives; the seed was
+  the instrument. Fixed in the spec's gesture, never the assertion: plate A
+  is a 2×2 lossy WebP encoded by v4's own sharp, the reason in the spec's
+  header. **green alone after the re-seed: 1/1 (53 s)**
+- **By name on the final tree:** `image_generation_tier3` 1/1 through the
+  driver (the workspace run's red was the staging collision).
+
+### §6 Docs
+
+The ledger's §1 rewritten (baseline `a2db63da7`, the dirty checkout and its
+files, PIN REQUIRED), the three §3 rows retired to §6; `phase-4.md`'s
+UNIFIED section with the seven next items; the seven order headers; this
+record; the CHANGELOG entry; CLAUDE.md's Status bullet; the memory note
+`round-a2db63da7-bug-161-162-catch-up`.
